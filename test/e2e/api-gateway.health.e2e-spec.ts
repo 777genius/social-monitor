@@ -31,8 +31,12 @@ describe('API gateway health (e2e)', () => {
     await request(app.getHttpServer())
       .get('/health')
       .set('x-request-id', 'test-request-id')
+      .set('x-correlation-id', 'test-correlation-id')
+      .set('x-causation-id', 'test-causation-id')
       .expect(200)
       .expect('x-request-id', 'test-request-id')
+      .expect('x-correlation-id', 'test-correlation-id')
+      .expect('x-causation-id', 'test-causation-id')
       .expect({
         status: 'ok',
         service: 'api-gateway',
@@ -40,7 +44,11 @@ describe('API gateway health (e2e)', () => {
   });
 
   it('returns readiness', async () => {
-    await request(app.getHttpServer()).get('/ready').expect(200).expect({
+    const response = await request(app.getHttpServer()).get('/ready').expect(200);
+
+    expect(response.headers['x-request-id']).toEqual(expect.any(String));
+    expect(response.headers['x-correlation-id']).toBe(response.headers['x-request-id']);
+    expect(response.body).toEqual({
       status: 'ok',
       service: 'api-gateway',
     });

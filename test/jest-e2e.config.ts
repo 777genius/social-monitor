@@ -11,6 +11,7 @@ const config: Config = {
     '^@social-monitor/shared-kernel$': '<rootDir>/libs/shared-kernel/src/index.ts',
     '^@social-monitor/platform-config$': '<rootDir>/libs/platform/config/src/index.ts',
     '^@social-monitor/platform-events$': '<rootDir>/libs/platform/events/src/index.ts',
+    '^@social-monitor/platform-request-context$': '<rootDir>/libs/platform/request-context/src/index.ts',
     '^@social-monitor/platform-worker$': '<rootDir>/libs/platform/worker/src/index.ts',
     '^@social-monitor/contracts/(.*)$': '<rootDir>/libs/contracts/$1',
     '^@social-monitor/([^/]+)/(.*)$': '<rootDir>/libs/$1/$2',

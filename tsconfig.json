@@ -24,6 +24,7 @@
       "@social-monitor/shared-kernel": ["libs/shared-kernel/src/index.ts"],
       "@social-monitor/platform-config": ["libs/platform/config/src/index.ts"],
       "@social-monitor/platform-events": ["libs/platform/events/src/index.ts"],
+      "@social-monitor/platform-request-context": ["libs/platform/request-context/src/index.ts"],
       "@social-monitor/platform-worker": ["libs/platform/worker/src/index.ts"],
       "@social-monitor/contracts/*": ["libs/contracts/*"],
       "@social-monitor/identity/*": ["libs/identity/*"],
