@@ -7,8 +7,13 @@ import {
   type Result,
 } from '@social-monitor/shared-kernel';
 
-import { SourceItem } from '../../domain';
-import type { FeedProjectionPort, SourceFetcherPort, SourceItemRepositoryPort } from '../../ports';
+import { ScanAttempt, SourceItem } from '../../domain';
+import type {
+  FeedProjectionPort,
+  ScanAttemptRepositoryPort,
+  SourceFetcherPort,
+  SourceItemRepositoryPort,
+} from '../../ports';
 import type { ExecuteScanCommand } from './execute-scan.command';
 import type { ExecuteScanResult } from './execute-scan.result';
 
@@ -19,6 +24,7 @@ export class ExecuteScanUseCase {
     private readonly sourceFetcher: SourceFetcherPort,
     private readonly sourceItems: SourceItemRepositoryPort,
     private readonly feedProjection: FeedProjectionPort,
+    private readonly scanAttempts: ScanAttemptRepositoryPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
   ) {}
@@ -32,48 +38,75 @@ export class ExecuteScanUseCase {
       return err(new DomainError('validation.failed', 'Source binding id must be non-empty'));
     }
 
-    const fetched = await this.sourceFetcher.fetch({
+    let attempt = ScanAttempt.start({
+      scanJobId: command.scanJobId,
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       sourceBindingId: command.sourceBindingId,
-      scanJobId: command.scanJobId,
+      startedAt: this.clock.now(),
     });
+    await this.scanAttempts.save(attempt);
 
-    const ingestedAt = this.clock.now();
-    const items = fetched.map((item) =>
-      SourceItem.ingest({
-        id: this.ids.generate(),
+    try {
+      const fetched = await this.sourceFetcher.fetch({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         sourceBindingId: command.sourceBindingId,
-        externalId: item.externalId,
-        canonicalUrl: item.canonicalUrl,
-        title: item.title,
-        body: item.body,
-        authorHandle: item.authorHandle,
-        publishedAt: item.publishedAt,
-        ingestedAt,
-      }),
-    );
+        scanJobId: command.scanJobId,
+      });
 
-    const saveResult = await this.sourceItems.saveBatch({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      items,
-    });
-    const projectionResult = await this.feedProjection.project({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      sourceBindingId: command.sourceBindingId,
-      sourceItems: items,
-    });
+      const ingestedAt = this.clock.now();
+      const items = fetched.map((item) =>
+        SourceItem.ingest({
+          id: this.ids.generate(),
+          tenantId: command.tenantId,
+          workspaceId: command.workspaceId,
+          sourceBindingId: command.sourceBindingId,
+          externalId: item.externalId,
+          canonicalUrl: item.canonicalUrl,
+          title: item.title,
+          body: item.body,
+          authorHandle: item.authorHandle,
+          publishedAt: item.publishedAt,
+          ingestedAt,
+        }),
+      );
 
-    return ok({
-      scanJobId: command.scanJobId,
-      fetched: fetched.length,
-      inserted: saveResult.inserted,
-      skippedDuplicates: saveResult.skippedDuplicates,
-      projected: projectionResult.projected,
-    });
+      const saveResult = await this.sourceItems.saveBatch({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        items,
+      });
+      const projectionResult = await this.feedProjection.project({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        sourceBindingId: command.sourceBindingId,
+        sourceItems: items,
+      });
+      attempt = attempt.succeed({
+        finishedAt: this.clock.now(),
+        fetched: fetched.length,
+        inserted: saveResult.inserted,
+        skippedDuplicates: saveResult.skippedDuplicates,
+        projected: projectionResult.projected,
+      });
+      await this.scanAttempts.save(attempt);
+
+      return ok({
+        scanJobId: command.scanJobId,
+        fetched: fetched.length,
+        inserted: saveResult.inserted,
+        skippedDuplicates: saveResult.skippedDuplicates,
+        projected: projectionResult.projected,
+      });
+    } catch (error) {
+      attempt = attempt.fail({
+        finishedAt: this.clock.now(),
+        failureReason: error instanceof Error ? error.message : 'Unknown scan execution failure',
+      });
+      await this.scanAttempts.save(attempt);
+
+      return err(error instanceof Error ? error : new Error('Unknown scan execution failure'));
+    }
   }
 }

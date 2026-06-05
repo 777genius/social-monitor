@@ -1,12 +1,13 @@
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import type { SourceItem } from '../../domain';
+import type { ScanAttempt, SourceItem } from '../../domain';
 import type {
   FetchSourceItemsCommand,
   FetchedSourceItem,
   FeedProjectionPort,
   ProjectFeedItemsCommand,
   ProjectFeedItemsResult,
+  ScanAttemptRepositoryPort,
   SaveSourceItemsCommand,
   SaveSourceItemsResult,
   SourceFetcherPort,
@@ -51,6 +52,12 @@ class FixedSourceFetcher implements SourceFetcherPort {
   }
 }
 
+class FailingSourceFetcher implements SourceFetcherPort {
+  async fetch(): Promise<readonly FetchedSourceItem[]> {
+    throw new Error('Provider unavailable');
+  }
+}
+
 class FakeSourceItemRepository implements SourceItemRepositoryPort {
   private readonly itemsByKey = new Map<string, SourceItem>();
 
@@ -88,15 +95,30 @@ class FakeFeedProjection implements FeedProjectionPort {
   }
 }
 
+class FakeScanAttemptRepository implements ScanAttemptRepositoryPort {
+  private readonly attempts = new Map<string, ScanAttempt>();
+
+  async save(attempt: ScanAttempt): Promise<void> {
+    const snapshot = attempt.toSnapshot();
+    this.attempts.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.scanJobId}`, attempt);
+  }
+
+  async findByScanJob(params: Parameters<ScanAttemptRepositoryPort['findByScanJob']>[0]): Promise<ScanAttempt | null> {
+    return this.attempts.get(`${params.tenantId}:${params.workspaceId}:${params.scanJobId}`) ?? null;
+  }
+}
+
 describe('ExecuteScanUseCase', () => {
   it('fetches source items and persists new canonical items', async () => {
     const fetcher = new FixedSourceFetcher();
     const repository = new FakeSourceItemRepository();
     const projection = new FakeFeedProjection();
+    const attempts = new FakeScanAttemptRepository();
     const useCase = new ExecuteScanUseCase(
       fetcher,
       repository,
       projection,
+      attempts,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
@@ -124,6 +146,24 @@ describe('ExecuteScanUseCase', () => {
     expect(fetcher.calls).toHaveLength(1);
     expect(repository.all()).toHaveLength(2);
     expect(projection.commands).toHaveLength(1);
+    await expect(attempts.findByScanJob({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-1',
+    })).resolves.toEqual(expect.objectContaining({
+      toSnapshot: expect.any(Function),
+    }));
+    expect((await attempts.findByScanJob({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-1',
+    }))?.toSnapshot()).toMatchObject({
+      status: 'succeeded',
+      fetched: 2,
+      inserted: 2,
+      skippedDuplicates: 0,
+      projected: 2,
+    });
   });
 
   it('skips duplicate source items on replay', async () => {
@@ -133,6 +173,7 @@ describe('ExecuteScanUseCase', () => {
       fetcher,
       repository,
       new FakeFeedProjection(),
+      new FakeScanAttemptRepository(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
@@ -160,5 +201,37 @@ describe('ExecuteScanUseCase', () => {
       },
     });
     expect(repository.all()).toHaveLength(2);
+  });
+
+  it('marks scan attempt as failed when provider fetch fails', async () => {
+    const attempts = new FakeScanAttemptRepository();
+    const useCase = new ExecuteScanUseCase(
+      new FailingSourceFetcher(),
+      new FakeSourceItemRepository(),
+      new FakeFeedProjection(),
+      attempts,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-failed',
+      sourceBindingId: 'source-binding-1',
+      scanPolicyId: 'scan-policy-1',
+      correlationId: 'correlation-1',
+      causationId: 'causation-1',
+    });
+
+    expect(result.ok).toBe(false);
+    expect((await attempts.findByScanJob({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-failed',
+    }))?.toSnapshot()).toMatchObject({
+      status: 'failed',
+      failureReason: 'Provider unavailable',
+    });
   });
 });

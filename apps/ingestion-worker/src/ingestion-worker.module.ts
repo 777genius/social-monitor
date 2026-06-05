@@ -3,6 +3,7 @@ import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/pe
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { WorkerRuntimeModule } from '@social-monitor/platform-worker';
+import { InMemoryScanAttemptRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
 import { InMemorySourceItemRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { FakeSourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/fake-source-fetcher.adapter';
 import { FakeSourceProvider } from '../../../libs/ingestion/adapters/source/fake-source.provider';
@@ -27,6 +28,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
       useFactory: (registry: InMemorySourceProviderRegistry) => new FakeSourceFetcherAdapter(registry),
       inject: [InMemorySourceProviderRegistry],
     },
+    InMemoryScanAttemptRepository,
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     {
@@ -40,15 +42,22 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
         sourceFetcher: FakeSourceFetcherAdapter,
         sourceItems: InMemorySourceItemRepository,
         feedProjection: InMemoryFeedProjectionAdapter,
+        scanAttempts: InMemoryScanAttemptRepository,
       ) =>
         new ExecuteScanUseCase(
           sourceFetcher,
           sourceItems,
           feedProjection,
+          scanAttempts,
           new CryptoIdGenerator(),
           new SystemClock(),
         ),
-      inject: [FakeSourceFetcherAdapter, InMemorySourceItemRepository, InMemoryFeedProjectionAdapter],
+      inject: [
+        FakeSourceFetcherAdapter,
+        InMemorySourceItemRepository,
+        InMemoryFeedProjectionAdapter,
+        InMemoryScanAttemptRepository,
+      ],
     },
     {
       provide: ExecuteScanCommandHandler,
@@ -58,6 +67,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
   ],
   exports: [
     ExecuteScanCommandHandler,
+    InMemoryScanAttemptRepository,
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     InMemorySourceProviderRegistry,

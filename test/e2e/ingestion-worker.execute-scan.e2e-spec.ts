@@ -3,6 +3,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { IngestionWorkerModule } from '../../apps/ingestion-worker/src/ingestion-worker.module';
 import { InMemoryFeedItemReadRepository } from '../../libs/feed/adapters/persistence/in-memory-feed-item-read.repository';
+import { InMemoryScanAttemptRepository } from '../../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
 import { InMemorySourceItemRepository } from '../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { InMemorySourceProviderRegistry } from '../../libs/ingestion/adapters/source/in-memory-source-provider.registry';
 import { ExecuteScanCommandHandler } from '../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
@@ -18,6 +19,7 @@ describe('ingestion worker execute scan command (e2e)', () => {
     const handler = moduleRef.get(ExecuteScanCommandHandler);
     const repository = moduleRef.get(InMemorySourceItemRepository);
     const feedRepository = moduleRef.get(InMemoryFeedItemReadRepository);
+    const attemptRepository = moduleRef.get(InMemoryScanAttemptRepository);
     const providerRegistry = moduleRef.get(InMemorySourceProviderRegistry);
     const command = {
       commandId: 'scan-job-1',
@@ -57,6 +59,17 @@ describe('ingestion worker execute scan command (e2e)', () => {
       workspaceId: workspaceId('workspace-1'),
       limit: 10,
     })).items).toHaveLength(2);
+    expect((await attemptRepository.findByScanJob({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-1',
+    }))?.toSnapshot()).toMatchObject({
+      status: 'succeeded',
+      fetched: 2,
+      inserted: 0,
+      skippedDuplicates: 2,
+      projected: 2,
+    });
     await expect(providerRegistry.getReadinessProfile('reddit')).resolves.toEqual(
       expect.objectContaining({
         providerKey: 'reddit',
