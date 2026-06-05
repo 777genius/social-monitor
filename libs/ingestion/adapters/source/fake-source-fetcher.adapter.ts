@@ -1,26 +1,30 @@
 import type { FetchSourceItemsCommand, FetchedSourceItem, SourceFetcherPort } from '../../ports';
+import { FakeSourceProvider } from './fake-source.provider';
 
 export class FakeSourceFetcherAdapter implements SourceFetcherPort {
-  async fetch(command: FetchSourceItemsCommand): Promise<readonly FetchedSourceItem[]> {
-    const publishedAt = new Date('2026-01-01T00:00:00.000Z');
+  private readonly provider = new FakeSourceProvider();
 
-    return [
-      {
-        externalId: `${command.sourceBindingId}:fake-post-1`,
-        canonicalUrl: `https://example.test/source/${command.sourceBindingId}/fake-post-1`,
-        title: 'Fake source post 1',
-        body: `First deterministic item for scan ${command.scanJobId}`,
-        authorHandle: 'fake-author',
-        publishedAt,
-      },
-      {
-        externalId: `${command.sourceBindingId}:fake-post-2`,
-        canonicalUrl: `https://example.test/source/${command.sourceBindingId}/fake-post-2`,
-        title: 'Fake source post 2',
-        body: `Second deterministic item for scan ${command.scanJobId}`,
-        authorHandle: 'fake-author',
-        publishedAt,
-      },
-    ];
+  async fetch(command: FetchSourceItemsCommand): Promise<readonly FetchedSourceItem[]> {
+    const query = {
+      mode: 'search' as const,
+      query: command.sourceBindingId,
+    };
+    const validation = this.provider.validateBinding(query);
+
+    if (!validation.ok) {
+      throw new Error(validation.reason);
+    }
+
+    const context = {
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      sourceBindingId: command.sourceBindingId,
+      scanJobId: command.scanJobId,
+      correlationId: command.scanJobId,
+    };
+    const plan = this.provider.planScan(query, context);
+    const result = await this.provider.scan(plan, context);
+
+    return result.items;
   }
 }
