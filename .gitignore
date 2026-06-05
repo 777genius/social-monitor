@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+.pnp/
+.yarn/cache/
+.yarn/unplugged/
+
+# build outputs
+dist/
+build/
+coverage/
+.next/
+.turbo/
+
+# generated/runtime
+*.log
+*.pid
+.cache/
+.parcel-cache/
+
+# local env/secrets
+.env
+.env.*
+!.env.example
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+
+# mobile/deferred frontend
+android/.gradle/
+ios/Pods/

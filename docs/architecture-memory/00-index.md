@@ -1,0 +1,411 @@
+# Social Monitor Architecture Memory
+
+Date: 2026-05-31
+Status: baseline memory, living decision record
+
+This directory stores architecture decisions for the social monitoring platform. Treat these documents as the project baseline unless a later ADR explicitly changes a decision.
+
+## Documents
+
+- `01-locked-decisions.md` - non-negotiable decisions and build order.
+- `02-platform-architecture.md` - backend/runtime/platform architecture.
+- `03-ingestion-connectors.md` - source acquisition, connector runtime, source strategy.
+- `04-data-ai-governance.md` - data model, lineage, summaries, AI quality and cost.
+- `05-security-compliance-ops.md` - security, privacy, compliance, observability, SRE.
+- `06-frontend.md` - Flutter/MobX/frontend architecture.
+- `07-roadmap.md` - implementation sequence and production readiness path.
+- `08-ai-risk-management.md` - deeper AI governance, evals and regulatory readiness.
+- `09-infrastructure-environments.md` - IaC, environments, local stack, Gateway API, secrets delivery.
+- `10-backup-disaster-recovery.md` - PITR, Velero, RPO/RTO and deletion replay.
+- `11-object-storage-raw-payloads.md` - S3-compatible raw payload lifecycle and legal hold.
+- `12-api-gateway-rate-limits.md` - layered gateway/application/provider/budget limits.
+- `13-billing-entitlements.md` - internal cost ledger, entitlements and billing sync.
+- `14-testing-quality-gates.md` - test layers and CI release gates.
+- `15-api-lifecycle.md` - API versioning, pagination, idempotency, deprecation and realtime rules.
+- `16-delivery-webhooks.md` - delivery bounded context, email events and webhook security.
+- `17-enterprise-identity-tenancy.md` - OIDC/SCIM readiness, sessions, admin roles and tenant lifecycle.
+- `18-source-policy-matrix.md` - source compliance/policy matrix for GA readiness.
+- `19-analytics-experimentation.md` - schema-governed analytics and feature-flag control plane.
+- `20-data-classification-export.md` - data classification, retention and user/tenant export rules.
+- `21-incident-response-sre.md` - source-specific SLOs, incident classes, runbooks and toil policy.
+- `22-release-governance.md` - risk-based release gates, error budgets and progressive delivery.
+- `23-documentation-adr-workflows.md` - docs structure, ADR format and Arazzo workflow policy.
+- `24-source-credentials-oauth.md` - source account OAuth, token lifecycle and reauth degradation.
+- `25-streaming-ingestion.md` - streaming/firehose ingestion, backpressure and filtering.
+- `26-read-models-search-ranking.md` - read models, Postgres-first search and ranking rules.
+- `27-analytics-warehouse.md` - analytics warehouse separation and later ClickHouse/Iceberg options.
+- `28-topic-rules-dsl.md` - structured topic/summary rules, JSON Schema validation and CEL-later policy.
+- `29-dedupe-clustering-policy.md` - multi-stage dedupe, near-duplicate detection and semantic clustering.
+- `30-connector-certification-suite.md` - connector certification areas, statuses and required test modes.
+- `31-product-admin-ux-boundaries.md` - separation between normal product UX and admin/ops UX.
+- `32-threat-modeling.md` - threat-model targets, controls and review triggers.
+- `33-supply-chain-security.md` - SBOM, image signing, dependency/provider SDK security.
+- `34-tenant-authorization.md` - tenant RBAC, RLS readiness and future OpenFGA/Cedar path.
+- `35-data-residency-regions.md` - region fields, residency path and cross-region concerns.
+- `36-control-plane-config.md` - versioned runtime config, feature flags and kill switches.
+- `37-identity-id-strategy.md` - UUIDv7, external IDs and source identity keys.
+- `38-event-topic-queue-topology.md` - Kafka topic and RabbitMQ queue naming, keys and priorities.
+- `39-migration-deprecation-policy.md` - contract deprecation, DB migration and SemVer policy.
+- `40-repo-standards.md` - commit/release conventions, PR requirements and CI gates.
+- `41-scheduler-fairness-backpressure.md` - fair scheduling, overload policy, retries and backpressure.
+- `42-provider-routing-quality.md` - provider registry, quality scoring and failover policy.
+- `43-compliance-deletion-workflow.md` - deletion/tombstone propagation through derived data.
+- `44-llm-prompt-injection-isolation.md` - instruction/data isolation and limited-agency LLM design.
+- `45-performance-capacity-planning.md` - source/cost-aware capacity dimensions and load tests.
+- `46-api-keys-external-access.md` - scoped API keys, external access and future OAuth client credentials.
+- `47-onboarding-source-setup.md` - onboarding flow, source setup and first-run limits.
+- `48-notification-preferences.md` - notification preferences, quiet hours and digest/alert split.
+- `49-import-export-portability.md` - canonical product data import/export and portability.
+- `50-abuse-fraud-controls.md` - abuse/fraud controls, trial limits and expensive-operation preflight.
+- `51-support-admin-access.md` - scoped support access, break-glass and audit requirements.
+- `52-flutter-release-offline.md` - mobile release risk, bounded offline/cache and client truth boundaries.
+- `53-flutter-design-system-accessibility.md` - design system, `flutter_headless`, accessibility and localization.
+- `54-flutter-generated-clients.md` - generated clients, DTO mapping and realtime reconnection rules.
+- `55-flutter-performance-error-handling.md` - frontend performance, bounded stores and actionable errors.
+- `56-workflow-orchestration-temporal.md` - explicit workflow state machines and Temporal adoption boundary.
+- `57-retry-dlq-conventions.md` - retry classes, DLQ payloads and poison-message policy.
+- `58-postgres-physical-design.md` - partitions, indexes, raw payload references and migration safety.
+- `59-observability-dashboards-alerts.md` - dashboards, alert principles and required alert metadata.
+- `60-source-specific-implementation-notes.md` - implementation notes for HN, RSS, Reddit, X and Telegram.
+- `61-email-deliverability.md` - SPF/DKIM/DMARC, sending domains and email event handling.
+- `62-responsible-http-fetching.md` - robots policy, conditional fetching, user-agent and per-host limits.
+- `63-url-ssrf-safety.md` - user-provided URL validation, webhook URL safety and SSRF controls.
+- `64-runtime-resource-isolation.md` - Kubernetes namespaces, quotas, pod security and network policy.
+- `65-safe-content-rendering.md` - safe rendering of untrusted source content, links and media.
+- `66-encryption-key-rotation.md` - envelope encryption, key rotation and re-encryption jobs.
+- `67-language-time-normalization.md` - BCP 47 language tags and RFC 3339 timestamp policy.
+- `68-media-transcripts-attachments.md` - media refs, transcript artifacts and attachment safety.
+- `69-conversation-comment-model.md` - source conversations, item edges and bounded comment hydration.
+- `70-translation-policy.md` - explicit translation artifacts, multilingual relevance and output language rules.
+- `71-log-redaction-secrets-scanning.md` - logging redaction, secret scanning and leak response.
+- `72-audit-log-integrity.md` - append-only audit logs and later tamper-evident options.
+- `73-reconciliation-repair-jobs.md` - reconciliation jobs, drift detection and repair principles.
+- `74-source-policy-review-ops.md` - recurring source policy review operations.
+- `75-production-launch-checklist.md` - minimum controls before production SaaS launch.
+- `76-agentic-automation-boundaries.md` - least-agency AI automation and prohibited autonomous actions.
+- `77-human-approval-workflows.md` - approval model for high-impact operations.
+- `78-replay-backfill-economics.md` - bounded replay/backfill economics and side-effect policy.
+- `79-ai-decision-logging.md` - structured AI job logs without raw prompt/source leakage.
+- `80-tool-permission-registry.md` - future AI/tool permission registry and risk classes.
+- `81-finops-unit-economics.md` - cost attribution and unit economics for plans/source/model decisions.
+- `82-privacy-risk-assessment.md` - privacy reviews, minimization and data-use questions.
+- `83-open-source-license-compliance.md` - OSS license policy, SBOM and OpenChain alignment.
+- `84-dependency-vulnerability-sla.md` - dependency automation and vulnerability remediation SLA.
+- `85-observability-retention-sampling.md` - trace/log retention, sampling and observability cost controls.
+- `86-tls-workload-identity.md` - TLS lifecycle, cert-manager and later mTLS/workload identity.
+- `87-egress-network-governance.md` - egress classes, connector isolation and webhook egress controls.
+- `88-schema-registry-operations.md` - schema registry ownership, compatibility, backup and CI.
+- `89-chaos-resilience-testing.md` - targeted failure testing and degradation expectations.
+- `90-service-catalog-ownership.md` - component ownership and later Backstage/service catalog path.
+- `91-slo-error-budget-details.md` - concrete SLO classes, burn-rate alerting and error-budget actions.
+- `92-data-contract-examples.md` - canonical event/API schema examples and compatibility rules.
+- `93-developer-experience-golden-path.md` - local dev, generators, fake adapters and onboarding path.
+- `94-api-client-sdk-versioning.md` - generated client/SDK versioning and compatibility matrix.
+- `95-tenant-plan-limits.md` - plan limits, entitlement gates and scheduler/cost enforcement.
+- `96-risk-register.md` - product, source, AI, security and operational risk register format.
+- `97-data-retention-schedules.md` - concrete retention defaults by data class and plan.
+- `98-source-provider-contracts.md` - criteria for official APIs, vendors and replaceable acquisition providers.
+- `99-knowledge-management.md` - architecture memory governance, ADR cadence and documentation ownership.
+- `100-architecture-summary.md` - compressed canonical architecture summary.
+- `101-bounded-context-map.md` - backend bounded contexts, ownership and allowed dependencies.
+- `102-service-interface-contracts.md` - REST/gRPC/event interface boundaries for initial services.
+- `103-event-catalog-v1.md` - first event catalog with Kafka/RabbitMQ placement rules.
+- `104-database-migration-governance.md` - Prisma/Postgres migration workflow and zero-downtime rules.
+- `105-ci-cd-quality-pipeline.md` - reusable CI/CD pipeline stages, contract gates and release promotion.
+- `106-backend-monorepo-physical-layout.md` - Nx/NestJS apps/libs layout and module boundary tags.
+- `107-source-adapter-sdk.md` - connector SDK interface, fixtures, quotas and provider-neutral errors.
+- `108-scheduler-fairness-algorithm.md` - concrete tenant/source scheduling algorithm and starvation controls.
+- `109-ai-evaluation-gates.md` - summary/relevance evals, golden datasets and model-change gates.
+- `110-flutter-offline-sync-policy.md` - mobile cache/offline policy, MobX stores and sync boundaries.
+- `111-idempotency-policy.md` - HTTP/job/event idempotency keys, storage and replay rules.
+- `112-rate-limit-quota-algorithms.md` - API rate limits, source quotas, tenant budgets and headers.
+- `113-webhook-security-reliability.md` - inbound/outbound webhook signature, raw body and async processing policy.
+- `114-secrets-runtime-config.md` - Kubernetes/external secrets, runtime config and rotation boundaries.
+- `115-observability-naming-conventions.md` - OpenTelemetry semantic conventions, labels and span naming policy.
+- `116-outbox-inbox-implementation.md` - transactional outbox/inbox tables, relay and idempotent consumer mechanics.
+- `117-canonical-data-model-v1.md` - first canonical entities and ownership boundaries for the product core.
+- `118-search-indexing-pipeline.md` - Postgres/pgvector/OpenSearch indexing, aliases and rebuild strategy.
+- `119-source-oauth-credential-flows.md` - OAuth/PKCE/source credential lifecycle and token refresh policy.
+- `120-policy-engine-authorization.md` - authorization/entitlement policy engine boundaries with OPA/Rego option.
+- `121-kubernetes-runtime-baseline.md` - probes, resources, PDBs and rollout policy for deployables.
+- `122-broker-production-baseline.md` - Kafka/RabbitMQ production defaults and durability tradeoffs.
+- `123-contract-integration-testing.md` - Pact/Testcontainers/schema contract testing matrix.
+- `124-backup-restore-drills.md` - PITR, object storage, broker and projection restore drill policy.
+- `125-production-debugging-tooling.md` - Kubernetes debug, ephemeral containers and safe troubleshooting rules.
+- `126-feature-flags-experiments.md` - OpenFeature-based flags, kill switches and experiment boundaries.
+- `127-admin-support-safety.md` - support/admin access, approvals, impersonation and evidence controls.
+- `128-data-subject-request-ops.md` - GDPR-style access/export/delete/rectify workflows and deadlines.
+- `129-mobile-release-privacy-governance.md` - Flutter release channels, store privacy disclosures and app review readiness.
+- `130-tenant-onboarding-lifecycle.md` - tenant setup, source onboarding, trial limits and activation checklist.
+- `131-api-pagination-cursors.md` - cursor pagination, sorting and stable feed query contracts.
+- `132-realtime-websocket-protocol.md` - WebSocket event protocol, auth, heartbeats and backpressure.
+- `133-digest-assembly-policy.md` - digest grouping, ranking, frequency and idempotent generation rules.
+- `134-notification-delivery-semantics.md` - email/push/webhook delivery semantics, TTL and retries.
+- `135-public-api-governance.md` - public API standards, deprecation, error codes and SDK expectations.
+- `136-llm-provider-abstraction.md` - model/provider routing, structured outputs, fallbacks and budget controls.
+- `137-data-provenance-lineage.md` - provenance records from raw payloads through summaries and digests.
+- `138-content-safety-moderation.md` - unsafe content handling, user controls and AI output safety boundaries.
+- `139-partitioning-archival-strategy.md` - Postgres partitioning, retention partitions and archive/read tradeoffs.
+- `140-source-terms-compliance-automation.md` - recurring source terms review, policy metadata and compliance gates.
+- `141-infrastructure-as-code-gitops.md` - OpenTofu/Terraform state, Kubernetes manifests and GitOps boundaries.
+- `142-environment-promotion-strategy.md` - dev/staging/prod promotion, approvals and config drift controls.
+- `143-analytics-lake-warehouse-boundary.md` - operational DB vs warehouse/lakehouse and analytics export path.
+- `144-multi-region-readiness.md` - single-region-first design with DR and future multi-region constraints.
+- `145-budget-guardrails-enforcement.md` - FinOps budget guardrails for AI, source, observability and storage spend.
+- `146-data-quality-contracts.md` - expectations, freshness, completeness and anomaly checks for product data.
+- `147-connector-version-lifecycle.md` - source adapter versioning, rollout, deprecation and compatibility rules.
+- `148-tenant-export-import-format.md` - portable tenant export bundles, manifests and import safety.
+- `149-incident-communication-statuspage.md` - internal/external incident communication and status page policy.
+- `150-security-logging-evidence.md` - security log taxonomy, evidence retention and sensitive-data controls.
+- `151-cache-consistency-invalidation.md` - Redis cache ownership, TTLs, invalidation and stampede controls.
+- `152-worker-autoscaling-concurrency.md` - HPA/KEDA worker scaling, concurrency and queue-lag controls.
+- `153-realtime-fanout-scaling.md` - WebSocket fanout topology, Redis/pubsub adapter and connection limits.
+- `154-session-token-lifecycle.md` - OAuth/session token lifetime, rotation, revocation and device sessions.
+- `155-abuse-anomaly-detection.md` - product abuse detection, automated threat taxonomy and response actions.
+- `156-field-level-encryption.md` - application field encryption, key hierarchy and searchable-data boundaries.
+- `157-audit-read-models.md` - audit event query model, evidence views and retention-aware access.
+- `158-scheduler-simulation-testing.md` - fairness simulations, replayed workloads and scheduler regression gates.
+- `159-source-sandbox-harness.md` - source adapter sandbox, fake providers and official API test boundaries.
+- `160-i18n-accessibility-baseline.md` - Flutter localization, WCAG 2.2 accessibility and product text governance.
+- `161-tactical-ddd-cqrs-rules.md` - aggregate, command, query and repository rules for NestJS contexts.
+- `162-command-validation-invariants.md` - validation layering, domain invariants and error mapping policy.
+- `163-prompt-template-registry.md` - prompt/template/schema versioning, rollout and rollback controls.
+- `164-evaluation-dataset-governance.md` - eval dataset provenance, labeling, review and regression gates.
+- `165-service-to-service-authorization.md` - workload identity, mTLS, service accounts and internal authz policy.
+- `166-dependency-package-governance.md` - pnpm workspace, lockfiles, trusted publishing and dependency review.
+- `167-code-generation-lifecycle.md` - OpenAPI/Protobuf/event codegen ownership, freshness and breaking checks.
+- `168-worker-event-error-taxonomy.md` - retryable/permanent/poison errors for jobs and event consumers.
+- `169-deletion-verification-evidence.md` - deletion completion checks across stores, projections and backups.
+- `170-release-artifact-signing-provenance.md` - SLSA/npm provenance, Sigstore/cosign and artifact verification.
+- `171-container-image-hardening.md` - multi-stage images, non-root runtime, scanning and runtime filesystem policy.
+- `172-kubernetes-network-policies.md` - namespace/service network isolation and explicit ingress/egress rules.
+- `173-postgres-connection-pooling.md` - PgBouncer, pool sizing and connection budget governance.
+- `174-tenant-sharding-roadmap.md` - pool/silo/bridge tenancy evolution and sharding decision triggers.
+- `175-privacy-lawful-basis-records.md` - lawful basis records, purpose limitation and consent/legitimate-interest metadata.
+- `176-mobile-secure-storage-policy.md` - Flutter device storage, token handling and mobile privacy/security limits.
+- `177-flutter-testing-release-gates.md` - unit/widget/integration/golden/performance testing gates for Flutter.
+- `178-api-developer-portal.md` - OpenAPI docs portal, examples, changelog and sandbox expectations.
+- `179-runbook-catalog.md` - operational runbook taxonomy, ownership and incident-ready command policy.
+- `180-sql-performance-governance.md` - EXPLAIN, pg_stat_statements, query budgets and index review workflow.
+- `181-typed-configuration-policy.md` - typed config schemas, validation, ownership and config-change auditing.
+- `182-message-ordering-partition-keys.md` - Kafka/RabbitMQ ordering guarantees, partition keys and sequence policy.
+- `183-subprocessor-vendor-governance.md` - subprocessors, vendor reviews, DPAs and change notification workflow.
+- `184-flutter-navigation-deep-links.md` - go_router/deep-link policy, auth gates and route ownership.
+- `185-database-transaction-boundaries.md` - Postgres isolation, use-case transactions and lock/retry policy.
+- `186-cors-csrf-edge-security.md` - CORS allowlists, CSRF boundaries and browser-client security rules.
+- `187-request-body-limits.md` - API payload limits, streaming boundaries and denial-of-service controls.
+- `188-file-media-ingestion-safety.md` - upload/media validation, malware scanning path and object storage isolation.
+- `189-openapi-lint-style-guide.md` - OpenAPI linting, naming style and documentation quality gates.
+- `190-maintenance-jobs-policy.md` - tenant-aware recurring jobs, CronJob limits and database maintenance.
+- `191-source-cursor-checkpoints.md` - connector cursors, checkpoint commits and backfill/incremental recovery.
+- `192-llm-caching-reuse-policy.md` - prompt/output caching boundaries, cost optimization and privacy controls.
+- `193-opentelemetry-collector-deployment.md` - Collector topology, processors/exporters and telemetry routing.
+- `194-pseudonymization-anonymization.md` - privacy distinction, irreversible anonymization and pseudonym key controls.
+- `195-slo-dashboard-review-cadence.md` - SLO dashboards, recording rules and operational review rhythm.
+- `196-usage-metering-ledger.md` - internal metering ledger, Stripe meter events and billing reconciliation.
+- `197-queue-priority-backpressure.md` - RabbitMQ priority tradeoffs, queue classes and backpressure policy.
+- `198-database-constraints-naming.md` - constraint/index naming, uniqueness and invariant enforcement.
+- `199-flutter-error-state-taxonomy.md` - typed frontend error states, Result flow and user-facing recovery.
+- `200-dpia-privacy-impact-workflow.md` - DPIA triggers, review process and privacy-risk acceptance workflow.
+- `201-progressive-delivery-rollouts.md` - Kubernetes rolling/canary/blue-green rollout strategy and analysis gates.
+- `202-replay-safety-policy.md` - event/job replay rules, side-effect isolation and idempotent repair.
+- `203-data-migration-backfill-execution.md` - online data backfills, batch sizing, pause/resume and validation.
+- `204-tenant-visible-status-model.md` - user/admin-visible source, scan, summary and delivery status states.
+- `205-ai-provider-fallback-degradation.md` - model/provider fallback, graceful degradation and AI incident behavior.
+- `206-lease-lock-semantics.md` - Postgres/Redis lock choices, leases, fencing and scheduler work claiming.
+- `207-topic-dsl-compiler-safety.md` - topic rule DSL compilation, validation, cost estimation and policy checks.
+- `208-source-query-normalization.md` - provider-neutral query model, source capability mapping and degradation.
+- `209-legal-hold-retention-overrides.md` - legal hold, restriction of processing and retention override workflow.
+- `210-support-safe-data-access-scopes.md` - support-safe views, redaction levels and scoped data access approvals.
+- `211-api-key-lifecycle.md` - tenant API key creation, hashing, scopes, rotation and revocation.
+- `212-tenant-webhook-contracts.md` - outbound webhook signing, retries, event catalog and tenant delivery logs.
+- `213-source-credential-health.md` - credential validation, refresh monitoring and attention-required automation.
+- `214-object-storage-layout-lifecycle.md` - bucket/key layout, lifecycle rules and object metadata policy.
+- `215-mobile-push-token-lifecycle.md` - FCM/APNs token registration, freshness, pruning and delivery accuracy.
+- `216-flutter-design-token-governance.md` - Flutter design tokens, Material 3 mapping and headless component wrapper rules.
+- `217-flutter-build-flavors-env.md` - mobile build flavors, environment config and endpoint isolation.
+- `218-mobile-crash-analytics-privacy.md` - Crashlytics/analytics opt-in, redaction and privacy-safe telemetry.
+- `219-source-reddit-implementation-v1.md` - Reddit V1 connector implementation using official API, OAuth and policy gates.
+- `220-source-hacker-news-implementation-v1.md` - Hacker News V1 connector using official Firebase API and optional search adapter.
+- `221-source-rss-atom-implementation-v1.md` - RSS/Atom V1 connector, conditional fetching and feed normalization.
+- `222-source-x-implementation-v1.md` - X/Twitter V1 provider abstraction, search capabilities and cost/policy guardrails.
+- `223-source-telegram-implementation-v1.md` - Telegram Bot/API boundary, channel monitoring constraints and webhook/update handling.
+- `224-api-style-boundaries-rest-ws-grpc.md` - REST, WebSocket, gRPC, OpenAPI and AsyncAPI boundary rules.
+- `225-mvp-implementation-slice.md` - first executable MVP slice that proves the architecture without overbuilding.
+- `226-nestjs-monorepo-module-boundaries.md` - NestJS/Nx monorepo layout, DDD library tags and import enforcement.
+- `227-nestjs-ports-adapters-di-policy.md` - NestJS dependency injection rules for Clean Architecture ports/adapters.
+- `228-kafka-rabbitmq-decision-matrix.md` - concrete Kafka vs RabbitMQ usage split and operational guardrails.
+- `229-ai-summary-structured-output-pipeline.md` - schema-first summary generation, caching, batch and validation policy.
+- `230-provider-cost-capability-planning.md` - provider capability catalog, cost simulation and tenant budget planning.
+- `231-postgres-search-indexing-strategy.md` - Postgres full-text search, GIN indexes and normalized feed search policy.
+- `232-vector-search-pgvector-opensearch-boundary.md` - pgvector-first strategy and criteria for moving to OpenSearch/vector service.
+- `233-read-model-materialized-view-policy.md` - read models, materialized views and refresh/concurrent refresh boundaries.
+- `234-tenant-row-level-security-policy.md` - Postgres RLS defense-in-depth for tenant-owned data.
+- `235-database-observability-index-tuning.md` - pg_stat_statements, slow query review and index lifecycle governance.
+- `236-database-access-prisma-sql-boundary.md` - Prisma/type-safe access with explicit raw SQL and migration boundaries.
+- `237-redis-cache-rate-lease-policy.md` - Redis cache, rate limit and lease usage rules with TTL/eviction discipline.
+- `238-worker-autoscaling-keda-policy.md` - queue/lag based worker autoscaling using HPA/KEDA and concurrency caps.
+- `239-opentelemetry-nestjs-kubernetes-policy.md` - OpenTelemetry instrumentation, Collector topology and telemetry ownership.
+- `240-contract-codegen-lifecycle.md` - OpenAPI/protobuf code generation, style and compatibility lifecycle.
+- `241-user-auth-oidc-pkce-policy.md` - user authentication through OIDC/OAuth Authorization Code + PKCE.
+- `242-session-token-revocation-policy.md` - access/refresh/session token lifetimes, rotation and revocation.
+- `243-websocket-auth-authorization-policy.md` - WebSocket handshake auth, subscription authorization and reconnect behavior.
+- `244-permission-model-rbac-abac-policy.md` - tenant roles, permissions, attribute checks and ownership enforcement.
+- `245-auth-security-testing-checklist.md` - auth/session/access-control security tests and release gates.
+- `246-mobile-secure-storage-threat-model.md` - Flutter secure storage, Keychain/Keystore boundaries and token handling.
+- `247-mobile-background-execution-policy.md` - iOS/Android background task limits and server-side scan responsibility.
+- `248-mobile-push-delivery-ux-policy.md` - FCM/APNs notification states, token handling and UX expectations.
+- `249-mobile-offline-cache-sync-policy.md` - offline read cache, mutation queue and conflict rules for Flutter.
+- `250-mobile-store-privacy-release-policy.md` - App Store/Google Play privacy declarations, SDK inventory and release gates.
+- `251-nestjs-validation-dto-boundary.md` - NestJS DTO validation, transform/whitelist policy and domain boundary.
+- `252-api-error-problem-details-contract.md` - RFC 9457 Problem Details error format and REST error taxonomy.
+- `253-security-audit-event-taxonomy.md` - security/audit event taxonomy, retention and tamper-evidence boundaries.
+- `254-realtime-event-delivery-recovery.md` - WebSocket event envelopes, cursors and REST recovery after reconnect.
+- `255-flutter-headless-component-integration.md` - mandatory `flutter_headless` wrapper integration and component ownership rules.
+- `256-local-development-compose-policy.md` - local Docker Compose profiles, healthchecks and developer environment boundaries.
+- `257-integration-testing-testcontainers-policy.md` - Testcontainers-based integration tests with real Postgres/Redis/RabbitMQ dependencies.
+- `258-contract-testing-pact-schemathesis-policy.md` - consumer/provider and OpenAPI property-based contract testing.
+- `259-seed-test-data-fixtures-policy.md` - deterministic seeds, provider fixtures and privacy-safe test data.
+- `260-adr-change-governance-policy.md` - ADR workflow, architecture memory updates and change approval rules.
+- `261-ci-cd-github-actions-hardening.md` - GitHub Actions permissions, OIDC, branch protection and workflow hardening.
+- `262-sbom-provenance-release-evidence.md` - SBOM, SLSA provenance and release evidence requirements.
+- `263-container-signing-admission-policy.md` - Sigstore/Cosign image signing, verification and admission boundaries.
+- `264-dependency-update-governance.md` - Renovate/Dependabot grouping, automerge and dependency review policy.
+- `265-secret-scanning-leak-response.md` - secret scanning, push protection and leaked credential response workflow.
+- `266-kubernetes-workload-health-probes.md` - startup/readiness/liveness probes, graceful shutdown and rollout health policy.
+- `267-kubernetes-gitops-manifest-strategy.md` - Helm/Kustomize/Argo CD GitOps layout and environment promotion strategy.
+- `268-kubernetes-ingress-tls-edge-policy.md` - ingress, TLS, edge routing and public/private API exposure rules.
+- `269-kubernetes-secrets-external-store-policy.md` - Kubernetes Secrets, external secret stores and rotation boundaries.
+- `270-kubernetes-admission-runtime-policy.md` - Kyverno/admission validation, image verification and runtime guardrails.
+- `271-timeout-retry-circuit-breaker-policy.md` - timeouts, retry budgets, backoff with jitter and circuit breaker rules.
+- `272-provider-client-resilience-policy.md` - provider SDK/client isolation, bulkheads, fallback and degradation rules.
+- `273-saga-process-manager-workflow-policy.md` - durable workflow, saga compensation and process-manager boundaries.
+- `274-distributed-rate-limit-load-shedding.md` - distributed rate limits, load shedding and overload protection.
+- `275-chaos-game-day-resilience-policy.md` - controlled fault injection, game days and resilience experiment guardrails.
+- `276-ai-data-boundary-privacy-policy.md` - LLM input/output data minimization, redaction and retention boundaries.
+- `277-ai-evaluation-regression-harness.md` - summary quality, safety and schema regression evaluation harness.
+- `278-prompt-schema-version-release-policy.md` - prompt/schema versioning, rollout and rollback rules.
+- `279-ai-cost-latency-routing-policy.md` - model routing, prompt caching, batch processing and budget controls.
+- `280-ai-human-review-escalation-policy.md` - human review, escalation and confidence thresholds for AI summaries.
+- `281-privacy-lawful-basis-policy-registry.md` - jurisdiction-aware lawful basis, purpose registry and consent/legitimate-interest evidence.
+- `282-dsar-access-delete-portability-workflow.md` - data subject access, deletion, correction and portability execution workflow.
+- `283-data-residency-transfer-impact-policy.md` - data residency, cross-border transfer and regional processing controls.
+- `284-vendor-dpa-subprocessor-governance.md` - vendor DPAs, subprocessors, AI/provider review and change notification.
+- `285-ai-transparency-user-disclosure-policy.md` - AI summary transparency, user disclosures and governance evidence.
+- `286-pricing-packaging-entitlements-model.md` - product plans, features, entitlements and internal access gates.
+- `287-usage-metering-ledger-reconciliation.md` - internal usage ledger, Stripe meter events and reconciliation workflow.
+- `288-quota-overage-preflight-enforcement.md` - quota checks, AI/source cost preflight and overage behavior.
+- `289-subscription-plan-change-lifecycle.md` - plan upgrades/downgrades, prorations, schedules and entitlement transitions.
+- `290-billing-invoicing-tax-audit-policy.md` - invoices, tax handling, billing audit events and finance evidence.
+- `291-support-admin-tooling-boundaries.md` - support/admin console boundaries, scoped impersonation and safe operational actions.
+- `292-abuse-fraud-resource-consumption-controls.md` - abuse, fraud, BOLA and unrestricted resource consumption controls.
+- `293-tenant-lifecycle-onboarding-offboarding.md` - tenant provisioning, onboarding, suspension, offboarding and deletion lifecycle.
+- `294-incident-status-communication-policy.md` - incident communication, status page updates and stakeholder messaging.
+- `295-compliance-readiness-control-mapping.md` - SOC 2/ISO/NIST evidence mapping and compliance readiness posture.
+- `296-identifier-uuidv7-id-strategy.md` - UUIDv7 identifier policy, public ids and database locality rules.
+- `297-time-clock-timezone-policy.md` - UTC storage, IANA time zones, fake clocks and schedule correctness.
+- `298-trace-correlation-context-policy.md` - W3C Trace Context, correlation ids and async propagation rules.
+- `299-event-metadata-cloudevents-policy.md` - CloudEvents-inspired event envelope and metadata compatibility rules.
+- `300-deterministic-testing-clock-id-policy.md` - deterministic clock/id generation for reproducible tests and fixtures.
+- `301-social-listening-competitive-landscape-2026.md` - current competitor landscape and public acquisition patterns.
+- `302-social-source-acquisition-option-taxonomy.md` - official APIs, firehose, partner data, managed providers, open web and unsupported scraping taxonomy.
+- `303-reddit-acquisition-options-2026.md` - Reddit source acquisition options, pros/cons and recommended path.
+- `304-x-twitter-acquisition-options-2026.md` - X/Twitter source acquisition options, cost/rate-limit risks and fallback strategy.
+- `305-telegram-acquisition-options-2026.md` - Telegram Bot API, client API, channel monitoring and webhook/update options.
+- `306-hacker-news-acquisition-options-2026.md` - Hacker News official Firebase API, Algolia search and polling options.
+- `307-rss-open-web-acquisition-options-2026.md` - RSS/Atom/open-web monitoring options and responsible fetching policy.
+- `308-youtube-acquisition-options-2026.md` - YouTube Data API search/channel/comment monitoring options and quota economics.
+- `309-meta-instagram-facebook-acquisition-options-2026.md` - Instagram/Facebook Graph API, connected profiles and public listening limitations.
+- `310-linkedin-acquisition-options-2026.md` - LinkedIn owned/organization data, partner APIs and public listening constraints.
+- `311-tiktok-acquisition-options-2026.md` - TikTok Research API, business/owned data and third-party provider tradeoffs.
+- `312-bluesky-mastodon-fediverse-options-2026.md` - Bluesky firehose/search, Mastodon/ActivityPub and fediverse ingestion options.
+- `313-competitor-project-profiles-2026.md` - concrete competitor/project profiles and what their public sources imply.
+- `314-github-acquisition-options-2026.md` - GitHub search/events/issues/discussions monitoring options and limits.
+- `315-stack-overflow-stack-exchange-options-2026.md` - Stack Exchange API search/questions/answers monitoring options.
+- `316-devto-forem-acquisition-options-2026.md` - Dev.to/Forem public API and community article monitoring options.
+- `317-discord-acquisition-options-2026.md` - Discord bot/gateway/message-content options and monitoring constraints.
+- `318-slack-acquisition-options-2026.md` - Slack Events API, conversations history and tenant-authorized workspace monitoring.
+- `319-forums-discourse-community-options-2026.md` - Discourse/forums/community monitoring through APIs, feeds and search.
+- `320-news-reviews-web-data-options-2026.md` - news, reviews, Common Crawl/GDELT and web-data provider options.
+- `321-threads-acquisition-options-2026.md` - Meta Threads API, connected-account options and public listening limits.
+- `322-product-hunt-acquisition-options-2026.md` - Product Hunt GraphQL API, launch monitoring and commercial-use constraints.
+- `323-lobsters-indie-hackers-options-2026.md` - Lobsters, Indie Hackers and niche founder/developer community monitoring.
+- `324-quora-knowledge-community-options-2026.md` - Quora/knowledge-community monitoring options and lack of open official API.
+- `325-podcast-acquisition-options-2026.md` - podcast search/episode monitoring through Listen Notes, Spotify and RSS.
+- `326-app-store-review-acquisition-options-2026.md` - Apple/Google app review monitoring and owned-app constraints.
+- `327-generated-rss-monitoring-providers-2026.md` - RSS generation/monitoring providers and when to use them.
+- `328-source-priority-matrix-2026.md` - practical source priority matrix for MVP, early SaaS and enterprise expansion.
+- `329-vendor-coverage-claims-comparison-2026.md` - social listening vendor coverage claims and what they imply architecturally.
+- `330-pinterest-acquisition-options-2026.md` - Pinterest API, boards/pins monitoring and owned-account constraints.
+- `331-snapchat-acquisition-options-2026.md` - Snapchat Public Profile/Marketing API monitoring and public listening limits.
+- `332-google-business-profile-options-2026.md` - Google Business Profile reviews/posts/questions options and owned-location limits.
+- `333-software-review-sites-options-2026.md` - G2/Capterra/software review data APIs and provider tradeoffs.
+- `334-newsletters-substack-medium-options-2026.md` - Substack, Medium and newsletter monitoring through RSS/open web.
+- `335-ecommerce-marketplace-reviews-options-2026.md` - Amazon/ecommerce review monitoring options and owned-seller constraints.
+- `336-source-option-decision-template.md` - reusable source-option decision template for future social networks.
+- `337-whatsapp-acquisition-options-2026.md` - WhatsApp Business Platform, Cloud API webhooks and customer-message constraints.
+- `338-matrix-irc-community-chat-options-2026.md` - Matrix, IRC/IRCv3 and legacy/community chat monitoring options.
+- `339-twitch-acquisition-options-2026.md` - Twitch API, EventSub, IRC chat and streamer/channel monitoring options.
+- `340-search-serp-alert-provider-options-2026.md` - Google Alerts, Custom Search, SERP providers and web mention discovery.
+- `341-hosted-scraping-data-provider-options-2026.md` - Apify/Bright Data/SociaVault-style providers, pros/cons and governance.
+- `342-web-extraction-llm-ready-data-options-2026.md` - Firecrawl/web extraction APIs for LLM-ready page data and their limits.
+- `343-source-build-vs-buy-decision-framework.md` - build-vs-buy framework for official connectors, vendors and custom fetchers.
+- `344-source-governance-dashboard-requirements.md` - internal dashboard requirements for source coverage, health, cost and risk.
+- `345-wechat-acquisition-options-2026.md` - WeChat Official Account, vendor and owned-account monitoring constraints.
+- `346-weibo-acquisition-options-2026.md` - Weibo official/partner/vendor options and regional compliance posture.
+- `347-vk-acquisition-options-2026.md` - VK official API, regional provider and search/index discovery options.
+- `348-rumble-odysee-video-options-2026.md` - Rumble/Odysee video monitoring options and limitations.
+- `349-farcaster-nostr-acquisition-options-2026.md` - Farcaster hubs/indexers, Nostr relays/search and protocol-source rules.
+- `350-competitor-scanning-patterns-2026.md` - observed competitor scanning patterns and source-tier product decision.
+- `351-tumblr-acquisition-options-2026.md` - Tumblr official API, tag/blog monitoring and NPF normalization options.
+- `352-lemmy-mbin-acquisition-options-2026.md` - Lemmy/Mbin federated Reddit-like monitoring options.
+- `353-flickr-visual-community-options-2026.md` - Flickr visual UGC API, search and media enrichment options.
+- `354-meetup-eventbrite-community-events-options-2026.md` - Meetup/Eventbrite event-community source options.
+- `355-google-trends-search-demand-options-2026.md` - Google Trends/search-demand signal options and limits.
+- `356-long-tail-source-expansion-playbook.md` - long-tail source expansion rules and provider capability gates.
+- `357-open-source-research-tooling-patterns-2026.md` - 4CAT/SocioHub/SocialPulse research tooling patterns and lessons.
+- `358-browser-capture-tools-zeeschuimer-4cat-options-2026.md` - Zeeschuimer/browser capture options and production limits.
+- `359-x-twitter-scraper-tool-fragility-2026.md` - X/Twitter scraper fragility, Twarc/API and vendor-only production stance.
+- `360-lightweight-mention-monitor-patterns-2026.md` - F5Bot/Syften/SubWatch/OpenScout mention-monitor workflow lessons.
+- `361-pixelfed-peertube-fediverse-media-options-2026.md` - Pixelfed/PeerTube fediverse media monitoring options.
+- `362-source-evidence-grading-policy.md` - evidence quality policy for source acquisition decisions.
+- `363-rednote-xiaohongshu-acquisition-options-2026.md` - RedNote/Xiaohongshu regional/vendor acquisition options.
+- `364-douyin-kuaishou-short-video-options-2026.md` - Douyin/Kuaishou short-video API, vendor and regional access options.
+- `365-bilibili-acquisition-options-2026.md` - Bilibili open platform, vendor and research-data options.
+- `366-dcard-ptt-taiwan-community-options-2026.md` - Dcard/PTT Taiwan community source options.
+- `367-imgur-9gag-meme-visual-community-options-2026.md` - Imgur/9GAG meme and visual community monitoring options.
+- `368-gab-truth-social-alt-tech-options-2026.md` - Gab/Truth Social alt-tech source options and high-risk posture.
+- `369-regional-social-data-vendor-strategy-2026.md` - regional social data vendor strategy and due diligence rules.
+- `370-high-risk-source-approval-workflow.md` - approval workflow for restricted, risky or vendor-dependent sources.
+- `371-trustpilot-yelp-review-source-options-2026.md` - Trustpilot/Yelp review source options and limits.
+- `372-nextdoor-local-community-options-2026.md` - Nextdoor local/community API options and eligibility constraints.
+- `373-naver-daum-korean-search-community-options-2026.md` - Naver/Daum Korean search/community source options.
+- `374-kakao-line-messaging-owned-channel-options-2026.md` - Kakao/LINE owned messaging channel options.
+- `375-nodebb-phpbb-forum-engine-options-2026.md` - NodeBB/phpBB/forum-engine monitoring options.
+- `376-local-reputation-source-family.md` - local reputation source family domain model.
+- `377-regional-source-roadmap-asia-2026.md` - Asia regional source roadmap and sequencing.
+- `378-glassdoor-indeed-employer-review-options-2026.md` - Glassdoor/Indeed employer review access options and limits.
+- `379-tripadvisor-booking-travel-review-options-2026.md` - Tripadvisor/Booking travel review source options.
+- `380-steam-gaming-community-review-options-2026.md` - Steam app review, gaming community and enrichment options.
+- `381-letterboxd-goodreads-cultural-review-options-2026.md` - Letterboxd/Goodreads cultural review source options.
+- `382-musicbrainz-listenbrainz-music-signal-options-2026.md` - MusicBrainz/ListenBrainz metadata and music signal options.
+- `383-rating-review-source-family-expansion.md` - rating/review source family model and edge cases.
+- `384-source-roadmap-gaming-media-reviews.md` - gaming/media review source roadmap.
+- `385-vimeo-dailymotion-video-options-2026.md` - Vimeo/Dailymotion video source options and limits.
+- `386-kick-live-streaming-options-2026.md` - Kick live-streaming API, vendor and risk options.
+- `387-patreon-kofi-creator-platform-options-2026.md` - Patreon/Ko-fi/creator monetization platform options.
+- `388-kickstarter-indiegogo-crowdfunding-options-2026.md` - Kickstarter/Indiegogo crowdfunding campaign source options.
+- `389-live-video-source-family.md` - live/video source family model and edge cases.
+- `390-creator-crowdfunding-source-family.md` - creator/crowdfunding source family model and visibility rules.
+- `391-video-creator-source-roadmap-2026.md` - roadmap for video, live and creator platform sources.
+
+## Core Definition
+
+This product is not a scraper. It is a multi-tenant social intelligence platform.
+
+```text
+tenants -> topics -> source bindings -> scan policies -> normalized feed
+-> dedupe/clustering -> relevance scoring -> summaries -> digests/alerts
+```
+
+Source acquisition is replaceable infrastructure. Monitoring, relevance, summaries, digests, tenancy and governance are product core.
