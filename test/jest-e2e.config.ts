@@ -14,6 +14,7 @@ const config: Config = {
     '^@social-monitor/contracts/(.*)$': '<rootDir>/libs/contracts/$1',
     '^@social-monitor/([^/]+)/(.*)$': '<rootDir>/libs/$1/$2',
   },
+  testPathIgnorePatterns: ['/node_modules/', '/dist/', '/prisma/generated/'],
   testEnvironment: 'node',
 };
 

@@ -15,6 +15,7 @@ const config: Config = {
     '^@social-monitor/([^/]+)/(.*)$': '<rootDir>/libs/$1/$2',
   },
   collectCoverageFrom: ['apps/**/*.ts', 'libs/**/*.ts', '!**/*.spec.ts'],
+  testPathIgnorePatterns: ['/node_modules/', '/dist/', '/prisma/generated/'],
   testEnvironment: 'node',
 };
 
