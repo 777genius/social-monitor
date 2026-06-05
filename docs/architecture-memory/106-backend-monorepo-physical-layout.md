@@ -67,19 +67,58 @@ Each bounded context uses:
 
 ```text
 domain/
-application/
+features/
 ports/
-infrastructure/
-presentation/
+adapters/
+interfaces/
 ```
 
 Rules:
 
 - `domain` imports only shared kernel.
-- `application` imports domain and ports.
-- `infrastructure` implements ports and may import adapters.
-- `presentation` maps REST/gRPC/messages to use cases.
+- `features` are application/use-case slices and import only domain, ports and shared kernel.
+- `ports` define repository/provider/broker/AI/clock/telemetry abstractions needed by features.
+- `adapters` implement ports and may import infrastructure clients.
+- `interfaces` maps REST/gRPC/messages/jobs/WS to feature use cases.
 - Apps compose modules; apps do not contain domain logic.
+
+## Backend Feature-Sliced Clean Architecture
+
+Locked rule: backend uses DDD bounded contexts first, then feature/use-case slices inside each context.
+
+Canonical context layout:
+
+```text
+libs/
+  contexts/
+    topic-management/
+      domain/
+        aggregates/
+        value-objects/
+        events/
+        policies/
+      features/
+        create-topic/
+          create-topic.command.ts
+          create-topic.result.ts
+          create-topic.use-case.ts
+          create-topic.use-case.spec.ts
+        disable-topic/
+        list-topics/
+      ports/
+        topic.repository.port.ts
+        domain-event-publisher.port.ts
+      adapters/
+        persistence/
+      interfaces/
+        rest/
+        jobs/
+        events/
+```
+
+Do not put Prisma repositories, Nest controllers, queue clients or provider SDKs inside `features/*`.
+
+Feature slices are for application behavior. Domain model stays context-level; infrastructure stays in adapters; transport mapping stays in interfaces.
 
 ## Nx Tags
 
@@ -103,4 +142,3 @@ Enforce:
 ## Best-Fact Choice
 
 DDD/Clean Architecture needs automated boundary enforcement. Folder conventions alone will fail as the codebase grows.
-

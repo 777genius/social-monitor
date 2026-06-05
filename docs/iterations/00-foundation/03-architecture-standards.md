@@ -41,6 +41,17 @@ Establish coding and architectural standards enforced by tooling.
 5. Each runtime app has a composition root; domain/application code does not know whether it runs in API, worker or realtime app.
 6. Physical microservice extraction requires the master plan service-boundary checklist.
 
+## Backend Feature-Sliced Rules
+
+1. Use `contexts/<bounded-context>/features/<use-case>` for vertical application slices.
+2. Do not use a global backend `features` folder for business features; it blurs bounded context ownership.
+3. A feature slice may contain command/query/result/use-case/spec files.
+4. A feature slice may depend on context `domain`, context `ports` and shared kernel.
+5. A feature slice must not depend on `adapters`, `interfaces`, NestJS decorators, Prisma models, broker clients or provider SDKs.
+6. A new user/system operation should normally be added as a new feature slice before adding a new context.
+7. If a feature needs another context's data, use a published event, read model, public application contract or explicitly approved anti-corruption adapter.
+8. Feature tests use fake ports and should not boot NestJS unless the behavior being tested is interface/composition wiring.
+
 ## DRY And Abstraction Rules
 
 1. Do not make a generic social provider abstraction that hides materially different source semantics.
@@ -60,6 +71,8 @@ Establish coding and architectural standards enforced by tooling.
 - A port mirrors a vendor SDK and locks the domain to one provider.
 - A module is extracted into a service before contracts and failure modes are stable.
 - DRY abstraction merges RSS, HN and future social APIs into an untestable generic provider.
+- Feature slice imports Prisma, Nest controller, queue client or provider SDK directly.
+- Global backend `features` folder starts hiding bounded-context ownership.
 
 ## Pay Attention
 
@@ -69,6 +82,7 @@ Establish coding and architectural standards enforced by tooling.
 - Modular monorepo is the default MVP runtime shape; physical services are earned by evidence.
 - Composition roots can be Nest-specific; domain/application layers cannot.
 - Boundary tests are part of architecture, not optional cleanup.
+- Feature-Sliced backend organization is subordinate to DDD: context first, feature/use case second.
 
 ## Acceptance Criteria
 
@@ -79,3 +93,4 @@ Establish coding and architectural standards enforced by tooling.
 - Port design rules prevent provider/ORM/generated DTO leakage.
 - Service extraction criteria are documented before any physical split.
 - DRY guardrails are explicit enough to block unsafe generic source abstractions.
+- Backend feature-slice rules are documented and enforceable with import-boundary tests.

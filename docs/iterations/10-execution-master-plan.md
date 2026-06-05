@@ -157,6 +157,51 @@ MVP cutline:
 - Do not add a generic `SocialPost` or `ProviderAccount` aggregate that becomes a dumping ground for source-specific behavior.
 - Treat Reddit, X/Twitter and Telegram as readiness profiles until an approved API/vendor path is selected.
 
+## Backend Feature-Sliced Clean Architecture
+
+Use DDD bounded contexts as the top-level backend boundary, then organize application behavior inside each context as feature/use-case slices.
+
+Target shape:
+
+```text
+contexts/
+  topic-management/
+    domain/
+      aggregates/
+      value-objects/
+      events/
+      policies/
+    features/
+      create-topic/
+        create-topic.command.ts
+        create-topic.result.ts
+        create-topic.use-case.ts
+        create-topic.use-case.spec.ts
+      disable-topic/
+      list-topics/
+    ports/
+      topic.repository.port.ts
+      domain-event-publisher.port.ts
+    adapters/
+      persistence/
+    interfaces/
+      rest/
+      events/
+```
+
+Rules:
+
+1. A bounded context is the future microservice boundary.
+2. `domain` contains shared business model for the context; it is not duplicated per feature.
+3. `features/*` contain application/use-case slices: command/query, result, use case and use-case tests.
+4. `ports` are context-level contracts required by features.
+5. `adapters` implement ports and may use Prisma, providers, queues, AI SDKs or external clients.
+6. `interfaces` map REST/jobs/events/WS into feature use cases.
+7. A feature must not import Prisma, Nest controllers, Kafka/RabbitMQ clients or provider SDKs directly.
+8. A controller/job handler must not contain business decisions; it calls a feature use case.
+
+This gives the backend the readability of Feature-Sliced Design while preserving DDD, Clean Architecture and service extraction boundaries.
+
 ## MVP Test Strategy
 
 Use a practical test pyramid. The goal is not maximum test volume; the goal is fast proof that the MVP loop is safe, repeatable and hard to accidentally break.

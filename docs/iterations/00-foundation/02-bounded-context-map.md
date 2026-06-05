@@ -56,6 +56,36 @@ Define DDD bounded contexts and dependency direction.
 7. Delivery consumes status/artifact events and records attempts; REST/read models remain the source of truth.
 8. Billing/Usage receives usage events and answers quota checks; it does not mutate domain objects in other contexts directly.
 
+## Backend Feature Slice Rule
+
+Each bounded context uses feature/use-case slices inside the context, not a global backend `features` folder.
+
+Example:
+
+```text
+topic-management/
+  domain/
+  features/
+    create-topic/
+    disable-topic/
+    list-topics/
+  ports/
+  adapters/
+  interfaces/
+```
+
+Rules:
+
+1. Features are application slices, not mini-monoliths.
+2. Shared context entities, aggregates, value objects and domain events stay in `domain`.
+3. Feature folders contain command/query/result/use-case/spec files.
+4. Repository, provider, queue and AI abstractions stay in `ports`.
+5. Prisma, queue, provider and AI implementations stay in `adapters`.
+6. REST controllers, job handlers and event consumers stay in `interfaces`.
+7. Cross-context calls use events, REST/gRPC contracts or explicit application ports, not private feature imports.
+
+This keeps Feature-Sliced ergonomics without weakening DDD ownership.
+
 ## MVP Cutline
 
 Build the aggregate map above only as far as needed for the beta loop:
