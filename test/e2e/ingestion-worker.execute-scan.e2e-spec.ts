@@ -4,15 +4,16 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { IngestionWorkerModule } from '../../apps/ingestion-worker/src/ingestion-worker.module';
 import { InMemoryFeedItemReadRepository } from '../../libs/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemoryScanAttemptRepository } from '../../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
+import { InMemoryScanCursorRepository } from '../../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
 import { InMemorySourceItemRepository } from '../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { InMemoryScanFailureQueueAdapter } from '../../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
 import { FakeSourceFetcherAdapter } from '../../libs/ingestion/adapters/source/fake-source-fetcher.adapter';
 import { InMemorySourceProviderRegistry } from '../../libs/ingestion/adapters/source/in-memory-source-provider.registry';
 import { ExecuteScanCommandHandler } from '../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
-import type { FetchedSourceItem, SourceFetcherPort } from '../../libs/ingestion/ports';
+import type { FetchSourceItemsResult, SourceFetcherPort } from '../../libs/ingestion/ports';
 
 class FailingSourceFetcher implements SourceFetcherPort {
-  async fetch(): Promise<readonly FetchedSourceItem[]> {
+  async fetch(): Promise<FetchSourceItemsResult> {
     throw new Error('Provider unavailable');
   }
 }
@@ -29,6 +30,7 @@ describe('ingestion worker execute scan command (e2e)', () => {
     const repository = moduleRef.get(InMemorySourceItemRepository);
     const feedRepository = moduleRef.get(InMemoryFeedItemReadRepository);
     const attemptRepository = moduleRef.get(InMemoryScanAttemptRepository);
+    const cursorRepository = moduleRef.get(InMemoryScanCursorRepository);
     const providerRegistry = moduleRef.get(InMemorySourceProviderRegistry);
     const command = {
       commandId: 'scan-job-1',
@@ -79,6 +81,13 @@ describe('ingestion worker execute scan command (e2e)', () => {
       skippedDuplicates: 2,
       projected: 2,
     });
+    expect(await cursorRepository.findBySourceBinding({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'source-binding-1',
+    })).toEqual(expect.objectContaining({
+      cursor: 'fake-cursor-next',
+    }));
     await expect(providerRegistry.getReadinessProfile('reddit')).resolves.toEqual(
       expect.objectContaining({
         providerKey: 'reddit',
@@ -101,6 +110,7 @@ describe('ingestion worker execute scan command (e2e)', () => {
 
     const handler = moduleRef.get(ExecuteScanCommandHandler);
     const attemptRepository = moduleRef.get(InMemoryScanAttemptRepository);
+    const cursorRepository = moduleRef.get(InMemoryScanCursorRepository);
     const failureQueue = moduleRef.get(InMemoryScanFailureQueueAdapter);
     const command = {
       commandId: 'scan-job-failure',
@@ -138,6 +148,11 @@ describe('ingestion worker execute scan command (e2e)', () => {
       }),
     ]);
     expect(failureQueue.deadLettered()).toEqual([]);
+    await expect(cursorRepository.findBySourceBinding({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'source-binding-1',
+    })).resolves.toBeNull();
 
     await moduleRef.close();
   });

@@ -1,6 +1,6 @@
 import type {
   FetchSourceItemsCommand,
-  FetchedSourceItem,
+  FetchSourceItemsResult,
   SourceFetcherPort,
   SourceProviderRegistryPort,
 } from '../../ports';
@@ -8,7 +8,7 @@ import type {
 export class FakeSourceFetcherAdapter implements SourceFetcherPort {
   constructor(private readonly registry: SourceProviderRegistryPort) {}
 
-  async fetch(command: FetchSourceItemsCommand): Promise<readonly FetchedSourceItem[]> {
+  async fetch(command: FetchSourceItemsCommand): Promise<FetchSourceItemsResult> {
     const provider = await this.registry.getProvider('fake-source');
 
     if (!provider) {
@@ -35,6 +35,9 @@ export class FakeSourceFetcherAdapter implements SourceFetcherPort {
     const plan = provider.planScan(query, context);
     const result = await provider.scan(plan, context);
 
-    return result.items;
+    return {
+      items: result.items,
+      nextCursor: result.nextCursor,
+    };
   }
 }

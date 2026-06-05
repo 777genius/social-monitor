@@ -16,6 +16,11 @@ export type FetchedSourceItem = {
   readonly publishedAt: Date;
 };
 
+export type FetchSourceItemsResult = {
+  readonly items: readonly FetchedSourceItem[];
+  readonly nextCursor?: string;
+};
+
 export interface SourceFetcherPort {
-  fetch(command: FetchSourceItemsCommand): Promise<readonly FetchedSourceItem[]>;
+  fetch(command: FetchSourceItemsCommand): Promise<FetchSourceItemsResult>;
 }

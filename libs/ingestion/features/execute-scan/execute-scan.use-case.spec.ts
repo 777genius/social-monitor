@@ -3,11 +3,12 @@ import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-mon
 import type { ScanAttempt, SourceItem } from '../../domain';
 import type {
   FetchSourceItemsCommand,
-  FetchedSourceItem,
+  FetchSourceItemsResult,
   FeedProjectionPort,
   ProjectFeedItemsCommand,
   ProjectFeedItemsResult,
   ScanAttemptRepositoryPort,
+  ScanCursorRepositoryPort,
   ScanFailureQueuePort,
   SaveSourceItemsCommand,
   SaveSourceItemsResult,
@@ -29,32 +30,35 @@ class SequenceIdGenerator implements IdGenerator {
 class FixedSourceFetcher implements SourceFetcherPort {
   readonly calls: FetchSourceItemsCommand[] = [];
 
-  async fetch(command: FetchSourceItemsCommand): Promise<readonly FetchedSourceItem[]> {
+  async fetch(command: FetchSourceItemsCommand): Promise<FetchSourceItemsResult> {
     this.calls.push(command);
 
-    return [
-      {
-        externalId: 'external-1',
-        canonicalUrl: 'https://example.test/external-1',
-        title: 'External 1',
-        body: 'Body 1',
-        authorHandle: 'author',
-        publishedAt: new Date('2026-06-05T00:00:00.000Z'),
-      },
-      {
-        externalId: 'external-2',
-        canonicalUrl: 'https://example.test/external-2',
-        title: 'External 2',
-        body: 'Body 2',
-        authorHandle: 'author',
-        publishedAt: new Date('2026-06-05T00:01:00.000Z'),
-      },
-    ];
+    return {
+      items: [
+        {
+          externalId: 'external-1',
+          canonicalUrl: 'https://example.test/external-1',
+          title: 'External 1',
+          body: 'Body 1',
+          authorHandle: 'author',
+          publishedAt: new Date('2026-06-05T00:00:00.000Z'),
+        },
+        {
+          externalId: 'external-2',
+          canonicalUrl: 'https://example.test/external-2',
+          title: 'External 2',
+          body: 'Body 2',
+          authorHandle: 'author',
+          publishedAt: new Date('2026-06-05T00:01:00.000Z'),
+        },
+      ],
+      nextCursor: 'cursor-after-scan',
+    };
   }
 }
 
 class FailingSourceFetcher implements SourceFetcherPort {
-  async fetch(): Promise<readonly FetchedSourceItem[]> {
+  async fetch(): Promise<FetchSourceItemsResult> {
     throw new Error('Provider unavailable');
   }
 }
@@ -109,6 +113,18 @@ class FakeScanAttemptRepository implements ScanAttemptRepositoryPort {
   }
 }
 
+class FakeScanCursorRepository implements ScanCursorRepositoryPort {
+  readonly saved: unknown[] = [];
+
+  async save(command: Parameters<ScanCursorRepositoryPort['save']>[0]): Promise<void> {
+    this.saved.push(command);
+  }
+
+  async findBySourceBinding(): Promise<null> {
+    return null;
+  }
+}
+
 class FakeScanFailureQueue implements ScanFailureQueuePort {
   readonly retries: unknown[] = [];
   readonly deadLetters: unknown[] = [];
@@ -128,11 +144,13 @@ describe('ExecuteScanUseCase', () => {
     const repository = new FakeSourceItemRepository();
     const projection = new FakeFeedProjection();
     const attempts = new FakeScanAttemptRepository();
+    const cursors = new FakeScanCursorRepository();
     const useCase = new ExecuteScanUseCase(
       fetcher,
       repository,
       projection,
       attempts,
+      cursors,
       new FakeScanFailureQueue(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
@@ -161,6 +179,13 @@ describe('ExecuteScanUseCase', () => {
     expect(fetcher.calls).toHaveLength(1);
     expect(repository.all()).toHaveLength(2);
     expect(projection.commands).toHaveLength(1);
+    expect(cursors.saved).toEqual([
+      expect.objectContaining({
+        sourceBindingId: 'source-binding-1',
+        cursor: 'cursor-after-scan',
+        committedAt: new Date('2026-06-05T12:00:00.000Z'),
+      }),
+    ]);
     await expect(attempts.findByScanJob({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
@@ -189,6 +214,7 @@ describe('ExecuteScanUseCase', () => {
       repository,
       new FakeFeedProjection(),
       new FakeScanAttemptRepository(),
+      new FakeScanCursorRepository(),
       new FakeScanFailureQueue(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
@@ -222,11 +248,13 @@ describe('ExecuteScanUseCase', () => {
   it('marks scan attempt as failed when provider fetch fails', async () => {
     const attempts = new FakeScanAttemptRepository();
     const failures = new FakeScanFailureQueue();
+    const cursors = new FakeScanCursorRepository();
     const useCase = new ExecuteScanUseCase(
       new FailingSourceFetcher(),
       new FakeSourceItemRepository(),
       new FakeFeedProjection(),
       attempts,
+      cursors,
       failures,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
@@ -253,6 +281,7 @@ describe('ExecuteScanUseCase', () => {
     });
     expect(failures.retries).toHaveLength(1);
     expect(failures.deadLetters).toHaveLength(0);
+    expect(cursors.saved).toHaveLength(0);
   });
 
   it('dead letters failed scan when retry budget is exhausted', async () => {
@@ -262,6 +291,7 @@ describe('ExecuteScanUseCase', () => {
       new FakeSourceItemRepository(),
       new FakeFeedProjection(),
       new FakeScanAttemptRepository(),
+      new FakeScanCursorRepository(),
       failures,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),

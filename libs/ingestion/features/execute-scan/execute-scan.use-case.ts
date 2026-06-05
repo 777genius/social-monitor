@@ -11,6 +11,7 @@ import { ScanAttempt, SourceItem } from '../../domain';
 import type {
   FeedProjectionPort,
   ScanAttemptRepositoryPort,
+  ScanCursorRepositoryPort,
   ScanFailureQueuePort,
   SourceFetcherPort,
   SourceItemRepositoryPort,
@@ -26,6 +27,7 @@ export class ExecuteScanUseCase {
     private readonly sourceItems: SourceItemRepositoryPort,
     private readonly feedProjection: FeedProjectionPort,
     private readonly scanAttempts: ScanAttemptRepositoryPort,
+    private readonly scanCursors: ScanCursorRepositoryPort,
     private readonly scanFailures: ScanFailureQueuePort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
@@ -60,7 +62,7 @@ export class ExecuteScanUseCase {
       });
 
       const ingestedAt = this.clock.now();
-      const items = fetched.map((item) =>
+      const items = fetched.items.map((item) =>
         SourceItem.ingest({
           id: this.ids.generate(),
           tenantId: command.tenantId,
@@ -87,9 +89,18 @@ export class ExecuteScanUseCase {
         sourceBindingId: command.sourceBindingId,
         sourceItems: items,
       });
+      if (fetched.nextCursor !== undefined) {
+        await this.scanCursors.save({
+          tenantId: command.tenantId,
+          workspaceId: command.workspaceId,
+          sourceBindingId: command.sourceBindingId,
+          cursor: fetched.nextCursor,
+          committedAt: this.clock.now(),
+        });
+      }
       attempt = attempt.succeed({
         finishedAt: this.clock.now(),
-        fetched: fetched.length,
+        fetched: fetched.items.length,
         inserted: saveResult.inserted,
         skippedDuplicates: saveResult.skippedDuplicates,
         projected: projectionResult.projected,
@@ -98,7 +109,7 @@ export class ExecuteScanUseCase {
 
       return ok({
         scanJobId: command.scanJobId,
-        fetched: fetched.length,
+        fetched: fetched.items.length,
         inserted: saveResult.inserted,
         skippedDuplicates: saveResult.skippedDuplicates,
         projected: projectionResult.projected,
