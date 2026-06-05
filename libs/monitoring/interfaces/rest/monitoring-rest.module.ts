@@ -3,23 +3,27 @@ import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { InMemoryIdempotencyAdapter } from '../../adapters/idempotency/in-memory-idempotency.adapter';
 import { InMemoryOutboxAdapter } from '../../adapters/messaging/in-memory-outbox.adapter';
+import { InMemoryScanJobRepository } from '../../adapters/persistence/in-memory-scan-job.repository';
 import { InMemoryScanPolicyRepository } from '../../adapters/persistence/in-memory-scan-policy.repository';
 import { InMemorySourceBindingRepository } from '../../adapters/persistence/in-memory-source-binding.repository';
 import { InMemoryTopicRepository } from '../../adapters/persistence/in-memory-topic.repository';
 import { FakeSourceCatalogAdapter } from '../../adapters/source-catalog/fake-source-catalog.adapter';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
+import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
 import { SetScanPolicyUseCase } from '../../features/set-scan-policy/set-scan-policy.use-case';
 import { ScanPolicyController } from './scan-policy.controller';
+import { ScanRequestController } from './scan-request.controller';
 import { SourceBindingController } from './source-binding.controller';
 import { TopicController } from './topic.controller';
 
 @Module({
-  controllers: [TopicController, SourceBindingController, ScanPolicyController],
+  controllers: [TopicController, SourceBindingController, ScanPolicyController, ScanRequestController],
   providers: [
     InMemoryTopicRepository,
     InMemorySourceBindingRepository,
     InMemoryScanPolicyRepository,
+    InMemoryScanJobRepository,
     FakeSourceCatalogAdapter,
     InMemoryOutboxAdapter,
     InMemoryIdempotencyAdapter,
@@ -84,6 +88,32 @@ import { TopicController } from './topic.controller';
       inject: [
         InMemorySourceBindingRepository,
         InMemoryScanPolicyRepository,
+        InMemoryOutboxAdapter,
+        InMemoryIdempotencyAdapter,
+      ],
+    },
+    {
+      provide: RequestScanUseCase,
+      useFactory: (
+        bindings: InMemorySourceBindingRepository,
+        scanPolicies: InMemoryScanPolicyRepository,
+        scanJobs: InMemoryScanJobRepository,
+        outbox: InMemoryOutboxAdapter,
+        idempotency: InMemoryIdempotencyAdapter,
+      ) =>
+        new RequestScanUseCase(
+          bindings,
+          scanPolicies,
+          scanJobs,
+          outbox,
+          idempotency,
+          new CryptoIdGenerator(),
+          new SystemClock(),
+        ),
+      inject: [
+        InMemorySourceBindingRepository,
+        InMemoryScanPolicyRepository,
+        InMemoryScanJobRepository,
         InMemoryOutboxAdapter,
         InMemoryIdempotencyAdapter,
       ],
