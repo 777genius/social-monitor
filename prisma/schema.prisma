@@ -1,0 +1,391 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../prisma/generated/client"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum TopicStatus {
+  ENABLED
+  DISABLED
+  ARCHIVED
+}
+
+enum SourceBindingStatus {
+  DRAFT
+  ENABLED
+  PAUSED
+  FAILED
+}
+
+enum ScanJobStatus {
+  PENDING
+  LEASED
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum FeedItemStatus {
+  VISIBLE
+  HIDDEN
+  TOMBSTONED
+}
+
+enum SummaryStatus {
+  REQUESTED
+  RUNNING
+  COMPLETED
+  FAILED
+  REJECTED
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum UsageKind {
+  SCAN
+  AI_SUMMARY
+  DELIVERY
+}
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+}
+
+model Tenant {
+  id         String      @id @db.Uuid
+  slug       String      @unique
+  name       String
+  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime?   @map("deleted_at") @db.Timestamptz(6)
+  workspaces Workspace[]
+  users      User[]
+
+  @@map("tenants")
+}
+
+model Workspace {
+  id          String       @id @db.Uuid
+  tenantId    String       @map("tenant_id") @db.Uuid
+  slug        String
+  name        String
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?    @map("deleted_at") @db.Timestamptz(6)
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  memberships Membership[]
+  topics      Topic[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, createdAt])
+  @@map("workspaces")
+}
+
+model User {
+  id          String       @id @db.Uuid
+  tenantId    String       @map("tenant_id") @db.Uuid
+  email       String
+  displayName String       @map("display_name")
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?    @map("deleted_at") @db.Timestamptz(6)
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  memberships Membership[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, createdAt])
+  @@map("users")
+}
+
+model Membership {
+  id          String         @id @db.Uuid
+  tenantId    String         @map("tenant_id") @db.Uuid
+  workspaceId String         @map("workspace_id") @db.Uuid
+  userId      String         @map("user_id") @db.Uuid
+  role        MembershipRole
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  user        User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, workspaceId, userId])
+  @@index([tenantId, userId])
+  @@map("memberships")
+}
+
+model Topic {
+  id          String      @id @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  workspaceId String      @map("workspace_id") @db.Uuid
+  name        String
+  query       String
+  status      TopicStatus @default(ENABLED)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?   @map("deleted_at") @db.Timestamptz(6)
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, workspaceId, name])
+  @@index([tenantId, workspaceId, status, createdAt])
+  @@map("topics")
+}
+
+model SourceCatalogEntry {
+  id                 String          @id @db.Uuid
+  providerKey        String          @unique @map("provider_key")
+  displayName        String          @map("display_name")
+  acquisitionMode    String          @map("acquisition_mode")
+  readiness          String
+  capabilityProfiles CapabilityProfile[]
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("source_catalog_entries")
+}
+
+model CapabilityProfile {
+  id            String             @id @db.Uuid
+  sourceId      String             @map("source_id") @db.Uuid
+  version       Int
+  schemaVersion Int                @default(1) @map("schema_version")
+  config        Json
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  source        SourceCatalogEntry @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceId, version])
+  @@map("capability_profiles")
+}
+
+model SourceBinding {
+  id                          String              @id @db.Uuid
+  tenantId                    String              @map("tenant_id") @db.Uuid
+  workspaceId                 String              @map("workspace_id") @db.Uuid
+  topicId                     String              @map("topic_id") @db.Uuid
+  sourceCatalogEntryId        String              @map("source_catalog_entry_id") @db.Uuid
+  capabilityProfileVersion    Int                 @map("capability_profile_version")
+  status                      SourceBindingStatus @default(DRAFT)
+  config                      Json
+  cursorResetRequestedAt      DateTime?           @map("cursor_reset_requested_at") @db.Timestamptz(6)
+  createdAt                   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                   DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                   DateTime?           @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, topicId, status])
+  @@map("source_bindings")
+}
+
+model ScanPolicy {
+  id              String   @id @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  sourceBindingId String   @map("source_binding_id") @db.Uuid
+  intervalSeconds Int      @map("interval_seconds")
+  freshnessSeconds Int     @map("freshness_seconds")
+  retryBudget     Int      @map("retry_budget")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, sourceBindingId])
+  @@index([tenantId, workspaceId])
+  @@map("scan_policies")
+}
+
+model ScanJob {
+  id              String        @id @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  workspaceId     String        @map("workspace_id") @db.Uuid
+  sourceBindingId String        @map("source_binding_id") @db.Uuid
+  status          ScanJobStatus @default(PENDING)
+  idempotencyKey  String        @map("idempotency_key")
+  leasedUntil     DateTime?     @map("leased_until") @db.Timestamptz(6)
+  retryCount      Int           @default(0) @map("retry_count")
+  failureClass    String?       @map("failure_class")
+  correlationId   String        @map("correlation_id")
+  causationId     String?       @map("causation_id")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, workspaceId, status, createdAt])
+  @@map("scan_jobs")
+}
+
+model CursorCheckpoint {
+  id              String   @id @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  sourceBindingId String   @map("source_binding_id") @db.Uuid
+  schemaVersion   Int      @default(1) @map("schema_version")
+  cursorPayload   Json     @map("cursor_payload")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, sourceBindingId])
+  @@index([tenantId, workspaceId])
+  @@map("cursor_checkpoints")
+}
+
+model SourceItem {
+  id              String   @id @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  sourceBindingId String   @map("source_binding_id") @db.Uuid
+  providerKey     String   @map("provider_key")
+  providerItemId  String   @map("provider_item_id")
+  canonicalUrl    String?  @map("canonical_url")
+  contentHash     String   @map("content_hash")
+  observedAt      DateTime @map("observed_at") @db.Timestamptz(6)
+  rawPointer      String?  @map("raw_pointer")
+  metadata        Json
+  schemaVersion   Int      @default(1) @map("schema_version")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, providerKey, providerItemId])
+  @@index([tenantId, workspaceId, sourceBindingId, observedAt])
+  @@map("source_items")
+}
+
+model FeedItem {
+  id            String         @id @db.Uuid
+  tenantId      String         @map("tenant_id") @db.Uuid
+  workspaceId   String         @map("workspace_id") @db.Uuid
+  topicId       String         @map("topic_id") @db.Uuid
+  sourceItemId  String         @map("source_item_id") @db.Uuid
+  dedupeKey     String         @map("dedupe_key")
+  status        FeedItemStatus @default(VISIBLE)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, topicId, dedupeKey])
+  @@index([tenantId, workspaceId, status, createdAt])
+  @@map("feed_items")
+}
+
+model SummaryArtifact {
+  id             String        @id @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  workspaceId    String        @map("workspace_id") @db.Uuid
+  topicId        String        @map("topic_id") @db.Uuid
+  status         SummaryStatus @default(REQUESTED)
+  schemaVersion  Int           @default(1) @map("schema_version")
+  modelVersion   String        @map("model_version")
+  promptVersion  String        @map("prompt_version")
+  summaryText    String?       @map("summary_text")
+  citations      Json
+  qualitySignals Json          @map("quality_signals")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, topicId, status, createdAt])
+  @@map("summary_artifacts")
+}
+
+model SummaryFeedback {
+  id                String   @id @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  summaryArtifactId String   @map("summary_artifact_id") @db.Uuid
+  rating            Int
+  note              String?
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, summaryArtifactId])
+  @@map("summary_feedback")
+}
+
+model DeliveryAttempt {
+  id                String         @id @db.Uuid
+  tenantId          String         @map("tenant_id") @db.Uuid
+  workspaceId       String         @map("workspace_id") @db.Uuid
+  targetKind        String         @map("target_kind")
+  targetRef         String         @map("target_ref")
+  artifactRef       String         @map("artifact_ref")
+  status            DeliveryStatus @default(PENDING)
+  idempotencyKey    String         @map("idempotency_key")
+  failureClass      String?        @map("failure_class")
+  correlationId     String         @map("correlation_id")
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, workspaceId, status, createdAt])
+  @@map("delivery_attempts")
+}
+
+model UsageRecord {
+  id          String    @id @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  kind        UsageKind
+  units       Int
+  costMicros  BigInt    @map("cost_micros")
+  sourceRef   String?   @map("source_ref")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, kind, createdAt])
+  @@map("usage_records")
+}
+
+model OutboxEvent {
+  id            String       @id @db.Uuid
+  tenantId      String?      @map("tenant_id") @db.Uuid
+  workspaceId   String?      @map("workspace_id") @db.Uuid
+  eventType     String       @map("event_type")
+  schemaVersion Int          @map("schema_version")
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  correlationId String       @map("correlation_id")
+  causationId   String?      @map("causation_id")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt   DateTime?    @map("published_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, status, createdAt])
+  @@map("outbox_events")
+}
+
+model InboxRecord {
+  id            String   @id @db.Uuid
+  consumerName  String   @map("consumer_name")
+  eventId       String   @map("event_id") @db.Uuid
+  tenantId      String?  @map("tenant_id") @db.Uuid
+  processedAt   DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+  schemaVersion Int      @map("schema_version")
+
+  @@unique([consumerName, eventId])
+  @@index([tenantId, processedAt])
+  @@map("inbox_records")
+}
+
+model IdempotencyKey {
+  id             String   @id @db.Uuid
+  tenantId       String?  @map("tenant_id") @db.Uuid
+  workspaceId    String?  @map("workspace_id") @db.Uuid
+  scope          String
+  key            String
+  requestHash    String   @map("request_hash")
+  responseStatus Int?     @map("response_status")
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, scope, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}

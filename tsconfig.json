@@ -32,5 +32,6 @@
       "@social-monitor/delivery/*": ["libs/delivery/*"],
       "@social-monitor/usage/*": ["libs/usage/*"]
     }
-  }
+  },
+  "exclude": ["node_modules", "dist", "coverage", "prisma/generated"]
 }
