@@ -1,11 +1,12 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.module';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
 
 import { HealthController } from './health.controller';
 import { RequestContextMiddleware } from './request-context.middleware';
 
 @Module({
-  imports: [MonitoringRestModule],
+  imports: [MonitoringRestModule, FeedRestModule],
   controllers: [HealthController],
 })
 export class AppModule implements NestModule {
