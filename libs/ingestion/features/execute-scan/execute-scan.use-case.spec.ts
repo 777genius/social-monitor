@@ -4,6 +4,9 @@ import type { SourceItem } from '../../domain';
 import type {
   FetchSourceItemsCommand,
   FetchedSourceItem,
+  FeedProjectionPort,
+  ProjectFeedItemsCommand,
+  ProjectFeedItemsResult,
   SaveSourceItemsCommand,
   SaveSourceItemsResult,
   SourceFetcherPort,
@@ -76,13 +79,24 @@ class FakeSourceItemRepository implements SourceItemRepositoryPort {
   }
 }
 
+class FakeFeedProjection implements FeedProjectionPort {
+  readonly commands: ProjectFeedItemsCommand[] = [];
+
+  async project(command: ProjectFeedItemsCommand): Promise<ProjectFeedItemsResult> {
+    this.commands.push(command);
+    return { projected: command.sourceItems.length };
+  }
+}
+
 describe('ExecuteScanUseCase', () => {
   it('fetches source items and persists new canonical items', async () => {
     const fetcher = new FixedSourceFetcher();
     const repository = new FakeSourceItemRepository();
+    const projection = new FakeFeedProjection();
     const useCase = new ExecuteScanUseCase(
       fetcher,
       repository,
+      projection,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
@@ -104,10 +118,12 @@ describe('ExecuteScanUseCase', () => {
         fetched: 2,
         inserted: 2,
         skippedDuplicates: 0,
+        projected: 2,
       },
     });
     expect(fetcher.calls).toHaveLength(1);
     expect(repository.all()).toHaveLength(2);
+    expect(projection.commands).toHaveLength(1);
   });
 
   it('skips duplicate source items on replay', async () => {
@@ -116,6 +132,7 @@ describe('ExecuteScanUseCase', () => {
     const useCase = new ExecuteScanUseCase(
       fetcher,
       repository,
+      new FakeFeedProjection(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
@@ -139,6 +156,7 @@ describe('ExecuteScanUseCase', () => {
         fetched: 2,
         inserted: 0,
         skippedDuplicates: 2,
+        projected: 2,
       },
     });
     expect(repository.all()).toHaveLength(2);

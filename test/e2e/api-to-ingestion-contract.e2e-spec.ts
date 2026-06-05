@@ -1,10 +1,12 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
+import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { IngestionWorkerModule } from '../../apps/ingestion-worker/src/ingestion-worker.module';
+import { InMemoryFeedItemReadRepository } from '../../libs/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemorySourceItemRepository } from '../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { ExecuteScanCommandHandler } from '../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
 
@@ -94,6 +96,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
 
     const handler = workerModuleRef.get(ExecuteScanCommandHandler);
     const repository = workerModuleRef.get(InMemorySourceItemRepository);
+    const feedRepository = workerModuleRef.get(InMemoryFeedItemReadRepository);
     const command = queue.all()[0];
 
     if (command === undefined) {
@@ -107,8 +110,14 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       fetched: 2,
       inserted: 2,
       skippedDuplicates: 0,
+      projected: 2,
     });
     expect(repository.all()).toHaveLength(2);
+    expect((await feedRepository.list({
+      tenantId: tenantId(tenant),
+      workspaceId: workspaceId(workspace),
+      limit: 10,
+    })).items).toHaveLength(2);
 
     await workerModuleRef.close();
   });

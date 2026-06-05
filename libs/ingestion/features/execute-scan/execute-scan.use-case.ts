@@ -8,7 +8,7 @@ import {
 } from '@social-monitor/shared-kernel';
 
 import { SourceItem } from '../../domain';
-import type { SourceFetcherPort, SourceItemRepositoryPort } from '../../ports';
+import type { FeedProjectionPort, SourceFetcherPort, SourceItemRepositoryPort } from '../../ports';
 import type { ExecuteScanCommand } from './execute-scan.command';
 import type { ExecuteScanResult } from './execute-scan.result';
 
@@ -18,6 +18,7 @@ export class ExecuteScanUseCase {
   constructor(
     private readonly sourceFetcher: SourceFetcherPort,
     private readonly sourceItems: SourceItemRepositoryPort,
+    private readonly feedProjection: FeedProjectionPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
   ) {}
@@ -60,12 +61,19 @@ export class ExecuteScanUseCase {
       workspaceId: command.workspaceId,
       items,
     });
+    const projectionResult = await this.feedProjection.project({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      sourceBindingId: command.sourceBindingId,
+      sourceItems: items,
+    });
 
     return ok({
       scanJobId: command.scanJobId,
       fetched: fetched.length,
       inserted: saveResult.inserted,
       skippedDuplicates: saveResult.skippedDuplicates,
+      projected: projectionResult.projected,
     });
   }
 }

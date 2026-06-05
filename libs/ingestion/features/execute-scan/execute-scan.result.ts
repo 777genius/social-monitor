@@ -3,4 +3,5 @@ export type ExecuteScanResult = {
   readonly fetched: number;
   readonly inserted: number;
   readonly skippedDuplicates: number;
+  readonly projected: number;
 };
