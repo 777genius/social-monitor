@@ -5,6 +5,9 @@ import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { WorkerRuntimeModule } from '@social-monitor/platform-worker';
 import { InMemorySourceItemRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { FakeSourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/fake-source-fetcher.adapter';
+import { FakeSourceProvider } from '../../../libs/ingestion/adapters/source/fake-source.provider';
+import { InMemorySourceProviderRegistry } from '../../../libs/ingestion/adapters/source/in-memory-source-provider.registry';
+import { sourceReadinessProfiles } from '../../../libs/ingestion/adapters/source/source-readiness-profiles';
 import { ExecuteScanUseCase } from '../../../libs/ingestion/features/execute-scan/execute-scan.use-case';
 import { ExecuteScanCommandHandler } from '../../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
 import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-projection.adapter';
@@ -12,7 +15,18 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
 @Module({
   imports: [WorkerRuntimeModule.register({ serviceName: 'ingestion-worker' })],
   providers: [
-    FakeSourceFetcherAdapter,
+    FakeSourceProvider,
+    {
+      provide: InMemorySourceProviderRegistry,
+      useFactory: (fakeProvider: FakeSourceProvider) =>
+        new InMemorySourceProviderRegistry([fakeProvider], sourceReadinessProfiles),
+      inject: [FakeSourceProvider],
+    },
+    {
+      provide: FakeSourceFetcherAdapter,
+      useFactory: (registry: InMemorySourceProviderRegistry) => new FakeSourceFetcherAdapter(registry),
+      inject: [InMemorySourceProviderRegistry],
+    },
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     {
@@ -42,6 +56,11 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
       inject: [ExecuteScanUseCase],
     },
   ],
-  exports: [ExecuteScanCommandHandler, InMemorySourceItemRepository, InMemoryFeedItemReadRepository],
+  exports: [
+    ExecuteScanCommandHandler,
+    InMemorySourceItemRepository,
+    InMemoryFeedItemReadRepository,
+    InMemorySourceProviderRegistry,
+  ],
 })
 export class IngestionWorkerModule {}

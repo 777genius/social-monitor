@@ -4,6 +4,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { IngestionWorkerModule } from '../../apps/ingestion-worker/src/ingestion-worker.module';
 import { InMemoryFeedItemReadRepository } from '../../libs/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemorySourceItemRepository } from '../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
+import { InMemorySourceProviderRegistry } from '../../libs/ingestion/adapters/source/in-memory-source-provider.registry';
 import { ExecuteScanCommandHandler } from '../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
 
 describe('ingestion worker execute scan command (e2e)', () => {
@@ -17,6 +18,7 @@ describe('ingestion worker execute scan command (e2e)', () => {
     const handler = moduleRef.get(ExecuteScanCommandHandler);
     const repository = moduleRef.get(InMemorySourceItemRepository);
     const feedRepository = moduleRef.get(InMemoryFeedItemReadRepository);
+    const providerRegistry = moduleRef.get(InMemorySourceProviderRegistry);
     const command = {
       commandId: 'scan-job-1',
       commandType: 'ingestion.scan.execute',
@@ -55,6 +57,12 @@ describe('ingestion worker execute scan command (e2e)', () => {
       workspaceId: workspaceId('workspace-1'),
       limit: 10,
     })).items).toHaveLength(2);
+    await expect(providerRegistry.getReadinessProfile('reddit')).resolves.toEqual(
+      expect.objectContaining({
+        providerKey: 'reddit',
+        state: 'profiled',
+      }),
+    );
 
     await moduleRef.close();
   });
