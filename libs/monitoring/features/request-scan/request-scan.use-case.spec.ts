@@ -6,6 +6,7 @@ import type {
   OutboxPort,
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
+  ScanQueuePort,
   SourceBindingRepositoryPort,
 } from '../../ports';
 import type { RequestScanResult } from './request-scan.result';
@@ -84,6 +85,14 @@ class FakeOutbox implements OutboxPort {
   }
 }
 
+class FakeScanQueue implements ScanQueuePort {
+  readonly commands: unknown[] = [];
+
+  async enqueue(command: Parameters<ScanQueuePort['enqueue']>[0]): Promise<void> {
+    this.commands.push(command);
+  }
+}
+
 class FakeIdempotency implements IdempotencyPort {
   private readonly records = new Map<string, RequestScanResult>();
 
@@ -132,10 +141,12 @@ describe('RequestScanUseCase', () => {
     const policies = new FakeScanPolicies();
     policies.add(makePolicy());
     const outbox = new FakeOutbox();
+    const queue = new FakeScanQueue();
     const useCase = new RequestScanUseCase(
       bindings,
       policies,
       new FakeScanJobs(),
+      queue,
       outbox,
       new FakeIdempotency(),
       new SequenceIdGenerator(),
@@ -153,6 +164,7 @@ describe('RequestScanUseCase', () => {
     expect(result.ok).toBe(true);
     expect(result.ok && result.value.created).toBe(true);
     expect(outbox.events).toHaveLength(1);
+    expect(queue.commands).toHaveLength(1);
   });
 
   it('rejects request when scan policy is missing', async () => {
@@ -162,6 +174,7 @@ describe('RequestScanUseCase', () => {
       bindings,
       new FakeScanPolicies(),
       new FakeScanJobs(),
+      new FakeScanQueue(),
       new FakeOutbox(),
       new FakeIdempotency(),
       new SequenceIdGenerator(),

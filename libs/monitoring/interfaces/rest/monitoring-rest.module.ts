@@ -1,3 +1,4 @@
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { Module } from '@nestjs/common';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
@@ -7,6 +8,7 @@ import { InMemoryScanJobRepository } from '../../adapters/persistence/in-memory-
 import { InMemoryScanPolicyRepository } from '../../adapters/persistence/in-memory-scan-policy.repository';
 import { InMemorySourceBindingRepository } from '../../adapters/persistence/in-memory-source-binding.repository';
 import { InMemoryTopicRepository } from '../../adapters/persistence/in-memory-topic.repository';
+import { InMemoryScanQueueAdapter } from '../../adapters/queue/in-memory-scan-queue.adapter';
 import { FakeSourceCatalogAdapter } from '../../adapters/source-catalog/fake-source-catalog.adapter';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
@@ -24,6 +26,12 @@ import { TopicController } from './topic.controller';
     InMemorySourceBindingRepository,
     InMemoryScanPolicyRepository,
     InMemoryScanJobRepository,
+    InMemoryQueuePublisher,
+    {
+      provide: InMemoryScanQueueAdapter,
+      useFactory: (publisher: InMemoryQueuePublisher) => new InMemoryScanQueueAdapter(publisher),
+      inject: [InMemoryQueuePublisher],
+    },
     FakeSourceCatalogAdapter,
     InMemoryOutboxAdapter,
     InMemoryIdempotencyAdapter,
@@ -98,6 +106,7 @@ import { TopicController } from './topic.controller';
         bindings: InMemorySourceBindingRepository,
         scanPolicies: InMemoryScanPolicyRepository,
         scanJobs: InMemoryScanJobRepository,
+        scanQueue: InMemoryScanQueueAdapter,
         outbox: InMemoryOutboxAdapter,
         idempotency: InMemoryIdempotencyAdapter,
       ) =>
@@ -105,6 +114,7 @@ import { TopicController } from './topic.controller';
           bindings,
           scanPolicies,
           scanJobs,
+          scanQueue,
           outbox,
           idempotency,
           new CryptoIdGenerator(),
@@ -114,6 +124,7 @@ import { TopicController } from './topic.controller';
         InMemorySourceBindingRepository,
         InMemoryScanPolicyRepository,
         InMemoryScanJobRepository,
+        InMemoryScanQueueAdapter,
         InMemoryOutboxAdapter,
         InMemoryIdempotencyAdapter,
       ],

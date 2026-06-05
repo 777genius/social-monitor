@@ -1,11 +1,13 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 
 describe('Request scan flow (e2e)', () => {
   let app: INestApplication;
+  let queue: InMemoryQueuePublisher;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -13,6 +15,7 @@ describe('Request scan flow (e2e)', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
+    queue = moduleRef.get(InMemoryQueuePublisher);
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -80,6 +83,14 @@ describe('Request scan flow (e2e)', () => {
       scanJobId: expect.any(String),
       created: true,
     });
+    expect(queue.all()).toHaveLength(1);
+    expect(queue.all()[0]).toMatchObject({
+      commandType: 'ingestion.scan.execute',
+      payload: {
+        scanJobId: first.body.scanJobId,
+        sourceBindingId: binding.body.sourceBindingId,
+      },
+    });
 
     const second = await request(app.getHttpServer())
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
@@ -93,5 +104,6 @@ describe('Request scan flow (e2e)', () => {
       scanJobId: first.body.scanJobId,
       created: false,
     });
+    expect(queue.all()).toHaveLength(1);
   });
 });

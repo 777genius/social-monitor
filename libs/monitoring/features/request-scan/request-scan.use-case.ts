@@ -16,6 +16,7 @@ import type {
   OutboxPort,
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
+  ScanQueuePort,
   SourceBindingRepositoryPort,
 } from '../../ports';
 import type { RequestScanCommand } from './request-scan.command';
@@ -28,6 +29,7 @@ export class RequestScanUseCase {
     private readonly sourceBindings: SourceBindingRepositoryPort,
     private readonly scanPolicies: ScanPolicyRepositoryPort,
     private readonly scanJobs: ScanJobRepositoryPort,
+    private readonly scanQueue: ScanQueuePort,
     private readonly outbox: OutboxPort,
     private readonly idempotency: IdempotencyPort,
     private readonly ids: IdGenerator,
@@ -109,6 +111,15 @@ export class RequestScanUseCase {
       },
     };
     await this.outbox.append(event);
+    await this.scanQueue.enqueue({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      scanJobId: snapshot.id,
+      sourceBindingId: snapshot.sourceBindingId,
+      scanPolicyId: snapshot.scanPolicyId,
+      correlationId: command.correlationId,
+      causationId: command.idempotencyKey,
+    });
 
     const result = { scanJobId: snapshot.id, created: true };
     await this.cacheResult(command, result);
