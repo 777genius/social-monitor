@@ -53,6 +53,12 @@ describe('Source profiles list (e2e)', () => {
           supportedQueryModes: expect.arrayContaining(['search', 'listing']),
         }),
         expect.objectContaining({
+          providerKey: 'rss',
+          productionSafe: false,
+          readinessState: 'profiled',
+          supportedQueryModes: ['url'],
+        }),
+        expect.objectContaining({
           providerKey: 'x-twitter',
           productionSafe: false,
           readinessState: 'provider_only',
