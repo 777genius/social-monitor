@@ -10,6 +10,8 @@ import type {
   ScanAttemptRepositoryPort,
   ScanCursorRepositoryPort,
   ScanFailureQueuePort,
+  ScanLease,
+  ScanLeasePort,
   SaveSourceItemsCommand,
   SaveSourceItemsResult,
   SourceFetcherPort,
@@ -138,6 +140,38 @@ class FakeScanFailureQueue implements ScanFailureQueuePort {
   }
 }
 
+class FakeScanLease implements ScanLeasePort {
+  readonly acquired: unknown[] = [];
+  readonly released: ScanLease[] = [];
+  private alreadyLeased = false;
+
+  holdNextAcquire(): void {
+    this.alreadyLeased = true;
+  }
+
+  async acquire(command: Parameters<ScanLeasePort['acquire']>[0]): Promise<ScanLease | null> {
+    this.acquired.push(command);
+
+    if (this.alreadyLeased) {
+      return null;
+    }
+
+    return {
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      scanJobId: command.scanJobId,
+      workerId: command.workerId,
+      fencingToken: `${command.scanJobId}:${command.workerId}:test`,
+      leasedAt: command.leasedAt,
+      expiresAt: new Date(command.leasedAt.getTime() + command.ttlSeconds * 1000),
+    };
+  }
+
+  async release(lease: ScanLease): Promise<void> {
+    this.released.push(lease);
+  }
+}
+
 describe('ExecuteScanUseCase', () => {
   it('fetches source items and persists new canonical items', async () => {
     const fetcher = new FixedSourceFetcher();
@@ -145,6 +179,7 @@ describe('ExecuteScanUseCase', () => {
     const projection = new FakeFeedProjection();
     const attempts = new FakeScanAttemptRepository();
     const cursors = new FakeScanCursorRepository();
+    const leases = new FakeScanLease();
     const useCase = new ExecuteScanUseCase(
       fetcher,
       repository,
@@ -152,6 +187,7 @@ describe('ExecuteScanUseCase', () => {
       attempts,
       cursors,
       new FakeScanFailureQueue(),
+      leases,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
@@ -179,6 +215,7 @@ describe('ExecuteScanUseCase', () => {
     expect(fetcher.calls).toHaveLength(1);
     expect(repository.all()).toHaveLength(2);
     expect(projection.commands).toHaveLength(1);
+    expect(leases.released).toHaveLength(1);
     expect(cursors.saved).toEqual([
       expect.objectContaining({
         sourceBindingId: 'source-binding-1',
@@ -216,6 +253,7 @@ describe('ExecuteScanUseCase', () => {
       new FakeScanAttemptRepository(),
       new FakeScanCursorRepository(),
       new FakeScanFailureQueue(),
+      new FakeScanLease(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
@@ -249,6 +287,7 @@ describe('ExecuteScanUseCase', () => {
     const attempts = new FakeScanAttemptRepository();
     const failures = new FakeScanFailureQueue();
     const cursors = new FakeScanCursorRepository();
+    const leases = new FakeScanLease();
     const useCase = new ExecuteScanUseCase(
       new FailingSourceFetcher(),
       new FakeSourceItemRepository(),
@@ -256,6 +295,7 @@ describe('ExecuteScanUseCase', () => {
       attempts,
       cursors,
       failures,
+      leases,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
@@ -282,6 +322,7 @@ describe('ExecuteScanUseCase', () => {
     expect(failures.retries).toHaveLength(1);
     expect(failures.deadLetters).toHaveLength(0);
     expect(cursors.saved).toHaveLength(0);
+    expect(leases.released).toHaveLength(1);
   });
 
   it('dead letters failed scan when retry budget is exhausted', async () => {
@@ -293,6 +334,7 @@ describe('ExecuteScanUseCase', () => {
       new FakeScanAttemptRepository(),
       new FakeScanCursorRepository(),
       failures,
+      new FakeScanLease(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
@@ -312,5 +354,47 @@ describe('ExecuteScanUseCase', () => {
     expect(result.ok).toBe(false);
     expect(failures.retries).toHaveLength(0);
     expect(failures.deadLetters).toHaveLength(1);
+  });
+
+  it('rejects execution before provider fetch when scan job is already leased', async () => {
+    const fetcher = new FixedSourceFetcher();
+    const attempts = new FakeScanAttemptRepository();
+    const failures = new FakeScanFailureQueue();
+    const leases = new FakeScanLease();
+    leases.holdNextAcquire();
+    const useCase = new ExecuteScanUseCase(
+      fetcher,
+      new FakeSourceItemRepository(),
+      new FakeFeedProjection(),
+      attempts,
+      new FakeScanCursorRepository(),
+      failures,
+      leases,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-leased',
+      sourceBindingId: 'source-binding-1',
+      scanPolicyId: 'scan-policy-1',
+      correlationId: 'correlation-1',
+      causationId: 'causation-1',
+      workerId: 'worker-1',
+      leaseTtlSeconds: 60,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(fetcher.calls).toHaveLength(0);
+    await expect(attempts.findByScanJob({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-leased',
+    })).resolves.toBeNull();
+    expect(failures.retries).toHaveLength(0);
+    expect(failures.deadLetters).toHaveLength(0);
+    expect(leases.released).toHaveLength(0);
   });
 });

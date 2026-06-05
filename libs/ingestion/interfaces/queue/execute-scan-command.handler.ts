@@ -12,6 +12,8 @@ type ExecuteScanQueuePayload = {
   readonly scanPolicyId: string;
   readonly attemptNumber?: number;
   readonly retryBudget?: number;
+  readonly workerId?: string;
+  readonly leaseTtlSeconds?: number;
 };
 
 export type ExecuteScanQueueCommand = QueueCommandEnvelope<ExecuteScanQueuePayload>;
@@ -35,6 +37,8 @@ export class ExecuteScanCommandHandler {
       causationId: command.causationId ?? command.commandId,
       attemptNumber: payload.attemptNumber,
       retryBudget: payload.retryBudget,
+      workerId: payload.workerId,
+      leaseTtlSeconds: payload.leaseTtlSeconds,
     });
 
     if (!result.ok) {
@@ -53,10 +57,29 @@ const parsePayload = (payload: Readonly<Record<string, unknown>>): ExecuteScanQu
   scanPolicyId: readString(payload, 'scanPolicyId'),
   attemptNumber: readOptionalPositiveInteger(payload, 'attemptNumber'),
   retryBudget: readOptionalPositiveInteger(payload, 'retryBudget'),
+  workerId: readOptionalString(payload, 'workerId'),
+  leaseTtlSeconds: readOptionalPositiveInteger(payload, 'leaseTtlSeconds'),
 });
 
 const readString = (payload: Readonly<Record<string, unknown>>, field: string): string => {
   const value = payload[field];
+
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`Invalid execute scan command payload field: ${field}`);
+  }
+
+  return value;
+};
+
+const readOptionalString = (
+  payload: Readonly<Record<string, unknown>>,
+  field: string,
+): string | undefined => {
+  const value = payload[field];
+
+  if (value === undefined) {
+    return undefined;
+  }
 
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error(`Invalid execute scan command payload field: ${field}`);

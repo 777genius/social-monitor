@@ -10,4 +10,6 @@ export type ExecuteScanCommand = {
   readonly causationId: string;
   readonly attemptNumber?: number;
   readonly retryBudget?: number;
+  readonly workerId?: string;
+  readonly leaseTtlSeconds?: number;
 };

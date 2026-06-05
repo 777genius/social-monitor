@@ -3,6 +3,7 @@ import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/pe
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { WorkerRuntimeModule } from '@social-monitor/platform-worker';
+import { InMemoryScanLeaseAdapter } from '../../../libs/ingestion/adapters/lease/in-memory-scan-lease.adapter';
 import { InMemoryScanAttemptRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
 import { InMemoryScanCursorRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
 import { InMemorySourceItemRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
@@ -33,6 +34,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     InMemoryScanAttemptRepository,
     InMemoryScanCursorRepository,
     InMemoryScanFailureQueueAdapter,
+    InMemoryScanLeaseAdapter,
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     {
@@ -49,6 +51,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
         scanAttempts: InMemoryScanAttemptRepository,
         scanCursors: InMemoryScanCursorRepository,
         scanFailures: InMemoryScanFailureQueueAdapter,
+        scanLeases: InMemoryScanLeaseAdapter,
       ) =>
         new ExecuteScanUseCase(
           sourceFetcher,
@@ -57,6 +60,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
           scanAttempts,
           scanCursors,
           scanFailures,
+          scanLeases,
           new CryptoIdGenerator(),
           new SystemClock(),
         ),
@@ -67,6 +71,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
         InMemoryScanAttemptRepository,
         InMemoryScanCursorRepository,
         InMemoryScanFailureQueueAdapter,
+        InMemoryScanLeaseAdapter,
       ],
     },
     {
@@ -80,6 +85,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     InMemoryScanAttemptRepository,
     InMemoryScanCursorRepository,
     InMemoryScanFailureQueueAdapter,
+    InMemoryScanLeaseAdapter,
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     InMemorySourceProviderRegistry,

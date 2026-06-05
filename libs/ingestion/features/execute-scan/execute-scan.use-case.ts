@@ -13,6 +13,7 @@ import type {
   ScanAttemptRepositoryPort,
   ScanCursorRepositoryPort,
   ScanFailureQueuePort,
+  ScanLeasePort,
   SourceFetcherPort,
   SourceItemRepositoryPort,
 } from '../../ports';
@@ -29,6 +30,7 @@ export class ExecuteScanUseCase {
     private readonly scanAttempts: ScanAttemptRepositoryPort,
     private readonly scanCursors: ScanCursorRepositoryPort,
     private readonly scanFailures: ScanFailureQueuePort,
+    private readonly scanLeases: ScanLeasePort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
   ) {}
@@ -43,6 +45,20 @@ export class ExecuteScanUseCase {
     }
     const attemptNumber = command.attemptNumber ?? 1;
     const retryBudget = command.retryBudget ?? 3;
+    const lease = await this.scanLeases.acquire({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      scanJobId: command.scanJobId,
+      workerId: command.workerId ?? 'ingestion-worker-local',
+      leasedAt: this.clock.now(),
+      ttlSeconds: command.leaseTtlSeconds ?? 300,
+    });
+
+    if (lease === null) {
+      return err(new DomainError('operation.conflict', 'Scan job is already leased', {
+        scanJobId: command.scanJobId,
+      }));
+    }
 
     let attempt = ScanAttempt.start({
       scanJobId: command.scanJobId,
@@ -144,6 +160,8 @@ export class ExecuteScanUseCase {
       }
 
       return err(error instanceof Error ? error : new Error('Unknown scan execution failure'));
+    } finally {
+      await this.scanLeases.release(lease);
     }
   }
 }
