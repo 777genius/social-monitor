@@ -1,0 +1,45 @@
+{
+  "name": "social-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend/API-first social monitoring MVP platform.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check:architecture": "node scripts/check-architecture.mjs",
+    "lint": "eslint .",
+    "test": "jest --config jest.config.ts --runInBand",
+    "test:e2e": "jest --config test/jest-e2e.config.ts --runInBand",
+    "verify": "npm run lint && npm run check:architecture && npm run build && npm run test && npm run test:e2e",
+    "start:api": "ts-node -r tsconfig-paths/register apps/api-gateway/src/main.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.24",
+    "@nestjs/core": "^11.1.24",
+    "@nestjs/platform-express": "^11.1.24",
+    "@nestjs/swagger": "^11.4.4",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@nestjs/testing": "^11.1.24",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.10.1",
+    "@types/supertest": "^6.0.3",
+    "eslint": "^9.39.1",
+    "jest": "^30.4.2",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.48.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

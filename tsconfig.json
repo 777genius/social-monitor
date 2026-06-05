@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2023",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "incremental": true,
+    "strict": true,
+    "strictPropertyInitialization": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "types": ["node", "jest"],
+    "paths": {
+      "@social-monitor/shared-kernel": ["libs/shared-kernel/src/index.ts"],
+      "@social-monitor/contracts/*": ["libs/contracts/*"],
+      "@social-monitor/identity/*": ["libs/identity/*"],
+      "@social-monitor/monitoring/*": ["libs/monitoring/*"],
+      "@social-monitor/ingestion/*": ["libs/ingestion/*"],
+      "@social-monitor/feed/*": ["libs/feed/*"],
+      "@social-monitor/summary/*": ["libs/summary/*"],
+      "@social-monitor/delivery/*": ["libs/delivery/*"],
+      "@social-monitor/usage/*": ["libs/usage/*"]
+    }
+  }
+}
