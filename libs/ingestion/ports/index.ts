@@ -1,5 +1,6 @@
 export * from './feed-projection.port';
 export * from './scan-attempt-repository.port';
+export * from './scan-failure-queue.port';
 export * from './source-fetcher.port';
 export * from './source-provider.port';
 export * from './source-provider-registry.port';

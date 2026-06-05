@@ -5,6 +5,7 @@ import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { WorkerRuntimeModule } from '@social-monitor/platform-worker';
 import { InMemoryScanAttemptRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
 import { InMemorySourceItemRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
+import { InMemoryScanFailureQueueAdapter } from '../../../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
 import { FakeSourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/fake-source-fetcher.adapter';
 import { FakeSourceProvider } from '../../../libs/ingestion/adapters/source/fake-source.provider';
 import { InMemorySourceProviderRegistry } from '../../../libs/ingestion/adapters/source/in-memory-source-provider.registry';
@@ -29,6 +30,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
       inject: [InMemorySourceProviderRegistry],
     },
     InMemoryScanAttemptRepository,
+    InMemoryScanFailureQueueAdapter,
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     {
@@ -43,12 +45,14 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
         sourceItems: InMemorySourceItemRepository,
         feedProjection: InMemoryFeedProjectionAdapter,
         scanAttempts: InMemoryScanAttemptRepository,
+        scanFailures: InMemoryScanFailureQueueAdapter,
       ) =>
         new ExecuteScanUseCase(
           sourceFetcher,
           sourceItems,
           feedProjection,
           scanAttempts,
+          scanFailures,
           new CryptoIdGenerator(),
           new SystemClock(),
         ),
@@ -57,6 +61,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
         InMemorySourceItemRepository,
         InMemoryFeedProjectionAdapter,
         InMemoryScanAttemptRepository,
+        InMemoryScanFailureQueueAdapter,
       ],
     },
     {
@@ -68,6 +73,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
   exports: [
     ExecuteScanCommandHandler,
     InMemoryScanAttemptRepository,
+    InMemoryScanFailureQueueAdapter,
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     InMemorySourceProviderRegistry,

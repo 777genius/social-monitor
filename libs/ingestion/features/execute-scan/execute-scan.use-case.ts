@@ -11,6 +11,7 @@ import { ScanAttempt, SourceItem } from '../../domain';
 import type {
   FeedProjectionPort,
   ScanAttemptRepositoryPort,
+  ScanFailureQueuePort,
   SourceFetcherPort,
   SourceItemRepositoryPort,
 } from '../../ports';
@@ -25,6 +26,7 @@ export class ExecuteScanUseCase {
     private readonly sourceItems: SourceItemRepositoryPort,
     private readonly feedProjection: FeedProjectionPort,
     private readonly scanAttempts: ScanAttemptRepositoryPort,
+    private readonly scanFailures: ScanFailureQueuePort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
   ) {}
@@ -37,6 +39,8 @@ export class ExecuteScanUseCase {
     if (command.sourceBindingId.trim().length === 0) {
       return err(new DomainError('validation.failed', 'Source binding id must be non-empty'));
     }
+    const attemptNumber = command.attemptNumber ?? 1;
+    const retryBudget = command.retryBudget ?? 3;
 
     let attempt = ScanAttempt.start({
       scanJobId: command.scanJobId,
@@ -105,6 +109,28 @@ export class ExecuteScanUseCase {
         failureReason: error instanceof Error ? error.message : 'Unknown scan execution failure',
       });
       await this.scanAttempts.save(attempt);
+      const failureReason = attempt.toSnapshot().failureReason ?? 'Unknown scan execution failure';
+      const failedCommand = {
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        scanJobId: command.scanJobId,
+        sourceBindingId: command.sourceBindingId,
+        scanPolicyId: command.scanPolicyId,
+        correlationId: command.correlationId,
+        causationId: command.causationId,
+        attemptNumber,
+        retryBudget,
+        failureReason,
+      };
+
+      if (attemptNumber < retryBudget) {
+        await this.scanFailures.enqueueRetry({
+          ...failedCommand,
+          nextAttemptNumber: attemptNumber + 1,
+        });
+      } else {
+        await this.scanFailures.deadLetter(failedCommand);
+      }
 
       return err(error instanceof Error ? error : new Error('Unknown scan execution failure'));
     }

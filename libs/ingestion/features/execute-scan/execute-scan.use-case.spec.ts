@@ -8,6 +8,7 @@ import type {
   ProjectFeedItemsCommand,
   ProjectFeedItemsResult,
   ScanAttemptRepositoryPort,
+  ScanFailureQueuePort,
   SaveSourceItemsCommand,
   SaveSourceItemsResult,
   SourceFetcherPort,
@@ -108,6 +109,19 @@ class FakeScanAttemptRepository implements ScanAttemptRepositoryPort {
   }
 }
 
+class FakeScanFailureQueue implements ScanFailureQueuePort {
+  readonly retries: unknown[] = [];
+  readonly deadLetters: unknown[] = [];
+
+  async enqueueRetry(command: Parameters<ScanFailureQueuePort['enqueueRetry']>[0]): Promise<void> {
+    this.retries.push(command);
+  }
+
+  async deadLetter(command: Parameters<ScanFailureQueuePort['deadLetter']>[0]): Promise<void> {
+    this.deadLetters.push(command);
+  }
+}
+
 describe('ExecuteScanUseCase', () => {
   it('fetches source items and persists new canonical items', async () => {
     const fetcher = new FixedSourceFetcher();
@@ -119,6 +133,7 @@ describe('ExecuteScanUseCase', () => {
       repository,
       projection,
       attempts,
+      new FakeScanFailureQueue(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
@@ -174,6 +189,7 @@ describe('ExecuteScanUseCase', () => {
       repository,
       new FakeFeedProjection(),
       new FakeScanAttemptRepository(),
+      new FakeScanFailureQueue(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
@@ -205,11 +221,13 @@ describe('ExecuteScanUseCase', () => {
 
   it('marks scan attempt as failed when provider fetch fails', async () => {
     const attempts = new FakeScanAttemptRepository();
+    const failures = new FakeScanFailureQueue();
     const useCase = new ExecuteScanUseCase(
       new FailingSourceFetcher(),
       new FakeSourceItemRepository(),
       new FakeFeedProjection(),
       attempts,
+      failures,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
@@ -233,5 +251,36 @@ describe('ExecuteScanUseCase', () => {
       status: 'failed',
       failureReason: 'Provider unavailable',
     });
+    expect(failures.retries).toHaveLength(1);
+    expect(failures.deadLetters).toHaveLength(0);
+  });
+
+  it('dead letters failed scan when retry budget is exhausted', async () => {
+    const failures = new FakeScanFailureQueue();
+    const useCase = new ExecuteScanUseCase(
+      new FailingSourceFetcher(),
+      new FakeSourceItemRepository(),
+      new FakeFeedProjection(),
+      new FakeScanAttemptRepository(),
+      failures,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-dead-letter',
+      sourceBindingId: 'source-binding-1',
+      scanPolicyId: 'scan-policy-1',
+      correlationId: 'correlation-1',
+      causationId: 'causation-1',
+      attemptNumber: 3,
+      retryBudget: 3,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(failures.retries).toHaveLength(0);
+    expect(failures.deadLetters).toHaveLength(1);
   });
 });

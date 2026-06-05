@@ -8,4 +8,6 @@ export type ExecuteScanCommand = {
   readonly scanPolicyId: string;
   readonly correlationId: string;
   readonly causationId: string;
+  readonly attemptNumber?: number;
+  readonly retryBudget?: number;
 };
