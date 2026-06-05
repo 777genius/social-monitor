@@ -10,4 +10,9 @@ export interface SourceBindingRepositoryPort {
     topicId: string;
     providerKey: string;
   }): Promise<SourceBinding | null>;
+  findById(params: {
+    tenantId: TenantId;
+    workspaceId: WorkspaceId;
+    sourceBindingId: string;
+  }): Promise<SourceBinding | null>;
 }

@@ -44,20 +44,29 @@ class FakeTopics implements TopicRepositoryPort {
 }
 
 class FakeBindings implements SourceBindingRepositoryPort {
-  private readonly bindings = new Map<string, SourceBinding>();
+  private readonly bindingsByTopicProvider = new Map<string, SourceBinding>();
+  private readonly bindingsById = new Map<string, SourceBinding>();
 
   async save(binding: SourceBinding): Promise<void> {
     const snapshot = binding.toSnapshot();
-    this.bindings.set(
+    this.bindingsByTopicProvider.set(
       `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.topicId}:${snapshot.providerKey}`,
       binding,
     );
+    this.bindingsById.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, binding);
   }
 
   async findByTopicAndProvider(
     params: Parameters<SourceBindingRepositoryPort['findByTopicAndProvider']>[0],
   ): Promise<SourceBinding | null> {
-    return this.bindings.get(`${params.tenantId}:${params.workspaceId}:${params.topicId}:${params.providerKey}`) ?? null;
+    return (
+      this.bindingsByTopicProvider.get(`${params.tenantId}:${params.workspaceId}:${params.topicId}:${params.providerKey}`) ??
+      null
+    );
+  }
+
+  async findById(params: Parameters<SourceBindingRepositoryPort['findById']>[0]): Promise<SourceBinding | null> {
+    return this.bindingsById.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
   }
 }
 
