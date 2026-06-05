@@ -43,7 +43,7 @@
 ### T05-03 - Add External Delivery Ports
 
 - Context: Delivery
-- Layer: Domain/application/adapters
+- Layer: Domain/features/ports/adapters/interfaces
 - Artifacts: API keys, webhook endpoints, signing, delivery log
 - Steps:
   1. Store hashed API keys.

@@ -12,7 +12,7 @@ Turn the foundation decisions into a buildable NestJS monorepo, contracts and lo
 
 ## Agenda
 1. Confirm monorepo layout and shared library ownership.
-2. Confirm domain/application/adapter boundaries.
+2. Confirm domain/features/ports/adapters/interfaces boundaries.
 3. Confirm database, migration and tenant-context strategy.
 4. Confirm OpenAPI generation path.
 5. Confirm outbox, idempotency and local infra scope.

@@ -18,7 +18,7 @@ Verify that the NestJS platform skeleton preserves Clean Architecture and can sc
 
 ## SOLID And Clean Architecture Focus
 - Single responsibility: modules should have one clear bounded-context purpose.
-- Dependency inversion: adapters implement ports defined by application/domain layers.
+- Dependency inversion: adapters implement context ports used by feature/use-case slices and domain rules.
 - Interface segregation: ports must be narrow and use-case oriented.
 
 ## Evidence Required

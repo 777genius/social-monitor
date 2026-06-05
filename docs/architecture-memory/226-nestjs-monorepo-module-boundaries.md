@@ -37,7 +37,7 @@ libs/
   infrastructure/kafka/
 ```
 
-Apps are composition roots. Libraries contain domain, application and infrastructure code.
+Apps are composition roots. Context libraries contain domain, feature/use-case slices, ports, adapters and interfaces.
 
 ## Library Tags
 
@@ -53,9 +53,10 @@ scope:integration
 scope:infra
 
 type:domain
-type:application
+type:feature
+type:port
 type:adapter
-type:api
+type:interface
 type:contract
 type:test
 ```
@@ -75,7 +76,7 @@ Domain must not import:
 - database clients
 - broker clients
 
-Application may import:
+Feature/use-case slices may import:
 
 - same bounded-context domain
 - ports/contracts
@@ -83,7 +84,7 @@ Application may import:
 
 Adapters may import:
 
-- application ports
+- context ports
 - infrastructure clients
 - provider SDKs
 
@@ -112,7 +113,7 @@ SourceItemRepositoryPort -> PostgresSourceItemRepository
 SummaryModelPort -> OpenAiSummaryModelAdapter
 ```
 
-Feature libraries export use-case modules but should not decide production infrastructure.
+Feature/use-case slices export use-case providers but should not decide production infrastructure.
 
 ## CI Enforcement
 
@@ -134,6 +135,8 @@ Pull requests that add a cross-context import need either a shared contract or a
 - sharing ORM entities as domain objects.
 - putting business rules in NestJS controllers.
 - using global modules for convenience.
+- using a global backend `features` folder that hides bounded-context ownership.
+- putting Prisma repositories, provider SDKs or queue clients inside `features/*`.
 
 ## Architecture Rule
 

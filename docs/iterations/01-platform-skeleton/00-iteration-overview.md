@@ -94,40 +94,56 @@ libs/
     grpc/
   identity/
     domain/
-    application/
-    infrastructure/
+    features/
+    ports/
+    adapters/
+    interfaces/
   monitoring/
     domain/
-    application/
-    infrastructure/
+    features/
+    ports/
+    adapters/
+    interfaces/
   ingestion/
     domain/
-    application/
-    infrastructure/
+    features/
+    ports/
+    adapters/
+    interfaces/
   feed/
     domain/
-    application/
-    infrastructure/
+    features/
+    ports/
+    adapters/
+    interfaces/
   summary/
     domain/
-    application/
-    infrastructure/
+    features/
+    ports/
+    adapters/
+    interfaces/
   delivery/
     domain/
-    application/
-    infrastructure/
+    features/
+    ports/
+    adapters/
+    interfaces/
   usage/
     domain/
-    application/
-    infrastructure/
+    features/
+    ports/
+    adapters/
+    interfaces/
 ```
 
 Layer rules:
 
 1. `domain` imports only `shared-kernel` and local domain files.
-2. `application` imports local domain and port interfaces.
-3. `infrastructure` imports application ports and external SDKs/framework adapters.
-4. `apps/*` compose modules, controllers, workers and adapters.
+2. `features` import local domain, context ports and shared kernel.
+3. `ports` define repository/provider/broker/AI abstractions.
+4. `adapters` implement ports and use external SDKs/framework clients.
+5. `interfaces` map REST/jobs/events/WS to feature use cases.
+6. `apps/*` compose modules, controllers, workers and adapters.
 5. `contracts/*` contains DTO/schema/proto definitions and generated artifacts only.
 6. No context imports another context's infrastructure.
 7. Cross-context state changes happen through events, use-case orchestration or explicit read-model ports.

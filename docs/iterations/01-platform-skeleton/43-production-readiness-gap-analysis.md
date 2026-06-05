@@ -5,7 +5,7 @@ Ensure the platform skeleton can support reliable MVP delivery and future servic
 
 ## MVP-Ready Areas
 - NestJS monorepo builds.
-- Domain/application/adapter boundaries are enforceable.
+- Domain/features/ports/adapters/interfaces boundaries are enforceable.
 - Local infrastructure is repeatable.
 - Migrations are present.
 - Outbox and idempotency exist.

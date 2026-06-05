@@ -136,8 +136,8 @@ Enforce:
 
 - domain cannot depend on adapter;
 - contexts cannot import another context's domain directly;
-- adapters cannot be imported by domain/application except through ports;
-- contracts are imported by presentation/infrastructure, not by domain entities.
+- adapters cannot be imported by domain/features except through ports;
+- contracts are imported by interfaces/adapters, not by domain entities.
 
 ## Best-Fact Choice
 

@@ -6,7 +6,7 @@
 
 1. Create NestJS workspace.
 2. Create apps for API gateway and workers.
-3. Create domain/application/infrastructure libraries per bounded context.
+3. Create domain/features/ports/adapters/interfaces libraries per bounded context.
 4. Add strict TypeScript.
 5. Add ESLint import boundary rules.
 6. Add shared kernel.
@@ -114,4 +114,3 @@
 - API and workers boot.
 - Health endpoints work.
 - Smoke flow emits and consumes event.
-

@@ -21,7 +21,7 @@
 ### T03-02 - Define Summary Evidence Model
 
 - Context: Summarization/Feed
-- Layer: Domain/application contract
+- Layer: Domain/features/ports contract
 - Artifacts: source evidence schema, summary output schema
 - Steps:
   1. Define cited item references.

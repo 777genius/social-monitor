@@ -15,8 +15,10 @@ Build the platform skeleton so every later feature follows the same architectura
    - `apps/delivery-service`
    - `libs/shared-kernel`
    - `libs/<bounded-context>/domain`
-   - `libs/<bounded-context>/application`
-   - `libs/<bounded-context>/infrastructure`
+   - `libs/<bounded-context>/features`
+   - `libs/<bounded-context>/ports`
+   - `libs/<bounded-context>/adapters`
+   - `libs/<bounded-context>/interfaces`
    - `libs/contracts`
 2. Enable strict TypeScript.
 3. Add ESLint import boundary rules.
@@ -42,24 +44,36 @@ libs/<context>/
     value-objects/
     events/
     policies/
-  application/
-    use-cases/
-    ports/
-    dto/
-  infrastructure/
+  features/
+    <use-case>/
+      <use-case>.command.ts
+      <use-case>.result.ts
+      <use-case>.use-case.ts
+      <use-case>.use-case.spec.ts
+  ports/
+    repositories/
+    providers/
+    messaging/
+  adapters/
     persistence/
     messaging/
     providers/
     mappers/
+  interfaces/
+    rest/
+    jobs/
+    events/
 ```
 
 Rules:
 
 1. Domain entities do not use Nest decorators, ORM decorators or OpenAPI decorators.
-2. Application ports are interfaces/tokens owned by the use-case side.
-3. Infrastructure adapters implement ports and translate external payloads.
-4. App modules wire adapters to ports; use cases do not know which adapter is active.
-5. Shared kernel stays limited to IDs, result/error primitives, clock, event envelope and common type guards.
+2. Feature slices hold application/use-case behavior and import only domain, ports and shared kernel.
+3. Context ports are interfaces/tokens required by feature slices.
+4. Adapters implement ports and translate external payloads.
+5. Interfaces map REST/jobs/events/WS to feature use cases.
+6. App modules wire adapters to ports; use cases do not know which adapter is active.
+7. Shared kernel stays limited to IDs, result/error primitives, clock, event envelope and common type guards.
 
 ### Edge Cases
 
@@ -67,8 +81,8 @@ Rules:
 - Domain package imports Nest decorators.
 - Shared kernel grows into a dumping ground.
 - Generated contracts are committed inconsistently.
-- Application use case imports a concrete Postgres repository.
-- Infrastructure mapper starts enforcing domain policy instead of translating.
+- Feature use case imports a concrete Postgres repository.
+- Adapter mapper starts enforcing domain policy instead of translating.
 - A generated DTO is passed directly into a domain constructor.
 
 ### Acceptance Gate
@@ -76,7 +90,7 @@ Rules:
 - Monorepo builds.
 - Forbidden imports fail CI.
 - Every app can boot with empty dependencies.
-- First context library has domain/application/infrastructure separation proven by import-boundary tests.
+- First context library has domain/features/ports/adapters/interfaces separation proven by import-boundary tests.
 
 ## Phase 02 - Local Infrastructure
 

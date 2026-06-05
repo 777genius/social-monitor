@@ -5,7 +5,7 @@
 ### T02-01 - Build Source Provider Port
 
 - Context: Ingestion/Source Catalog
-- Layer: Domain/application port
+- Layer: Domain/features/ports
 - Artifacts: `SourceProviderPort`, capability profile, scan result types
 - Steps:
   1. Define provider identity and capability discovery.
@@ -22,7 +22,7 @@
 ### T02-02 - Implement Provider Registry
 
 - Context: Source Catalog
-- Layer: Application/infrastructure
+- Layer: Features/adapters
 - Artifacts: registry, capability persistence, source status
 - Steps:
   1. Register adapters by provider key.

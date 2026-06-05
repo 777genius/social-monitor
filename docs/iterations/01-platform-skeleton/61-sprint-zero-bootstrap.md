@@ -18,7 +18,7 @@ Prepare platform implementation before code scaffolding begins.
 
 ## Preflight Checks
 - Import-boundary rule is defined.
-- Domain/application/adapter folders are named.
+- Domain/features/ports/adapters/interfaces folders are named.
 - Tenant context strategy is known.
 - Duplicate command behavior is specified.
 

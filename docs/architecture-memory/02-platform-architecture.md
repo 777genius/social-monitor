@@ -55,12 +55,13 @@ Each service/module follows:
 
 ```text
 domain/
-application/
-infrastructure/
-presentation/
+features/
+ports/
+adapters/
+interfaces/
 ```
 
-Ports live in `application`, not `domain`.
+Feature slices hold application/use-case behavior. Ports live at the context level, not inside `domain`. Adapters implement ports, and interfaces map REST/jobs/events/WS to feature use cases.
 
 ## Communication
 
@@ -125,4 +126,3 @@ digest:{tenant_id}:{digest_schedule_id}:{period_start}
 Reference:
 
 - Debezium Outbox Event Router: https://debezium.io/documentation/reference/2.6/transformations/outbox-event-router.html
-

@@ -1040,7 +1040,7 @@ This milestone proves the architecture is runnable:
 
 1. REST/OpenAPI generation works.
 2. Tenant scoping works.
-3. Domain/application/adapters are separated.
+3. Domain/features/ports/adapters/interfaces are separated.
 4. Idempotency and outbox are present on write paths.
 5. Worker/job path can produce user-visible data.
 6. Mobile can consume generated contracts through adapters.

@@ -54,9 +54,11 @@ Create the architecture contract before writing production code. This iteration 
 6. Create source risk classification: official API, open API, RSS, licensed provider, export/import, browser/manual capture, rejected.
 7. Define versioning rules for REST, events and connector capability profiles.
 
-## Frontend Architecture Backlog
+## Deferred Frontend Architecture Backlog
 
-1. Define Flutter feature slice layout:
+This is not the backend feature-slice layout. It applies only when frontend work is resumed.
+
+1. Define future Flutter feature slice layout:
    - `features/topic`
    - `features/source_binding`
    - `features/feed`
