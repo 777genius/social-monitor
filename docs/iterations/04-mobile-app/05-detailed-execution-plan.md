@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Build the Flutter app as a serious operational interface using feature-scoped Clean Architecture, MobX stores and `flutter_headless` components.
+Deferred frontend track. When frontend work is resumed, build the Flutter app as a serious operational interface using feature-scoped Clean Architecture, MobX stores and `flutter_headless` components. For the current backend/API-first MVP, keep this iteration as the implementation blueprint and contract guardrail, not as a launch blocker.
 
 ## Phase 01 - Flutter Architecture Shell
 

@@ -93,7 +93,7 @@ This is not the backend feature-slice layout. It applies only when frontend work
 - A source is removed or becomes paid/limited after implementation.
 - A provider returns partial data but no hard error.
 - Summary rules request unsupported language, format or citation style.
-- Mobile app opens stale cached data after source permissions changed.
+- Future frontend opens stale cached data after source permissions changed.
 
 ## Done Means
 

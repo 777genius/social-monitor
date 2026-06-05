@@ -788,7 +788,7 @@ Exit gate:
 
 - Latest topic summary is cited, persisted, auditable and retrievable through REST.
 
-## Sprint 4 - Flutter MVP
+## Sprint 4 - Deferred Frontend Track
 
 Primary iteration:
 
@@ -796,16 +796,11 @@ Primary iteration:
 
 Deliverables:
 
-1. Flutter app shell.
-2. Feature-scoped folder structure.
-3. Generated REST client adapters.
-4. MobX stores.
-5. Topic screens.
-6. Source binding screens.
-7. Feed screens.
-8. Summary screens.
-9. Citation UI.
-10. Offline/stale/error states.
+1. Preserve Flutter/FSD architecture as the preferred future app path.
+2. Keep generated REST client strategy compatible with future Flutter adapters.
+3. Keep frontend DTO/domain/store guardrails documented.
+4. Keep topic/source/feed/summary UX requirements traceable to REST/OpenAPI.
+5. Do not implement full frontend until backend/API loop, contracts, source adapters, summary pipeline and beta safety gates are proven.
 
 Can run in parallel:
 
@@ -815,19 +810,20 @@ Can run in parallel:
 
 Do not start:
 
-- Polishing secondary UI before the full MVP loop works.
-- Adding unsupported source configuration screens.
+- Full Flutter/frontend buildout before the backend/API-first loop works.
+- Polishing secondary UI before API/operator beta evidence exists.
+- Adding unsupported source configuration screens to a future frontend backlog without source readiness.
 
 Edge cases:
 
 - Generated DTOs leak into domain.
 - Store contains domain invariants.
 - Summary exists but cited item is unavailable.
-- Feed is empty because scan has not run.
+- API harness feed is empty because scan has not run.
 
 Exit gate:
 
-- Mobile user can create a topic, bind source, view feed and inspect cited summary.
+- Frontend remains deferred with clear contracts; backend/API harness can complete topic -> source -> scan -> feed -> summary -> feedback.
 
 ## Sprint 5 - Realtime And Delivery
 
@@ -936,7 +932,7 @@ Edge cases:
 - Users ask for X/Twitter before production-safe adapter is approved.
 - Summary quality issue is caused by vague topic configuration.
 - Provider quota is exhausted during onboarding.
-- Mobile/backend versions drift.
+- Generated API client/backend versions drift.
 
 Exit gate:
 
@@ -951,7 +947,7 @@ Exit gate:
 | Events | Scan/feed/summary/delivery events are versioned and idempotent. |
 | Ingestion | HN/RSS scan repeatedly without duplicate feed items. |
 | AI | Summaries are structured, cited, evaluated and cost-tracked. |
-| Mobile | Flutter app completes the end-to-end loop with robust states. |
+| Frontend | Deferred; API/generated-client harness completes the loop and Flutter/FSD remains a future track. |
 | Realtime | Scan and summary status update without manual refresh. |
 | Security | Tenant isolation and secret redaction are tested. |
 | Ops | Dashboards, alerts, runbooks and rollback path exist. |

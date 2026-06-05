@@ -6,7 +6,7 @@
 
 1. Freeze supported sources.
 2. Freeze core API.
-3. Freeze mobile flows.
+3. Freeze API/operator flows and future frontend contract assumptions.
 4. Freeze summary schema.
 5. Freeze delivery channel.
 6. Define success metrics.
@@ -64,7 +64,7 @@
 5. Verify dashboards.
 6. Verify rollback.
 7. Verify backups.
-8. Verify mobile build.
+8. Verify API/operator harness and generated-client contract.
 
 ### Dependencies
 
@@ -74,7 +74,7 @@
 
 - Source fails during demo.
 - Summary worker backlog.
-- Mobile client schema drift.
+- Generated client schema drift.
 
 ### Validation
 
@@ -106,4 +106,3 @@
 ### Validation
 
 - Next roadmap decisions are evidence-based.
-

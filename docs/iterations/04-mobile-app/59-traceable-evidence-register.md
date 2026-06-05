@@ -1,7 +1,7 @@
 # Iteration 04 - Traceable Evidence Register
 
 ## Evidence Goal
-Prove that the Flutter app completes the MVP loop through feature-scoped architecture.
+Future/deferred frontend evidence. When frontend work resumes, prove that the Flutter app completes the MVP loop through feature-scoped architecture. During the backend/API-first MVP, use this register to keep generated-client, DTO mapping and store-boundary requirements ready without making Flutter a launch blocker.
 
 ## Critical Audit Evidence
 - Generated DTOs stop in infrastructure mappers.
@@ -29,7 +29,7 @@ Prove that the Flutter app completes the MVP loop through feature-scoped archite
 - Realtime lead accepts store integration path.
 
 ## Handoff Evidence
-- Realtime iteration accepts mobile state boundaries.
+- Future realtime/frontend integration accepts mobile state boundaries.
 - Support receives user-visible error state notes.
 
 ## Missing Evidence Blocks

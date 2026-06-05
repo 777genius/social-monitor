@@ -96,7 +96,7 @@
 1. Define REST/OpenAPI resources.
 2. Define event contracts.
 3. Define gRPC proto usage criteria.
-4. Define Flutter client generation.
+4. Define generated API client strategy and future Flutter client generation.
 5. Define source provider contract.
 6. Define API versioning.
 7. Define contract drift checks.
@@ -104,16 +104,15 @@
 ### Dependencies
 
 - Architecture standards.
-- Frontend architecture decision.
+- Frontend deferral/API-first architecture decision.
 
 ### Edge Cases
 
-- Frontend needs a field absent from OpenAPI.
+- API harness or future frontend needs a field absent from OpenAPI.
 - Event version changes break a worker.
 - Provider capability changes after tenant setup.
 
 ### Validation
 
 - API and event contracts can be generated/tested before UI is complete.
-- Flutter app can rely on generated clients, not handwritten DTOs.
-
+- API harness and future frontend can rely on generated clients, not handwritten DTOs.

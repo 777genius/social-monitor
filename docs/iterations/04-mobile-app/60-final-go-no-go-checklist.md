@@ -1,7 +1,7 @@
 # Iteration 04 - Final Go/No-Go Checklist
 
 ## Decision Scope
-Decide whether mobile MVP is ready for realtime integration.
+Deferred frontend decision. Use this checklist only when Flutter work is resumed; it does not block the current backend/API-first MVP launch gate.
 
 ## Go Conditions
 - Core loop works in Flutter.

@@ -48,7 +48,7 @@ Add realtime status, notifications, digests and external delivery without making
 - Notification is generated twice after retry.
 - Webhook endpoint returns 500 for hours.
 - User disables notifications while delivery is queued.
-- Mobile app receives event for deleted topic.
+- Future frontend or API harness receives event for deleted topic.
 
 ## Validation
 

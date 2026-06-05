@@ -17,7 +17,7 @@ Must include:
 - normalized feed
 - AI summaries with citations
 - realtime or near-realtime status
-- mobile UX for core workflows
+- API/operator UX for core workflows; mobile/frontend remains deferred
 - basic digest/alert delivery
 - admin/source health view
 

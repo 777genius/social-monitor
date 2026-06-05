@@ -10,7 +10,7 @@ Launch a controlled beta that proves the end-to-end product loop and produces us
 
 1. Freeze supported source list.
 2. Freeze core workflow.
-3. Freeze mobile screens.
+3. Freeze API/operator core workflows and future frontend contract assumptions.
 4. Freeze summary schema.
 5. Freeze alert/digest channel.
 6. Define beta success metrics.
@@ -23,7 +23,7 @@ Launch a controlled beta that proves the end-to-end product loop and produces us
 1. Write beta scope table with in/out areas.
 2. Freeze supported source list and readiness states.
 3. Freeze REST/OpenAPI, event and summary schema versions for launch.
-4. Freeze mobile core screens and generated-client version.
+4. Freeze API/operator core flows and generated-client version.
 5. Publish known limitations and source coverage language.
 6. Record accepted MVP gaps with owner and revisit trigger.
 7. Add source expansion decision rule to support workflow.
@@ -34,14 +34,14 @@ Launch a controlled beta that proves the end-to-end product loop and produces us
 - Important beta user asks for unsupported source.
 - Summary quality is good but source coverage is weak.
 - User expects team/agency features.
-- Requested feature would change frozen API/mobile contract.
+- Requested feature would change frozen API/generated-client contract.
 - Supported source becomes degraded before invite.
 - Accepted MVP gap is not visible to users/support.
 
 ### Acceptance Gate
 
 - Beta scope is written and cannot expand without explicit decision.
-- Freeze evidence includes contracts, source list, mobile version and known limitations.
+- Freeze evidence includes contracts, source list, generated-client version and known limitations.
 
 ## Phase 02 - Onboarding Support
 
@@ -93,7 +93,7 @@ Launch a controlled beta that proves the end-to-end product loop and produces us
 6. Verify alerting.
 7. Verify backup/restore basics.
 8. Verify rollback/disable-source procedure.
-9. Verify mobile release build.
+9. Verify API/operator harness and generated-client contract.
 10. Verify privacy/security checklist.
 
 ### Launch Readiness Evidence
@@ -105,7 +105,7 @@ Launch a controlled beta that proves the end-to-end product loop and produces us
 5. Tenant isolation and redaction checks pass.
 6. Provider outage, AI outage, quota exhaustion and restore drills pass or have accepted exception.
 7. Dashboards and alert-to-runbook links are verified.
-8. Mobile build points to correct API and generated contract.
+8. API/operator harness points to the correct API and generated contract.
 9. Rollback/pause-source owners are available.
 10. Known limitations are published.
 
@@ -113,7 +113,7 @@ Launch a controlled beta that proves the end-to-end product loop and produces us
 
 - Source fails during demo.
 - Summary worker backlog grows.
-- Mobile app uses stale OpenAPI model.
+- Generated client uses stale OpenAPI model.
 - Invite goes out before rollback owner is available.
 - Launch environment has different source credentials/quota from staging.
 - Restore drill passes DB but misses operational tables.

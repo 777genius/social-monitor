@@ -43,7 +43,7 @@ Freeze scope, prepare beta operations and launch the MVP with a measurable learn
 2. Run multi-tenant isolation test.
 3. Run source failure scenario.
 4. Run summary failure scenario.
-5. Run mobile offline/resume scenario.
+5. Run API/generated-client stale contract and resync scenario.
 6. Run notification duplicate prevention scenario.
 7. Run cost limit scenario.
 
@@ -54,7 +54,7 @@ Freeze scope, prepare beta operations and launch the MVP with a measurable learn
 - Summary is correct but not useful because topic rules are vague.
 - User creates too many topics for beta quota.
 - Provider quotas are exhausted during demo.
-- Mobile app version is behind backend contract.
+- Generated client or future frontend version is behind backend contract.
 
 ## Validation
 

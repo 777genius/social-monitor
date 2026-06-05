@@ -11,7 +11,7 @@
   1. Confirm MVP loop works end to end.
   2. Freeze supported sources.
   3. Freeze supported summary policies.
-  4. Freeze mobile workflows.
+4. Freeze API/operator workflows and future frontend contract assumptions.
   5. Document known limitations.
 - Edge cases:
   - Stakeholder expects X/Twitter before safe adapter is ready.
@@ -52,7 +52,7 @@
   5. Verify cost/quota limits.
 - Edge cases:
   - Provider quotas exhausted during launch.
-  - Mobile app uses older API contract.
+- Generated client or future frontend uses older API contract.
 - Acceptance:
   - Launch has rollback, observability and support coverage.
 

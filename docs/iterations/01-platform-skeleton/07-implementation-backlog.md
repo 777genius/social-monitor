@@ -60,14 +60,13 @@ Create the deployable skeleton: NestJS monorepo, shared contracts, local infrast
 6. Add OpenAPI generation.
 7. Add request validation and typed error responses.
 
-## Frontend Backlog
+## Deferred Frontend Contract Backlog
 
-1. Scaffold Flutter app structure.
-2. Add generated API client setup.
-3. Add base feature layout.
-4. Add MobX store base conventions.
-5. Add navigation shell.
-6. Add environment switching.
+1. Define generated API client setup for API/operator harness and future Flutter.
+2. Keep future feature layout assumptions traceable to OpenAPI.
+3. Keep MobX/store conventions documented for deferred Flutter work.
+4. Define environment switching requirements for future client builds.
+5. Do not scaffold Flutter in the backend/API-first MVP skeleton.
 
 ## Edge Cases
 

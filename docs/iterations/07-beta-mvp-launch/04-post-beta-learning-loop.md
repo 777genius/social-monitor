@@ -24,7 +24,7 @@ Classify every feedback item as:
 4. feed relevance/noise issue
 5. summary quality/citation issue
 6. onboarding/support confusion
-7. mobile UX issue
+7. API/operator UX issue; future frontend UX issue
 8. delivery/realtime issue
 9. cost/quota issue
 10. post-MVP idea

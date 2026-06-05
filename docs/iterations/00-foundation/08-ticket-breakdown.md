@@ -83,7 +83,7 @@
   3. Define internal gRPC use cases.
   4. Define compatibility policy.
 - Edge cases:
-  - Mobile app lags backend release.
+- Generated client or future frontend lags backend release.
   - Consumer reads old event version.
 - Acceptance:
   - Contract changes have a documented compatibility path.
