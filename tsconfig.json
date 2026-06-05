@@ -23,6 +23,7 @@
     "paths": {
       "@social-monitor/shared-kernel": ["libs/shared-kernel/src/index.ts"],
       "@social-monitor/platform-config": ["libs/platform/config/src/index.ts"],
+      "@social-monitor/platform-worker": ["libs/platform/worker/src/index.ts"],
       "@social-monitor/contracts/*": ["libs/contracts/*"],
       "@social-monitor/identity/*": ["libs/identity/*"],
       "@social-monitor/monitoring/*": ["libs/monitoring/*"],
