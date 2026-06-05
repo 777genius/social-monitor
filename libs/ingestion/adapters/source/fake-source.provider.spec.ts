@@ -1,8 +1,16 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { FakeSourceProvider } from './fake-source.provider';
+import { certifySourceProvider } from './testing/source-provider-certification';
 
 describe('FakeSourceProvider certification', () => {
+  certifySourceProvider({
+    providerFactory: () => new FakeSourceProvider(),
+    validQuery: { mode: 'search', query: 'monitoring' },
+    unsupportedQueryMode: 'thread',
+    expectedProviderKey: 'fake-source',
+  });
+
   it('declares required capability profile fields', () => {
     const profile = new FakeSourceProvider().capabilityProfile();
 
