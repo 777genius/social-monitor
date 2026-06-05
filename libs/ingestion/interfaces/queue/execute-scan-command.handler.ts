@@ -17,17 +17,18 @@ export type ExecuteScanQueueCommand = QueueCommandEnvelope<ExecuteScanQueuePaylo
 export class ExecuteScanCommandHandler {
   constructor(private readonly executeScan: ExecuteScanUseCase) {}
 
-  async handle(command: ExecuteScanQueueCommand): Promise<ExecuteScanResult> {
+  async handle(command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>): Promise<ExecuteScanResult> {
     if (command.commandType !== 'ingestion.scan.execute') {
       throw new Error(`Unsupported command type: ${command.commandType}`);
     }
 
+    const payload = parsePayload(command.payload);
     const result = await this.executeScan.execute({
-      tenantId: tenantId(command.payload.tenantId),
-      workspaceId: workspaceId(command.payload.workspaceId),
-      scanJobId: command.payload.scanJobId,
-      sourceBindingId: command.payload.sourceBindingId,
-      scanPolicyId: command.payload.scanPolicyId,
+      tenantId: tenantId(payload.tenantId),
+      workspaceId: workspaceId(payload.workspaceId),
+      scanJobId: payload.scanJobId,
+      sourceBindingId: payload.sourceBindingId,
+      scanPolicyId: payload.scanPolicyId,
       correlationId: command.correlationId,
       causationId: command.causationId ?? command.commandId,
     });
@@ -39,3 +40,21 @@ export class ExecuteScanCommandHandler {
     return result.value;
   }
 }
+
+const parsePayload = (payload: Readonly<Record<string, unknown>>): ExecuteScanQueuePayload => ({
+  tenantId: readString(payload, 'tenantId'),
+  workspaceId: readString(payload, 'workspaceId'),
+  scanJobId: readString(payload, 'scanJobId'),
+  sourceBindingId: readString(payload, 'sourceBindingId'),
+  scanPolicyId: readString(payload, 'scanPolicyId'),
+});
+
+const readString = (payload: Readonly<Record<string, unknown>>, field: string): string => {
+  const value = payload[field];
+
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`Invalid execute scan command payload field: ${field}`);
+  }
+
+  return value;
+};
