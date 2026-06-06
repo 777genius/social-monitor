@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Headers, Param, Post, Query } from '@nes
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { VerifyApiKeyUseCase } from '@social-monitor/identity/features/verify-api-key/verify-api-key.use-case';
 import { DomainError, tenantId, type TenantId, workspaceId, type WorkspaceId } from '@social-monitor/shared-kernel';
+import { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/check-public-api-rate-limit/check-public-api-rate-limit.use-case';
 
 import { CreateWebhookEndpointUseCase } from '../../features/create-webhook-endpoint/create-webhook-endpoint.use-case';
 import { DisableWebhookEndpointUseCase } from '../../features/disable-webhook-endpoint/disable-webhook-endpoint.use-case';
@@ -24,6 +25,7 @@ export class WebhookEndpointsController {
     private readonly listWebhookEndpoints: ListWebhookEndpointsUseCase,
     private readonly disableWebhookEndpoint: DisableWebhookEndpointUseCase,
     private readonly verifyApiKey: VerifyApiKeyUseCase,
+    private readonly checkPublicApiRateLimit: CheckPublicApiRateLimitUseCase,
   ) {}
 
   @Post()
@@ -155,6 +157,17 @@ export class WebhookEndpointsController {
     if (verifiedApiKey.value.apiKey.tenantId !== tenant || verifiedApiKey.value.apiKey.workspaceId !== workspace) {
       throw new DomainError('authorization.denied', 'API key tenant or workspace does not match request scope');
     }
+
+    const rateLimit = await this.checkPublicApiRateLimit.execute({
+      subjectKey: `api-key:${verifiedApiKey.value.apiKey.id}`,
+      operation: 'webhook_endpoints.manage',
+      limit: publicApiRateLimitPerMinute(),
+      windowSeconds: 60,
+    });
+
+    if (!rateLimit.ok) {
+      throw rateLimit.error;
+    }
   }
 }
 
@@ -166,4 +179,14 @@ const parseBearerSecret = (authorizationHeader: string | undefined): string => {
   }
 
   return secret;
+};
+
+const publicApiRateLimitPerMinute = (): number => {
+  const configured = Number(process.env.PUBLIC_API_RATE_LIMIT_PER_MINUTE);
+
+  if (Number.isInteger(configured) && configured > 0) {
+    return configured;
+  }
+
+  return 60;
 };

@@ -47,6 +47,8 @@ const statusForDomainError = (code: DomainErrorCode): number => {
       return HttpStatus.NOT_FOUND;
     case 'operation.conflict':
       return HttpStatus.CONFLICT;
+    case 'operation.rate_limited':
+      return HttpStatus.TOO_MANY_REQUESTS;
     case 'external.dependency_unavailable':
       return HttpStatus.SERVICE_UNAVAILABLE;
   }
@@ -64,6 +66,8 @@ const titleForDomainError = (code: DomainErrorCode): string => {
       return 'Resource not found';
     case 'operation.conflict':
       return 'Operation conflict';
+    case 'operation.rate_limited':
+      return 'Rate limit exceeded';
     case 'external.dependency_unavailable':
       return 'External dependency unavailable';
   }
