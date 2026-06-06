@@ -53,6 +53,7 @@ Evidence notes:
 ## PR 2 Secret Redaction Evidence
 
 - `5fb7aef feat: redact structured log secrets`
+- `a97b0cd feat: protect source binding credentials`
 
 Verified commands:
 
@@ -66,6 +67,8 @@ Evidence notes:
 
 - Structured logs redact secret-like field names such as `authorization`, `apiKey`, `refreshToken` and `webhookSecret`.
 - Structured logs redact secret-like values such as `Bearer ...`, generated `smk_...`, generated `whsec_...` and URLs containing embedded passwords.
+- Source binding configs protect secret-like fields through `SourceBindingConfigProtectorPort` before repository persistence.
+- AES-256-GCM adapter encrypts recursive secret-like config keys such as `apiToken`, `password` and `authorization`.
 
 ## Review Evidence
 - Cross-functional hardening review is approved.
