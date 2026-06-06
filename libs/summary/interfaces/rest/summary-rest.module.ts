@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { EmptySummaryEvidenceSelector } from '../../adapters/evidence/empty-summary-evidence.selector';
+import { InMemorySummaryEventPublisher } from '../../adapters/messaging/in-memory-summary-event-publisher';
 import { DeterministicSummaryModelAdapter } from '../../adapters/model/deterministic-summary-model.adapter';
 import { InMemorySummaryArtifactRepository } from '../../adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryJobRepository } from '../../adapters/persistence/in-memory-summary-job.repository';
@@ -21,6 +22,7 @@ import { SummaryController } from './summary.controller';
   providers: [
     InMemorySummaryJobRepository,
     InMemorySummaryArtifactRepository,
+    InMemorySummaryEventPublisher,
     EmptySummaryEvidenceSelector,
     DeterministicSummaryModelAdapter,
     {
@@ -40,12 +42,14 @@ import { SummaryController } from './summary.controller';
         summaryArtifacts: InMemorySummaryArtifactRepository,
         evidenceSelector: EmptySummaryEvidenceSelector,
         summaryModel: DeterministicSummaryModelAdapter,
+        events: InMemorySummaryEventPublisher,
       ) =>
         new ExecuteSummaryJobUseCase(
           summaryJobs,
           summaryArtifacts,
           evidenceSelector,
           summaryModel,
+          events,
           new CryptoIdGenerator(),
           new SystemClock(),
         ),
@@ -54,6 +58,7 @@ import { SummaryController } from './summary.controller';
         InMemorySummaryArtifactRepository,
         EmptySummaryEvidenceSelector,
         DeterministicSummaryModelAdapter,
+        InMemorySummaryEventPublisher,
       ],
     },
     {
@@ -95,6 +100,7 @@ import { SummaryController } from './summary.controller';
     EvaluateSummaryQualityUseCase,
     ExecuteSummaryJobUseCase,
     GetSummaryJobStatusUseCase,
+    InMemorySummaryEventPublisher,
     InMemorySummaryArtifactRepository,
     InMemorySummaryJobRepository,
     RegenerateSummaryUseCase,

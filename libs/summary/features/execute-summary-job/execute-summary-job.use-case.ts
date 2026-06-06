@@ -1,16 +1,20 @@
 import {
   type Clock,
+  causationId,
+  correlationId,
   DomainError,
+  eventId,
   type IdGenerator,
   err,
   ok,
   type Result,
 } from '@social-monitor/shared-kernel';
 
-import { SummaryArtifact, type SummaryJob } from '../../domain';
+import { SummaryArtifact, type SummaryJob, type SummaryReadyEvent } from '../../domain';
 import type {
   SummaryArtifactRepositoryPort,
   SummaryEvidenceSelectorPort,
+  SummaryEventPublisherPort,
   SummaryJobRepositoryPort,
   SummaryModelBudget,
   SummaryModelPolicy,
@@ -39,6 +43,7 @@ export class ExecuteSummaryJobUseCase {
     private readonly summaryArtifacts: SummaryArtifactRepositoryPort,
     private readonly evidenceSelector: SummaryEvidenceSelectorPort,
     private readonly summaryModel: SummaryModelPort,
+    private readonly events: SummaryEventPublisherPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
   ) {}
@@ -91,10 +96,29 @@ export class ExecuteSummaryJobUseCase {
         : runningJob.complete({
             completedAt: this.clock.now(),
             summaryId: artifactSnapshot.summaryId,
-          });
+      });
       await this.summaryJobs.save(finalJob);
 
       const finalSnapshot = finalJob.toSnapshot();
+      await this.events.publish({
+        eventId: eventId(this.ids.generate()),
+        eventType: 'summary.ready',
+        schemaVersion: 1,
+        occurredAt: this.clock.now(),
+        tenantId: finalSnapshot.tenantId,
+        workspaceId: finalSnapshot.workspaceId,
+        correlationId: correlationId(command.summaryJobId),
+        causationId: causationId(finalSnapshot.id),
+        payload: {
+          summaryJobId: finalSnapshot.id,
+          summaryId: artifactSnapshot.summaryId,
+          tenantId: finalSnapshot.tenantId,
+          workspaceId: finalSnapshot.workspaceId,
+          topicId: finalSnapshot.topicId,
+          status: finalSnapshot.status === 'no_signal' ? 'no_signal' : 'completed',
+        },
+      } satisfies SummaryReadyEvent);
+
       return ok({
         summaryJobId: finalSnapshot.id,
         status: finalSnapshot.status,

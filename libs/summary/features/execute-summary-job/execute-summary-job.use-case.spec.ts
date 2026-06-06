@@ -1,4 +1,4 @@
-import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { type EventEnvelope, FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { SummaryJob, type SummaryArtifact } from '../../domain';
 import type {
@@ -8,6 +8,7 @@ import type {
   SummaryArtifactRepositoryPort,
   SummaryEvidenceSelection,
   SummaryEvidenceSelectorPort,
+  SummaryEventPublisherPort,
   SummaryJobRepositoryPort,
   SummaryModelBudget,
   SummaryModelEstimate,
@@ -168,10 +169,19 @@ class NoSignalSummaryModel implements SummaryModelPort {
   }
 }
 
+class FakeSummaryEvents implements SummaryEventPublisherPort {
+  readonly events: EventEnvelope<Readonly<Record<string, unknown>>>[] = [];
+
+  async publish(event: EventEnvelope<Readonly<Record<string, unknown>>>): Promise<void> {
+    this.events.push(event);
+  }
+}
+
 describe('ExecuteSummaryJobUseCase', () => {
   it('creates a validated no-signal artifact when no evidence exists', async () => {
     const jobs = new FakeSummaryJobs();
     const artifacts = new FakeSummaryArtifacts();
+    const events = new FakeSummaryEvents();
     const tenant = tenantId('tenant-1');
     const workspace = workspaceId('workspace-1');
     await jobs.save(
@@ -189,6 +199,7 @@ describe('ExecuteSummaryJobUseCase', () => {
       artifacts,
       new EmptyEvidenceSelector(),
       new NoSignalSummaryModel(),
+      events,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-06T00:00:02.000Z')),
     );
@@ -220,5 +231,15 @@ describe('ExecuteSummaryJobUseCase', () => {
         summaryId: 'summary-artifact-1',
       }),
     ).resolves.not.toBeNull();
+    expect(events.events).toHaveLength(1);
+    expect(events.events[0]).toMatchObject({
+      eventType: 'summary.ready',
+      schemaVersion: 1,
+      payload: {
+        summaryJobId: 'summary-job-1',
+        summaryId: 'summary-artifact-1',
+        status: 'no_signal',
+      },
+    });
   });
 });

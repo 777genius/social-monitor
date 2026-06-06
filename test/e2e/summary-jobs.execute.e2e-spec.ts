@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case';
 import { InMemorySummaryArtifactRepository } from '@social-monitor/summary/adapters/persistence/in-memory-summary-artifact.repository';
+import { InMemorySummaryEventPublisher } from '@social-monitor/summary/adapters/messaging/in-memory-summary-event-publisher';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
@@ -83,5 +84,19 @@ describe('Summary job execution flow (e2e)', () => {
       },
       noSignalReason: 'No eligible evidence items selected for this topic.',
     });
+    expect(app.get(InMemorySummaryEventPublisher).all()).toEqual([
+      expect.objectContaining({
+        eventType: 'summary.ready',
+        schemaVersion: 1,
+        tenantId: tenant,
+        workspaceId: workspace,
+        payload: expect.objectContaining({
+          summaryJobId: requested.body.summaryJobId,
+          summaryId: result.value.summaryId,
+          topicId: 'topic-summary-exec-e2e',
+          status: 'no_signal',
+        }),
+      }),
+    ]);
   });
 });
