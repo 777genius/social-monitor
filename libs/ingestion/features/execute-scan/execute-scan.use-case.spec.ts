@@ -9,6 +9,7 @@ import type {
   ProjectFeedItemsResult,
   ScanAttemptRepositoryPort,
   ScanCursorRepositoryPort,
+  ScanExecutionReporterPort,
   ScanFailureQueuePort,
   ScanLease,
   ScanLeasePort,
@@ -140,6 +141,19 @@ class FakeScanFailureQueue implements ScanFailureQueuePort {
   }
 }
 
+class FakeScanExecutionReporter implements ScanExecutionReporterPort {
+  readonly succeeded: unknown[] = [];
+  readonly failed: unknown[] = [];
+
+  async reportSucceeded(command: Parameters<ScanExecutionReporterPort['reportSucceeded']>[0]): Promise<void> {
+    this.succeeded.push(command);
+  }
+
+  async reportFailed(command: Parameters<ScanExecutionReporterPort['reportFailed']>[0]): Promise<void> {
+    this.failed.push(command);
+  }
+}
+
 class FakeScanLease implements ScanLeasePort {
   readonly acquired: unknown[] = [];
   readonly released: ScanLease[] = [];
@@ -179,6 +193,7 @@ describe('ExecuteScanUseCase', () => {
     const projection = new FakeFeedProjection();
     const attempts = new FakeScanAttemptRepository();
     const cursors = new FakeScanCursorRepository();
+    const reporter = new FakeScanExecutionReporter();
     const leases = new FakeScanLease();
     const useCase = new ExecuteScanUseCase(
       fetcher,
@@ -186,6 +201,7 @@ describe('ExecuteScanUseCase', () => {
       projection,
       attempts,
       cursors,
+      reporter,
       new FakeScanFailureQueue(),
       leases,
       new SequenceIdGenerator(),
@@ -215,6 +231,13 @@ describe('ExecuteScanUseCase', () => {
     expect(fetcher.calls).toHaveLength(1);
     expect(repository.all()).toHaveLength(2);
     expect(projection.commands).toHaveLength(1);
+    expect(reporter.succeeded).toEqual([
+      expect.objectContaining({
+        scanJobId: 'scan-job-1',
+        completedAt: new Date('2026-06-05T12:00:00.000Z'),
+      }),
+    ]);
+    expect(reporter.failed).toHaveLength(0);
     expect(leases.released).toHaveLength(1);
     expect(cursors.saved).toEqual([
       expect.objectContaining({
@@ -252,6 +275,7 @@ describe('ExecuteScanUseCase', () => {
       new FakeFeedProjection(),
       new FakeScanAttemptRepository(),
       new FakeScanCursorRepository(),
+      new FakeScanExecutionReporter(),
       new FakeScanFailureQueue(),
       new FakeScanLease(),
       new SequenceIdGenerator(),
@@ -287,6 +311,7 @@ describe('ExecuteScanUseCase', () => {
     const attempts = new FakeScanAttemptRepository();
     const failures = new FakeScanFailureQueue();
     const cursors = new FakeScanCursorRepository();
+    const reporter = new FakeScanExecutionReporter();
     const leases = new FakeScanLease();
     const useCase = new ExecuteScanUseCase(
       new FailingSourceFetcher(),
@@ -294,6 +319,7 @@ describe('ExecuteScanUseCase', () => {
       new FakeFeedProjection(),
       attempts,
       cursors,
+      reporter,
       failures,
       leases,
       new SequenceIdGenerator(),
@@ -322,6 +348,13 @@ describe('ExecuteScanUseCase', () => {
     expect(failures.retries).toHaveLength(1);
     expect(failures.deadLetters).toHaveLength(0);
     expect(cursors.saved).toHaveLength(0);
+    expect(reporter.failed).toEqual([
+      expect.objectContaining({
+        scanJobId: 'scan-job-failed',
+        failureReason: 'Provider unavailable',
+      }),
+    ]);
+    expect(reporter.succeeded).toHaveLength(0);
     expect(leases.released).toHaveLength(1);
   });
 
@@ -333,6 +366,7 @@ describe('ExecuteScanUseCase', () => {
       new FakeFeedProjection(),
       new FakeScanAttemptRepository(),
       new FakeScanCursorRepository(),
+      new FakeScanExecutionReporter(),
       failures,
       new FakeScanLease(),
       new SequenceIdGenerator(),
@@ -368,6 +402,7 @@ describe('ExecuteScanUseCase', () => {
       new FakeFeedProjection(),
       attempts,
       new FakeScanCursorRepository(),
+      new FakeScanExecutionReporter(),
       failures,
       leases,
       new SequenceIdGenerator(),

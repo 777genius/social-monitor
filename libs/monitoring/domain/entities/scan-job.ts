@@ -1,6 +1,6 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
-export type ScanJobStatus = 'requested' | 'enqueued';
+export type ScanJobStatus = 'requested' | 'enqueued' | 'succeeded' | 'failed';
 
 export type ScanJobProps = {
   readonly id: string;
@@ -12,6 +12,8 @@ export type ScanJobProps = {
   readonly idempotencyKey: string;
   readonly requestedAt: Date;
   readonly enqueuedAt?: Date;
+  readonly completedAt?: Date;
+  readonly failureReason?: string;
 };
 
 export class ScanJob {
@@ -48,7 +50,42 @@ export class ScanJob {
     });
   }
 
+  markSucceeded(params: { readonly completedAt: Date }): ScanJob {
+    this.assertCanComplete(params.completedAt);
+
+    return new ScanJob({
+      ...this.props,
+      status: 'succeeded',
+      completedAt: params.completedAt,
+    });
+  }
+
+  markFailed(params: { readonly completedAt: Date; readonly failureReason: string }): ScanJob {
+    this.assertCanComplete(params.completedAt);
+
+    if (params.failureReason.trim().length === 0) {
+      throw new Error('Scan job failure reason must be non-empty');
+    }
+
+    return new ScanJob({
+      ...this.props,
+      status: 'failed',
+      completedAt: params.completedAt,
+      failureReason: params.failureReason.trim(),
+    });
+  }
+
   toSnapshot(): ScanJobProps {
     return { ...this.props };
+  }
+
+  private assertCanComplete(completedAt: Date): void {
+    if (this.props.status !== 'enqueued') {
+      throw new Error('Only enqueued scan jobs can complete');
+    }
+
+    if (this.props.enqueuedAt !== undefined && completedAt.getTime() < this.props.enqueuedAt.getTime()) {
+      throw new Error('Scan job completion time cannot be before enqueue time');
+    }
   }
 }

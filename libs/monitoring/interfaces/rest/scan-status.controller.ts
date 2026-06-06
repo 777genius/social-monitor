@@ -37,6 +37,8 @@ export class ScanStatusController {
           status: result.value.status,
           requestedAt: result.value.requestedAt.toISOString(),
           enqueuedAt: result.value.enqueuedAt?.toISOString(),
+          completedAt: result.value.completedAt?.toISOString(),
+          failureReason: result.value.failureReason,
         };
       });
   }

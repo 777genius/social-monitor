@@ -3,6 +3,7 @@ import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/pe
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { WorkerRuntimeModule } from '@social-monitor/platform-worker';
+import { NoopScanExecutionReporterAdapter } from '../../../libs/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter';
 import { InMemoryScanLeaseAdapter } from '../../../libs/ingestion/adapters/lease/in-memory-scan-lease.adapter';
 import { InMemoryScanAttemptRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
 import { InMemoryScanCursorRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
@@ -35,6 +36,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     InMemoryScanCursorRepository,
     InMemoryScanFailureQueueAdapter,
     InMemoryScanLeaseAdapter,
+    NoopScanExecutionReporterAdapter,
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     {
@@ -50,6 +52,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
         feedProjection: InMemoryFeedProjectionAdapter,
         scanAttempts: InMemoryScanAttemptRepository,
         scanCursors: InMemoryScanCursorRepository,
+        scanExecutionReporter: NoopScanExecutionReporterAdapter,
         scanFailures: InMemoryScanFailureQueueAdapter,
         scanLeases: InMemoryScanLeaseAdapter,
       ) =>
@@ -59,6 +62,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
           feedProjection,
           scanAttempts,
           scanCursors,
+          scanExecutionReporter,
           scanFailures,
           scanLeases,
           new CryptoIdGenerator(),
@@ -70,6 +74,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
         InMemoryFeedProjectionAdapter,
         InMemoryScanAttemptRepository,
         InMemoryScanCursorRepository,
+        NoopScanExecutionReporterAdapter,
         InMemoryScanFailureQueueAdapter,
         InMemoryScanLeaseAdapter,
       ],
@@ -86,6 +91,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     InMemoryScanCursorRepository,
     InMemoryScanFailureQueueAdapter,
     InMemoryScanLeaseAdapter,
+    NoopScanExecutionReporterAdapter,
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     InMemorySourceProviderRegistry,

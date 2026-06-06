@@ -13,6 +13,7 @@ import { FakeSourceCatalogAdapter } from '../../adapters/source-catalog/fake-sou
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
 import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
+import { RecordScanExecutionUseCase } from '../../features/record-scan-execution/record-scan-execution.use-case';
 import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
 import { ScheduleDueScansUseCase } from '../../features/schedule-due-scans/schedule-due-scans.use-case';
 import { SetScanPolicyUseCase } from '../../features/set-scan-policy/set-scan-policy.use-case';
@@ -166,7 +167,12 @@ import { TopicController } from './topic.controller';
       useFactory: (scanJobs: InMemoryScanJobRepository) => new GetScanStatusUseCase(scanJobs),
       inject: [InMemoryScanJobRepository],
     },
+    {
+      provide: RecordScanExecutionUseCase,
+      useFactory: (scanJobs: InMemoryScanJobRepository) => new RecordScanExecutionUseCase(scanJobs),
+      inject: [InMemoryScanJobRepository],
+    },
   ],
-  exports: [ScheduleDueScansUseCase, GetScanStatusUseCase],
+  exports: [ScheduleDueScansUseCase, GetScanStatusUseCase, RecordScanExecutionUseCase],
 })
 export class MonitoringRestModule {}

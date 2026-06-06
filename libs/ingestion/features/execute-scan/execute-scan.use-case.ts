@@ -12,6 +12,7 @@ import type {
   FeedProjectionPort,
   ScanAttemptRepositoryPort,
   ScanCursorRepositoryPort,
+  ScanExecutionReporterPort,
   ScanFailureQueuePort,
   ScanLeasePort,
   SourceFetcherPort,
@@ -29,6 +30,7 @@ export class ExecuteScanUseCase {
     private readonly feedProjection: FeedProjectionPort,
     private readonly scanAttempts: ScanAttemptRepositoryPort,
     private readonly scanCursors: ScanCursorRepositoryPort,
+    private readonly scanExecutionReporter: ScanExecutionReporterPort,
     private readonly scanFailures: ScanFailureQueuePort,
     private readonly scanLeases: ScanLeasePort,
     private readonly ids: IdGenerator,
@@ -122,6 +124,12 @@ export class ExecuteScanUseCase {
         projected: projectionResult.projected,
       });
       await this.scanAttempts.save(attempt);
+      await this.scanExecutionReporter.reportSucceeded({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        scanJobId: command.scanJobId,
+        completedAt: this.clock.now(),
+      });
 
       return ok({
         scanJobId: command.scanJobId,
@@ -137,6 +145,13 @@ export class ExecuteScanUseCase {
       });
       await this.scanAttempts.save(attempt);
       const failureReason = attempt.toSnapshot().failureReason ?? 'Unknown scan execution failure';
+      await this.scanExecutionReporter.reportFailed({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        scanJobId: command.scanJobId,
+        completedAt: this.clock.now(),
+        failureReason,
+      });
       const failedCommand = {
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,

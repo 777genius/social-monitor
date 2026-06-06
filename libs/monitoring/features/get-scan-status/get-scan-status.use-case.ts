@@ -29,6 +29,8 @@ export class GetScanStatusUseCase {
       status: snapshot.status,
       requestedAt: snapshot.requestedAt,
       enqueuedAt: snapshot.enqueuedAt,
+      completedAt: snapshot.completedAt,
+      failureReason: snapshot.failureReason,
     });
   }
 }

@@ -8,7 +8,56 @@ import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { IngestionWorkerModule } from '../../apps/ingestion-worker/src/ingestion-worker.module';
 import { InMemoryFeedItemReadRepository } from '../../libs/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemorySourceItemRepository } from '../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
+import { NoopScanExecutionReporterAdapter } from '../../libs/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter';
+import { FakeSourceFetcherAdapter } from '../../libs/ingestion/adapters/source/fake-source-fetcher.adapter';
 import { ExecuteScanCommandHandler } from '../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
+import type {
+  FetchSourceItemsResult,
+  ReportScanFailedCommand,
+  ReportScanSucceededCommand,
+  ScanExecutionReporterPort,
+  SourceFetcherPort,
+} from '../../libs/ingestion/ports';
+import { RecordScanExecutionUseCase } from '../../libs/monitoring/features/record-scan-execution/record-scan-execution.use-case';
+
+class MonitoringScanExecutionReporter implements ScanExecutionReporterPort {
+  constructor(private readonly recordScanExecution: RecordScanExecutionUseCase) {}
+
+  async reportSucceeded(command: ReportScanSucceededCommand): Promise<void> {
+    const result = await this.recordScanExecution.execute({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      scanJobId: command.scanJobId,
+      status: 'succeeded',
+      completedAt: command.completedAt,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+  }
+
+  async reportFailed(command: ReportScanFailedCommand): Promise<void> {
+    const result = await this.recordScanExecution.execute({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      scanJobId: command.scanJobId,
+      status: 'failed',
+      completedAt: command.completedAt,
+      failureReason: command.failureReason,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+  }
+}
+
+class FailingSourceFetcher implements SourceFetcherPort {
+  async fetch(): Promise<FetchSourceItemsResult> {
+    throw new Error('Provider unavailable');
+  }
+}
 
 describe('API to ingestion worker queue contract (e2e)', () => {
   let api: INestApplication;
@@ -92,7 +141,10 @@ describe('API to ingestion worker queue contract (e2e)', () => {
 
     const workerModuleRef = await Test.createTestingModule({
       imports: [IngestionWorkerModule],
-    }).compile();
+    })
+      .overrideProvider(NoopScanExecutionReporterAdapter)
+      .useValue(new MonitoringScanExecutionReporter(api.get(RecordScanExecutionUseCase)))
+      .compile();
     await workerModuleRef.init();
 
     const handler = workerModuleRef.get(ExecuteScanCommandHandler);
@@ -119,6 +171,103 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       workspaceId: workspaceId(workspace),
       limit: 10,
     })).items).toHaveLength(2);
+    await request(api.getHttpServer())
+      .get(`/scan-requests/${scan.body.scanJobId}/status`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          scanJobId: scan.body.scanJobId,
+          status: 'succeeded',
+          completedAt: expect.any(String),
+        });
+      });
+
+    await workerModuleRef.close();
+  });
+
+  it('records failed scan status when ingestion worker execution fails', async () => {
+    const tenant = 'tenant-contract-failure-e2e';
+    const workspace = 'workspace-contract-failure-e2e';
+    const queue = api.get(InMemoryQueuePublisher);
+    const initialQueueLength = queue.all().length;
+
+    const topic = await request(api.getHttpServer())
+      .post('/topics')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-request-id', 'contract-failure-topic')
+      .set('idempotency-key', 'contract-failure-topic')
+      .send({
+        name: 'Contract Failure Monitoring',
+        query: 'contract failure monitoring',
+      })
+      .expect(201);
+
+    const binding = await request(api.getHttpServer())
+      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-request-id', 'contract-failure-binding')
+      .set('idempotency-key', 'contract-failure-binding')
+      .send({
+        providerKey: 'fake-source',
+        config: { query: 'contract failure monitoring' },
+      })
+      .expect(201);
+
+    await request(api.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-request-id', 'contract-failure-policy')
+      .set('idempotency-key', 'contract-failure-policy')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(201);
+
+    const scan = await request(api.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-request-id', 'contract-failure-scan')
+      .set('idempotency-key', 'contract-failure-scan')
+      .expect(201);
+    const command = queue.all()[initialQueueLength];
+
+    if (command === undefined) {
+      throw new Error('Expected API gateway to publish failing ingestion scan command');
+    }
+
+    const workerModuleRef = await Test.createTestingModule({
+      imports: [IngestionWorkerModule],
+    })
+      .overrideProvider(NoopScanExecutionReporterAdapter)
+      .useValue(new MonitoringScanExecutionReporter(api.get(RecordScanExecutionUseCase)))
+      .overrideProvider(FakeSourceFetcherAdapter)
+      .useValue(new FailingSourceFetcher())
+      .compile();
+    await workerModuleRef.init();
+
+    const handler = workerModuleRef.get(ExecuteScanCommandHandler);
+    await expect(handler.handle(command)).rejects.toThrow('Provider unavailable');
+    await request(api.getHttpServer())
+      .get(`/scan-requests/${scan.body.scanJobId}/status`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          scanJobId: scan.body.scanJobId,
+          status: 'failed',
+          completedAt: expect.any(String),
+          failureReason: 'Provider unavailable',
+        });
+      });
 
     await workerModuleRef.close();
   });

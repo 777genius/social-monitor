@@ -7,4 +7,6 @@ export type ScanStatusResponseDto = {
   readonly status: ScanJobStatus;
   readonly requestedAt: string;
   readonly enqueuedAt?: string;
+  readonly completedAt?: string;
+  readonly failureReason?: string;
 };

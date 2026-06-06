@@ -2,7 +2,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { ScanJob, type ScanJob as ScanJobEntity } from '../../domain';
 import type { ScanJobRepositoryPort } from '../../ports';
-import { GetScanStatusUseCase } from './get-scan-status.use-case';
+import { RecordScanExecutionUseCase } from './record-scan-execution.use-case';
 
 class FakeScanJobs implements ScanJobRepositoryPort {
   private readonly jobsById = new Map<string, ScanJobEntity>();
@@ -25,7 +25,7 @@ class FakeScanJobs implements ScanJobRepositoryPort {
   }
 }
 
-const makeJob = () =>
+const makeEnqueuedJob = () =>
   ScanJob.request({
     id: 'scan-job-1',
     tenantId: tenantId('tenant-1'),
@@ -38,40 +38,77 @@ const makeJob = () =>
     enqueuedAt: new Date('2026-06-06T00:00:01.000Z'),
   });
 
-describe('GetScanStatusUseCase', () => {
-  it('returns current scan job status', async () => {
+describe('RecordScanExecutionUseCase', () => {
+  it('marks enqueued scan job as succeeded', async () => {
     const jobs = new FakeScanJobs();
-    await jobs.save(makeJob());
-    const useCase = new GetScanStatusUseCase(jobs);
+    await jobs.save(makeEnqueuedJob());
+    const useCase = new RecordScanExecutionUseCase(jobs);
 
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
       scanJobId: 'scan-job-1',
+      status: 'succeeded',
+      completedAt: new Date('2026-06-06T00:00:02.000Z'),
     });
 
     expect(result).toEqual({
       ok: true,
       value: {
         scanJobId: 'scan-job-1',
-        sourceBindingId: 'binding-1',
-        scanPolicyId: 'policy-1',
-        status: 'enqueued',
-        requestedAt: new Date('2026-06-06T00:00:00.000Z'),
-        enqueuedAt: new Date('2026-06-06T00:00:01.000Z'),
-        completedAt: undefined,
-        failureReason: undefined,
+        status: 'succeeded',
       },
+    });
+    expect((await jobs.findById({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-1',
+    }))?.toSnapshot()).toMatchObject({
+      status: 'succeeded',
+      completedAt: new Date('2026-06-06T00:00:02.000Z'),
     });
   });
 
-  it('returns not found for a missing scan job in tenant scope', async () => {
-    const useCase = new GetScanStatusUseCase(new FakeScanJobs());
+  it('marks enqueued scan job as failed with reason', async () => {
+    const jobs = new FakeScanJobs();
+    await jobs.save(makeEnqueuedJob());
+    const useCase = new RecordScanExecutionUseCase(jobs);
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-1',
+      status: 'failed',
+      completedAt: new Date('2026-06-06T00:00:02.000Z'),
+      failureReason: 'Provider unavailable',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scanJobId: 'scan-job-1',
+        status: 'failed',
+      },
+    });
+    expect((await jobs.findById({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-1',
+    }))?.toSnapshot()).toMatchObject({
+      status: 'failed',
+      failureReason: 'Provider unavailable',
+    });
+  });
+
+  it('returns not found for a missing scan job', async () => {
+    const useCase = new RecordScanExecutionUseCase(new FakeScanJobs());
 
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
       scanJobId: 'missing',
+      status: 'succeeded',
+      completedAt: new Date('2026-06-06T00:00:02.000Z'),
     });
 
     expect(result.ok).toBe(false);
