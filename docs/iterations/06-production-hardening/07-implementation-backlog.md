@@ -6,7 +6,7 @@ Make the MVP reliable enough for beta users: security, observability, CI/CD, res
 
 ## Security Backlog
 
-1. Enforce tenant isolation in every query.
+1. Enforce tenant isolation in every query. REST boundary header-scope guards are implemented for webhooks, API keys, delivery reads, feed, summary and monitoring.
 2. Add authorization policies per workspace role.
 3. Add audit log for sensitive changes.
 4. Add secret management strategy.
@@ -59,3 +59,11 @@ Make the MVP reliable enough for beta users: security, observability, CI/CD, res
 - Operational dashboard explains current system health.
 - Queue backlog is bounded and visible.
 - CI blocks unsafe contract and migration changes.
+
+## Implemented Evidence
+
+- PR 1 REST tenant-scope guards completed in commits `739d203`, `dd8e814`, `55f6154`, `ee8a44e`, `fa53fa7`, `86c4958`.
+- Covered REST contexts: delivery webhooks, API keys, delivery read models, feed, summary and monitoring.
+- Required REST adapter pattern: `requireTenantScope({ tenantIdHeader, workspaceIdHeader })` before invoking use cases.
+- Confirmed no direct `tenantId(tenantHeader)` or `workspaceId(workspaceHeader)` conversions remain in `libs` or `apps`.
+- Verification used: `npm run check:architecture`, `npm run build`, targeted e2e specs, targeted ESLint and `git diff --check`.

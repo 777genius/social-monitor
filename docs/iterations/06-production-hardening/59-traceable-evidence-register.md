@@ -25,6 +25,29 @@ Prove that beta safety gates are enforced and supportable.
 - Observability tickets link to dashboards.
 - Recovery tickets link to backup/restore evidence.
 
+## PR 1 Tenant Scope Evidence
+
+- `739d203 feat: guard webhook tenant scope`
+- `dd8e814 feat: guard api key tenant scope`
+- `55f6154 feat: guard delivery read tenant scope`
+- `ee8a44e feat: guard feed tenant scope`
+- `fa53fa7 feat: guard summary tenant scope`
+- `86c4958 feat: guard monitoring tenant scope`
+
+Verified commands:
+
+- `npm run check:architecture`
+- `npm run build`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand ...` for the added tenant-scope e2e specs and related happy-path REST regressions.
+- `NODE_OPTIONS=--max-old-space-size=2048 npx eslint ...` for changed files.
+- `git diff --check`
+
+Evidence notes:
+
+- Missing tenant/workspace REST headers produce controlled `tenant.scope_missing` problem details.
+- REST adapters guard scope before use case invocation.
+- No direct `tenantId(tenantHeader)` or `workspaceId(workspaceHeader)` conversions remain in current `libs`/`apps` scan.
+
 ## Review Evidence
 - Cross-functional hardening review is approved.
 - Support owner confirms runbooks.

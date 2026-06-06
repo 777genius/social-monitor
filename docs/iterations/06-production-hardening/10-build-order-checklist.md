@@ -2,8 +2,8 @@
 
 ## Build Order
 
-1. Add tenant isolation guards.
-2. Add tenant isolation tests.
+1. Add tenant isolation guards. REST boundary guards completed for current MVP API surface.
+2. Add tenant isolation tests. REST negative e2e coverage completed for current MVP API surface.
 3. Encrypt provider credentials.
 4. Add secret redaction.
 5. Add structured logs.
@@ -23,7 +23,7 @@
 
 ## First PR Sequence
 
-1. PR 1: tenant scope guards and cross-tenant negative tests.
+1. PR 1: tenant scope guards and cross-tenant negative tests. REST scope guard slice completed; remaining follow-up is worker/event tenant context assertions if new gaps are found.
 2. PR 2: credential encryption, secret redaction and safe error/log policy.
 3. PR 3: audit taxonomy and security-sensitive action events.
 4. PR 4: quota preflight and usage ledger enforcement.
@@ -48,7 +48,7 @@
 
 ## Tests And Checks
 
-- Cross-tenant negative tests.
+- Cross-tenant negative tests. REST scope-missing negative e2e exists for webhooks, API keys, delivery reads, feed, summary and monitoring.
 - Secret redaction tests.
 - Migration from clean database.
 - Contract diff check.
@@ -62,6 +62,7 @@
 
 ## Edge Cases Before Closure
 
+- Missing `x-tenant-id` or `x-workspace-id` must return controlled `tenant.scope_missing` problem details before any use case runs.
 - Worker killed mid-scan.
 - Provider outage.
 - Retry storm.
