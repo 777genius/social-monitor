@@ -2,21 +2,28 @@ import { Module } from '@nestjs/common';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { InMemoryDeliveryAttemptRepository } from '../../adapters/persistence/in-memory-delivery-attempt.repository';
+import { InMemoryDigestRepository } from '../../adapters/persistence/in-memory-digest.repository';
 import { InMemoryRealtimeEventRepository } from '../../adapters/persistence/in-memory-realtime-event.repository';
+import { InMemoryDigestSourceReader } from '../../adapters/source/in-memory-digest-source.reader';
 import { ApplyDeliverySuppressionUseCase } from '../../features/apply-delivery-suppression/apply-delivery-suppression.use-case';
+import { AssembleDigestUseCase } from '../../features/assemble-digest/assemble-digest.use-case';
 import { GetDeliveryAttemptUseCase } from '../../features/get-delivery-attempt/get-delivery-attempt.use-case';
+import { GetDigestUseCase } from '../../features/get-digest/get-digest.use-case';
 import { ListRealtimeEventsUseCase } from '../../features/list-realtime-events/list-realtime-events.use-case';
 import { ProjectSummaryReadyEventUseCase } from '../../features/project-summary-ready-event/project-summary-ready-event.use-case';
 import { QueueDeliveryAttemptUseCase } from '../../features/queue-delivery-attempt/queue-delivery-attempt.use-case';
 import { RecordDeliveryAttemptStateUseCase } from '../../features/record-delivery-attempt-state/record-delivery-attempt-state.use-case';
 import { RecordRealtimeEventUseCase } from '../../features/record-realtime-event/record-realtime-event.use-case';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
+import { DigestsController } from './digests.controller';
 import { RealtimeEventsController } from './realtime-events.controller';
 
 @Module({
-  controllers: [DeliveryAttemptsController, RealtimeEventsController],
+  controllers: [DeliveryAttemptsController, DigestsController, RealtimeEventsController],
   providers: [
     InMemoryDeliveryAttemptRepository,
+    InMemoryDigestRepository,
+    InMemoryDigestSourceReader,
     InMemoryRealtimeEventRepository,
     {
       provide: QueueDeliveryAttemptUseCase,
@@ -28,6 +35,27 @@ import { RealtimeEventsController } from './realtime-events.controller';
       provide: GetDeliveryAttemptUseCase,
       useFactory: (attempts: InMemoryDeliveryAttemptRepository) => new GetDeliveryAttemptUseCase(attempts),
       inject: [InMemoryDeliveryAttemptRepository],
+    },
+    {
+      provide: AssembleDigestUseCase,
+      useFactory: (
+        digests: InMemoryDigestRepository,
+        sources: InMemoryDigestSourceReader,
+        queueDeliveryAttempt: QueueDeliveryAttemptUseCase,
+      ) =>
+        new AssembleDigestUseCase(
+          digests,
+          sources,
+          queueDeliveryAttempt,
+          new CryptoIdGenerator(),
+          new SystemClock(),
+        ),
+      inject: [InMemoryDigestRepository, InMemoryDigestSourceReader, QueueDeliveryAttemptUseCase],
+    },
+    {
+      provide: GetDigestUseCase,
+      useFactory: (digests: InMemoryDigestRepository) => new GetDigestUseCase(digests),
+      inject: [InMemoryDigestRepository],
     },
     {
       provide: ApplyDeliverySuppressionUseCase,
@@ -61,8 +89,12 @@ import { RealtimeEventsController } from './realtime-events.controller';
   ],
   exports: [
     ApplyDeliverySuppressionUseCase,
+    AssembleDigestUseCase,
     GetDeliveryAttemptUseCase,
+    GetDigestUseCase,
     InMemoryDeliveryAttemptRepository,
+    InMemoryDigestRepository,
+    InMemoryDigestSourceReader,
     InMemoryRealtimeEventRepository,
     ListRealtimeEventsUseCase,
     ProjectSummaryReadyEventUseCase,
