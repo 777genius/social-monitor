@@ -12,6 +12,7 @@ export type WebhookEndpointProps = {
   readonly secretKeyId: string;
   readonly secretPreview: string;
   readonly createdAt: Date;
+  readonly disabledAt?: Date;
   readonly quarantinedAt?: Date;
   readonly quarantineReason?: string;
 };
@@ -56,6 +57,14 @@ export class WebhookEndpoint {
       status: 'quarantined',
       quarantinedAt: params.quarantinedAt,
       quarantineReason: params.reason,
+    });
+  }
+
+  disable(params: { readonly disabledAt: Date }): WebhookEndpoint {
+    return new WebhookEndpoint({
+      ...this.props,
+      status: 'disabled',
+      disabledAt: params.disabledAt,
     });
   }
 }

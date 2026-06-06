@@ -32,6 +32,12 @@ class FakeWebhookEndpoints implements WebhookEndpointRepositoryPort {
   async findById(params: Parameters<WebhookEndpointRepositoryPort['findById']>[0]): Promise<WebhookEndpoint | null> {
     return this.endpointsById.get(`${params.tenantId}:${params.workspaceId}:${params.webhookEndpointId}`) ?? null;
   }
+
+  async list(): Promise<{ readonly endpoints: readonly WebhookEndpoint[] }> {
+    return {
+      endpoints: [],
+    };
+  }
 }
 
 class FakeSecrets implements WebhookSecretVaultPort {

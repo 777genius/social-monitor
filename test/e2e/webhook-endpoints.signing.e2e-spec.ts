@@ -74,6 +74,7 @@ describe('Webhook endpoint signing (e2e)', () => {
       .get(`/delivery/webhook-endpoints/${endpointId}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${apiKey.body.secret}`)
       .expect(200);
 
     expect(read.body).toEqual(created.body.endpoint);

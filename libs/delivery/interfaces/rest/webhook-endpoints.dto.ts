@@ -1,7 +1,9 @@
 import { ArrayMinSize, IsArray, IsString, IsUrl, MinLength } from 'class-validator';
 
 import type { CreateWebhookEndpointResult } from '../../features/create-webhook-endpoint/create-webhook-endpoint.result';
+import type { DisableWebhookEndpointResult } from '../../features/disable-webhook-endpoint/disable-webhook-endpoint.result';
 import type { GetWebhookEndpointResult } from '../../features/get-webhook-endpoint/get-webhook-endpoint.result';
+import type { ListWebhookEndpointsResult } from '../../features/list-webhook-endpoints/list-webhook-endpoints.result';
 
 export class CreateWebhookEndpointRequestDto {
   @IsUrl({ require_protocol: true, protocols: ['https'] })
@@ -15,4 +17,6 @@ export class CreateWebhookEndpointRequestDto {
 }
 
 export type CreateWebhookEndpointResponseDto = CreateWebhookEndpointResult;
+export type DisableWebhookEndpointResponseDto = DisableWebhookEndpointResult;
 export type GetWebhookEndpointResponseDto = GetWebhookEndpointResult;
+export type ListWebhookEndpointsResponseDto = ListWebhookEndpointsResult;

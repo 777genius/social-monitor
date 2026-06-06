@@ -15,9 +15,11 @@ import { InMemoryDigestSourceReader } from '../../adapters/source/in-memory-dige
 import { ApplyDeliverySuppressionUseCase } from '../../features/apply-delivery-suppression/apply-delivery-suppression.use-case';
 import { AssembleDigestUseCase } from '../../features/assemble-digest/assemble-digest.use-case';
 import { CreateWebhookEndpointUseCase } from '../../features/create-webhook-endpoint/create-webhook-endpoint.use-case';
+import { DisableWebhookEndpointUseCase } from '../../features/disable-webhook-endpoint/disable-webhook-endpoint.use-case';
 import { GetDeliveryAttemptUseCase } from '../../features/get-delivery-attempt/get-delivery-attempt.use-case';
 import { GetDigestUseCase } from '../../features/get-digest/get-digest.use-case';
 import { GetWebhookEndpointUseCase } from '../../features/get-webhook-endpoint/get-webhook-endpoint.use-case';
+import { ListWebhookEndpointsUseCase } from '../../features/list-webhook-endpoints/list-webhook-endpoints.use-case';
 import { ListRealtimeEventsUseCase } from '../../features/list-realtime-events/list-realtime-events.use-case';
 import { ProjectSummaryReadyEventUseCase } from '../../features/project-summary-ready-event/project-summary-ready-event.use-case';
 import { QuarantineWebhookEndpointUseCase } from '../../features/quarantine-webhook-endpoint/quarantine-webhook-endpoint.use-case';
@@ -100,6 +102,17 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     {
       provide: GetWebhookEndpointUseCase,
       useFactory: (endpoints: InMemoryWebhookEndpointRepository) => new GetWebhookEndpointUseCase(endpoints),
+      inject: [InMemoryWebhookEndpointRepository],
+    },
+    {
+      provide: ListWebhookEndpointsUseCase,
+      useFactory: (endpoints: InMemoryWebhookEndpointRepository) => new ListWebhookEndpointsUseCase(endpoints),
+      inject: [InMemoryWebhookEndpointRepository],
+    },
+    {
+      provide: DisableWebhookEndpointUseCase,
+      useFactory: (endpoints: InMemoryWebhookEndpointRepository) =>
+        new DisableWebhookEndpointUseCase(endpoints, new SystemClock()),
       inject: [InMemoryWebhookEndpointRepository],
     },
     {
@@ -186,7 +199,9 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     GetDeliveryAttemptUseCase,
     GetDigestUseCase,
     CreateWebhookEndpointUseCase,
+    DisableWebhookEndpointUseCase,
     GetWebhookEndpointUseCase,
+    ListWebhookEndpointsUseCase,
     InMemoryDeliveryAttemptRepository,
     InMemoryDigestScheduleRepository,
     InMemoryDigestRepository,
