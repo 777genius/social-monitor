@@ -1,5 +1,5 @@
 import type { QueueCommandEnvelope } from '@social-monitor/platform-queue';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { DomainError, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { ExecuteScanUseCase } from '../../features/execute-scan/execute-scan.use-case';
 import type { ExecuteScanResult } from '../../features/execute-scan/execute-scan.result';
@@ -50,8 +50,8 @@ export class ExecuteScanCommandHandler {
 }
 
 const parsePayload = (payload: Readonly<Record<string, unknown>>): ExecuteScanQueuePayload => ({
-  tenantId: readString(payload, 'tenantId'),
-  workspaceId: readString(payload, 'workspaceId'),
+  tenantId: readTenantScopeString(payload, 'tenantId'),
+  workspaceId: readTenantScopeString(payload, 'workspaceId'),
   scanJobId: readString(payload, 'scanJobId'),
   sourceBindingId: readString(payload, 'sourceBindingId'),
   scanPolicyId: readString(payload, 'scanPolicyId'),
@@ -66,6 +66,16 @@ const readString = (payload: Readonly<Record<string, unknown>>, field: string): 
 
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error(`Invalid execute scan command payload field: ${field}`);
+  }
+
+  return value;
+};
+
+const readTenantScopeString = (payload: Readonly<Record<string, unknown>>, field: string): string => {
+  const value = payload[field];
+
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new DomainError('tenant.scope_missing', `${field} command payload field is required`);
   }
 
   return value;
