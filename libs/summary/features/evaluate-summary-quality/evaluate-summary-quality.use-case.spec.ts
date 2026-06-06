@@ -66,6 +66,11 @@ class SafeEvalModel implements SummaryModelPort {
           sourceHighlights: [],
           citationMap: [],
           qualityFlags: ['no_signal'],
+          confidence: {
+            level: 'none',
+            score: 0,
+            rationale: 'No evidence was selected for this topic window.',
+          },
           lineage,
           usage,
           noSignalReason: 'No eligible evidence items selected for this topic.',
@@ -90,6 +95,11 @@ class SafeEvalModel implements SummaryModelPort {
           },
         ],
         qualityFlags: ['limited_sources'],
+        confidence: {
+          level: 'low',
+          score: 0.35,
+          rationale: 'Only one eval fixture item supports this summary.',
+        },
         lineage,
         usage,
       },

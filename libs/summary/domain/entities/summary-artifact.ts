@@ -46,6 +46,12 @@ export type SummaryUsage = {
   readonly estimatedCostUsd: number;
 };
 
+export type SummaryConfidence = {
+  readonly level: 'none' | 'low' | 'medium' | 'high';
+  readonly score: number;
+  readonly rationale: string;
+};
+
 export type SummaryArtifactProps = {
   readonly schemaVersion: 'summary.artifact.v1';
   readonly summaryId: string;
@@ -60,6 +66,7 @@ export type SummaryArtifactProps = {
   readonly sourceHighlights: readonly string[];
   readonly citationMap: readonly SummaryCitation[];
   readonly qualityFlags: readonly SummaryQualityFlag[];
+  readonly confidence: SummaryConfidence;
   readonly lineage: SummaryLineage;
   readonly usage: SummaryUsage;
   readonly noSignalReason?: string;
@@ -105,6 +112,18 @@ export class SummaryArtifact {
 
     if (props.usage.inputTokens < 0 || props.usage.outputTokens < 0 || props.usage.estimatedCostUsd < 0) {
       throw new Error('Summary usage values must be non-negative');
+    }
+
+    if (props.confidence.score < 0 || props.confidence.score > 1) {
+      throw new Error('Summary confidence score must be between 0 and 1');
+    }
+
+    if (props.confidence.level === 'none' && !props.qualityFlags.includes('no_signal')) {
+      throw new Error('No-confidence summary must include no_signal quality flag');
+    }
+
+    if (props.confidence.rationale.trim().length === 0) {
+      throw new Error('Summary confidence rationale must be non-empty');
     }
 
     return new SummaryArtifact(props);

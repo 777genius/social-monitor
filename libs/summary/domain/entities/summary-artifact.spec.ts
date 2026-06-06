@@ -33,6 +33,11 @@ const baseArtifact = (overrides: Partial<SummaryArtifactProps> = {}): SummaryArt
     },
   ],
   qualityFlags: [],
+  confidence: {
+    level: 'medium',
+    score: 0.6,
+    rationale: 'Summary has direct citations to selected evidence.',
+  },
   lineage: {
     promptVersion: 'prompt-v1',
     schemaVersion: 'summary.artifact.v1',
@@ -77,10 +82,25 @@ describe('SummaryArtifact', () => {
     expect(SummaryArtifact.create(baseArtifact({
       keyPoints: [],
       qualityFlags: ['no_signal'],
+      confidence: {
+        level: 'none',
+        score: 0,
+        rationale: 'No evidence was selected for this topic window.',
+      },
       noSignalReason: 'No relevant items in the selected window.',
     })).toSnapshot()).toMatchObject({
       qualityFlags: ['no_signal'],
       noSignalReason: 'No relevant items in the selected window.',
     });
+  });
+
+  it('rejects confidence outside the normalized score range', () => {
+    expect(() => SummaryArtifact.create(baseArtifact({
+      confidence: {
+        level: 'high',
+        score: 1.5,
+        rationale: 'Invalid score.',
+      },
+    }))).toThrow('Summary confidence score must be between 0 and 1');
   });
 });

@@ -79,6 +79,11 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
           sourceHighlights: [],
           citationMap: [],
           qualityFlags: ['no_signal', 'limited_sources'],
+          confidence: {
+            level: 'none',
+            score: 0,
+            rationale: 'No evidence was selected for the summary window.',
+          },
           lineage,
           usage,
           noSignalReason: 'No eligible evidence items selected for this topic.',
@@ -114,6 +119,11 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
         sourceHighlights: input.evidence.items.map((item) => item.title),
         citationMap,
         qualityFlags: input.evidence.items.length < 3 ? ['limited_sources'] : [],
+        confidence: {
+          level: input.evidence.items.length < 3 ? 'low' : 'medium',
+          score: input.evidence.items.length < 3 ? 0.35 : 0.6,
+          rationale: 'Confidence is derived from the number of selected evidence items in this MVP adapter.',
+        },
         lineage,
         usage,
       },

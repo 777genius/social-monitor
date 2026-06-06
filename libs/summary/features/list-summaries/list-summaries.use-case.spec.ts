@@ -100,6 +100,11 @@ const createSummary = (params: {
     sourceHighlights: [],
     citationMap: [],
     qualityFlags: ['no_signal'],
+    confidence: {
+      level: 'none',
+      score: 0,
+      rationale: 'No evidence was selected for this topic window.',
+    },
     lineage: {
       promptVersion: 'summary.prompt.test.v1',
       schemaVersion: 'summary.artifact.v1',

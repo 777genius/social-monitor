@@ -77,6 +77,10 @@ describe('Summary job execution flow (e2e)', () => {
       workspaceId: workspace,
       topicId: 'topic-summary-exec-e2e',
       qualityFlags: ['no_signal', 'limited_sources'],
+      confidence: {
+        level: 'none',
+        score: 0,
+      },
       noSignalReason: 'No eligible evidence items selected for this topic.',
     });
   });

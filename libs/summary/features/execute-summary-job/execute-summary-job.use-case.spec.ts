@@ -2,6 +2,8 @@ import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-mon
 
 import { SummaryJob, type SummaryArtifact } from '../../domain';
 import type {
+  ListSummaryArtifactsQuery,
+  ListSummaryArtifactsResult,
   ProviderSummaryAttempt,
   SummaryArtifactRepositoryPort,
   SummaryEvidenceSelection,
@@ -51,6 +53,17 @@ class FakeSummaryArtifacts implements SummaryArtifactRepositoryPort {
   async save(artifact: SummaryArtifact): Promise<void> {
     const snapshot = artifact.toSnapshot();
     this.artifacts.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.summaryId}`, artifact);
+  }
+
+  async list(query: ListSummaryArtifactsQuery): Promise<ListSummaryArtifactsResult> {
+    return {
+      items: [...this.artifacts.values()].filter((artifact) => {
+        const snapshot = artifact.toSnapshot();
+
+        return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId;
+      }),
+      nextCursor: undefined,
+    };
   }
 
   async findById(
@@ -117,6 +130,11 @@ class NoSignalSummaryModel implements SummaryModelPort {
         sourceHighlights: [],
         citationMap: [],
         qualityFlags: ['no_signal'],
+        confidence: {
+          level: 'none',
+          score: 0,
+          rationale: 'No evidence was selected for this topic window.',
+        },
         lineage: {
           promptVersion: route.promptVersion,
           schemaVersion: route.schemaVersion,

@@ -63,6 +63,11 @@ describe('Summary read model (e2e)', () => {
       workspaceId: workspace,
       topicId,
       qualityFlags: ['no_signal', 'limited_sources'],
+      confidence: {
+        level: 'none',
+        score: 0,
+        rationale: 'No evidence was selected for the summary window.',
+      },
       noSignalReason: 'No eligible evidence items selected for this topic.',
     });
     expect(detail.body.sourceWindow.startedAt).toEqual(expect.any(String));
