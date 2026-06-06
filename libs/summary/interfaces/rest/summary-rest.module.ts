@@ -10,6 +10,7 @@ import { ExecuteSummaryJobUseCase } from '../../features/execute-summary-job/exe
 import { GetSummaryJobStatusUseCase } from '../../features/get-summary-job-status/get-summary-job-status.use-case';
 import { GetSummaryUseCase } from '../../features/get-summary/get-summary.use-case';
 import { ListSummariesUseCase } from '../../features/list-summaries/list-summaries.use-case';
+import { RegenerateSummaryUseCase } from '../../features/regenerate-summary/regenerate-summary.use-case';
 import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
 import { SummaryJobController } from './summary-job.controller';
 import { SummaryRequestController } from './summary-request.controller';
@@ -75,6 +76,20 @@ import { SummaryController } from './summary.controller';
       useFactory: (summaryJobs: InMemorySummaryJobRepository) => new GetSummaryJobStatusUseCase(summaryJobs),
       inject: [InMemorySummaryJobRepository],
     },
+    {
+      provide: RegenerateSummaryUseCase,
+      useFactory: (
+        summaryArtifacts: InMemorySummaryArtifactRepository,
+        summaryJobs: InMemorySummaryJobRepository,
+      ) =>
+        new RegenerateSummaryUseCase(
+          summaryArtifacts,
+          summaryJobs,
+          new CryptoIdGenerator(),
+          new SystemClock(),
+        ),
+      inject: [InMemorySummaryArtifactRepository, InMemorySummaryJobRepository],
+    },
   ],
   exports: [
     EvaluateSummaryQualityUseCase,
@@ -82,6 +97,7 @@ import { SummaryController } from './summary.controller';
     GetSummaryJobStatusUseCase,
     InMemorySummaryArtifactRepository,
     InMemorySummaryJobRepository,
+    RegenerateSummaryUseCase,
   ],
 })
 export class SummaryRestModule {}

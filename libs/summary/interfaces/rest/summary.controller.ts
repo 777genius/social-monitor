@@ -1,9 +1,11 @@
-import { Controller, Get, Headers, Param, Query } from '@nestjs/common';
+import { Controller, Get, Headers, Param, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { GetSummaryUseCase } from '../../features/get-summary/get-summary.use-case';
 import { ListSummariesUseCase } from '../../features/list-summaries/list-summaries.use-case';
+import { RegenerateSummaryUseCase } from '../../features/regenerate-summary/regenerate-summary.use-case';
+import type { RegenerateSummaryResponseDto } from './regenerate-summary.dto';
 import type { ListSummariesResponseDto, SummaryResponseDto } from './summary.dto';
 
 @ApiTags('summaries')
@@ -12,6 +14,7 @@ export class SummaryController {
   constructor(
     private readonly listSummaries: ListSummariesUseCase,
     private readonly getSummary: GetSummaryUseCase,
+    private readonly regenerateSummary: RegenerateSummaryUseCase,
   ) {}
 
   @Get()
@@ -56,6 +59,33 @@ export class SummaryController {
       tenantId: tenantId(tenantHeader),
       workspaceId: workspaceId(workspaceHeader),
       summaryId,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
+
+  @Post(':summaryId/regenerations')
+  @ApiOperation({ summary: 'Request regeneration for an existing summary.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({ name: 'idempotency-key', required: true })
+  async regenerate(
+    @Param('summaryId') summaryId: string,
+    @Headers('x-tenant-id') tenantHeader: string,
+    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('idempotency-key') idempotencyKey: string,
+    @Headers('x-request-id') requestId: string | undefined,
+  ): Promise<RegenerateSummaryResponseDto> {
+    const result = await this.regenerateSummary.execute({
+      tenantId: tenantId(tenantHeader),
+      workspaceId: workspaceId(workspaceHeader),
+      summaryId,
+      idempotencyKey,
+      correlationId: requestId ?? crypto.randomUUID(),
     });
 
     if (!result.ok) {
