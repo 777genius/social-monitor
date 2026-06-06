@@ -5,6 +5,7 @@ import { EmptySummaryEvidenceSelector } from '../../adapters/evidence/empty-summ
 import { DeterministicSummaryModelAdapter } from '../../adapters/model/deterministic-summary-model.adapter';
 import { InMemorySummaryArtifactRepository } from '../../adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryJobRepository } from '../../adapters/persistence/in-memory-summary-job.repository';
+import { EvaluateSummaryQualityUseCase } from '../../features/evaluate-summary-quality/evaluate-summary-quality.use-case';
 import { ExecuteSummaryJobUseCase } from '../../features/execute-summary-job/execute-summary-job.use-case';
 import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
 import { SummaryRequestController } from './summary-request.controller';
@@ -49,7 +50,17 @@ import { SummaryRequestController } from './summary-request.controller';
         DeterministicSummaryModelAdapter,
       ],
     },
+    {
+      provide: EvaluateSummaryQualityUseCase,
+      useFactory: (summaryModel: DeterministicSummaryModelAdapter) => new EvaluateSummaryQualityUseCase(summaryModel),
+      inject: [DeterministicSummaryModelAdapter],
+    },
   ],
-  exports: [ExecuteSummaryJobUseCase, InMemorySummaryArtifactRepository, InMemorySummaryJobRepository],
+  exports: [
+    EvaluateSummaryQualityUseCase,
+    ExecuteSummaryJobUseCase,
+    InMemorySummaryArtifactRepository,
+    InMemorySummaryJobRepository,
+  ],
 })
 export class SummaryRestModule {}
