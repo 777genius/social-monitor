@@ -6,12 +6,16 @@ import { InMemoryDeliveryAttemptRepository } from '../../adapters/persistence/in
 import { InMemoryDigestScheduleRepository } from '../../adapters/persistence/in-memory-digest-schedule.repository';
 import { InMemoryDigestRepository } from '../../adapters/persistence/in-memory-digest.repository';
 import { InMemoryRealtimeEventRepository } from '../../adapters/persistence/in-memory-realtime-event.repository';
+import { InMemoryWebhookEndpointRepository } from '../../adapters/persistence/in-memory-webhook-endpoint.repository';
 import { InMemoryNotificationPreferenceReader } from '../../adapters/preferences/in-memory-notification-preference.reader';
+import { InMemoryWebhookSecretVault } from '../../adapters/secrets/in-memory-webhook-secret.vault';
 import { InMemoryDigestSourceReader } from '../../adapters/source/in-memory-digest-source.reader';
 import { ApplyDeliverySuppressionUseCase } from '../../features/apply-delivery-suppression/apply-delivery-suppression.use-case';
 import { AssembleDigestUseCase } from '../../features/assemble-digest/assemble-digest.use-case';
+import { CreateWebhookEndpointUseCase } from '../../features/create-webhook-endpoint/create-webhook-endpoint.use-case';
 import { GetDeliveryAttemptUseCase } from '../../features/get-delivery-attempt/get-delivery-attempt.use-case';
 import { GetDigestUseCase } from '../../features/get-digest/get-digest.use-case';
+import { GetWebhookEndpointUseCase } from '../../features/get-webhook-endpoint/get-webhook-endpoint.use-case';
 import { ListRealtimeEventsUseCase } from '../../features/list-realtime-events/list-realtime-events.use-case';
 import { ProjectSummaryReadyEventUseCase } from '../../features/project-summary-ready-event/project-summary-ready-event.use-case';
 import { QueueDeliveryAttemptUseCase } from '../../features/queue-delivery-attempt/queue-delivery-attempt.use-case';
@@ -20,14 +24,16 @@ import { RecordRealtimeEventUseCase } from '../../features/record-realtime-event
 import { RetryDeliveryAttemptUseCase } from '../../features/retry-delivery-attempt/retry-delivery-attempt.use-case';
 import { ScheduleDueDigestsUseCase } from '../../features/schedule-due-digests/schedule-due-digests.use-case';
 import { SendDeliveryAttemptUseCase } from '../../features/send-delivery-attempt/send-delivery-attempt.use-case';
+import { SignWebhookPayloadUseCase } from '../../features/sign-webhook-payload/sign-webhook-payload.use-case';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
 import { DigestsController } from './digests.controller';
 import { RealtimeEventsController } from './realtime-events.controller';
+import { WebhookEndpointsController } from './webhook-endpoints.controller';
 
 export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
 
 @Module({
-  controllers: [DeliveryAttemptsController, DigestsController, RealtimeEventsController],
+  controllers: [DeliveryAttemptsController, DigestsController, RealtimeEventsController, WebhookEndpointsController],
   providers: [
     InMemoryDeliveryAttemptRepository,
     InMemoryDigestScheduleRepository,
@@ -35,6 +41,8 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     InMemoryDigestSourceReader,
     InMemoryNotificationPreferenceReader,
     InMemoryRealtimeEventRepository,
+    InMemoryWebhookEndpointRepository,
+    InMemoryWebhookSecretVault,
     {
       provide: DELIVERY_PROVIDERS,
       useFactory: () => [
@@ -74,6 +82,27 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       provide: GetDigestUseCase,
       useFactory: (digests: InMemoryDigestRepository) => new GetDigestUseCase(digests),
       inject: [InMemoryDigestRepository],
+    },
+    {
+      provide: CreateWebhookEndpointUseCase,
+      useFactory: (
+        endpoints: InMemoryWebhookEndpointRepository,
+        secrets: InMemoryWebhookSecretVault,
+      ) => new CreateWebhookEndpointUseCase(endpoints, secrets, new CryptoIdGenerator(), new SystemClock()),
+      inject: [InMemoryWebhookEndpointRepository, InMemoryWebhookSecretVault],
+    },
+    {
+      provide: GetWebhookEndpointUseCase,
+      useFactory: (endpoints: InMemoryWebhookEndpointRepository) => new GetWebhookEndpointUseCase(endpoints),
+      inject: [InMemoryWebhookEndpointRepository],
+    },
+    {
+      provide: SignWebhookPayloadUseCase,
+      useFactory: (
+        endpoints: InMemoryWebhookEndpointRepository,
+        secrets: InMemoryWebhookSecretVault,
+      ) => new SignWebhookPayloadUseCase(endpoints, secrets),
+      inject: [InMemoryWebhookEndpointRepository, InMemoryWebhookSecretVault],
     },
     {
       provide: ApplyDeliverySuppressionUseCase,
@@ -135,12 +164,16 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     AssembleDigestUseCase,
     GetDeliveryAttemptUseCase,
     GetDigestUseCase,
+    CreateWebhookEndpointUseCase,
+    GetWebhookEndpointUseCase,
     InMemoryDeliveryAttemptRepository,
     InMemoryDigestScheduleRepository,
     InMemoryDigestRepository,
     InMemoryDigestSourceReader,
     InMemoryNotificationPreferenceReader,
     InMemoryRealtimeEventRepository,
+    InMemoryWebhookEndpointRepository,
+    InMemoryWebhookSecretVault,
     ListRealtimeEventsUseCase,
     ProjectSummaryReadyEventUseCase,
     QueueDeliveryAttemptUseCase,
@@ -149,6 +182,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     RetryDeliveryAttemptUseCase,
     ScheduleDueDigestsUseCase,
     SendDeliveryAttemptUseCase,
+    SignWebhookPayloadUseCase,
     DELIVERY_PROVIDERS,
   ],
 })
