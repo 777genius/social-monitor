@@ -11,6 +11,26 @@ export class InMemoryScanPolicyRepository implements ScanPolicyRepositoryPort {
     this.policies.set(this.key(snapshot.tenantId, snapshot.workspaceId, snapshot.sourceBindingId), policy);
   }
 
+  async findDue(params: {
+    tenantId?: TenantId;
+    workspaceId?: WorkspaceId;
+    now: Date;
+    limit: number;
+  }): Promise<readonly ScanPolicy[]> {
+    return [...this.policies.values()]
+      .filter((policy) => {
+        const snapshot = policy.toSnapshot();
+
+        return (
+          (params.tenantId === undefined || snapshot.tenantId === params.tenantId) &&
+          (params.workspaceId === undefined || snapshot.workspaceId === params.workspaceId) &&
+          snapshot.nextRunAt.getTime() <= params.now.getTime()
+        );
+      })
+      .sort((left, right) => left.toSnapshot().nextRunAt.getTime() - right.toSnapshot().nextRunAt.getTime())
+      .slice(0, params.limit);
+  }
+
   async findBySourceBinding(params: {
     tenantId: TenantId;
     workspaceId: WorkspaceId;

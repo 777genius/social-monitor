@@ -13,6 +13,7 @@ import { FakeSourceCatalogAdapter } from '../../adapters/source-catalog/fake-sou
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
 import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
+import { ScheduleDueScansUseCase } from '../../features/schedule-due-scans/schedule-due-scans.use-case';
 import { SetScanPolicyUseCase } from '../../features/set-scan-policy/set-scan-policy.use-case';
 import { ScanPolicyController } from './scan-policy.controller';
 import { ScanRequestController } from './scan-request.controller';
@@ -129,6 +130,30 @@ import { TopicController } from './topic.controller';
         InMemoryIdempotencyAdapter,
       ],
     },
+    {
+      provide: ScheduleDueScansUseCase,
+      useFactory: (
+        bindings: InMemorySourceBindingRepository,
+        scanPolicies: InMemoryScanPolicyRepository,
+        scanJobs: InMemoryScanJobRepository,
+        scanQueue: InMemoryScanQueueAdapter,
+      ) =>
+        new ScheduleDueScansUseCase(
+          bindings,
+          scanPolicies,
+          scanJobs,
+          scanQueue,
+          new CryptoIdGenerator(),
+          new SystemClock(),
+        ),
+      inject: [
+        InMemorySourceBindingRepository,
+        InMemoryScanPolicyRepository,
+        InMemoryScanJobRepository,
+        InMemoryScanQueueAdapter,
+      ],
+    },
   ],
+  exports: [ScheduleDueScansUseCase],
 })
 export class MonitoringRestModule {}

@@ -4,6 +4,11 @@ import type { ScanJob } from '../domain';
 
 export interface ScanJobRepositoryPort {
   save(job: ScanJob): Promise<void>;
+  findById(params: {
+    tenantId: TenantId;
+    workspaceId: WorkspaceId;
+    scanJobId: string;
+  }): Promise<ScanJob | null>;
   findByIdempotencyKey(params: {
     tenantId: TenantId;
     workspaceId: WorkspaceId;

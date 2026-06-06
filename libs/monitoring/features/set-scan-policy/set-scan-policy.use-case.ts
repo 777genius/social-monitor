@@ -82,6 +82,7 @@ export class SetScanPolicyUseCase {
       intervalSeconds: command.intervalSeconds,
       freshnessSeconds: command.freshnessSeconds,
       retryBudget: command.retryBudget,
+      nextRunAt: this.clock.now(),
       createdAt: this.clock.now(),
     });
     const snapshot = policy.toSnapshot();

@@ -8,6 +8,7 @@ export type ScanPolicyProps = {
   readonly intervalSeconds: number;
   readonly freshnessSeconds: number;
   readonly retryBudget: number;
+  readonly nextRunAt: Date;
   readonly createdAt: Date;
 };
 
@@ -28,6 +29,17 @@ export class ScanPolicy {
     }
 
     return new ScanPolicy(props);
+  }
+
+  scheduleNext(params: { readonly nextRunAt: Date }): ScanPolicy {
+    if (params.nextRunAt.getTime() <= this.props.nextRunAt.getTime()) {
+      throw new Error('Next scan run must move forward');
+    }
+
+    return new ScanPolicy({
+      ...this.props,
+      nextRunAt: params.nextRunAt,
+    });
   }
 
   toSnapshot(): ScanPolicyProps {

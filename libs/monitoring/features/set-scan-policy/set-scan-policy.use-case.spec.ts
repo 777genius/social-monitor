@@ -49,6 +49,10 @@ class FakeScanPolicies implements ScanPolicyRepositoryPort {
     this.policies.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.sourceBindingId}`, policy);
   }
 
+  async findDue(): Promise<readonly ScanPolicy[]> {
+    return [];
+  }
+
   async findBySourceBinding(
     params: Parameters<ScanPolicyRepositoryPort['findBySourceBinding']>[0],
   ): Promise<ScanPolicy | null> {

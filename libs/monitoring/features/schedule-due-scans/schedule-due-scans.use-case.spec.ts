@@ -2,21 +2,18 @@ import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-mon
 
 import { ScanPolicy, SourceBinding, type ScanJob } from '../../domain';
 import type {
-  IdempotencyPort,
-  OutboxPort,
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
   ScanQueuePort,
   SourceBindingRepositoryPort,
 } from '../../ports';
-import type { RequestScanResult } from './request-scan.result';
-import { RequestScanUseCase } from './request-scan.use-case';
+import { ScheduleDueScansUseCase } from './schedule-due-scans.use-case';
 
 class SequenceIdGenerator implements IdGenerator {
   private nextId = 1;
 
   generate(): string {
-    const id = `00000000-0000-7000-8000-${this.nextId.toString().padStart(12, '0')}`;
+    const id = `scan-job-${this.nextId}`;
     this.nextId += 1;
     return id;
   }
@@ -55,8 +52,18 @@ class FakeScanPolicies implements ScanPolicyRepositoryPort {
     this.add(policy);
   }
 
-  async findDue(): Promise<readonly ScanPolicy[]> {
-    return [];
+  async findDue(params: Parameters<ScanPolicyRepositoryPort['findDue']>[0]): Promise<readonly ScanPolicy[]> {
+    return [...this.policies.values()]
+      .filter((policy) => {
+        const snapshot = policy.toSnapshot();
+
+        return (
+          (params.tenantId === undefined || snapshot.tenantId === params.tenantId) &&
+          (params.workspaceId === undefined || snapshot.workspaceId === params.workspaceId) &&
+          snapshot.nextRunAt.getTime() <= params.now.getTime()
+        );
+      })
+      .slice(0, params.limit);
   }
 
   async findBySourceBinding(
@@ -67,13 +74,13 @@ class FakeScanPolicies implements ScanPolicyRepositoryPort {
 }
 
 class FakeScanJobs implements ScanJobRepositoryPort {
-  private readonly jobs = new Map<string, ScanJob>();
   private readonly jobsById = new Map<string, ScanJob>();
+  private readonly jobsByIdempotencyKey = new Map<string, ScanJob>();
 
   async save(job: ScanJob): Promise<void> {
     const snapshot = job.toSnapshot();
     this.jobsById.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, job);
-    this.jobs.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.idempotencyKey}`, job);
+    this.jobsByIdempotencyKey.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.idempotencyKey}`, job);
   }
 
   async findById(params: Parameters<ScanJobRepositoryPort['findById']>[0]): Promise<ScanJob | null> {
@@ -83,15 +90,7 @@ class FakeScanJobs implements ScanJobRepositoryPort {
   async findByIdempotencyKey(
     params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0],
   ): Promise<ScanJob | null> {
-    return this.jobs.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
-  }
-}
-
-class FakeOutbox implements OutboxPort {
-  readonly events: unknown[] = [];
-
-  async append(event: Parameters<OutboxPort['append']>[0]): Promise<void> {
-    this.events.push(event);
+    return this.jobsByIdempotencyKey.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
   }
 }
 
@@ -100,23 +99,6 @@ class FakeScanQueue implements ScanQueuePort {
 
   async enqueue(command: Parameters<ScanQueuePort['enqueue']>[0]): Promise<void> {
     this.commands.push(command);
-  }
-}
-
-class FakeIdempotency implements IdempotencyPort {
-  private readonly records = new Map<string, RequestScanResult>();
-
-  async get<TValue>(params: Parameters<IdempotencyPort['get']>[0]) {
-    const value = this.records.get(this.key(params));
-    return value === undefined ? null : { value: value as TValue };
-  }
-
-  async set<TValue>(params: Parameters<IdempotencyPort['set']>[0] & { value: TValue }): Promise<void> {
-    this.records.set(this.key(params), params.value as RequestScanResult);
-  }
-
-  private key(params: { tenantId: string; workspaceId: string; scope: string; key: string }): string {
-    return `${params.tenantId}:${params.workspaceId}:${params.scope}:${params.key}`;
   }
 }
 
@@ -141,63 +123,104 @@ const makePolicy = () =>
     intervalSeconds: 300,
     freshnessSeconds: 900,
     retryBudget: 3,
-    nextRunAt: new Date('2026-06-05T00:00:00.000Z'),
+    nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
     createdAt: new Date('2026-06-05T00:00:00.000Z'),
   });
 
-describe('RequestScanUseCase', () => {
-  it('requests scan for source binding with scan policy and appends an event', async () => {
+describe('ScheduleDueScansUseCase', () => {
+  it('enqueues due scan policy and advances next run', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding());
     const policies = new FakeScanPolicies();
     policies.add(makePolicy());
-    const outbox = new FakeOutbox();
     const queue = new FakeScanQueue();
-    const useCase = new RequestScanUseCase(
+    const useCase = new ScheduleDueScansUseCase(
       bindings,
       policies,
       new FakeScanJobs(),
       queue,
-      outbox,
-      new FakeIdempotency(),
       new SequenceIdGenerator(),
-      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
 
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      idempotencyKey: 'scan-1',
-      correlationId: 'correlation-1',
+      limit: 10,
+      correlationId: 'scheduler-tick-1',
     });
 
-    expect(result.ok).toBe(true);
-    expect(result.ok && result.value.created).toBe(true);
-    expect(outbox.events).toHaveLength(1);
-    expect(queue.commands).toHaveLength(1);
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 1,
+        skipped: 0,
+      },
+    });
+    expect(queue.commands).toEqual([
+      expect.objectContaining({
+        scanJobId: 'scan-job-1',
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        causationId: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
+      }),
+    ]);
+    expect((await policies.findBySourceBinding({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+    }))?.toSnapshot()).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
+    });
   });
 
-  it('rejects request when scan policy is missing', async () => {
+  it('does not enqueue a policy before next run is due', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding());
-    const useCase = new RequestScanUseCase(
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
       bindings,
+      policies,
+      new FakeScanJobs(),
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T11:59:59.000Z')),
+    );
+
+    const result = await useCase.execute({
+      limit: 10,
+      correlationId: 'scheduler-tick-before-due',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T11:59:59.000Z'),
+        evaluated: 0,
+        enqueued: 0,
+        skipped: 0,
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+  });
+
+  it('rejects unsafe scheduler batch size', async () => {
+    const useCase = new ScheduleDueScansUseCase(
+      new FakeSourceBindings(),
       new FakeScanPolicies(),
       new FakeScanJobs(),
       new FakeScanQueue(),
-      new FakeOutbox(),
-      new FakeIdempotency(),
       new SequenceIdGenerator(),
-      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
 
     const result = await useCase.execute({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      idempotencyKey: 'scan-1',
-      correlationId: 'correlation-1',
+      limit: 0,
+      correlationId: 'scheduler-tick-invalid',
     });
 
     expect(result.ok).toBe(false);
