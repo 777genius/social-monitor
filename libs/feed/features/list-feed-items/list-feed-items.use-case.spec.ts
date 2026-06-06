@@ -77,4 +77,35 @@ describe('ListFeedItemsUseCase', () => {
 
     expect(result.ok).toBe(false);
   });
+
+  it('rejects oversized search query', async () => {
+    const useCase = new ListFeedItemsUseCase(new FakeFeedItemReadRepository({ items: [] }));
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 20,
+      searchQuery: 'x'.repeat(201),
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('passes search query to read repository', async () => {
+    const repository = new FakeFeedItemReadRepository({ items: [] });
+    const useCase = new ListFeedItemsUseCase(repository);
+
+    await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 20,
+      searchQuery: 'open source',
+    });
+
+    expect(repository.queries).toEqual([
+      expect.objectContaining({
+        searchQuery: 'open source',
+      }),
+    ]);
+  });
 });

@@ -21,7 +21,11 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
       .filter((item) => {
         const snapshot = item.toSnapshot();
 
-        return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId;
+        return (
+          snapshot.tenantId === query.tenantId &&
+          snapshot.workspaceId === query.workspaceId &&
+          matchesSearch(item, query.searchQuery)
+        );
       })
       .sort(compareFeedItems);
     const items = allItems.slice(offset, offset + query.limit);
@@ -45,6 +49,32 @@ const compareFeedItems = (left: FeedItem, right: FeedItem): number => {
 
   return rightSnapshot.id.localeCompare(leftSnapshot.id);
 };
+
+const matchesSearch = (item: FeedItem, searchQuery: string | undefined): boolean => {
+  if (searchQuery === undefined) {
+    return true;
+  }
+
+  const normalizedQuery = normalizeSearchText(searchQuery);
+
+  if (normalizedQuery.length === 0) {
+    return true;
+  }
+
+  const snapshot = item.toSnapshot();
+  const haystack = normalizeSearchText([
+    snapshot.title,
+    snapshot.bodyPreview,
+    snapshot.canonicalUrl,
+    snapshot.authorHandle ?? '',
+  ].join(' '));
+
+  return normalizedQuery
+    .split(/\s+/u)
+    .every((term) => haystack.includes(term));
+};
+
+const normalizeSearchText = (value: string): string => value.trim().toLocaleLowerCase('en-US');
 
 const encodeCursor = (offset: number): string => Buffer.from(JSON.stringify({ offset })).toString('base64url');
 

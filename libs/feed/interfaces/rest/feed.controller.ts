@@ -16,17 +16,20 @@ export class FeedController {
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
+  @ApiQuery({ name: 'q', required: false, type: String })
   async list(
     @Headers('x-tenant-id') tenantHeader: string,
     @Headers('x-workspace-id') workspaceHeader: string,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
+    @Query('q') searchQuery: string | undefined,
   ): Promise<ListFeedItemsResponseDto> {
     const result = await this.listFeedItems.execute({
       tenantId: tenantId(tenantHeader),
       workspaceId: workspaceId(workspaceHeader),
       limit: parseLimit(limitQuery),
       cursor,
+      searchQuery: normalizeSearchQuery(searchQuery),
     });
 
     if (!result.ok) {
@@ -45,4 +48,14 @@ const parseLimit = (value: string | undefined): number => {
   const parsed = Number(value);
 
   return Number.isInteger(parsed) ? parsed : Number.NaN;
+};
+
+const normalizeSearchQuery = (value: string | undefined): string | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed.length === 0 ? undefined : trimmed;
 };

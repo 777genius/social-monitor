@@ -7,6 +7,7 @@ import type { ListFeedItemsUseCaseResult } from './list-feed-items.result';
 type ListFeedItemsFailure = DomainError | Error;
 
 const MAX_LIMIT = 100;
+const MAX_SEARCH_QUERY_LENGTH = 200;
 
 export class ListFeedItemsUseCase {
   constructor(private readonly feedItems: FeedItemReadRepositoryPort) {}
@@ -17,6 +18,12 @@ export class ListFeedItemsUseCase {
     if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > MAX_LIMIT) {
       return err(new DomainError('validation.failed', 'Feed page limit must be between 1 and 100', {
         limit: query.limit,
+      }));
+    }
+
+    if (query.searchQuery !== undefined && query.searchQuery.trim().length > MAX_SEARCH_QUERY_LENGTH) {
+      return err(new DomainError('validation.failed', 'Feed search query is too long', {
+        maxLength: MAX_SEARCH_QUERY_LENGTH,
       }));
     }
 

@@ -5,4 +5,5 @@ export type ListFeedItemsUseCaseQuery = {
   readonly workspaceId: WorkspaceId;
   readonly limit: number;
   readonly cursor?: string;
+  readonly searchQuery?: string;
 };
