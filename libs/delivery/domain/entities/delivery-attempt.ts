@@ -109,7 +109,7 @@ export class DeliveryAttempt {
     });
   }
 
-  fail(params: { readonly failedAt: Date; readonly failureReason: string }): DeliveryAttempt {
+  fail(params: { readonly failedAt: Date; readonly failureReason: string; readonly retryable?: boolean }): DeliveryAttempt {
     this.assertState(['sending'], 'Delivery attempt can only fail from sending state');
 
     if (params.failureReason.trim().length === 0) {
@@ -117,7 +117,7 @@ export class DeliveryAttempt {
     }
 
     const retryCount = this.props.retryCount + 1;
-    const retryable = retryCount <= this.props.maxRetries;
+    const retryable = (params.retryable ?? true) && retryCount <= this.props.maxRetries;
 
     return new DeliveryAttempt({
       ...this.props,

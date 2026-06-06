@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
+import { InMemoryDeliveryProvider } from '../../adapters/notification/in-memory-delivery.provider';
 import { InMemoryDeliveryAttemptRepository } from '../../adapters/persistence/in-memory-delivery-attempt.repository';
 import { InMemoryDigestRepository } from '../../adapters/persistence/in-memory-digest.repository';
 import { InMemoryRealtimeEventRepository } from '../../adapters/persistence/in-memory-realtime-event.repository';
@@ -14,9 +15,12 @@ import { ProjectSummaryReadyEventUseCase } from '../../features/project-summary-
 import { QueueDeliveryAttemptUseCase } from '../../features/queue-delivery-attempt/queue-delivery-attempt.use-case';
 import { RecordDeliveryAttemptStateUseCase } from '../../features/record-delivery-attempt-state/record-delivery-attempt-state.use-case';
 import { RecordRealtimeEventUseCase } from '../../features/record-realtime-event/record-realtime-event.use-case';
+import { SendDeliveryAttemptUseCase } from '../../features/send-delivery-attempt/send-delivery-attempt.use-case';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
 import { DigestsController } from './digests.controller';
 import { RealtimeEventsController } from './realtime-events.controller';
+
+const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
 
 @Module({
   controllers: [DeliveryAttemptsController, DigestsController, RealtimeEventsController],
@@ -25,6 +29,14 @@ import { RealtimeEventsController } from './realtime-events.controller';
     InMemoryDigestRepository,
     InMemoryDigestSourceReader,
     InMemoryRealtimeEventRepository,
+    {
+      provide: DELIVERY_PROVIDERS,
+      useFactory: () => [
+        new InMemoryDeliveryProvider('in_app'),
+        new InMemoryDeliveryProvider('email'),
+        new InMemoryDeliveryProvider('webhook'),
+      ],
+    },
     {
       provide: QueueDeliveryAttemptUseCase,
       useFactory: (attempts: InMemoryDeliveryAttemptRepository) =>
@@ -70,6 +82,14 @@ import { RealtimeEventsController } from './realtime-events.controller';
       inject: [InMemoryDeliveryAttemptRepository],
     },
     {
+      provide: SendDeliveryAttemptUseCase,
+      useFactory: (
+        attempts: InMemoryDeliveryAttemptRepository,
+        providers: readonly InMemoryDeliveryProvider[],
+      ) => new SendDeliveryAttemptUseCase(attempts, providers, new SystemClock()),
+      inject: [InMemoryDeliveryAttemptRepository, DELIVERY_PROVIDERS],
+    },
+    {
       provide: RecordRealtimeEventUseCase,
       useFactory: (events: InMemoryRealtimeEventRepository) =>
         new RecordRealtimeEventUseCase(events, new CryptoIdGenerator(), new SystemClock()),
@@ -101,6 +121,7 @@ import { RealtimeEventsController } from './realtime-events.controller';
     QueueDeliveryAttemptUseCase,
     RecordDeliveryAttemptStateUseCase,
     RecordRealtimeEventUseCase,
+    SendDeliveryAttemptUseCase,
   ],
 })
 export class DeliveryRestModule {}
