@@ -133,7 +133,28 @@ describe('Feed items list (e2e)', () => {
       .get('/feed/items/feed-3')
       .set('x-tenant-id', 'tenant-feed-e2e')
       .set('x-workspace-id', 'workspace-feed-e2e')
-      .expect(500);
+      .expect(404)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          status: 404,
+          code: 'resource.not_found',
+          detail: 'Feed item not found',
+        });
+      });
+
+    await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 0 })
+      .set('x-tenant-id', 'tenant-feed-e2e')
+      .set('x-workspace-id', 'workspace-feed-e2e')
+      .expect(400)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          status: 400,
+          code: 'validation.failed',
+          detail: 'Feed page limit must be between 1 and 100',
+        });
+      });
   });
 
   it('dedupes tenant feed items by normalized canonical URL', async () => {
