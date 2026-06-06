@@ -1,6 +1,6 @@
 import { Controller, Get, Headers, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { ListRealtimeEventsUseCase } from '../../features/list-realtime-events/list-realtime-events.use-case';
 import type { ListRealtimeEventsResponseDto } from './realtime-events.dto';
@@ -18,15 +18,19 @@ export class RealtimeEventsController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
   async list(
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Query('channel') channel: string,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
   ): Promise<ListRealtimeEventsResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const result = await this.listRealtimeEvents.execute({
-      tenantId: tenantId(tenantHeader),
-      workspaceId: workspaceId(workspaceHeader),
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
       channel,
       limit: parseLimit(limitQuery),
       cursor,

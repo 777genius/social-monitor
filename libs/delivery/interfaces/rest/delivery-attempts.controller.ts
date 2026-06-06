@@ -1,6 +1,6 @@
 import { Controller, Get, Headers, Param } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { GetDeliveryAttemptUseCase } from '../../features/get-delivery-attempt/get-delivery-attempt.use-case';
 import type { GetDeliveryAttemptResponseDto } from './delivery-attempts.dto';
@@ -16,12 +16,16 @@ export class DeliveryAttemptsController {
   @ApiHeader({ name: 'x-workspace-id', required: true })
   async get(
     @Param('deliveryAttemptId') deliveryAttemptId: string,
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
   ): Promise<GetDeliveryAttemptResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const result = await this.getDeliveryAttempt.execute({
-      tenantId: tenantId(tenantHeader),
-      workspaceId: workspaceId(workspaceHeader),
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
       deliveryAttemptId,
     });
 
