@@ -69,3 +69,4 @@ Make the MVP reliable enough for beta users: security, observability, CI/CD, res
 - Required queue adapter pattern: reject missing tenant/workspace payload with controlled `tenant.scope_missing` before invoking use cases.
 - Confirmed no direct `tenantId(tenantHeader)` or `workspaceId(workspaceHeader)` conversions remain in `libs` or `apps`.
 - Verification used: `npm run check:architecture`, `npm run build`, targeted e2e specs, targeted ESLint and `git diff --check`.
+- PR 2 redaction foundation started in commit `5fb7aef`: structured logging redacts secret-like field names and generated/Bearer/URL-password secret-like values.

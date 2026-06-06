@@ -50,6 +50,23 @@ Evidence notes:
 - Missing tenant/workspace ingestion queue payload fields produce controlled `tenant.scope_missing` before worker use case invocation.
 - No direct `tenantId(tenantHeader)` or `workspaceId(workspaceHeader)` conversions remain in current `libs`/`apps` scan.
 
+## PR 2 Secret Redaction Evidence
+
+- `5fb7aef feat: redact structured log secrets`
+
+Verified commands:
+
+- `npm run check:architecture`
+- `npm run build`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest libs/platform/logging/src/structured-logger.spec.ts --runInBand`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx eslint libs/platform/logging/src/structured-logger.ts libs/platform/logging/src/structured-logger.spec.ts`
+- `git diff --check`
+
+Evidence notes:
+
+- Structured logs redact secret-like field names such as `authorization`, `apiKey`, `refreshToken` and `webhookSecret`.
+- Structured logs redact secret-like values such as `Bearer ...`, generated `smk_...`, generated `whsec_...` and URLs containing embedded passwords.
+
 ## Review Evidence
 - Cross-functional hardening review is approved.
 - Support owner confirms runbooks.
