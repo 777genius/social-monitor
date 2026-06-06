@@ -1,6 +1,6 @@
 import { Controller, Get, Headers, Param, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { GetSummaryUseCase } from '../../features/get-summary/get-summary.use-case';
 import { ListSummariesUseCase } from '../../features/list-summaries/list-summaries.use-case';
@@ -25,15 +25,19 @@ export class SummaryController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
   async list(
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Query('topicId') topicId: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
   ): Promise<ListSummariesResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const result = await this.listSummaries.execute({
-      tenantId: tenantId(tenantHeader),
-      workspaceId: workspaceId(workspaceHeader),
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
       topicId: normalizeTopicId(topicId),
       limit: parseLimit(limitQuery),
       cursor,
@@ -52,12 +56,16 @@ export class SummaryController {
   @ApiHeader({ name: 'x-workspace-id', required: true })
   async get(
     @Param('summaryId') summaryId: string,
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
   ): Promise<SummaryResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const result = await this.getSummary.execute({
-      tenantId: tenantId(tenantHeader),
-      workspaceId: workspaceId(workspaceHeader),
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
       summaryId,
     });
 
@@ -75,14 +83,18 @@ export class SummaryController {
   @ApiHeader({ name: 'idempotency-key', required: true })
   async regenerate(
     @Param('summaryId') summaryId: string,
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
   ): Promise<RegenerateSummaryResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const result = await this.regenerateSummary.execute({
-      tenantId: tenantId(tenantHeader),
-      workspaceId: workspaceId(workspaceHeader),
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
       summaryId,
       idempotencyKey,
       correlationId: requestId ?? crypto.randomUUID(),

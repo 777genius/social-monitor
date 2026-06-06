@@ -1,6 +1,6 @@
 import { Controller, Headers, Param, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
 import type { RequestSummaryResponseDto } from './request-summary.dto';
@@ -17,14 +17,18 @@ export class SummaryRequestController {
   @ApiHeader({ name: 'idempotency-key', required: true })
   async create(
     @Param('topicId') topicId: string,
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
   ): Promise<RequestSummaryResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const result = await this.requestSummary.execute({
-      tenantId: tenantId(tenantHeader),
-      workspaceId: workspaceId(workspaceHeader),
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
       topicId,
       idempotencyKey,
       correlationId: requestId ?? crypto.randomUUID(),
