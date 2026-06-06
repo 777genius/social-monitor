@@ -1,6 +1,6 @@
 import { Controller, Get, Headers, Param, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { GetFeedItemUseCase } from '../../features/get-feed-item/get-feed-item.use-case';
 import { ListFeedItemsUseCase } from '../../features/list-feed-items/list-feed-items.use-case';
@@ -22,15 +22,19 @@ export class FeedController {
   @ApiQuery({ name: 'cursor', required: false, type: String })
   @ApiQuery({ name: 'q', required: false, type: String })
   async list(
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
     @Query('q') searchQuery: string | undefined,
   ): Promise<ListFeedItemsResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const result = await this.listFeedItems.execute({
-      tenantId: tenantId(tenantHeader),
-      workspaceId: workspaceId(workspaceHeader),
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
       limit: parseLimit(limitQuery),
       cursor,
       searchQuery: normalizeSearchQuery(searchQuery),
@@ -49,12 +53,16 @@ export class FeedController {
   @ApiHeader({ name: 'x-workspace-id', required: true })
   async get(
     @Param('feedItemId') feedItemId: string,
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
   ): Promise<GetFeedItemResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const result = await this.getFeedItem.execute({
-      tenantId: tenantId(tenantHeader),
-      workspaceId: workspaceId(workspaceHeader),
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
       feedItemId,
     });
 
