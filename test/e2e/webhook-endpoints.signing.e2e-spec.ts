@@ -34,10 +34,20 @@ describe('Webhook endpoint signing (e2e)', () => {
   it('creates endpoint with show-once secret, hides it on read and signs outbound payload', async () => {
     const tenant = tenantId('tenant-webhook-e2e');
     const workspace = workspaceId('workspace-webhook-e2e');
+    const apiKey = await request(app.getHttpServer())
+      .post('/identity/api-keys')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .send({
+        name: 'Webhook endpoint writer',
+        scopes: ['write:webhook_endpoints'],
+      })
+      .expect(201);
     const created = await request(app.getHttpServer())
       .post('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${apiKey.body.secret}`)
       .send({
         url: 'https://example.com/webhooks/social-monitor',
         eventTypes: ['digest.ready.v1'],

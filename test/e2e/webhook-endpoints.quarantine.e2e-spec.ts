@@ -33,10 +33,20 @@ describe('Webhook endpoint quarantine (e2e)', () => {
   it('quarantines failing endpoint and blocks new outbound signing', async () => {
     const tenant = tenantId('tenant-webhook-quarantine-e2e');
     const workspace = workspaceId('workspace-webhook-quarantine-e2e');
+    const apiKey = await request(app.getHttpServer())
+      .post('/identity/api-keys')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .send({
+        name: 'Webhook endpoint writer',
+        scopes: ['write:webhook_endpoints'],
+      })
+      .expect(201);
     const created = await request(app.getHttpServer())
       .post('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${apiKey.body.secret}`)
       .send({
         url: 'https://example.com/webhooks/social-monitor',
         eventTypes: ['digest.ready.v1'],

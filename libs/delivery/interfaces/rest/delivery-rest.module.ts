@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { InMemoryDeliveryProvider } from '../../adapters/notification/in-memory-delivery.provider';
@@ -36,6 +37,7 @@ import { WebhookEndpointsController } from './webhook-endpoints.controller';
 export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
 
 @Module({
+  imports: [IdentityRestModule],
   controllers: [DeliveryAttemptsController, DigestsController, RealtimeEventsController, WebhookEndpointsController],
   providers: [
     InMemoryDeliveryAttemptRepository,
