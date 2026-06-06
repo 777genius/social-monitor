@@ -12,16 +12,24 @@ import { InMemoryScanQueueAdapter } from '../../adapters/queue/in-memory-scan-qu
 import { FakeSourceCatalogAdapter } from '../../adapters/source-catalog/fake-source-catalog.adapter';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
+import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
 import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
 import { ScheduleDueScansUseCase } from '../../features/schedule-due-scans/schedule-due-scans.use-case';
 import { SetScanPolicyUseCase } from '../../features/set-scan-policy/set-scan-policy.use-case';
 import { ScanPolicyController } from './scan-policy.controller';
 import { ScanRequestController } from './scan-request.controller';
+import { ScanStatusController } from './scan-status.controller';
 import { SourceBindingController } from './source-binding.controller';
 import { TopicController } from './topic.controller';
 
 @Module({
-  controllers: [TopicController, SourceBindingController, ScanPolicyController, ScanRequestController],
+  controllers: [
+    TopicController,
+    SourceBindingController,
+    ScanPolicyController,
+    ScanRequestController,
+    ScanStatusController,
+  ],
   providers: [
     InMemoryTopicRepository,
     InMemorySourceBindingRepository,
@@ -153,7 +161,12 @@ import { TopicController } from './topic.controller';
         InMemoryScanQueueAdapter,
       ],
     },
+    {
+      provide: GetScanStatusUseCase,
+      useFactory: (scanJobs: InMemoryScanJobRepository) => new GetScanStatusUseCase(scanJobs),
+      inject: [InMemoryScanJobRepository],
+    },
   ],
-  exports: [ScheduleDueScansUseCase],
+  exports: [ScheduleDueScansUseCase, GetScanStatusUseCase],
 })
 export class MonitoringRestModule {}

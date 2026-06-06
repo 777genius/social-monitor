@@ -85,6 +85,7 @@ export class ScheduleDueScansUseCase {
           correlationId: command.correlationId,
           causationId: idempotencyKey,
         });
+        await this.scanJobs.save(job.markEnqueued({ enqueuedAt: now }));
         enqueued += 1;
       } else {
         skipped += 1;

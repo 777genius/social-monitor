@@ -89,7 +89,11 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       skipped: 0,
     });
     expect(queue.all()).toHaveLength(1);
-    expect(queue.all()[0]).toMatchObject({
+    const queuedCommand = queue.all()[0];
+    if (queuedCommand === undefined) {
+      throw new Error('Expected scheduled scan command to be enqueued');
+    }
+    expect(queuedCommand).toMatchObject({
       commandId: expect.any(String),
       commandType: 'ingestion.scan.execute',
       correlationId: 'scheduler-tick-e2e',
@@ -99,6 +103,21 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
         sourceBindingId: binding.body.sourceBindingId,
         scanPolicyId: policy.body.scanPolicyId,
       },
+    });
+
+    const status = await request(app.getHttpServer())
+      .get(`/scan-requests/${queuedCommand.commandId}/status`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .expect(200);
+
+    expect(status.body).toEqual({
+      scanJobId: queuedCommand.commandId,
+      sourceBindingId: binding.body.sourceBindingId,
+      scanPolicyId: policy.body.scanPolicyId,
+      status: 'enqueued',
+      requestedAt: expect.any(String),
+      enqueuedAt: expect.any(String),
     });
   });
 });

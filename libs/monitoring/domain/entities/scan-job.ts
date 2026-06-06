@@ -1,6 +1,6 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
-export type ScanJobStatus = 'requested';
+export type ScanJobStatus = 'requested' | 'enqueued';
 
 export type ScanJobProps = {
   readonly id: string;
@@ -11,6 +11,7 @@ export type ScanJobProps = {
   readonly status: ScanJobStatus;
   readonly idempotencyKey: string;
   readonly requestedAt: Date;
+  readonly enqueuedAt?: Date;
 };
 
 export class ScanJob {
@@ -28,6 +29,22 @@ export class ScanJob {
     return new ScanJob({
       ...props,
       status: 'requested',
+    });
+  }
+
+  markEnqueued(params: { readonly enqueuedAt: Date }): ScanJob {
+    if (this.props.status !== 'requested') {
+      throw new Error('Only requested scan jobs can be enqueued');
+    }
+
+    if (params.enqueuedAt.getTime() < this.props.requestedAt.getTime()) {
+      throw new Error('Scan job enqueue time cannot be before request time');
+    }
+
+    return new ScanJob({
+      ...this.props,
+      status: 'enqueued',
+      enqueuedAt: params.enqueuedAt,
     });
   }
 

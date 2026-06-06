@@ -85,6 +85,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
 
     expect(scan.body).toEqual({
       scanJobId: expect.any(String),
+      status: 'enqueued',
       created: true,
     });
     expect(queue.all()).toHaveLength(1);

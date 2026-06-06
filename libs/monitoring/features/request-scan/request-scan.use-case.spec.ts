@@ -174,6 +174,7 @@ describe('RequestScanUseCase', () => {
 
     expect(result.ok).toBe(true);
     expect(result.ok && result.value.created).toBe(true);
+    expect(result.ok && result.value.status).toBe('enqueued');
     expect(outbox.events).toHaveLength(1);
     expect(queue.commands).toHaveLength(1);
   });

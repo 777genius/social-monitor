@@ -81,6 +81,7 @@ describe('Request scan flow (e2e)', () => {
 
     expect(first.body).toEqual({
       scanJobId: expect.any(String),
+      status: 'enqueued',
       created: true,
     });
     expect(queue.all()).toHaveLength(1);
@@ -102,6 +103,7 @@ describe('Request scan flow (e2e)', () => {
 
     expect(second.body).toEqual({
       scanJobId: first.body.scanJobId,
+      status: 'enqueued',
       created: false,
     });
     expect(queue.all()).toHaveLength(1);

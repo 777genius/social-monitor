@@ -54,7 +54,7 @@ export class RequestScanUseCase {
     });
     if (existingJob) {
       const snapshot = existingJob.toSnapshot();
-      const result = { scanJobId: snapshot.id, created: false };
+      const result = { scanJobId: snapshot.id, status: snapshot.status, created: false };
       await this.cacheResult(command, result);
       return ok(result);
     }
@@ -120,8 +120,10 @@ export class RequestScanUseCase {
       correlationId: command.correlationId,
       causationId: command.idempotencyKey,
     });
+    const enqueuedJob = job.markEnqueued({ enqueuedAt: this.clock.now() });
+    await this.scanJobs.save(enqueuedJob);
 
-    const result = { scanJobId: snapshot.id, created: true };
+    const result = { scanJobId: snapshot.id, status: enqueuedJob.toSnapshot().status, created: true };
     await this.cacheResult(command, result);
     return ok(result);
   }
