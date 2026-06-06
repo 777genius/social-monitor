@@ -68,6 +68,7 @@ describe('Summary read model (e2e)', () => {
         score: 0,
         rationale: 'No evidence was selected for the summary window.',
       },
+      citations: [],
       noSignalReason: 'No eligible evidence items selected for this topic.',
     });
     expect(detail.body.sourceWindow.startedAt).toEqual(expect.any(String));
