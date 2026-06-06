@@ -19,6 +19,7 @@ import { GetDigestUseCase } from '../../features/get-digest/get-digest.use-case'
 import { GetWebhookEndpointUseCase } from '../../features/get-webhook-endpoint/get-webhook-endpoint.use-case';
 import { ListRealtimeEventsUseCase } from '../../features/list-realtime-events/list-realtime-events.use-case';
 import { ProjectSummaryReadyEventUseCase } from '../../features/project-summary-ready-event/project-summary-ready-event.use-case';
+import { QuarantineWebhookEndpointUseCase } from '../../features/quarantine-webhook-endpoint/quarantine-webhook-endpoint.use-case';
 import { QueueDeliveryAttemptUseCase } from '../../features/queue-delivery-attempt/queue-delivery-attempt.use-case';
 import { RecordDeliveryAttemptStateUseCase } from '../../features/record-delivery-attempt-state/record-delivery-attempt-state.use-case';
 import { RecordRealtimeEventUseCase } from '../../features/record-realtime-event/record-realtime-event.use-case';
@@ -108,6 +109,12 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       inject: [InMemoryWebhookEndpointRepository, InMemoryWebhookSecretVault],
     },
     {
+      provide: QuarantineWebhookEndpointUseCase,
+      useFactory: (endpoints: InMemoryWebhookEndpointRepository) =>
+        new QuarantineWebhookEndpointUseCase(endpoints, new SystemClock()),
+      inject: [InMemoryWebhookEndpointRepository],
+    },
+    {
       provide: VerifyWebhookSignatureUseCase,
       useFactory: (
         endpoints: InMemoryWebhookEndpointRepository,
@@ -189,6 +196,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     InMemoryWebhookSecretVault,
     ListRealtimeEventsUseCase,
     ProjectSummaryReadyEventUseCase,
+    QuarantineWebhookEndpointUseCase,
     QueueDeliveryAttemptUseCase,
     RecordDeliveryAttemptStateUseCase,
     RecordRealtimeEventUseCase,

@@ -12,6 +12,8 @@ export type WebhookEndpointProps = {
   readonly secretKeyId: string;
   readonly secretPreview: string;
   readonly createdAt: Date;
+  readonly quarantinedAt?: Date;
+  readonly quarantineReason?: string;
 };
 
 export class WebhookEndpoint {
@@ -42,6 +44,19 @@ export class WebhookEndpoint {
 
   toSnapshot(): WebhookEndpointProps {
     return { ...this.props };
+  }
+
+  quarantine(params: { readonly quarantinedAt: Date; readonly reason: string }): WebhookEndpoint {
+    if (params.reason.trim().length === 0) {
+      throw new Error('Webhook endpoint quarantine reason must be non-empty');
+    }
+
+    return new WebhookEndpoint({
+      ...this.props,
+      status: 'quarantined',
+      quarantinedAt: params.quarantinedAt,
+      quarantineReason: params.reason,
+    });
   }
 }
 

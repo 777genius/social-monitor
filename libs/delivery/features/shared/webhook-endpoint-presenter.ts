@@ -1,7 +1,8 @@
 import type { WebhookEndpoint, WebhookEndpointProps } from '../../domain';
 
-export type WebhookEndpointView = Omit<WebhookEndpointProps, 'createdAt'> & {
+export type WebhookEndpointView = Omit<WebhookEndpointProps, 'createdAt' | 'quarantinedAt'> & {
   readonly createdAt: string;
+  readonly quarantinedAt?: string;
 };
 
 export const presentWebhookEndpoint = (endpoint: WebhookEndpoint): WebhookEndpointView => {
@@ -10,5 +11,6 @@ export const presentWebhookEndpoint = (endpoint: WebhookEndpoint): WebhookEndpoi
   return {
     ...snapshot,
     createdAt: snapshot.createdAt.toISOString(),
+    quarantinedAt: snapshot.quarantinedAt?.toISOString(),
   };
 };
