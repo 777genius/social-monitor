@@ -6,13 +6,17 @@ import type {
 import type { DeliveryChannel } from '../../domain';
 
 export class InMemoryDeliveryProvider implements DeliveryProviderPort {
-  private nextResult: SendDeliveryResult = { accepted: true };
+  private readonly results: SendDeliveryResult[] = [];
   private readonly sentRequests: SendDeliveryRequest[] = [];
 
   constructor(readonly channel: DeliveryChannel) {}
 
   setNextResult(result: SendDeliveryResult): void {
-    this.nextResult = result;
+    this.results.splice(0, this.results.length, result);
+  }
+
+  enqueueResult(result: SendDeliveryResult): void {
+    this.results.push(result);
   }
 
   getSentRequests(): readonly SendDeliveryRequest[] {
@@ -21,10 +25,7 @@ export class InMemoryDeliveryProvider implements DeliveryProviderPort {
 
   async send(request: SendDeliveryRequest): Promise<SendDeliveryResult> {
     this.sentRequests.push(request);
-    const result = this.nextResult;
 
-    this.nextResult = { accepted: true };
-
-    return result;
+    return this.results.shift() ?? { accepted: true };
   }
 }

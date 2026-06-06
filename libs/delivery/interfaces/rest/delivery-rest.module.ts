@@ -15,12 +15,13 @@ import { ProjectSummaryReadyEventUseCase } from '../../features/project-summary-
 import { QueueDeliveryAttemptUseCase } from '../../features/queue-delivery-attempt/queue-delivery-attempt.use-case';
 import { RecordDeliveryAttemptStateUseCase } from '../../features/record-delivery-attempt-state/record-delivery-attempt-state.use-case';
 import { RecordRealtimeEventUseCase } from '../../features/record-realtime-event/record-realtime-event.use-case';
+import { RetryDeliveryAttemptUseCase } from '../../features/retry-delivery-attempt/retry-delivery-attempt.use-case';
 import { SendDeliveryAttemptUseCase } from '../../features/send-delivery-attempt/send-delivery-attempt.use-case';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
 import { DigestsController } from './digests.controller';
 import { RealtimeEventsController } from './realtime-events.controller';
 
-const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
+export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
 
 @Module({
   controllers: [DeliveryAttemptsController, DigestsController, RealtimeEventsController],
@@ -90,6 +91,14 @@ const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       inject: [InMemoryDeliveryAttemptRepository, DELIVERY_PROVIDERS],
     },
     {
+      provide: RetryDeliveryAttemptUseCase,
+      useFactory: (
+        attempts: InMemoryDeliveryAttemptRepository,
+        sendDeliveryAttempt: SendDeliveryAttemptUseCase,
+      ) => new RetryDeliveryAttemptUseCase(attempts, sendDeliveryAttempt),
+      inject: [InMemoryDeliveryAttemptRepository, SendDeliveryAttemptUseCase],
+    },
+    {
       provide: RecordRealtimeEventUseCase,
       useFactory: (events: InMemoryRealtimeEventRepository) =>
         new RecordRealtimeEventUseCase(events, new CryptoIdGenerator(), new SystemClock()),
@@ -121,7 +130,9 @@ const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     QueueDeliveryAttemptUseCase,
     RecordDeliveryAttemptStateUseCase,
     RecordRealtimeEventUseCase,
+    RetryDeliveryAttemptUseCase,
     SendDeliveryAttemptUseCase,
+    DELIVERY_PROVIDERS,
   ],
 })
 export class DeliveryRestModule {}
