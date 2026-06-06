@@ -7,11 +7,14 @@ import { InMemorySummaryArtifactRepository } from '../../adapters/persistence/in
 import { InMemorySummaryJobRepository } from '../../adapters/persistence/in-memory-summary-job.repository';
 import { EvaluateSummaryQualityUseCase } from '../../features/evaluate-summary-quality/evaluate-summary-quality.use-case';
 import { ExecuteSummaryJobUseCase } from '../../features/execute-summary-job/execute-summary-job.use-case';
+import { GetSummaryUseCase } from '../../features/get-summary/get-summary.use-case';
+import { ListSummariesUseCase } from '../../features/list-summaries/list-summaries.use-case';
 import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
 import { SummaryRequestController } from './summary-request.controller';
+import { SummaryController } from './summary.controller';
 
 @Module({
-  controllers: [SummaryRequestController],
+  controllers: [SummaryController, SummaryRequestController],
   providers: [
     InMemorySummaryJobRepository,
     InMemorySummaryArtifactRepository,
@@ -54,6 +57,16 @@ import { SummaryRequestController } from './summary-request.controller';
       provide: EvaluateSummaryQualityUseCase,
       useFactory: (summaryModel: DeterministicSummaryModelAdapter) => new EvaluateSummaryQualityUseCase(summaryModel),
       inject: [DeterministicSummaryModelAdapter],
+    },
+    {
+      provide: GetSummaryUseCase,
+      useFactory: (summaryArtifacts: InMemorySummaryArtifactRepository) => new GetSummaryUseCase(summaryArtifacts),
+      inject: [InMemorySummaryArtifactRepository],
+    },
+    {
+      provide: ListSummariesUseCase,
+      useFactory: (summaryArtifacts: InMemorySummaryArtifactRepository) => new ListSummariesUseCase(summaryArtifacts),
+      inject: [InMemorySummaryArtifactRepository],
     },
   ],
   exports: [
