@@ -3,6 +3,7 @@ import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { InMemoryDeliveryProvider } from '../../adapters/notification/in-memory-delivery.provider';
 import { InMemoryDeliveryAttemptRepository } from '../../adapters/persistence/in-memory-delivery-attempt.repository';
+import { InMemoryDigestScheduleRepository } from '../../adapters/persistence/in-memory-digest-schedule.repository';
 import { InMemoryDigestRepository } from '../../adapters/persistence/in-memory-digest.repository';
 import { InMemoryRealtimeEventRepository } from '../../adapters/persistence/in-memory-realtime-event.repository';
 import { InMemoryNotificationPreferenceReader } from '../../adapters/preferences/in-memory-notification-preference.reader';
@@ -17,6 +18,7 @@ import { QueueDeliveryAttemptUseCase } from '../../features/queue-delivery-attem
 import { RecordDeliveryAttemptStateUseCase } from '../../features/record-delivery-attempt-state/record-delivery-attempt-state.use-case';
 import { RecordRealtimeEventUseCase } from '../../features/record-realtime-event/record-realtime-event.use-case';
 import { RetryDeliveryAttemptUseCase } from '../../features/retry-delivery-attempt/retry-delivery-attempt.use-case';
+import { ScheduleDueDigestsUseCase } from '../../features/schedule-due-digests/schedule-due-digests.use-case';
 import { SendDeliveryAttemptUseCase } from '../../features/send-delivery-attempt/send-delivery-attempt.use-case';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
 import { DigestsController } from './digests.controller';
@@ -28,6 +30,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
   controllers: [DeliveryAttemptsController, DigestsController, RealtimeEventsController],
   providers: [
     InMemoryDeliveryAttemptRepository,
+    InMemoryDigestScheduleRepository,
     InMemoryDigestRepository,
     InMemoryDigestSourceReader,
     InMemoryNotificationPreferenceReader,
@@ -102,6 +105,14 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       inject: [InMemoryDeliveryAttemptRepository, SendDeliveryAttemptUseCase],
     },
     {
+      provide: ScheduleDueDigestsUseCase,
+      useFactory: (
+        schedules: InMemoryDigestScheduleRepository,
+        assembleDigest: AssembleDigestUseCase,
+      ) => new ScheduleDueDigestsUseCase(schedules, assembleDigest, new SystemClock()),
+      inject: [InMemoryDigestScheduleRepository, AssembleDigestUseCase],
+    },
+    {
       provide: RecordRealtimeEventUseCase,
       useFactory: (events: InMemoryRealtimeEventRepository) =>
         new RecordRealtimeEventUseCase(events, new CryptoIdGenerator(), new SystemClock()),
@@ -125,6 +136,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     GetDeliveryAttemptUseCase,
     GetDigestUseCase,
     InMemoryDeliveryAttemptRepository,
+    InMemoryDigestScheduleRepository,
     InMemoryDigestRepository,
     InMemoryDigestSourceReader,
     InMemoryNotificationPreferenceReader,
@@ -135,6 +147,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     RecordDeliveryAttemptStateUseCase,
     RecordRealtimeEventUseCase,
     RetryDeliveryAttemptUseCase,
+    ScheduleDueDigestsUseCase,
     SendDeliveryAttemptUseCase,
     DELIVERY_PROVIDERS,
   ],
