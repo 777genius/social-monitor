@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Headers, Param, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { CreateApiKeyUseCase } from '../../features/create-api-key/create-api-key.use-case';
 import { ListApiKeysUseCase } from '../../features/list-api-keys/list-api-keys.use-case';
@@ -26,13 +26,17 @@ export class ApiKeysController {
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   async create(
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Body() body: CreateApiKeyRequestDto,
   ): Promise<CreateApiKeyResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const result = await this.createApiKey.execute({
-      tenantId: tenantId(tenantHeader),
-      workspaceId: workspaceId(workspaceHeader),
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
       name: body.name,
       scopes: body.scopes,
     });
@@ -49,14 +53,18 @@ export class ApiKeysController {
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   async list(
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
   ): Promise<ListApiKeysResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const result = await this.listApiKeys.execute({
-      tenantId: tenantId(tenantHeader),
-      workspaceId: workspaceId(workspaceHeader),
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
       limit: limitQuery === undefined ? 50 : Number(limitQuery),
       cursor,
     });
@@ -74,12 +82,16 @@ export class ApiKeysController {
   @ApiHeader({ name: 'x-workspace-id', required: true })
   async revoke(
     @Param('apiKeyId') apiKeyId: string,
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
   ): Promise<RevokeApiKeyResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const result = await this.revokeApiKey.execute({
-      tenantId: tenantId(tenantHeader),
-      workspaceId: workspaceId(workspaceHeader),
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
       apiKeyId,
     });
 
