@@ -8,6 +8,7 @@ import type {
   ListDeliveryAttemptsResult,
   SendDeliveryRequest,
   SendDeliveryResult,
+  NotificationPreferenceReaderPort,
 } from '../../ports';
 import { QueueDeliveryAttemptUseCase } from '../queue-delivery-attempt/queue-delivery-attempt.use-case';
 import { SendDeliveryAttemptUseCase } from './send-delivery-attempt.use-case';
@@ -73,6 +74,14 @@ class FakeDeliveryProvider implements DeliveryProviderPort {
   }
 }
 
+class AllowAllPreferences implements NotificationPreferenceReaderPort {
+  async getDeliveryPreference(): Promise<{ readonly allowed: true }> {
+    return {
+      allowed: true,
+    };
+  }
+}
+
 const queueAttempt = async (params: {
   readonly attempts: DeliveryAttemptRepositoryPort;
   readonly maxRetries: number;
@@ -117,6 +126,7 @@ describe('SendDeliveryAttemptUseCase', () => {
     const result = await new SendDeliveryAttemptUseCase(
       attempts,
       [provider],
+      new AllowAllPreferences(),
       new FixedClock(new Date('2026-06-06T00:01:00.000Z')),
     ).execute({
       tenantId: queued.tenant,
@@ -156,6 +166,7 @@ describe('SendDeliveryAttemptUseCase', () => {
           reason: 'Provider returned 429',
         }),
       ],
+      new AllowAllPreferences(),
       new FixedClock(new Date('2026-06-06T00:01:00.000Z')),
     ).execute({
       tenantId: queued.tenant,

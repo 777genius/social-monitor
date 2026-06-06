@@ -1,7 +1,11 @@
 import { type Clock, DomainError, err, ok, type Result } from '@social-monitor/shared-kernel';
 
 import type { DeliveryAttempt } from '../../domain';
-import type { DeliveryAttemptRepositoryPort, DeliveryProviderPort } from '../../ports';
+import type {
+  DeliveryAttemptRepositoryPort,
+  DeliveryProviderPort,
+  NotificationPreferenceReaderPort,
+} from '../../ports';
 import { presentDeliveryAttempt } from '../shared/delivery-attempt-presenter';
 import type { SendDeliveryAttemptCommand } from './send-delivery-attempt.command';
 import type { SendDeliveryAttemptResult } from './send-delivery-attempt.result';
@@ -12,6 +16,7 @@ export class SendDeliveryAttemptUseCase {
   constructor(
     private readonly deliveryAttempts: DeliveryAttemptRepositoryPort,
     private readonly providers: readonly DeliveryProviderPort[],
+    private readonly preferences: NotificationPreferenceReaderPort,
     private readonly clock: Clock,
   ) {}
 
@@ -32,11 +37,33 @@ export class SendDeliveryAttemptUseCase {
       }));
     }
 
-    const provider = this.providers.find((candidate) => candidate.channel === queuedAttempt.toSnapshot().channel);
+    const queuedSnapshot = queuedAttempt.toSnapshot();
+    const preference = await this.preferences.getDeliveryPreference({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      channel: queuedSnapshot.channel,
+      recipientKey: queuedSnapshot.recipientKey,
+      resourceType: queuedSnapshot.resourceType,
+      resourceId: queuedSnapshot.resourceId,
+    });
+
+    if (!preference.allowed) {
+      const suppressedAttempt = queuedAttempt.suppress({
+        suppressedAt: this.clock.now(),
+        suppressionReason: preference.reason,
+      });
+      await this.deliveryAttempts.save(suppressedAttempt);
+
+      return ok({
+        attempt: presentDeliveryAttempt(suppressedAttempt),
+      });
+    }
+
+    const provider = this.providers.find((candidate) => candidate.channel === queuedSnapshot.channel);
 
     if (provider === undefined) {
       return err(new DomainError('external.dependency_unavailable', 'Delivery provider is not configured', {
-        channel: queuedAttempt.toSnapshot().channel,
+        channel: queuedSnapshot.channel,
       }));
     }
 

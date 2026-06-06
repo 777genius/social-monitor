@@ -95,7 +95,7 @@ export class DeliveryAttempt {
   }
 
   suppress(params: { readonly suppressedAt: Date; readonly suppressionReason: string }): DeliveryAttempt {
-    this.assertState(['queued', 'assembling'], 'Delivery attempt can only be suppressed before sending');
+    this.assertState(['queued', 'assembling', 'failed_retryable'], 'Delivery attempt can only be suppressed before sending');
 
     if (params.suppressionReason.trim().length === 0) {
       throw new Error('Suppressed delivery attempt must include a reason');

@@ -8,6 +8,7 @@ import type {
   ListDeliveryAttemptsResult,
   SendDeliveryRequest,
   SendDeliveryResult,
+  NotificationPreferenceReaderPort,
 } from '../../ports';
 import { QueueDeliveryAttemptUseCase } from '../queue-delivery-attempt/queue-delivery-attempt.use-case';
 import { SendDeliveryAttemptUseCase } from '../send-delivery-attempt/send-delivery-attempt.use-case';
@@ -74,6 +75,14 @@ class QueueingProvider implements DeliveryProviderPort {
   }
 }
 
+class AllowAllPreferences implements NotificationPreferenceReaderPort {
+  async getDeliveryPreference(): Promise<{ readonly allowed: true }> {
+    return {
+      allowed: true,
+    };
+  }
+}
+
 describe('RetryDeliveryAttemptUseCase', () => {
   it('retries retryable failure and marks delivered when provider accepts retry', async () => {
     const tenant = tenantId('tenant-1');
@@ -93,6 +102,7 @@ describe('RetryDeliveryAttemptUseCase', () => {
     const send = new SendDeliveryAttemptUseCase(
       attempts,
       [provider],
+      new AllowAllPreferences(),
       new FixedClock(new Date('2026-06-06T00:01:00.000Z')),
     );
     const queued = await new QueueDeliveryAttemptUseCase(

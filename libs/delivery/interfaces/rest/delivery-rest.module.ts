@@ -5,6 +5,7 @@ import { InMemoryDeliveryProvider } from '../../adapters/notification/in-memory-
 import { InMemoryDeliveryAttemptRepository } from '../../adapters/persistence/in-memory-delivery-attempt.repository';
 import { InMemoryDigestRepository } from '../../adapters/persistence/in-memory-digest.repository';
 import { InMemoryRealtimeEventRepository } from '../../adapters/persistence/in-memory-realtime-event.repository';
+import { InMemoryNotificationPreferenceReader } from '../../adapters/preferences/in-memory-notification-preference.reader';
 import { InMemoryDigestSourceReader } from '../../adapters/source/in-memory-digest-source.reader';
 import { ApplyDeliverySuppressionUseCase } from '../../features/apply-delivery-suppression/apply-delivery-suppression.use-case';
 import { AssembleDigestUseCase } from '../../features/assemble-digest/assemble-digest.use-case';
@@ -29,6 +30,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     InMemoryDeliveryAttemptRepository,
     InMemoryDigestRepository,
     InMemoryDigestSourceReader,
+    InMemoryNotificationPreferenceReader,
     InMemoryRealtimeEventRepository,
     {
       provide: DELIVERY_PROVIDERS,
@@ -87,8 +89,9 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       useFactory: (
         attempts: InMemoryDeliveryAttemptRepository,
         providers: readonly InMemoryDeliveryProvider[],
-      ) => new SendDeliveryAttemptUseCase(attempts, providers, new SystemClock()),
-      inject: [InMemoryDeliveryAttemptRepository, DELIVERY_PROVIDERS],
+        preferences: InMemoryNotificationPreferenceReader,
+      ) => new SendDeliveryAttemptUseCase(attempts, providers, preferences, new SystemClock()),
+      inject: [InMemoryDeliveryAttemptRepository, DELIVERY_PROVIDERS, InMemoryNotificationPreferenceReader],
     },
     {
       provide: RetryDeliveryAttemptUseCase,
@@ -124,6 +127,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     InMemoryDeliveryAttemptRepository,
     InMemoryDigestRepository,
     InMemoryDigestSourceReader,
+    InMemoryNotificationPreferenceReader,
     InMemoryRealtimeEventRepository,
     ListRealtimeEventsUseCase,
     ProjectSummaryReadyEventUseCase,
