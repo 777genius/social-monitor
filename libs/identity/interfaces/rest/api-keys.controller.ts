@@ -1,0 +1,65 @@
+import { Body, Controller, Delete, Headers, Param, Post } from '@nestjs/common';
+import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+
+import { CreateApiKeyUseCase } from '../../features/create-api-key/create-api-key.use-case';
+import { RevokeApiKeyUseCase } from '../../features/revoke-api-key/revoke-api-key.use-case';
+import {
+  CreateApiKeyRequestDto,
+  type CreateApiKeyResponseDto,
+  type RevokeApiKeyResponseDto,
+} from './api-keys.dto';
+
+@ApiTags('api-keys')
+@Controller('identity/api-keys')
+export class ApiKeysController {
+  constructor(
+    private readonly createApiKey: CreateApiKeyUseCase,
+    private readonly revokeApiKey: RevokeApiKeyUseCase,
+  ) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Create tenant/workspace API key and return the raw secret once.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  async create(
+    @Headers('x-tenant-id') tenantHeader: string,
+    @Headers('x-workspace-id') workspaceHeader: string,
+    @Body() body: CreateApiKeyRequestDto,
+  ): Promise<CreateApiKeyResponseDto> {
+    const result = await this.createApiKey.execute({
+      tenantId: tenantId(tenantHeader),
+      workspaceId: workspaceId(workspaceHeader),
+      name: body.name,
+      scopes: body.scopes,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
+
+  @Delete(':apiKeyId')
+  @ApiOperation({ summary: 'Revoke a tenant/workspace API key.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  async revoke(
+    @Param('apiKeyId') apiKeyId: string,
+    @Headers('x-tenant-id') tenantHeader: string,
+    @Headers('x-workspace-id') workspaceHeader: string,
+  ): Promise<RevokeApiKeyResponseDto> {
+    const result = await this.revokeApiKey.execute({
+      tenantId: tenantId(tenantHeader),
+      workspaceId: workspaceId(workspaceHeader),
+      apiKeyId,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
+}
