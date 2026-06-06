@@ -8,6 +8,7 @@ import { InMemoryDigestRepository } from '../../adapters/persistence/in-memory-d
 import { InMemoryRealtimeEventRepository } from '../../adapters/persistence/in-memory-realtime-event.repository';
 import { InMemoryWebhookEndpointRepository } from '../../adapters/persistence/in-memory-webhook-endpoint.repository';
 import { InMemoryNotificationPreferenceReader } from '../../adapters/preferences/in-memory-notification-preference.reader';
+import { InMemoryWebhookReplayStore } from '../../adapters/replay/in-memory-webhook-replay.store';
 import { InMemoryWebhookSecretVault } from '../../adapters/secrets/in-memory-webhook-secret.vault';
 import { InMemoryDigestSourceReader } from '../../adapters/source/in-memory-digest-source.reader';
 import { ApplyDeliverySuppressionUseCase } from '../../features/apply-delivery-suppression/apply-delivery-suppression.use-case';
@@ -25,6 +26,7 @@ import { RetryDeliveryAttemptUseCase } from '../../features/retry-delivery-attem
 import { ScheduleDueDigestsUseCase } from '../../features/schedule-due-digests/schedule-due-digests.use-case';
 import { SendDeliveryAttemptUseCase } from '../../features/send-delivery-attempt/send-delivery-attempt.use-case';
 import { SignWebhookPayloadUseCase } from '../../features/sign-webhook-payload/sign-webhook-payload.use-case';
+import { VerifyWebhookSignatureUseCase } from '../../features/verify-webhook-signature/verify-webhook-signature.use-case';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
 import { DigestsController } from './digests.controller';
 import { RealtimeEventsController } from './realtime-events.controller';
@@ -42,6 +44,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     InMemoryNotificationPreferenceReader,
     InMemoryRealtimeEventRepository,
     InMemoryWebhookEndpointRepository,
+    InMemoryWebhookReplayStore,
     InMemoryWebhookSecretVault,
     {
       provide: DELIVERY_PROVIDERS,
@@ -103,6 +106,15 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
         secrets: InMemoryWebhookSecretVault,
       ) => new SignWebhookPayloadUseCase(endpoints, secrets),
       inject: [InMemoryWebhookEndpointRepository, InMemoryWebhookSecretVault],
+    },
+    {
+      provide: VerifyWebhookSignatureUseCase,
+      useFactory: (
+        endpoints: InMemoryWebhookEndpointRepository,
+        secrets: InMemoryWebhookSecretVault,
+        replayStore: InMemoryWebhookReplayStore,
+      ) => new VerifyWebhookSignatureUseCase(endpoints, secrets, replayStore, new SystemClock()),
+      inject: [InMemoryWebhookEndpointRepository, InMemoryWebhookSecretVault, InMemoryWebhookReplayStore],
     },
     {
       provide: ApplyDeliverySuppressionUseCase,
@@ -173,6 +185,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     InMemoryNotificationPreferenceReader,
     InMemoryRealtimeEventRepository,
     InMemoryWebhookEndpointRepository,
+    InMemoryWebhookReplayStore,
     InMemoryWebhookSecretVault,
     ListRealtimeEventsUseCase,
     ProjectSummaryReadyEventUseCase,
@@ -183,6 +196,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     ScheduleDueDigestsUseCase,
     SendDeliveryAttemptUseCase,
     SignWebhookPayloadUseCase,
+    VerifyWebhookSignatureUseCase,
     DELIVERY_PROVIDERS,
   ],
 })
