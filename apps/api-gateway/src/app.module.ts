@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
+import { DeliveryRestModule } from '@social-monitor/delivery/interfaces/rest/delivery-rest.module';
 import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.module';
 import { IngestionRestModule } from '@social-monitor/ingestion/interfaces/rest/ingestion-rest.module';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
@@ -10,7 +11,7 @@ import { HealthController } from './health.controller';
 import { RequestContextMiddleware } from './request-context.middleware';
 
 @Module({
-  imports: [MonitoringRestModule, FeedRestModule, IngestionRestModule, SummaryRestModule],
+  imports: [MonitoringRestModule, FeedRestModule, IngestionRestModule, SummaryRestModule, DeliveryRestModule],
   controllers: [HealthController],
   providers: [
     {
