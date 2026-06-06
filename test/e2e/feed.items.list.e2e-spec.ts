@@ -116,6 +116,24 @@ describe('Feed items list (e2e)', () => {
     expect(crossTenantSearch.body).toEqual({
       items: [],
     });
+
+    const detail = await request(app.getHttpServer())
+      .get('/feed/items/feed-1')
+      .set('x-tenant-id', 'tenant-feed-e2e')
+      .set('x-workspace-id', 'workspace-feed-e2e')
+      .expect(200);
+
+    expect(detail.body).toEqual(expect.objectContaining({
+      id: 'feed-1',
+      sourceItemId: 'source-1',
+      canonicalUrl: 'https://example.test/feed-1',
+    }));
+
+    await request(app.getHttpServer())
+      .get('/feed/items/feed-3')
+      .set('x-tenant-id', 'tenant-feed-e2e')
+      .set('x-workspace-id', 'workspace-feed-e2e')
+      .expect(500);
   });
 
   const seedFeedItem = (params: {

@@ -13,6 +13,10 @@ class FakeFeedItemReadRepository implements FeedItemReadRepositoryPort {
     this.queries.push(query);
     return this.result;
   }
+
+  async findById(): Promise<FeedItem | null> {
+    return null;
+  }
 }
 
 const makeItem = (id: string) =>

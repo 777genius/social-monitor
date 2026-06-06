@@ -17,4 +17,9 @@ export type ListFeedItemsResult = {
 
 export interface FeedItemReadRepositoryPort {
   list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult>;
+  findById(query: {
+    tenantId: TenantId;
+    workspaceId: WorkspaceId;
+    feedItemId: string;
+  }): Promise<FeedItem | null>;
 }

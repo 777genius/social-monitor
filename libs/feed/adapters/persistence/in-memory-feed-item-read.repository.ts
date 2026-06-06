@@ -3,6 +3,7 @@ import type { FeedItemReadRepositoryPort, ListFeedItemsQuery, ListFeedItemsResul
 
 export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPort {
   private readonly itemsByKey = new Map<string, FeedItem>();
+  private readonly itemsById = new Map<string, FeedItem>();
 
   upsert(item: FeedItem): void {
     const snapshot = item.toSnapshot();
@@ -13,6 +14,11 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
     ].join(':');
 
     this.itemsByKey.set(key, item);
+    this.itemsById.set([
+      snapshot.tenantId,
+      snapshot.workspaceId,
+      snapshot.id,
+    ].join(':'), item);
   }
 
   async list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
@@ -35,6 +41,20 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
       items,
       nextCursor: nextOffset < allItems.length ? encodeCursor(nextOffset) : undefined,
     };
+  }
+
+  async findById(query: {
+    tenantId: string;
+    workspaceId: string;
+    feedItemId: string;
+  }): Promise<FeedItem | null> {
+    const item = this.itemsById.get([
+      query.tenantId,
+      query.workspaceId,
+      query.feedItemId,
+    ].join(':'));
+
+    return item ?? null;
   }
 }
 

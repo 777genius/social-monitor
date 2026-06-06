@@ -1,4 +1,4 @@
-export type FeedItemDto = {
+export type GetFeedItemResult = {
   readonly id: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
@@ -9,10 +9,3 @@ export type FeedItemDto = {
   readonly publishedAt: string;
   readonly observedAt: string;
 };
-
-export type ListFeedItemsResponseDto = {
-  readonly items: readonly FeedItemDto[];
-  readonly nextCursor?: string;
-};
-
-export type GetFeedItemResponseDto = FeedItemDto;

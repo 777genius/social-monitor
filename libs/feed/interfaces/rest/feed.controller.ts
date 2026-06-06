@@ -1,14 +1,18 @@
-import { Controller, Get, Headers, Query } from '@nestjs/common';
+import { Controller, Get, Headers, Param, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
+import { GetFeedItemUseCase } from '../../features/get-feed-item/get-feed-item.use-case';
 import { ListFeedItemsUseCase } from '../../features/list-feed-items/list-feed-items.use-case';
-import type { ListFeedItemsResponseDto } from './list-feed-items.dto';
+import type { GetFeedItemResponseDto, ListFeedItemsResponseDto } from './list-feed-items.dto';
 
 @ApiTags('feed')
 @Controller('feed/items')
 export class FeedController {
-  constructor(private readonly listFeedItems: ListFeedItemsUseCase) {}
+  constructor(
+    private readonly listFeedItems: ListFeedItemsUseCase,
+    private readonly getFeedItem: GetFeedItemUseCase,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List tenant/workspace feed items with cursor pagination.' })
@@ -30,6 +34,28 @@ export class FeedController {
       limit: parseLimit(limitQuery),
       cursor,
       searchQuery: normalizeSearchQuery(searchQuery),
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
+
+  @Get(':feedItemId')
+  @ApiOperation({ summary: 'Get one tenant/workspace feed item by id.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  async get(
+    @Param('feedItemId') feedItemId: string,
+    @Headers('x-tenant-id') tenantHeader: string,
+    @Headers('x-workspace-id') workspaceHeader: string,
+  ): Promise<GetFeedItemResponseDto> {
+    const result = await this.getFeedItem.execute({
+      tenantId: tenantId(tenantHeader),
+      workspaceId: workspaceId(workspaceHeader),
+      feedItemId,
     });
 
     if (!result.ok) {
