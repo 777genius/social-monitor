@@ -1,7 +1,9 @@
+import type { WebhookEventType } from '@social-monitor/contracts/events/webhook-events';
+
 export type SignedWebhookPayload = {
   readonly payloadVersion: 1;
   readonly deliveryId: string;
-  readonly eventType: string;
+  readonly eventType: WebhookEventType;
   readonly occurredAt: string;
   readonly tenantId: string;
   readonly workspaceId: string;

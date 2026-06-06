@@ -1,3 +1,4 @@
+import { isSupportedWebhookEventType } from '@social-monitor/contracts/events/webhook-events';
 import { type Clock, DomainError, type IdGenerator, err, ok, type Result } from '@social-monitor/shared-kernel';
 
 import { WebhookEndpoint } from '../../domain';
@@ -21,6 +22,14 @@ export class CreateWebhookEndpointUseCase {
   ): Promise<Result<CreateWebhookEndpointResult, CreateWebhookEndpointFailure>> {
     if (command.eventTypes.length === 0) {
       return err(new DomainError('validation.failed', 'Webhook endpoint must subscribe to at least one event type'));
+    }
+
+    const unsupportedEventTypes = command.eventTypes.filter((eventType) => !isSupportedWebhookEventType(eventType));
+
+    if (unsupportedEventTypes.length > 0) {
+      return err(new DomainError('validation.failed', 'Webhook endpoint contains unsupported event types', {
+        unsupportedEventTypes,
+      }));
     }
 
     const secretKeyId = `whsec_key_${this.ids.generate()}`;

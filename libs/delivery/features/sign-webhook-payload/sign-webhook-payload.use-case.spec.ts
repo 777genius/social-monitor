@@ -50,6 +50,54 @@ class FakeSecrets implements WebhookSecretVaultPort {
 }
 
 describe('SignWebhookPayloadUseCase', () => {
+  it('rejects event types outside the webhook catalog', async () => {
+    const tenant = tenantId('tenant-1');
+    const workspace = workspaceId('workspace-1');
+    const endpoints = new FakeWebhookEndpoints();
+    const secrets = new FakeSecrets();
+    const created = await new CreateWebhookEndpointUseCase(
+      endpoints,
+      secrets,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      url: 'https://example.com/webhooks/social-monitor',
+      eventTypes: ['digest.ready.v1'],
+    });
+
+    if (!created.ok) {
+      throw created.error;
+    }
+
+    const signed = await new SignWebhookPayloadUseCase(endpoints, secrets).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      webhookEndpointId: created.value.endpoint.id,
+      deliveryId: 'delivery-1',
+      eventType: 'digest.unknown.v1',
+      occurredAt: new Date('2026-06-06T01:00:00.000Z'),
+      resourceType: 'digest',
+      resourceId: 'digest-1',
+      idempotencyKey: 'digest:tenant-1:workspace-1:user-1:window-1:hash-1',
+      correlationId: 'correlation-1',
+      resourceLinks: {
+        digest: '/delivery/digests/digest-1',
+      },
+      summary: {
+        status: 'ready',
+      },
+    });
+
+    expect(signed).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'validation.failed',
+      }),
+    });
+  });
+
   it('signs timestamp, delivery id and raw body with endpoint secret', async () => {
     const tenant = tenantId('tenant-1');
     const workspace = workspaceId('workspace-1');

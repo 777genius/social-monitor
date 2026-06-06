@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 
+import { isSupportedWebhookEventType, WEBHOOK_PAYLOAD_VERSION } from '@social-monitor/contracts/events/webhook-events';
 import { DomainError, err, ok, type Result } from '@social-monitor/shared-kernel';
 
 import type { WebhookEndpointRepositoryPort, WebhookSecretVaultPort } from '../../ports';
@@ -22,6 +23,12 @@ export class SignWebhookPayloadUseCase {
     if (endpoint === null) {
       return err(new DomainError('resource.not_found', 'Webhook endpoint not found', {
         webhookEndpointId: command.webhookEndpointId,
+      }));
+    }
+
+    if (!isSupportedWebhookEventType(command.eventType)) {
+      return err(new DomainError('validation.failed', 'Webhook event type is not supported', {
+        eventType: command.eventType,
       }));
     }
 
@@ -50,7 +57,7 @@ export class SignWebhookPayloadUseCase {
     }
 
     const payload: SignedWebhookPayload = {
-      payloadVersion: 1,
+      payloadVersion: WEBHOOK_PAYLOAD_VERSION,
       deliveryId: command.deliveryId,
       eventType: command.eventType,
       occurredAt: command.occurredAt.toISOString(),
