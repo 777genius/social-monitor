@@ -80,6 +80,23 @@ class FakeScanJobs implements ScanJobRepositoryPort {
     return this.jobsById.get(`${params.tenantId}:${params.workspaceId}:${params.scanJobId}`) ?? null;
   }
 
+  async findActiveBySourceBinding(
+    params: Parameters<ScanJobRepositoryPort['findActiveBySourceBinding']>[0],
+  ): Promise<ScanJob | null> {
+    return (
+      [...this.jobsById.values()].find((job) => {
+        const snapshot = job.toSnapshot();
+
+        return (
+          snapshot.tenantId === params.tenantId &&
+          snapshot.workspaceId === params.workspaceId &&
+          snapshot.sourceBindingId === params.sourceBindingId &&
+          (snapshot.status === 'requested' || snapshot.status === 'enqueued')
+        );
+      }) ?? null
+    );
+  }
+
   async findByIdempotencyKey(
     params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0],
   ): Promise<ScanJob | null> {
@@ -176,6 +193,55 @@ describe('RequestScanUseCase', () => {
     expect(result.ok && result.value.created).toBe(true);
     expect(result.ok && result.value.status).toBe('enqueued');
     expect(outbox.events).toHaveLength(1);
+    expect(queue.commands).toHaveLength(1);
+  });
+
+  it('returns existing active scan job instead of enqueueing overlapping manual scan', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    const queue = new FakeScanQueue();
+    const useCase = new RequestScanUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new FakeOutbox(),
+      new FakeIdempotency(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+    );
+
+    const first = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'manual-scan-1',
+      correlationId: 'correlation-1',
+    });
+    const second = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'manual-scan-2',
+      correlationId: 'correlation-2',
+    });
+
+    if (!first.ok) {
+      throw first.error;
+    }
+
+    expect(first.value.created).toBe(true);
+    expect(second).toEqual({
+      ok: true,
+      value: {
+        scanJobId: first.value.scanJobId,
+        status: 'enqueued',
+        created: false,
+      },
+    });
     expect(queue.commands).toHaveLength(1);
   });
 

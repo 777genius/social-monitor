@@ -107,5 +107,20 @@ describe('Request scan flow (e2e)', () => {
       created: false,
     });
     expect(queue.all()).toHaveLength(1);
+
+    const overlapping = await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-request-id', 'request-scan-overlap')
+      .set('idempotency-key', 'request-scan-overlap')
+      .expect(201);
+
+    expect(overlapping.body).toEqual({
+      scanJobId: first.body.scanJobId,
+      status: 'enqueued',
+      created: false,
+    });
+    expect(queue.all()).toHaveLength(1);
   });
 });

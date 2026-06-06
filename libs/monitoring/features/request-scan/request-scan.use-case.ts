@@ -79,6 +79,18 @@ export class RequestScanUseCase {
       }));
     }
 
+    const activeJob = await this.scanJobs.findActiveBySourceBinding({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      sourceBindingId: command.sourceBindingId,
+    });
+    if (activeJob !== null) {
+      const snapshot = activeJob.toSnapshot();
+      const result = { scanJobId: snapshot.id, status: snapshot.status, created: false };
+      await this.cacheResult(command, result);
+      return ok(result);
+    }
+
     const policySnapshot = policy.toSnapshot();
     const job = ScanJob.request({
       id: this.ids.generate(),

@@ -120,4 +120,75 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       enqueuedAt: expect.any(String),
     });
   });
+
+  it('skips due scheduled scan when manual scan is already active for source binding', async () => {
+    const tenant = 'tenant-scheduled-overlap-e2e';
+    const workspace = 'workspace-scheduled-overlap-e2e';
+    const initialQueueLength = queue.all().length;
+
+    const topic = await request(app.getHttpServer())
+      .post('/topics')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-request-id', 'request-scheduled-overlap-topic')
+      .set('idempotency-key', 'create-scheduled-overlap-topic')
+      .send({
+        name: 'Scheduled Overlap Monitoring',
+        query: 'scheduled overlap monitoring',
+      })
+      .expect(201);
+
+    const binding = await request(app.getHttpServer())
+      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-request-id', 'request-scheduled-overlap-bind')
+      .set('idempotency-key', 'bind-scheduled-overlap-source')
+      .send({
+        providerKey: 'fake-source',
+        config: { query: 'scheduled overlap monitoring' },
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-request-id', 'request-scheduled-overlap-policy')
+      .set('idempotency-key', 'set-scheduled-overlap-policy')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(201);
+
+    const manual = await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-request-id', 'request-scheduled-overlap-manual')
+      .set('idempotency-key', 'request-scheduled-overlap-manual')
+      .expect(201);
+    expect(manual.body).toEqual({
+      scanJobId: expect.any(String),
+      status: 'enqueued',
+      created: true,
+    });
+
+    const result = await scheduler.execute({
+      tenantId: tenantId(tenant),
+      workspaceId: workspaceId(workspace),
+      limit: 10,
+      correlationId: 'scheduler-tick-overlap-e2e',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value).toMatchObject({
+      evaluated: 1,
+      enqueued: 0,
+      skipped: 1,
+    });
+    expect(queue.all()).toHaveLength(initialQueueLength + 1);
+  });
 });

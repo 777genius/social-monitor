@@ -57,6 +57,11 @@ export class ScheduleDueScansUseCase {
         continue;
       }
 
+      const activeJob = await this.scanJobs.findActiveBySourceBinding({
+        tenantId: policySnapshot.tenantId,
+        workspaceId: policySnapshot.workspaceId,
+        sourceBindingId: policySnapshot.sourceBindingId,
+      });
       const idempotencyKey = scheduledIdempotencyKey(policySnapshot.id, policySnapshot.nextRunAt);
       const existingJob = await this.scanJobs.findByIdempotencyKey({
         tenantId: policySnapshot.tenantId,
@@ -64,7 +69,7 @@ export class ScheduleDueScansUseCase {
         idempotencyKey,
       });
 
-      if (existingJob === null) {
+      if (activeJob === null && existingJob === null) {
         const job = ScanJob.request({
           id: this.ids.generate(),
           tenantId: policySnapshot.tenantId,

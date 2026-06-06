@@ -1,6 +1,6 @@
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { ScanPolicy, SourceBinding, type ScanJob } from '../../domain';
+import { ScanJob, ScanPolicy, SourceBinding } from '../../domain';
 import type {
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
@@ -85,6 +85,23 @@ class FakeScanJobs implements ScanJobRepositoryPort {
 
   async findById(params: Parameters<ScanJobRepositoryPort['findById']>[0]): Promise<ScanJob | null> {
     return this.jobsById.get(`${params.tenantId}:${params.workspaceId}:${params.scanJobId}`) ?? null;
+  }
+
+  async findActiveBySourceBinding(
+    params: Parameters<ScanJobRepositoryPort['findActiveBySourceBinding']>[0],
+  ): Promise<ScanJob | null> {
+    return (
+      [...this.jobsById.values()].find((job) => {
+        const snapshot = job.toSnapshot();
+
+        return (
+          snapshot.tenantId === params.tenantId &&
+          snapshot.workspaceId === params.workspaceId &&
+          snapshot.sourceBindingId === params.sourceBindingId &&
+          (snapshot.status === 'requested' || snapshot.status === 'enqueued')
+        );
+      }) ?? null
+    );
   }
 
   async findByIdempotencyKey(
@@ -203,6 +220,52 @@ describe('ScheduleDueScansUseCase', () => {
         evaluated: 0,
         enqueued: 0,
         skipped: 0,
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+  });
+
+  it('skips due policy when source binding already has active scan job', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    await scanJobs.save(ScanJob.request({
+      id: 'active-scan-job',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      scanPolicyId: 'policy-1',
+      idempotencyKey: 'manual-scan-active',
+      requestedAt: new Date('2026-06-05T11:59:00.000Z'),
+    }).markEnqueued({
+      enqueuedAt: new Date('2026-06-05T11:59:01.000Z'),
+    }));
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-active-scan',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 0,
+        skipped: 1,
       },
     });
     expect(queue.commands).toHaveLength(0);
