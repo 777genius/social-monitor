@@ -136,11 +136,55 @@ describe('Feed items list (e2e)', () => {
       .expect(500);
   });
 
+  it('dedupes tenant feed items by normalized canonical URL', async () => {
+    seedFeedItem({
+      id: 'feed-dedupe-1',
+      sourceItemId: 'source-dedupe-1',
+      tenant: 'tenant-feed-dedupe-e2e',
+      workspace: 'workspace-feed-dedupe-e2e',
+      canonicalUrl: 'https://Example.test/articles/story?utm_source=newsletter&b=2&a=1#comments',
+      publishedAt: new Date('2026-06-05T10:00:00.000Z'),
+    });
+    seedFeedItem({
+      id: 'feed-dedupe-2',
+      sourceItemId: 'source-dedupe-2',
+      tenant: 'tenant-feed-dedupe-e2e',
+      workspace: 'workspace-feed-dedupe-e2e',
+      canonicalUrl: 'https://example.test/articles/story?a=1&b=2',
+      publishedAt: new Date('2026-06-05T11:00:00.000Z'),
+    });
+    seedFeedItem({
+      id: 'feed-dedupe-other-tenant',
+      sourceItemId: 'source-dedupe-other-tenant',
+      tenant: 'tenant-feed-dedupe-other',
+      workspace: 'workspace-feed-dedupe-e2e',
+      canonicalUrl: 'https://example.test/articles/story?a=1&b=2',
+      publishedAt: new Date('2026-06-05T12:00:00.000Z'),
+    });
+
+    const response = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 10 })
+      .set('x-tenant-id', 'tenant-feed-dedupe-e2e')
+      .set('x-workspace-id', 'workspace-feed-dedupe-e2e')
+      .expect(200);
+
+    expect(response.body).toEqual({
+      items: [
+        expect.objectContaining({
+          id: 'feed-dedupe-1',
+          canonicalUrl: 'https://Example.test/articles/story?utm_source=newsletter&b=2&a=1#comments',
+        }),
+      ],
+    });
+  });
+
   const seedFeedItem = (params: {
     readonly id: string;
     readonly sourceItemId: string;
     readonly tenant: string;
     readonly workspace: string;
+    readonly canonicalUrl?: string;
     readonly publishedAt: Date;
   }): void => {
     repository.upsert(
@@ -150,7 +194,7 @@ describe('Feed items list (e2e)', () => {
         workspaceId: workspaceId(params.workspace),
         sourceItemId: params.sourceItemId,
         sourceBindingId: 'binding-feed-e2e',
-        canonicalUrl: `https://example.test/${params.id}`,
+        canonicalUrl: params.canonicalUrl ?? `https://example.test/${params.id}`,
         title: `Title ${params.id}`,
         bodyPreview: `Body ${params.id}`,
         authorHandle: 'author',

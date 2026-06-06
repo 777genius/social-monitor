@@ -4,6 +4,7 @@ import type { FeedItemReadRepositoryPort, ListFeedItemsQuery, ListFeedItemsResul
 export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPort {
   private readonly itemsByKey = new Map<string, FeedItem>();
   private readonly itemsById = new Map<string, FeedItem>();
+  private readonly itemsByCanonicalUrl = new Map<string, FeedItem>();
 
   upsert(item: FeedItem): void {
     const snapshot = item.toSnapshot();
@@ -12,6 +13,17 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
       snapshot.workspaceId,
       snapshot.sourceItemId,
     ].join(':');
+    const canonicalKey = [
+      snapshot.tenantId,
+      snapshot.workspaceId,
+      normalizeCanonicalUrl(snapshot.canonicalUrl),
+    ].join(':');
+    const existingCanonicalItem = this.itemsByCanonicalUrl.get(canonicalKey);
+
+    if (existingCanonicalItem !== undefined) {
+      this.itemsByKey.set(key, existingCanonicalItem);
+      return;
+    }
 
     this.itemsByKey.set(key, item);
     this.itemsById.set([
@@ -19,11 +31,12 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
       snapshot.workspaceId,
       snapshot.id,
     ].join(':'), item);
+    this.itemsByCanonicalUrl.set(canonicalKey, item);
   }
 
   async list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
     const offset = parseCursor(query.cursor);
-    const allItems = [...this.itemsByKey.values()]
+    const allItems = [...this.itemsById.values()]
       .filter((item) => {
         const snapshot = item.toSnapshot();
 
@@ -95,6 +108,30 @@ const matchesSearch = (item: FeedItem, searchQuery: string | undefined): boolean
 };
 
 const normalizeSearchText = (value: string): string => value.trim().toLocaleLowerCase('en-US');
+
+const normalizeCanonicalUrl = (value: string): string => {
+  try {
+    const parsed = new URL(value);
+    parsed.hash = '';
+    parsed.hostname = parsed.hostname.toLocaleLowerCase('en-US');
+
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (key.toLocaleLowerCase('en-US').startsWith('utm_') || key === 'fbclid' || key === 'gclid') {
+        parsed.searchParams.delete(key);
+      }
+    }
+
+    parsed.searchParams.sort();
+
+    if (parsed.pathname.length > 1) {
+      parsed.pathname = parsed.pathname.replace(/\/+$/u, '');
+    }
+
+    return parsed.toString();
+  } catch {
+    return value.trim().toLocaleLowerCase('en-US');
+  }
+};
 
 const encodeCursor = (offset: number): string => Buffer.from(JSON.stringify({ offset })).toString('base64url');
 
