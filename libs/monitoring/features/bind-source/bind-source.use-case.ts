@@ -14,6 +14,7 @@ import { SourceBinding, type SourceBindingEnabledEvent } from '../../domain';
 import type {
   IdempotencyPort,
   OutboxPort,
+  SourceBindingConfigProtectorPort,
   SourceBindingRepositoryPort,
   SourceCatalogPort,
   TopicRepositoryPort,
@@ -30,6 +31,7 @@ export class BindSourceUseCase {
     private readonly sourceCatalog: SourceCatalogPort,
     private readonly outbox: OutboxPort,
     private readonly idempotency: IdempotencyPort,
+    private readonly configProtector: SourceBindingConfigProtectorPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
   ) {}
@@ -82,6 +84,7 @@ export class BindSourceUseCase {
       return ok(result);
     }
 
+    const protectedConfig = await this.configProtector.protect(command.config);
     const binding = SourceBinding.create({
       id: this.ids.generate(),
       tenantId: command.tenantId,
@@ -89,7 +92,7 @@ export class BindSourceUseCase {
       topicId: command.topicId,
       providerKey: capability.providerKey,
       capabilityProfileVersion: capability.version,
-      config: command.config,
+      config: protectedConfig,
       createdAt: this.clock.now(),
     });
     const snapshot = binding.toSnapshot();

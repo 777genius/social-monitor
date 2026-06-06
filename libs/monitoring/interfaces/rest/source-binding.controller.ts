@@ -3,7 +3,7 @@ import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
-import { BindSourceRequestDto, type BindSourceResponseDto } from './bind-source.dto';
+import { BindSourceRequestDto, normalizeSourceBindingConfig, type BindSourceResponseDto } from './bind-source.dto';
 
 @ApiTags('source-bindings')
 @Controller('topics/:topicId/source-bindings')
@@ -34,7 +34,7 @@ export class SourceBindingController {
         workspaceId: scope.workspaceId,
         topicId,
         providerKey: body.providerKey,
-        config: body.config,
+        config: normalizeSourceBindingConfig(body.config),
         idempotencyKey,
         correlationId: requestId ?? crypto.randomUUID(),
       })

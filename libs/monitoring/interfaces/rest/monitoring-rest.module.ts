@@ -9,6 +9,7 @@ import { InMemoryScanPolicyRepository } from '../../adapters/persistence/in-memo
 import { InMemorySourceBindingRepository } from '../../adapters/persistence/in-memory-source-binding.repository';
 import { InMemoryTopicRepository } from '../../adapters/persistence/in-memory-topic.repository';
 import { InMemoryScanQueueAdapter } from '../../adapters/queue/in-memory-scan-queue.adapter';
+import { AesGcmSourceBindingConfigProtector } from '../../adapters/security/aes-gcm-source-binding-config-protector';
 import { FakeSourceCatalogAdapter } from '../../adapters/source-catalog/fake-source-catalog.adapter';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
@@ -43,6 +44,10 @@ import { TopicController } from './topic.controller';
       inject: [InMemoryQueuePublisher],
     },
     FakeSourceCatalogAdapter,
+    {
+      provide: AesGcmSourceBindingConfigProtector,
+      useFactory: () => AesGcmSourceBindingConfigProtector.withEphemeralDevelopmentKey(),
+    },
     InMemoryOutboxAdapter,
     InMemoryIdempotencyAdapter,
     {
@@ -69,6 +74,7 @@ import { TopicController } from './topic.controller';
         sourceCatalog: FakeSourceCatalogAdapter,
         outbox: InMemoryOutboxAdapter,
         idempotency: InMemoryIdempotencyAdapter,
+        configProtector: AesGcmSourceBindingConfigProtector,
       ) =>
         new BindSourceUseCase(
           topics,
@@ -76,6 +82,7 @@ import { TopicController } from './topic.controller';
           sourceCatalog,
           outbox,
           idempotency,
+          configProtector,
           new CryptoIdGenerator(),
           new SystemClock(),
         ),
@@ -85,6 +92,7 @@ import { TopicController } from './topic.controller';
         FakeSourceCatalogAdapter,
         InMemoryOutboxAdapter,
         InMemoryIdempotencyAdapter,
+        AesGcmSourceBindingConfigProtector,
       ],
     },
     {

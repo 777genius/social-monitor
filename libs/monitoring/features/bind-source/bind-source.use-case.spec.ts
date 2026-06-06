@@ -4,6 +4,8 @@ import { Topic, type SourceBinding } from '../../domain';
 import type {
   IdempotencyPort,
   OutboxPort,
+  SourceBindingConfig,
+  SourceBindingConfigProtectorPort,
   SourceBindingRepositoryPort,
   SourceCatalogPort,
   SourceCapabilityProfile,
@@ -103,6 +105,22 @@ class FakeIdempotency implements IdempotencyPort {
   }
 }
 
+class FakeConfigProtector implements SourceBindingConfigProtectorPort {
+  readonly configs: SourceBindingConfig[] = [];
+
+  async protect(config: SourceBindingConfig): Promise<SourceBindingConfig> {
+    this.configs.push(config);
+
+    return {
+      ...config,
+      apiToken: {
+        encrypted: true,
+        ciphertext: 'encrypted-token',
+      },
+    };
+  }
+}
+
 const makeTopic = () =>
   Topic.create({
     id: 'topic-1',
@@ -118,9 +136,11 @@ describe('BindSourceUseCase', () => {
     const topics = new FakeTopics();
     topics.add(makeTopic());
     const outbox = new FakeOutbox();
+    const bindings = new FakeBindings();
+    const protector = new FakeConfigProtector();
     const useCase = new BindSourceUseCase(
       topics,
-      new FakeBindings(),
+      bindings,
       new FakeCatalog({
         providerKey: 'fake-source',
         version: 1,
@@ -129,6 +149,7 @@ describe('BindSourceUseCase', () => {
       }),
       outbox,
       new FakeIdempotency(),
+      protector,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
     );
@@ -138,7 +159,7 @@ describe('BindSourceUseCase', () => {
       workspaceId: workspaceId('workspace-1'),
       topicId: 'topic-1',
       providerKey: 'fake-source',
-      config: { query: 'openai monitoring' },
+      config: { query: 'openai monitoring', apiToken: 'raw-token' },
       idempotencyKey: 'bind-1',
       correlationId: 'correlation-1',
     });
@@ -146,6 +167,23 @@ describe('BindSourceUseCase', () => {
     expect(result.ok).toBe(true);
     expect(result.ok && result.value.created).toBe(true);
     expect(outbox.events).toHaveLength(1);
+    expect(protector.configs).toEqual([{ query: 'openai monitoring', apiToken: 'raw-token' }]);
+
+    const binding = await bindings.findByTopicAndProvider({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      providerKey: 'fake-source',
+    });
+
+    expect(binding?.toSnapshot().config).toEqual({
+      query: 'openai monitoring',
+      apiToken: {
+        encrypted: true,
+        ciphertext: 'encrypted-token',
+      },
+    });
+    expect(JSON.stringify(binding?.toSnapshot().config)).not.toContain('raw-token');
   });
 
   it('rejects unsupported source provider', async () => {
@@ -157,6 +195,7 @@ describe('BindSourceUseCase', () => {
       new FakeCatalog(null),
       new FakeOutbox(),
       new FakeIdempotency(),
+      new FakeConfigProtector(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
     );
