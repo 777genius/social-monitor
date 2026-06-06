@@ -7,14 +7,16 @@ import { InMemorySummaryArtifactRepository } from '../../adapters/persistence/in
 import { InMemorySummaryJobRepository } from '../../adapters/persistence/in-memory-summary-job.repository';
 import { EvaluateSummaryQualityUseCase } from '../../features/evaluate-summary-quality/evaluate-summary-quality.use-case';
 import { ExecuteSummaryJobUseCase } from '../../features/execute-summary-job/execute-summary-job.use-case';
+import { GetSummaryJobStatusUseCase } from '../../features/get-summary-job-status/get-summary-job-status.use-case';
 import { GetSummaryUseCase } from '../../features/get-summary/get-summary.use-case';
 import { ListSummariesUseCase } from '../../features/list-summaries/list-summaries.use-case';
 import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
+import { SummaryJobController } from './summary-job.controller';
 import { SummaryRequestController } from './summary-request.controller';
 import { SummaryController } from './summary.controller';
 
 @Module({
-  controllers: [SummaryController, SummaryRequestController],
+  controllers: [SummaryController, SummaryJobController, SummaryRequestController],
   providers: [
     InMemorySummaryJobRepository,
     InMemorySummaryArtifactRepository,
@@ -68,10 +70,16 @@ import { SummaryController } from './summary.controller';
       useFactory: (summaryArtifacts: InMemorySummaryArtifactRepository) => new ListSummariesUseCase(summaryArtifacts),
       inject: [InMemorySummaryArtifactRepository],
     },
+    {
+      provide: GetSummaryJobStatusUseCase,
+      useFactory: (summaryJobs: InMemorySummaryJobRepository) => new GetSummaryJobStatusUseCase(summaryJobs),
+      inject: [InMemorySummaryJobRepository],
+    },
   ],
   exports: [
     EvaluateSummaryQualityUseCase,
     ExecuteSummaryJobUseCase,
+    GetSummaryJobStatusUseCase,
     InMemorySummaryArtifactRepository,
     InMemorySummaryJobRepository,
   ],
