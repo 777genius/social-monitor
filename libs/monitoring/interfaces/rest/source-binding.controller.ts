@@ -1,6 +1,6 @@
 import { Body, Controller, Headers, Param, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { BindSourceRequestDto, type BindSourceResponseDto } from './bind-source.dto';
@@ -17,16 +17,21 @@ export class SourceBindingController {
   @ApiHeader({ name: 'idempotency-key', required: true })
   create(
     @Param('topicId') topicId: string,
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
     @Body() body: BindSourceRequestDto,
   ): Promise<BindSourceResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+
     return this.bindSource
       .execute({
-        tenantId: tenantId(tenantHeader),
-        workspaceId: workspaceId(workspaceHeader),
+        tenantId: scope.tenantId,
+        workspaceId: scope.workspaceId,
         topicId,
         providerKey: body.providerKey,
         config: body.config,

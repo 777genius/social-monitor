@@ -1,6 +1,6 @@
 import { Body, Controller, Headers, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
 import { CreateTopicRequestDto, type CreateTopicResponseDto } from './create-topic.dto';
@@ -16,16 +16,21 @@ export class TopicController {
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiHeader({ name: 'idempotency-key', required: true })
   create(
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
     @Body() body: CreateTopicRequestDto,
   ): Promise<CreateTopicResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+
     return this.createTopic
       .execute({
-        tenantId: tenantId(tenantHeader),
-        workspaceId: workspaceId(workspaceHeader),
+        tenantId: scope.tenantId,
+        workspaceId: scope.workspaceId,
         name: body.name,
         query: body.query,
         idempotencyKey,

@@ -1,6 +1,6 @@
 import { Controller, Get, Headers, Param } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
 import type { ScanStatusResponseDto } from './scan-status.dto';
@@ -16,13 +16,18 @@ export class ScanStatusController {
   @ApiHeader({ name: 'x-workspace-id', required: true })
   get(
     @Param('scanJobId') scanJobId: string,
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
   ): Promise<ScanStatusResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+
     return this.getScanStatus
       .execute({
-        tenantId: tenantId(tenantHeader),
-        workspaceId: workspaceId(workspaceHeader),
+        tenantId: scope.tenantId,
+        workspaceId: scope.workspaceId,
         scanJobId,
       })
       .then((result) => {

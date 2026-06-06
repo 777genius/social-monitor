@@ -1,6 +1,6 @@
 import { Controller, Headers, Param, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
 import type { RequestScanResponseDto } from './request-scan.dto';
@@ -17,15 +17,20 @@ export class ScanRequestController {
   @ApiHeader({ name: 'idempotency-key', required: true })
   create(
     @Param('sourceBindingId') sourceBindingId: string,
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
   ): Promise<RequestScanResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+
     return this.requestScan
       .execute({
-        tenantId: tenantId(tenantHeader),
-        workspaceId: workspaceId(workspaceHeader),
+        tenantId: scope.tenantId,
+        workspaceId: scope.workspaceId,
         sourceBindingId,
         idempotencyKey,
         correlationId: requestId ?? crypto.randomUUID(),

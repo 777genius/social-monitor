@@ -1,6 +1,6 @@
 import { Body, Controller, Headers, Param, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { SetScanPolicyUseCase } from '../../features/set-scan-policy/set-scan-policy.use-case';
 import { SetScanPolicyRequestDto, type SetScanPolicyResponseDto } from './set-scan-policy.dto';
@@ -17,16 +17,21 @@ export class ScanPolicyController {
   @ApiHeader({ name: 'idempotency-key', required: true })
   create(
     @Param('sourceBindingId') sourceBindingId: string,
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
     @Body() body: SetScanPolicyRequestDto,
   ): Promise<SetScanPolicyResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+
     return this.setScanPolicy
       .execute({
-        tenantId: tenantId(tenantHeader),
-        workspaceId: workspaceId(workspaceHeader),
+        tenantId: scope.tenantId,
+        workspaceId: scope.workspaceId,
         sourceBindingId,
         intervalSeconds: body.intervalSeconds,
         freshnessSeconds: body.freshnessSeconds,
