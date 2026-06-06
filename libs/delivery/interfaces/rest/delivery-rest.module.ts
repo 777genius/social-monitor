@@ -7,6 +7,7 @@ import { GetDeliveryAttemptUseCase } from '../../features/get-delivery-attempt/g
 import { ListRealtimeEventsUseCase } from '../../features/list-realtime-events/list-realtime-events.use-case';
 import { ProjectSummaryReadyEventUseCase } from '../../features/project-summary-ready-event/project-summary-ready-event.use-case';
 import { QueueDeliveryAttemptUseCase } from '../../features/queue-delivery-attempt/queue-delivery-attempt.use-case';
+import { RecordDeliveryAttemptStateUseCase } from '../../features/record-delivery-attempt-state/record-delivery-attempt-state.use-case';
 import { RecordRealtimeEventUseCase } from '../../features/record-realtime-event/record-realtime-event.use-case';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
 import { RealtimeEventsController } from './realtime-events.controller';
@@ -25,6 +26,12 @@ import { RealtimeEventsController } from './realtime-events.controller';
     {
       provide: GetDeliveryAttemptUseCase,
       useFactory: (attempts: InMemoryDeliveryAttemptRepository) => new GetDeliveryAttemptUseCase(attempts),
+      inject: [InMemoryDeliveryAttemptRepository],
+    },
+    {
+      provide: RecordDeliveryAttemptStateUseCase,
+      useFactory: (attempts: InMemoryDeliveryAttemptRepository) =>
+        new RecordDeliveryAttemptStateUseCase(attempts, new SystemClock()),
       inject: [InMemoryDeliveryAttemptRepository],
     },
     {
@@ -52,6 +59,7 @@ import { RealtimeEventsController } from './realtime-events.controller';
     ListRealtimeEventsUseCase,
     ProjectSummaryReadyEventUseCase,
     QueueDeliveryAttemptUseCase,
+    RecordDeliveryAttemptStateUseCase,
     RecordRealtimeEventUseCase,
   ],
 })
