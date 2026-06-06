@@ -62,8 +62,10 @@ Make the MVP reliable enough for beta users: security, observability, CI/CD, res
 
 ## Implemented Evidence
 
-- PR 1 REST tenant-scope guards completed in commits `739d203`, `dd8e814`, `55f6154`, `ee8a44e`, `fa53fa7`, `86c4958`.
+- PR 1 tenant-scope guards completed in commits `739d203`, `dd8e814`, `55f6154`, `ee8a44e`, `fa53fa7`, `86c4958`, `ce816b0`.
 - Covered REST contexts: delivery webhooks, API keys, delivery read models, feed, summary and monitoring.
+- Covered queue contexts: ingestion worker `ingestion.scan.execute` command handler.
 - Required REST adapter pattern: `requireTenantScope({ tenantIdHeader, workspaceIdHeader })` before invoking use cases.
+- Required queue adapter pattern: reject missing tenant/workspace payload with controlled `tenant.scope_missing` before invoking use cases.
 - Confirmed no direct `tenantId(tenantHeader)` or `workspaceId(workspaceHeader)` conversions remain in `libs` or `apps`.
 - Verification used: `npm run check:architecture`, `npm run build`, targeted e2e specs, targeted ESLint and `git diff --check`.

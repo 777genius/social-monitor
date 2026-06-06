@@ -33,6 +33,7 @@ Prove that beta safety gates are enforced and supportable.
 - `ee8a44e feat: guard feed tenant scope`
 - `fa53fa7 feat: guard summary tenant scope`
 - `86c4958 feat: guard monitoring tenant scope`
+- `ce816b0 feat: guard ingestion worker tenant scope`
 
 Verified commands:
 
@@ -46,6 +47,7 @@ Evidence notes:
 
 - Missing tenant/workspace REST headers produce controlled `tenant.scope_missing` problem details.
 - REST adapters guard scope before use case invocation.
+- Missing tenant/workspace ingestion queue payload fields produce controlled `tenant.scope_missing` before worker use case invocation.
 - No direct `tenantId(tenantHeader)` or `workspaceId(workspaceHeader)` conversions remain in current `libs`/`apps` scan.
 
 ## Review Evidence

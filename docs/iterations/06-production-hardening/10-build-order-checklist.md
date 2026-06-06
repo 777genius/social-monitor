@@ -23,7 +23,7 @@
 
 ## First PR Sequence
 
-1. PR 1: tenant scope guards and cross-tenant negative tests. REST scope guard slice completed; remaining follow-up is worker/event tenant context assertions if new gaps are found.
+1. PR 1: tenant scope guards and cross-tenant negative tests. REST scope guard and ingestion worker queue scope guard slices completed; remaining follow-up is event tenant context assertions if new gaps are found.
 2. PR 2: credential encryption, secret redaction and safe error/log policy.
 3. PR 3: audit taxonomy and security-sensitive action events.
 4. PR 4: quota preflight and usage ledger enforcement.
@@ -48,7 +48,7 @@
 
 ## Tests And Checks
 
-- Cross-tenant negative tests. REST scope-missing negative e2e exists for webhooks, API keys, delivery reads, feed, summary and monitoring.
+- Cross-tenant negative tests. REST scope-missing negative e2e exists for webhooks, API keys, delivery reads, feed, summary and monitoring; queue scope-missing e2e exists for ingestion worker scan command.
 - Secret redaction tests.
 - Migration from clean database.
 - Contract diff check.
@@ -63,6 +63,7 @@
 ## Edge Cases Before Closure
 
 - Missing `x-tenant-id` or `x-workspace-id` must return controlled `tenant.scope_missing` problem details before any use case runs.
+- Missing `tenantId` or `workspaceId` in queue payloads must return controlled `tenant.scope_missing` before any worker use case runs.
 - Worker killed mid-scan.
 - Provider outage.
 - Retry storm.

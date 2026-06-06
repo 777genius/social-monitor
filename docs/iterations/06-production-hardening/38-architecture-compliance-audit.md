@@ -22,7 +22,7 @@ Verify that beta hardening enforces architecture, security, operations and cost 
 - Infrastructure checks must protect architectural boundaries automatically.
 
 ## Evidence Required
-- Tenant isolation report. REST evidence currently includes commits `739d203`, `dd8e814`, `55f6154`, `ee8a44e`, `fa53fa7`, `86c4958`.
+- Tenant isolation report. Current evidence includes commits `739d203`, `dd8e814`, `55f6154`, `ee8a44e`, `fa53fa7`, `86c4958`, `ce816b0`.
 - Redaction test result.
 - CI gate examples.
 - Dashboard links or screenshots.
@@ -34,6 +34,7 @@ Iteration 07 cannot start if any critical beta safety gate is unresolved.
 ## Current Audit Notes
 
 - REST adapters now validate tenant/workspace scope with shared-kernel `requireTenantScope` instead of directly coercing headers.
+- Ingestion worker queue adapter now validates tenant/workspace command payload scope before invoking `ExecuteScanUseCase`.
 - Domain/features remain isolated from HTTP headers; the guard is placed at the interface adapter boundary.
 - Architecture check confirms boundary rules after the REST hardening slice.
-- Remaining PR1 audit surface is worker/event tenant context assertions beyond REST, if the next scan finds missing coverage.
+- Remaining PR1 audit surface is event tenant context assertions beyond REST/queue, if the next scan finds missing coverage.
