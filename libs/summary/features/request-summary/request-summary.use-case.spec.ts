@@ -19,7 +19,12 @@ class FakeSummaryJobs implements SummaryJobRepositoryPort {
 
   async save(job: SummaryJob): Promise<void> {
     const snapshot = job.toSnapshot();
+    this.jobs.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, job);
     this.jobs.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.idempotencyKey}`, job);
+  }
+
+  async findById(params: Parameters<SummaryJobRepositoryPort['findById']>[0]): Promise<SummaryJob | null> {
+    return this.jobs.get(`${params.tenantId}:${params.workspaceId}:${params.summaryJobId}`) ?? null;
   }
 
   async findByIdempotencyKey(

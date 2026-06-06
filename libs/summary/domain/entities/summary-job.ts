@@ -1,6 +1,6 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
-export type SummaryJobStatus = 'requested';
+export type SummaryJobStatus = 'requested' | 'running' | 'completed' | 'no_signal' | 'failed';
 
 export type SummaryJobProps = {
   readonly id: string;
@@ -10,6 +10,11 @@ export type SummaryJobProps = {
   readonly status: SummaryJobStatus;
   readonly idempotencyKey: string;
   readonly requestedAt: Date;
+  readonly startedAt?: Date;
+  readonly completedAt?: Date;
+  readonly failedAt?: Date;
+  readonly summaryId?: string;
+  readonly failureReason?: string;
 };
 
 export class SummaryJob {
@@ -23,6 +28,69 @@ export class SummaryJob {
     return new SummaryJob({
       ...props,
       status: 'requested',
+    });
+  }
+
+  start(params: { readonly startedAt: Date }): SummaryJob {
+    if (this.props.status !== 'requested') {
+      throw new Error('Summary job can only start from requested status');
+    }
+
+    return new SummaryJob({
+      ...this.props,
+      status: 'running',
+      startedAt: params.startedAt,
+    });
+  }
+
+  complete(params: { readonly completedAt: Date; readonly summaryId: string }): SummaryJob {
+    if (this.props.status !== 'running') {
+      throw new Error('Summary job can only complete from running status');
+    }
+
+    if (params.summaryId.trim().length === 0) {
+      throw new Error('Completed summary job must reference a summary artifact');
+    }
+
+    return new SummaryJob({
+      ...this.props,
+      status: 'completed',
+      completedAt: params.completedAt,
+      summaryId: params.summaryId,
+    });
+  }
+
+  markNoSignal(params: { readonly completedAt: Date; readonly summaryId: string }): SummaryJob {
+    if (this.props.status !== 'running') {
+      throw new Error('Summary job can only become no_signal from running status');
+    }
+
+    if (params.summaryId.trim().length === 0) {
+      throw new Error('No-signal summary job must reference a summary artifact');
+    }
+
+    return new SummaryJob({
+      ...this.props,
+      status: 'no_signal',
+      completedAt: params.completedAt,
+      summaryId: params.summaryId,
+    });
+  }
+
+  fail(params: { readonly failedAt: Date; readonly failureReason: string }): SummaryJob {
+    if (this.props.status !== 'running') {
+      throw new Error('Summary job can only fail from running status');
+    }
+
+    if (params.failureReason.trim().length === 0) {
+      throw new Error('Failed summary job must include failure reason');
+    }
+
+    return new SummaryJob({
+      ...this.props,
+      status: 'failed',
+      failedAt: params.failedAt,
+      failureReason: params.failureReason,
     });
   }
 
