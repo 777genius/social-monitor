@@ -3,6 +3,7 @@ import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { InMemoryDeliveryAttemptRepository } from '../../adapters/persistence/in-memory-delivery-attempt.repository';
 import { InMemoryRealtimeEventRepository } from '../../adapters/persistence/in-memory-realtime-event.repository';
+import { ApplyDeliverySuppressionUseCase } from '../../features/apply-delivery-suppression/apply-delivery-suppression.use-case';
 import { GetDeliveryAttemptUseCase } from '../../features/get-delivery-attempt/get-delivery-attempt.use-case';
 import { ListRealtimeEventsUseCase } from '../../features/list-realtime-events/list-realtime-events.use-case';
 import { ProjectSummaryReadyEventUseCase } from '../../features/project-summary-ready-event/project-summary-ready-event.use-case';
@@ -26,6 +27,12 @@ import { RealtimeEventsController } from './realtime-events.controller';
     {
       provide: GetDeliveryAttemptUseCase,
       useFactory: (attempts: InMemoryDeliveryAttemptRepository) => new GetDeliveryAttemptUseCase(attempts),
+      inject: [InMemoryDeliveryAttemptRepository],
+    },
+    {
+      provide: ApplyDeliverySuppressionUseCase,
+      useFactory: (attempts: InMemoryDeliveryAttemptRepository) =>
+        new ApplyDeliverySuppressionUseCase(attempts, new SystemClock()),
       inject: [InMemoryDeliveryAttemptRepository],
     },
     {
@@ -53,6 +60,7 @@ import { RealtimeEventsController } from './realtime-events.controller';
     },
   ],
   exports: [
+    ApplyDeliverySuppressionUseCase,
     GetDeliveryAttemptUseCase,
     InMemoryDeliveryAttemptRepository,
     InMemoryRealtimeEventRepository,
