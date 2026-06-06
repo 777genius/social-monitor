@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Headers, Param, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { VerifyApiKeyUseCase } from '@social-monitor/identity/features/verify-api-key/verify-api-key.use-case';
-import { DomainError, tenantId, type TenantId, workspaceId, type WorkspaceId } from '@social-monitor/shared-kernel';
+import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/check-public-api-rate-limit/check-public-api-rate-limit.use-case';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 
@@ -36,13 +36,15 @@ export class WebhookEndpointsController {
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiHeader({ name: 'authorization', required: true })
   async create(
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
     @Body() body: CreateWebhookEndpointRequestDto,
   ): Promise<CreateWebhookEndpointResponseDto> {
-    const tenant = tenantId(tenantHeader);
-    const workspace = workspaceId(workspaceHeader);
+    const { tenantId: tenant, workspaceId: workspace } = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
 
     const result = await this.createWebhookEndpoint.execute({
@@ -77,14 +79,16 @@ export class WebhookEndpointsController {
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiHeader({ name: 'authorization', required: true })
   async list(
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
   ): Promise<ListWebhookEndpointsResponseDto> {
-    const tenant = tenantId(tenantHeader);
-    const workspace = workspaceId(workspaceHeader);
+    const { tenantId: tenant, workspaceId: workspace } = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
     const result = await this.listWebhookEndpoints.execute({
       tenantId: tenant,
@@ -118,12 +122,14 @@ export class WebhookEndpointsController {
   @ApiHeader({ name: 'authorization', required: true })
   async get(
     @Param('webhookEndpointId') webhookEndpointId: string,
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
   ): Promise<GetWebhookEndpointResponseDto> {
-    const tenant = tenantId(tenantHeader);
-    const workspace = workspaceId(workspaceHeader);
+    const { tenantId: tenant, workspaceId: workspace } = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
     const result = await this.getWebhookEndpoint.execute({
       tenantId: tenant,
@@ -156,12 +162,14 @@ export class WebhookEndpointsController {
   @ApiHeader({ name: 'authorization', required: true })
   async disable(
     @Param('webhookEndpointId') webhookEndpointId: string,
-    @Headers('x-tenant-id') tenantHeader: string,
-    @Headers('x-workspace-id') workspaceHeader: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
   ): Promise<DisableWebhookEndpointResponseDto> {
-    const tenant = tenantId(tenantHeader);
-    const workspace = workspaceId(workspaceHeader);
+    const { tenantId: tenant, workspaceId: workspace } = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
     const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
     const result = await this.disableWebhookEndpoint.execute({
       tenantId: tenant,

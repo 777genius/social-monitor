@@ -4,3 +4,4 @@ export * from './event-envelope';
 export * from './id-generator';
 export * from './ids';
 export * from './result';
+export * from './tenant-scope';
