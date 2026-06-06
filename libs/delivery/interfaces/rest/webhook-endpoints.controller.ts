@@ -3,6 +3,7 @@ import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { VerifyApiKeyUseCase } from '@social-monitor/identity/features/verify-api-key/verify-api-key.use-case';
 import { DomainError, tenantId, type TenantId, workspaceId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/check-public-api-rate-limit/check-public-api-rate-limit.use-case';
+import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 
 import { CreateWebhookEndpointUseCase } from '../../features/create-webhook-endpoint/create-webhook-endpoint.use-case';
 import { DisableWebhookEndpointUseCase } from '../../features/disable-webhook-endpoint/disable-webhook-endpoint.use-case';
@@ -26,6 +27,7 @@ export class WebhookEndpointsController {
     private readonly disableWebhookEndpoint: DisableWebhookEndpointUseCase,
     private readonly verifyApiKey: VerifyApiKeyUseCase,
     private readonly checkPublicApiRateLimit: CheckPublicApiRateLimitUseCase,
+    private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
   ) {}
 
   @Post()
@@ -41,7 +43,7 @@ export class WebhookEndpointsController {
   ): Promise<CreateWebhookEndpointResponseDto> {
     const tenant = tenantId(tenantHeader);
     const workspace = workspaceId(workspaceHeader);
-    await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
+    const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
 
     const result = await this.createWebhookEndpoint.execute({
       tenantId: tenant,
@@ -53,6 +55,18 @@ export class WebhookEndpointsController {
     if (!result.ok) {
       throw result.error;
     }
+
+    await this.recordWebhookAuditEvent({
+      tenant,
+      workspace,
+      actorId: authorization.apiKeyId,
+      action: 'webhook_endpoint.created',
+      resourceId: result.value.endpoint.id,
+      metadata: {
+        eventTypes: result.value.endpoint.eventTypes,
+        endpointStatus: result.value.endpoint.status,
+      },
+    });
 
     return result.value;
   }
@@ -71,7 +85,7 @@ export class WebhookEndpointsController {
   ): Promise<ListWebhookEndpointsResponseDto> {
     const tenant = tenantId(tenantHeader);
     const workspace = workspaceId(workspaceHeader);
-    await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
+    const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
     const result = await this.listWebhookEndpoints.execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -82,6 +96,17 @@ export class WebhookEndpointsController {
     if (!result.ok) {
       throw result.error;
     }
+
+    await this.recordWebhookAuditEvent({
+      tenant,
+      workspace,
+      actorId: authorization.apiKeyId,
+      action: 'webhook_endpoint.listed',
+      metadata: {
+        resultCount: result.value.endpoints.length,
+        hasNextPage: result.value.nextCursor !== undefined,
+      },
+    });
 
     return result.value;
   }
@@ -99,7 +124,7 @@ export class WebhookEndpointsController {
   ): Promise<GetWebhookEndpointResponseDto> {
     const tenant = tenantId(tenantHeader);
     const workspace = workspaceId(workspaceHeader);
-    await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
+    const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
     const result = await this.getWebhookEndpoint.execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -109,6 +134,17 @@ export class WebhookEndpointsController {
     if (!result.ok) {
       throw result.error;
     }
+
+    await this.recordWebhookAuditEvent({
+      tenant,
+      workspace,
+      actorId: authorization.apiKeyId,
+      action: 'webhook_endpoint.read',
+      resourceId: result.value.id,
+      metadata: {
+        endpointStatus: result.value.status,
+      },
+    });
 
     return result.value;
   }
@@ -126,7 +162,7 @@ export class WebhookEndpointsController {
   ): Promise<DisableWebhookEndpointResponseDto> {
     const tenant = tenantId(tenantHeader);
     const workspace = workspaceId(workspaceHeader);
-    await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
+    const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
     const result = await this.disableWebhookEndpoint.execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -137,6 +173,17 @@ export class WebhookEndpointsController {
       throw result.error;
     }
 
+    await this.recordWebhookAuditEvent({
+      tenant,
+      workspace,
+      actorId: authorization.apiKeyId,
+      action: 'webhook_endpoint.disabled',
+      resourceId: result.value.id,
+      metadata: {
+        endpointStatus: result.value.status,
+      },
+    });
+
     return result.value;
   }
 
@@ -144,7 +191,7 @@ export class WebhookEndpointsController {
     authorizationHeader: string | undefined,
     tenant: TenantId,
     workspace: WorkspaceId,
-  ): Promise<void> {
+  ): Promise<{ readonly apiKeyId: string }> {
     const verifiedApiKey = await this.verifyApiKey.execute({
       secret: parseBearerSecret(authorizationHeader),
       requiredScope: 'write:webhook_endpoints',
@@ -167,6 +214,34 @@ export class WebhookEndpointsController {
 
     if (!rateLimit.ok) {
       throw rateLimit.error;
+    }
+
+    return {
+      apiKeyId: verifiedApiKey.value.apiKey.id,
+    };
+  }
+
+  private async recordWebhookAuditEvent(params: {
+    readonly tenant: TenantId;
+    readonly workspace: WorkspaceId;
+    readonly actorId: string;
+    readonly action: string;
+    readonly resourceId?: string;
+    readonly metadata?: Readonly<Record<string, string | number | boolean | readonly string[]>>;
+  }): Promise<void> {
+    const result = await this.recordPublicApiAuditEvent.execute({
+      tenantId: params.tenant,
+      workspaceId: params.workspace,
+      actorType: 'api_key',
+      actorId: params.actorId,
+      action: params.action,
+      resourceType: 'webhook_endpoint',
+      resourceId: params.resourceId,
+      metadata: params.metadata,
+    });
+
+    if (!result.ok) {
+      throw result.error;
     }
   }
 }
