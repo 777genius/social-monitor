@@ -77,6 +77,7 @@ Evidence notes:
 - `947af79 feat: harden public api audit records`
 - `28cb17f feat: audit api key lifecycle`
 - `9efc707 feat: audit source binding creation`
+- `a72160c feat: audit scan policy creation`
 
 Verified commands:
 
@@ -86,6 +87,7 @@ Verified commands:
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/webhook-endpoints.audit.e2e-spec.ts`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/api-keys.lifecycle.e2e-spec.ts`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/source-bindings.create.e2e-spec.ts`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/scan-policies.set.e2e-spec.ts`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint ...`
 - `git diff --check`
 
@@ -97,6 +99,7 @@ Evidence notes:
 - API key lifecycle e2e verifies create/revoke audit events and confirms the raw `smk_...` secret is not stored in audit records.
 - `system` actor type is allowed for current MVP identity lifecycle actions until first-class user-auth actor identity is implemented.
 - Source binding create e2e verifies one audit event for the real create path, no second event for an idempotent duplicate and no persisted audit `config` payload.
+- Scan policy e2e verifies one audit event for the real create path, no second event for an idempotent duplicate and support-safe schedule metadata only.
 
 ## Review Evidence
 - Cross-functional hardening review is approved.
