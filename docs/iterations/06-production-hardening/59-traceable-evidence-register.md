@@ -142,6 +142,7 @@ Evidence notes:
 - `f92fc3c feat: add mvp observability contract`
 - `9c9c405 chore: include observability gate in verify`
 - `f5b50e7 feat: record scan failure queue metrics`
+- `35484e7 feat: record provider failure metrics`
 
 Verified commands:
 
@@ -152,7 +153,10 @@ Verified commands:
 - `node -e "..."` verify-script smoke confirmed `npm run verify` includes `check:observability`.
 - `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone DLQ queue unit verified dead-letter counter/backlog metrics.
 - `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone ingestion worker e2e verified failing provider path enqueues retry and records retry queue counter/backlog metrics.
+- `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone ingestion worker e2e verified provider-unavailable failure classification records `scan_failures_total{failure_class=provider_unavailable,job_type=scan,worker=ingestion-worker}`.
+- `node -e "..."` provider observability contract smoke verified provider outage/rate-limit alerts point to matching dashboard panels and the provider triage runbook section.
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-observability.mjs`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx eslint libs/ingestion/interfaces/queue/execute-scan-command.handler.ts test/e2e/api-to-ingestion-contract.e2e-spec.ts test/e2e/ingestion-worker.execute-scan.e2e-spec.ts scripts/check-observability.mjs`
 - `git diff --check`
 
 Evidence notes:
@@ -165,6 +169,8 @@ Evidence notes:
 - The observability contract is now part of the standard `npm run verify` chain.
 - Retry and DLQ failure queues now emit `scan_failure_queue_events_total` and `scan_failure_queue_backlog` with `queue/status` safe labels only.
 - MVP health dashboard includes scan retry and scan DLQ backlog panels, and alerts include `scan-dlq-growth` linked to the DLQ triage runbook.
+- Provider outage and provider rate-limit scan failures now emit the same low-cardinality `scan_failures_total` metric with `failure_class`, `job_type` and `worker` labels.
+- MVP health dashboard includes provider outage/rate-limit failure panels, and alerts link to provider triage runbook steps without depending on a specific metrics vendor.
 
 ## PR 5 Observability Contract Evidence
 
