@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
+import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
 import { Sha256ApiKeyHasher } from '../../adapters/hash/hmac-api-key.hasher';
 import { InMemoryApiKeyRepository } from '../../adapters/persistence/in-memory-api-key.repository';
@@ -10,6 +11,7 @@ import { VerifyApiKeyUseCase } from '../../features/verify-api-key/verify-api-ke
 import { ApiKeysController } from './api-keys.controller';
 
 @Module({
+  imports: [UsageRestModule],
   controllers: [ApiKeysController],
   providers: [
     InMemoryApiKeyRepository,

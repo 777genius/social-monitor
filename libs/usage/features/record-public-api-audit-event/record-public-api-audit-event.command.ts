@@ -5,7 +5,7 @@ import type { PublicApiAuditMetadataValue, PublicApiAuditOutcome } from '../../p
 export type RecordPublicApiAuditEventCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly actorType: 'api_key';
+  readonly actorType: 'api_key' | 'system';
   readonly actorId: string;
   readonly action: string;
   readonly outcome: PublicApiAuditOutcome;

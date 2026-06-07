@@ -7,7 +7,7 @@ export type PublicApiAuditRecord = {
   readonly id: string;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly actorType: 'api_key';
+  readonly actorType: 'api_key' | 'system';
   readonly actorId: string;
   readonly action: string;
   readonly outcome: PublicApiAuditOutcome;

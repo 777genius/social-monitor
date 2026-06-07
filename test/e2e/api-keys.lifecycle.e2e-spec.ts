@@ -2,6 +2,7 @@ import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { VerifyApiKeyUseCase } from '@social-monitor/identity/features/verify-api-key/verify-api-key.use-case';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/in-memory-public-api-audit-log';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
@@ -92,6 +93,32 @@ describe('API key lifecycle and scopes (e2e)', () => {
       status: 'revoked',
       revokedAt: expect.any(String),
     });
+
+    const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
+      tenantId: tenant,
+      workspaceId: workspace,
+    });
+
+    expect(auditRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        actorType: 'system',
+        actorId: 'identity.api-keys',
+        action: 'api_key.created',
+        outcome: 'succeeded',
+        resourceType: 'api_key',
+        resourceId: created.body.apiKey.id,
+      }),
+      expect.objectContaining({
+        actorType: 'system',
+        actorId: 'identity.api-keys',
+        action: 'api_key.revoked',
+        outcome: 'succeeded',
+        resourceType: 'api_key',
+        resourceId: created.body.apiKey.id,
+      }),
+    ]));
+    expect(JSON.stringify(auditRecords)).not.toContain(secret);
+
     await expect(app.get(VerifyApiKeyUseCase).execute({
       secret,
       requiredScope: 'read:summaries',

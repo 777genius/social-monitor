@@ -64,4 +64,34 @@ describe('RecordPublicApiAuditEventUseCase', () => {
     })]);
     expect(JSON.stringify(auditLog.records)).not.toContain('secret');
   });
+
+  it('allows system actors for MVP lifecycle events before user-auth is available', async () => {
+    const auditLog = new FakeAuditLog();
+    const result = await new RecordPublicApiAuditEventUseCase(
+      auditLog,
+      new FixedIdGenerator(),
+      new FixedClock(new Date('2026-06-06T13:10:00.000Z')),
+    ).execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      actorType: 'system',
+      actorId: 'identity.api-keys',
+      action: 'api_key.revoked',
+      outcome: 'succeeded',
+      resourceType: 'api_key',
+      resourceId: 'api-key-1',
+      metadata: {
+        keyPrefix: 'smk_visible_',
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(auditLog.records).toEqual([expect.objectContaining({
+      actorType: 'system',
+      actorId: 'identity.api-keys',
+      action: 'api_key.revoked',
+      resourceType: 'api_key',
+      resourceId: 'api-key-1',
+    })]);
+  });
 });
