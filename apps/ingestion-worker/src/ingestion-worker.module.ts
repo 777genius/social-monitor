@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
+import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { WorkerRuntimeModule } from '@social-monitor/platform-worker';
@@ -36,6 +37,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     InMemoryScanCursorRepository,
     InMemoryScanFailureQueueAdapter,
     InMemoryScanLeaseAdapter,
+    InMemoryMetricsRecorder,
     NoopScanExecutionReporterAdapter,
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
@@ -81,8 +83,9 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     },
     {
       provide: ExecuteScanCommandHandler,
-      useFactory: (executeScan: ExecuteScanUseCase) => new ExecuteScanCommandHandler(executeScan),
-      inject: [ExecuteScanUseCase],
+      useFactory: (executeScan: ExecuteScanUseCase, metrics: InMemoryMetricsRecorder) =>
+        new ExecuteScanCommandHandler(executeScan, metrics),
+      inject: [ExecuteScanUseCase, InMemoryMetricsRecorder],
     },
   ],
   exports: [
@@ -91,6 +94,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     InMemoryScanCursorRepository,
     InMemoryScanFailureQueueAdapter,
     InMemoryScanLeaseAdapter,
+    InMemoryMetricsRecorder,
     NoopScanExecutionReporterAdapter,
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,

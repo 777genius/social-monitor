@@ -1,3 +1,4 @@
+import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import type { QueueCommandEnvelope } from '@social-monitor/platform-queue';
 import { DomainError, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
@@ -19,7 +20,10 @@ type ExecuteScanQueuePayload = {
 export type ExecuteScanQueueCommand = QueueCommandEnvelope<ExecuteScanQueuePayload>;
 
 export class ExecuteScanCommandHandler {
-  constructor(private readonly executeScan: ExecuteScanUseCase) {}
+  constructor(
+    private readonly executeScan: ExecuteScanUseCase,
+    private readonly metrics: MetricsRecorderPort,
+  ) {}
 
   async handle(command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>): Promise<ExecuteScanResult> {
     if (command.commandType !== 'ingestion.scan.execute') {
@@ -27,25 +31,49 @@ export class ExecuteScanCommandHandler {
     }
 
     const payload = parsePayload(command.payload);
-    const result = await this.executeScan.execute({
-      tenantId: tenantId(payload.tenantId),
-      workspaceId: workspaceId(payload.workspaceId),
-      scanJobId: payload.scanJobId,
-      sourceBindingId: payload.sourceBindingId,
-      scanPolicyId: payload.scanPolicyId,
-      correlationId: command.correlationId,
-      causationId: command.causationId ?? command.commandId,
-      attemptNumber: payload.attemptNumber,
-      retryBudget: payload.retryBudget,
-      workerId: payload.workerId,
-      leaseTtlSeconds: payload.leaseTtlSeconds,
-    });
+    this.recordMetric('started');
+    let failureRecorded = false;
 
-    if (!result.ok) {
-      throw result.error;
+    try {
+      const result = await this.executeScan.execute({
+        tenantId: tenantId(payload.tenantId),
+        workspaceId: workspaceId(payload.workspaceId),
+        scanJobId: payload.scanJobId,
+        sourceBindingId: payload.sourceBindingId,
+        scanPolicyId: payload.scanPolicyId,
+        correlationId: command.correlationId,
+        causationId: command.causationId ?? command.commandId,
+        attemptNumber: payload.attemptNumber,
+        retryBudget: payload.retryBudget,
+        workerId: payload.workerId,
+        leaseTtlSeconds: payload.leaseTtlSeconds,
+      });
+
+      if (!result.ok) {
+        this.recordMetric('failed');
+        failureRecorded = true;
+        throw result.error;
+      }
+
+      this.recordMetric('succeeded');
+      return result.value;
+    } catch (error) {
+      if (!failureRecorded) {
+        this.recordMetric('failed');
+      }
+      throw error;
     }
+  }
 
-    return result.value;
+  private recordMetric(status: 'started' | 'succeeded' | 'failed'): void {
+    this.metrics.incrementCounter({
+      name: 'scan_jobs_total',
+      labels: {
+        job_type: 'scan',
+        status,
+        worker: 'ingestion-worker',
+      },
+    });
   }
 }
 

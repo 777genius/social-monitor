@@ -1,5 +1,6 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
@@ -148,6 +149,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
     await workerModuleRef.init();
 
     const handler = workerModuleRef.get(ExecuteScanCommandHandler);
+    const metrics = workerModuleRef.get(InMemoryMetricsRecorder);
     const repository = workerModuleRef.get(InMemorySourceItemRepository);
     const feedRepository = workerModuleRef.get(InMemoryFeedItemReadRepository);
     const command = queue.all()[0];
@@ -165,6 +167,20 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       skippedDuplicates: 0,
       projected: 2,
     });
+    expect(
+      metrics.counterValue('scan_jobs_total', {
+        job_type: 'scan',
+        status: 'started',
+        worker: 'ingestion-worker',
+      }),
+    ).toBe(1);
+    expect(
+      metrics.counterValue('scan_jobs_total', {
+        job_type: 'scan',
+        status: 'succeeded',
+        worker: 'ingestion-worker',
+      }),
+    ).toBe(1);
     expect(repository.all()).toHaveLength(2);
     expect((await feedRepository.list({
       tenantId: tenantId(tenant),
@@ -254,7 +270,22 @@ describe('API to ingestion worker queue contract (e2e)', () => {
     await workerModuleRef.init();
 
     const handler = workerModuleRef.get(ExecuteScanCommandHandler);
+    const metrics = workerModuleRef.get(InMemoryMetricsRecorder);
     await expect(handler.handle(command)).rejects.toThrow('Provider unavailable');
+    expect(
+      metrics.counterValue('scan_jobs_total', {
+        job_type: 'scan',
+        status: 'started',
+        worker: 'ingestion-worker',
+      }),
+    ).toBe(1);
+    expect(
+      metrics.counterValue('scan_jobs_total', {
+        job_type: 'scan',
+        status: 'failed',
+        worker: 'ingestion-worker',
+      }),
+    ).toBe(1);
     await request(api.getHttpServer())
       .get(`/scan-requests/${scan.body.scanJobId}/status`)
       .set('x-tenant-id', tenant)
