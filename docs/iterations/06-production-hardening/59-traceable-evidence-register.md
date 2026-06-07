@@ -278,15 +278,18 @@ Evidence notes:
 - `bf95ab3 feat: add release evidence gate`
 - `38bd2fc feat: add secret scan gate`
 - `7858155 fix: allow webhook key id placeholder in secret scan`
+- `5aa4d04 feat: add dependency audit gate`
 
 Verified commands:
 
 - `npm run check:secrets`
+- `npm run check:dependencies`
 - `npm run check:release`
 - `npm run check:architecture`
 - `npm run build`
 - `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js scripts/check-release-evidence.mjs`
 - `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js scripts/check-secrets.mjs`
+- `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js scripts/check-dependencies.mjs`
 - `git diff --check`
 
 Evidence notes:
@@ -294,12 +297,14 @@ Evidence notes:
 - `scripts/check-secrets.mjs` scans tracked source/config/docs files and ignores build/generated folders through `ops/security/secret-scan-allowlist.json`.
 - Secret scanning blocks private key blocks, secret-like env assignments with non-placeholder values, bearer token literals, generated `smk_...`/`whsec_...` literals and credential URLs with non-placeholder passwords.
 - Existing local/test placeholders such as `social_monitor_local_password`, `Bearer invalid`, `raw-token`, `smk_secret` and `whsec_...1234` are explicitly allowlisted instead of accepted implicitly.
+- `scripts/check-dependencies.mjs` runs `npm audit --json --audit-level=high`, blocks high/critical advisories and parses npm audit JSON so the gate stays machine-verifiable.
+- `ops/security/dependency-audit-policy.json` requires future vulnerability exceptions to include package name, owner, `YYYY-MM-DD` expiry and mitigation.
 - `ops/release/mvp-release-evidence-contract.json` defines beta release artifact evidence: commit SHA, immutable image digest, OpenAPI snapshot, event catalog and migration schema.
 - `scripts/check-release-evidence.mjs` validates required blocking gates, deploy smoke checks, rollback triggers, runbook anchor and promotion document before release evidence can pass.
-- `npm run verify` now includes `check:secrets` and `check:release`, so secret and release evidence drift are checked with the standard local/CI verification chain.
+- `npm run verify` now includes `check:secrets`, `check:dependencies` and `check:release`, so supply-chain and release evidence drift are checked with the standard local/CI verification chain.
 - Deploy smoke checks cover API health, OpenAPI contract, migration compatibility and worker pause/resume readiness.
 - Rollback triggers cover security regressions, migration/restore regressions, provider failure spikes, summary cost spikes and delivery failure spikes.
-- This is an MVP release-evidence and secret-scan contract gate; dependency vulnerability scanning, container build, SBOM and image signing remain explicit future supply-chain expansions rather than silently claimed evidence.
+- This is an MVP release-evidence, secret-scan and dependency-audit contract gate; container build, SBOM and image signing remain explicit future supply-chain expansions rather than silently claimed evidence.
 
 ## PR 9 Load Cost Evidence
 
