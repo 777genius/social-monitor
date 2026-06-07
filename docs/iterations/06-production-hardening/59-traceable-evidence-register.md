@@ -264,3 +264,23 @@ Evidence notes:
 - `libs/contracts/events/event-catalog.json` records internal, realtime and webhook event contracts by `eventType`, `schemaVersion`, producer and required payload fields.
 - `scripts/check-event-contracts.mjs` scans production TypeScript producers for emitted `eventType`/`schemaVersion` pairs and fails if they are missing from the catalog.
 - Realtime events that encode version in the event type suffix, for example `summary.status.changed.v1`, are accepted as schema version 1 while keeping the realtime protocol version separate.
+
+## PR 9 Load Cost Evidence
+
+- `46dfbf1 feat: add load cost guardrail`
+
+Verified commands:
+
+- `npm run check:load-cost`
+- `npm run check:architecture`
+- `npm run build`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-load-cost.mjs`
+- `git diff --check`
+
+Evidence notes:
+
+- `scripts/check-load-cost.mjs` runs deterministic quota simulations without external providers or database services.
+- Noisy scan tenant scenario verifies 50 allowed and 25 rejected manual scan reservations in the same window.
+- Quiet scan tenant scenario verifies 10 allowed and 0 rejected reservations, proving tenant/workspace quota buckets isolate noisy tenants.
+- Summary cost budget scenario verifies cost-like quota units allow 20 attempts and reject 5 overflow attempts before model/provider work would run.
+- The gate enforces a lightweight p95 quota reservation threshold for MVP regression detection; full broker/database load tests remain a later staging drill.
