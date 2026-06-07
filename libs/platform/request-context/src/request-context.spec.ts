@@ -23,4 +23,16 @@ describe('buildRequestContext', () => {
       causationId: 'causation-1',
     });
   });
+
+  it('ignores unsafe or oversized context header values', () => {
+    const context = buildRequestContext({
+      requestId: '   ',
+      correlationId: 'contains spaces',
+      causationId: 'x'.repeat(129),
+    });
+
+    expect(context.requestId).toEqual(expect.any(String));
+    expect(context.correlationId).toBe(context.requestId);
+    expect(context.causationId).toBeUndefined();
+  });
 });

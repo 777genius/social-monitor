@@ -8,6 +8,9 @@ export type RequestContext = {
   readonly causationId?: string;
 };
 
+const MAX_CONTEXT_ID_LENGTH = 128;
+const contextIdPattern = /^[A-Za-z0-9._:-]+$/;
+
 export const buildRequestContext = (headers: {
   readonly requestId?: string;
   readonly correlationId?: string;
@@ -22,5 +25,9 @@ export const buildRequestContext = (headers: {
 
 const normalize = (value: string | undefined): string | undefined => {
   const normalized = value?.trim();
-  return normalized && normalized.length > 0 ? normalized : undefined;
+  if (!normalized || normalized.length === 0 || normalized.length > MAX_CONTEXT_ID_LENGTH) {
+    return undefined;
+  }
+
+  return contextIdPattern.test(normalized) ? normalized : undefined;
 };

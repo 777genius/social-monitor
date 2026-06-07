@@ -53,4 +53,17 @@ describe('API gateway health (e2e)', () => {
       service: 'api-gateway',
     });
   });
+
+  it('drops unsafe context headers and falls back to generated safe ids', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/health')
+      .set('x-request-id', '   ')
+      .set('x-correlation-id', 'bad value with spaces')
+      .set('x-causation-id', 'x'.repeat(129))
+      .expect(200);
+
+    expect(response.headers['x-request-id']).toEqual(expect.any(String));
+    expect(response.headers['x-correlation-id']).toBe(response.headers['x-request-id']);
+    expect(response.headers['x-causation-id']).toBeUndefined();
+  });
 });
