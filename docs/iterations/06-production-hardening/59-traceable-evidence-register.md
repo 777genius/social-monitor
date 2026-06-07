@@ -75,6 +75,7 @@ Evidence notes:
 ## PR 3 Audit Taxonomy Evidence
 
 - `947af79 feat: harden public api audit records`
+- `28cb17f feat: audit api key lifecycle`
 
 Verified commands:
 
@@ -82,6 +83,7 @@ Verified commands:
 - `npm run build`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest libs/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case.spec.ts --runInBand`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/webhook-endpoints.audit.e2e-spec.ts`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/api-keys.lifecycle.e2e-spec.ts`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint ...`
 - `git diff --check`
 
@@ -90,6 +92,8 @@ Evidence notes:
 - Public API audit records now carry `outcome` and optional `reasonCode`.
 - Audit metadata is redacted in the use case before append, not only at the logging layer.
 - Webhook endpoint management audit e2e verifies successful audit outcome and no raw API key/signing secret leakage.
+- API key lifecycle e2e verifies create/revoke audit events and confirms the raw `smk_...` secret is not stored in audit records.
+- `system` actor type is allowed for current MVP identity lifecycle actions until first-class user-auth actor identity is implemented.
 
 ## Review Evidence
 - Cross-functional hardening review is approved.
