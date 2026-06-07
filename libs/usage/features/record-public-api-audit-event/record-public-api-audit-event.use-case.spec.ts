@@ -34,11 +34,13 @@ describe('RecordPublicApiAuditEventUseCase', () => {
       actorType: 'api_key',
       actorId: 'api-key-1',
       action: 'webhook_endpoint.created',
+      outcome: 'succeeded',
       resourceType: 'webhook_endpoint',
       resourceId: 'webhook-1',
       metadata: {
         endpointStatus: 'enabled',
         eventTypes: ['digest.ready.v1'],
+        authorization: 'Bearer smk_secret',
       },
     });
 
@@ -53,9 +55,11 @@ describe('RecordPublicApiAuditEventUseCase', () => {
       id: 'audit-event-1',
       actorId: 'api-key-1',
       action: 'webhook_endpoint.created',
+      outcome: 'succeeded',
       metadata: {
         endpointStatus: 'enabled',
         eventTypes: ['digest.ready.v1'],
+        authorization: '[REDACTED]',
       },
     })]);
     expect(JSON.stringify(auditLog.records)).not.toContain('secret');

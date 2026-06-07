@@ -80,6 +80,7 @@ describe('Webhook endpoint public API audit (e2e)', () => {
       expect.objectContaining({
         actorType: 'api_key',
         actorId: apiKey.body.apiKey.id,
+        outcome: 'succeeded',
         resourceId: created.body.endpoint.id,
       }),
       expect.objectContaining({

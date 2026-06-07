@@ -63,6 +63,7 @@ export class WebhookEndpointsController {
       workspace,
       actorId: authorization.apiKeyId,
       action: 'webhook_endpoint.created',
+      outcome: 'succeeded',
       resourceId: result.value.endpoint.id,
       metadata: {
         eventTypes: result.value.endpoint.eventTypes,
@@ -106,6 +107,7 @@ export class WebhookEndpointsController {
       workspace,
       actorId: authorization.apiKeyId,
       action: 'webhook_endpoint.listed',
+      outcome: 'succeeded',
       metadata: {
         resultCount: result.value.endpoints.length,
         hasNextPage: result.value.nextCursor !== undefined,
@@ -146,6 +148,7 @@ export class WebhookEndpointsController {
       workspace,
       actorId: authorization.apiKeyId,
       action: 'webhook_endpoint.read',
+      outcome: 'succeeded',
       resourceId: result.value.id,
       metadata: {
         endpointStatus: result.value.status,
@@ -186,6 +189,7 @@ export class WebhookEndpointsController {
       workspace,
       actorId: authorization.apiKeyId,
       action: 'webhook_endpoint.disabled',
+      outcome: 'succeeded',
       resourceId: result.value.id,
       metadata: {
         endpointStatus: result.value.status,
@@ -234,6 +238,7 @@ export class WebhookEndpointsController {
     readonly workspace: WorkspaceId;
     readonly actorId: string;
     readonly action: string;
+    readonly outcome: 'succeeded' | 'failed' | 'denied';
     readonly resourceId?: string;
     readonly metadata?: Readonly<Record<string, string | number | boolean | readonly string[]>>;
   }): Promise<void> {
@@ -243,6 +248,7 @@ export class WebhookEndpointsController {
       actorType: 'api_key',
       actorId: params.actorId,
       action: params.action,
+      outcome: params.outcome,
       resourceType: 'webhook_endpoint',
       resourceId: params.resourceId,
       metadata: params.metadata,
