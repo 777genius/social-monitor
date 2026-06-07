@@ -45,3 +45,15 @@
 - Quotas should be explainable to beta users.
 - Support should never need raw provider credentials, raw prompts or database shell access for common beta triage.
 - Every incident should end with either a product limitation, source/provider issue, user configuration issue, system bug or capacity/cost issue classification.
+
+## Scan Status Triage
+
+Scan status API responses expose support-safe fields for beta triage:
+
+- `userState=scan_pending`: scan was requested but not enqueued yet. Check scheduler lag or enqueue path if it lasts beyond the freshness SLO.
+- `userState=scan_in_progress`: scan is enqueued or being processed. Check worker lag if it exceeds configured freshness expectations.
+- `userState=content_current`: scan completed successfully. No support action is required.
+- `userState=scan_degraded` with `failureClass=provider_unavailable`: check provider health, retry budget and affected source capability.
+- `userState=scan_degraded` with `failureClass=provider_rate_limited`: reduce scan frequency or pause the affected source before adding workers.
+- `userState=scan_degraded` with `failureClass=worker_conflict`: inspect scan lease ownership and worker lag.
+- `userState=scan_degraded` with `failureClass=system_failure`: inspect scan attempts, logs and DLQ without exposing raw source payloads.

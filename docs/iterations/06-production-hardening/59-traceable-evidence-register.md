@@ -144,6 +144,7 @@ Evidence notes:
 - `ee0fdf3 feat: propagate scan request correlation id`
 - `ef9619b feat: record scan queue metrics`
 - `96bb354 feat: record ingestion scan metrics`
+- `373f86e feat: expose scan status support state`
 
 Verified commands:
 
@@ -156,6 +157,7 @@ Verified commands:
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/scan-requests.create.e2e-spec.ts`
 - `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone Monitoring REST/supertest e2e verified topic -> source binding -> scan policy -> scan request -> queue -> metrics because repeated user interruptions killed long-running Jest e2e tool calls before final output could be captured.
 - `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone ingestion worker e2e verified successful and failed `ExecuteScanCommandHandler` paths plus `scan_jobs_total` started/succeeded/failed counters.
+- `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone Monitoring REST/supertest e2e verified scan status response includes `userState=scan_in_progress` and the expected support action for an enqueued scan.
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint ...`
 - `git diff --check`
 
@@ -173,6 +175,8 @@ Evidence notes:
 - Monitoring REST wires metrics into the queue adapter at the infrastructure boundary; domain entities and feature use cases remain independent from metrics implementation details.
 - Ingestion worker records scan execution lifecycle metrics at the queue handler boundary with `job_type`, `status` and `worker` labels only.
 - `ExecuteScanUseCase` remains free of metrics imports; future metrics backends can swap behind `MetricsRecorderPort`.
+- Scan status REST response now includes support-safe `userState`, optional `failureClass` and `operatorAction` fields.
+- Failure classification is implemented in the REST presentation layer, so domain status remains simple and frontend/support can still present clear next actions.
 
 ## Missing Evidence Blocks
 - Cross-tenant access not tested.
