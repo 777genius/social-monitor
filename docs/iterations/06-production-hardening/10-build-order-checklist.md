@@ -30,7 +30,7 @@
 5. PR 5: observability contract, safe labels and correlation propagation.
 6. PR 6: dashboards, alerts and runbooks for source/scan/summary/DLQ.
 7. PR 7: CI gates for architecture, contracts, migrations and generated clients.
-8. PR 8: release evidence bundle gate completed for MVP; secret/dependency/container scanning remains the next supply-chain expansion before production hardening beyond beta.
+8. PR 8: release evidence bundle and secret scan gates completed for MVP; dependency vulnerability scanning, container build, SBOM and image signing remain the next supply-chain expansion before production hardening beyond beta.
 9. PR 9: performance/cost tests and noisy-tenant fairness.
 10. PR 10: staging drills for provider outage, DLQ growth and restore.
 
