@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "events": [
+    {
+      "eventType": "monitoring.topic.created",
+      "schemaVersion": 1,
+      "producer": "monitoring",
+      "requiredPayloadFields": ["topicId", "tenantId", "workspaceId", "name", "query"]
+    },
+    {
+      "eventType": "monitoring.source-binding.enabled",
+      "schemaVersion": 1,
+      "producer": "monitoring",
+      "requiredPayloadFields": [
+        "sourceBindingId",
+        "tenantId",
+        "workspaceId",
+        "topicId",
+        "providerKey",
+        "capabilityProfileVersion"
+      ]
+    },
+    {
+      "eventType": "monitoring.scan-policy.set",
+      "schemaVersion": 1,
+      "producer": "monitoring",
+      "requiredPayloadFields": [
+        "scanPolicyId",
+        "tenantId",
+        "workspaceId",
+        "sourceBindingId",
+        "intervalSeconds",
+        "freshnessSeconds",
+        "retryBudget"
+      ]
+    },
+    {
+      "eventType": "monitoring.scan.requested",
+      "schemaVersion": 1,
+      "producer": "monitoring",
+      "requiredPayloadFields": ["scanJobId", "tenantId", "workspaceId", "sourceBindingId", "scanPolicyId"]
+    },
+    {
+      "eventType": "summary.ready",
+      "schemaVersion": 1,
+      "producer": "summary",
+      "requiredPayloadFields": ["summaryJobId", "summaryId", "tenantId", "workspaceId", "topicId", "status"]
+    },
+    {
+      "eventType": "summary.status.changed.v1",
+      "schemaVersion": 1,
+      "producer": "delivery",
+      "requiredPayloadFields": ["summaryJobId", "summaryId", "topicId", "status"]
+    },
+    {
+      "eventType": "digest.ready.v1",
+      "schemaVersion": 1,
+      "producer": "delivery",
+      "requiredPayloadFields": ["digestId", "tenantId", "workspaceId"]
+    }
+  ]
+}
