@@ -76,3 +76,4 @@ Make the MVP reliable enough for beta users: security, observability, CI/CD, res
 - PR 3 API key lifecycle audit added in commit `28cb17f`: API key create/list/revoke REST actions record support-safe audit events through the Usage use case, with `system` actor taxonomy for the current pre-user-auth MVP boundary.
 - PR 3 source binding audit added in commit `9efc707`: source binding creation records support-safe audit events without storing source config or credentials, and idempotent duplicate binding calls do not create false new security-change audit records.
 - PR 3 scan policy audit added in commit `a72160c`: scan policy creation records support-safe interval/freshness/retry metadata and skips duplicate idempotent replay events.
+- PR 3 manual scan request audit added in commit `c1f6065`: user-triggered scan jobs record support-safe audit events and skip idempotent/overlap responses that do not enqueue new work.
