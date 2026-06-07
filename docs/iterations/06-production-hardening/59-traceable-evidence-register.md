@@ -144,6 +144,7 @@ Evidence notes:
 - `f5b50e7 feat: record scan failure queue metrics`
 - `35484e7 feat: record provider failure metrics`
 - `064f747 feat: record summary model cost metrics`
+- `cc90c93 feat: record delivery attempt metrics`
 
 Verified commands:
 
@@ -157,12 +158,16 @@ Verified commands:
 - `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone ingestion worker e2e verified provider-unavailable failure classification records `scan_failures_total{failure_class=provider_unavailable,job_type=scan,worker=ingestion-worker}`.
 - `node -e "..."` provider observability contract smoke verified provider outage/rate-limit alerts point to matching dashboard panels and the provider triage runbook section.
 - `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone Summary Nest e2e verified summary request execution records `summary_model_requests_total`, `summary_model_tokens_total` and `summary_model_estimated_cost_usd` through the real `SummaryRestModule` wiring.
+- `node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone delivery adapter smoke/e2e verified accepted and retryable-failure delivery attempts record `delivery_attempts_total` and `delivery_failures_total`.
 - `npm run build`
 - `npm run check:architecture`
 - `npm run check:observability`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-observability.mjs`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint libs/ingestion/interfaces/queue/execute-scan-command.handler.ts test/e2e/api-to-ingestion-contract.e2e-spec.ts test/e2e/ingestion-worker.execute-scan.e2e-spec.ts scripts/check-observability.mjs`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint libs/summary/adapters/model/metered-summary-model.adapter.ts libs/summary/interfaces/rest/summary-rest.module.ts test/e2e/summary-jobs.execute.e2e-spec.ts scripts/check-observability.mjs`
+- `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js libs/delivery/adapters/notification/metered-delivery.provider.ts`
+- `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js libs/delivery/adapters/notification/metered-delivery.provider.spec.ts`
+- `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js libs/delivery/interfaces/rest/delivery-rest.module.ts scripts/check-observability.mjs`
 - `git diff --check`
 
 Evidence notes:
@@ -180,6 +185,9 @@ Evidence notes:
 - Summary model metrics are recorded in `MeteredSummaryModelAdapter`, preserving Clean Architecture: domain/use cases still depend only on `SummaryModelPort`.
 - Summary model observability uses low-cardinality labels only: `provider`, `model`, `status` and `token_type`; prompt text, source URLs and user identifiers remain forbidden labels.
 - MVP health dashboard includes summary model cost/output token panels, and `summary-model-cost-spike` links to the summary cost triage runbook.
+- Delivery metrics are recorded in `MeteredDeliveryProvider`, preserving Clean Architecture: delivery use cases still depend only on `DeliveryProviderPort`.
+- Delivery observability uses low-cardinality labels only: `channel`, `resource_type`, `status` and `retryable`; raw provider failure reasons, webhook secrets, endpoint URLs and payload credentials remain forbidden metric labels.
+- MVP health dashboard includes retryable webhook delivery failure coverage, and `webhook-delivery-failures` links to the delivery failure triage runbook.
 
 ## PR 5 Observability Contract Evidence
 
