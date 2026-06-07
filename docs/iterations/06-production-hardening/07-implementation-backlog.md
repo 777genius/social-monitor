@@ -88,3 +88,4 @@ Make the MVP reliable enough for beta users: security, observability, CI/CD, res
 - PR 5 scan queue backlog metric added in commit `09962da`: platform metrics supports gauges and Monitoring queue adapter records `queue_commands_backlog` for scan enqueue depth with safe labels.
 - PR 6 MVP observability contract added in commit `f92fc3c`: versioned dashboard and alert definitions reference implemented MVP metrics, safe labels and runbook sections, with `npm run check:observability` validating links and unsafe labels.
 - PR 6 observability CI gate added in commit `9c9c405`: `npm run verify` now runs `check:observability` so dashboard/alert contracts are checked with the standard local/CI verification path.
+- PR 6 scan failure queue observability added in commit `f5b50e7`: retry and DLQ queues record safe counters/gauges, MVP dashboard/alert definitions include DLQ panels and alert, and the runbook includes DLQ triage steps.

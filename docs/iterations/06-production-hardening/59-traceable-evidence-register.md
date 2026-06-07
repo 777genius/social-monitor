@@ -141,6 +141,7 @@ Evidence notes:
 
 - `f92fc3c feat: add mvp observability contract`
 - `9c9c405 chore: include observability gate in verify`
+- `f5b50e7 feat: record scan failure queue metrics`
 
 Verified commands:
 
@@ -149,6 +150,8 @@ Verified commands:
 - `npm run build`
 - `node -e "..."` operational contract smoke verified every MVP alert points to an existing dashboard panel and runbook path.
 - `node -e "..."` verify-script smoke confirmed `npm run verify` includes `check:observability`.
+- `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone DLQ queue unit verified dead-letter counter/backlog metrics.
+- `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone ingestion worker e2e verified failing provider path enqueues retry and records retry queue counter/backlog metrics.
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-observability.mjs`
 - `git diff --check`
 
@@ -160,6 +163,8 @@ Evidence notes:
 - `scripts/check-observability.mjs` rejects unknown metrics, unsafe/high-risk labels and missing runbook/dashboard references.
 - This remains vendor-neutral so Prometheus/Grafana/OpenTelemetry adapters can be added later without rewriting the operational contract.
 - The observability contract is now part of the standard `npm run verify` chain.
+- Retry and DLQ failure queues now emit `scan_failure_queue_events_total` and `scan_failure_queue_backlog` with `queue/status` safe labels only.
+- MVP health dashboard includes scan retry and scan DLQ backlog panels, and alerts include `scan-dlq-growth` linked to the DLQ triage runbook.
 
 ## PR 5 Observability Contract Evidence
 
