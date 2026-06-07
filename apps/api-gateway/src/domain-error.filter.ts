@@ -31,10 +31,17 @@ export class DomainErrorFilter implements ExceptionFilter<DomainError> {
       status,
       detail: exception.message,
       code: exception.code,
-      details: exception.details,
+      details: redactProblemDetails(exception.details),
     });
   }
 }
+
+export const redactProblemDetails = (
+  details: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> =>
+  Object.fromEntries(
+    Object.entries(details).map(([key, value]) => [key, redactProblemDetailValue(key, value)]),
+  );
 
 const statusForDomainError = (code: DomainErrorCode): number => {
   switch (code) {
@@ -72,3 +79,35 @@ const titleForDomainError = (code: DomainErrorCode): string => {
       return 'External dependency unavailable';
   }
 };
+
+const REDACTED = '[REDACTED]';
+
+const secretKeyPattern = /(?:secret|token|password|credential|authorization|api[_-]?key|refresh[_-]?token|access[_-]?token)/i;
+const bearerPattern = /^bearer\s+\S+/i;
+const generatedSecretPattern = /^(?:smk|whsec)_[A-Za-z0-9_-]+/;
+const urlWithPasswordPattern = /^[a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:[^@\s]+@/i;
+
+const redactProblemDetailValue = (key: string, value: unknown): unknown => {
+  if (secretKeyPattern.test(key)) {
+    return REDACTED;
+  }
+
+  if (typeof value === 'string') {
+    return shouldRedactString(value) ? REDACTED : value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactProblemDetailValue('', item));
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    return redactProblemDetails(value as Readonly<Record<string, unknown>>);
+  }
+
+  return value;
+};
+
+const shouldRedactString = (value: string): boolean =>
+  bearerPattern.test(value) ||
+  generatedSecretPattern.test(value) ||
+  urlWithPasswordPattern.test(value);
