@@ -1,0 +1,1102 @@
+{
+  "components": {
+    "schemas": {
+      "BindSourceRequestDto": {
+        "properties": {},
+        "type": "object"
+      },
+      "CreateApiKeyRequestDto": {
+        "properties": {},
+        "type": "object"
+      },
+      "CreateTopicRequestDto": {
+        "properties": {},
+        "type": "object"
+      },
+      "CreateWebhookEndpointRequestDto": {
+        "properties": {},
+        "type": "object"
+      },
+      "SetScanPolicyRequestDto": {
+        "properties": {},
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "contact": {},
+    "description": "Backend/API-first social monitoring MVP.",
+    "title": "Social Monitor API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/delivery/attempts/{deliveryAttemptId}": {
+      "get": {
+        "operationId": "DeliveryAttemptsController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deliveryAttemptId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get one tenant/workspace delivery attempt status.",
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/delivery/digests/{digestId}": {
+      "get": {
+        "operationId": "DigestsController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "digestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get one tenant/workspace digest with provenance.",
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/delivery/webhook-endpoints": {
+      "get": {
+        "operationId": "WebhookEndpointsController_list",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List outbound webhook endpoints without exposing signing secrets.",
+        "tags": [
+          "webhook-endpoints"
+        ]
+      },
+      "post": {
+        "operationId": "WebhookEndpointsController_create",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWebhookEndpointRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Create an outbound webhook endpoint and return its signing secret once.",
+        "tags": [
+          "webhook-endpoints"
+        ]
+      }
+    },
+    "/delivery/webhook-endpoints/{webhookEndpointId}": {
+      "delete": {
+        "operationId": "WebhookEndpointsController_disable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhookEndpointId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Disable an outbound webhook endpoint without deleting audit history or secrets.",
+        "tags": [
+          "webhook-endpoints"
+        ]
+      },
+      "get": {
+        "operationId": "WebhookEndpointsController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhookEndpointId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get an outbound webhook endpoint without exposing its signing secret.",
+        "tags": [
+          "webhook-endpoints"
+        ]
+      }
+    },
+    "/feed/items": {
+      "get": {
+        "operationId": "FeedController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List tenant/workspace feed items with cursor pagination.",
+        "tags": [
+          "feed"
+        ]
+      }
+    },
+    "/feed/items/{feedItemId}": {
+      "get": {
+        "operationId": "FeedController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "feedItemId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get one tenant/workspace feed item by id.",
+        "tags": [
+          "feed"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "HealthController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Liveness probe for the API gateway.",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/identity/api-keys": {
+      "get": {
+        "operationId": "ApiKeysController_list",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List tenant/workspace API keys without exposing raw secrets or hashes.",
+        "tags": [
+          "api-keys"
+        ]
+      },
+      "post": {
+        "operationId": "ApiKeysController_create",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApiKeyRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Create tenant/workspace API key and return the raw secret once.",
+        "tags": [
+          "api-keys"
+        ]
+      }
+    },
+    "/identity/api-keys/{apiKeyId}": {
+      "delete": {
+        "operationId": "ApiKeysController_revoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "apiKeyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Revoke a tenant/workspace API key.",
+        "tags": [
+          "api-keys"
+        ]
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "HealthController_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Readiness probe for the API gateway.",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/realtime/events": {
+      "get": {
+        "operationId": "RealtimeEventsController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Replay tenant/workspace realtime events for REST resync.",
+        "tags": [
+          "realtime"
+        ]
+      }
+    },
+    "/scan-requests/{scanJobId}/status": {
+      "get": {
+        "operationId": "ScanStatusController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scanJobId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get current scan job status.",
+        "tags": [
+          "scan-requests"
+        ]
+      }
+    },
+    "/source-bindings/{sourceBindingId}/scan-policy": {
+      "post": {
+        "operationId": "ScanPolicyController_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sourceBindingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetScanPolicyRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Set scan policy for a source binding.",
+        "tags": [
+          "scan-policies"
+        ]
+      }
+    },
+    "/source-bindings/{sourceBindingId}/scan-requests": {
+      "post": {
+        "operationId": "ScanRequestController_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sourceBindingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Request a scan for a source binding.",
+        "tags": [
+          "scan-requests"
+        ]
+      }
+    },
+    "/sources/profiles": {
+      "get": {
+        "operationId": "SourceProfileController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List source capability and readiness profiles.",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/summaries": {
+      "get": {
+        "operationId": "SummaryController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "topicId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List tenant/workspace summaries with cursor pagination.",
+        "tags": [
+          "summaries"
+        ]
+      }
+    },
+    "/summaries/{summaryId}": {
+      "get": {
+        "operationId": "SummaryController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "summaryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get one tenant/workspace summary by id.",
+        "tags": [
+          "summaries"
+        ]
+      }
+    },
+    "/summaries/{summaryId}/regenerations": {
+      "post": {
+        "operationId": "SummaryController_regenerate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "summaryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Request regeneration for an existing summary.",
+        "tags": [
+          "summaries"
+        ]
+      }
+    },
+    "/summary-jobs/{summaryJobId}/status": {
+      "get": {
+        "operationId": "SummaryJobController_getStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "summaryJobId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get summary job status and safe timeline.",
+        "tags": [
+          "summaries"
+        ]
+      }
+    },
+    "/topics": {
+      "post": {
+        "operationId": "TopicController_create",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTopicRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Create a topic inside the current tenant/workspace.",
+        "tags": [
+          "topics"
+        ]
+      }
+    },
+    "/topics/{topicId}/source-bindings": {
+      "post": {
+        "operationId": "SourceBindingController_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topicId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindSourceRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Bind a production-safe source provider to a topic.",
+        "tags": [
+          "source-bindings"
+        ]
+      }
+    },
+    "/topics/{topicId}/summary-requests": {
+      "post": {
+        "operationId": "SummaryRequestController_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topicId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Request a summary for a topic.",
+        "tags": [
+          "summaries"
+        ]
+      }
+    }
+  },
+  "servers": [],
+  "tags": []
+}
