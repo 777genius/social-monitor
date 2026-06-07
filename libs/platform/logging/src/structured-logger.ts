@@ -1,3 +1,5 @@
+import { safeLabelValue } from './safe-label';
+
 export type LogFields = Readonly<Record<string, string | number | boolean | undefined>>;
 
 export interface StructuredLogger {
@@ -38,5 +40,5 @@ const formatLogValue = (key: string, value: string | number | boolean): string =
     return REDACTED;
   }
 
-  return value;
+  return safeLabelValue(value);
 };

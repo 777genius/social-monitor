@@ -33,4 +33,15 @@ describe('formatLogMessage', () => {
       }),
     ).toBe('request failed header=[REDACTED] generatedApiKey=[REDACTED] webhookSigningKey=[REDACTED] databaseUrl=[REDACTED]');
   });
+
+  it('normalizes unsafe string fields to safe label values', () => {
+    expect(
+      formatLogMessage('source failed', {
+        provider: 'fake-source',
+        sourceUrl: 'https://example.com/feed?token=secret',
+        userEmail: 'user@example.com',
+        prompt: 'free form prompt text',
+      }),
+    ).toBe('source failed provider=fake-source sourceUrl=unknown userEmail=unknown prompt=unknown');
+  });
 });
