@@ -231,3 +231,23 @@ Evidence notes:
 - Secret redaction not verified.
 - Support runbook absent.
 - Capacity envelope or degradation drill absent.
+
+## PR 7 Contract CI Evidence
+
+- `7bb904a feat: add openapi drift gate`
+
+Verified commands:
+
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:architecture`
+- `npm run build`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-openapi.ts`
+- `git diff --check`
+
+Evidence notes:
+
+- `scripts/check-openapi.ts` creates a headless Nest `AppModule`, generates the Swagger/OpenAPI document and compares it with `libs/contracts/rest/openapi.snapshot.json`.
+- `npm run update:openapi` is the explicit intentional-change path; `npm run check:openapi` is the CI/local drift gate.
+- `npm run verify` now includes `check:openapi`, so public REST contract drift is blocked with the standard verification chain.
+- The snapshot lives in `libs/contracts/rest`, keeping transport contract artifacts outside domain and feature slices.
