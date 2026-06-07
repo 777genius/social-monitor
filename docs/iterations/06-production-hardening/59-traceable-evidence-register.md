@@ -141,6 +141,7 @@ Evidence notes:
 
 - `2e14638 feat: normalize request context headers`
 - `f622ed4 feat: normalize safe observability labels`
+- `ee0fdf3 feat: propagate scan request correlation id`
 
 Verified commands:
 
@@ -149,6 +150,7 @@ Verified commands:
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest libs/platform/request-context/src/request-context.spec.ts --runInBand`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest libs/platform/logging/src/safe-label.spec.ts libs/platform/logging/src/structured-logger.spec.ts --runInBand`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/api-gateway.health.e2e-spec.ts`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/scan-requests.create.e2e-spec.ts`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint ...`
 - `git diff --check`
 
@@ -159,6 +161,8 @@ Evidence notes:
 - Health e2e verifies explicit safe IDs propagate and unsafe IDs fall back to generated request/correlation IDs.
 - Logging safe-label helper preserves low-cardinality provider/status/job labels and maps emails, URLs, free-form prompt text and oversized strings to `unknown`.
 - Structured logger applies secret redaction before safe-label normalization so generated API keys and bearer values remain `[REDACTED]`.
+- Manual scan request REST adapter uses the shared request-context helper instead of directly generating ad hoc IDs.
+- Scan request e2e verifies `x-correlation-id` propagates into the `ingestion.scan.execute` queue envelope while `idempotency-key` remains the causation ID.
 
 ## Missing Evidence Blocks
 - Cross-tenant access not tested.
