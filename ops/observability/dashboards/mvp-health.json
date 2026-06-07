@@ -47,6 +47,24 @@
         "worker": "ingestion-worker"
       },
       "safeDiagnosticQuestion": "Are scan jobs failing after workers start them?"
+    },
+    {
+      "panelId": "scan-retry-backlog",
+      "title": "Scan Retry Backlog",
+      "metric": "scan_failure_queue_backlog",
+      "labels": {
+        "queue": "scan-retry"
+      },
+      "safeDiagnosticQuestion": "Are failed scans waiting for retry?"
+    },
+    {
+      "panelId": "scan-dlq-backlog",
+      "title": "Scan DLQ Backlog",
+      "metric": "scan_failure_queue_backlog",
+      "labels": {
+        "queue": "scan-dlq"
+      },
+      "safeDiagnosticQuestion": "Do failed scans require manual triage?"
     }
   ]
 }

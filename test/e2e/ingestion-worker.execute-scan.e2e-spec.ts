@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { IngestionWorkerModule } from '../../apps/ingestion-worker/src/ingestion-worker.module';
@@ -167,6 +168,7 @@ describe('ingestion worker execute scan command (e2e)', () => {
     const attemptRepository = moduleRef.get(InMemoryScanAttemptRepository);
     const cursorRepository = moduleRef.get(InMemoryScanCursorRepository);
     const failureQueue = moduleRef.get(InMemoryScanFailureQueueAdapter);
+    const metrics = moduleRef.get(InMemoryMetricsRecorder);
     const command = {
       commandId: 'scan-job-failure',
       commandType: 'ingestion.scan.execute',
@@ -203,6 +205,13 @@ describe('ingestion worker execute scan command (e2e)', () => {
       }),
     ]);
     expect(failureQueue.deadLettered()).toEqual([]);
+    expect(metrics.counterValue('scan_failure_queue_events_total', {
+      queue: 'scan-retry',
+      status: 'retry_enqueued',
+    })).toBe(1);
+    expect(metrics.latestGaugeValue('scan_failure_queue_backlog', {
+      queue: 'scan-retry',
+    })).toBe(1);
     await expect(cursorRepository.findBySourceBinding({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),

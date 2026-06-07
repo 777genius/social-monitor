@@ -65,3 +65,13 @@ Scan status API responses expose support-safe fields for beta triage:
 - If backlog grows while `scan_jobs_total{status=started}` is flat, inspect worker availability before increasing scan frequency.
 - If backlog grows together with provider rate-limit failures, reduce scan frequency or pause affected sources before adding workers.
 - Queue lag seconds is intentionally not emitted yet because the MVP in-memory queue has no ack/dequeue timestamp model; add it when the broker adapter exposes consumed/acked timestamps.
+
+## DLQ Triage
+
+- `scan_failure_queue_events_total{queue=scan-retry,status=retry_enqueued}` shows failed scans accepted for retry.
+- `scan_failure_queue_backlog{queue=scan-retry}` shows retry queue depth.
+- `scan_failure_queue_events_total{queue=scan-dlq,status=dead_lettered}` shows scans that exhausted retry budget.
+- `scan_failure_queue_backlog{queue=scan-dlq}` shows scan failures requiring manual classification.
+- First action: classify the failure as provider outage, provider rate limit, worker conflict, source configuration, system bug or unsafe replay.
+- Replay only after confirming the source capability and retry budget; suppress retry storms before increasing workers.
+- Never inspect raw source payloads or credentials during DLQ triage; use scan id, source binding id, safe failure class and correlation id.

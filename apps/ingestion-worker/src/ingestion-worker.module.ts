@@ -35,7 +35,11 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     },
     InMemoryScanAttemptRepository,
     InMemoryScanCursorRepository,
-    InMemoryScanFailureQueueAdapter,
+    {
+      provide: InMemoryScanFailureQueueAdapter,
+      useFactory: (metrics: InMemoryMetricsRecorder) => new InMemoryScanFailureQueueAdapter(metrics),
+      inject: [InMemoryMetricsRecorder],
+    },
     InMemoryScanLeaseAdapter,
     InMemoryMetricsRecorder,
     NoopScanExecutionReporterAdapter,

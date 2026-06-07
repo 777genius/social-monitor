@@ -35,6 +35,21 @@
       "userVisibleState": "scan_degraded",
       "firstMitigation": "classify_failure_before_retrying_or_scaling_workers",
       "page": false
+    },
+    {
+      "alertId": "scan-dlq-growth",
+      "severity": "warning",
+      "metric": "scan_failure_queue_backlog",
+      "labels": {
+        "queue": "scan-dlq"
+      },
+      "condition": "latest_value >= 1 for 5m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "scan-dlq-backlog",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#dlq-triage",
+      "userVisibleState": "scan_degraded",
+      "firstMitigation": "classify_dead_letter_before_replay_or_suppression",
+      "page": false
     }
   ]
 }
