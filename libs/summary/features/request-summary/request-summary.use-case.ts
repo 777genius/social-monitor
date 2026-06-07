@@ -8,7 +8,7 @@ import {
 } from '@social-monitor/shared-kernel';
 
 import { SummaryJob } from '../../domain';
-import type { SummaryJobRepositoryPort } from '../../ports';
+import type { SummaryJobRepositoryPort, SummaryQuotaPort } from '../../ports';
 import type { RequestSummaryCommand } from './request-summary.command';
 import type { RequestSummaryResult } from './request-summary.result';
 
@@ -17,6 +17,7 @@ type RequestSummaryFailure = DomainError | Error;
 export class RequestSummaryUseCase {
   constructor(
     private readonly summaryJobs: SummaryJobRepositoryPort,
+    private readonly summaryQuota: SummaryQuotaPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
   ) {}
@@ -40,6 +41,16 @@ export class RequestSummaryUseCase {
         status: snapshot.status,
         created: false,
       });
+    }
+
+    const quota = await this.summaryQuota.reserveSummaryJob({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      topicId: command.topicId,
+      operation: 'summary.request',
+    });
+    if (!quota.ok) {
+      return err(quota.error);
     }
 
     const job = SummaryJob.request({

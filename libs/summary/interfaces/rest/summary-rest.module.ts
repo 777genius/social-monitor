@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
+import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case';
+import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
+import { UsageSummaryQuotaAdapter } from '../../adapters/quota/usage-summary-quota.adapter';
 import { EmptySummaryEvidenceSelector } from '../../adapters/evidence/empty-summary-evidence.selector';
 import { InMemorySummaryEventPublisher } from '../../adapters/messaging/in-memory-summary-event-publisher';
 import { DeterministicSummaryModelAdapter } from '../../adapters/model/deterministic-summary-model.adapter';
@@ -18,6 +21,7 @@ import { SummaryRequestController } from './summary-request.controller';
 import { SummaryController } from './summary.controller';
 
 @Module({
+  imports: [UsageRestModule],
   controllers: [SummaryController, SummaryJobController, SummaryRequestController],
   providers: [
     InMemorySummaryJobRepository,
@@ -26,14 +30,19 @@ import { SummaryController } from './summary.controller';
     EmptySummaryEvidenceSelector,
     DeterministicSummaryModelAdapter,
     {
+      provide: UsageSummaryQuotaAdapter,
+      useFactory: (reserveUsageQuota: ReserveUsageQuotaUseCase) =>
+        new UsageSummaryQuotaAdapter(reserveUsageQuota),
+      inject: [ReserveUsageQuotaUseCase],
+    },
+    {
       provide: RequestSummaryUseCase,
-      useFactory: (summaryJobs: InMemorySummaryJobRepository) =>
-        new RequestSummaryUseCase(
-          summaryJobs,
-          new CryptoIdGenerator(),
-          new SystemClock(),
-      ),
-      inject: [InMemorySummaryJobRepository],
+      useFactory: (
+        summaryJobs: InMemorySummaryJobRepository,
+        summaryQuota: UsageSummaryQuotaAdapter,
+      ) =>
+        new RequestSummaryUseCase(summaryJobs, summaryQuota, new CryptoIdGenerator(), new SystemClock()),
+      inject: [InMemorySummaryJobRepository, UsageSummaryQuotaAdapter],
     },
     {
       provide: ExecuteSummaryJobUseCase,
@@ -86,14 +95,16 @@ import { SummaryController } from './summary.controller';
       useFactory: (
         summaryArtifacts: InMemorySummaryArtifactRepository,
         summaryJobs: InMemorySummaryJobRepository,
+        summaryQuota: UsageSummaryQuotaAdapter,
       ) =>
         new RegenerateSummaryUseCase(
           summaryArtifacts,
           summaryJobs,
+          summaryQuota,
           new CryptoIdGenerator(),
           new SystemClock(),
         ),
-      inject: [InMemorySummaryArtifactRepository, InMemorySummaryJobRepository],
+      inject: [InMemorySummaryArtifactRepository, InMemorySummaryJobRepository, UsageSummaryQuotaAdapter],
     },
   ],
   exports: [

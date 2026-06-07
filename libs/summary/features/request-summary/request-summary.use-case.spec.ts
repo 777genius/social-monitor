@@ -1,7 +1,7 @@
-import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { DomainError, FixedClock, type IdGenerator, ok, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { SummaryJob } from '../../domain';
-import type { SummaryJobRepositoryPort } from '../../ports';
+import type { SummaryJobRepositoryPort, SummaryQuotaPort } from '../../ports';
 import { RequestSummaryUseCase } from './request-summary.use-case';
 
 class SequenceIdGenerator implements IdGenerator {
@@ -34,10 +34,29 @@ class FakeSummaryJobs implements SummaryJobRepositoryPort {
   }
 }
 
+class AllowingSummaryQuota implements SummaryQuotaPort {
+  async reserveSummaryJob(): ReturnType<SummaryQuotaPort['reserveSummaryJob']> {
+    return ok({
+      remaining: 59,
+      resetAt: '2026-06-06T01:00:00.000Z',
+    });
+  }
+}
+
+class DenyingSummaryQuota implements SummaryQuotaPort {
+  async reserveSummaryJob(): ReturnType<SummaryQuotaPort['reserveSummaryJob']> {
+    return {
+      ok: false,
+      error: new DomainError('operation.quota_exceeded', 'Usage quota exceeded'),
+    };
+  }
+}
+
 describe('RequestSummaryUseCase', () => {
   it('creates summary job idempotently', async () => {
     const useCase = new RequestSummaryUseCase(
       new FakeSummaryJobs(),
+      new AllowingSummaryQuota(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
     );
@@ -73,6 +92,7 @@ describe('RequestSummaryUseCase', () => {
   it('rejects empty topic id', async () => {
     const useCase = new RequestSummaryUseCase(
       new FakeSummaryJobs(),
+      new AllowingSummaryQuota(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
     );
@@ -86,5 +106,35 @@ describe('RequestSummaryUseCase', () => {
     });
 
     expect(result.ok).toBe(false);
+  });
+
+  it('checks quota before creating a new summary job', async () => {
+    const summaryJobs = new FakeSummaryJobs();
+    const useCase = new RequestSummaryUseCase(
+      summaryJobs,
+      new DenyingSummaryQuota(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      idempotencyKey: 'summary-1',
+      correlationId: 'correlation-1',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'operation.quota_exceeded',
+      }),
+    });
+    await expect(summaryJobs.findByIdempotencyKey({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      idempotencyKey: 'summary-1',
+    })).resolves.toBeNull();
   });
 });

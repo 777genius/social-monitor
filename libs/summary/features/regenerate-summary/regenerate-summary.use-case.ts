@@ -8,7 +8,7 @@ import {
 } from '@social-monitor/shared-kernel';
 
 import { SummaryJob } from '../../domain';
-import type { SummaryArtifactRepositoryPort, SummaryJobRepositoryPort } from '../../ports';
+import type { SummaryArtifactRepositoryPort, SummaryJobRepositoryPort, SummaryQuotaPort } from '../../ports';
 import type { RegenerateSummaryCommand } from './regenerate-summary.command';
 import type { RegenerateSummaryResult } from './regenerate-summary.result';
 
@@ -18,6 +18,7 @@ export class RegenerateSummaryUseCase {
   constructor(
     private readonly summaries: SummaryArtifactRepositoryPort,
     private readonly summaryJobs: SummaryJobRepositoryPort,
+    private readonly summaryQuota: SummaryQuotaPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
   ) {}
@@ -59,6 +60,16 @@ export class RegenerateSummaryUseCase {
     }
 
     const summarySnapshot = summary.toSnapshot();
+    const quota = await this.summaryQuota.reserveSummaryJob({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      topicId: summarySnapshot.topicId,
+      operation: 'summary.regenerate',
+    });
+    if (!quota.ok) {
+      return err(quota.error);
+    }
+
     const job = SummaryJob.request({
       id: this.ids.generate(),
       tenantId: command.tenantId,
