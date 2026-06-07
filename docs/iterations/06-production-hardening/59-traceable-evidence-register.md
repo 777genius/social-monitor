@@ -109,6 +109,25 @@ Evidence notes:
 - Support owner confirms runbooks.
 - SRE owner confirms dashboard and alert coverage.
 
+## PR 4 Quota Preflight Evidence
+
+- `a6ec5d6 feat: enforce manual scan quota`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest libs/usage/features/reserve-usage-quota/reserve-usage-quota.use-case.spec.ts libs/monitoring/features/request-scan/request-scan.use-case.spec.ts --runInBand`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/scan-requests.quota.e2e-spec.ts`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx eslint ...`
+- `git diff --check`
+
+Evidence notes:
+
+- Usage context owns the quota ledger port/use case and returns `operation.quota_exceeded` with reset/retry details.
+- Monitoring depends on a local `ScanRequestQuotaPort`; the REST module wires a Usage-backed adapter, preserving feature/domain isolation.
+- Manual scan e2e verifies quota overflow returns 429 before a second queue command is enqueued.
+
 ## Handoff Evidence
 - Launch iteration accepts go/no-go evidence.
 - Residual risks have owner and rollback trigger.

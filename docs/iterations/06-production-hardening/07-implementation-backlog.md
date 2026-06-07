@@ -77,3 +77,4 @@ Make the MVP reliable enough for beta users: security, observability, CI/CD, res
 - PR 3 source binding audit added in commit `9efc707`: source binding creation records support-safe audit events without storing source config or credentials, and idempotent duplicate binding calls do not create false new security-change audit records.
 - PR 3 scan policy audit added in commit `a72160c`: scan policy creation records support-safe interval/freshness/retry metadata and skips duplicate idempotent replay events.
 - PR 3 manual scan request audit added in commit `c1f6065`: user-triggered scan jobs record support-safe audit events and skip idempotent/overlap responses that do not enqueue new work.
+- PR 4 manual scan quota preflight added in commit `a6ec5d6`: manual scan requests reserve tenant/workspace quota through Usage before scan job creation/enqueue, and quota overflow returns `operation.quota_exceeded` without adding queue work.
