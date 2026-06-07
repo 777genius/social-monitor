@@ -10,6 +10,7 @@ const allowedMetrics = new Set([
   'queue_commands_enqueued_total',
   'scan_failure_queue_backlog',
   'scan_failure_queue_events_total',
+  'scan_failures_total',
   'scan_jobs_total',
 ]);
 const forbiddenLabelKeys = new Set([

@@ -51,6 +51,7 @@ export class ExecuteScanCommandHandler {
 
       if (!result.ok) {
         this.recordMetric('failed');
+        this.recordFailureClassMetric(result.error);
         failureRecorded = true;
         throw result.error;
       }
@@ -60,6 +61,7 @@ export class ExecuteScanCommandHandler {
     } catch (error) {
       if (!failureRecorded) {
         this.recordMetric('failed');
+        this.recordFailureClassMetric(error);
       }
       throw error;
     }
@@ -75,7 +77,36 @@ export class ExecuteScanCommandHandler {
       },
     });
   }
+
+  private recordFailureClassMetric(error: unknown): void {
+    this.metrics.incrementCounter({
+      name: 'scan_failures_total',
+      labels: {
+        failure_class: classifyFailure(error),
+        job_type: 'scan',
+        worker: 'ingestion-worker',
+      },
+    });
+  }
 }
+
+const classifyFailure = (error: unknown): 'provider_rate_limited' | 'provider_unavailable' | 'worker_conflict' | 'system_failure' => {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+
+  if (message.includes('rate limit') || message.includes('429')) {
+    return 'provider_rate_limited';
+  }
+
+  if (message.includes('provider') || message.includes('unavailable')) {
+    return 'provider_unavailable';
+  }
+
+  if (message.includes('lease') || message.includes('already')) {
+    return 'worker_conflict';
+  }
+
+  return 'system_failure';
+};
 
 const parsePayload = (payload: Readonly<Record<string, unknown>>): ExecuteScanQueuePayload => ({
   tenantId: readTenantScopeString(payload, 'tenantId'),

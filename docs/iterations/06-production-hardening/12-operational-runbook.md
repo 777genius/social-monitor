@@ -75,3 +75,11 @@ Scan status API responses expose support-safe fields for beta triage:
 - First action: classify the failure as provider outage, provider rate limit, worker conflict, source configuration, system bug or unsafe replay.
 - Replay only after confirming the source capability and retry budget; suppress retry storms before increasing workers.
 - Never inspect raw source payloads or credentials during DLQ triage; use scan id, source binding id, safe failure class and correlation id.
+
+## Provider Failure Triage
+
+- `scan_failures_total{failure_class=provider_unavailable,job_type=scan,worker=ingestion-worker}` shows provider availability failures.
+- `scan_failures_total{failure_class=provider_rate_limited,job_type=scan,worker=ingestion-worker}` shows provider rate-limit failures.
+- If provider unavailable failures rise, check provider health and source capability before replaying scans.
+- If provider rate-limit failures rise, reduce scan frequency, enforce quota/backoff and avoid adding workers until provider pressure is controlled.
+- Provider failure triage must not use raw URLs, prompts, source item bodies or credentials as metric labels.

@@ -212,6 +212,11 @@ describe('ingestion worker execute scan command (e2e)', () => {
     expect(metrics.latestGaugeValue('scan_failure_queue_backlog', {
       queue: 'scan-retry',
     })).toBe(1);
+    expect(metrics.counterValue('scan_failures_total', {
+      failure_class: 'provider_unavailable',
+      job_type: 'scan',
+      worker: 'ingestion-worker',
+    })).toBe(1);
     await expect(cursorRepository.findBySourceBinding({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),

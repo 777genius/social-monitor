@@ -49,6 +49,28 @@
       "safeDiagnosticQuestion": "Are scan jobs failing after workers start them?"
     },
     {
+      "panelId": "provider-unavailable-failures",
+      "title": "Provider Unavailable Failures",
+      "metric": "scan_failures_total",
+      "labels": {
+        "failure_class": "provider_unavailable",
+        "job_type": "scan",
+        "worker": "ingestion-worker"
+      },
+      "safeDiagnosticQuestion": "Are scan failures caused by provider availability?"
+    },
+    {
+      "panelId": "provider-rate-limit-failures",
+      "title": "Provider Rate Limit Failures",
+      "metric": "scan_failures_total",
+      "labels": {
+        "failure_class": "provider_rate_limited",
+        "job_type": "scan",
+        "worker": "ingestion-worker"
+      },
+      "safeDiagnosticQuestion": "Are scan failures caused by provider rate limits?"
+    },
+    {
       "panelId": "scan-retry-backlog",
       "title": "Scan Retry Backlog",
       "metric": "scan_failure_queue_backlog",

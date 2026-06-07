@@ -50,6 +50,40 @@
       "userVisibleState": "scan_degraded",
       "firstMitigation": "classify_dead_letter_before_replay_or_suppression",
       "page": false
+    },
+    {
+      "alertId": "provider-unavailable-scan-failures",
+      "severity": "warning",
+      "metric": "scan_failures_total",
+      "labels": {
+        "failure_class": "provider_unavailable",
+        "job_type": "scan",
+        "worker": "ingestion-worker"
+      },
+      "condition": "increase >= 3 for 10m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "provider-unavailable-failures",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#provider-failure-triage",
+      "userVisibleState": "scan_degraded",
+      "firstMitigation": "check_provider_health_before_replaying_scans",
+      "page": false
+    },
+    {
+      "alertId": "provider-rate-limit-scan-failures",
+      "severity": "warning",
+      "metric": "scan_failures_total",
+      "labels": {
+        "failure_class": "provider_rate_limited",
+        "job_type": "scan",
+        "worker": "ingestion-worker"
+      },
+      "condition": "increase >= 1 for 5m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "provider-rate-limit-failures",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#provider-failure-triage",
+      "userVisibleState": "scan_degraded",
+      "firstMitigation": "reduce_scan_frequency_before_adding_workers",
+      "page": false
     }
   ]
 }

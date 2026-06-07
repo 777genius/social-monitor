@@ -175,6 +175,13 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       }),
     ).toBe(1);
     expect(
+      metrics.counterValue('scan_failures_total', {
+        failure_class: 'provider_unavailable',
+        job_type: 'scan',
+        worker: 'ingestion-worker',
+      }),
+    ).toBe(1);
+    expect(
       metrics.counterValue('scan_jobs_total', {
         job_type: 'scan',
         status: 'succeeded',
