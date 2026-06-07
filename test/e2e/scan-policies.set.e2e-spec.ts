@@ -1,5 +1,7 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/in-memory-public-api-audit-log';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
@@ -28,10 +30,12 @@ describe('Set scan policy flow (e2e)', () => {
   });
 
   it('sets scan policy for a fake source binding and makes duplicate command idempotent', async () => {
+    const tenant = tenantId('tenant-policy-e2e');
+    const workspace = workspaceId('workspace-policy-e2e');
     const topic = await request(app.getHttpServer())
       .post('/topics')
-      .set('x-tenant-id', 'tenant-policy-e2e')
-      .set('x-workspace-id', 'workspace-policy-e2e')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
       .set('x-request-id', 'request-policy-topic')
       .set('idempotency-key', 'create-policy-topic')
       .send({
@@ -42,8 +46,8 @@ describe('Set scan policy flow (e2e)', () => {
 
     const binding = await request(app.getHttpServer())
       .post(`/topics/${topic.body.topicId}/source-bindings`)
-      .set('x-tenant-id', 'tenant-policy-e2e')
-      .set('x-workspace-id', 'workspace-policy-e2e')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
       .set('x-request-id', 'request-policy-bind')
       .set('idempotency-key', 'bind-policy-source')
       .send({
@@ -54,8 +58,8 @@ describe('Set scan policy flow (e2e)', () => {
 
     const first = await request(app.getHttpServer())
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
-      .set('x-tenant-id', 'tenant-policy-e2e')
-      .set('x-workspace-id', 'workspace-policy-e2e')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
       .set('x-request-id', 'request-policy-set')
       .set('idempotency-key', 'set-policy')
       .send({
@@ -72,8 +76,8 @@ describe('Set scan policy flow (e2e)', () => {
 
     const second = await request(app.getHttpServer())
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
-      .set('x-tenant-id', 'tenant-policy-e2e')
-      .set('x-workspace-id', 'workspace-policy-e2e')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
       .set('x-request-id', 'request-policy-set')
       .set('idempotency-key', 'set-policy')
       .send({
@@ -87,5 +91,28 @@ describe('Set scan policy flow (e2e)', () => {
       scanPolicyId: first.body.scanPolicyId,
       created: false,
     });
+
+    const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
+      tenantId: tenant,
+      workspaceId: workspace,
+    });
+
+    expect(auditRecords.filter((record) => record.action === 'scan_policy.created')).toEqual([
+      expect.objectContaining({
+        actorType: 'system',
+        actorId: 'monitoring.scan-policies',
+        action: 'scan_policy.created',
+        outcome: 'succeeded',
+        resourceType: 'scan_policy',
+        resourceId: first.body.scanPolicyId,
+        metadata: {
+          sourceBindingId: binding.body.sourceBindingId,
+          intervalSeconds: 300,
+          freshnessSeconds: 900,
+          retryBudget: 3,
+          created: true,
+        },
+      }),
+    ]);
   });
 });

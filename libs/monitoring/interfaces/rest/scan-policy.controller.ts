@@ -1,6 +1,8 @@
 import { Body, Controller, Headers, Param, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { requireTenantScope } from '@social-monitor/shared-kernel';
+import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
+import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
+import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
 
 import { SetScanPolicyUseCase } from '../../features/set-scan-policy/set-scan-policy.use-case';
 import { SetScanPolicyRequestDto, type SetScanPolicyResponseDto } from './set-scan-policy.dto';
@@ -8,14 +10,17 @@ import { SetScanPolicyRequestDto, type SetScanPolicyResponseDto } from './set-sc
 @ApiTags('scan-policies')
 @Controller('source-bindings/:sourceBindingId/scan-policy')
 export class ScanPolicyController {
-  constructor(private readonly setScanPolicy: SetScanPolicyUseCase) {}
+  constructor(
+    private readonly setScanPolicy: SetScanPolicyUseCase,
+    private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Set scan policy for a source binding.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiHeader({ name: 'idempotency-key', required: true })
-  create(
+  async create(
     @Param('sourceBindingId') sourceBindingId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -28,23 +33,59 @@ export class ScanPolicyController {
       workspaceIdHeader: workspaceHeader,
     });
 
-    return this.setScanPolicy
-      .execute({
+    const result = await this.setScanPolicy.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      sourceBindingId,
+      intervalSeconds: body.intervalSeconds,
+      freshnessSeconds: body.freshnessSeconds,
+      retryBudget: body.retryBudget,
+      idempotencyKey,
+      correlationId: requestId ?? crypto.randomUUID(),
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    if (result.value.created) {
+      await this.recordScanPolicyAuditEvent({
         tenantId: scope.tenantId,
         workspaceId: scope.workspaceId,
-        sourceBindingId,
-        intervalSeconds: body.intervalSeconds,
-        freshnessSeconds: body.freshnessSeconds,
-        retryBudget: body.retryBudget,
-        idempotencyKey,
-        correlationId: requestId ?? crypto.randomUUID(),
-      })
-      .then((result) => {
-        if (!result.ok) {
-          throw result.error;
-        }
-
-        return result.value;
+        resourceId: result.value.scanPolicyId,
+        metadata: {
+          sourceBindingId,
+          intervalSeconds: body.intervalSeconds,
+          freshnessSeconds: body.freshnessSeconds,
+          retryBudget: body.retryBudget,
+          created: result.value.created,
+        },
       });
+    }
+
+    return result.value;
+  }
+
+  private async recordScanPolicyAuditEvent(params: {
+    readonly tenantId: TenantId;
+    readonly workspaceId: WorkspaceId;
+    readonly resourceId: string;
+    readonly metadata?: Readonly<Record<string, PublicApiAuditMetadataValue>>;
+  }): Promise<void> {
+    const result = await this.recordPublicApiAuditEvent.execute({
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      actorType: 'system',
+      actorId: 'monitoring.scan-policies',
+      action: 'scan_policy.created',
+      outcome: 'succeeded',
+      resourceType: 'scan_policy',
+      resourceId: params.resourceId,
+      metadata: params.metadata,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
   }
 }
