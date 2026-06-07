@@ -50,4 +50,33 @@ describe('InMemoryMetricsRecorder', () => {
       }),
     ).toBe(3);
   });
+
+  it('records gauges and returns the latest matching value', () => {
+    const recorder = new InMemoryMetricsRecorder();
+
+    recorder.recordGauge({
+      name: 'queue_commands_backlog',
+      value: 1,
+      labels: {
+        command_type: 'ingestion.scan.execute',
+        queue: 'scan',
+      },
+    });
+    recorder.recordGauge({
+      name: 'queue_commands_backlog',
+      value: 3,
+      labels: {
+        command_type: 'ingestion.scan.execute',
+        queue: 'scan',
+      },
+    });
+
+    expect(recorder.gauges('queue_commands_backlog')).toHaveLength(2);
+    expect(
+      recorder.latestGaugeValue('queue_commands_backlog', {
+        command_type: 'ingestion.scan.execute',
+        queue: 'scan',
+      }),
+    ).toBe(3);
+  });
 });

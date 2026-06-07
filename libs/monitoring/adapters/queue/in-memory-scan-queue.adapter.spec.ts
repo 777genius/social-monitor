@@ -35,5 +35,11 @@ describe('InMemoryScanQueueAdapter', () => {
         status: 'enqueued',
       }),
     ).toBe(1);
+    expect(
+      metrics.latestGaugeValue('queue_commands_backlog', {
+        command_type: 'ingestion.scan.execute',
+        queue: 'scan',
+      }),
+    ).toBe(1);
   });
 });

@@ -32,6 +32,14 @@ export class InMemoryScanQueueAdapter implements ScanQueuePort {
         status: 'enqueued',
       },
     });
+    this.metrics.recordGauge({
+      name: 'queue_commands_backlog',
+      value: this.publisher.all().length,
+      labels: {
+        command_type: 'ingestion.scan.execute',
+        queue: 'scan',
+      },
+    });
   }
 
   all(): readonly QueueCommandEnvelope<Readonly<Record<string, unknown>>>[] {
