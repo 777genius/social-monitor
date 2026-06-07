@@ -273,6 +273,27 @@ Evidence notes:
 - `scripts/check-event-contracts.mjs` scans production TypeScript producers for emitted `eventType`/`schemaVersion` pairs and fails if they are missing from the catalog.
 - Realtime events that encode version in the event type suffix, for example `summary.status.changed.v1`, are accepted as schema version 1 while keeping the realtime protocol version separate.
 
+## PR 8 Release Evidence Evidence
+
+- `bf95ab3 feat: add release evidence gate`
+
+Verified commands:
+
+- `npm run check:release`
+- `npm run check:architecture`
+- `npm run build`
+- `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js scripts/check-release-evidence.mjs`
+- `git diff --check`
+
+Evidence notes:
+
+- `ops/release/mvp-release-evidence-contract.json` defines beta release artifact evidence: commit SHA, immutable image digest, OpenAPI snapshot, event catalog and migration schema.
+- `scripts/check-release-evidence.mjs` validates required blocking gates, deploy smoke checks, rollback triggers, runbook anchor and promotion document before release evidence can pass.
+- `npm run verify` now includes `check:release`, so release evidence drift is checked with the standard local/CI verification chain.
+- Deploy smoke checks cover API health, OpenAPI contract, migration compatibility and worker pause/resume readiness.
+- Rollback triggers cover security regressions, migration/restore regressions, provider failure spikes, summary cost spikes and delivery failure spikes.
+- This is an MVP release-evidence contract gate; secret scanning, dependency vulnerability scanning, container build, SBOM and image signing remain explicit future supply-chain expansions rather than silently claimed evidence.
+
 ## PR 9 Load Cost Evidence
 
 - `46dfbf1 feat: add load cost guardrail`
