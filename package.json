@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.build.json",
     "check:architecture": "node scripts/check-architecture.mjs",
     "check:local-infra": "node scripts/check-local-infra.mjs",
-    "check:migrations": "prisma validate --schema prisma/schema.prisma && prisma generate --schema prisma/schema.prisma",
+    "check:migrations": "node scripts/check-migrations.mjs",
     "check:observability": "node scripts/check-observability.mjs",
     "check:openapi": "ts-node -r tsconfig-paths/register scripts/check-openapi.ts",
     "lint": "NODE_OPTIONS=--max-old-space-size=1024 eslint .",
