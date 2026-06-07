@@ -145,6 +145,7 @@ Evidence notes:
 - `ef9619b feat: record scan queue metrics`
 - `96bb354 feat: record ingestion scan metrics`
 - `373f86e feat: expose scan status support state`
+- `09962da feat: record scan queue backlog metric`
 
 Verified commands:
 
@@ -158,6 +159,7 @@ Verified commands:
 - `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone Monitoring REST/supertest e2e verified topic -> source binding -> scan policy -> scan request -> queue -> metrics because repeated user interruptions killed long-running Jest e2e tool calls before final output could be captured.
 - `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone ingestion worker e2e verified successful and failed `ExecuteScanCommandHandler` paths plus `scan_jobs_total` started/succeeded/failed counters.
 - `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone Monitoring REST/supertest e2e verified scan status response includes `userState=scan_in_progress` and the expected support action for an enqueued scan.
+- `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone queue backlog unit and Monitoring REST/supertest e2e verified `queue_commands_backlog=1` after scan request enqueue.
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint ...`
 - `git diff --check`
 
@@ -177,6 +179,8 @@ Evidence notes:
 - `ExecuteScanUseCase` remains free of metrics imports; future metrics backends can swap behind `MetricsRecorderPort`.
 - Scan status REST response now includes support-safe `userState`, optional `failureClass` and `operatorAction` fields.
 - Failure classification is implemented in the REST presentation layer, so domain status remains simple and frontend/support can still present clear next actions.
+- Platform metrics now supports gauges, and scan queue enqueue records `queue_commands_backlog` with `command_type` and `queue` labels.
+- Queue lag seconds remains intentionally deferred until the queue abstraction has consume/ack timestamps; recording a fake lag metric would mislead dashboards.
 
 ## Missing Evidence Blocks
 - Cross-tenant access not tested.

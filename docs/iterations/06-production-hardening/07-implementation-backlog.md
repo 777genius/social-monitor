@@ -85,3 +85,4 @@ Make the MVP reliable enough for beta users: security, observability, CI/CD, res
 - PR 5 scan queue metrics added in commit `ef9619b`: platform metrics port/in-memory adapter records safe low-cardinality queue enqueue counters, and Monitoring REST wires the adapter without leaking metrics concerns into domain/features.
 - PR 5 ingestion scan execution metrics added in commit `96bb354`: ingestion queue handler records started/succeeded/failed scan job counters with safe labels at the interface boundary while keeping execute-scan use case/domain metrics-free.
 - PR 5 scan status support state added in commit `373f86e`: scan status REST responses include support-safe `userState`, `failureClass` and `operatorAction` fields from a presentation-layer mapping policy.
+- PR 5 scan queue backlog metric added in commit `09962da`: platform metrics supports gauges and Monitoring queue adapter records `queue_commands_backlog` for scan enqueue depth with safe labels.

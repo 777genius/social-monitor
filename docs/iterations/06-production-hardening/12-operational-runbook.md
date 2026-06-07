@@ -57,3 +57,11 @@ Scan status API responses expose support-safe fields for beta triage:
 - `userState=scan_degraded` with `failureClass=provider_rate_limited`: reduce scan frequency or pause the affected source before adding workers.
 - `userState=scan_degraded` with `failureClass=worker_conflict`: inspect scan lease ownership and worker lag.
 - `userState=scan_degraded` with `failureClass=system_failure`: inspect scan attempts, logs and DLQ without exposing raw source payloads.
+
+## Queue Backlog Triage
+
+- `queue_commands_enqueued_total{command_type=ingestion.scan.execute,job_type=scan,status=enqueued}` shows accepted scan queue work.
+- `queue_commands_backlog{command_type=ingestion.scan.execute,queue=scan}` shows current in-memory scan queue depth after enqueue.
+- If backlog grows while `scan_jobs_total{status=started}` is flat, inspect worker availability before increasing scan frequency.
+- If backlog grows together with provider rate-limit failures, reduce scan frequency or pause affected sources before adding workers.
+- Queue lag seconds is intentionally not emitted yet because the MVP in-memory queue has no ack/dequeue timestamp model; add it when the broker adapter exposes consumed/acked timestamps.
