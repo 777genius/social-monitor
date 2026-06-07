@@ -142,6 +142,7 @@ Evidence notes:
 - `2e14638 feat: normalize request context headers`
 - `f622ed4 feat: normalize safe observability labels`
 - `ee0fdf3 feat: propagate scan request correlation id`
+- `ef9619b feat: record scan queue metrics`
 
 Verified commands:
 
@@ -149,8 +150,10 @@ Verified commands:
 - `npm run check:architecture`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest libs/platform/request-context/src/request-context.spec.ts --runInBand`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest libs/platform/logging/src/safe-label.spec.ts libs/platform/logging/src/structured-logger.spec.ts --runInBand`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest libs/platform/metrics/src/metrics-recorder.spec.ts libs/monitoring/adapters/queue/in-memory-scan-queue.adapter.spec.ts --runInBand`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/api-gateway.health.e2e-spec.ts`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/scan-requests.create.e2e-spec.ts`
+- `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone Monitoring REST/supertest e2e verified topic -> source binding -> scan policy -> scan request -> queue -> metrics because repeated user interruptions killed long-running Jest e2e tool calls before final output could be captured.
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint ...`
 - `git diff --check`
 
@@ -163,6 +166,9 @@ Evidence notes:
 - Structured logger applies secret redaction before safe-label normalization so generated API keys and bearer values remain `[REDACTED]`.
 - Manual scan request REST adapter uses the shared request-context helper instead of directly generating ad hoc IDs.
 - Scan request e2e verifies `x-correlation-id` propagates into the `ingestion.scan.execute` queue envelope while `idempotency-key` remains the causation ID.
+- Platform metrics now has a `MetricsRecorderPort` plus in-memory adapter for MVP tests and future Prometheus/OTel adapters.
+- Scan queue enqueue metrics use safe low-cardinality labels: `command_type`, `job_type` and `status`.
+- Monitoring REST wires metrics into the queue adapter at the infrastructure boundary; domain entities and feature use cases remain independent from metrics implementation details.
 
 ## Missing Evidence Blocks
 - Cross-tenant access not tested.
