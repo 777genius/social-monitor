@@ -284,3 +284,23 @@ Evidence notes:
 - Quiet scan tenant scenario verifies 10 allowed and 0 rejected reservations, proving tenant/workspace quota buckets isolate noisy tenants.
 - Summary cost budget scenario verifies cost-like quota units allow 20 attempts and reject 5 overflow attempts before model/provider work would run.
 - The gate enforces a lightweight p95 quota reservation threshold for MVP regression detection; full broker/database load tests remain a later staging drill.
+
+## PR 10 Backup Restore Evidence
+
+- `a896050 feat: add backup restore contract gate`
+
+Verified commands:
+
+- `npm run check:backup-restore`
+- `npm run check:architecture`
+- `npm run build`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-backup-restore.mjs`
+- `git diff --check`
+
+Evidence notes:
+
+- `ops/recovery/backup-restore-contract.json` defines beta RPO/RTO, included backup tables, operational state tables and restore validation queries.
+- `scripts/check-backup-restore.mjs` parses `prisma/schema.prisma` and fails if any mapped Prisma table is missing from the recovery contract.
+- The contract explicitly requires replay/idempotency state: `outbox_events`, `inbox_records`, `idempotency_keys`, `scan_jobs` and `cursor_checkpoints`.
+- Runbook now includes backup restore drill steps, including keeping workers paused until migration, replay and idempotency state are validated.
+- This is a contract gate, not a live `pg_dump` drill; live database restore remains a staging drill before beta launch.
