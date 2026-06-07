@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "releaseType": "beta-mvp",
+  "artifactEvidence": {
+    "requiresCommitSha": true,
+    "requiresImageDigest": true,
+    "requiresOpenApiSnapshot": "libs/contracts/rest/openapi.snapshot.json",
+    "requiresEventCatalog": "libs/contracts/events/event-catalog.json",
+    "requiresMigrationSchema": "prisma/schema.prisma"
+  },
+  "requiredGates": [
+    {
+      "gateId": "architecture-boundaries",
+      "command": "npm run check:architecture",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "observability-contract",
+      "command": "npm run check:observability",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "openapi-drift",
+      "command": "npm run check:openapi",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "event-contracts",
+      "command": "npm run check:events",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "migration-safety",
+      "command": "npm run check:migrations",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "load-cost-guardrail",
+      "command": "npm run check:load-cost",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "backup-restore-contract",
+      "command": "npm run check:backup-restore",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "staging-drills",
+      "command": "npm run check:drills",
+      "blocksRelease": true
+    }
+  ],
+  "deploySmokeChecks": [
+    {
+      "smokeId": "api-health",
+      "target": "GET /health",
+      "expectedSignal": "service accepts REST traffic"
+    },
+    {
+      "smokeId": "openapi-contract",
+      "target": "libs/contracts/rest/openapi.snapshot.json",
+      "expectedSignal": "deployed REST contract matches committed snapshot"
+    },
+    {
+      "smokeId": "migration-version",
+      "target": "prisma/schema.prisma",
+      "expectedSignal": "deployed database schema is compatible with release commit"
+    },
+    {
+      "smokeId": "worker-pause-resume",
+      "target": "ingestion-worker",
+      "expectedSignal": "workers can stay paused during rollback or restore validation"
+    }
+  ],
+  "rollbackTriggers": [
+    {
+      "triggerId": "security-regression",
+      "condition": "tenant isolation, redaction or credential protection gate fails",
+      "firstAction": "hold release and keep beta traffic disabled",
+      "owner": "release-owner"
+    },
+    {
+      "triggerId": "migration-regression",
+      "condition": "migration gate fails or restore validation cannot prove replay/idempotency state",
+      "firstAction": "stop workers, do not replay queues, restore or rework migration",
+      "owner": "release-owner"
+    },
+    {
+      "triggerId": "provider-failure-spike",
+      "condition": "provider outage/rate-limit alerts fire after deploy",
+      "firstAction": "pause affected sources and reduce scan frequency before adding workers",
+      "owner": "ops-owner"
+    },
+    {
+      "triggerId": "summary-cost-spike",
+      "condition": "summary cost alert fires after prompt, model or routing change",
+      "firstAction": "reduce summary frequency or model budget before replaying summary jobs",
+      "owner": "ops-owner"
+    },
+    {
+      "triggerId": "delivery-failure-spike",
+      "condition": "webhook delivery failure alert fires after deploy",
+      "firstAction": "check endpoint status, signing secret rotation and quarantine state before replay",
+      "owner": "ops-owner"
+    }
+  ],
+  "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#release-rollback-triage",
+  "promotionDoc": "docs/iterations/06-production-hardening/42-release-gate-and-promotion.md"
+}

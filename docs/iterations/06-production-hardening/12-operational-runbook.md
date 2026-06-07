@@ -107,3 +107,12 @@ Scan status API responses expose support-safe fields for beta triage:
 - `delivery_failures_total{channel=webhook,resource_type=digest,retryable=true}` shows retryable webhook delivery failures.
 - If retryable webhook failures rise, check endpoint status, signing secret rotation and suppression/quarantine state before replaying attempts.
 - Delivery triage must use attempt id, channel, resource type and correlation id; never inspect raw webhook secrets or payload credentials.
+
+## Release Rollback Triage
+
+- Use `ops/release/mvp-release-evidence-contract.json` as the beta release evidence contract before promoting hardening changes.
+- Release evidence must include release commit SHA, immutable image digest, OpenAPI snapshot, event catalog, migration schema and blocking gate output.
+- Run deploy smoke checks for API health, OpenAPI contract, migration compatibility and worker pause/resume readiness before inviting beta traffic.
+- If tenant isolation, redaction or credential protection fails, hold release and keep beta traffic disabled.
+- If migration or restore validation fails, stop workers, avoid queue replay and rework or restore before resuming provider/AI jobs.
+- If provider, summary cost or delivery alerts spike after deploy, pause the affected source/job path before increasing worker capacity or replaying attempts.
