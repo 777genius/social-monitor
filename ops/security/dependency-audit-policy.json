@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "auditCommand": "npm audit --json --audit-level=high",
+  "blockSeverities": [
+    "high",
+    "critical"
+  ],
+  "exceptionPolicy": {
+    "requiresOwner": true,
+    "requiresExpiryDate": true,
+    "requiresMitigation": true
+  },
+  "allowedExceptions": []
+}
