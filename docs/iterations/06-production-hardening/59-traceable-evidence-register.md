@@ -143,6 +143,7 @@ Evidence notes:
 - `9c9c405 chore: include observability gate in verify`
 - `f5b50e7 feat: record scan failure queue metrics`
 - `35484e7 feat: record provider failure metrics`
+- `064f747 feat: record summary model cost metrics`
 
 Verified commands:
 
@@ -155,8 +156,13 @@ Verified commands:
 - `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone ingestion worker e2e verified failing provider path enqueues retry and records retry queue counter/backlog metrics.
 - `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone ingestion worker e2e verified provider-unavailable failure classification records `scan_failures_total{failure_class=provider_unavailable,job_type=scan,worker=ingestion-worker}`.
 - `node -e "..."` provider observability contract smoke verified provider outage/rate-limit alerts point to matching dashboard panels and the provider triage runbook section.
+- `node -r ts-node/register -r tsconfig-paths/register -e "..."` standalone Summary Nest e2e verified summary request execution records `summary_model_requests_total`, `summary_model_tokens_total` and `summary_model_estimated_cost_usd` through the real `SummaryRestModule` wiring.
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:observability`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-observability.mjs`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint libs/ingestion/interfaces/queue/execute-scan-command.handler.ts test/e2e/api-to-ingestion-contract.e2e-spec.ts test/e2e/ingestion-worker.execute-scan.e2e-spec.ts scripts/check-observability.mjs`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx eslint libs/summary/adapters/model/metered-summary-model.adapter.ts libs/summary/interfaces/rest/summary-rest.module.ts test/e2e/summary-jobs.execute.e2e-spec.ts scripts/check-observability.mjs`
 - `git diff --check`
 
 Evidence notes:
@@ -171,6 +177,9 @@ Evidence notes:
 - MVP health dashboard includes scan retry and scan DLQ backlog panels, and alerts include `scan-dlq-growth` linked to the DLQ triage runbook.
 - Provider outage and provider rate-limit scan failures now emit the same low-cardinality `scan_failures_total` metric with `failure_class`, `job_type` and `worker` labels.
 - MVP health dashboard includes provider outage/rate-limit failure panels, and alerts link to provider triage runbook steps without depending on a specific metrics vendor.
+- Summary model metrics are recorded in `MeteredSummaryModelAdapter`, preserving Clean Architecture: domain/use cases still depend only on `SummaryModelPort`.
+- Summary model observability uses low-cardinality labels only: `provider`, `model`, `status` and `token_type`; prompt text, source URLs and user identifiers remain forbidden labels.
+- MVP health dashboard includes summary model cost/output token panels, and `summary-model-cost-spike` links to the summary cost triage runbook.
 
 ## PR 5 Observability Contract Evidence
 
