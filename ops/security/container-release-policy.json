@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "dockerfile": "Dockerfile",
+  "dockerignore": ".dockerignore",
+  "supportedServices": [
+    "api",
+    "delivery",
+    "ingestion",
+    "intelligence"
+  ],
+  "requiredEvidence": {
+    "imageDigest": true,
+    "sbom": true,
+    "signing": true,
+    "nonRootRuntime": true
+  },
+  "releaseEvidenceContract": "ops/release/mvp-release-evidence-contract.json",
+  "notes": "MVP image intentionally keeps ts-node runtime because compiled path aliases are not bundled yet; optimize runtime image after bundling/module-alias decision."
+}
