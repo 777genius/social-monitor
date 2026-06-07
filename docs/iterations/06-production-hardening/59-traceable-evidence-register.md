@@ -137,6 +137,27 @@ Evidence notes:
 - Launch iteration accepts go/no-go evidence.
 - Residual risks have owner and rollback trigger.
 
+## PR 6 Dashboards Alerts Runbooks Evidence
+
+- `f92fc3c feat: add mvp observability contract`
+
+Verified commands:
+
+- `npm run check:observability`
+- `npm run check:architecture`
+- `npm run build`
+- `node -e "..."` operational contract smoke verified every MVP alert points to an existing dashboard panel and runbook path.
+- `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-observability.mjs`
+- `git diff --check`
+
+Evidence notes:
+
+- `ops/observability/dashboards/mvp-health.json` defines MVP health panels for scan queue backlog, scan queue accepted work and ingestion worker started/failed counters.
+- `ops/observability/alerts/mvp-alerts.json` defines actionable warning alerts for scan backlog growth and worker failures.
+- Alerts link to `docs/iterations/06-production-hardening/12-operational-runbook.md` sections and include first mitigation plus user-visible state.
+- `scripts/check-observability.mjs` rejects unknown metrics, unsafe/high-risk labels and missing runbook/dashboard references.
+- This remains vendor-neutral so Prometheus/Grafana/OpenTelemetry adapters can be added later without rewriting the operational contract.
+
 ## PR 5 Observability Contract Evidence
 
 - `2e14638 feat: normalize request context headers`

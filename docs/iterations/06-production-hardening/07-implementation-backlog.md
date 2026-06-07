@@ -86,3 +86,4 @@ Make the MVP reliable enough for beta users: security, observability, CI/CD, res
 - PR 5 ingestion scan execution metrics added in commit `96bb354`: ingestion queue handler records started/succeeded/failed scan job counters with safe labels at the interface boundary while keeping execute-scan use case/domain metrics-free.
 - PR 5 scan status support state added in commit `373f86e`: scan status REST responses include support-safe `userState`, `failureClass` and `operatorAction` fields from a presentation-layer mapping policy.
 - PR 5 scan queue backlog metric added in commit `09962da`: platform metrics supports gauges and Monitoring queue adapter records `queue_commands_backlog` for scan enqueue depth with safe labels.
+- PR 6 MVP observability contract added in commit `f92fc3c`: versioned dashboard and alert definitions reference implemented MVP metrics, safe labels and runbook sections, with `npm run check:observability` validating links and unsafe labels.

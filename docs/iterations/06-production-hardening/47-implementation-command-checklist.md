@@ -7,6 +7,7 @@ Record hardening verification before beta-safety changes are reviewed.
 - Run tenant isolation suite.
 - Run secret redaction tests.
 - Run contract/event/migration CI gate checks.
+- Run `npm run check:observability` after dashboard or alert definition changes.
 - Run quota exhaustion scenario.
 - Run backup/restore verification.
 
@@ -15,6 +16,7 @@ Record hardening verification before beta-safety changes are reviewed.
 - Redaction output.
 - CI gate evidence.
 - Dashboard or metric sample.
+- Observability contract validator output.
 - Restore verification result.
 
 ## MVP Evidence Rule
