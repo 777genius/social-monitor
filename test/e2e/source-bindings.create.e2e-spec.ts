@@ -1,5 +1,7 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/in-memory-public-api-audit-log';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
@@ -28,10 +30,12 @@ describe('Bind source flow (e2e)', () => {
   });
 
   it('binds fake source to an existing topic and makes duplicate command idempotent', async () => {
+    const tenant = tenantId('tenant-source-e2e');
+    const workspace = workspaceId('workspace-source-e2e');
     const topic = await request(app.getHttpServer())
       .post('/topics')
-      .set('x-tenant-id', 'tenant-source-e2e')
-      .set('x-workspace-id', 'workspace-source-e2e')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
       .set('x-request-id', 'request-source-topic')
       .set('idempotency-key', 'create-source-topic')
       .send({
@@ -42,8 +46,8 @@ describe('Bind source flow (e2e)', () => {
 
     const first = await request(app.getHttpServer())
       .post(`/topics/${topic.body.topicId}/source-bindings`)
-      .set('x-tenant-id', 'tenant-source-e2e')
-      .set('x-workspace-id', 'workspace-source-e2e')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
       .set('x-request-id', 'request-source-bind')
       .set('idempotency-key', 'bind-fake-source')
       .send({
@@ -59,8 +63,8 @@ describe('Bind source flow (e2e)', () => {
 
     const second = await request(app.getHttpServer())
       .post(`/topics/${topic.body.topicId}/source-bindings`)
-      .set('x-tenant-id', 'tenant-source-e2e')
-      .set('x-workspace-id', 'workspace-source-e2e')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
       .set('x-request-id', 'request-source-bind')
       .set('idempotency-key', 'bind-fake-source')
       .send({
@@ -73,5 +77,27 @@ describe('Bind source flow (e2e)', () => {
       sourceBindingId: first.body.sourceBindingId,
       created: false,
     });
+
+    const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
+      tenantId: tenant,
+      workspaceId: workspace,
+    });
+
+    expect(auditRecords.filter((record) => record.action === 'source_binding.created')).toEqual([
+      expect.objectContaining({
+        actorType: 'system',
+        actorId: 'monitoring.source-bindings',
+        action: 'source_binding.created',
+        outcome: 'succeeded',
+        resourceType: 'source_binding',
+        resourceId: first.body.sourceBindingId,
+        metadata: {
+          providerKey: 'fake-source',
+          topicId: topic.body.topicId,
+          created: true,
+        },
+      }),
+    ]);
+    expect(JSON.stringify(auditRecords)).not.toContain('config');
   });
 });

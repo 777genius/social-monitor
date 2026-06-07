@@ -1,6 +1,7 @@
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { Module } from '@nestjs/common';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
+import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
 import { InMemoryIdempotencyAdapter } from '../../adapters/idempotency/in-memory-idempotency.adapter';
 import { InMemoryOutboxAdapter } from '../../adapters/messaging/in-memory-outbox.adapter';
@@ -25,6 +26,7 @@ import { SourceBindingController } from './source-binding.controller';
 import { TopicController } from './topic.controller';
 
 @Module({
+  imports: [UsageRestModule],
   controllers: [
     TopicController,
     SourceBindingController,
