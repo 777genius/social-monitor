@@ -360,3 +360,24 @@ Evidence notes:
 - `ops/drills/mvp-staging-drills.json` defines required MVP drill contracts for provider outage, provider rate-limit, DLQ growth, summary cost spike and backup restore.
 - `scripts/check-drills.mjs` validates that each drill has a known verification command, support outcome, runbook section and required alert where applicable.
 - Drill contracts keep staging evidence structured while preserving the current MVP boundary where live staging infrastructure is not yet attached.
+
+## PR 11 Provider Circuit Breaker Evidence
+
+- `d0dae51 feat: add provider circuit breakers`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest libs/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter.spec.ts libs/delivery/adapters/notification/circuit-breaker-delivery.provider.spec.ts --runInBand`
+- `node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone Nest DI smoke verified `IngestionWorkerModule` wires `CircuitBreakerSourceFetcherAdapter` and `DeliveryRestModule` exposes three circuit-protected delivery providers.
+- `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js apps/ingestion-worker/src/ingestion-worker.module.ts libs/delivery/interfaces/rest/delivery-rest.module.ts libs/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter.ts libs/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter.spec.ts libs/delivery/adapters/notification/circuit-breaker-delivery.provider.ts libs/delivery/adapters/notification/circuit-breaker-delivery.provider.spec.ts`
+- `git diff --check`
+
+Evidence notes:
+
+- Circuit breakers live in adapter/decorator classes, so ingestion and delivery domain/use cases still depend only on `SourceFetcherPort` and `DeliveryProviderPort`.
+- Ingestion circuit breaker opens per tenant/workspace/source binding after repeated provider failures and returns `external.dependency_unavailable` during cooldown without calling the provider.
+- Delivery circuit breaker opens per provider instance after repeated failures and returns a retryable failure during cooldown without calling the provider.
+- Runtime wiring uses conservative MVP defaults: failure threshold 3 and cooldown 60 seconds for source fetching and delivery providers.
+- Focused specs verify threshold opening, provider-call suppression during cooldown, cooldown retry and success reset behavior.
