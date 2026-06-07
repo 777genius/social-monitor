@@ -236,16 +236,20 @@ Evidence notes:
 
 - `7bb904a feat: add openapi drift gate`
 - `7ef3cd8 feat: add migration schema gate`
+- `c03ae09 feat: add event contract gate`
 
 Verified commands:
 
 - `npm run update:openapi`
 - `npm run check:openapi`
 - `npm run check:migrations`
+- `npm run check:events`
 - `npm run check:architecture`
 - `npm run build`
+- `node -e "..."` event catalog smoke verified unique event type/version keys and webhook event catalog coverage.
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-openapi.ts`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-migrations.mjs`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-event-contracts.mjs libs/contracts/events/event-catalog.spec.ts`
 - `git diff --check`
 
 Evidence notes:
@@ -257,3 +261,6 @@ Evidence notes:
 - `scripts/check-migrations.mjs` validates the Prisma schema, regenerates the Prisma client and renders `prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script`.
 - The migration gate rejects an empty/no-table diff and destructive clean-bootstrap statements such as `DROP TABLE`, `DROP SCHEMA` and `TRUNCATE TABLE`.
 - The migration check remains database-free for MVP CI speed; a real clean/upgrade database drill is still tracked separately for staging hardening.
+- `libs/contracts/events/event-catalog.json` records internal, realtime and webhook event contracts by `eventType`, `schemaVersion`, producer and required payload fields.
+- `scripts/check-event-contracts.mjs` scans production TypeScript producers for emitted `eventType`/`schemaVersion` pairs and fails if they are missing from the catalog.
+- Realtime events that encode version in the event type suffix, for example `summary.status.changed.v1`, are accepted as schema version 1 while keeping the realtime protocol version separate.
