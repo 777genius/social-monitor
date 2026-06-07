@@ -84,6 +84,22 @@
       "userVisibleState": "scan_degraded",
       "firstMitigation": "reduce_scan_frequency_before_adding_workers",
       "page": false
+    },
+    {
+      "alertId": "summary-model-cost-spike",
+      "severity": "warning",
+      "metric": "summary_model_estimated_cost_usd",
+      "labels": {
+        "model": "summary-fake-v1",
+        "provider": "deterministic-local"
+      },
+      "condition": "increase >= 1 for 30m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "summary-model-cost",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#summary-cost-triage",
+      "userVisibleState": "summary_degraded",
+      "firstMitigation": "check_model_route_and_quota_before_retrying_summaries",
+      "page": false
     }
   ]
 }

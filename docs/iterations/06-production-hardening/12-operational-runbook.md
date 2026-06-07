@@ -83,3 +83,11 @@ Scan status API responses expose support-safe fields for beta triage:
 - If provider unavailable failures rise, check provider health and source capability before replaying scans.
 - If provider rate-limit failures rise, reduce scan frequency, enforce quota/backoff and avoid adding workers until provider pressure is controlled.
 - Provider failure triage must not use raw URLs, prompts, source item bodies or credentials as metric labels.
+
+## Summary Cost Triage
+
+- `summary_model_estimated_cost_usd{provider,model}` shows estimated summary model spend by low-cardinality route.
+- `summary_model_tokens_total{token_type=output}` helps detect oversized summary outputs after prompt/model changes.
+- If estimated cost rises, confirm quota preflight and model route before replaying failed or delayed summary jobs.
+- Prefer reducing summary frequency, max evidence items or output budget before changing provider routing.
+- Do not add prompt text, source URLs or user emails to metric labels while diagnosing cost spikes.

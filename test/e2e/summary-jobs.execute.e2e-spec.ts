@@ -1,5 +1,6 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case';
 import { InMemorySummaryArtifactRepository } from '@social-monitor/summary/adapters/persistence/in-memory-summary-artifact.repository';
@@ -7,6 +8,7 @@ import { InMemorySummaryEventPublisher } from '@social-monitor/summary/adapters/
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { SummaryRestModule } from '../../libs/summary/interfaces/rest/summary-rest.module';
 
 describe('Summary job execution flow (e2e)', () => {
   let app: INestApplication;
@@ -98,5 +100,44 @@ describe('Summary job execution flow (e2e)', () => {
         }),
       }),
     ]);
+
+    const metrics = app.select(SummaryRestModule).get(InMemoryMetricsRecorder, { strict: true });
+    expect(
+      metrics.counterValue('summary_model_requests_total', {
+        model: 'summary-fake-v1',
+        provider: 'deterministic-local',
+        status: 'started',
+      }),
+    ).toBe(1);
+    expect(
+      metrics.counterValue('summary_model_requests_total', {
+        model: 'summary-fake-v1',
+        provider: 'deterministic-local',
+        status: 'succeeded',
+      }),
+    ).toBe(1);
+    expect(
+      metrics.counterValue('summary_model_tokens_total', {
+        model: 'summary-fake-v1',
+        provider: 'deterministic-local',
+        token_type: 'input',
+      }),
+    ).toBeGreaterThan(0);
+    expect(
+      metrics.counterValue('summary_model_tokens_total', {
+        model: 'summary-fake-v1',
+        provider: 'deterministic-local',
+        token_type: 'output',
+      }),
+    ).toBe(48);
+    expect(metrics.counters('summary_model_estimated_cost_usd')).toContainEqual(
+      expect.objectContaining({
+        labels: {
+          model: 'summary-fake-v1',
+          provider: 'deterministic-local',
+        },
+        value: 0,
+      }),
+    );
   });
 });

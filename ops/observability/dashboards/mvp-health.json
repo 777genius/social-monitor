@@ -87,6 +87,27 @@
         "queue": "scan-dlq"
       },
       "safeDiagnosticQuestion": "Do failed scans require manual triage?"
+    },
+    {
+      "panelId": "summary-model-cost",
+      "title": "Summary Model Estimated Cost",
+      "metric": "summary_model_estimated_cost_usd",
+      "labels": {
+        "model": "summary-fake-v1",
+        "provider": "deterministic-local"
+      },
+      "safeDiagnosticQuestion": "Is summary model spend growing faster than expected?"
+    },
+    {
+      "panelId": "summary-model-output-tokens",
+      "title": "Summary Model Output Tokens",
+      "metric": "summary_model_tokens_total",
+      "labels": {
+        "model": "summary-fake-v1",
+        "provider": "deterministic-local",
+        "token_type": "output"
+      },
+      "safeDiagnosticQuestion": "Are summary outputs larger than expected?"
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
@@ -7,6 +8,7 @@ import { UsageSummaryQuotaAdapter } from '../../adapters/quota/usage-summary-quo
 import { EmptySummaryEvidenceSelector } from '../../adapters/evidence/empty-summary-evidence.selector';
 import { InMemorySummaryEventPublisher } from '../../adapters/messaging/in-memory-summary-event-publisher';
 import { DeterministicSummaryModelAdapter } from '../../adapters/model/deterministic-summary-model.adapter';
+import { MeteredSummaryModelAdapter } from '../../adapters/model/metered-summary-model.adapter';
 import { InMemorySummaryArtifactRepository } from '../../adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryJobRepository } from '../../adapters/persistence/in-memory-summary-job.repository';
 import { EvaluateSummaryQualityUseCase } from '../../features/evaluate-summary-quality/evaluate-summary-quality.use-case';
@@ -28,7 +30,14 @@ import { SummaryController } from './summary.controller';
     InMemorySummaryArtifactRepository,
     InMemorySummaryEventPublisher,
     EmptySummaryEvidenceSelector,
+    InMemoryMetricsRecorder,
     DeterministicSummaryModelAdapter,
+    {
+      provide: MeteredSummaryModelAdapter,
+      useFactory: (summaryModel: DeterministicSummaryModelAdapter, metrics: InMemoryMetricsRecorder) =>
+        new MeteredSummaryModelAdapter(summaryModel, metrics),
+      inject: [DeterministicSummaryModelAdapter, InMemoryMetricsRecorder],
+    },
     {
       provide: UsageSummaryQuotaAdapter,
       useFactory: (reserveUsageQuota: ReserveUsageQuotaUseCase) =>
@@ -50,7 +59,7 @@ import { SummaryController } from './summary.controller';
         summaryJobs: InMemorySummaryJobRepository,
         summaryArtifacts: InMemorySummaryArtifactRepository,
         evidenceSelector: EmptySummaryEvidenceSelector,
-        summaryModel: DeterministicSummaryModelAdapter,
+        summaryModel: MeteredSummaryModelAdapter,
         events: InMemorySummaryEventPublisher,
       ) =>
         new ExecuteSummaryJobUseCase(
@@ -66,14 +75,14 @@ import { SummaryController } from './summary.controller';
         InMemorySummaryJobRepository,
         InMemorySummaryArtifactRepository,
         EmptySummaryEvidenceSelector,
-        DeterministicSummaryModelAdapter,
+        MeteredSummaryModelAdapter,
         InMemorySummaryEventPublisher,
       ],
     },
     {
       provide: EvaluateSummaryQualityUseCase,
-      useFactory: (summaryModel: DeterministicSummaryModelAdapter) => new EvaluateSummaryQualityUseCase(summaryModel),
-      inject: [DeterministicSummaryModelAdapter],
+      useFactory: (summaryModel: MeteredSummaryModelAdapter) => new EvaluateSummaryQualityUseCase(summaryModel),
+      inject: [MeteredSummaryModelAdapter],
     },
     {
       provide: GetSummaryUseCase,
@@ -111,6 +120,7 @@ import { SummaryController } from './summary.controller';
     EvaluateSummaryQualityUseCase,
     ExecuteSummaryJobUseCase,
     GetSummaryJobStatusUseCase,
+    InMemoryMetricsRecorder,
     InMemorySummaryEventPublisher,
     InMemorySummaryArtifactRepository,
     InMemorySummaryJobRepository,
