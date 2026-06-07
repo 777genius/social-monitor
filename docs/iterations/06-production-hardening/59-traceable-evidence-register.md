@@ -72,6 +72,25 @@ Evidence notes:
 - AES-256-GCM adapter encrypts recursive secret-like config keys such as `apiToken`, `password` and `authorization`.
 - API problem details recursively redact secret-like keys and values before client response serialization.
 
+## PR 3 Audit Taxonomy Evidence
+
+- `947af79 feat: harden public api audit records`
+
+Verified commands:
+
+- `npm run check:architecture`
+- `npm run build`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest libs/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case.spec.ts --runInBand`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/webhook-endpoints.audit.e2e-spec.ts`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx eslint ...`
+- `git diff --check`
+
+Evidence notes:
+
+- Public API audit records now carry `outcome` and optional `reasonCode`.
+- Audit metadata is redacted in the use case before append, not only at the logging layer.
+- Webhook endpoint management audit e2e verifies successful audit outcome and no raw API key/signing secret leakage.
+
 ## Review Evidence
 - Cross-functional hardening review is approved.
 - Support owner confirms runbooks.
