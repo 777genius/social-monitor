@@ -54,6 +54,7 @@ Evidence notes:
 
 - `5fb7aef feat: redact structured log secrets`
 - `a97b0cd feat: protect source binding credentials`
+- `4ebcfd1 feat: redact problem detail secrets`
 
 Verified commands:
 
@@ -69,6 +70,7 @@ Evidence notes:
 - Structured logs redact secret-like values such as `Bearer ...`, generated `smk_...`, generated `whsec_...` and URLs containing embedded passwords.
 - Source binding configs protect secret-like fields through `SourceBindingConfigProtectorPort` before repository persistence.
 - AES-256-GCM adapter encrypts recursive secret-like config keys such as `apiToken`, `password` and `authorization`.
+- API problem details recursively redact secret-like keys and values before client response serialization.
 
 ## Review Evidence
 - Cross-functional hardening review is approved.

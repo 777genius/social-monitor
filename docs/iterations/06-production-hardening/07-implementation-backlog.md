@@ -71,3 +71,4 @@ Make the MVP reliable enough for beta users: security, observability, CI/CD, res
 - Verification used: `npm run check:architecture`, `npm run build`, targeted e2e specs, targeted ESLint and `git diff --check`.
 - PR 2 redaction foundation started in commit `5fb7aef`: structured logging redacts secret-like field names and generated/Bearer/URL-password secret-like values.
 - PR 2 source credential-at-rest protection added in commit `a97b0cd`: source binding config secret-like fields are protected through a Clean Architecture port and AES-256-GCM adapter before repository persistence.
+- PR 2 safe API error details added in commit `4ebcfd1`: `DomainErrorFilter` recursively redacts secret-like problem detail keys and values before returning JSON to clients.
