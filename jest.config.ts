@@ -12,6 +12,7 @@ const config: Config = {
     '^@social-monitor/platform-config$': '<rootDir>/libs/platform/config/src/index.ts',
     '^@social-monitor/platform-events$': '<rootDir>/libs/platform/events/src/index.ts',
     '^@social-monitor/platform-logging$': '<rootDir>/libs/platform/logging/src/index.ts',
+    '^@social-monitor/platform-metrics$': '<rootDir>/libs/platform/metrics/src/index.ts',
     '^@social-monitor/platform-queue$': '<rootDir>/libs/platform/queue/src/index.ts',
     '^@social-monitor/platform-request-context$': '<rootDir>/libs/platform/request-context/src/index.ts',
     '^@social-monitor/platform-worker$': '<rootDir>/libs/platform/worker/src/index.ts',

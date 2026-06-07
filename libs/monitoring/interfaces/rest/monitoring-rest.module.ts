@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case';
@@ -42,10 +43,12 @@ import { TopicController } from './topic.controller';
     InMemoryScanPolicyRepository,
     InMemoryScanJobRepository,
     InMemoryQueuePublisher,
+    InMemoryMetricsRecorder,
     {
       provide: InMemoryScanQueueAdapter,
-      useFactory: (publisher: InMemoryQueuePublisher) => new InMemoryScanQueueAdapter(publisher),
-      inject: [InMemoryQueuePublisher],
+      useFactory: (publisher: InMemoryQueuePublisher, metrics: InMemoryMetricsRecorder) =>
+        new InMemoryScanQueueAdapter(publisher, metrics),
+      inject: [InMemoryQueuePublisher, InMemoryMetricsRecorder],
     },
     FakeSourceCatalogAdapter,
     {

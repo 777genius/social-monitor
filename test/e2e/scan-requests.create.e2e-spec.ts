@@ -1,23 +1,26 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/in-memory-public-api-audit-log';
 import request from 'supertest';
 
-import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { MonitoringRestModule } from '../../libs/monitoring/interfaces/rest/monitoring-rest.module';
 
 describe('Request scan flow (e2e)', () => {
   let app: INestApplication;
   let queue: InMemoryQueuePublisher;
+  let metrics: InMemoryMetricsRecorder;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
+      imports: [MonitoringRestModule],
     }).compile();
 
     app = moduleRef.createNestApplication();
     queue = moduleRef.get(InMemoryQueuePublisher);
+    metrics = moduleRef.get(InMemoryMetricsRecorder);
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -97,6 +100,13 @@ describe('Request scan flow (e2e)', () => {
         sourceBindingId: binding.body.sourceBindingId,
       },
     });
+    expect(
+      metrics.counterValue('queue_commands_enqueued_total', {
+        command_type: 'ingestion.scan.execute',
+        job_type: 'scan',
+        status: 'enqueued',
+      }),
+    ).toBe(1);
 
     const second = await request(app.getHttpServer())
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)

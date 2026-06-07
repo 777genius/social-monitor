@@ -1,9 +1,13 @@
+import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import type { InMemoryQueuePublisher, QueueCommandEnvelope } from '@social-monitor/platform-queue';
 
 import type { EnqueueScanCommand, ScanQueuePort } from '../../ports';
 
 export class InMemoryScanQueueAdapter implements ScanQueuePort {
-  constructor(private readonly publisher: InMemoryQueuePublisher) {}
+  constructor(
+    private readonly publisher: InMemoryQueuePublisher,
+    private readonly metrics: MetricsRecorderPort,
+  ) {}
 
   async enqueue(command: EnqueueScanCommand): Promise<void> {
     await this.publisher.publish({
@@ -18,6 +22,14 @@ export class InMemoryScanQueueAdapter implements ScanQueuePort {
         scanJobId: command.scanJobId,
         sourceBindingId: command.sourceBindingId,
         scanPolicyId: command.scanPolicyId,
+      },
+    });
+    this.metrics.incrementCounter({
+      name: 'queue_commands_enqueued_total',
+      labels: {
+        command_type: 'ingestion.scan.execute',
+        job_type: 'scan',
+        status: 'enqueued',
       },
     });
   }
