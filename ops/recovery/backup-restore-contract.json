@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "rpoMinutes": 60,
+  "rtoMinutes": 120,
+  "backupIncludes": [
+    "tenants",
+    "workspaces",
+    "users",
+    "memberships",
+    "topics",
+    "source_catalog_entries",
+    "capability_profiles",
+    "source_bindings",
+    "scan_policies",
+    "scan_jobs",
+    "cursor_checkpoints",
+    "source_items",
+    "feed_items",
+    "summary_artifacts",
+    "summary_feedback",
+    "delivery_attempts",
+    "usage_records",
+    "outbox_events",
+    "inbox_records",
+    "idempotency_keys"
+  ],
+  "operationalStateTables": ["outbox_events", "inbox_records", "idempotency_keys", "scan_jobs", "cursor_checkpoints"],
+  "restoreValidationQueries": [
+    "select count(*) from tenants",
+    "select count(*) from workspaces",
+    "select count(*) from outbox_events",
+    "select count(*) from inbox_records",
+    "select count(*) from idempotency_keys"
+  ],
+  "manualDrillRunbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#backup-restore-drill"
+}

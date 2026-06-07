@@ -91,3 +91,11 @@ Scan status API responses expose support-safe fields for beta triage:
 - If estimated cost rises, confirm quota preflight and model route before replaying failed or delayed summary jobs.
 - Prefer reducing summary frequency, max evidence items or output budget before changing provider routing.
 - Do not add prompt text, source URLs or user emails to metric labels while diagnosing cost spikes.
+
+## Backup Restore Drill
+
+- Use `ops/recovery/backup-restore-contract.json` as the beta recovery contract for RPO/RTO and included tables.
+- Backup must include operational replay/idempotency state: `outbox_events`, `inbox_records`, `idempotency_keys`, `scan_jobs` and `cursor_checkpoints`.
+- After restore, run validation queries for tenant/workspace counts plus outbox, inbox and idempotency state before resuming workers.
+- Keep workers paused during restore validation; resume only after migration version, replay state and idempotency state are consistent.
+- If restore loses operational state, do not replay provider/AI jobs blindly; classify affected jobs and rebuild queues from durable records.
