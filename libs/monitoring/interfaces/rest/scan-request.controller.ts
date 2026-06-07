@@ -1,5 +1,6 @@
 import { Controller, Headers, Param, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { buildRequestContext } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
@@ -19,6 +20,7 @@ export class ScanRequestController {
   @ApiOperation({ summary: 'Request a scan for a source binding.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({ name: 'x-correlation-id', required: false })
   @ApiHeader({ name: 'idempotency-key', required: true })
   async create(
     @Param('sourceBindingId') sourceBindingId: string,
@@ -26,10 +28,15 @@ export class ScanRequestController {
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
+    @Headers('x-correlation-id') correlationHeader: string | undefined,
   ): Promise<RequestScanResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
+    });
+    const requestContext = buildRequestContext({
+      requestId,
+      correlationId: correlationHeader,
     });
 
     const result = await this.requestScan.execute({
@@ -37,7 +44,7 @@ export class ScanRequestController {
       workspaceId: scope.workspaceId,
       sourceBindingId,
       idempotencyKey,
-      correlationId: requestId ?? crypto.randomUUID(),
+      correlationId: requestContext.correlationId,
     });
 
     if (!result.ok) {

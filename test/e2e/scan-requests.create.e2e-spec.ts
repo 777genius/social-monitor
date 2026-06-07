@@ -78,6 +78,7 @@ describe('Request scan flow (e2e)', () => {
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-request-id', 'request-scan-now')
+      .set('x-correlation-id', 'correlation-scan-now')
       .set('idempotency-key', 'request-scan-now')
       .expect(201);
 
@@ -89,6 +90,8 @@ describe('Request scan flow (e2e)', () => {
     expect(queue.all()).toHaveLength(1);
     expect(queue.all()[0]).toMatchObject({
       commandType: 'ingestion.scan.execute',
+      correlationId: 'correlation-scan-now',
+      causationId: 'request-scan-now',
       payload: {
         scanJobId: first.body.scanJobId,
         sourceBindingId: binding.body.sourceBindingId,
