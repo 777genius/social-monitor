@@ -140,6 +140,7 @@ Evidence notes:
 ## PR 6 Dashboards Alerts Runbooks Evidence
 
 - `f92fc3c feat: add mvp observability contract`
+- `9c9c405 chore: include observability gate in verify`
 
 Verified commands:
 
@@ -147,6 +148,7 @@ Verified commands:
 - `npm run check:architecture`
 - `npm run build`
 - `node -e "..."` operational contract smoke verified every MVP alert points to an existing dashboard panel and runbook path.
+- `node -e "..."` verify-script smoke confirmed `npm run verify` includes `check:observability`.
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-observability.mjs`
 - `git diff --check`
 
@@ -157,6 +159,7 @@ Evidence notes:
 - Alerts link to `docs/iterations/06-production-hardening/12-operational-runbook.md` sections and include first mitigation plus user-visible state.
 - `scripts/check-observability.mjs` rejects unknown metrics, unsafe/high-risk labels and missing runbook/dashboard references.
 - This remains vendor-neutral so Prometheus/Grafana/OpenTelemetry adapters can be added later without rewriting the operational contract.
+- The observability contract is now part of the standard `npm run verify` chain.
 
 ## PR 5 Observability Contract Evidence
 
