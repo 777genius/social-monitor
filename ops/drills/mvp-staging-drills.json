@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "drills": [
+    {
+      "drillId": "provider-outage",
+      "failureMode": "provider_unavailable",
+      "requiredAlertId": "provider-unavailable-scan-failures",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#provider-failure-triage",
+      "verificationCommand": "npm run check:observability",
+      "supportOutcome": "scan_degraded"
+    },
+    {
+      "drillId": "provider-rate-limit",
+      "failureMode": "provider_rate_limited",
+      "requiredAlertId": "provider-rate-limit-scan-failures",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#provider-failure-triage",
+      "verificationCommand": "npm run check:observability",
+      "supportOutcome": "scan_degraded"
+    },
+    {
+      "drillId": "dlq-growth",
+      "failureMode": "scan_dead_lettered",
+      "requiredAlertId": "scan-dlq-growth",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#dlq-triage",
+      "verificationCommand": "npm run check:observability",
+      "supportOutcome": "scan_degraded"
+    },
+    {
+      "drillId": "summary-cost-spike",
+      "failureMode": "summary_cost_spike",
+      "requiredAlertId": "summary-model-cost-spike",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#summary-cost-triage",
+      "verificationCommand": "npm run check:load-cost",
+      "supportOutcome": "summary_degraded"
+    },
+    {
+      "drillId": "backup-restore",
+      "failureMode": "restore_validation",
+      "requiredAlertId": null,
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#backup-restore-drill",
+      "verificationCommand": "npm run check:backup-restore",
+      "supportOutcome": "workers_paused_until_restore_validated"
+    }
+  ]
+}
