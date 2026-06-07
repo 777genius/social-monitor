@@ -17,7 +17,7 @@
     "seed": "ts-node -r tsconfig-paths/register prisma/seed.ts",
     "test": "NODE_OPTIONS=--max-old-space-size=1024 jest --config jest.config.ts --runInBand",
     "test:e2e": "NODE_OPTIONS=--max-old-space-size=1024 jest --config test/jest-e2e.config.ts --runInBand",
-    "verify": "npm run lint && npm run check:architecture && npm run check:local-infra && npm run check:migrations && npm run build && npm run test && npm run test:e2e",
+    "verify": "npm run lint && npm run check:architecture && npm run check:observability && npm run check:local-infra && npm run check:migrations && npm run build && npm run test && npm run test:e2e",
     "start:api": "ts-node -r tsconfig-paths/register apps/api-gateway/src/main.ts",
     "start:delivery": "ts-node -r tsconfig-paths/register apps/delivery-service/src/main.ts",
     "start:ingestion": "ts-node -r tsconfig-paths/register apps/ingestion-worker/src/main.ts",
