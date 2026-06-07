@@ -15,6 +15,21 @@
       "blocksRelease": true
     },
     {
+      "gateId": "secret-scan",
+      "command": "npm run check:secrets",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "dependency-audit",
+      "command": "npm run check:dependencies",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "container-contract",
+      "command": "npm run check:container",
+      "blocksRelease": true
+    },
+    {
       "gateId": "observability-contract",
       "command": "npm run check:observability",
       "blocksRelease": true
