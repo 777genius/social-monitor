@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "alertSetId": "mvp-alerts",
+  "owner": "platform",
+  "alerts": [
+    {
+      "alertId": "scan-queue-backlog-growing",
+      "severity": "warning",
+      "metric": "queue_commands_backlog",
+      "labels": {
+        "command_type": "ingestion.scan.execute",
+        "queue": "scan"
+      },
+      "condition": "latest_value >= 10 for 10m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "scan-queue-backlog",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#queue-backlog-triage",
+      "userVisibleState": "scan_in_progress_or_scan_degraded",
+      "firstMitigation": "inspect_worker_availability_before_increasing_scan_frequency",
+      "page": false
+    },
+    {
+      "alertId": "scan-worker-failures",
+      "severity": "warning",
+      "metric": "scan_jobs_total",
+      "labels": {
+        "job_type": "scan",
+        "status": "failed",
+        "worker": "ingestion-worker"
+      },
+      "condition": "increase >= 3 for 10m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "scan-worker-failed",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#scan-status-triage",
+      "userVisibleState": "scan_degraded",
+      "firstMitigation": "classify_failure_before_retrying_or_scaling_workers",
+      "page": false
+    }
+  ]
+}

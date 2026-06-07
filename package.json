@@ -9,6 +9,7 @@
     "check:architecture": "node scripts/check-architecture.mjs",
     "check:local-infra": "node scripts/check-local-infra.mjs",
     "check:migrations": "prisma validate --schema prisma/schema.prisma && prisma generate --schema prisma/schema.prisma",
+    "check:observability": "node scripts/check-observability.mjs",
     "lint": "NODE_OPTIONS=--max-old-space-size=1024 eslint .",
     "migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
     "migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",

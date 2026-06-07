@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "dashboardId": "mvp-health",
+  "title": "MVP Health",
+  "owner": "platform",
+  "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md",
+  "panels": [
+    {
+      "panelId": "scan-queue-backlog",
+      "title": "Scan Queue Backlog",
+      "metric": "queue_commands_backlog",
+      "labels": {
+        "command_type": "ingestion.scan.execute",
+        "queue": "scan"
+      },
+      "safeDiagnosticQuestion": "Is accepted scan work waiting for workers?"
+    },
+    {
+      "panelId": "scan-queue-enqueued",
+      "title": "Scan Queue Enqueued",
+      "metric": "queue_commands_enqueued_total",
+      "labels": {
+        "command_type": "ingestion.scan.execute",
+        "job_type": "scan",
+        "status": "enqueued"
+      },
+      "safeDiagnosticQuestion": "How much scan work did the API accept?"
+    },
+    {
+      "panelId": "scan-worker-started",
+      "title": "Scan Jobs Started",
+      "metric": "scan_jobs_total",
+      "labels": {
+        "job_type": "scan",
+        "status": "started",
+        "worker": "ingestion-worker"
+      },
+      "safeDiagnosticQuestion": "Are ingestion workers pulling scan jobs?"
+    },
+    {
+      "panelId": "scan-worker-failed",
+      "title": "Scan Jobs Failed",
+      "metric": "scan_jobs_total",
+      "labels": {
+        "job_type": "scan",
+        "status": "failed",
+        "worker": "ingestion-worker"
+      },
+      "safeDiagnosticQuestion": "Are scan jobs failing after workers start them?"
+    }
+  ]
+}
