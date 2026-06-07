@@ -16,6 +16,7 @@ import type {
   OutboxPort,
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
+  ScanRequestQuotaPort,
   ScanQueuePort,
   SourceBindingRepositoryPort,
 } from '../../ports';
@@ -32,6 +33,7 @@ export class RequestScanUseCase {
     private readonly scanQueue: ScanQueuePort,
     private readonly outbox: OutboxPort,
     private readonly idempotency: IdempotencyPort,
+    private readonly scanRequestQuota: ScanRequestQuotaPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
   ) {}
@@ -89,6 +91,15 @@ export class RequestScanUseCase {
       const result = { scanJobId: snapshot.id, status: snapshot.status, created: false };
       await this.cacheResult(command, result);
       return ok(result);
+    }
+
+    const quota = await this.scanRequestQuota.reserveManualScanRequest({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      sourceBindingId: command.sourceBindingId,
+    });
+    if (!quota.ok) {
+      return err(quota.error);
     }
 
     const policySnapshot = policy.toSnapshot();

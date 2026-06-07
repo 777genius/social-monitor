@@ -1,6 +1,7 @@
-import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { Module } from '@nestjs/common';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
+import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
 import { InMemoryIdempotencyAdapter } from '../../adapters/idempotency/in-memory-idempotency.adapter';
@@ -9,6 +10,7 @@ import { InMemoryScanJobRepository } from '../../adapters/persistence/in-memory-
 import { InMemoryScanPolicyRepository } from '../../adapters/persistence/in-memory-scan-policy.repository';
 import { InMemorySourceBindingRepository } from '../../adapters/persistence/in-memory-source-binding.repository';
 import { InMemoryTopicRepository } from '../../adapters/persistence/in-memory-topic.repository';
+import { UsageScanRequestQuotaAdapter } from '../../adapters/quota/usage-scan-request-quota.adapter';
 import { InMemoryScanQueueAdapter } from '../../adapters/queue/in-memory-scan-queue.adapter';
 import { AesGcmSourceBindingConfigProtector } from '../../adapters/security/aes-gcm-source-binding-config-protector';
 import { FakeSourceCatalogAdapter } from '../../adapters/source-catalog/fake-source-catalog.adapter';
@@ -52,6 +54,12 @@ import { TopicController } from './topic.controller';
     },
     InMemoryOutboxAdapter,
     InMemoryIdempotencyAdapter,
+    {
+      provide: UsageScanRequestQuotaAdapter,
+      useFactory: (reserveUsageQuota: ReserveUsageQuotaUseCase) =>
+        new UsageScanRequestQuotaAdapter(reserveUsageQuota),
+      inject: [ReserveUsageQuotaUseCase],
+    },
     {
       provide: CreateTopicUseCase,
       useFactory: (
@@ -129,6 +137,7 @@ import { TopicController } from './topic.controller';
         scanQueue: InMemoryScanQueueAdapter,
         outbox: InMemoryOutboxAdapter,
         idempotency: InMemoryIdempotencyAdapter,
+        scanRequestQuota: UsageScanRequestQuotaAdapter,
       ) =>
         new RequestScanUseCase(
           bindings,
@@ -137,6 +146,7 @@ import { TopicController } from './topic.controller';
           scanQueue,
           outbox,
           idempotency,
+          scanRequestQuota,
           new CryptoIdGenerator(),
           new SystemClock(),
         ),
@@ -147,6 +157,7 @@ import { TopicController } from './topic.controller';
         InMemoryScanQueueAdapter,
         InMemoryOutboxAdapter,
         InMemoryIdempotencyAdapter,
+        UsageScanRequestQuotaAdapter,
       ],
     },
     {

@@ -1,4 +1,4 @@
-import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { DomainError, FixedClock, type IdGenerator, ok, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { ScanPolicy, SourceBinding, type ScanJob } from '../../domain';
 import type {
@@ -6,6 +6,7 @@ import type {
   OutboxPort,
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
+  ScanRequestQuotaPort,
   ScanQueuePort,
   SourceBindingRepositoryPort,
 } from '../../ports';
@@ -137,6 +138,28 @@ class FakeIdempotency implements IdempotencyPort {
   }
 }
 
+class AllowingScanRequestQuota implements ScanRequestQuotaPort {
+  reservationCount = 0;
+
+  async reserveManualScanRequest(): ReturnType<ScanRequestQuotaPort['reserveManualScanRequest']> {
+    this.reservationCount += 1;
+
+    return ok({
+      remaining: 59,
+      resetAt: '2026-06-05T01:00:00.000Z',
+    });
+  }
+}
+
+class DenyingScanRequestQuota implements ScanRequestQuotaPort {
+  async reserveManualScanRequest(): ReturnType<ScanRequestQuotaPort['reserveManualScanRequest']> {
+    return {
+      ok: false,
+      error: new DomainError('operation.quota_exceeded', 'Usage quota exceeded'),
+    };
+  }
+}
+
 const makeBinding = () =>
   SourceBinding.create({
     id: 'binding-1',
@@ -177,6 +200,7 @@ describe('RequestScanUseCase', () => {
       queue,
       outbox,
       new FakeIdempotency(),
+      new AllowingScanRequestQuota(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
     );
@@ -210,6 +234,7 @@ describe('RequestScanUseCase', () => {
       queue,
       new FakeOutbox(),
       new FakeIdempotency(),
+      new AllowingScanRequestQuota(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
     );
@@ -255,6 +280,7 @@ describe('RequestScanUseCase', () => {
       new FakeScanQueue(),
       new FakeOutbox(),
       new FakeIdempotency(),
+      new AllowingScanRequestQuota(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
     );
@@ -268,5 +294,48 @@ describe('RequestScanUseCase', () => {
     });
 
     expect(result.ok).toBe(false);
+  });
+
+  it('checks quota after idempotency and overlap gates but before creating or enqueueing a scan job', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    const queue = new FakeScanQueue();
+    const outbox = new FakeOutbox();
+    const useCase = new RequestScanUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      outbox,
+      new FakeIdempotency(),
+      new DenyingScanRequestQuota(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'scan-1',
+      correlationId: 'correlation-1',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'operation.quota_exceeded',
+      }),
+    });
+    await expect(scanJobs.findByIdempotencyKey({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      idempotencyKey: 'scan-1',
+    })).resolves.toBeNull();
+    expect(queue.commands).toHaveLength(0);
+    expect(outbox.events).toHaveLength(0);
   });
 });

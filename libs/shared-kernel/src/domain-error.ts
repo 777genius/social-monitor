@@ -4,6 +4,7 @@ export type DomainErrorCode =
   | 'tenant.scope_missing'
   | 'resource.not_found'
   | 'operation.conflict'
+  | 'operation.quota_exceeded'
   | 'operation.rate_limited'
   | 'external.dependency_unavailable';
 
