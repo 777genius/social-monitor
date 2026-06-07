@@ -112,13 +112,16 @@ Evidence notes:
 ## PR 4 Quota Preflight Evidence
 
 - `a6ec5d6 feat: enforce manual scan quota`
+- `0862f56 feat: enforce summary request quota`
 
 Verified commands:
 
 - `npm run build`
 - `npm run check:architecture`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest libs/usage/features/reserve-usage-quota/reserve-usage-quota.use-case.spec.ts libs/monitoring/features/request-scan/request-scan.use-case.spec.ts --runInBand`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest libs/summary/features/request-summary/request-summary.use-case.spec.ts libs/summary/features/regenerate-summary/regenerate-summary.use-case.spec.ts --runInBand`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/scan-requests.quota.e2e-spec.ts`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest --config test/jest-e2e.config.ts --runInBand test/e2e/summary-requests.quota.e2e-spec.ts`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint ...`
 - `git diff --check`
 
@@ -127,6 +130,8 @@ Evidence notes:
 - Usage context owns the quota ledger port/use case and returns `operation.quota_exceeded` with reset/retry details.
 - Monitoring depends on a local `ScanRequestQuotaPort`; the REST module wires a Usage-backed adapter, preserving feature/domain isolation.
 - Manual scan e2e verifies quota overflow returns 429 before a second queue command is enqueued.
+- Summary depends on a local `SummaryQuotaPort`; the REST module wires a Usage-backed adapter, preserving feature/domain isolation.
+- Summary quota e2e verifies quota overflow returns 429 before a second summary job is persisted.
 
 ## Handoff Evidence
 - Launch iteration accepts go/no-go evidence.
