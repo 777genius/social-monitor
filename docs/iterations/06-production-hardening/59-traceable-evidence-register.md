@@ -235,14 +235,17 @@ Evidence notes:
 ## PR 7 Contract CI Evidence
 
 - `7bb904a feat: add openapi drift gate`
+- `7ef3cd8 feat: add migration schema gate`
 
 Verified commands:
 
 - `npm run update:openapi`
 - `npm run check:openapi`
+- `npm run check:migrations`
 - `npm run check:architecture`
 - `npm run build`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-openapi.ts`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-migrations.mjs`
 - `git diff --check`
 
 Evidence notes:
@@ -251,3 +254,6 @@ Evidence notes:
 - `npm run update:openapi` is the explicit intentional-change path; `npm run check:openapi` is the CI/local drift gate.
 - `npm run verify` now includes `check:openapi`, so public REST contract drift is blocked with the standard verification chain.
 - The snapshot lives in `libs/contracts/rest`, keeping transport contract artifacts outside domain and feature slices.
+- `scripts/check-migrations.mjs` validates the Prisma schema, regenerates the Prisma client and renders `prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script`.
+- The migration gate rejects an empty/no-table diff and destructive clean-bootstrap statements such as `DROP TABLE`, `DROP SCHEMA` and `TRUNCATE TABLE`.
+- The migration check remains database-free for MVP CI speed; a real clean/upgrade database drill is still tracked separately for staging hardening.
