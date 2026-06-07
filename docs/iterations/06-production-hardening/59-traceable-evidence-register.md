@@ -279,17 +279,20 @@ Evidence notes:
 - `38bd2fc feat: add secret scan gate`
 - `7858155 fix: allow webhook key id placeholder in secret scan`
 - `5aa4d04 feat: add dependency audit gate`
+- `1ad1469 feat: add container release contract`
 
 Verified commands:
 
 - `npm run check:secrets`
 - `npm run check:dependencies`
+- `npm run check:container`
 - `npm run check:release`
 - `npm run check:architecture`
 - `npm run build`
 - `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js scripts/check-release-evidence.mjs`
 - `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js scripts/check-secrets.mjs`
 - `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js scripts/check-dependencies.mjs`
+- `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js scripts/check-container.mjs`
 - `git diff --check`
 
 Evidence notes:
@@ -299,12 +302,16 @@ Evidence notes:
 - Existing local/test placeholders such as `social_monitor_local_password`, `Bearer invalid`, `raw-token`, `smk_secret` and `whsec_...1234` are explicitly allowlisted instead of accepted implicitly.
 - `scripts/check-dependencies.mjs` runs `npm audit --json --audit-level=high`, blocks high/critical advisories and parses npm audit JSON so the gate stays machine-verifiable.
 - `ops/security/dependency-audit-policy.json` requires future vulnerability exceptions to include package name, owner, `YYYY-MM-DD` expiry and mitigation.
+- `Dockerfile` defines the backend MVP container path with `npm ci`, Prisma client generation, build verification, service selection through `SERVICE` and non-root `USER node`.
+- `.dockerignore` excludes `.git`, `node_modules`, `dist` and `coverage` so local/generated artifacts do not silently enter the build context.
+- `scripts/check-container.mjs` validates Dockerfile markers, service start scripts, `.dockerignore`, release evidence linkage and required image digest/SBOM/signing policy.
+- Docker CLI is not available in the current execution environment, so actual image build/push/sign evidence is not claimed here; it remains a CI/staging execution step.
 - `ops/release/mvp-release-evidence-contract.json` defines beta release artifact evidence: commit SHA, immutable image digest, OpenAPI snapshot, event catalog and migration schema.
 - `scripts/check-release-evidence.mjs` validates required blocking gates, deploy smoke checks, rollback triggers, runbook anchor and promotion document before release evidence can pass.
-- `npm run verify` now includes `check:secrets`, `check:dependencies` and `check:release`, so supply-chain and release evidence drift are checked with the standard local/CI verification chain.
+- `npm run verify` now includes `check:secrets`, `check:dependencies`, `check:container` and `check:release`, so supply-chain and release evidence drift are checked with the standard local/CI verification chain.
 - Deploy smoke checks cover API health, OpenAPI contract, migration compatibility and worker pause/resume readiness.
 - Rollback triggers cover security regressions, migration/restore regressions, provider failure spikes, summary cost spikes and delivery failure spikes.
-- This is an MVP release-evidence, secret-scan and dependency-audit contract gate; container build, SBOM and image signing remain explicit future supply-chain expansions rather than silently claimed evidence.
+- This is an MVP release-evidence, secret-scan, dependency-audit and container-contract gate; actual image build, SBOM generation and image signing remain explicit future supply-chain execution steps rather than silently claimed evidence.
 
 ## PR 9 Load Cost Evidence
 
