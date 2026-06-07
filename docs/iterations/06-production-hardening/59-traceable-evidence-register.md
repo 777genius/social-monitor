@@ -280,6 +280,7 @@ Evidence notes:
 - `7858155 fix: allow webhook key id placeholder in secret scan`
 - `5aa4d04 feat: add dependency audit gate`
 - `1ad1469 feat: add container release contract`
+- `b3e9390 fix: require supply chain gates for release`
 
 Verified commands:
 
@@ -308,6 +309,7 @@ Evidence notes:
 - Docker CLI is not available in the current execution environment, so actual image build/push/sign evidence is not claimed here; it remains a CI/staging execution step.
 - `ops/release/mvp-release-evidence-contract.json` defines beta release artifact evidence: commit SHA, immutable image digest, OpenAPI snapshot, event catalog and migration schema.
 - `scripts/check-release-evidence.mjs` validates required blocking gates, deploy smoke checks, rollback triggers, runbook anchor and promotion document before release evidence can pass.
+- The release evidence contract explicitly requires architecture, secret scan, dependency audit, container contract, observability, OpenAPI, event, migration, load/cost, backup/restore and staging drill gates.
 - `npm run verify` now includes `check:secrets`, `check:dependencies`, `check:container` and `check:release`, so supply-chain and release evidence drift are checked with the standard local/CI verification chain.
 - Deploy smoke checks cover API health, OpenAPI contract, migration compatibility and worker pause/resume readiness.
 - Rollback triggers cover security regressions, migration/restore regressions, provider failure spikes, summary cost spikes and delivery failure spikes.
