@@ -4,6 +4,7 @@ import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
+import { CircuitBreakerDeliveryProvider } from '../../adapters/notification/circuit-breaker-delivery.provider';
 import { InMemoryDeliveryProvider } from '../../adapters/notification/in-memory-delivery.provider';
 import { MeteredDeliveryProvider } from '../../adapters/notification/metered-delivery.provider';
 import { InMemoryDeliveryAttemptRepository } from '../../adapters/persistence/in-memory-delivery-attempt.repository';
@@ -59,9 +60,9 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     {
       provide: DELIVERY_PROVIDERS,
       useFactory: (metrics: InMemoryMetricsRecorder) => [
-        new MeteredDeliveryProvider(new InMemoryDeliveryProvider('in_app'), metrics),
-        new MeteredDeliveryProvider(new InMemoryDeliveryProvider('email'), metrics),
-        new MeteredDeliveryProvider(new InMemoryDeliveryProvider('webhook'), metrics),
+        createDeliveryProvider('in_app', metrics),
+        createDeliveryProvider('email', metrics),
+        createDeliveryProvider('webhook', metrics),
       ],
       inject: [InMemoryMetricsRecorder],
     },
@@ -233,3 +234,15 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
   ],
 })
 export class DeliveryRestModule {}
+
+const createDeliveryProvider = (
+  channel: DeliveryProviderPort['channel'],
+  metrics: InMemoryMetricsRecorder,
+): DeliveryProviderPort =>
+  new MeteredDeliveryProvider(
+    new CircuitBreakerDeliveryProvider(new InMemoryDeliveryProvider(channel), new SystemClock(), {
+      failureThreshold: 3,
+      cooldownSeconds: 60,
+    }),
+    metrics,
+  );

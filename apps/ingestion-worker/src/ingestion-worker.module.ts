@@ -10,6 +10,7 @@ import { InMemoryScanAttemptRepository } from '../../../libs/ingestion/adapters/
 import { InMemoryScanCursorRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
 import { InMemorySourceItemRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { InMemoryScanFailureQueueAdapter } from '../../../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
+import { CircuitBreakerSourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
 import { FakeSourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/fake-source-fetcher.adapter';
 import { FakeSourceProvider } from '../../../libs/ingestion/adapters/source/fake-source.provider';
 import { InMemorySourceProviderRegistry } from '../../../libs/ingestion/adapters/source/in-memory-source-provider.registry';
@@ -33,6 +34,15 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
       useFactory: (registry: InMemorySourceProviderRegistry) => new FakeSourceFetcherAdapter(registry),
       inject: [InMemorySourceProviderRegistry],
     },
+    {
+      provide: CircuitBreakerSourceFetcherAdapter,
+      useFactory: (sourceFetcher: FakeSourceFetcherAdapter) =>
+        new CircuitBreakerSourceFetcherAdapter(sourceFetcher, new SystemClock(), {
+          failureThreshold: 3,
+          cooldownSeconds: 60,
+        }),
+      inject: [FakeSourceFetcherAdapter],
+    },
     InMemoryScanAttemptRepository,
     InMemoryScanCursorRepository,
     {
@@ -53,7 +63,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     {
       provide: ExecuteScanUseCase,
       useFactory: (
-        sourceFetcher: FakeSourceFetcherAdapter,
+        sourceFetcher: CircuitBreakerSourceFetcherAdapter,
         sourceItems: InMemorySourceItemRepository,
         feedProjection: InMemoryFeedProjectionAdapter,
         scanAttempts: InMemoryScanAttemptRepository,
@@ -75,7 +85,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
           new SystemClock(),
         ),
       inject: [
-        FakeSourceFetcherAdapter,
+        CircuitBreakerSourceFetcherAdapter,
         InMemorySourceItemRepository,
         InMemoryFeedProjectionAdapter,
         InMemoryScanAttemptRepository,
@@ -103,6 +113,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     InMemorySourceProviderRegistry,
+    CircuitBreakerSourceFetcherAdapter,
   ],
 })
 export class IngestionWorkerModule {}
