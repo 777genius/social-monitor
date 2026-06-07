@@ -108,6 +108,17 @@
         "token_type": "output"
       },
       "safeDiagnosticQuestion": "Are summary outputs larger than expected?"
+    },
+    {
+      "panelId": "delivery-webhook-failures",
+      "title": "Webhook Delivery Failures",
+      "metric": "delivery_failures_total",
+      "labels": {
+        "channel": "webhook",
+        "resource_type": "digest",
+        "retryable": "true"
+      },
+      "safeDiagnosticQuestion": "Are webhook delivery failures increasing?"
     }
   ]
 }

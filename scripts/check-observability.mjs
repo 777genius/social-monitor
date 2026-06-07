@@ -8,6 +8,8 @@ const safeLabelPattern = /^[A-Za-z0-9._:-]+$/;
 const allowedMetrics = new Set([
   'queue_commands_backlog',
   'queue_commands_enqueued_total',
+  'delivery_attempts_total',
+  'delivery_failures_total',
   'scan_failure_queue_backlog',
   'scan_failure_queue_events_total',
   'scan_failures_total',

@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
+import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
 import { InMemoryDeliveryProvider } from '../../adapters/notification/in-memory-delivery.provider';
+import { MeteredDeliveryProvider } from '../../adapters/notification/metered-delivery.provider';
 import { InMemoryDeliveryAttemptRepository } from '../../adapters/persistence/in-memory-delivery-attempt.repository';
 import { InMemoryDigestScheduleRepository } from '../../adapters/persistence/in-memory-digest-schedule.repository';
 import { InMemoryDigestRepository } from '../../adapters/persistence/in-memory-digest.repository';
@@ -36,6 +38,7 @@ import { DeliveryAttemptsController } from './delivery-attempts.controller';
 import { DigestsController } from './digests.controller';
 import { RealtimeEventsController } from './realtime-events.controller';
 import { WebhookEndpointsController } from './webhook-endpoints.controller';
+import type { DeliveryProviderPort } from '../../ports';
 
 export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
 
@@ -52,13 +55,15 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     InMemoryWebhookEndpointRepository,
     InMemoryWebhookReplayStore,
     InMemoryWebhookSecretVault,
+    InMemoryMetricsRecorder,
     {
       provide: DELIVERY_PROVIDERS,
-      useFactory: () => [
-        new InMemoryDeliveryProvider('in_app'),
-        new InMemoryDeliveryProvider('email'),
-        new InMemoryDeliveryProvider('webhook'),
+      useFactory: (metrics: InMemoryMetricsRecorder) => [
+        new MeteredDeliveryProvider(new InMemoryDeliveryProvider('in_app'), metrics),
+        new MeteredDeliveryProvider(new InMemoryDeliveryProvider('email'), metrics),
+        new MeteredDeliveryProvider(new InMemoryDeliveryProvider('webhook'), metrics),
       ],
+      inject: [InMemoryMetricsRecorder],
     },
     {
       provide: QueueDeliveryAttemptUseCase,
@@ -155,7 +160,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       provide: SendDeliveryAttemptUseCase,
       useFactory: (
         attempts: InMemoryDeliveryAttemptRepository,
-        providers: readonly InMemoryDeliveryProvider[],
+        providers: readonly DeliveryProviderPort[],
         preferences: InMemoryNotificationPreferenceReader,
       ) => new SendDeliveryAttemptUseCase(attempts, providers, preferences, new SystemClock()),
       inject: [InMemoryDeliveryAttemptRepository, DELIVERY_PROVIDERS, InMemoryNotificationPreferenceReader],
@@ -212,6 +217,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     InMemoryWebhookEndpointRepository,
     InMemoryWebhookReplayStore,
     InMemoryWebhookSecretVault,
+    InMemoryMetricsRecorder,
     ListRealtimeEventsUseCase,
     ProjectSummaryReadyEventUseCase,
     QuarantineWebhookEndpointUseCase,

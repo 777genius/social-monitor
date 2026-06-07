@@ -99,3 +99,11 @@ Scan status API responses expose support-safe fields for beta triage:
 - After restore, run validation queries for tenant/workspace counts plus outbox, inbox and idempotency state before resuming workers.
 - Keep workers paused during restore validation; resume only after migration version, replay state and idempotency state are consistent.
 - If restore loses operational state, do not replay provider/AI jobs blindly; classify affected jobs and rebuild queues from durable records.
+
+## Delivery Failure Triage
+
+- `delivery_attempts_total{status=started}` shows delivery work accepted by a provider adapter.
+- `delivery_attempts_total{status=delivered}` shows provider-accepted delivery attempts.
+- `delivery_failures_total{channel=webhook,resource_type=digest,retryable=true}` shows retryable webhook delivery failures.
+- If retryable webhook failures rise, check endpoint status, signing secret rotation and suppression/quarantine state before replaying attempts.
+- Delivery triage must use attempt id, channel, resource type and correlation id; never inspect raw webhook secrets or payload credentials.

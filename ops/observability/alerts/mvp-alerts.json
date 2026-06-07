@@ -100,6 +100,23 @@
       "userVisibleState": "summary_degraded",
       "firstMitigation": "check_model_route_and_quota_before_retrying_summaries",
       "page": false
+    },
+    {
+      "alertId": "webhook-delivery-failures",
+      "severity": "warning",
+      "metric": "delivery_failures_total",
+      "labels": {
+        "channel": "webhook",
+        "resource_type": "digest",
+        "retryable": "true"
+      },
+      "condition": "increase >= 3 for 15m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "delivery-webhook-failures",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#delivery-failure-triage",
+      "userVisibleState": "delivery_degraded",
+      "firstMitigation": "check_webhook_endpoint_status_before_replaying_delivery_attempts",
+      "page": false
     }
   ]
 }
