@@ -1,6 +1,8 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
+import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/in-memory-public-api-audit-log';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
@@ -31,8 +33,8 @@ describe('Request scan flow (e2e)', () => {
   });
 
   it('requests scan after topic, source binding and scan policy setup', async () => {
-    const tenant = 'tenant-scan-e2e';
-    const workspace = 'workspace-scan-e2e';
+    const tenant = tenantId('tenant-scan-e2e');
+    const workspace = workspaceId('workspace-scan-e2e');
 
     const topic = await request(app.getHttpServer())
       .post('/topics')
@@ -122,5 +124,26 @@ describe('Request scan flow (e2e)', () => {
       created: false,
     });
     expect(queue.all()).toHaveLength(1);
+
+    const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
+      tenantId: tenant,
+      workspaceId: workspace,
+    });
+
+    expect(auditRecords.filter((record) => record.action === 'scan_request.created')).toEqual([
+      expect.objectContaining({
+        actorType: 'system',
+        actorId: 'monitoring.scan-requests',
+        action: 'scan_request.created',
+        outcome: 'succeeded',
+        resourceType: 'scan_job',
+        resourceId: first.body.scanJobId,
+        metadata: {
+          sourceBindingId: binding.body.sourceBindingId,
+          status: 'enqueued',
+          created: true,
+        },
+      }),
+    ]);
   });
 });
