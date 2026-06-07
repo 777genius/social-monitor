@@ -288,13 +288,16 @@ Evidence notes:
 ## PR 10 Backup Restore Evidence
 
 - `a896050 feat: add backup restore contract gate`
+- `ab8c261 feat: add staging drill contract gate`
 
 Verified commands:
 
 - `npm run check:backup-restore`
+- `npm run check:drills`
 - `npm run check:architecture`
 - `npm run build`
 - `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-backup-restore.mjs`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx eslint scripts/check-drills.mjs`
 - `git diff --check`
 
 Evidence notes:
@@ -304,3 +307,6 @@ Evidence notes:
 - The contract explicitly requires replay/idempotency state: `outbox_events`, `inbox_records`, `idempotency_keys`, `scan_jobs` and `cursor_checkpoints`.
 - Runbook now includes backup restore drill steps, including keeping workers paused until migration, replay and idempotency state are validated.
 - This is a contract gate, not a live `pg_dump` drill; live database restore remains a staging drill before beta launch.
+- `ops/drills/mvp-staging-drills.json` defines required MVP drill contracts for provider outage, provider rate-limit, DLQ growth, summary cost spike and backup restore.
+- `scripts/check-drills.mjs` validates that each drill has a known verification command, support outcome, runbook section and required alert where applicable.
+- Drill contracts keep staging evidence structured while preserving the current MVP boundary where live staging infrastructure is not yet attached.
