@@ -544,7 +544,7 @@ Evidence notes:
 
 ## PR 15 Evidence Freshness Guardrail Evidence
 
-- Introduced by the evidence freshness guardrail commit that adds this section.
+- `d1cfca5 docs: enforce evidence freshness`
 
 Verified commands:
 
@@ -562,7 +562,7 @@ Evidence notes:
 
 ## PR 16 Release Gate Coverage Evidence
 
-- Introduced by the release gate coverage commit that adds this section.
+- `43a728a ci: require release gates in verify`
 
 Verified commands:
 
@@ -580,7 +580,7 @@ Evidence notes:
 
 ## PR 17 API Key Workspace Authorization Evidence
 
-- Introduced by the API key workspace authorization commit that adds this section.
+- `152012d feat: authorize api key management`
 
 Verified commands:
 

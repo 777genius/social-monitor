@@ -90,7 +90,7 @@ for (const testFile of testFiles) {
 
 for (const docFile of globSync('docs/**/*.md')) {
   const source = readFileSync(docFile, 'utf8');
-  if (/^-\s+(?:Pending commit\b|PR\s+\d+.+\b(?:added|strengthened)\s+in\s+current\s+branch\b)/m.test(source)) {
+  if (/^-\s+(?:Pending commit\b|Introduced by\b|PR\s+\d+.+\b(?:added|strengthened)\s+in\s+(?:current\s+branch|this\s+(?:quality|implementation)\s+pass)\b)/m.test(source)) {
     addViolation(docFile, 'committed evidence docs must not contain temporary commit evidence markers');
   }
 }
