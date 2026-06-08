@@ -1,5 +1,6 @@
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import type { QueueCommandEnvelope } from '@social-monitor/platform-queue';
+import type { WorkerRuntime } from '@social-monitor/platform-worker';
 import { DomainError, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { ExecuteScanUseCase } from '../../features/execute-scan/execute-scan.use-case';
@@ -23,6 +24,7 @@ export class ExecuteScanCommandHandler {
   constructor(
     private readonly executeScan: ExecuteScanUseCase,
     private readonly metrics: MetricsRecorderPort,
+    private readonly runtime: WorkerRuntime,
   ) {}
 
   async handle(command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>): Promise<ExecuteScanResult> {
@@ -30,41 +32,43 @@ export class ExecuteScanCommandHandler {
       throw new Error(`Unsupported command type: ${command.commandType}`);
     }
 
-    const payload = parsePayload(command.payload);
-    this.recordMetric('started');
-    let failureRecorded = false;
+    return this.runtime.runIfAccepting(command.commandType, async () => {
+      const payload = parsePayload(command.payload);
+      this.recordMetric('started');
+      let failureRecorded = false;
 
-    try {
-      const result = await this.executeScan.execute({
-        tenantId: tenantId(payload.tenantId),
-        workspaceId: workspaceId(payload.workspaceId),
-        scanJobId: payload.scanJobId,
-        sourceBindingId: payload.sourceBindingId,
-        scanPolicyId: payload.scanPolicyId,
-        correlationId: command.correlationId,
-        causationId: command.causationId ?? command.commandId,
-        attemptNumber: payload.attemptNumber,
-        retryBudget: payload.retryBudget,
-        workerId: payload.workerId,
-        leaseTtlSeconds: payload.leaseTtlSeconds,
-      });
+      try {
+        const result = await this.executeScan.execute({
+          tenantId: tenantId(payload.tenantId),
+          workspaceId: workspaceId(payload.workspaceId),
+          scanJobId: payload.scanJobId,
+          sourceBindingId: payload.sourceBindingId,
+          scanPolicyId: payload.scanPolicyId,
+          correlationId: command.correlationId,
+          causationId: command.causationId ?? command.commandId,
+          attemptNumber: payload.attemptNumber,
+          retryBudget: payload.retryBudget,
+          workerId: payload.workerId,
+          leaseTtlSeconds: payload.leaseTtlSeconds,
+        });
 
-      if (!result.ok) {
-        this.recordMetric('failed');
-        this.recordFailureClassMetric(result.error);
-        failureRecorded = true;
-        throw result.error;
+        if (!result.ok) {
+          this.recordMetric('failed');
+          this.recordFailureClassMetric(result.error);
+          failureRecorded = true;
+          throw result.error;
+        }
+
+        this.recordMetric('succeeded');
+        return result.value;
+      } catch (error) {
+        if (!failureRecorded) {
+          this.recordMetric('failed');
+          this.recordFailureClassMetric(error);
+        }
+        throw error;
       }
-
-      this.recordMetric('succeeded');
-      return result.value;
-    } catch (error) {
-      if (!failureRecorded) {
-        this.recordMetric('failed');
-        this.recordFailureClassMetric(error);
-      }
-      throw error;
-    }
+    });
   }
 
   private recordMetric(status: 'started' | 'succeeded' | 'failed'): void {

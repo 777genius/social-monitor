@@ -3,7 +3,7 @@ import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/pe
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
-import { WorkerRuntimeModule } from '@social-monitor/platform-worker';
+import { WorkerRuntime, WorkerRuntimeModule } from '@social-monitor/platform-worker';
 import { NoopScanExecutionReporterAdapter } from '../../../libs/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter';
 import { InMemoryScanLeaseAdapter } from '../../../libs/ingestion/adapters/lease/in-memory-scan-lease.adapter';
 import { InMemoryScanAttemptRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
@@ -97,9 +97,9 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     },
     {
       provide: ExecuteScanCommandHandler,
-      useFactory: (executeScan: ExecuteScanUseCase, metrics: InMemoryMetricsRecorder) =>
-        new ExecuteScanCommandHandler(executeScan, metrics),
-      inject: [ExecuteScanUseCase, InMemoryMetricsRecorder],
+      useFactory: (executeScan: ExecuteScanUseCase, metrics: InMemoryMetricsRecorder, runtime: WorkerRuntime) =>
+        new ExecuteScanCommandHandler(executeScan, metrics, runtime),
+      inject: [ExecuteScanUseCase, InMemoryMetricsRecorder, WorkerRuntime],
     },
   ],
   exports: [
