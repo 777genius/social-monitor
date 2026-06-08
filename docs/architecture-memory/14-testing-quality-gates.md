@@ -71,6 +71,10 @@ References:
 
 CI must block:
 
+- feature use cases without focused sibling specs;
+- feature use cases that throw `DomainError` instead of returning `Result` failures;
+- REST controllers that skip tenant/workspace scope unless explicitly allowlisted as public catalog endpoints;
+- production `console.*` logging in `apps` or `libs`;
 - breaking OpenAPI changes without migration note;
 - breaking event/protobuf schemas;
 - migrations without tests/review;
@@ -86,4 +90,4 @@ CI must block:
 3. k6 load tests are required before production scaling claims.
 4. Connector certification is a release gate.
 5. Prompt/model eval is a release gate.
-
+6. `npm run check:code-quality` is mandatory before release evidence can pass.

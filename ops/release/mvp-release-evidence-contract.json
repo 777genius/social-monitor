@@ -15,6 +15,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "code-quality-guardrails",
+      "command": "npm run check:code-quality",
+      "blocksRelease": true
+    },
+    {
       "gateId": "secret-scan",
       "command": "npm run check:secrets",
       "blocksRelease": true

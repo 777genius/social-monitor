@@ -9,6 +9,7 @@ const violations = [];
 
 const requiredGateIds = new Set([
   'architecture-boundaries',
+  'code-quality-guardrails',
   'secret-scan',
   'dependency-audit',
   'container-contract',

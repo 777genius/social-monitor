@@ -498,3 +498,27 @@ Evidence notes:
 - The dry-run plan includes retained catalog tables separately from purgeable tables, preventing retentionDays=0 policies from being treated as immediate deletes.
 - Legal hold behavior is carried into every purge plan entry as `skip_purge_and_record_exception`.
 - `npm run verify` now includes `check:retention-plan`, making the dry-run planner part of the standard local/CI gate.
+
+## PR 13 Code Quality Guardrails Evidence
+
+- Pending commit in current branch.
+
+Verified commands:
+
+- `npm run check:code-quality`
+- `npm run check:release`
+- `npm run check:architecture`
+- `npm run build`
+- `git diff --check`
+
+Evidence notes:
+
+- Seven previously uncovered production feature use cases now have focused sibling specs:
+  `GetDeliveryAttemptUseCase`, `GetDigestUseCase`, `GetWebhookEndpointUseCase`, `RecordRealtimeEventUseCase`, `CreateApiKeyUseCase`, `RevokeApiKeyUseCase` and `GetSummaryUseCase`.
+- `scripts/check-code-quality.mjs` blocks future feature use cases without sibling specs.
+- The gate blocks `throw new DomainError(...)` inside feature use cases, keeping application failures on the `Result` contract.
+- The gate blocks direct `new InMemory...` construction inside feature use cases, preserving port/adapter boundaries.
+- The gate blocks tenant-scoped REST controllers that omit `requireTenantScope(...)`; public catalog controllers must be explicitly allowlisted.
+- The gate blocks production `console.*` in `apps` and `libs`; runtime logging must stay on structured logging adapters.
+- `npm run verify` now runs `check:code-quality`, and release evidence contract includes the `code-quality-guardrails` blocking gate.
+- Quality policy is documented in `docs/architecture-memory/327-code-quality-guardrails.md` and reflected in testing, CI, PR rubric and forbidden-shortcut docs.

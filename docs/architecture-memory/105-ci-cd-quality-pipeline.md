@@ -20,6 +20,7 @@ Backend:
 
 - format;
 - lint;
+- code-quality guardrails;
 - TypeScript typecheck;
 - unit tests;
 - architecture dependency checks;
@@ -74,3 +75,12 @@ Avoid copy-pasted workflow files across services. Copy-paste CI becomes invisibl
 
 The CI/CD system is the enforcement layer for Clean Architecture, generated contracts and schema compatibility. Without gates, architecture docs become advisory instead of operational.
 
+## Locked Code-Quality Gate
+
+`npm run check:code-quality` must run in `npm run verify` before expensive build/test stages. It blocks:
+
+- missing feature use-case specs;
+- thrown `DomainError` from feature use cases;
+- direct in-memory adapter construction inside feature use cases;
+- tenant-scoped REST controllers without `requireTenantScope(...)`;
+- production `console.*` calls.
