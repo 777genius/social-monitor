@@ -116,6 +116,22 @@ class FakeOutbox implements OutboxPort {
 class FakeScanQueue implements ScanQueuePort {
   readonly commands: unknown[] = [];
 
+  async canAccept(): Promise<boolean> {
+    return true;
+  }
+
+  async enqueue(command: Parameters<ScanQueuePort['enqueue']>[0]): Promise<void> {
+    this.commands.push(command);
+  }
+}
+
+class BackpressuredScanQueue implements ScanQueuePort {
+  readonly commands: unknown[] = [];
+
+  async canAccept(): Promise<boolean> {
+    return false;
+  }
+
   async enqueue(command: Parameters<ScanQueuePort['enqueue']>[0]): Promise<void> {
     this.commands.push(command);
   }
@@ -296,7 +312,52 @@ describe('RequestScanUseCase', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('checks quota after idempotency and overlap gates but before creating or enqueueing a scan job', async () => {
+  it('checks backpressure after idempotency and overlap gates but before quota, job creation or outbox', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    const queue = new BackpressuredScanQueue();
+    const outbox = new FakeOutbox();
+    const quota = new AllowingScanRequestQuota();
+    const useCase = new RequestScanUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      outbox,
+      new FakeIdempotency(),
+      quota,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'scan-1',
+      correlationId: 'correlation-1',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'operation.backpressure',
+      }),
+    });
+    await expect(scanJobs.findByIdempotencyKey({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      idempotencyKey: 'scan-1',
+    })).resolves.toBeNull();
+    expect(quota.reservationCount).toBe(0);
+    expect(queue.commands).toHaveLength(0);
+    expect(outbox.events).toHaveLength(0);
+  });
+
+  it('checks quota after idempotency, overlap and backpressure gates but before creating or enqueueing a scan job', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding());
     const policies = new FakeScanPolicies();

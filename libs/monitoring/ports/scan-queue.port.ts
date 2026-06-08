@@ -11,5 +11,6 @@ export type EnqueueScanCommand = {
 };
 
 export interface ScanQueuePort {
+  canAccept(command: EnqueueScanCommand): Promise<boolean>;
   enqueue(command: EnqueueScanCommand): Promise<void>;
 }

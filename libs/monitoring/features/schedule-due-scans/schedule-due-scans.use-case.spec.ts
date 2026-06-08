@@ -114,6 +114,22 @@ class FakeScanJobs implements ScanJobRepositoryPort {
 class FakeScanQueue implements ScanQueuePort {
   readonly commands: unknown[] = [];
 
+  async canAccept(): Promise<boolean> {
+    return true;
+  }
+
+  async enqueue(command: Parameters<ScanQueuePort['enqueue']>[0]): Promise<void> {
+    this.commands.push(command);
+  }
+}
+
+class BackpressuredScanQueue implements ScanQueuePort {
+  readonly commands: unknown[] = [];
+
+  async canAccept(): Promise<boolean> {
+    return false;
+  }
+
   async enqueue(command: Parameters<ScanQueuePort['enqueue']>[0]): Promise<void> {
     this.commands.push(command);
   }
@@ -269,6 +285,53 @@ describe('ScheduleDueScansUseCase', () => {
       },
     });
     expect(queue.commands).toHaveLength(0);
+  });
+
+  it('skips due policy without advancing next run when queue is backpressured', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    const queue = new BackpressuredScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-backpressure',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 0,
+        skipped: 1,
+      },
+    });
+    await expect(scanJobs.findByIdempotencyKey({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      idempotencyKey: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
+    })).resolves.toBeNull();
+    expect(queue.commands).toHaveLength(0);
+    expect((await policies.findBySourceBinding({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+    }))?.toSnapshot()).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
+    });
   });
 
   it('rejects unsafe scheduler batch size', async () => {

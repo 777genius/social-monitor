@@ -93,6 +93,22 @@ export class RequestScanUseCase {
       return ok(result);
     }
 
+    const policySnapshot = policy.toSnapshot();
+    const queueCommand = {
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      scanJobId: this.ids.generate(),
+      sourceBindingId: command.sourceBindingId,
+      scanPolicyId: policySnapshot.id,
+      correlationId: command.correlationId,
+      causationId: command.idempotencyKey,
+    };
+    if (!(await this.scanQueue.canAccept(queueCommand))) {
+      return err(new DomainError('operation.backpressure', 'Scan queue backpressure limit reached', {
+        sourceBindingId: command.sourceBindingId,
+      }));
+    }
+
     const quota = await this.scanRequestQuota.reserveManualScanRequest({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
@@ -102,9 +118,8 @@ export class RequestScanUseCase {
       return err(quota.error);
     }
 
-    const policySnapshot = policy.toSnapshot();
     const job = ScanJob.request({
-      id: this.ids.generate(),
+      id: queueCommand.scanJobId,
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       sourceBindingId: command.sourceBindingId,
@@ -135,13 +150,7 @@ export class RequestScanUseCase {
     };
     await this.outbox.append(event);
     await this.scanQueue.enqueue({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      scanJobId: snapshot.id,
-      sourceBindingId: snapshot.sourceBindingId,
-      scanPolicyId: snapshot.scanPolicyId,
-      correlationId: command.correlationId,
-      causationId: command.idempotencyKey,
+      ...queueCommand,
     });
     const enqueuedJob = job.markEnqueued({ enqueuedAt: this.clock.now() });
     await this.scanJobs.save(enqueuedJob);

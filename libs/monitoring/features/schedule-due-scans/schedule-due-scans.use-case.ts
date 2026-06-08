@@ -70,8 +70,22 @@ export class ScheduleDueScansUseCase {
       });
 
       if (activeJob === null && existingJob === null) {
+        const queueCommand = {
+          tenantId: policySnapshot.tenantId,
+          workspaceId: policySnapshot.workspaceId,
+          scanJobId: this.ids.generate(),
+          sourceBindingId: policySnapshot.sourceBindingId,
+          scanPolicyId: policySnapshot.id,
+          correlationId: command.correlationId,
+          causationId: idempotencyKey,
+        };
+        if (!(await this.scanQueue.canAccept(queueCommand))) {
+          skipped += 1;
+          continue;
+        }
+
         const job = ScanJob.request({
-          id: this.ids.generate(),
+          id: queueCommand.scanJobId,
           tenantId: policySnapshot.tenantId,
           workspaceId: policySnapshot.workspaceId,
           sourceBindingId: policySnapshot.sourceBindingId,
@@ -79,17 +93,8 @@ export class ScheduleDueScansUseCase {
           idempotencyKey,
           requestedAt: now,
         });
-        const jobSnapshot = job.toSnapshot();
         await this.scanJobs.save(job);
-        await this.scanQueue.enqueue({
-          tenantId: jobSnapshot.tenantId,
-          workspaceId: jobSnapshot.workspaceId,
-          scanJobId: jobSnapshot.id,
-          sourceBindingId: jobSnapshot.sourceBindingId,
-          scanPolicyId: jobSnapshot.scanPolicyId,
-          correlationId: command.correlationId,
-          causationId: idempotencyKey,
-        });
+        await this.scanQueue.enqueue(queueCommand);
         await this.scanJobs.save(job.markEnqueued({ enqueuedAt: now }));
         enqueued += 1;
       } else {

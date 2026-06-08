@@ -55,6 +55,7 @@ const statusForDomainError = (code: DomainErrorCode): number => {
     case 'operation.conflict':
       return HttpStatus.CONFLICT;
     case 'operation.quota_exceeded':
+    case 'operation.backpressure':
     case 'operation.rate_limited':
       return HttpStatus.TOO_MANY_REQUESTS;
     case 'external.dependency_unavailable':
@@ -76,6 +77,8 @@ const titleForDomainError = (code: DomainErrorCode): string => {
       return 'Operation conflict';
     case 'operation.quota_exceeded':
       return 'Quota exceeded';
+    case 'operation.backpressure':
+      return 'Backpressure limit reached';
     case 'operation.rate_limited':
       return 'Rate limit exceeded';
     case 'external.dependency_unavailable':

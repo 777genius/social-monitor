@@ -7,9 +7,28 @@ export class InMemoryScanQueueAdapter implements ScanQueuePort {
   constructor(
     private readonly publisher: InMemoryQueuePublisher,
     private readonly metrics: MetricsRecorderPort,
+    private readonly maxDepth = 1000,
   ) {}
 
+  async canAccept(): Promise<boolean> {
+    return this.publisher.all().length < this.maxDepth;
+  }
+
   async enqueue(command: EnqueueScanCommand): Promise<void> {
+    if (!(await this.canAccept())) {
+      this.metrics.incrementCounter({
+        name: 'queue_commands_enqueued_total',
+        labels: {
+          command_type: 'ingestion.scan.execute',
+          job_type: 'scan',
+          status: 'rejected',
+        },
+      });
+      this.recordBacklog();
+
+      throw new Error('Scan queue backpressure limit reached');
+    }
+
     await this.publisher.publish({
       commandId: command.scanJobId,
       commandType: 'ingestion.scan.execute',
@@ -32,6 +51,10 @@ export class InMemoryScanQueueAdapter implements ScanQueuePort {
         status: 'enqueued',
       },
     });
+    this.recordBacklog();
+  }
+
+  private recordBacklog(): void {
     this.metrics.recordGauge({
       name: 'queue_commands_backlog',
       value: this.publisher.all().length,

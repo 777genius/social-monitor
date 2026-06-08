@@ -42,4 +42,40 @@ describe('InMemoryScanQueueAdapter', () => {
       }),
     ).toBe(1);
   });
+
+  it('rejects enqueue when queue reaches configured backpressure depth', async () => {
+    const publisher = new InMemoryQueuePublisher();
+    const metrics = new InMemoryMetricsRecorder();
+    const adapter = new InMemoryScanQueueAdapter(publisher, metrics, 1);
+    const command = {
+      tenantId: tenantId('tenant-backpressure'),
+      workspaceId: workspaceId('workspace-backpressure'),
+      scanJobId: 'scan-job-1',
+      sourceBindingId: 'source-binding-1',
+      scanPolicyId: 'scan-policy-1',
+      correlationId: 'correlation-1',
+      causationId: 'causation-1',
+    };
+
+    await adapter.enqueue(command);
+    await expect(adapter.enqueue({
+      ...command,
+      scanJobId: 'scan-job-2',
+    })).rejects.toThrow('Scan queue backpressure limit reached');
+
+    expect(publisher.all()).toHaveLength(1);
+    expect(
+      metrics.counterValue('queue_commands_enqueued_total', {
+        command_type: 'ingestion.scan.execute',
+        job_type: 'scan',
+        status: 'rejected',
+      }),
+    ).toBe(1);
+    expect(
+      metrics.latestGaugeValue('queue_commands_backlog', {
+        command_type: 'ingestion.scan.execute',
+        queue: 'scan',
+      }),
+    ).toBe(1);
+  });
 });
