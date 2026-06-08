@@ -381,3 +381,27 @@ Evidence notes:
 - Delivery circuit breaker opens per provider instance after repeated failures and returns a retryable failure during cooldown without calling the provider.
 - Runtime wiring uses conservative MVP defaults: failure threshold 3 and cooldown 60 seconds for source fetching and delivery providers.
 - Focused specs verify threshold opening, provider-call suppression during cooldown, cooldown retry and success reset behavior.
+
+## PR 11 Scan Queue Backpressure Evidence
+
+- `3961f61 feat: add scan queue backpressure`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:observability`
+- `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js apps/api-gateway/src/domain-error.filter.ts libs/shared-kernel/src/domain-error.ts libs/monitoring/ports/scan-queue.port.ts libs/monitoring/adapters/queue/in-memory-scan-queue.adapter.ts libs/monitoring/adapters/queue/in-memory-scan-queue.adapter.spec.ts libs/monitoring/features/request-scan/request-scan.use-case.ts libs/monitoring/features/request-scan/request-scan.use-case.spec.ts libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case.ts libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case.spec.ts`
+- `node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone smoke verified queue-depth rejection, manual scan backpressure preflight and scheduled scan skip behavior through real in-memory adapters/repositories.
+- `git diff --check`
+
+Evidence notes:
+
+- `ScanQueuePort` now exposes `canAccept(command)` so use cases can apply backpressure before creating more durable work.
+- `RequestScanUseCase` checks queue capacity after idempotency/overlap and before quota reservation, scan job persistence, outbox append or queue enqueue.
+- Manual scan backpressure returns `operation.backpressure`; the API error filter maps it to HTTP 429 with a support-safe problem title.
+- `ScheduleDueScansUseCase` checks queue capacity before creating a scheduled scan job and increments `skipped` when the queue is full.
+- Scheduled scan backpressure intentionally does not advance `nextRunAt`, so due work remains visible instead of being silently deferred as if it had been enqueued.
+- `InMemoryScanQueueAdapter` enforces a configurable max depth with a conservative default of 1000 for MVP local/runtime wiring.
+- Rejected enqueue attempts record `queue_commands_enqueued_total` with safe labels and `status=rejected`, plus `queue_commands_backlog` gauge for current scan queue depth.
+- Backpressure remains infrastructure-adapter driven: domain entities stay free of queue, metrics and HTTP concerns, and feature use cases depend only on ports.
