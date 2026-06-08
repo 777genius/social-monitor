@@ -409,6 +409,15 @@
         "operationId": "ApiKeysController_list",
         "parameters": [
           {
+            "description": "Comma-separated workspace roles. API key listing requires owner or admin.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "x-workspace-id",
             "required": true,
@@ -438,6 +447,15 @@
       "post": {
         "operationId": "ApiKeysController_create",
         "parameters": [
+          {
+            "description": "Comma-separated workspace roles. API key management requires owner or admin.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "in": "header",
             "name": "x-workspace-id",
@@ -483,6 +501,15 @@
           {
             "in": "path",
             "name": "apiKeyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. API key revocation requires owner or admin.",
+            "in": "header",
+            "name": "x-workspace-role",
             "required": true,
             "schema": {
               "type": "string"

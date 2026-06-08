@@ -11,6 +11,7 @@ Ensure hardening PRs enforce beta safety through tests, gates and operational ev
 - Feature use cases depend on ports, not concrete adapters.
 - Feature use cases return `Result` failures instead of throwing `DomainError`.
 - REST controllers establish tenant/workspace scope before use-case calls.
+- Sensitive workspace management actions check role/permission policy before invoking use cases.
 
 ## Test And Evidence Checks
 - Tenant isolation suite passes.

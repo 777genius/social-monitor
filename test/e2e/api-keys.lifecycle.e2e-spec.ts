@@ -37,6 +37,7 @@ describe('API key lifecycle and scopes (e2e)', () => {
       .post('/identity/api-keys')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .send({
         name: 'Readonly summaries key',
         scopes: ['read:summaries'],
@@ -86,6 +87,7 @@ describe('API key lifecycle and scopes (e2e)', () => {
       .delete(`/identity/api-keys/${created.body.apiKey.id}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .expect(200);
 
     expect(revoked.body).toMatchObject({

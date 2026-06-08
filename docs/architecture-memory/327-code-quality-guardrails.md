@@ -48,6 +48,7 @@ Clean Architecture fails slowly when use cases stop being directly testable, con
 - A formal spec that does not reference its use case is blocked.
 - A focused or skipped test committed with `.only` or `.skip` is blocked.
 - A REST endpoint without tenant/workspace scoping is blocked unless the endpoint is a deliberate public catalog endpoint and the allowlist is updated in the same PR.
+- Sensitive workspace management endpoints must enforce authorization at the interface/application boundary through a port-backed policy, not only tenant headers.
 - A direct infrastructure dependency in a feature is blocked.
 - A production `console.*` call is blocked.
 - A smoke script can supplement e2e, but it cannot replace a missing use-case spec.

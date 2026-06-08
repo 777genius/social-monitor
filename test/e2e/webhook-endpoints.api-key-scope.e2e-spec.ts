@@ -47,6 +47,7 @@ describe('Webhook endpoint API key scope enforcement (e2e)', () => {
       .post('/identity/api-keys')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .send({
         name: 'Readonly key',
         scopes: ['read:summaries'],
@@ -65,6 +66,7 @@ describe('Webhook endpoint API key scope enforcement (e2e)', () => {
       .post('/identity/api-keys')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .send({
         name: 'Webhook writer key',
         scopes: ['write:webhook_endpoints'],
@@ -97,6 +99,7 @@ describe('Webhook endpoint API key scope enforcement (e2e)', () => {
       .delete(`/identity/api-keys/${writerKey.body.apiKey.id}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .expect(200);
 
     await request(app.getHttpServer())

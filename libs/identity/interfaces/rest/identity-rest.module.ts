@@ -2,12 +2,14 @@ import { Module } from '@nestjs/common';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
+import { StaticWorkspaceAuthorizationPolicy } from '../../adapters/authorization/static-workspace-authorization-policy';
 import { Sha256ApiKeyHasher } from '../../adapters/hash/hmac-api-key.hasher';
 import { InMemoryApiKeyRepository } from '../../adapters/persistence/in-memory-api-key.repository';
 import { CreateApiKeyUseCase } from '../../features/create-api-key/create-api-key.use-case';
 import { ListApiKeysUseCase } from '../../features/list-api-keys/list-api-keys.use-case';
 import { RevokeApiKeyUseCase } from '../../features/revoke-api-key/revoke-api-key.use-case';
 import { VerifyApiKeyUseCase } from '../../features/verify-api-key/verify-api-key.use-case';
+import { WORKSPACE_AUTHORIZATION_POLICY } from '../../ports';
 import { ApiKeysController } from './api-keys.controller';
 
 @Module({
@@ -16,6 +18,10 @@ import { ApiKeysController } from './api-keys.controller';
   providers: [
     InMemoryApiKeyRepository,
     Sha256ApiKeyHasher,
+    {
+      provide: WORKSPACE_AUTHORIZATION_POLICY,
+      useClass: StaticWorkspaceAuthorizationPolicy,
+    },
     {
       provide: CreateApiKeyUseCase,
       useFactory: (apiKeys: InMemoryApiKeyRepository, hasher: Sha256ApiKeyHasher) =>
@@ -47,6 +53,7 @@ import { ApiKeysController } from './api-keys.controller';
     RevokeApiKeyUseCase,
     Sha256ApiKeyHasher,
     VerifyApiKeyUseCase,
+    WORKSPACE_AUTHORIZATION_POLICY,
   ],
 })
 export class IdentityRestModule {}

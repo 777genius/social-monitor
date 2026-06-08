@@ -577,3 +577,26 @@ Evidence notes:
 - `scripts/check-release-evidence.mjs` now verifies that every blocking gate command in `ops/release/mvp-release-evidence-contract.json` is present in `npm run verify`.
 - This prevents a gate from existing only as documentation or a package script while being skipped by the standard local/CI verification path.
 - The PR review rubric and forbidden-shortcut docs now call out missing `verify` wiring as a merge blocker.
+
+## PR 17 API Key Workspace Authorization Evidence
+
+- Introduced by the API key workspace authorization commit that adds this section.
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `NODE_OPTIONS=--max-old-space-size=1024 node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing role denial, viewer denial, owner create success and member revoke denial.
+- `git diff --check`
+
+Evidence notes:
+
+- Identity now has `WorkspaceAuthorizationPolicyPort` plus `WORKSPACE_AUTHORIZATION_POLICY` injection token, preserving port/adapter boundaries.
+- `StaticWorkspaceAuthorizationPolicy` is the MVP adapter that allows owner/admin roles for API key create/list/revoke actions.
+- API-key REST handlers parse `x-workspace-role` at the interface boundary and authorize before invoking sensitive use cases.
+- Existing API-key e2e fixtures now pass `x-workspace-role: admin` for legitimate management calls.
+- `test/e2e/api-keys.authorization.e2e-spec.ts` covers the denied and allowed REST behavior.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for API-key management endpoints.
