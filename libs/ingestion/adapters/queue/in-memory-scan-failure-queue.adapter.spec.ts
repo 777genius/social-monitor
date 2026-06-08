@@ -40,4 +40,34 @@ describe('InMemoryScanFailureQueueAdapter', () => {
       queue: 'scan-dlq',
     })).toBe(1);
   });
+
+  it('lists dead letters by tenant and workspace with a bounded limit', async () => {
+    const metrics = new InMemoryMetricsRecorder();
+    const queue = new InMemoryScanFailureQueueAdapter(metrics);
+    const command = {
+      tenantId: tenantId('tenant-failure-queue'),
+      workspaceId: workspaceId('workspace-failure-queue'),
+      scanJobId: 'scan-job-failure',
+      sourceBindingId: 'source-binding-failure',
+      scanPolicyId: 'scan-policy-failure',
+      correlationId: 'correlation-failure',
+      causationId: 'causation-failure',
+      attemptNumber: 1,
+      retryBudget: 1,
+      failureReason: 'Provider unavailable',
+    };
+
+    await queue.deadLetter(command);
+    await queue.deadLetter({
+      ...command,
+      tenantId: tenantId('tenant-other'),
+      scanJobId: 'scan-job-other',
+    });
+
+    await expect(queue.listDeadLetters({
+      tenantId: tenantId('tenant-failure-queue'),
+      workspaceId: workspaceId('workspace-failure-queue'),
+      limit: 1,
+    })).resolves.toEqual([command]);
+  });
 });

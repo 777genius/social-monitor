@@ -21,3 +21,11 @@ export interface ScanFailureQueuePort {
   enqueueRetry(command: RetryScanCommand): Promise<void>;
   deadLetter(command: FailedScanCommand): Promise<void>;
 }
+
+export interface ScanFailureInspectionPort {
+  listDeadLetters(params: {
+    readonly tenantId: TenantId;
+    readonly workspaceId: WorkspaceId;
+    readonly limit: number;
+  }): Promise<readonly FailedScanCommand[]>;
+}

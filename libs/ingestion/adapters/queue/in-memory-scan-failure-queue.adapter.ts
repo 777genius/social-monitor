@@ -1,8 +1,13 @@
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 
-import type { FailedScanCommand, RetryScanCommand, ScanFailureQueuePort } from '../../ports';
+import type {
+  FailedScanCommand,
+  RetryScanCommand,
+  ScanFailureInspectionPort,
+  ScanFailureQueuePort,
+} from '../../ports';
 
-export class InMemoryScanFailureQueueAdapter implements ScanFailureQueuePort {
+export class InMemoryScanFailureQueueAdapter implements ScanFailureQueuePort, ScanFailureInspectionPort {
   private readonly retryCommands: RetryScanCommand[] = [];
   private readonly deadLetters: FailedScanCommand[] = [];
 
@@ -50,5 +55,11 @@ export class InMemoryScanFailureQueueAdapter implements ScanFailureQueuePort {
 
   deadLettered(): readonly FailedScanCommand[] {
     return [...this.deadLetters];
+  }
+
+  async listDeadLetters(params: Parameters<ScanFailureInspectionPort['listDeadLetters']>[0]): Promise<readonly FailedScanCommand[]> {
+    return this.deadLetters
+      .filter((command) => command.tenantId === params.tenantId && command.workspaceId === params.workspaceId)
+      .slice(0, params.limit);
   }
 }

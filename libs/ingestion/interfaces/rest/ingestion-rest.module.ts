@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
+import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 
+import { InMemoryScanFailureQueueAdapter } from '../../adapters/queue/in-memory-scan-failure-queue.adapter';
 import { FakeSourceProvider } from '../../adapters/source/fake-source.provider';
 import { FixtureHackerNewsClient } from '../../adapters/source/hacker-news/fixture-hacker-news-client';
 import { HackerNewsSourceProvider } from '../../adapters/source/hacker-news/hacker-news-source.provider';
@@ -7,12 +9,20 @@ import { InMemorySourceProviderRegistry } from '../../adapters/source/in-memory-
 import { FixtureRssClient } from '../../adapters/source/rss/fixture-rss-client';
 import { RssSourceProvider } from '../../adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfiles } from '../../adapters/source/source-readiness-profiles';
+import { ListScanDeadLettersUseCase } from '../../features/list-scan-dead-letters/list-scan-dead-letters.use-case';
 import { ListSourceProfilesUseCase } from '../../features/list-source-profiles/list-source-profiles.use-case';
+import { ScanDeadLetterController } from './scan-dead-letter.controller';
 import { SourceProfileController } from './source-profile.controller';
 
 @Module({
-  controllers: [SourceProfileController],
+  controllers: [SourceProfileController, ScanDeadLetterController],
   providers: [
+    InMemoryMetricsRecorder,
+    {
+      provide: InMemoryScanFailureQueueAdapter,
+      useFactory: (metrics: InMemoryMetricsRecorder) => new InMemoryScanFailureQueueAdapter(metrics),
+      inject: [InMemoryMetricsRecorder],
+    },
     FakeSourceProvider,
     FixtureHackerNewsClient,
     FixtureRssClient,
@@ -44,6 +54,12 @@ import { SourceProfileController } from './source-profile.controller';
       useFactory: (registry: InMemorySourceProviderRegistry) => new ListSourceProfilesUseCase(registry),
       inject: [InMemorySourceProviderRegistry],
     },
+    {
+      provide: ListScanDeadLettersUseCase,
+      useFactory: (failures: InMemoryScanFailureQueueAdapter) => new ListScanDeadLettersUseCase(failures),
+      inject: [InMemoryScanFailureQueueAdapter],
+    },
   ],
+  exports: [InMemoryScanFailureQueueAdapter, ListScanDeadLettersUseCase],
 })
 export class IngestionRestModule {}

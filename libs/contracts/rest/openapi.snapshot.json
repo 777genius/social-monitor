@@ -516,6 +516,38 @@
         ]
       }
     },
+    "/ingestion/scan-dead-letters": {
+      "get": {
+        "operationId": "ScanDeadLetterController_list",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List support-safe scan dead letters for the tenant/workspace.",
+        "tags": [
+          "ingestion"
+        ]
+      }
+    },
     "/ready": {
       "get": {
         "operationId": "HealthController_ready",
