@@ -100,6 +100,16 @@ Scan status API responses expose support-safe fields for beta triage:
 - Keep workers paused during restore validation; resume only after migration version, replay state and idempotency state are consistent.
 - If restore loses operational state, do not replay provider/AI jobs blindly; classify affected jobs and rebuild queues from durable records.
 
+## Retention And DSAR Triage
+
+- Use `ops/privacy/retention-contract.json` as the beta retention, export and deletion coverage contract.
+- Every Prisma table must have an explicit retention policy before beta release; `npm run check:retention` blocks schema drift without a policy.
+- User-exportable tables include user/profile, membership, topic, source binding, source item, feed item, summary, feedback and usage records.
+- Operational replay/idempotency tables are not user-exportable; use them only to prove safe replay, restore and deletion completion.
+- Legal hold behavior defaults to skipping purge and recording the exception until the hold is released.
+- Do not run ad hoc database deletes for DSAR or retention requests; use the contract to classify each data class and record evidence.
+- Real purge/export automation is a post-contract implementation step; until then, release evidence must show table coverage, owner, delete mode, purge trigger and legal-hold behavior.
+
 ## Delivery Failure Triage
 
 - `delivery_attempts_total{status=started}` shows delivery work accepted by a provider adapter.

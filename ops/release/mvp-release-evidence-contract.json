@@ -60,6 +60,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "retention-contract",
+      "command": "npm run check:retention",
+      "blocksRelease": true
+    },
+    {
       "gateId": "staging-drills",
       "command": "npm run check:drills",
       "blocksRelease": true

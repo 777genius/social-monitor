@@ -18,6 +18,7 @@ const requiredGateIds = new Set([
   'migration-safety',
   'load-cost-guardrail',
   'backup-restore-contract',
+  'retention-contract',
   'staging-drills',
 ]);
 const requiredSmokeIds = new Set([

@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "defaultLegalHoldBehavior": "skip_purge_and_record_exception",
+  "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#retention-and-dsar-triage",
+  "tables": [
+    {
+      "table": "tenants",
+      "dataClass": "tenant_account",
+      "owner": "platform-owner",
+      "retentionDays": 2555,
+      "deleteMode": "soft_delete_then_hard_delete",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "tenant_offboarding_completed"
+    },
+    {
+      "table": "workspaces",
+      "dataClass": "tenant_workspace",
+      "owner": "platform-owner",
+      "retentionDays": 2555,
+      "deleteMode": "soft_delete_then_hard_delete",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "tenant_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "users",
+      "dataClass": "user_profile",
+      "owner": "identity-owner",
+      "retentionDays": 2555,
+      "deleteMode": "soft_delete_then_anonymize",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "dsar_delete_or_tenant_offboarding_completed"
+    },
+    {
+      "table": "memberships",
+      "dataClass": "access_control",
+      "owner": "identity-owner",
+      "retentionDays": 2555,
+      "deleteMode": "hard_delete_after_account_closure",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "user_or_workspace_membership_removed"
+    },
+    {
+      "table": "topics",
+      "dataClass": "user_configuration",
+      "owner": "monitoring-owner",
+      "retentionDays": 365,
+      "deleteMode": "soft_delete_then_hard_delete",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "topic_deleted_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "source_catalog_entries",
+      "dataClass": "platform_catalog",
+      "owner": "source-platform-owner",
+      "retentionDays": 0,
+      "deleteMode": "retain_until_catalog_deprecated",
+      "exportable": false,
+      "legalHoldAware": false,
+      "purgeTrigger": "catalog_entry_removed_by_release"
+    },
+    {
+      "table": "capability_profiles",
+      "dataClass": "platform_catalog",
+      "owner": "source-platform-owner",
+      "retentionDays": 0,
+      "deleteMode": "retain_until_catalog_deprecated",
+      "exportable": false,
+      "legalHoldAware": false,
+      "purgeTrigger": "catalog_profile_removed_by_release"
+    },
+    {
+      "table": "source_bindings",
+      "dataClass": "source_configuration",
+      "owner": "monitoring-owner",
+      "retentionDays": 365,
+      "deleteMode": "soft_delete_then_hard_delete",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "source_binding_deleted_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "scan_policies",
+      "dataClass": "source_configuration",
+      "owner": "monitoring-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_source_binding_deleted",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "source_binding_deleted_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "scan_jobs",
+      "dataClass": "operational_state",
+      "owner": "ingestion-owner",
+      "retentionDays": 90,
+      "deleteMode": "hard_delete_after_replay_window",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "scan_job_completed_and_replay_window_expired"
+    },
+    {
+      "table": "cursor_checkpoints",
+      "dataClass": "operational_state",
+      "owner": "ingestion-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_source_binding_deleted",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "source_binding_deleted_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "source_items",
+      "dataClass": "third_party_public_content",
+      "owner": "ingestion-owner",
+      "retentionDays": 180,
+      "deleteMode": "hard_delete_or_tombstone_if_referenced",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "source_item_age_expired_or_topic_deleted"
+    },
+    {
+      "table": "feed_items",
+      "dataClass": "derived_content_index",
+      "owner": "feed-owner",
+      "retentionDays": 180,
+      "deleteMode": "tombstone_then_hard_delete",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "feed_item_age_expired_or_topic_deleted"
+    },
+    {
+      "table": "summary_artifacts",
+      "dataClass": "ai_generated_content",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_retention",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "summary_retention_expired_or_topic_deleted"
+    },
+    {
+      "table": "summary_feedback",
+      "dataClass": "user_feedback",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_or_anonymize",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "feedback_retention_expired_or_user_deleted"
+    },
+    {
+      "table": "delivery_attempts",
+      "dataClass": "operational_delivery_state",
+      "owner": "delivery-owner",
+      "retentionDays": 180,
+      "deleteMode": "hard_delete_after_replay_window",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "delivery_attempt_replay_window_expired"
+    },
+    {
+      "table": "usage_records",
+      "dataClass": "billing_usage_audit",
+      "owner": "billing-owner",
+      "retentionDays": 2555,
+      "deleteMode": "retain_for_audit_then_anonymize",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "billing_audit_window_expired"
+    },
+    {
+      "table": "outbox_events",
+      "dataClass": "operational_replay_state",
+      "owner": "platform-owner",
+      "retentionDays": 90,
+      "deleteMode": "hard_delete_after_published_and_replay_window",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "event_published_and_replay_window_expired"
+    },
+    {
+      "table": "inbox_records",
+      "dataClass": "operational_idempotency_state",
+      "owner": "platform-owner",
+      "retentionDays": 90,
+      "deleteMode": "hard_delete_after_replay_window",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "consumer_replay_window_expired"
+    },
+    {
+      "table": "idempotency_keys",
+      "dataClass": "operational_idempotency_state",
+      "owner": "platform-owner",
+      "retentionDays": 30,
+      "deleteMode": "hard_delete_after_expiry",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "idempotency_key_expired"
+    }
+  ]
+}
