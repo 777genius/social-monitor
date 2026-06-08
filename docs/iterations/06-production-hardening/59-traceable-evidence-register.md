@@ -475,3 +475,26 @@ Evidence notes:
 - `npm run verify` now includes `check:retention`.
 - `ops/release/mvp-release-evidence-contract.json` now requires the `retention-contract` release gate, and `scripts/check-release-evidence.mjs` validates it.
 - This is the MVP control gate and evidence contract; real purge/export workflow automation remains the next implementation step after the contract stops schema drift.
+
+## PR 12 Retention Purge Plan Evidence
+
+- `24484a1 feat: plan retention purge dry runs`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:retention-plan`
+- `NODE_OPTIONS=--max-old-space-size=2048 npx jest libs/privacy/features/plan-retention-purge/plan-retention-purge.use-case.spec.ts --runInBand`
+- `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js libs/privacy/ports/retention-policy-repository.port.ts libs/privacy/ports/index.ts libs/privacy/adapters/retention/json-retention-policy.repository.ts libs/privacy/features/plan-retention-purge/plan-retention-purge.command.ts libs/privacy/features/plan-retention-purge/plan-retention-purge.result.ts libs/privacy/features/plan-retention-purge/plan-retention-purge.use-case.ts libs/privacy/features/plan-retention-purge/plan-retention-purge.use-case.spec.ts scripts/check-retention-plan.ts`
+- `git diff --check`
+
+Evidence notes:
+
+- The new Privacy context follows the existing backend Feature-Sliced Clean Architecture layout: `ports`, `adapters` and `features/plan-retention-purge`.
+- `PlanRetentionPurgeUseCase` depends only on `RetentionPolicyRepositoryPort`, so future DB/object-storage purge workers can reuse it without rewriting policy loading or cutoff math.
+- `JsonRetentionPolicyRepository` is the adapter that reads `ops/privacy/retention-contract.json`; the use case remains filesystem-free.
+- `check:retention-plan` executes a real dry-run against the committed retention contract and verifies critical table coverage plus valid cutoff timestamps.
+- The dry-run plan includes retained catalog tables separately from purgeable tables, preventing retentionDays=0 policies from being treated as immediate deletes.
+- Legal hold behavior is carried into every purge plan entry as `skip_purge_and_record_exception`.
+- `npm run verify` now includes `check:retention-plan`, making the dry-run planner part of the standard local/CI gate.
