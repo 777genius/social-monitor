@@ -501,7 +501,7 @@ Evidence notes:
 
 ## PR 13 Code Quality Guardrails Evidence
 
-- Pending commit in current branch.
+- `83e8f48 test: add code quality guardrails`
 
 Verified commands:
 
@@ -525,7 +525,7 @@ Evidence notes:
 
 ## PR 14 Code Quality Guardrail Strengthening Evidence
 
-- Pending commit in current branch.
+- `53f6dbd test: strengthen code quality guardrails`
 
 Verified commands:
 
@@ -541,3 +541,21 @@ Evidence notes:
 - The gate rejects feature use-case specs without at least one executable `it(...)` or `test(...)`.
 - The gate rejects committed `.only` and `.skip` tests in `apps`, `libs` and `test`.
 - The quality docs now record this as a merge blocker and PR-review requirement.
+
+## PR 15 Evidence Freshness Guardrail Evidence
+
+- Introduced by the evidence freshness guardrail commit that adds this section.
+
+Verified commands:
+
+- `npm run check:code-quality`
+- `npm run check:release`
+- `npm run check:architecture`
+- `npm run build`
+- `git diff --check`
+
+Evidence notes:
+
+- `scripts/check-code-quality.mjs` now rejects committed docs containing temporary commit evidence markers.
+- PR 13 and PR 14 evidence entries were updated from temporary branch markers to concrete commit SHAs.
+- Backlog evidence now names the concrete commits that introduced and strengthened the code-quality gate.

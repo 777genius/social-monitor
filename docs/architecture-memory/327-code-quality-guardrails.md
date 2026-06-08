@@ -18,7 +18,8 @@ Code quality rules must be enforceable, not only documented. `npm run verify` mu
 6. Tenant-scoped REST controllers must call `requireTenantScope(...)` before invoking application use cases.
 7. Public catalog controllers must be explicitly allowlisted in `scripts/check-code-quality.mjs`.
 8. Production code in `apps` and `libs` must not use `console.*`; logging must go through structured platform logging ports/adapters.
-9. Architecture boundaries remain separately enforced by `npm run check:architecture`.
+9. Committed docs must not keep temporary commit evidence markers after merge.
+10. Architecture boundaries remain separately enforced by `npm run check:architecture`.
 
 ## Current Gate
 
@@ -48,6 +49,7 @@ Clean Architecture fails slowly when use cases stop being directly testable, con
 - A direct infrastructure dependency in a feature is blocked.
 - A production `console.*` call is blocked.
 - A smoke script can supplement e2e, but it cannot replace a missing use-case spec.
+- Evidence docs must be updated from temporary branch markers to concrete commit SHAs before merge.
 
 ## MVP Boundary
 
