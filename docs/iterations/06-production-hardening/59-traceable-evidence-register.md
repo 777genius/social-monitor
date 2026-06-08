@@ -451,3 +451,27 @@ Evidence notes:
 - Invalid `limit` returns a `validation.failed` result instead of throwing outside the use-case `Result` contract.
 - `libs/contracts/rest/openapi.snapshot.json` now includes `/ingestion/scan-dead-letters`, and `check:openapi` verifies the committed contract.
 - Current implementation uses the MVP in-memory adapter; the port shape supports later Kafka/RabbitMQ DLQ storage without controller/use-case rewrite.
+
+## PR 12 Retention Contract Evidence
+
+- `208abc9 feat: add retention contract gate`
+
+Verified commands:
+
+- `npm run check:retention`
+- `npm run check:release`
+- `npm run check:architecture`
+- `npm run build`
+- `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js scripts/check-retention.mjs scripts/check-release-evidence.mjs`
+- `git diff --check`
+
+Evidence notes:
+
+- `ops/privacy/retention-contract.json` covers every `@@map(...)` Prisma table with data class, owner, retention days, delete mode, exportability, legal-hold behavior and purge trigger.
+- `scripts/check-retention.mjs` fails if a new Prisma table lacks retention policy coverage or if a policy references an unknown table.
+- Critical DSAR/export tables are required to be exportable: users, memberships, topics, source bindings, source items, feed items, summary artifacts, summary feedback and usage records.
+- Operational replay/idempotency tables are explicitly not user-exportable and have bounded retention checks.
+- The retention contract points to the Retention And DSAR Triage runbook section, including legal-hold skip-and-record behavior.
+- `npm run verify` now includes `check:retention`.
+- `ops/release/mvp-release-evidence-contract.json` now requires the `retention-contract` release gate, and `scripts/check-release-evidence.mjs` validates it.
+- This is the MVP control gate and evidence contract; real purge/export workflow automation remains the next implementation step after the contract stops schema drift.
