@@ -405,3 +405,25 @@ Evidence notes:
 - `InMemoryScanQueueAdapter` enforces a configurable max depth with a conservative default of 1000 for MVP local/runtime wiring.
 - Rejected enqueue attempts record `queue_commands_enqueued_total` with safe labels and `status=rejected`, plus `queue_commands_backlog` gauge for current scan queue depth.
 - Backpressure remains infrastructure-adapter driven: domain entities stay free of queue, metrics and HTTP concerns, and feature use cases depend only on ports.
+
+## PR 11 Worker Shutdown Drain Evidence
+
+- `6978210 feat: drain worker shutdown`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone smoke verified `WorkerRuntime` starts, rejects new work during shutdown, drains an active operation and ends with zero active operations.
+- `node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone Nest DI/e2e smoke verified `IngestionWorkerModule` wires `ExecuteScanCommandHandler` with `WorkerRuntime` and rejects late `ingestion.scan.execute` work with `operation.backpressure` after shutdown begins.
+- `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js libs/platform/worker/src/worker-runtime.ts libs/platform/worker/src/worker-runtime.spec.ts libs/ingestion/interfaces/queue/execute-scan-command.handler.ts apps/ingestion-worker/src/ingestion-worker.module.ts`
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkerRuntime` now owns shutdown/drain state at the platform runtime boundary: `started`, `acceptingWork`, active operation count and bounded drain wait.
+- `runIfAccepting` rejects new work during drain with `operation.backpressure`, keeping late queue delivery failure controlled and retryable by broker policy.
+- Active operations decrement in `finally`, so normal success, domain error and thrown provider failure all release the runtime operation slot.
+- `ExecuteScanCommandHandler` wraps scan execution in `WorkerRuntime.runIfAccepting`, preserving the ingestion use case and domain model as pure Clean Architecture application/domain code.
+- In-flight scan lease release remains inside `ExecuteScanUseCase.finally`; shutdown drain avoids starting new commands while giving already-started commands a chance to execute that cleanup path.
+- MVP drain timeout defaults to 30 seconds and is configurable for tests/runtime options; full broker consumer pause/ack semantics remain the next infrastructure-specific step once Kafka/RabbitMQ adapters are attached.
