@@ -72,6 +72,8 @@ References:
 CI must block:
 
 - feature use cases without focused sibling specs;
+- feature use-case specs that do not reference their exported use case or contain no executable test;
+- committed `.only` or `.skip` tests;
 - feature use cases that throw `DomainError` instead of returning `Result` failures;
 - REST controllers that skip tenant/workspace scope unless explicitly allowlisted as public catalog endpoints;
 - production `console.*` logging in `apps` or `libs`;

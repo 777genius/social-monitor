@@ -11,12 +11,14 @@ Code quality rules must be enforceable, not only documented. `npm run verify` mu
 ## Enforced Rules
 
 1. Every production feature use case under `libs/**/features/**/*.use-case.ts` must have a focused sibling `*.use-case.spec.ts`.
-2. Feature use cases return `Result` failures with `err(new DomainError(...))`; they must not throw `DomainError` directly.
-3. Feature use cases depend on ports and must not instantiate concrete `InMemory*` adapters.
-4. Tenant-scoped REST controllers must call `requireTenantScope(...)` before invoking application use cases.
-5. Public catalog controllers must be explicitly allowlisted in `scripts/check-code-quality.mjs`.
-6. Production code in `apps` and `libs` must not use `console.*`; logging must go through structured platform logging ports/adapters.
-7. Architecture boundaries remain separately enforced by `npm run check:architecture`.
+2. Every feature use-case spec must reference the exported `*UseCase` class and include at least one executable `it(...)` or `test(...)`.
+3. Committed tests must not use `.only` or `.skip`.
+4. Feature use cases return `Result` failures with `err(new DomainError(...))`; they must not throw `DomainError` directly.
+5. Feature use cases depend on ports and must not instantiate concrete `InMemory*` adapters.
+6. Tenant-scoped REST controllers must call `requireTenantScope(...)` before invoking application use cases.
+7. Public catalog controllers must be explicitly allowlisted in `scripts/check-code-quality.mjs`.
+8. Production code in `apps` and `libs` must not use `console.*`; logging must go through structured platform logging ports/adapters.
+9. Architecture boundaries remain separately enforced by `npm run check:architecture`.
 
 ## Current Gate
 
@@ -40,6 +42,8 @@ Clean Architecture fails slowly when use cases stop being directly testable, con
 ## Reviewer Policy
 
 - A new use case without a sibling spec is blocked.
+- A formal spec that does not reference its use case is blocked.
+- A focused or skipped test committed with `.only` or `.skip` is blocked.
 - A REST endpoint without tenant/workspace scoping is blocked unless the endpoint is a deliberate public catalog endpoint and the allowlist is updated in the same PR.
 - A direct infrastructure dependency in a feature is blocked.
 - A production `console.*` call is blocked.

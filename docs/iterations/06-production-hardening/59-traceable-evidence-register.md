@@ -522,3 +522,22 @@ Evidence notes:
 - The gate blocks production `console.*` in `apps` and `libs`; runtime logging must stay on structured logging adapters.
 - `npm run verify` now runs `check:code-quality`, and release evidence contract includes the `code-quality-guardrails` blocking gate.
 - Quality policy is documented in `docs/architecture-memory/327-code-quality-guardrails.md` and reflected in testing, CI, PR rubric and forbidden-shortcut docs.
+
+## PR 14 Code Quality Guardrail Strengthening Evidence
+
+- Pending commit in current branch.
+
+Verified commands:
+
+- `npm run check:code-quality`
+- `npm run check:release`
+- `npm run check:architecture`
+- `npm run build`
+- `git diff --check`
+
+Evidence notes:
+
+- `scripts/check-code-quality.mjs` now rejects feature use-case specs that exist only formally but do not reference their exported `*UseCase` class.
+- The gate rejects feature use-case specs without at least one executable `it(...)` or `test(...)`.
+- The gate rejects committed `.only` and `.skip` tests in `apps`, `libs` and `test`.
+- The quality docs now record this as a merge blocker and PR-review requirement.

@@ -14,6 +14,8 @@ Prevent hardening from becoming documentation-only instead of enforceable beta s
 - Quotas enforced only in UI.
 - Observability that tracks infrastructure but not user-visible outcomes.
 - Feature use cases without focused sibling specs.
+- Formal sibling specs that do not reference the actual use case.
+- Committed `.only` or `.skip` tests.
 - Feature use cases throwing `DomainError` instead of returning `Result`.
 - Feature use cases instantiating concrete adapters instead of depending on ports.
 - REST controllers that rely on caller discipline instead of `requireTenantScope(...)`.
@@ -30,3 +32,4 @@ Prevent hardening from becoming documentation-only instead of enforceable beta s
 - Support needs shell access for common failures.
 - `npm run check:code-quality` fails.
 - A new feature use case is merged without a sibling `*.use-case.spec.ts`.
+- A test is committed with `.only` or `.skip`.

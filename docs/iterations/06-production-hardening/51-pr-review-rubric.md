@@ -19,6 +19,8 @@ Ensure hardening PRs enforce beta safety through tests, gates and operational ev
 - Dashboard/metric evidence exists.
 - Backup/restore verification is recorded.
 - Every production feature use case has a focused sibling `*.use-case.spec.ts`.
+- Feature use-case specs reference the actual exported use case and are not empty formal files.
+- No committed test uses `.only` or `.skip`.
 - `npm run check:code-quality` passes and is included in release evidence.
 
 ## Edge Case Checks
