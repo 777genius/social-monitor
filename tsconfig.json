@@ -33,6 +33,7 @@
       "@social-monitor/identity/*": ["libs/identity/*"],
       "@social-monitor/monitoring/*": ["libs/monitoring/*"],
       "@social-monitor/ingestion/*": ["libs/ingestion/*"],
+      "@social-monitor/privacy/*": ["libs/privacy/*"],
       "@social-monitor/feed/*": ["libs/feed/*"],
       "@social-monitor/summary/*": ["libs/summary/*"],
       "@social-monitor/delivery/*": ["libs/delivery/*"],
