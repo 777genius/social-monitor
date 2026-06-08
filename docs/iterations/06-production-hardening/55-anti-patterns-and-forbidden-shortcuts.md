@@ -7,6 +7,7 @@ Prevent hardening from becoming documentation-only instead of enforceable beta s
 - Launching beta with known cross-tenant access.
 - Logging provider credentials or sensitive headers.
 - Treating CI contract checks as optional.
+- Adding a release gate script without wiring it into `npm run verify`.
 - Shipping without support-visible failure diagnostics.
 
 ## Architecture Anti-Patterns
@@ -31,5 +32,6 @@ Prevent hardening from becoming documentation-only instead of enforceable beta s
 - Breaking contract passes CI.
 - Support needs shell access for common failures.
 - `npm run check:code-quality` fails.
+- `npm run check:release` reports a required gate missing from `npm run verify`.
 - A new feature use case is merged without a sibling `*.use-case.spec.ts`.
 - A test is committed with `.only` or `.skip`.

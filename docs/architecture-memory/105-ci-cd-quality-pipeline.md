@@ -84,3 +84,7 @@ The CI/CD system is the enforcement layer for Clean Architecture, generated cont
 - direct in-memory adapter construction inside feature use cases;
 - tenant-scoped REST controllers without `requireTenantScope(...)`;
 - production `console.*` calls.
+
+## Release Gate Coverage
+
+`npm run check:release` must prove that every blocking gate listed in `ops/release/mvp-release-evidence-contract.json` is present in `npm run verify`. A gate that exists as a package script but is not part of standard verification is treated as not enforced.

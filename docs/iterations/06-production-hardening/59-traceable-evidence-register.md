@@ -559,3 +559,21 @@ Evidence notes:
 - `scripts/check-code-quality.mjs` now rejects committed docs containing temporary commit evidence markers.
 - PR 13 and PR 14 evidence entries were updated from temporary branch markers to concrete commit SHAs.
 - Backlog evidence now names the concrete commits that introduced and strengthened the code-quality gate.
+
+## PR 16 Release Gate Coverage Evidence
+
+- Introduced by the release gate coverage commit that adds this section.
+
+Verified commands:
+
+- `npm run check:release`
+- `npm run check:code-quality`
+- `npm run check:architecture`
+- `npm run build`
+- `git diff --check`
+
+Evidence notes:
+
+- `scripts/check-release-evidence.mjs` now verifies that every blocking gate command in `ops/release/mvp-release-evidence-contract.json` is present in `npm run verify`.
+- This prevents a gate from existing only as documentation or a package script while being skipped by the standard local/CI verification path.
+- The PR review rubric and forbidden-shortcut docs now call out missing `verify` wiring as a merge blocker.

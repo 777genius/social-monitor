@@ -22,6 +22,7 @@ Ensure hardening PRs enforce beta safety through tests, gates and operational ev
 - Feature use-case specs reference the actual exported use case and are not empty formal files.
 - No committed test uses `.only` or `.skip`.
 - `npm run check:code-quality` passes and is included in release evidence.
+- `npm run check:release` proves every blocking release gate is included in `npm run verify`.
 
 ## Edge Case Checks
 - Worker bypasses REST auth.

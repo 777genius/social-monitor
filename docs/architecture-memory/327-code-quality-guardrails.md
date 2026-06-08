@@ -36,6 +36,8 @@ npm run verify
 npm run check:release
 ```
 
+`npm run check:release` also verifies that every release gate command is included in `npm run verify`, so code-quality cannot remain only a release-document entry.
+
 ## Why This Exists
 
 Clean Architecture fails slowly when use cases stop being directly testable, controllers skip tenant scope, or application code starts depending on adapters. These are high-leverage quality failures, so they are checked by script instead of relying on reviewer memory.

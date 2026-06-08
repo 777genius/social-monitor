@@ -59,6 +59,7 @@ if (contract.artifactEvidence?.requiresImageDigest !== true) {
 }
 
 const gateIds = new Set();
+const verifyScript = String(scripts.verify ?? '');
 for (const gate of contract.requiredGates ?? []) {
   if (gateIds.has(gate.gateId)) {
     violations.push(`${contractPath}: duplicate gateId "${gate.gateId}"`);
@@ -76,6 +77,10 @@ for (const gate of contract.requiredGates ?? []) {
   const scriptName = String(gate.command ?? '').replace(/^npm run /, '');
   if (!scripts[scriptName]) {
     violations.push(`${contractPath}: gate "${gate.gateId}" references missing npm script "${scriptName}"`);
+  }
+
+  if (!verifyScript.includes(`npm run ${scriptName}`)) {
+    violations.push(`${packagePath}: npm run verify must include release gate script "${scriptName}"`);
   }
 }
 
@@ -146,7 +151,7 @@ if (!contract.promotionDoc || !existsSync(contract.promotionDoc)) {
   violations.push(`${contractPath}: promotionDoc must reference an existing document`);
 }
 
-if (!String(scripts.verify ?? '').includes('check:release')) {
+if (!verifyScript.includes('check:release')) {
   violations.push(`${packagePath}: npm run verify must include check:release`);
 }
 
