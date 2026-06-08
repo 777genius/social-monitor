@@ -427,3 +427,27 @@ Evidence notes:
 - `ExecuteScanCommandHandler` wraps scan execution in `WorkerRuntime.runIfAccepting`, preserving the ingestion use case and domain model as pure Clean Architecture application/domain code.
 - In-flight scan lease release remains inside `ExecuteScanUseCase.finally`; shutdown drain avoids starting new commands while giving already-started commands a chance to execute that cleanup path.
 - MVP drain timeout defaults to 30 seconds and is configurable for tests/runtime options; full broker consumer pause/ack semantics remain the next infrastructure-specific step once Kafka/RabbitMQ adapters are attached.
+
+## PR 11 Scan DLQ Inspection Evidence
+
+- `e8a91cc feat: expose scan dlq inspection`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest smoke verified tenant-scoped `/ingestion/scan-dead-letters`, invalid limit handling, missing tenant handling and no raw failure reason in REST output.
+- `node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js libs/ingestion/ports/scan-failure-queue.port.ts libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter.ts libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter.spec.ts libs/ingestion/features/list-scan-dead-letters/list-scan-dead-letters.query.ts libs/ingestion/features/list-scan-dead-letters/list-scan-dead-letters.result.ts libs/ingestion/features/list-scan-dead-letters/list-scan-dead-letters.use-case.ts libs/ingestion/features/list-scan-dead-letters/list-scan-dead-letters.use-case.spec.ts libs/ingestion/interfaces/rest/scan-dead-letter.dto.ts libs/ingestion/interfaces/rest/scan-dead-letter.controller.ts libs/ingestion/interfaces/rest/ingestion-rest.module.ts`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `git diff --check`
+
+Evidence notes:
+
+- `ScanFailureInspectionPort` separates operator read access from the write-side retry/DLQ queue port.
+- `ListScanDeadLettersUseCase` is feature-scoped and returns bounded, tenant/workspace-filtered inspection entries.
+- REST uses `requireTenantScope` before invoking the use case, preserving the tenant isolation pattern used by other API surfaces.
+- The response deliberately omits raw `failureReason`; operators receive safe failure class, operator action, scan/source/policy IDs and correlation/causation IDs.
+- Invalid `limit` returns a `validation.failed` result instead of throwing outside the use-case `Result` contract.
+- `libs/contracts/rest/openapi.snapshot.json` now includes `/ingestion/scan-dead-letters`, and `check:openapi` verifies the committed contract.
+- Current implementation uses the MVP in-memory adapter; the port shape supports later Kafka/RabbitMQ DLQ storage without controller/use-case rewrite.
