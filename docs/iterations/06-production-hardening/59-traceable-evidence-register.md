@@ -922,3 +922,27 @@ Evidence notes:
 - Existing delivery attempt read e2e flows now pass `x-workspace-role: viewer` for legitimate status checks.
 - `test/e2e/delivery-attempts.get.e2e-spec.ts` records missing-role denial and viewer-allowed status behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for delivery attempt status reads.
+
+## PR 31 Digest Read Workspace Authorization Evidence
+
+- `f108390 feat: authorize digest reads`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `timeout 60s node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing digest read role denial and viewer digest read success.
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkspaceAction` now includes `digests.read`, and the static MVP policy allows owner/admin/member/viewer roles.
+- `DigestsController` validates tenant/workspace scope, authorizes `digests.read`, and only then invokes `GetDigestUseCase`.
+- REST parsing of `x-workspace-role` stays at the interface boundary; digest read use case remains independent of HTTP headers and role policy.
+- Existing digest read e2e flows now pass `x-workspace-role: viewer` for legitimate digest checks.
+- `test/e2e/digests.get.e2e-spec.ts` records missing-role denial and viewer-allowed read behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for digest reads.
