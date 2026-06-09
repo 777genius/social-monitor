@@ -202,6 +202,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .get(`/scan-requests/${scan.body.scanJobId}/status`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .expect(200)
       .expect((response) => {
         expect(response.body).toMatchObject({
@@ -305,6 +306,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .get(`/scan-requests/${scan.body.scanJobId}/status`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .expect(200)
       .expect((response) => {
         expect(response.body).toMatchObject({

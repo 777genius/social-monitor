@@ -1,5 +1,10 @@
-import { Controller, Get, Headers, Param } from '@nestjs/common';
+import { Controller, Get, Headers, Inject, Param } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  WORKSPACE_AUTHORIZATION_POLICY,
+  parseWorkspaceRolesHeader,
+  type WorkspaceAuthorizationPolicyPort,
+} from '@social-monitor/identity/ports';
 import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
@@ -9,21 +14,41 @@ import { buildScanStatusView } from './scan-status-view';
 @ApiTags('scan-requests')
 @Controller('scan-requests/:scanJobId/status')
 export class ScanStatusController {
-  constructor(private readonly getScanStatus: GetScanStatusUseCase) {}
+  constructor(
+    private readonly getScanStatus: GetScanStatusUseCase,
+    @Inject(WORKSPACE_AUTHORIZATION_POLICY)
+    private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Get current scan job status.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({
+    name: 'x-workspace-role',
+    required: true,
+    description: 'Comma-separated workspace roles. Scan job reads allow owner, admin, member or viewer.',
+  })
   get(
     @Param('scanJobId') scanJobId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
   ): Promise<ScanStatusResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      action: 'scan_jobs.read',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
 
     return this.getScanStatus
       .execute({

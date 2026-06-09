@@ -74,6 +74,20 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     });
   });
 
+  it('allows every workspace role to read scan job status', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'scan_jobs.read',
+      roles: ['viewer'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
   it('allows owner, admin and member roles to request scans', () => {
     const policy = new StaticWorkspaceAuthorizationPolicy();
 

@@ -12,6 +12,7 @@ export type WorkspaceAction =
   | 'topics.create'
   | 'source_bindings.create'
   | 'scan_policies.set'
+  | 'scan_jobs.read'
   | 'scan_requests.create'
   | 'summaries.read'
   | 'summary_requests.create'
