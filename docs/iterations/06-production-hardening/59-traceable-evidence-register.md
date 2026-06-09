@@ -946,3 +946,27 @@ Evidence notes:
 - Existing digest read e2e flows now pass `x-workspace-role: viewer` for legitimate digest checks.
 - `test/e2e/digests.get.e2e-spec.ts` records missing-role denial and viewer-allowed read behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for digest reads.
+
+## PR 32 Realtime Event Read Workspace Authorization Evidence
+
+- `cff66cf feat: authorize realtime event reads`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `timeout 60s node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing realtime event read role denial and viewer realtime replay success.
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkspaceAction` now includes `realtime_events.read`, and the static MVP policy allows owner/admin/member/viewer roles.
+- `RealtimeEventsController` validates tenant/workspace scope, authorizes `realtime_events.read`, and only then invokes `ListRealtimeEventsUseCase`.
+- REST parsing of `x-workspace-role` stays at the interface boundary; realtime event read use case remains independent of HTTP headers and role policy.
+- Existing realtime replay e2e flows now pass `x-workspace-role: viewer` for legitimate replay checks.
+- `test/e2e/realtime-events.list.e2e-spec.ts` records missing-role denial and viewer-allowed replay behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for realtime event reads.
