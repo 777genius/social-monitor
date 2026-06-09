@@ -41,10 +41,25 @@ describe('Summary job status timeline (e2e)', () => {
       .set('idempotency-key', 'summary-status-request-1')
       .expect(201);
 
+    const missingRole = await request(app.getHttpServer())
+      .get(`/summary-jobs/${requested.body.summaryJobId}/status`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .expect(403);
+
+    expect(missingRole.body).toMatchObject({
+      code: 'authorization.denied',
+      detail: 'Workspace role is required',
+      details: {
+        action: 'summary_jobs.read',
+      },
+    });
+
     const beforeExecution = await request(app.getHttpServer())
       .get(`/summary-jobs/${requested.body.summaryJobId}/status`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(beforeExecution.body).toMatchObject({
@@ -73,6 +88,7 @@ describe('Summary job status timeline (e2e)', () => {
       .get(`/summary-jobs/${requested.body.summaryJobId}/status`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(afterExecution.body).toMatchObject({
