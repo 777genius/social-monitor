@@ -77,10 +77,25 @@ describe('Digest provenance (e2e)', () => {
       throw assembled.error;
     }
 
+    const missingRole = await request(app.getHttpServer())
+      .get(`/delivery/digests/${assembled.value.digest.id}`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .expect(403);
+
+    expect(missingRole.body).toMatchObject({
+      code: 'authorization.denied',
+      detail: 'Workspace role is required',
+      details: {
+        action: 'digests.read',
+      },
+    });
+
     const response = await request(app.getHttpServer())
       .get(`/delivery/digests/${assembled.value.digest.id}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(response.body).toMatchObject({

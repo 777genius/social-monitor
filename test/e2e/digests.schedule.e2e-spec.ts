@@ -90,6 +90,7 @@ describe('Scheduled digests (e2e)', () => {
       .get(`/delivery/digests/${digest.digestId}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(response.body).toMatchObject({
