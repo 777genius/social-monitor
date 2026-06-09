@@ -675,3 +675,28 @@ Evidence notes:
 - Existing e2e setup flows now pass `x-workspace-role: admin` when legitimately setting scan policies.
 - `test/e2e/scan-policies.authorization.e2e-spec.ts` records missing-role, viewer-denied and owner-allowed behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /source-bindings/{sourceBindingId}/scan-policy`.
+
+## PR 21 Manual Scan Request Workspace Authorization Evidence
+
+- `844d45c feat: authorize manual scan requests`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `NODE_OPTIONS=--max-old-space-size=1024 node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing scan-request role denial, viewer denial and member scan enqueue success.
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkspaceAction` now includes `scan_requests.create`, and the static MVP policy allows owner/admin/member roles while keeping viewer read-only.
+- `ScanRequestController` validates tenant/workspace scope, authorizes `scan_requests.create`, and only then builds request context and invokes `RequestScanUseCase`.
+- Authorization happens before quota reservation, scan job creation, queue enqueue and public API audit events.
+- REST parsing of `x-workspace-role` stays at the interface boundary; `RequestScanUseCase` remains independent of HTTP headers and role policy.
+- Existing e2e setup flows now pass `x-workspace-role: member` when legitimately requesting manual scans.
+- `test/e2e/scan-requests.authorization.e2e-spec.ts` records missing-role, viewer-denied and member-allowed behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /source-bindings/{sourceBindingId}/scan-requests`.
