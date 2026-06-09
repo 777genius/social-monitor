@@ -803,3 +803,27 @@ Evidence notes:
 - Existing webhook list/get e2e setup flows now pass `x-workspace-role: viewer` and use API keys with `read:webhook_endpoints` where a legitimate read is expected.
 - `test/e2e/webhook-endpoints.read-authorization.e2e-spec.ts` records missing-role, write-only-scope denied and viewer-allowed behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for webhook list and get endpoints.
+
+## PR 26 Summary Read Workspace Authorization Evidence
+
+- `a4906af feat: authorize summary reads`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `NODE_OPTIONS=--max-old-space-size=1024 node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing summary read role denial, viewer detail read success and viewer list read success.
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkspaceAction` now includes `summaries.read`, and the static MVP policy allows owner/admin/member/viewer roles.
+- `SummaryController` validates tenant/workspace scope, authorizes `summaries.read`, and only then invokes list/get summary use cases.
+- Regeneration keeps its existing stricter `summary_regenerations.create` owner/admin/member policy.
+- REST parsing of `x-workspace-role` stays at the interface boundary; summary read use cases remain independent of HTTP headers and role policy.
+- `test/e2e/summaries.read.e2e-spec.ts` records missing-role denial and viewer-allowed read behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for summary list and get endpoints.
