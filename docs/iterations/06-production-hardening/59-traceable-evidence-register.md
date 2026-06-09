@@ -700,3 +700,29 @@ Evidence notes:
 - Existing e2e setup flows now pass `x-workspace-role: member` when legitimately requesting manual scans.
 - `test/e2e/scan-requests.authorization.e2e-spec.ts` records missing-role, viewer-denied and member-allowed behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /source-bindings/{sourceBindingId}/scan-requests`.
+
+## PR 22 Summary Request Workspace Authorization Evidence
+
+- `4e95e93 feat: authorize summary requests`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `NODE_OPTIONS=--max-old-space-size=1024 node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing summary-request role denial, viewer denial and member summary-job request success.
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkspaceAction` now includes `summary_requests.create`, and the static MVP policy allows owner/admin/member roles while keeping viewer read-only.
+- `SummaryRestModule` imports `IdentityAuthorizationModule`, giving Summary REST controllers the shared `WORKSPACE_AUTHORIZATION_POLICY` port without constructing authorization locally.
+- `SummaryRequestController` validates tenant/workspace scope, authorizes `summary_requests.create`, and only then invokes `RequestSummaryUseCase`.
+- Authorization happens before summary quota reservation and summary job creation.
+- REST parsing of `x-workspace-role` stays at the interface boundary; `RequestSummaryUseCase` remains independent of HTTP headers and role policy.
+- Existing e2e setup flows now pass `x-workspace-role: member` when legitimately requesting summaries.
+- `test/e2e/summary-requests.authorization.e2e-spec.ts` records missing-role, viewer-denied and member-allowed behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /topics/{topicId}/summary-requests`.
