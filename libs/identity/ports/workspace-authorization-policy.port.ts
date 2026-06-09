@@ -13,7 +13,9 @@ export type WorkspaceAction =
   | 'scan_policies.set'
   | 'scan_requests.create'
   | 'summary_requests.create'
-  | 'summary_regenerations.create';
+  | 'summary_regenerations.create'
+  | 'webhook_endpoints.create'
+  | 'webhook_endpoints.disable';
 
 export type WorkspaceAuthorizationRequest = {
   readonly tenantId: TenantId;

@@ -1,6 +1,12 @@
-import { Body, Controller, Delete, Get, Headers, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { VerifyApiKeyUseCase } from '@social-monitor/identity/features/verify-api-key/verify-api-key.use-case';
+import {
+  WORKSPACE_AUTHORIZATION_POLICY,
+  parseWorkspaceRolesHeader,
+  type WorkspaceAction,
+  type WorkspaceAuthorizationPolicyPort,
+} from '@social-monitor/identity/ports';
 import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/check-public-api-rate-limit/check-public-api-rate-limit.use-case';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
@@ -28,16 +34,20 @@ export class WebhookEndpointsController {
     private readonly verifyApiKey: VerifyApiKeyUseCase,
     private readonly checkPublicApiRateLimit: CheckPublicApiRateLimitUseCase,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
+    @Inject(WORKSPACE_AUTHORIZATION_POLICY)
+    private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create an outbound webhook endpoint and return its signing secret once.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Webhook endpoint creation requires owner or admin.' })
   @ApiHeader({ name: 'authorization', required: true })
   async create(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
     @Body() body: CreateWebhookEndpointRequestDto,
   ): Promise<CreateWebhookEndpointResponseDto> {
@@ -46,6 +56,12 @@ export class WebhookEndpointsController {
       workspaceIdHeader: workspaceHeader,
     });
     const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
+    this.authorizeWorkspaceRole({
+      tenant,
+      workspace,
+      workspaceRoleHeader,
+      action: 'webhook_endpoints.create',
+    });
 
     const result = await this.createWebhookEndpoint.execute({
       tenantId: tenant,
@@ -162,11 +178,13 @@ export class WebhookEndpointsController {
   @ApiOperation({ summary: 'Disable an outbound webhook endpoint without deleting audit history or secrets.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Webhook endpoint disable requires owner or admin.' })
   @ApiHeader({ name: 'authorization', required: true })
   async disable(
     @Param('webhookEndpointId') webhookEndpointId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
   ): Promise<DisableWebhookEndpointResponseDto> {
     const { tenantId: tenant, workspaceId: workspace } = requireTenantScope({
@@ -174,6 +192,12 @@ export class WebhookEndpointsController {
       workspaceIdHeader: workspaceHeader,
     });
     const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
+    this.authorizeWorkspaceRole({
+      tenant,
+      workspace,
+      workspaceRoleHeader,
+      action: 'webhook_endpoints.disable',
+    });
     const result = await this.disableWebhookEndpoint.execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -231,6 +255,24 @@ export class WebhookEndpointsController {
     return {
       apiKeyId: verifiedApiKey.value.apiKey.id,
     };
+  }
+
+  private authorizeWorkspaceRole(params: {
+    readonly tenant: TenantId;
+    readonly workspace: WorkspaceId;
+    readonly workspaceRoleHeader: string | undefined;
+    readonly action: WorkspaceAction;
+  }): void {
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId: params.tenant,
+      workspaceId: params.workspace,
+      action: params.action,
+      roles: parseWorkspaceRolesHeader(params.workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
   }
 
   private async recordWebhookAuditEvent(params: {

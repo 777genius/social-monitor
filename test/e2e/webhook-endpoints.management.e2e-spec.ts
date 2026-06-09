@@ -47,6 +47,7 @@ describe('Webhook endpoint management (e2e)', () => {
       .post('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('Authorization', authorization)
       .send({
         url: 'https://example.com/webhooks/first',
@@ -58,6 +59,7 @@ describe('Webhook endpoint management (e2e)', () => {
       .post('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('Authorization', authorization)
       .send({
         url: 'https://example.com/webhooks/second',
@@ -87,6 +89,7 @@ describe('Webhook endpoint management (e2e)', () => {
       .delete(`/delivery/webhook-endpoints/${first.body.endpoint.id}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('Authorization', authorization)
       .expect(200);
 

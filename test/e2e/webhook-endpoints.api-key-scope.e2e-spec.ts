@@ -40,6 +40,7 @@ describe('Webhook endpoint API key scope enforcement (e2e)', () => {
       .post('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .send(webhookBody)
       .expect(403);
 
@@ -58,6 +59,7 @@ describe('Webhook endpoint API key scope enforcement (e2e)', () => {
       .post('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('Authorization', `Bearer ${readonlyKey.body.secret}`)
       .send(webhookBody)
       .expect(403);
@@ -77,6 +79,7 @@ describe('Webhook endpoint API key scope enforcement (e2e)', () => {
       .post('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspaceId('different-workspace'))
+      .set('x-workspace-role', 'admin')
       .set('Authorization', `Bearer ${writerKey.body.secret}`)
       .send(webhookBody)
       .expect(403);
@@ -85,6 +88,7 @@ describe('Webhook endpoint API key scope enforcement (e2e)', () => {
       .post('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('Authorization', `Bearer ${writerKey.body.secret}`)
       .send(webhookBody)
       .expect(201);
@@ -106,6 +110,7 @@ describe('Webhook endpoint API key scope enforcement (e2e)', () => {
       .post('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('Authorization', `Bearer ${writerKey.body.secret}`)
       .send(webhookBody)
       .expect(403);

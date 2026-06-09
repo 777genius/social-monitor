@@ -102,6 +102,29 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     });
   });
 
+  it('allows owner and admin roles to manage webhook endpoints', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'webhook_endpoints.create',
+      roles: ['admin'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'webhook_endpoints.disable',
+      roles: ['owner'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
   it('denies missing or low-privilege roles with a safe authorization error', () => {
     const policy = new StaticWorkspaceAuthorizationPolicy();
 
