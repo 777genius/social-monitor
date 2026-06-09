@@ -92,6 +92,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .post('/topics')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('x-request-id', 'contract-topic')
       .set('idempotency-key', 'contract-topic')
       .send({
@@ -220,6 +221,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .post('/topics')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('x-request-id', 'contract-failure-topic')
       .set('idempotency-key', 'contract-failure-topic')
       .send({

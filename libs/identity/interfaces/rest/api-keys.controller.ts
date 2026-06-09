@@ -4,14 +4,12 @@ import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-mon
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import type { PublicApiAuditMetadataValue, PublicApiAuditOutcome } from '@social-monitor/usage/ports';
 
-import {
-  parseWorkspaceRolesHeader,
-} from '../../adapters/authorization/static-workspace-authorization-policy';
 import { CreateApiKeyUseCase } from '../../features/create-api-key/create-api-key.use-case';
 import { ListApiKeysUseCase } from '../../features/list-api-keys/list-api-keys.use-case';
 import { RevokeApiKeyUseCase } from '../../features/revoke-api-key/revoke-api-key.use-case';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
+  parseWorkspaceRolesHeader,
   type WorkspaceAction,
   type WorkspaceAuthorizationPolicyPort,
 } from '../../ports';

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
+import { IdentityAuthorizationModule } from '@social-monitor/identity/interfaces/authorization/identity-authorization.module';
 import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
@@ -29,7 +30,7 @@ import { SourceBindingController } from './source-binding.controller';
 import { TopicController } from './topic.controller';
 
 @Module({
-  imports: [UsageRestModule],
+  imports: [UsageRestModule, IdentityAuthorizationModule],
   controllers: [
     TopicController,
     SourceBindingController,

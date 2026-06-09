@@ -11,6 +11,7 @@ const allowedRolesByAction: Record<WorkspaceAction, readonly WorkspaceRole[]> = 
   'api_keys.create': ['owner', 'admin'],
   'api_keys.list': ['owner', 'admin'],
   'api_keys.revoke': ['owner', 'admin'],
+  'topics.create': ['owner', 'admin'],
 };
 
 const workspaceRoles = new Set<WorkspaceRole>(['owner', 'admin', 'member', 'viewer']);
@@ -38,12 +39,6 @@ export class StaticWorkspaceAuthorizationPolicy implements WorkspaceAuthorizatio
     return ok(undefined);
   }
 }
-
-export const parseWorkspaceRolesHeader = (header: string | undefined): readonly string[] =>
-  (header ?? '')
-    .split(',')
-    .map((role) => role.trim().toLowerCase())
-    .filter((role) => role.length > 0);
 
 const normalizeRoles = (roles: readonly string[]): readonly WorkspaceRole[] =>
   [...new Set(roles

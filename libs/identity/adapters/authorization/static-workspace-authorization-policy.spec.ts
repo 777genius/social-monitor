@@ -1,6 +1,7 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { parseWorkspaceRolesHeader } from '../../ports';
 
-import { parseWorkspaceRolesHeader, StaticWorkspaceAuthorizationPolicy } from './static-workspace-authorization-policy';
+import { StaticWorkspaceAuthorizationPolicy } from './static-workspace-authorization-policy';
 
 describe('StaticWorkspaceAuthorizationPolicy', () => {
   it('allows owner and admin roles to manage API keys', () => {
@@ -11,6 +12,20 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
       workspaceId: workspaceId('workspace-1'),
       action: 'api_keys.create',
       roles: ['viewer', 'admin'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  it('allows owner and admin roles to create monitoring topics', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'topics.create',
+      roles: ['owner'],
     })).toEqual({
       ok: true,
       value: undefined,

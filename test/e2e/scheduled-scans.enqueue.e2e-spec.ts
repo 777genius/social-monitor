@@ -42,6 +42,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       .post('/topics')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('x-request-id', 'request-scheduled-topic')
       .set('idempotency-key', 'create-scheduled-topic')
       .send({
@@ -130,6 +131,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       .post('/topics')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('x-request-id', 'request-scheduled-overlap-topic')
       .set('idempotency-key', 'create-scheduled-overlap-topic')
       .send({

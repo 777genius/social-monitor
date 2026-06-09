@@ -7,7 +7,8 @@ export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer';
 export type WorkspaceAction =
   | 'api_keys.create'
   | 'api_keys.list'
-  | 'api_keys.revoke';
+  | 'api_keys.revoke'
+  | 'topics.create';
 
 export type WorkspaceAuthorizationRequest = {
   readonly tenantId: TenantId;
@@ -21,3 +22,9 @@ export interface WorkspaceAuthorizationPolicyPort {
 }
 
 export const WORKSPACE_AUTHORIZATION_POLICY = Symbol('WORKSPACE_AUTHORIZATION_POLICY');
+
+export const parseWorkspaceRolesHeader = (header: string | undefined): readonly string[] =>
+  (header ?? '')
+    .split(',')
+    .map((role) => role.trim().toLowerCase())
+    .filter((role) => role.length > 0);

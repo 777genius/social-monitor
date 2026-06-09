@@ -43,6 +43,7 @@ describe('Request scan flow (e2e)', () => {
       .post('/topics')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('x-request-id', 'request-scan-topic')
       .set('idempotency-key', 'create-scan-topic')
       .send({

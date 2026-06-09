@@ -36,6 +36,7 @@ describe('Set scan policy flow (e2e)', () => {
       .post('/topics')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('x-request-id', 'request-policy-topic')
       .set('idempotency-key', 'create-policy-topic')
       .send({

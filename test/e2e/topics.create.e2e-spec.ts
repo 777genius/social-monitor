@@ -32,6 +32,7 @@ describe('Create topic flow (e2e)', () => {
       .post('/topics')
       .set('x-tenant-id', 'tenant-e2e')
       .set('x-workspace-id', 'workspace-e2e')
+      .set('x-workspace-role', 'admin')
       .set('x-request-id', 'request-e2e')
       .set('idempotency-key', 'create-topic-e2e')
       .send({
@@ -49,6 +50,7 @@ describe('Create topic flow (e2e)', () => {
       .post('/topics')
       .set('x-tenant-id', 'tenant-e2e')
       .set('x-workspace-id', 'workspace-e2e')
+      .set('x-workspace-role', 'admin')
       .set('x-request-id', 'request-e2e')
       .set('idempotency-key', 'create-topic-e2e')
       .send({
