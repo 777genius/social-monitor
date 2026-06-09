@@ -83,6 +83,7 @@ describe('Request scan flow (e2e)', () => {
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'request-scan-now')
       .set('x-correlation-id', 'correlation-scan-now')
       .set('idempotency-key', 'request-scan-now')
@@ -121,6 +122,7 @@ describe('Request scan flow (e2e)', () => {
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'request-scan-now')
       .set('idempotency-key', 'request-scan-now')
       .expect(201);
@@ -136,6 +138,7 @@ describe('Request scan flow (e2e)', () => {
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'request-scan-overlap')
       .set('idempotency-key', 'request-scan-overlap')
       .expect(201);

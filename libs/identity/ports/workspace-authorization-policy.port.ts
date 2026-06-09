@@ -10,7 +10,8 @@ export type WorkspaceAction =
   | 'api_keys.revoke'
   | 'topics.create'
   | 'source_bindings.create'
-  | 'scan_policies.set';
+  | 'scan_policies.set'
+  | 'scan_requests.create';
 
 export type WorkspaceAuthorizationRequest = {
   readonly tenantId: TenantId;

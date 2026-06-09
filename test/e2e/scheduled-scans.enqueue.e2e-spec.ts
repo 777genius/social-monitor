@@ -173,6 +173,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'request-scheduled-overlap-manual')
       .set('idempotency-key', 'request-scheduled-overlap-manual')
       .expect(201);

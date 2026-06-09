@@ -65,6 +65,7 @@ describe('Manual scan request quota (e2e)', () => {
       .post(`/source-bindings/${firstBindingId}/scan-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'request-quota-scan-1')
       .set('idempotency-key', 'quota-scan-1')
       .expect(201);
@@ -75,6 +76,7 @@ describe('Manual scan request quota (e2e)', () => {
       .post(`/source-bindings/${secondBindingId}/scan-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'request-quota-scan-2')
       .set('idempotency-key', 'quota-scan-2')
       .expect(429);

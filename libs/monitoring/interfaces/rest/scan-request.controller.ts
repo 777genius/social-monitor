@@ -1,5 +1,10 @@
-import { Controller, Headers, Param, Post } from '@nestjs/common';
+import { Controller, Headers, Inject, Param, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  WORKSPACE_AUTHORIZATION_POLICY,
+  parseWorkspaceRolesHeader,
+  type WorkspaceAuthorizationPolicyPort,
+} from '@social-monitor/identity/ports';
 import { buildRequestContext } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
@@ -14,18 +19,22 @@ export class ScanRequestController {
   constructor(
     private readonly requestScan: RequestScanUseCase,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
+    @Inject(WORKSPACE_AUTHORIZATION_POLICY)
+    private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
 
   @Post()
   @ApiOperation({ summary: 'Request a scan for a source binding.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Manual scan requests require owner, admin or member.' })
   @ApiHeader({ name: 'x-correlation-id', required: false })
   @ApiHeader({ name: 'idempotency-key', required: true })
   async create(
     @Param('sourceBindingId') sourceBindingId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
     @Headers('x-correlation-id') correlationHeader: string | undefined,
@@ -34,6 +43,17 @@ export class ScanRequestController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      action: 'scan_requests.create',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+
     const requestContext = buildRequestContext({
       requestId,
       correlationId: correlationHeader,
