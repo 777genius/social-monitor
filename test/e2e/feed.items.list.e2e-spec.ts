@@ -55,11 +55,27 @@ describe('Feed items list (e2e)', () => {
       publishedAt: new Date('2026-06-05T12:00:00.000Z'),
     });
 
+    const missingRole = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 1 })
+      .set('x-tenant-id', 'tenant-feed-e2e')
+      .set('x-workspace-id', 'workspace-feed-e2e')
+      .expect(403);
+
+    expect(missingRole.body).toMatchObject({
+      code: 'authorization.denied',
+      detail: 'Workspace role is required',
+      details: {
+        action: 'feed.read',
+      },
+    });
+
     const firstPage = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 1 })
       .set('x-tenant-id', 'tenant-feed-e2e')
       .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(firstPage.body).toEqual({
@@ -79,6 +95,7 @@ describe('Feed items list (e2e)', () => {
       .query({ limit: 10, cursor: firstPage.body.nextCursor })
       .set('x-tenant-id', 'tenant-feed-e2e')
       .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(secondPage.body).toEqual({
@@ -95,6 +112,7 @@ describe('Feed items list (e2e)', () => {
       .query({ limit: 10, q: 'Title feed-1' })
       .set('x-tenant-id', 'tenant-feed-e2e')
       .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(search.body).toEqual({
@@ -111,6 +129,7 @@ describe('Feed items list (e2e)', () => {
       .query({ limit: 10, q: 'feed-3' })
       .set('x-tenant-id', 'tenant-feed-e2e')
       .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(crossTenantSearch.body).toEqual({
@@ -121,6 +140,7 @@ describe('Feed items list (e2e)', () => {
       .get('/feed/items/feed-1')
       .set('x-tenant-id', 'tenant-feed-e2e')
       .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(detail.body).toEqual(expect.objectContaining({
@@ -133,6 +153,7 @@ describe('Feed items list (e2e)', () => {
       .get('/feed/items/feed-3')
       .set('x-tenant-id', 'tenant-feed-e2e')
       .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-workspace-role', 'viewer')
       .expect(404)
       .expect((response) => {
         expect(response.body).toMatchObject({
@@ -147,6 +168,7 @@ describe('Feed items list (e2e)', () => {
       .query({ limit: 0 })
       .set('x-tenant-id', 'tenant-feed-e2e')
       .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-workspace-role', 'viewer')
       .expect(400)
       .expect((response) => {
         expect(response.body).toMatchObject({
@@ -188,6 +210,7 @@ describe('Feed items list (e2e)', () => {
       .query({ limit: 10 })
       .set('x-tenant-id', 'tenant-feed-dedupe-e2e')
       .set('x-workspace-id', 'workspace-feed-dedupe-e2e')
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(response.body).toEqual({

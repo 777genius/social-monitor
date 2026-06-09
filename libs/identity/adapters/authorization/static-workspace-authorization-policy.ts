@@ -11,6 +11,7 @@ const allowedRolesByAction: Record<WorkspaceAction, readonly WorkspaceRole[]> = 
   'api_keys.create': ['owner', 'admin'],
   'api_keys.list': ['owner', 'admin'],
   'api_keys.revoke': ['owner', 'admin'],
+  'feed.read': ['owner', 'admin', 'member', 'viewer'],
   'topics.create': ['owner', 'admin'],
   'source_bindings.create': ['owner', 'admin'],
   'scan_policies.set': ['owner', 'admin'],

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { IdentityAuthorizationModule } from '@social-monitor/identity/interfaces/authorization/identity-authorization.module';
 
 import { InMemoryFeedItemReadRepository } from '../../adapters/persistence/in-memory-feed-item-read.repository';
 import { GetFeedItemUseCase } from '../../features/get-feed-item/get-feed-item.use-case';
@@ -6,6 +7,7 @@ import { ListFeedItemsUseCase } from '../../features/list-feed-items/list-feed-i
 import { FeedController } from './feed.controller';
 
 @Module({
+  imports: [IdentityAuthorizationModule],
   controllers: [FeedController],
   providers: [
     InMemoryFeedItemReadRepository,

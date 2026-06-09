@@ -358,6 +358,15 @@
             }
           },
           {
+            "description": "Comma-separated workspace roles. Feed reads allow owner, admin, member or viewer.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "x-workspace-id",
             "required": true,
@@ -392,6 +401,15 @@
           {
             "in": "path",
             "name": "feedItemId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Feed reads allow owner, admin, member or viewer.",
+            "in": "header",
+            "name": "x-workspace-role",
             "required": true,
             "schema": {
               "type": "string"
