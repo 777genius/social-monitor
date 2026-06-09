@@ -5,12 +5,16 @@
       "eventType": "monitoring.topic.created",
       "schemaVersion": 1,
       "producer": "monitoring",
+      "tenantScoped": true,
+      "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
       "requiredPayloadFields": ["topicId", "tenantId", "workspaceId", "name", "query"]
     },
     {
       "eventType": "monitoring.source-binding.enabled",
       "schemaVersion": 1,
       "producer": "monitoring",
+      "tenantScoped": true,
+      "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
       "requiredPayloadFields": [
         "sourceBindingId",
         "tenantId",
@@ -24,6 +28,8 @@
       "eventType": "monitoring.scan-policy.set",
       "schemaVersion": 1,
       "producer": "monitoring",
+      "tenantScoped": true,
+      "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
       "requiredPayloadFields": [
         "scanPolicyId",
         "tenantId",
@@ -38,24 +44,32 @@
       "eventType": "monitoring.scan.requested",
       "schemaVersion": 1,
       "producer": "monitoring",
+      "tenantScoped": true,
+      "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
       "requiredPayloadFields": ["scanJobId", "tenantId", "workspaceId", "sourceBindingId", "scanPolicyId"]
     },
     {
       "eventType": "summary.ready",
       "schemaVersion": 1,
       "producer": "summary",
+      "tenantScoped": true,
+      "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
       "requiredPayloadFields": ["summaryJobId", "summaryId", "tenantId", "workspaceId", "topicId", "status"]
     },
     {
       "eventType": "summary.status.changed.v1",
       "schemaVersion": 1,
       "producer": "delivery",
-      "requiredPayloadFields": ["summaryJobId", "summaryId", "topicId", "status"]
+      "tenantScoped": true,
+      "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
+      "requiredPayloadFields": ["summaryJobId", "summaryId", "tenantId", "workspaceId", "topicId", "status"]
     },
     {
       "eventType": "digest.ready.v1",
       "schemaVersion": 1,
       "producer": "delivery",
+      "tenantScoped": true,
+      "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
       "requiredPayloadFields": ["digestId", "tenantId", "workspaceId"]
     }
   ]

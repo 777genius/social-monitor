@@ -33,6 +33,8 @@ export class ProjectSummaryReadyEventUseCase {
       payload: {
         summaryJobId: command.event.payload.summaryJobId,
         summaryId: command.event.payload.summaryId,
+        tenantId: command.event.payload.tenantId,
+        workspaceId: command.event.payload.workspaceId,
         topicId: command.event.payload.topicId,
         status: command.event.payload.status,
       },

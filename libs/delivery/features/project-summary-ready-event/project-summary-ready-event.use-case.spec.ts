@@ -101,6 +101,8 @@ describe('ProjectSummaryReadyEventUseCase', () => {
       payload: {
         summaryJobId: 'summary-job-1',
         summaryId: 'summary-1',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
         topicId: 'topic-1',
         status: 'no_signal',
       },

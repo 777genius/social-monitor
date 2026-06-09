@@ -92,6 +92,8 @@ describe('Summary ready realtime fanout (e2e)', () => {
           payload: {
             summaryJobId: requested.body.summaryJobId,
             summaryId: executed.value.summaryId,
+            tenantId: tenant,
+            workspaceId: workspace,
             topicId,
             status: 'no_signal',
           },

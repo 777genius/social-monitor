@@ -36,6 +36,24 @@ for (const event of catalog.events ?? []) {
     violations.push(`${catalogPath}: ${event.eventType} must declare producer`);
   }
 
+  if (typeof event.tenantScoped !== 'boolean') {
+    violations.push(`${catalogPath}: ${event.eventType} must declare tenantScoped boolean`);
+  }
+
+  if (!Array.isArray(event.requiredEnvelopeFields) || event.requiredEnvelopeFields.length === 0) {
+    violations.push(`${catalogPath}: ${event.eventType} must declare requiredEnvelopeFields`);
+  }
+
+  const duplicateEnvelopeFields = duplicates(event.requiredEnvelopeFields ?? []);
+  if (duplicateEnvelopeFields.length > 0) {
+    violations.push(`${catalogPath}: ${event.eventType} duplicates envelope fields: ${duplicateEnvelopeFields.join(', ')}`);
+  }
+
+  if (event.tenantScoped === true) {
+    requireFields(event.requiredEnvelopeFields ?? [], ['tenantId', 'workspaceId', 'correlationId'], event, 'envelope');
+    requireFields(event.requiredPayloadFields ?? [], ['tenantId', 'workspaceId'], event, 'payload');
+  }
+
   if (!Array.isArray(event.requiredPayloadFields) || event.requiredPayloadFields.length === 0) {
     violations.push(`${catalogPath}: ${event.eventType} must declare requiredPayloadFields`);
   }
@@ -96,4 +114,12 @@ function duplicates(values) {
   }
 
   return [...duplicateValues];
+}
+
+function requireFields(fields, requiredFields, event, location) {
+  for (const requiredField of requiredFields) {
+    if (!fields.includes(requiredField)) {
+      violations.push(`${catalogPath}: ${event.eventType} tenant-scoped ${location} must include ${requiredField}`);
+    }
+  }
 }

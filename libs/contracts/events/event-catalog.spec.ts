@@ -9,6 +9,9 @@ const eventCatalog = JSON.parse(
   readonly events: readonly {
     readonly eventType: string;
     readonly schemaVersion: number;
+    readonly tenantScoped?: boolean;
+    readonly requiredEnvelopeFields?: readonly string[];
+    readonly requiredPayloadFields?: readonly string[];
   }[];
 };
 
@@ -27,6 +30,20 @@ describe('event catalog', () => {
           schemaVersion: webhookEvent.payloadVersion,
         }),
       );
+    }
+  });
+
+  it('declares tenant context for tenant-scoped events', () => {
+    for (const event of eventCatalog.events.filter((catalogEvent) => catalogEvent.tenantScoped === true)) {
+      expect(event.requiredEnvelopeFields).toEqual(expect.arrayContaining([
+        'tenantId',
+        'workspaceId',
+        'correlationId',
+      ]));
+      expect(event.requiredPayloadFields).toEqual(expect.arrayContaining([
+        'tenantId',
+        'workspaceId',
+      ]));
     }
   });
 });
