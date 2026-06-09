@@ -726,3 +726,28 @@ Evidence notes:
 - Existing e2e setup flows now pass `x-workspace-role: member` when legitimately requesting summaries.
 - `test/e2e/summary-requests.authorization.e2e-spec.ts` records missing-role, viewer-denied and member-allowed behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /topics/{topicId}/summary-requests`.
+
+## PR 23 Summary Regeneration Workspace Authorization Evidence
+
+- `d8836e5 feat: authorize summary regenerations`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `NODE_OPTIONS=--max-old-space-size=1024 node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing regeneration role denial, viewer denial and member regeneration request success.
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkspaceAction` now includes `summary_regenerations.create`, and the static MVP policy allows owner/admin/member roles while keeping viewer read-only.
+- `SummaryController.regenerate` validates tenant/workspace scope, authorizes `summary_regenerations.create`, and only then invokes `RegenerateSummaryUseCase`.
+- Authorization happens before regeneration quota reservation and summary job creation.
+- REST parsing of `x-workspace-role` stays at the interface boundary; `RegenerateSummaryUseCase` remains independent of HTTP headers and role policy.
+- Existing regeneration e2e flows now pass `x-workspace-role: member` for legitimate regeneration requests.
+- `test/e2e/summary-regenerations.authorization.e2e-spec.ts` records missing-role, viewer-denied and member-allowed behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /summaries/{summaryId}/regenerations`.
