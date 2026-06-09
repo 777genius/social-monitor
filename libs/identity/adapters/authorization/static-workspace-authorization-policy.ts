@@ -15,6 +15,7 @@ const allowedRolesByAction: Record<WorkspaceAction, readonly WorkspaceRole[]> = 
   'digests.read': ['owner', 'admin', 'member', 'viewer'],
   'feed.read': ['owner', 'admin', 'member', 'viewer'],
   'realtime_events.read': ['owner', 'admin', 'member', 'viewer'],
+  'scan_dead_letters.read': ['owner', 'admin'],
   'topics.create': ['owner', 'admin'],
   'source_bindings.create': ['owner', 'admin'],
   'scan_policies.set': ['owner', 'admin'],

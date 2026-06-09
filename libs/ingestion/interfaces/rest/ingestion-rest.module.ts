@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { IdentityAuthorizationModule } from '@social-monitor/identity/interfaces/authorization/identity-authorization.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 
 import { InMemoryScanFailureQueueAdapter } from '../../adapters/queue/in-memory-scan-failure-queue.adapter';
@@ -15,6 +16,7 @@ import { ScanDeadLetterController } from './scan-dead-letter.controller';
 import { SourceProfileController } from './source-profile.controller';
 
 @Module({
+  imports: [IdentityAuthorizationModule],
   controllers: [SourceProfileController, ScanDeadLetterController],
   providers: [
     InMemoryMetricsRecorder,

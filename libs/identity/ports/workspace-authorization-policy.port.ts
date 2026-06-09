@@ -12,6 +12,7 @@ export type WorkspaceAction =
   | 'digests.read'
   | 'feed.read'
   | 'realtime_events.read'
+  | 'scan_dead_letters.read'
   | 'topics.create'
   | 'source_bindings.create'
   | 'scan_policies.set'
