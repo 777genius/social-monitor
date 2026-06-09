@@ -650,3 +650,28 @@ Evidence notes:
 - Existing e2e setup flows now pass `x-workspace-role: admin` when legitimately binding sources.
 - `test/e2e/source-bindings.authorization.e2e-spec.ts` records missing-role, viewer-denied and owner-allowed behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /topics/{topicId}/source-bindings`.
+
+## PR 20 Scan Policy Workspace Authorization Evidence
+
+- `2db3fcb feat: authorize scan policy changes`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `NODE_OPTIONS=--max-old-space-size=1024 node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing scan-policy role denial, viewer denial and owner policy-set success.
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkspaceAction` now includes `scan_policies.set`, and the static MVP policy allows owner/admin roles for scan policy changes.
+- `ScanPolicyController` validates tenant/workspace scope, authorizes `scan_policies.set`, and only then invokes `SetScanPolicyUseCase`.
+- Authorization happens before scan cadence/freshness/retry policy changes and before public API audit events are written.
+- REST parsing of `x-workspace-role` stays at the interface boundary; `SetScanPolicyUseCase` remains independent of HTTP headers and role policy.
+- Existing e2e setup flows now pass `x-workspace-role: admin` when legitimately setting scan policies.
+- `test/e2e/scan-policies.authorization.e2e-spec.ts` records missing-role, viewer-denied and owner-allowed behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /source-bindings/{sourceBindingId}/scan-policy`.
