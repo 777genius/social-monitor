@@ -47,10 +47,25 @@ describe('Delivery attempt status (e2e)', () => {
       throw queued.error;
     }
 
+    const missingRole = await request(app.getHttpServer())
+      .get(`/delivery/attempts/${queued.value.deliveryAttemptId}`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .expect(403);
+
+    expect(missingRole.body).toMatchObject({
+      code: 'authorization.denied',
+      detail: 'Workspace role is required',
+      details: {
+        action: 'delivery_attempts.read',
+      },
+    });
+
     const response = await request(app.getHttpServer())
       .get(`/delivery/attempts/${queued.value.deliveryAttemptId}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(response.body).toEqual({

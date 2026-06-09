@@ -66,6 +66,7 @@ describe('Delivery provider send (e2e)', () => {
       .get(`/delivery/attempts/${queued.value.deliveryAttemptId}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(response.body).toMatchObject({

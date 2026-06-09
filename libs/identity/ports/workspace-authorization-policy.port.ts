@@ -8,6 +8,7 @@ export type WorkspaceAction =
   | 'api_keys.create'
   | 'api_keys.list'
   | 'api_keys.revoke'
+  | 'delivery_attempts.read'
   | 'feed.read'
   | 'topics.create'
   | 'source_bindings.create'
