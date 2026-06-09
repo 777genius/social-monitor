@@ -970,3 +970,27 @@ Evidence notes:
 - Existing realtime replay e2e flows now pass `x-workspace-role: viewer` for legitimate replay checks.
 - `test/e2e/realtime-events.list.e2e-spec.ts` records missing-role denial and viewer-allowed replay behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for realtime event reads.
+
+## PR 33 Scan Dead-Letter Read Workspace Authorization Evidence
+
+- `833f3cc feat: authorize scan dead letter reads`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `timeout 60s node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing scan dead-letter role denial, viewer denial and admin support-safe read success.
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkspaceAction` now includes `scan_dead_letters.read`, and the static MVP policy allows only owner/admin roles.
+- `IngestionRestModule` imports `IdentityAuthorizationModule`, giving the scan dead-letter REST adapter the shared `WORKSPACE_AUTHORIZATION_POLICY` port without pulling in Identity REST controllers.
+- `ScanDeadLetterController` validates tenant/workspace scope, authorizes `scan_dead_letters.read`, and only then invokes `ListScanDeadLettersUseCase`.
+- REST parsing of `x-workspace-role` stays at the interface boundary; scan dead-letter read use case remains independent of HTTP headers and role policy.
+- `test/e2e/scan-dead-letters.authorization.e2e-spec.ts` records missing-role denial, viewer denial, admin-allowed inspection and support-safe failure detail redaction behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for scan dead-letter reads.
