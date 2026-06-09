@@ -12,7 +12,8 @@ export type WorkspaceAction =
   | 'source_bindings.create'
   | 'scan_policies.set'
   | 'scan_requests.create'
-  | 'summary_requests.create';
+  | 'summary_requests.create'
+  | 'summary_regenerations.create';
 
 export type WorkspaceAuthorizationRequest = {
   readonly tenantId: TenantId;

@@ -1,5 +1,10 @@
-import { Controller, Get, Headers, Param, Post, Query } from '@nestjs/common';
+import { Controller, Get, Headers, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  WORKSPACE_AUTHORIZATION_POLICY,
+  parseWorkspaceRolesHeader,
+  type WorkspaceAuthorizationPolicyPort,
+} from '@social-monitor/identity/ports';
 import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { GetSummaryUseCase } from '../../features/get-summary/get-summary.use-case';
@@ -15,6 +20,8 @@ export class SummaryController {
     private readonly listSummaries: ListSummariesUseCase,
     private readonly getSummary: GetSummaryUseCase,
     private readonly regenerateSummary: RegenerateSummaryUseCase,
+    @Inject(WORKSPACE_AUTHORIZATION_POLICY)
+    private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
 
   @Get()
@@ -80,11 +87,13 @@ export class SummaryController {
   @ApiOperation({ summary: 'Request regeneration for an existing summary.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Summary regenerations require owner, admin or member.' })
   @ApiHeader({ name: 'idempotency-key', required: true })
   async regenerate(
     @Param('summaryId') summaryId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
   ): Promise<RegenerateSummaryResponseDto> {
@@ -92,6 +101,17 @@ export class SummaryController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      action: 'summary_regenerations.create',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+
     const result = await this.regenerateSummary.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
