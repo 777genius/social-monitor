@@ -777,3 +777,29 @@ Evidence notes:
 - Existing webhook e2e flows now pass `x-workspace-role: admin` for legitimate write calls.
 - `test/e2e/webhook-endpoints.authorization.e2e-spec.ts` records missing-role, viewer-denied and owner/admin-allowed behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for webhook create and disable endpoints.
+
+## PR 25 Webhook Endpoint Read Workspace Authorization Evidence
+
+- `7c5b3cd feat: authorize webhook endpoint reads`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `NODE_OPTIONS=--max-old-space-size=1024 node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing webhook read role denial, write-only API-key read denial, viewer list success and viewer get success.
+- `git diff --check`
+
+Evidence notes:
+
+- `ApiKeyScope` now includes `read:webhook_endpoints`, separating webhook endpoint reads from `write:webhook_endpoints` mutation authority.
+- `WorkspaceAction` now includes `webhook_endpoints.read`, and the static MVP policy allows owner/admin/member/viewer roles.
+- `WebhookEndpointsController` uses separate API-key authorization helpers for webhook reads and writes while keeping tenant/workspace scope validation first.
+- List/get read paths require `read:webhook_endpoints`, then authorize `webhook_endpoints.read`, then invoke read use cases and audit successful reads.
+- Create/disable mutation paths still require `write:webhook_endpoints` plus owner/admin workspace role.
+- Existing webhook list/get e2e setup flows now pass `x-workspace-role: viewer` and use API keys with `read:webhook_endpoints` where a legitimate read is expected.
+- `test/e2e/webhook-endpoints.read-authorization.e2e-spec.ts` records missing-role, write-only-scope denied and viewer-allowed behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for webhook list and get endpoints.
