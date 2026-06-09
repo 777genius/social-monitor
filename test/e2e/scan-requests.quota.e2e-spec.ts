@@ -134,6 +134,7 @@ const createReadyBinding = async (params: {
     .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
     .set('x-tenant-id', params.tenant)
     .set('x-workspace-id', params.workspace)
+    .set('x-workspace-role', 'admin')
     .set('x-request-id', `${params.policyIdempotencyKey}-request`)
     .set('idempotency-key', params.policyIdempotencyKey)
     .send({

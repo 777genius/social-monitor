@@ -68,6 +68,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('x-request-id', 'request-scheduled-policy')
       .set('idempotency-key', 'set-scheduled-policy')
       .send({
@@ -158,6 +159,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('x-request-id', 'request-scheduled-overlap-policy')
       .set('idempotency-key', 'set-scheduled-overlap-policy')
       .send({

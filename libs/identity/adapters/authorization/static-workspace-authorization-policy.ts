@@ -13,6 +13,7 @@ const allowedRolesByAction: Record<WorkspaceAction, readonly WorkspaceRole[]> = 
   'api_keys.revoke': ['owner', 'admin'],
   'topics.create': ['owner', 'admin'],
   'source_bindings.create': ['owner', 'admin'],
+  'scan_policies.set': ['owner', 'admin'],
 };
 
 const workspaceRoles = new Set<WorkspaceRole>(['owner', 'admin', 'member', 'viewer']);

@@ -118,6 +118,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('x-request-id', 'contract-policy')
       .set('idempotency-key', 'contract-policy')
       .send({
@@ -248,6 +249,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('x-request-id', 'contract-failure-policy')
       .set('idempotency-key', 'contract-failure-policy')
       .send({

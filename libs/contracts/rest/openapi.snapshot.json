@@ -707,6 +707,15 @@
             }
           },
           {
+            "description": "Comma-separated workspace roles. Scan policy changes require owner or admin.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "x-workspace-id",
             "required": true,

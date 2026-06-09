@@ -46,6 +46,20 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     });
   });
 
+  it('allows owner and admin roles to set scan policies', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'scan_policies.set',
+      roles: ['admin'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
   it('denies missing or low-privilege roles with a safe authorization error', () => {
     const policy = new StaticWorkspaceAuthorizationPolicy();
 

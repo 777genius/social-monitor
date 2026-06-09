@@ -1,5 +1,10 @@
-import { Body, Controller, Headers, Param, Post } from '@nestjs/common';
+import { Body, Controller, Headers, Inject, Param, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  WORKSPACE_AUTHORIZATION_POLICY,
+  parseWorkspaceRolesHeader,
+  type WorkspaceAuthorizationPolicyPort,
+} from '@social-monitor/identity/ports';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
@@ -13,17 +18,21 @@ export class ScanPolicyController {
   constructor(
     private readonly setScanPolicy: SetScanPolicyUseCase,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
+    @Inject(WORKSPACE_AUTHORIZATION_POLICY)
+    private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
 
   @Post()
   @ApiOperation({ summary: 'Set scan policy for a source binding.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Scan policy changes require owner or admin.' })
   @ApiHeader({ name: 'idempotency-key', required: true })
   async create(
     @Param('sourceBindingId') sourceBindingId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
     @Body() body: SetScanPolicyRequestDto,
@@ -32,6 +41,16 @@ export class ScanPolicyController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      action: 'scan_policies.set',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
 
     const result = await this.setScanPolicy.execute({
       tenantId: scope.tenantId,
