@@ -113,3 +113,4 @@ Make the MVP reliable enough for beta users: security, observability, CI/CD, res
 - PR 15 evidence freshness guardrail added in commit `d1cfca5`: `npm run check:code-quality` blocks temporary commit evidence markers in committed docs.
 - PR 16 release gate coverage strengthened in commit `43a728a`: `npm run check:release` now fails if any blocking release gate is not wired into `npm run verify`.
 - PR 17 API-key workspace authorization added in commit `152012d`: API key create/list/revoke REST actions now require owner/admin workspace role through an Identity authorization policy port, with e2e coverage for missing/insufficient role denial.
+- PR 18 topic creation workspace authorization added in commit `f408bf3`: Monitoring topic creation now requires owner/admin workspace role through the shared Identity authorization port, with OpenAPI contract coverage and HTTP e2e/smoke coverage for missing role, viewer denial and owner success.

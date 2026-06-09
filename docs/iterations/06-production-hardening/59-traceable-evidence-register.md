@@ -600,3 +600,28 @@ Evidence notes:
 - Existing API-key e2e fixtures now pass `x-workspace-role: admin` for legitimate management calls.
 - `test/e2e/api-keys.authorization.e2e-spec.ts` covers the denied and allowed REST behavior.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for API-key management endpoints.
+
+## PR 18 Topic Creation Workspace Authorization Evidence
+
+- `f408bf3 feat: authorize topic creation`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `NODE_OPTIONS=--max-old-space-size=1024 node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing topic role denial, viewer denial and owner create success.
+- `git diff --check`
+
+Evidence notes:
+
+- Monitoring REST imports `IdentityAuthorizationModule` and depends on the shared `WORKSPACE_AUTHORIZATION_POLICY` port instead of constructing authorization infrastructure locally.
+- `WorkspaceAction` now includes `topics.create`, and the static MVP policy allows owner/admin roles for topic creation.
+- `TopicController` performs tenant/workspace scope validation first, then authorizes `topics.create` before invoking `CreateTopicUseCase`.
+- REST parsing of `x-workspace-role` stays at the interface boundary; feature use cases remain authorization-header agnostic.
+- Existing e2e setup flows now pass `x-workspace-role: admin` when legitimately creating topics.
+- `test/e2e/topics.authorization.e2e-spec.ts` records missing-role, viewer-denied and owner-allowed behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /topics`.
