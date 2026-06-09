@@ -875,3 +875,26 @@ Evidence notes:
 - Existing scan status e2e reads now pass `x-workspace-role: viewer` for legitimate status checks.
 - `test/e2e/scan-status.authorization.e2e-spec.ts` records missing-role denial and viewer-allowed status behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for scan status reads.
+
+## PR 29 Summary Job Status Workspace Authorization Evidence
+
+- `9bba42f feat: authorize summary job status reads`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `timeout 60s node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing summary job status role denial, viewer requested-status success and viewer completed-status success.
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkspaceAction` now includes `summary_jobs.read`, and the static MVP policy allows owner/admin/member/viewer roles.
+- `SummaryJobController` validates tenant/workspace scope, authorizes `summary_jobs.read`, and only then invokes `GetSummaryJobStatusUseCase`.
+- REST parsing of `x-workspace-role` stays at the interface boundary; summary job status use case remains independent of HTTP headers and role policy.
+- `test/e2e/summary-jobs.status.e2e-spec.ts` records missing-role denial and viewer-allowed requested/completed status behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for summary job status reads.
