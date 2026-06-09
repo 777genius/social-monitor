@@ -994,3 +994,26 @@ Evidence notes:
 - REST parsing of `x-workspace-role` stays at the interface boundary; scan dead-letter read use case remains independent of HTTP headers and role policy.
 - `test/e2e/scan-dead-letters.authorization.e2e-spec.ts` records missing-role denial, viewer denial, admin-allowed inspection and support-safe failure detail redaction behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for scan dead-letter reads.
+
+## PR 34 Event Tenant Context Contract Evidence
+
+- `a8aa523 feat: enforce tenant context in event contracts`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:events`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run check:release`
+- `env NODE_OPTIONS=--max-old-space-size=1024 npx jest --config jest.config.ts --runInBand libs/contracts/events/event-catalog.spec.ts libs/delivery/features/project-summary-ready-event/project-summary-ready-event.use-case.spec.ts`
+- `timeout 90s node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified `summary.ready` envelope/payload tenant context and `summary.status.changed.v1` realtime replay envelope/payload tenant context.
+- `git diff --check`
+
+Evidence notes:
+
+- `libs/contracts/events/event-catalog.json` now records `tenantScoped` and `requiredEnvelopeFields` for event contracts.
+- `scripts/check-event-contracts.mjs` blocks tenant-scoped events missing envelope `tenantId`, `workspaceId`, `correlationId` or payload `tenantId`, `workspaceId`.
+- `ProjectSummaryReadyEventUseCase` projects tenant/workspace into the `summary.status.changed.v1` realtime payload, not only the realtime event top-level scope.
+- `libs/contracts/events/event-catalog.spec.ts` records the tenant-context catalog expectation for the Jest contract suite.
+- `test/e2e/summary-ready-to-realtime.e2e-spec.ts` records tenant/workspace payload continuity across summary ready fanout.

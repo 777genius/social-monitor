@@ -37,4 +37,4 @@ Iteration 07 cannot start if any critical beta safety gate is unresolved.
 - Ingestion worker queue adapter now validates tenant/workspace command payload scope before invoking `ExecuteScanUseCase`.
 - Domain/features remain isolated from HTTP headers; the guard is placed at the interface adapter boundary.
 - Architecture check confirms boundary rules after the REST hardening slice.
-- Remaining PR1 audit surface is event tenant context assertions beyond REST/queue, if the next scan finds missing coverage.
+- Event tenant context assertions are now covered by the event catalog contract gate and summary-to-realtime projection evidence in commit `a8aa523`.
