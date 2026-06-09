@@ -8,7 +8,8 @@ export type WorkspaceAction =
   | 'api_keys.create'
   | 'api_keys.list'
   | 'api_keys.revoke'
-  | 'topics.create';
+  | 'topics.create'
+  | 'source_bindings.create';
 
 export type WorkspaceAuthorizationRequest = {
   readonly tenantId: TenantId;

@@ -56,6 +56,7 @@ describe('Request scan flow (e2e)', () => {
       .post(`/topics/${topic.body.topicId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
       .set('x-request-id', 'request-scan-bind')
       .set('idempotency-key', 'bind-scan-source')
       .send({

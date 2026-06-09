@@ -121,6 +121,7 @@ const createReadyBinding = async (params: {
     .post(`/topics/${topic.body.topicId}/source-bindings`)
     .set('x-tenant-id', params.tenant)
     .set('x-workspace-id', params.workspace)
+    .set('x-workspace-role', 'admin')
     .set('x-request-id', `${params.bindingIdempotencyKey}-request`)
     .set('idempotency-key', params.bindingIdempotencyKey)
     .send({
