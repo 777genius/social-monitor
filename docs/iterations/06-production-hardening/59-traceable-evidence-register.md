@@ -827,3 +827,27 @@ Evidence notes:
 - REST parsing of `x-workspace-role` stays at the interface boundary; summary read use cases remain independent of HTTP headers and role policy.
 - `test/e2e/summaries.read.e2e-spec.ts` records missing-role denial and viewer-allowed read behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for summary list and get endpoints.
+
+## PR 27 Feed Read Workspace Authorization Evidence
+
+- `e2eae16 feat: authorize feed reads`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `NODE_OPTIONS=--max-old-space-size=1024 node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing feed read role denial, viewer feed list success and viewer feed detail success.
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkspaceAction` now includes `feed.read`, and the static MVP policy allows owner/admin/member/viewer roles.
+- `FeedRestModule` imports `IdentityAuthorizationModule`, giving the REST adapter the shared `WORKSPACE_AUTHORIZATION_POLICY` port without constructing authorization locally.
+- `FeedController` validates tenant/workspace scope, authorizes `feed.read`, and only then invokes feed list/get use cases.
+- REST parsing of `x-workspace-role` stays at the interface boundary; feed read use cases remain independent of HTTP headers and role policy.
+- `test/e2e/feed.items.list.e2e-spec.ts` records missing-role denial and viewer-allowed feed list/detail behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for feed list and get endpoints.
