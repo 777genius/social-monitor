@@ -47,10 +47,25 @@ describe('Realtime event replay (e2e)', () => {
       },
     });
 
+    const missingRole = await request(app.getHttpServer())
+      .get(`/realtime/events?channel=${encodeURIComponent(channel)}`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .expect(403);
+
+    expect(missingRole.body).toMatchObject({
+      code: 'authorization.denied',
+      detail: 'Workspace role is required',
+      details: {
+        action: 'realtime_events.read',
+      },
+    });
+
     const response = await request(app.getHttpServer())
       .get(`/realtime/events?channel=${encodeURIComponent(channel)}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(response.body).toEqual({

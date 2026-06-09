@@ -79,6 +79,7 @@ describe('Summary ready realtime fanout (e2e)', () => {
       .get(`/realtime/events?channel=${encodeURIComponent(channel)}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(replay.body).toEqual({

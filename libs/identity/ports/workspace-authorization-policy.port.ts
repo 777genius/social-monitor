@@ -11,6 +11,7 @@ export type WorkspaceAction =
   | 'delivery_attempts.read'
   | 'digests.read'
   | 'feed.read'
+  | 'realtime_events.read'
   | 'topics.create'
   | 'source_bindings.create'
   | 'scan_policies.set'
