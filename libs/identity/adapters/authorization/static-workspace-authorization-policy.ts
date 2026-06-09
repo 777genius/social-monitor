@@ -17,6 +17,7 @@ const allowedRolesByAction: Record<WorkspaceAction, readonly WorkspaceRole[]> = 
   'scan_requests.create': ['owner', 'admin', 'member'],
   'summary_requests.create': ['owner', 'admin', 'member'],
   'summary_regenerations.create': ['owner', 'admin', 'member'],
+  'webhook_endpoints.read': ['owner', 'admin', 'member', 'viewer'],
   'webhook_endpoints.create': ['owner', 'admin'],
   'webhook_endpoints.disable': ['owner', 'admin'],
 };

@@ -39,7 +39,7 @@ describe('Webhook endpoint public API audit (e2e)', () => {
       .set('x-workspace-role', 'admin')
       .send({
         name: 'Webhook endpoint auditor',
-        scopes: ['write:webhook_endpoints'],
+        scopes: ['read:webhook_endpoints', 'write:webhook_endpoints'],
       })
       .expect(201);
     const authorization = `Bearer ${apiKey.body.secret}`;
@@ -59,6 +59,7 @@ describe('Webhook endpoint public API audit (e2e)', () => {
       .get('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .set('Authorization', authorization)
       .expect(200);
     await request(app.getHttpServer())

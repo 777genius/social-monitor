@@ -14,6 +14,7 @@ export type WorkspaceAction =
   | 'scan_requests.create'
   | 'summary_requests.create'
   | 'summary_regenerations.create'
+  | 'webhook_endpoints.read'
   | 'webhook_endpoints.create'
   | 'webhook_endpoints.disable';
 

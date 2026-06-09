@@ -5,6 +5,7 @@ export type ApiKeyScope =
   | 'read:feed'
   | 'read:summaries'
   | 'read:delivery_status'
+  | 'read:webhook_endpoints'
   | 'write:webhook_endpoints';
 
 export type ApiKeyStatus = 'active' | 'revoked';

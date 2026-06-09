@@ -42,7 +42,11 @@ export class WebhookEndpointsController {
   @ApiOperation({ summary: 'Create an outbound webhook endpoint and return its signing secret once.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Webhook endpoint creation requires owner or admin.' })
+  @ApiHeader({
+    name: 'x-workspace-role',
+    required: true,
+    description: 'Comma-separated workspace roles. Webhook endpoint creation requires owner or admin.',
+  })
   @ApiHeader({ name: 'authorization', required: true })
   async create(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -94,10 +98,16 @@ export class WebhookEndpointsController {
   @ApiOperation({ summary: 'List outbound webhook endpoints without exposing signing secrets.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({
+    name: 'x-workspace-role',
+    required: true,
+    description: 'Comma-separated workspace roles. Webhook endpoint reads allow owner, admin, member or viewer.',
+  })
   @ApiHeader({ name: 'authorization', required: true })
   async list(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
@@ -106,7 +116,13 @@ export class WebhookEndpointsController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
+    const authorization = await this.authorizeWebhookEndpointRead(authorizationHeader, tenant, workspace);
+    this.authorizeWorkspaceRole({
+      tenant,
+      workspace,
+      workspaceRoleHeader,
+      action: 'webhook_endpoints.read',
+    });
     const result = await this.listWebhookEndpoints.execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -137,18 +153,30 @@ export class WebhookEndpointsController {
   @ApiOperation({ summary: 'Get an outbound webhook endpoint without exposing its signing secret.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({
+    name: 'x-workspace-role',
+    required: true,
+    description: 'Comma-separated workspace roles. Webhook endpoint reads allow owner, admin, member or viewer.',
+  })
   @ApiHeader({ name: 'authorization', required: true })
   async get(
     @Param('webhookEndpointId') webhookEndpointId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
   ): Promise<GetWebhookEndpointResponseDto> {
     const { tenantId: tenant, workspaceId: workspace } = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
+    const authorization = await this.authorizeWebhookEndpointRead(authorizationHeader, tenant, workspace);
+    this.authorizeWorkspaceRole({
+      tenant,
+      workspace,
+      workspaceRoleHeader,
+      action: 'webhook_endpoints.read',
+    });
     const result = await this.getWebhookEndpoint.execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -178,7 +206,11 @@ export class WebhookEndpointsController {
   @ApiOperation({ summary: 'Disable an outbound webhook endpoint without deleting audit history or secrets.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Webhook endpoint disable requires owner or admin.' })
+  @ApiHeader({
+    name: 'x-workspace-role',
+    required: true,
+    description: 'Comma-separated workspace roles. Webhook endpoint disable requires owner or admin.',
+  })
   @ApiHeader({ name: 'authorization', required: true })
   async disable(
     @Param('webhookEndpointId') webhookEndpointId: string,
@@ -223,27 +255,60 @@ export class WebhookEndpointsController {
     return result.value;
   }
 
+  private async authorizeWebhookEndpointRead(
+    authorizationHeader: string | undefined,
+    tenant: TenantId,
+    workspace: WorkspaceId,
+  ): Promise<{ readonly apiKeyId: string }> {
+    return this.authorizeWebhookEndpointApiKey({
+      authorizationHeader,
+      tenant,
+      workspace,
+      requiredScope: 'read:webhook_endpoints',
+      operation: 'webhook_endpoints.read',
+    });
+  }
+
   private async authorizeWebhookEndpointManagement(
     authorizationHeader: string | undefined,
     tenant: TenantId,
     workspace: WorkspaceId,
   ): Promise<{ readonly apiKeyId: string }> {
-    const verifiedApiKey = await this.verifyApiKey.execute({
-      secret: parseBearerSecret(authorizationHeader),
+    return this.authorizeWebhookEndpointApiKey({
+      authorizationHeader,
+      tenant,
+      workspace,
       requiredScope: 'write:webhook_endpoints',
+      operation: 'webhook_endpoints.manage',
+    });
+  }
+
+  private async authorizeWebhookEndpointApiKey(params: {
+    readonly authorizationHeader: string | undefined;
+    readonly tenant: TenantId;
+    readonly workspace: WorkspaceId;
+    readonly requiredScope: 'read:webhook_endpoints' | 'write:webhook_endpoints';
+    readonly operation: 'webhook_endpoints.read' | 'webhook_endpoints.manage';
+  }): Promise<{ readonly apiKeyId: string }> {
+    const verifiedApiKey = await this.verifyApiKey.execute({
+      secret: parseBearerSecret(params.authorizationHeader),
+      requiredScope: params.requiredScope,
     });
 
     if (!verifiedApiKey.ok) {
       throw verifiedApiKey.error;
     }
 
-    if (verifiedApiKey.value.apiKey.tenantId !== tenant || verifiedApiKey.value.apiKey.workspaceId !== workspace) {
+    if (
+      verifiedApiKey.value.apiKey.tenantId !== params.tenant ||
+      verifiedApiKey.value.apiKey.workspaceId !== params.workspace
+    ) {
       throw new DomainError('authorization.denied', 'API key tenant or workspace does not match request scope');
     }
 
     const rateLimit = await this.checkPublicApiRateLimit.execute({
       subjectKey: `api-key:${verifiedApiKey.value.apiKey.id}`,
-      operation: 'webhook_endpoints.manage',
+      operation: params.operation,
       limit: publicApiRateLimitPerMinute(),
       windowSeconds: 60,
     });

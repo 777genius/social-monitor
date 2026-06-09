@@ -41,7 +41,7 @@ describe('Webhook endpoint signing (e2e)', () => {
       .set('x-workspace-role', 'admin')
       .send({
         name: 'Webhook endpoint writer',
-        scopes: ['write:webhook_endpoints'],
+        scopes: ['read:webhook_endpoints', 'write:webhook_endpoints'],
       })
       .expect(201);
     const created = await request(app.getHttpServer())
@@ -76,6 +76,7 @@ describe('Webhook endpoint signing (e2e)', () => {
       .get(`/delivery/webhook-endpoints/${endpointId}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .set('Authorization', `Bearer ${apiKey.body.secret}`)
       .expect(200);
 

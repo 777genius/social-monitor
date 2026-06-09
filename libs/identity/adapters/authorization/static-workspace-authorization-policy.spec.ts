@@ -125,6 +125,20 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     });
   });
 
+  it('allows every workspace role to read webhook endpoints', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'webhook_endpoints.read',
+      roles: ['viewer'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
   it('denies missing or low-privilege roles with a safe authorization error', () => {
     const policy = new StaticWorkspaceAuthorizationPolicy();
 
