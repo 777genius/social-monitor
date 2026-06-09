@@ -851,3 +851,27 @@ Evidence notes:
 - REST parsing of `x-workspace-role` stays at the interface boundary; feed read use cases remain independent of HTTP headers and role policy.
 - `test/e2e/feed.items.list.e2e-spec.ts` records missing-role denial and viewer-allowed feed list/detail behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for feed list and get endpoints.
+
+## PR 28 Scan Status Workspace Authorization Evidence
+
+- `7bd42d4 feat: authorize scan status reads`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `NODE_OPTIONS=--max-old-space-size=1024 node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing scan status role denial and viewer scan status success.
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkspaceAction` now includes `scan_jobs.read`, and the static MVP policy allows owner/admin/member/viewer roles.
+- `ScanStatusController` validates tenant/workspace scope, authorizes `scan_jobs.read`, and only then invokes `GetScanStatusUseCase`.
+- REST parsing of `x-workspace-role` stays at the interface boundary; scan status use case remains independent of HTTP headers and role policy.
+- Existing scan status e2e reads now pass `x-workspace-role: viewer` for legitimate status checks.
+- `test/e2e/scan-status.authorization.e2e-spec.ts` records missing-role denial and viewer-allowed status behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for scan status reads.
