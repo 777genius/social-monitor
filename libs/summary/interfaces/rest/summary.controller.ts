@@ -28,12 +28,18 @@ export class SummaryController {
   @ApiOperation({ summary: 'List tenant/workspace summaries with cursor pagination.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({
+    name: 'x-workspace-role',
+    required: true,
+    description: 'Comma-separated workspace roles. Summary reads allow owner, admin, member or viewer.',
+  })
   @ApiQuery({ name: 'topicId', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
   async list(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Query('topicId') topicId: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
@@ -42,6 +48,17 @@ export class SummaryController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      action: 'summaries.read',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+
     const result = await this.listSummaries.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
@@ -61,15 +78,32 @@ export class SummaryController {
   @ApiOperation({ summary: 'Get one tenant/workspace summary by id.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({
+    name: 'x-workspace-role',
+    required: true,
+    description: 'Comma-separated workspace roles. Summary reads allow owner, admin, member or viewer.',
+  })
   async get(
     @Param('summaryId') summaryId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
   ): Promise<SummaryResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      action: 'summaries.read',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+
     const result = await this.getSummary.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,

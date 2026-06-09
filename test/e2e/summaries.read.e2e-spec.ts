@@ -51,10 +51,25 @@ describe('Summary read model (e2e)', () => {
       throw new Error('Expected summary execution to produce a summary id');
     }
 
+    const missingRole = await request(app.getHttpServer())
+      .get(`/summaries/${executed.value.summaryId}`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .expect(403);
+
+    expect(missingRole.body).toMatchObject({
+      code: 'authorization.denied',
+      detail: 'Workspace role is required',
+      details: {
+        action: 'summaries.read',
+      },
+    });
+
     const detail = await request(app.getHttpServer())
       .get(`/summaries/${executed.value.summaryId}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(detail.body).toMatchObject({
@@ -79,6 +94,7 @@ describe('Summary read model (e2e)', () => {
       .get(`/summaries?topicId=${topicId}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(list.body).toEqual({

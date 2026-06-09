@@ -898,6 +898,15 @@
             }
           },
           {
+            "description": "Comma-separated workspace roles. Summary reads allow owner, admin, member or viewer.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "x-workspace-id",
             "required": true,
@@ -932,6 +941,15 @@
           {
             "in": "path",
             "name": "summaryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary reads allow owner, admin, member or viewer.",
+            "in": "header",
+            "name": "x-workspace-role",
             "required": true,
             "schema": {
               "type": "string"

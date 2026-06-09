@@ -88,6 +88,20 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     });
   });
 
+  it('allows every workspace role to read summaries', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'summaries.read',
+      roles: ['viewer'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
   it('allows owner, admin and member roles to regenerate summaries', () => {
     const policy = new StaticWorkspaceAuthorizationPolicy();
 

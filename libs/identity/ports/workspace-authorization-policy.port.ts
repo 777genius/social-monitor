@@ -12,6 +12,7 @@ export type WorkspaceAction =
   | 'source_bindings.create'
   | 'scan_policies.set'
   | 'scan_requests.create'
+  | 'summaries.read'
   | 'summary_requests.create'
   | 'summary_regenerations.create'
   | 'webhook_endpoints.read'
