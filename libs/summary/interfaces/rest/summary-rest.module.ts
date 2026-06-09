@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { IdentityAuthorizationModule } from '@social-monitor/identity/interfaces/authorization/identity-authorization.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case';
@@ -23,7 +24,7 @@ import { SummaryRequestController } from './summary-request.controller';
 import { SummaryController } from './summary.controller';
 
 @Module({
-  imports: [UsageRestModule],
+  imports: [UsageRestModule, IdentityAuthorizationModule],
   controllers: [SummaryController, SummaryJobController, SummaryRequestController],
   providers: [
     InMemorySummaryJobRepository,

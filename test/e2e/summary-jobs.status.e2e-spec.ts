@@ -36,6 +36,7 @@ describe('Summary job status timeline (e2e)', () => {
       .post('/topics/topic-summary-status-e2e/summary-requests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'summary-status-request-1')
       .set('idempotency-key', 'summary-status-request-1')
       .expect(201);

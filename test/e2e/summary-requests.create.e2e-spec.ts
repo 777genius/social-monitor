@@ -32,6 +32,7 @@ describe('Summary request flow (e2e)', () => {
       .post('/topics/topic-summary-e2e/summary-requests')
       .set('x-tenant-id', 'tenant-summary-e2e')
       .set('x-workspace-id', 'workspace-summary-e2e')
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'summary-request-1')
       .set('idempotency-key', 'summary-request-1')
       .expect(201);
@@ -46,6 +47,7 @@ describe('Summary request flow (e2e)', () => {
       .post('/topics/topic-summary-e2e/summary-requests')
       .set('x-tenant-id', 'tenant-summary-e2e')
       .set('x-workspace-id', 'workspace-summary-e2e')
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'summary-request-1')
       .set('idempotency-key', 'summary-request-1')
       .expect(201);

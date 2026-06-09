@@ -49,6 +49,7 @@ describe('Summary request quota (e2e)', () => {
       .post('/topics/topic-summary-quota-1/summary-requests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'summary-quota-request-1')
       .set('idempotency-key', 'summary-quota-request-1')
       .expect(201);
@@ -57,6 +58,7 @@ describe('Summary request quota (e2e)', () => {
       .post('/topics/topic-summary-quota-2/summary-requests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'summary-quota-request-2')
       .set('idempotency-key', 'summary-quota-request-2')
       .expect(429);

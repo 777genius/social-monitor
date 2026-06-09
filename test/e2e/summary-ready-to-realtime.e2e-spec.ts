@@ -39,6 +39,7 @@ describe('Summary ready realtime fanout (e2e)', () => {
       .post(`/topics/${topicId}/summary-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'summary-realtime-request-1')
       .set('idempotency-key', 'summary-realtime-request-1')
       .expect(201);

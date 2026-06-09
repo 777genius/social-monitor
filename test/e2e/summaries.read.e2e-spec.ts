@@ -37,6 +37,7 @@ describe('Summary read model (e2e)', () => {
       .post(`/topics/${topicId}/summary-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'summary-read-request-1')
       .set('idempotency-key', 'summary-read-request-1')
       .expect(201);

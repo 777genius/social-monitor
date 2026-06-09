@@ -36,6 +36,7 @@ describe('Summary regeneration flow (e2e)', () => {
       .post('/topics/topic-summary-regenerate-e2e/summary-requests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
       .set('x-request-id', 'summary-regenerate-request-1')
       .set('idempotency-key', 'summary-regenerate-request-1')
       .expect(201);

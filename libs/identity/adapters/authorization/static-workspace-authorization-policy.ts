@@ -15,6 +15,7 @@ const allowedRolesByAction: Record<WorkspaceAction, readonly WorkspaceRole[]> = 
   'source_bindings.create': ['owner', 'admin'],
   'scan_policies.set': ['owner', 'admin'],
   'scan_requests.create': ['owner', 'admin', 'member'],
+  'summary_requests.create': ['owner', 'admin', 'member'],
 };
 
 const workspaceRoles = new Set<WorkspaceRole>(['owner', 'admin', 'member', 'viewer']);
