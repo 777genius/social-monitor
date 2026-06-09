@@ -898,3 +898,27 @@ Evidence notes:
 - REST parsing of `x-workspace-role` stays at the interface boundary; summary job status use case remains independent of HTTP headers and role policy.
 - `test/e2e/summary-jobs.status.e2e-spec.ts` records missing-role denial and viewer-allowed requested/completed status behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for summary job status reads.
+
+## PR 30 Delivery Attempt Read Workspace Authorization Evidence
+
+- `fae50ea feat: authorize delivery attempt reads`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `timeout 60s node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing delivery attempt read role denial and viewer delivery attempt status success.
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkspaceAction` now includes `delivery_attempts.read`, and the static MVP policy allows owner/admin/member/viewer roles.
+- `DeliveryAttemptsController` validates tenant/workspace scope, authorizes `delivery_attempts.read`, and only then invokes `GetDeliveryAttemptUseCase`.
+- REST parsing of `x-workspace-role` stays at the interface boundary; delivery attempt read use case remains independent of HTTP headers and role policy.
+- Existing delivery attempt read e2e flows now pass `x-workspace-role: viewer` for legitimate status checks.
+- `test/e2e/delivery-attempts.get.e2e-spec.ts` records missing-role denial and viewer-allowed status behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for delivery attempt status reads.
