@@ -751,3 +751,29 @@ Evidence notes:
 - Existing regeneration e2e flows now pass `x-workspace-role: member` for legitimate regeneration requests.
 - `test/e2e/summary-regenerations.authorization.e2e-spec.ts` records missing-role, viewer-denied and member-allowed behavior for the Jest e2e suite.
 - `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /summaries/{summaryId}/regenerations`.
+
+## PR 24 Webhook Endpoint Write Workspace Authorization Evidence
+
+- `0e40f5c feat: authorize webhook endpoint writes`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `NODE_OPTIONS=--max-old-space-size=1024 node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified missing webhook role denial, viewer create denial, admin create success, viewer disable denial and owner disable success.
+- `git diff --check`
+
+Evidence notes:
+
+- `WorkspaceAction` now includes `webhook_endpoints.create` and `webhook_endpoints.disable`, and the static MVP policy allows owner/admin roles.
+- `WebhookEndpointsController` keeps tenant/workspace validation and API-key scope verification before checking workspace role, preserving existing API-key-scope behavior.
+- Authorization happens before webhook endpoint creation or disable use cases and before audit events for those state changes.
+- Read-only webhook list/get endpoints still use API-key scope in this slice; workspace-role authorization for read surfaces remains a separate explicit decision.
+- REST parsing of `x-workspace-role` stays at the interface boundary; delivery use cases remain independent of HTTP headers and role policy.
+- Existing webhook e2e flows now pass `x-workspace-role: admin` for legitimate write calls.
+- `test/e2e/webhook-endpoints.authorization.e2e-spec.ts` records missing-role, viewer-denied and owner/admin-allowed behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for webhook create and disable endpoints.
