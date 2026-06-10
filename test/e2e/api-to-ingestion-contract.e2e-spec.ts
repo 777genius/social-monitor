@@ -149,6 +149,8 @@ describe('API to ingestion worker queue contract (e2e)', () => {
     })
       .overrideProvider(NoopScanExecutionReporterAdapter)
       .useValue(new MonitoringScanExecutionReporter(api.get(RecordScanExecutionUseCase)))
+      .overrideProvider(InMemoryFeedItemReadRepository)
+      .useValue(api.get(InMemoryFeedItemReadRepository))
       .compile();
     await workerModuleRef.init();
 
@@ -198,6 +200,28 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       workspaceId: workspaceId(workspace),
       limit: 10,
     })).items).toHaveLength(2);
+
+    await request(api.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 10 })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toEqual({
+          items: [
+            expect.objectContaining({
+              sourceBindingId: binding.body.sourceBindingId,
+              title: 'Fake source post 2',
+            }),
+            expect.objectContaining({
+              sourceBindingId: binding.body.sourceBindingId,
+              title: 'Fake source post 1',
+            }),
+          ],
+        });
+      });
     await request(api.getHttpServer())
       .get(`/scan-requests/${scan.body.scanJobId}/status`)
       .set('x-tenant-id', tenant)
