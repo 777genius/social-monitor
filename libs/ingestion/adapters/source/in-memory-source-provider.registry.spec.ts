@@ -23,7 +23,7 @@ describe('InMemorySourceProviderRegistry', () => {
     );
     await expect(registry.listReadinessProfiles()).resolves.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ providerKey: 'hacker-news', state: 'profiled' }),
+        expect.objectContaining({ providerKey: 'hacker-news', state: 'enabled_beta' }),
         expect.objectContaining({ providerKey: 'x-twitter', state: 'provider_only' }),
         expect.objectContaining({ providerKey: 'telegram', state: 'manual_only' }),
       ]),

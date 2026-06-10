@@ -41,6 +41,8 @@ export class InMemoryScanQueueAdapter implements ScanQueuePort {
         scanJobId: command.scanJobId,
         sourceBindingId: command.sourceBindingId,
         scanPolicyId: command.scanPolicyId,
+        providerKey: command.providerKey,
+        sourceQuery: command.sourceQuery,
       },
     });
     this.metrics.incrementCounter({

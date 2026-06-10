@@ -77,6 +77,9 @@ export class ExecuteScanUseCase {
         workspaceId: command.workspaceId,
         sourceBindingId: command.sourceBindingId,
         scanJobId: command.scanJobId,
+        providerKey: command.providerKey,
+        sourceQuery: command.sourceQuery,
+        correlationId: command.correlationId,
       });
 
       const ingestedAt = this.clock.now();

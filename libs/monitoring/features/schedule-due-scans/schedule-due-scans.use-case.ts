@@ -16,6 +16,7 @@ import type {
 } from '../../ports';
 import type { ScheduleDueScansCommand } from './schedule-due-scans.command';
 import type { ScheduleDueScansResult } from './schedule-due-scans.result';
+import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
 type ScheduleDueScansFailure = DomainError | Error;
 
@@ -52,7 +53,8 @@ export class ScheduleDueScansUseCase {
         sourceBindingId: policySnapshot.sourceBindingId,
       });
 
-      if (binding === null || binding.toSnapshot().status !== 'enabled') {
+      const bindingSnapshot = binding?.toSnapshot();
+      if (bindingSnapshot === undefined || bindingSnapshot.status !== 'enabled') {
         skipped += 1;
         continue;
       }
@@ -76,6 +78,8 @@ export class ScheduleDueScansUseCase {
           scanJobId: this.ids.generate(),
           sourceBindingId: policySnapshot.sourceBindingId,
           scanPolicyId: policySnapshot.id,
+          providerKey: bindingSnapshot.providerKey,
+          sourceQuery: sourceBindingScanQuery(bindingSnapshot),
           correlationId: command.correlationId,
           causationId: idempotencyKey,
         };

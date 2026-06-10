@@ -10,7 +10,7 @@ import { IngestionWorkerModule } from '../../apps/ingestion-worker/src/ingestion
 import { InMemoryFeedItemReadRepository } from '../../libs/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemorySourceItemRepository } from '../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { NoopScanExecutionReporterAdapter } from '../../libs/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter';
-import { FakeSourceFetcherAdapter } from '../../libs/ingestion/adapters/source/fake-source-fetcher.adapter';
+import { RegistrySourceFetcherAdapter } from '../../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
 import { ExecuteScanCommandHandler } from '../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
 import type {
   FetchSourceItemsResult,
@@ -143,6 +143,10 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       created: true,
     });
     expect(queue.all()).toHaveLength(1);
+    expect(queue.all()[0]?.payload).toEqual(expect.objectContaining({
+      providerKey: 'fake-source',
+      sourceQuery: { mode: 'search', query: 'contract monitoring' },
+    }));
 
     const workerModuleRef = await Test.createTestingModule({
       imports: [IngestionWorkerModule],
@@ -304,7 +308,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
     })
       .overrideProvider(NoopScanExecutionReporterAdapter)
       .useValue(new MonitoringScanExecutionReporter(api.get(RecordScanExecutionUseCase)))
-      .overrideProvider(FakeSourceFetcherAdapter)
+      .overrideProvider(RegistrySourceFetcherAdapter)
       .useValue(new FailingSourceFetcher())
       .compile();
     await workerModuleRef.init();

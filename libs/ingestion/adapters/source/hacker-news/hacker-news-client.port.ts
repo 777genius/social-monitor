@@ -9,6 +9,9 @@ export type HackerNewsStory = {
   readonly dead?: boolean;
 };
 
+export type HackerNewsListing = 'top' | 'new' | 'best' | 'ask' | 'show' | 'job';
+
 export interface HackerNewsClientPort {
   searchStories(query: string, limit: number): Promise<readonly HackerNewsStory[]>;
+  listStories(listing: HackerNewsListing, limit: number): Promise<readonly HackerNewsStory[]>;
 }

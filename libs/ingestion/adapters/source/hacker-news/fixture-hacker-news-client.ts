@@ -1,4 +1,4 @@
-import type { HackerNewsClientPort, HackerNewsStory } from './hacker-news-client.port';
+import type { HackerNewsClientPort, HackerNewsListing, HackerNewsStory } from './hacker-news-client.port';
 
 const fixtureStories: readonly HackerNewsStory[] = [
   {
@@ -25,6 +25,10 @@ const fixtureStories: readonly HackerNewsStory[] = [
 
 export class FixtureHackerNewsClient implements HackerNewsClientPort {
   async searchStories(_query: string, limit: number): Promise<readonly HackerNewsStory[]> {
+    return fixtureStories.slice(0, limit);
+  }
+
+  async listStories(_listing: HackerNewsListing, limit: number): Promise<readonly HackerNewsStory[]> {
     return fixtureStories.slice(0, limit);
   }
 }

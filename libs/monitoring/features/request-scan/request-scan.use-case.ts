@@ -22,6 +22,7 @@ import type {
 } from '../../ports';
 import type { RequestScanCommand } from './request-scan.command';
 import type { RequestScanResult } from './request-scan.result';
+import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
 type RequestScanFailure = DomainError | Error;
 
@@ -94,12 +95,15 @@ export class RequestScanUseCase {
     }
 
     const policySnapshot = policy.toSnapshot();
+    const bindingSnapshot = binding.toSnapshot();
     const queueCommand = {
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       scanJobId: this.ids.generate(),
       sourceBindingId: command.sourceBindingId,
       scanPolicyId: policySnapshot.id,
+      providerKey: bindingSnapshot.providerKey,
+      sourceQuery: sourceBindingScanQuery(bindingSnapshot),
       correlationId: command.correlationId,
       causationId: command.idempotencyKey,
     };
@@ -146,6 +150,7 @@ export class RequestScanUseCase {
         workspaceId: command.workspaceId,
         sourceBindingId: snapshot.sourceBindingId,
         scanPolicyId: snapshot.scanPolicyId,
+        providerKey: bindingSnapshot.providerKey,
       },
     };
     await this.outbox.append(event);

@@ -9,8 +9,8 @@ import { InMemoryScanAttemptRepository } from '../../libs/ingestion/adapters/per
 import { InMemoryScanCursorRepository } from '../../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
 import { InMemorySourceItemRepository } from '../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { InMemoryScanFailureQueueAdapter } from '../../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
-import { FakeSourceFetcherAdapter } from '../../libs/ingestion/adapters/source/fake-source-fetcher.adapter';
 import { InMemorySourceProviderRegistry } from '../../libs/ingestion/adapters/source/in-memory-source-provider.registry';
+import { RegistrySourceFetcherAdapter } from '../../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
 import { ExecuteScanCommandHandler } from '../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
 import type { FetchSourceItemsResult, SourceFetcherPort } from '../../libs/ingestion/ports';
 
@@ -47,6 +47,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
         scanJobId: 'scan-job-1',
         sourceBindingId: 'source-binding-1',
         scanPolicyId: 'scan-policy-1',
+        providerKey: 'fake-source',
+        sourceQuery: { mode: 'search', query: 'worker e2e' },
       },
     };
 
@@ -139,6 +141,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
         scanJobId: 'scan-job-leased',
         sourceBindingId: 'source-binding-1',
         scanPolicyId: 'scan-policy-1',
+        providerKey: 'fake-source',
+        sourceQuery: { mode: 'search', query: 'worker e2e' },
         workerId: 'worker-1',
       },
     })).rejects.toThrow('Scan job is already leased');
@@ -158,7 +162,7 @@ describe('ingestion worker execute scan command (e2e)', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [IngestionWorkerModule],
     })
-      .overrideProvider(FakeSourceFetcherAdapter)
+      .overrideProvider(RegistrySourceFetcherAdapter)
       .useValue(new FailingSourceFetcher())
       .compile();
 
@@ -181,6 +185,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
         scanJobId: 'scan-job-failure',
         sourceBindingId: 'source-binding-1',
         scanPolicyId: 'scan-policy-1',
+        providerKey: 'fake-source',
+        sourceQuery: { mode: 'search', query: 'worker e2e' },
         attemptNumber: 1,
         retryBudget: 3,
       },

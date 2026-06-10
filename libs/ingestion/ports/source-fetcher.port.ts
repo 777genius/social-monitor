@@ -1,10 +1,14 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import type { SourceQuery } from './source-provider.port';
 
 export type FetchSourceItemsCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly sourceBindingId: string;
   readonly scanJobId: string;
+  readonly providerKey: string;
+  readonly sourceQuery: SourceQuery;
+  readonly correlationId: string;
 };
 
 export type FetchedSourceItem = {

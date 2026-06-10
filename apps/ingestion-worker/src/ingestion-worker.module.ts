@@ -11,9 +11,11 @@ import { InMemoryScanCursorRepository } from '../../../libs/ingestion/adapters/p
 import { InMemorySourceItemRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { InMemoryScanFailureQueueAdapter } from '../../../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
 import { CircuitBreakerSourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
-import { FakeSourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/fake-source-fetcher.adapter';
 import { FakeSourceProvider } from '../../../libs/ingestion/adapters/source/fake-source.provider';
+import { HackerNewsSourceProvider } from '../../../libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
+import { HttpHackerNewsClient } from '../../../libs/ingestion/adapters/source/hacker-news/http-hacker-news-client';
 import { InMemorySourceProviderRegistry } from '../../../libs/ingestion/adapters/source/in-memory-source-provider.registry';
+import { RegistrySourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
 import { sourceReadinessProfiles } from '../../../libs/ingestion/adapters/source/source-readiness-profiles';
 import { ExecuteScanUseCase } from '../../../libs/ingestion/features/execute-scan/execute-scan.use-case';
 import { ExecuteScanCommandHandler } from '../../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
@@ -24,24 +26,33 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
   providers: [
     FakeSourceProvider,
     {
-      provide: InMemorySourceProviderRegistry,
-      useFactory: (fakeProvider: FakeSourceProvider) =>
-        new InMemorySourceProviderRegistry([fakeProvider], sourceReadinessProfiles),
-      inject: [FakeSourceProvider],
+      provide: HttpHackerNewsClient,
+      useFactory: () => new HttpHackerNewsClient(),
     },
     {
-      provide: FakeSourceFetcherAdapter,
-      useFactory: (registry: InMemorySourceProviderRegistry) => new FakeSourceFetcherAdapter(registry),
+      provide: HackerNewsSourceProvider,
+      useFactory: (client: HttpHackerNewsClient) => new HackerNewsSourceProvider(client),
+      inject: [HttpHackerNewsClient],
+    },
+    {
+      provide: InMemorySourceProviderRegistry,
+      useFactory: (fakeProvider: FakeSourceProvider, hackerNewsProvider: HackerNewsSourceProvider) =>
+        new InMemorySourceProviderRegistry([fakeProvider, hackerNewsProvider], sourceReadinessProfiles),
+      inject: [FakeSourceProvider, HackerNewsSourceProvider],
+    },
+    {
+      provide: RegistrySourceFetcherAdapter,
+      useFactory: (registry: InMemorySourceProviderRegistry) => new RegistrySourceFetcherAdapter(registry),
       inject: [InMemorySourceProviderRegistry],
     },
     {
       provide: CircuitBreakerSourceFetcherAdapter,
-      useFactory: (sourceFetcher: FakeSourceFetcherAdapter) =>
+      useFactory: (sourceFetcher: RegistrySourceFetcherAdapter) =>
         new CircuitBreakerSourceFetcherAdapter(sourceFetcher, new SystemClock(), {
           failureThreshold: 3,
           cooldownSeconds: 60,
         }),
-      inject: [FakeSourceFetcherAdapter],
+      inject: [RegistrySourceFetcherAdapter],
     },
     InMemoryScanAttemptRepository,
     InMemoryScanCursorRepository,
@@ -113,6 +124,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     InMemorySourceProviderRegistry,
+    RegistrySourceFetcherAdapter,
     CircuitBreakerSourceFetcherAdapter,
   ],
 })

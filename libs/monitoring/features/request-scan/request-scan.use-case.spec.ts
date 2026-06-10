@@ -233,7 +233,12 @@ describe('RequestScanUseCase', () => {
     expect(result.ok && result.value.created).toBe(true);
     expect(result.ok && result.value.status).toBe('enqueued');
     expect(outbox.events).toHaveLength(1);
-    expect(queue.commands).toHaveLength(1);
+    expect(queue.commands).toEqual([
+      expect.objectContaining({
+        providerKey: 'fake-source',
+        sourceQuery: { mode: 'search', query: 'binding-1' },
+      }),
+    ]);
   });
 
   it('returns existing active scan job instead of enqueueing overlapping manual scan', async () => {

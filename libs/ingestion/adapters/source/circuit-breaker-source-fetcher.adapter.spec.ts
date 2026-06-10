@@ -33,6 +33,9 @@ const command: FetchSourceItemsCommand = {
   workspaceId: workspaceId('workspace-1'),
   sourceBindingId: 'source-binding-1',
   scanJobId: 'scan-job-1',
+  providerKey: 'fake-source',
+  sourceQuery: { mode: 'search', query: 'monitoring' },
+  correlationId: 'correlation-1',
 };
 
 describe('CircuitBreakerSourceFetcherAdapter', () => {

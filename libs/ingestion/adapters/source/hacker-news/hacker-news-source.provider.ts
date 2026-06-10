@@ -8,22 +8,24 @@ import type {
   SourceProviderValidationResult,
   SourceQuery,
 } from '../../../ports';
-import type { HackerNewsClientPort, HackerNewsStory } from './hacker-news-client.port';
+import type { HackerNewsClientPort, HackerNewsListing, HackerNewsStory } from './hacker-news-client.port';
 
 const capabilityProfile: SourceCapabilityProfile = {
   providerKey: 'hacker-news',
   displayName: 'Hacker News',
   version: 1,
-  productionSafe: false,
+  productionSafe: true,
   supportedContentUnits: ['post', 'comment', 'link'],
   supportedQueryModes: ['search', 'listing'],
   cursorModel: 'time',
   stableIdentity: ['providerId', 'canonicalUrl'],
   quotaModel: 'per_app',
   limitations: [
-    'Fixture-backed MVP provider; production HTTP client and rate-limit policy must pass certification before enablement.',
+    'Uses public HN Firebase listings and HN Algolia search; no credentials required. Rate-limit and retry budget still apply.',
   ],
 };
+
+const supportedListings: readonly HackerNewsListing[] = ['top', 'new', 'best', 'ask', 'show', 'job'];
 
 export class HackerNewsSourceProvider implements SourceProviderPort {
   constructor(private readonly client: HackerNewsClientPort) {}
@@ -45,6 +47,10 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
       return { ok: false, reason: 'Query must be non-empty' };
     }
 
+    if (query.mode === 'listing' && !supportedListings.includes(query.query as HackerNewsListing)) {
+      return { ok: false, reason: `Unsupported Hacker News listing: ${query.query}` };
+    }
+
     return { ok: true };
   }
 
@@ -63,7 +69,9 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
   ): Promise<SourceProviderScanResult> {
     void context;
 
-    const stories = await this.client.searchStories(plan.query.query, plan.maxItems);
+    const stories = plan.query.mode === 'listing'
+      ? await this.client.listStories(plan.query.query as HackerNewsListing, plan.maxItems)
+      : await this.client.searchStories(plan.query.query, plan.maxItems);
 
     return {
       items: stories.flatMap((story) => normalizeStory(story)),
@@ -74,10 +82,19 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
   }
 
   classifyError(error: unknown): ProviderFailure {
+    const message = error instanceof Error ? error.message : 'Unknown Hacker News provider error';
+    if (message.includes('429') || message.toLowerCase().includes('rate limit')) {
+      return {
+        kind: 'rate_limited',
+        retryable: true,
+        message,
+      };
+    }
+
     return {
       kind: 'unavailable',
       retryable: true,
-      message: error instanceof Error ? error.message : 'Unknown Hacker News provider error',
+      message,
     };
   }
 }

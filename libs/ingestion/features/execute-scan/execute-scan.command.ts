@@ -1,4 +1,5 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import type { SourceQuery } from '../../ports';
 
 export type ExecuteScanCommand = {
   readonly tenantId: TenantId;
@@ -6,6 +7,8 @@ export type ExecuteScanCommand = {
   readonly scanJobId: string;
   readonly sourceBindingId: string;
   readonly scanPolicyId: string;
+  readonly providerKey: string;
+  readonly sourceQuery: SourceQuery;
   readonly correlationId: string;
   readonly causationId: string;
   readonly attemptNumber?: number;

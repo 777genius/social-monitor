@@ -197,6 +197,8 @@ describe('ScheduleDueScansUseCase', () => {
         scanJobId: 'scan-job-1',
         sourceBindingId: 'binding-1',
         scanPolicyId: 'policy-1',
+        providerKey: 'fake-source',
+        sourceQuery: { mode: 'search', query: 'binding-1' },
         causationId: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
       }),
     ]);

@@ -20,10 +20,10 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   },
   {
     providerKey: 'hacker-news',
-    state: 'profiled',
+    state: 'enabled_beta',
     acquisitionMode: 'official_or_open_api',
     approvalOwner: 'engineering',
-    termsNotes: 'Use official/open endpoints only; fixtures required before adapter enablement.',
+    termsNotes: 'Uses public HN Firebase listings and HN Algolia search endpoints; no credentials required.',
     credentialOwnership: 'none',
     quotaModel: 'per_app',
     retentionNotes: 'Store normalized public story/comment provenance; avoid raw payload retention by default.',
@@ -32,7 +32,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     supportedContentUnits: ['post', 'comment', 'link'],
     unsupportedContentUnits: ['profile', 'community', 'media'],
     estimatedCostPerScan: 'low',
-    betaEnablementCriteria: ['HN fixtures pass certification', 'Rate-limit behavior documented'],
+    betaEnablementCriteria: ['HN fixtures pass certification', 'Live HTTP adapter smoke passes', 'Rate-limit behavior documented'],
     rollbackPlan: 'Return source health unavailable and stop scheduling HN bindings.',
   },
   {

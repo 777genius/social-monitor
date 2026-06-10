@@ -5,6 +5,7 @@ import { DomainError, tenantId, workspaceId } from '@social-monitor/shared-kerne
 
 import type { ExecuteScanUseCase } from '../../features/execute-scan/execute-scan.use-case';
 import type { ExecuteScanResult } from '../../features/execute-scan/execute-scan.result';
+import type { SourceQuery, SourceQueryMode } from '../../ports';
 
 type ExecuteScanQueuePayload = {
   readonly tenantId: string;
@@ -12,6 +13,8 @@ type ExecuteScanQueuePayload = {
   readonly scanJobId: string;
   readonly sourceBindingId: string;
   readonly scanPolicyId: string;
+  readonly providerKey: string;
+  readonly sourceQuery: SourceQuery;
   readonly attemptNumber?: number;
   readonly retryBudget?: number;
   readonly workerId?: string;
@@ -44,6 +47,8 @@ export class ExecuteScanCommandHandler {
           scanJobId: payload.scanJobId,
           sourceBindingId: payload.sourceBindingId,
           scanPolicyId: payload.scanPolicyId,
+          providerKey: payload.providerKey,
+          sourceQuery: payload.sourceQuery,
           correlationId: command.correlationId,
           causationId: command.causationId ?? command.commandId,
           attemptNumber: payload.attemptNumber,
@@ -118,6 +123,8 @@ const parsePayload = (payload: Readonly<Record<string, unknown>>): ExecuteScanQu
   scanJobId: readString(payload, 'scanJobId'),
   sourceBindingId: readString(payload, 'sourceBindingId'),
   scanPolicyId: readString(payload, 'scanPolicyId'),
+  providerKey: readString(payload, 'providerKey'),
+  sourceQuery: readSourceQuery(payload, 'sourceQuery'),
   attemptNumber: readOptionalPositiveInteger(payload, 'attemptNumber'),
   retryBudget: readOptionalPositiveInteger(payload, 'retryBudget'),
   workerId: readOptionalString(payload, 'workerId'),
@@ -176,4 +183,34 @@ const readOptionalPositiveInteger = (
   }
 
   return value;
+};
+
+const sourceQueryModes: readonly SourceQueryMode[] = ['search', 'listing', 'account_feed', 'thread', 'url'];
+
+const readSourceQuery = (
+  payload: Readonly<Record<string, unknown>>,
+  field: string,
+): SourceQuery => {
+  const value = payload[field];
+
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`Invalid execute scan command payload field: ${field}`);
+  }
+
+  const queryPayload = value as Readonly<Record<string, unknown>>;
+  const mode = queryPayload.mode;
+  const query = queryPayload.query;
+
+  if (typeof mode !== 'string' || !sourceQueryModes.includes(mode as SourceQueryMode)) {
+    throw new Error(`Invalid execute scan command payload field: ${field}.mode`);
+  }
+
+  if (typeof query !== 'string' || query.trim().length === 0) {
+    throw new Error(`Invalid execute scan command payload field: ${field}.query`);
+  }
+
+  return {
+    mode: mode as SourceQueryMode,
+    query: query.trim(),
+  };
 };

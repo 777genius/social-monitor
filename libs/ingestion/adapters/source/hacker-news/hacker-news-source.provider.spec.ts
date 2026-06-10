@@ -46,4 +46,32 @@ describe('HackerNewsSourceProvider', () => {
     ]);
     expect(result.warnings).toEqual(['Some Hacker News stories were deleted/dead and skipped.']);
   });
+
+  it('supports live listing mode through the client port without changing normalized output', async () => {
+    const provider = new HackerNewsSourceProvider(new FixtureHackerNewsClient());
+    const context = {
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'hn-binding-1',
+      scanJobId: 'scan-job-1',
+      correlationId: 'correlation-1',
+    };
+    const query = { mode: 'listing' as const, query: 'top' };
+
+    const result = await provider.scan(provider.planScan(query, context), context);
+
+    expect(result.items[0]).toMatchObject({
+      externalId: 'hn:1001',
+      title: 'Show HN: Social monitoring architecture',
+    });
+  });
+
+  it('rejects unsupported listing names before provider calls', () => {
+    const provider = new HackerNewsSourceProvider(new FixtureHackerNewsClient());
+
+    expect(provider.validateBinding({ mode: 'listing', query: 'frontpage' })).toEqual({
+      ok: false,
+      reason: 'Unsupported Hacker News listing: frontpage',
+    });
+  });
 });

@@ -2,6 +2,7 @@ import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
+import type { EnqueueScanCommand } from '../../ports';
 import { InMemoryScanQueueAdapter } from './in-memory-scan-queue.adapter';
 
 describe('InMemoryScanQueueAdapter', () => {
@@ -16,6 +17,8 @@ describe('InMemoryScanQueueAdapter', () => {
       scanJobId: 'scan-job-1',
       sourceBindingId: 'source-binding-1',
       scanPolicyId: 'scan-policy-1',
+      providerKey: 'fake-source',
+      sourceQuery: { mode: 'search', query: 'queue monitoring' },
       correlationId: 'correlation-1',
       causationId: 'causation-1',
     });
@@ -26,6 +29,10 @@ describe('InMemoryScanQueueAdapter', () => {
         commandType: 'ingestion.scan.execute',
         correlationId: 'correlation-1',
         causationId: 'causation-1',
+        payload: expect.objectContaining({
+          providerKey: 'fake-source',
+          sourceQuery: { mode: 'search', query: 'queue monitoring' },
+        }),
       }),
     ]);
     expect(
@@ -47,12 +54,14 @@ describe('InMemoryScanQueueAdapter', () => {
     const publisher = new InMemoryQueuePublisher();
     const metrics = new InMemoryMetricsRecorder();
     const adapter = new InMemoryScanQueueAdapter(publisher, metrics, 1);
-    const command = {
+    const command: EnqueueScanCommand = {
       tenantId: tenantId('tenant-backpressure'),
       workspaceId: workspaceId('workspace-backpressure'),
       scanJobId: 'scan-job-1',
       sourceBindingId: 'source-binding-1',
       scanPolicyId: 'scan-policy-1',
+      providerKey: 'fake-source',
+      sourceQuery: { mode: 'search', query: 'queue monitoring' },
       correlationId: 'correlation-1',
       causationId: 'causation-1',
     };

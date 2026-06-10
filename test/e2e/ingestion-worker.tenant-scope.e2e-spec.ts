@@ -23,6 +23,8 @@ describe('Ingestion worker tenant scope guard (e2e)', () => {
         scanJobId: 'scan-job-missing-tenant',
         sourceBindingId: 'source-binding-worker-scope-e2e',
         scanPolicyId: 'scan-policy-worker-scope-e2e',
+        providerKey: 'fake-source',
+        sourceQuery: { mode: 'search', query: 'worker tenant scope e2e' },
       },
     })).rejects.toThrow(new DomainError('tenant.scope_missing', 'tenantId command payload field is required'));
 
@@ -47,6 +49,8 @@ describe('Ingestion worker tenant scope guard (e2e)', () => {
         scanJobId: 'scan-job-missing-workspace',
         sourceBindingId: 'source-binding-worker-scope-e2e',
         scanPolicyId: 'scan-policy-worker-scope-e2e',
+        providerKey: 'fake-source',
+        sourceQuery: { mode: 'search', query: 'worker tenant scope e2e' },
       },
     })).rejects.toThrow(new DomainError('tenant.scope_missing', 'workspaceId command payload field is required'));
 

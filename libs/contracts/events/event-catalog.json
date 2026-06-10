@@ -46,7 +46,7 @@
       "producer": "monitoring",
       "tenantScoped": true,
       "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
-      "requiredPayloadFields": ["scanJobId", "tenantId", "workspaceId", "sourceBindingId", "scanPolicyId"]
+      "requiredPayloadFields": ["scanJobId", "tenantId", "workspaceId", "sourceBindingId", "scanPolicyId", "providerKey"]
     },
     {
       "eventType": "summary.ready",

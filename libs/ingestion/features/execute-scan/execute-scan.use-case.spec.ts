@@ -18,7 +18,21 @@ import type {
   SourceFetcherPort,
   SourceItemRepositoryPort,
 } from '../../ports';
+import type { ExecuteScanCommand } from './execute-scan.command';
 import { ExecuteScanUseCase } from './execute-scan.use-case';
+
+const makeExecuteScanCommand = (overrides: Partial<ExecuteScanCommand> = {}): ExecuteScanCommand => ({
+  tenantId: tenantId('tenant-1'),
+  workspaceId: workspaceId('workspace-1'),
+  scanJobId: 'scan-job-1',
+  sourceBindingId: 'source-binding-1',
+  scanPolicyId: 'scan-policy-1',
+  providerKey: 'fake-source',
+  sourceQuery: { mode: 'search', query: 'monitoring' },
+  correlationId: 'correlation-1',
+  causationId: 'causation-1',
+  ...overrides,
+});
 
 class SequenceIdGenerator implements IdGenerator {
   private nextId = 1;
@@ -208,15 +222,7 @@ describe('ExecuteScanUseCase', () => {
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
 
-    const result = await useCase.execute({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      scanJobId: 'scan-job-1',
-      sourceBindingId: 'source-binding-1',
-      scanPolicyId: 'scan-policy-1',
-      correlationId: 'correlation-1',
-      causationId: 'causation-1',
-    });
+    const result = await useCase.execute(makeExecuteScanCommand());
 
     expect(result).toEqual({
       ok: true,
@@ -281,15 +287,7 @@ describe('ExecuteScanUseCase', () => {
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
-    const command = {
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      scanJobId: 'scan-job-1',
-      sourceBindingId: 'source-binding-1',
-      scanPolicyId: 'scan-policy-1',
-      correlationId: 'correlation-1',
-      causationId: 'causation-1',
-    };
+    const command = makeExecuteScanCommand();
 
     await useCase.execute(command);
     const result = await useCase.execute(command);
@@ -326,15 +324,9 @@ describe('ExecuteScanUseCase', () => {
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
 
-    const result = await useCase.execute({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
+    const result = await useCase.execute(makeExecuteScanCommand({
       scanJobId: 'scan-job-failed',
-      sourceBindingId: 'source-binding-1',
-      scanPolicyId: 'scan-policy-1',
-      correlationId: 'correlation-1',
-      causationId: 'causation-1',
-    });
+    }));
 
     expect(result.ok).toBe(false);
     expect((await attempts.findByScanJob({
@@ -373,17 +365,11 @@ describe('ExecuteScanUseCase', () => {
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
 
-    const result = await useCase.execute({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
+    const result = await useCase.execute(makeExecuteScanCommand({
       scanJobId: 'scan-job-dead-letter',
-      sourceBindingId: 'source-binding-1',
-      scanPolicyId: 'scan-policy-1',
-      correlationId: 'correlation-1',
-      causationId: 'causation-1',
       attemptNumber: 3,
       retryBudget: 3,
-    });
+    }));
 
     expect(result.ok).toBe(false);
     expect(failures.retries).toHaveLength(0);
@@ -409,17 +395,11 @@ describe('ExecuteScanUseCase', () => {
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
     );
 
-    const result = await useCase.execute({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
+    const result = await useCase.execute(makeExecuteScanCommand({
       scanJobId: 'scan-job-leased',
-      sourceBindingId: 'source-binding-1',
-      scanPolicyId: 'scan-policy-1',
-      correlationId: 'correlation-1',
-      causationId: 'causation-1',
       workerId: 'worker-1',
       leaseTtlSeconds: 60,
-    });
+    }));
 
     expect(result.ok).toBe(false);
     expect(fetcher.calls).toHaveLength(0);

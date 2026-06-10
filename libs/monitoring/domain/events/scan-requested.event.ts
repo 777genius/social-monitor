@@ -6,6 +6,7 @@ export type ScanRequestedPayload = {
   readonly workspaceId: WorkspaceId;
   readonly sourceBindingId: string;
   readonly scanPolicyId: string;
+  readonly providerKey: string;
 };
 
 export type ScanRequestedEvent = EventEnvelope<ScanRequestedPayload>;
