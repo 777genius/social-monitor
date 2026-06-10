@@ -1017,3 +1017,23 @@ Evidence notes:
 - `ProjectSummaryReadyEventUseCase` projects tenant/workspace into the `summary.status.changed.v1` realtime payload, not only the realtime event top-level scope.
 - `libs/contracts/events/event-catalog.spec.ts` records the tenant-context catalog expectation for the Jest contract suite.
 - `test/e2e/summary-ready-to-realtime.e2e-spec.ts` records tenant/workspace payload continuity across summary ready fanout.
+
+## PR 35 Scan-To-Feed API Visibility Evidence
+
+- `f8ae341 test: verify scan results appear in feed API`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run check:release`
+- `timeout 120s node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/supertest e2e smoke verified API topic/source-binding/scan request, worker scan execution, shared local feed projection and REST `/feed/items` visibility.
+- `git diff --check`
+
+Evidence notes:
+
+- `test/e2e/api-to-ingestion-contract.e2e-spec.ts` now proves the local single-process MVP composition can make worker scan output visible through the API feed read endpoint.
+- The test keeps the architecture honest by sharing the feed read repository through Nest provider override instead of pretending separate in-memory API and worker processes share state.
+- This is still an in-memory MVP integration path. Production parity still requires Postgres-backed feed/source/scan repositories or another shared persistence adapter.
+- Targeted Jest e2e execution for `test/e2e/api-to-ingestion-contract.e2e-spec.ts` timed out in the current shell without assertion output, so it is not claimed as passed evidence here; the standalone AppModule/supertest smoke is the recorded e2e evidence for this slice.
