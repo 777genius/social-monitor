@@ -74,3 +74,9 @@ Implement ingestion as a replaceable provider platform, not as hardcoded scrapin
 - HN and RSS use the same provider port.
 - Duplicate items do not create duplicate feed cards.
 - Failed scans produce actionable status for UI and ops.
+
+## Implemented Evidence
+
+- PR 36 HN live-capable connector path added: scan queue commands now carry safe `providerKey` and `sourceQuery` metadata from source bindings, ingestion resolves providers through `SourceProviderRegistryPort`, and the worker registers a production-safe Hacker News provider backed by public HN Firebase listings plus HN Algolia search.
+- The implementation keeps Monitoring and Ingestion separated by a queue contract. Ingestion does not import Monitoring repositories or raw source binding config, and protected credential-like config fields are not copied into scan commands.
+- Fake source remains the deterministic local provider for tests. Hacker News is enabled for beta. RSS remains profiled until its HTTP/conditional-fetch adapter is implemented.

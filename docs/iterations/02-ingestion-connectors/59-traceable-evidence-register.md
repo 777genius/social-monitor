@@ -39,3 +39,29 @@ Prove that ingestion produces certified, normalized and provider-neutral feed da
 - Feed item without provenance.
 - Cursor behavior without retry evidence.
 - Temporal scan behavior without fake-clock/window-boundary evidence.
+
+## PR 36 Hacker News Live-Capable Connector Evidence
+
+- `df24a04 feat: enable hacker news scan provider path`
+
+Verified commands:
+
+- `npm run build`
+- `env NODE_OPTIONS=--max-old-space-size=1024 npx jest --config jest.config.ts --runInBand libs/monitoring/adapters/queue/in-memory-scan-queue.adapter.spec.ts libs/monitoring/features/request-scan/request-scan.use-case.spec.ts libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case.spec.ts libs/ingestion/features/execute-scan/execute-scan.use-case.spec.ts libs/ingestion/adapters/source/registry-source-fetcher.adapter.spec.ts libs/ingestion/adapters/source/in-memory-source-provider.registry.spec.ts libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider.spec.ts libs/contracts/events/event-catalog.spec.ts`
+- `timeout 120s node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/worker/supertest smoke verified REST HN source binding, queue `providerKey/sourceQuery` payload, worker provider-registry execution using deterministic HN fixture client, feed REST visibility and scan status success.
+- `timeout 45s node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` live HTTP smoke verified `HttpHackerNewsClient.listStories('top', 2)` through public HN Firebase API and `HttpHackerNewsClient.searchStories('monitoring', 2)` through HN Algolia search without API keys.
+- `npm run check:architecture`
+- `npm run check:events`
+- `npm run check:code-quality`
+- `npm run check:release`
+- `git diff --check`
+
+Evidence notes:
+
+- `EnqueueScanCommand` and `FetchSourceItemsCommand` now include safe `providerKey` and `sourceQuery` metadata.
+- `RequestScanUseCase` and `ScheduleDueScansUseCase` derive source query metadata from source binding config through a small presentation-safe helper, falling back to binding id when no safe query field exists.
+- `ExecuteScanCommandHandler` rejects malformed provider/query payloads at the queue adapter boundary before calling the use case.
+- `RegistrySourceFetcherAdapter` resolves the requested provider through `SourceProviderRegistryPort`; `ExecuteScanUseCase` remains provider-neutral.
+- `HttpHackerNewsClient` uses public HN Firebase listing endpoints for `top/new/best/ask/show/job` and HN Algolia `search_by_date` for keyword search; no API key or paid API is required for this MVP HN path.
+- `HackerNewsSourceProvider` is now `productionSafe: true` and readiness profile state is `enabled_beta`.
+- RSS is still intentionally not enabled for production-safe scans; it remains the next connector slice because it needs conditional HTTP, parser hardening and SSRF checks beyond the current fixture provider.
