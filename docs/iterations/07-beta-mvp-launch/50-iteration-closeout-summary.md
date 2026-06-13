@@ -9,8 +9,8 @@
 - Post-MVP roadmap input.
 
 ## Closure Gates
-- Backend MVP core loop has executable evidence through `npm run check:mvp-core-loop`.
-- Beta user onboarding walkthrough is linked to the same topic/source/scan/feed/summary/realtime path.
+- Backend MVP core loop and feedback submission have executable evidence through `npm run check:mvp-core-loop`.
+- Beta user onboarding walkthrough is linked to the same topic/source/scan/feed/summary/feedback/realtime path.
 - Supported sources are frozen or change-controlled.
 - Rollback/pause path is clear.
 - Feedback is classified with evidence.
@@ -19,7 +19,7 @@
 ## Blockers To Resolve Before Promotion
 - Unsupported source added during launch.
 - Onboarding walkthrough evidence not linked to the core-loop release gate.
-- Feedback without owner or evidence.
+- Real beta feedback report without owner/category/evidence.
 - Launch cannot be paused safely.
 
 ## Carryover

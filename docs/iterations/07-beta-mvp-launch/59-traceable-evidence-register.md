@@ -34,11 +34,12 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 
 ## Executable Evidence Added
 - `npm run check:mvp-core-loop` proves the backend MVP loop without network or paid provider access:
-  topic creation -> source binding -> scan policy -> scan request queue -> ingestion execution -> feed projection -> summary request/execution -> `summary.ready` event -> realtime projection/replay.
+  topic creation -> source binding -> scan policy -> scan request queue -> ingestion execution -> feed projection -> summary request/execution -> feedback classification -> `summary.ready` event -> realtime projection/replay.
 - The gate uses real use cases and ports across monitoring, ingestion, feed, summary and delivery. Only external source/model dependencies are deterministic adapters.
+- Summary feedback now records category, triage owner, immutable summary/citation evidence and eval-fixture eligibility.
 - The gate is now a blocking release evidence item in `ops/release/mvp-release-evidence-contract.json` and is included in `npm run verify`.
 
 ## Missing Evidence Blocks
-- Feedback has no owner/category/evidence.
+- Real beta feedback classification report is not produced from user samples yet.
 - Unsupported source request bypasses policy.
 - Ring expansion lacks capacity/cost/source-health evidence.

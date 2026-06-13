@@ -19,6 +19,7 @@ export type WorkspaceAction =
   | 'scan_jobs.read'
   | 'scan_requests.create'
   | 'summaries.read'
+  | 'summary_feedback.create'
   | 'summary_jobs.read'
   | 'summary_requests.create'
   | 'summary_regenerations.create'

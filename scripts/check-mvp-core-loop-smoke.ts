@@ -63,9 +63,11 @@ import { FeedSummaryFreshnessProbe } from '../libs/summary/adapters/evidence/fee
 import { InMemorySummaryEventPublisher } from '../libs/summary/adapters/messaging/in-memory-summary-event-publisher';
 import { DeterministicSummaryModelAdapter } from '../libs/summary/adapters/model/deterministic-summary-model.adapter';
 import { InMemorySummaryArtifactRepository } from '../libs/summary/adapters/persistence/in-memory-summary-artifact.repository';
+import { InMemorySummaryFeedbackRepository } from '../libs/summary/adapters/persistence/in-memory-summary-feedback.repository';
 import { InMemorySummaryJobRepository } from '../libs/summary/adapters/persistence/in-memory-summary-job.repository';
 import { ExecuteSummaryJobUseCase } from '../libs/summary/features/execute-summary-job/execute-summary-job.use-case';
 import { GetSummaryUseCase } from '../libs/summary/features/get-summary/get-summary.use-case';
+import { RecordSummaryFeedbackUseCase } from '../libs/summary/features/record-summary-feedback/record-summary-feedback.use-case';
 import { RequestSummaryUseCase } from '../libs/summary/features/request-summary/request-summary.use-case';
 import type { ReserveSummaryJobQuotaResult, SummaryQuotaPort } from '../libs/summary/ports';
 
@@ -90,6 +92,7 @@ async function main(): Promise<void> {
   const feedItems = new InMemoryFeedItemReadRepository();
   const summaryJobs = new InMemorySummaryJobRepository();
   const summaryArtifacts = new InMemorySummaryArtifactRepository();
+  const summaryFeedback = new InMemorySummaryFeedbackRepository();
   const summaryEvents = new InMemorySummaryEventPublisher();
   const realtimeEvents = new InMemoryRealtimeEventRepository();
 
@@ -274,6 +277,28 @@ async function main(): Promise<void> {
   assert(summary.qualityFlags.includes('limited_sources'), 'deterministic MVP summary should flag limited_sources');
   assert(summary.freshness.status === 'fresh', `expected fresh summary, got ${summary.freshness.status}`);
 
+  const firstCitation = summary.citations[0];
+  assert(firstCitation !== undefined, 'summary should expose at least one citation for feedback evidence');
+  const recordedFeedback = unwrap(
+    await new RecordSummaryFeedbackUseCase(summaryArtifacts, summaryFeedback, ids, clock).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryId: summaryExecution.summaryId,
+      idempotencyKey: 'summary-feedback:bad-citation',
+      submittedBy: 'beta-user-1',
+      rating: 2,
+      category: 'bad_citation',
+      citationId: firstCitation.citationId,
+      comment: 'Citation needs review before beta expansion.',
+      correlationId: correlation,
+    }),
+    'record summary feedback',
+  );
+  assert(recordedFeedback.created, 'summary feedback should be created');
+  assert(recordedFeedback.triageOwner === 'summary-owner', 'bad_citation feedback should route to summary owner');
+  assert(recordedFeedback.evidence.feedItemId === firstCitation.feedItemId, 'feedback must preserve citation feed evidence');
+  assert(recordedFeedback.eligibleForEvalFixture, 'bad_citation feedback should be eligible for eval fixture review');
+
   const summaryReadyEvent = summaryEvents.all()[0];
   assertSummaryReadyEvent(summaryReadyEvent);
   const realtimeProjection = unwrap(
@@ -303,7 +328,7 @@ async function main(): Promise<void> {
   assert(realtimePage.events[0]?.resourceId === summaryExecution.summaryId, 'realtime event must target summary');
   assert(realtimePage.events[0]?.sequence === realtimeProjection.sequence, 'realtime sequence mismatch');
 
-  console.log('MVP core loop smoke OK');
+  console.log('MVP core loop and feedback smoke OK');
 }
 
 class SequenceIdGenerator implements IdGenerator {

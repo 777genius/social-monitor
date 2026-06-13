@@ -22,6 +22,7 @@ const allowedRolesByAction: Record<WorkspaceAction, readonly WorkspaceRole[]> = 
   'scan_jobs.read': ['owner', 'admin', 'member', 'viewer'],
   'scan_requests.create': ['owner', 'admin', 'member'],
   'summaries.read': ['owner', 'admin', 'member', 'viewer'],
+  'summary_feedback.create': ['owner', 'admin', 'member', 'viewer'],
   'summary_jobs.read': ['owner', 'admin', 'member', 'viewer'],
   'summary_requests.create': ['owner', 'admin', 'member'],
   'summary_regenerations.create': ['owner', 'admin', 'member'],

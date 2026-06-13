@@ -4,8 +4,8 @@
 Decide whether beta can close and post-MVP roadmap execution can start.
 
 ## Go Conditions
-- Backend MVP core loop passes `npm run check:mvp-core-loop`.
-- Beta user can complete onboarding against the same topic/source/scan/feed/summary/realtime path.
+- Backend MVP core loop and feedback submission pass `npm run check:mvp-core-loop`.
+- Beta user can complete onboarding against the same topic/source/scan/feed/summary/feedback/realtime path.
 - Supported source list is frozen or change-controlled.
 - Known limitations are explicit.
 - Rollback/pause path has owners.
@@ -28,7 +28,7 @@ Decide whether beta can close and post-MVP roadmap execution can start.
 ## Rework Conditions
 - Unsupported source entered launch scope.
 - Launch cannot be paused safely.
-- Feedback has no owner/category/evidence.
+- Real beta feedback report has no owner/category/evidence.
 - Users cannot complete core onboarding.
 - `npm run check:mvp-core-loop` fails or is removed from release evidence.
 - Cross-tenant, secret leakage, uncited summary or idempotency/cursor data-loss risk remains open.

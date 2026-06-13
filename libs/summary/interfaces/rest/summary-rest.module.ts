@@ -14,24 +14,28 @@ import { InMemorySummaryEventPublisher } from '../../adapters/messaging/in-memor
 import { DeterministicSummaryModelAdapter } from '../../adapters/model/deterministic-summary-model.adapter';
 import { MeteredSummaryModelAdapter } from '../../adapters/model/metered-summary-model.adapter';
 import { InMemorySummaryArtifactRepository } from '../../adapters/persistence/in-memory-summary-artifact.repository';
+import { InMemorySummaryFeedbackRepository } from '../../adapters/persistence/in-memory-summary-feedback.repository';
 import { InMemorySummaryJobRepository } from '../../adapters/persistence/in-memory-summary-job.repository';
 import { EvaluateSummaryQualityUseCase } from '../../features/evaluate-summary-quality/evaluate-summary-quality.use-case';
 import { ExecuteSummaryJobUseCase } from '../../features/execute-summary-job/execute-summary-job.use-case';
 import { GetSummaryJobStatusUseCase } from '../../features/get-summary-job-status/get-summary-job-status.use-case';
 import { GetSummaryUseCase } from '../../features/get-summary/get-summary.use-case';
 import { ListSummariesUseCase } from '../../features/list-summaries/list-summaries.use-case';
+import { RecordSummaryFeedbackUseCase } from '../../features/record-summary-feedback/record-summary-feedback.use-case';
 import { RegenerateSummaryUseCase } from '../../features/regenerate-summary/regenerate-summary.use-case';
 import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
+import { SummaryFeedbackController } from './summary-feedback.controller';
 import { SummaryJobController } from './summary-job.controller';
 import { SummaryRequestController } from './summary-request.controller';
 import { SummaryController } from './summary.controller';
 
 @Module({
   imports: [UsageRestModule, IdentityAuthorizationModule, FeedRestModule],
-  controllers: [SummaryController, SummaryJobController, SummaryRequestController],
+  controllers: [SummaryController, SummaryFeedbackController, SummaryJobController, SummaryRequestController],
   providers: [
     InMemorySummaryJobRepository,
     InMemorySummaryArtifactRepository,
+    InMemorySummaryFeedbackRepository,
     InMemorySummaryEventPublisher,
     {
       provide: FeedSummaryEvidenceSelector,
@@ -120,6 +124,20 @@ import { SummaryController } from './summary.controller';
       inject: [InMemorySummaryJobRepository],
     },
     {
+      provide: RecordSummaryFeedbackUseCase,
+      useFactory: (
+        summaryArtifacts: InMemorySummaryArtifactRepository,
+        feedback: InMemorySummaryFeedbackRepository,
+      ) =>
+        new RecordSummaryFeedbackUseCase(
+          summaryArtifacts,
+          feedback,
+          new CryptoIdGenerator(),
+          new SystemClock(),
+        ),
+      inject: [InMemorySummaryArtifactRepository, InMemorySummaryFeedbackRepository],
+    },
+    {
       provide: RegenerateSummaryUseCase,
       useFactory: (
         summaryArtifacts: InMemorySummaryArtifactRepository,
@@ -143,7 +161,9 @@ import { SummaryController } from './summary.controller';
     InMemoryMetricsRecorder,
     InMemorySummaryEventPublisher,
     InMemorySummaryArtifactRepository,
+    InMemorySummaryFeedbackRepository,
     InMemorySummaryJobRepository,
+    RecordSummaryFeedbackUseCase,
     RegenerateSummaryUseCase,
   ],
 })
