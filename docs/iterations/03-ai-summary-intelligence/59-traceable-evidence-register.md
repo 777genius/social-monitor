@@ -150,3 +150,23 @@ Evidence notes:
 - `FeedSummaryFreshnessProbe` marks a summary stale only when same-tenant/workspace/topic evidence has `observedAt` after the frozen source window end.
 - `npm run check:summary-window` proves the selected source window remains frozen, an item exactly at `endedAt` stays fresh and a later item marks the summary stale with `newestFeedItemId` and `newestObservedAt`.
 - The beta MVP release contract now includes `summary-window-freshness` as a blocking gate, and `npm run verify` includes `check:summary-window`.
+
+## PR 44 Failed Summary Job Retry Gate
+
+- `3fb7603 feat: retry failed summary jobs safely`
+
+Verified commands:
+
+- `npm run check:summary-retry`
+- `npm run check:release`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run build`
+- `git diff --check`
+
+Evidence notes:
+
+- `SummaryJob.retry` moves only failed jobs back to `requested`, preserving job id/idempotency key and clearing stale failure state before the next execution attempt.
+- `ExecuteSummaryJobUseCase` can replay a failed summary job through the same validated pipeline instead of returning an unimplemented conflict.
+- `npm run check:summary-retry` proves a transient provider failure stores no artifact/event, then the same job id retries successfully, persists an artifact, publishes one `summary.ready` event and clears `failedAt`/`failureReason`.
+- The beta MVP release contract now includes `summary-retry-safety` as a blocking gate, and `npm run verify` includes `check:summary-retry`.
