@@ -21,6 +21,7 @@ const makeItem = () =>
     id: 'feed-1',
     tenantId: tenantId('tenant-1'),
     workspaceId: workspaceId('workspace-1'),
+    topicId: 'topic-1',
     sourceItemId: 'source-1',
     sourceBindingId: 'binding-1',
     canonicalUrl: 'https://example.test/feed-1',
@@ -45,6 +46,7 @@ describe('GetFeedItemUseCase', () => {
       ok: true,
       value: {
         id: 'feed-1',
+        topicId: 'topic-1',
         sourceItemId: 'source-1',
         sourceBindingId: 'binding-1',
         canonicalUrl: 'https://example.test/feed-1',

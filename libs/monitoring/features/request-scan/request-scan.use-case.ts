@@ -100,6 +100,7 @@ export class RequestScanUseCase {
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       scanJobId: this.ids.generate(),
+      topicId: bindingSnapshot.topicId,
       sourceBindingId: command.sourceBindingId,
       scanPolicyId: policySnapshot.id,
       providerKey: bindingSnapshot.providerKey,

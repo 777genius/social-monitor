@@ -13,6 +13,7 @@ export class FeedSummaryEvidenceSelector implements SummaryEvidenceSelectorPort 
     const result = await this.feedItems.list({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
+      topicId: params.topicId,
       limit: normalizeLimit(params.maxItems),
     });
     const items = result.items.map((item): SummaryEvidenceItem => {

@@ -45,6 +45,7 @@ describe('ingestion worker execute scan command (e2e)', () => {
         tenantId: 'tenant-1',
         workspaceId: 'workspace-1',
         scanJobId: 'scan-job-1',
+        topicId: 'topic-worker-e2e',
         sourceBindingId: 'source-binding-1',
         scanPolicyId: 'scan-policy-1',
         providerKey: 'fake-source',
@@ -73,6 +74,7 @@ describe('ingestion worker execute scan command (e2e)', () => {
     expect((await feedRepository.list({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-worker-e2e',
       limit: 10,
     })).items).toHaveLength(2);
     expect((await attemptRepository.findByScanJob({
@@ -139,6 +141,7 @@ describe('ingestion worker execute scan command (e2e)', () => {
         tenantId: 'tenant-1',
         workspaceId: 'workspace-1',
         scanJobId: 'scan-job-leased',
+        topicId: 'topic-worker-e2e',
         sourceBindingId: 'source-binding-1',
         scanPolicyId: 'scan-policy-1',
         providerKey: 'fake-source',
@@ -183,6 +186,7 @@ describe('ingestion worker execute scan command (e2e)', () => {
         tenantId: 'tenant-1',
         workspaceId: 'workspace-1',
         scanJobId: 'scan-job-failure',
+        topicId: 'topic-worker-e2e',
         sourceBindingId: 'source-binding-1',
         scanPolicyId: 'scan-policy-1',
         providerKey: 'fake-source',

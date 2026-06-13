@@ -11,11 +11,13 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
     const key = [
       snapshot.tenantId,
       snapshot.workspaceId,
+      snapshot.topicId,
       snapshot.sourceItemId,
     ].join(':');
     const canonicalKey = [
       snapshot.tenantId,
       snapshot.workspaceId,
+      snapshot.topicId,
       normalizeCanonicalUrl(snapshot.canonicalUrl),
     ].join(':');
     const existingCanonicalItem = this.itemsByCanonicalUrl.get(canonicalKey);
@@ -43,6 +45,7 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
+          (query.topicId === undefined || snapshot.topicId === query.topicId) &&
           matchesSearch(item, query.searchQuery)
         );
       })

@@ -24,6 +24,7 @@ export class GetFeedItemUseCase {
 
     return ok({
       id: snapshot.id,
+      topicId: snapshot.topicId,
       sourceItemId: snapshot.sourceItemId,
       sourceBindingId: snapshot.sourceBindingId,
       canonicalUrl: snapshot.canonicalUrl,

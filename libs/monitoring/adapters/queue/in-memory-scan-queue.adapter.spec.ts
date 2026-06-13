@@ -15,6 +15,7 @@ describe('InMemoryScanQueueAdapter', () => {
       tenantId: tenantId('tenant-queue-metrics'),
       workspaceId: workspaceId('workspace-queue-metrics'),
       scanJobId: 'scan-job-1',
+      topicId: 'topic-queue-metrics',
       sourceBindingId: 'source-binding-1',
       scanPolicyId: 'scan-policy-1',
       providerKey: 'fake-source',
@@ -31,6 +32,7 @@ describe('InMemoryScanQueueAdapter', () => {
         causationId: 'causation-1',
         payload: expect.objectContaining({
           providerKey: 'fake-source',
+          topicId: 'topic-queue-metrics',
           sourceQuery: { mode: 'search', query: 'queue monitoring' },
         }),
       }),
@@ -58,6 +60,7 @@ describe('InMemoryScanQueueAdapter', () => {
       tenantId: tenantId('tenant-backpressure'),
       workspaceId: workspaceId('workspace-backpressure'),
       scanJobId: 'scan-job-1',
+      topicId: 'topic-backpressure',
       sourceBindingId: 'source-binding-1',
       scanPolicyId: 'scan-policy-1',
       providerKey: 'fake-source',

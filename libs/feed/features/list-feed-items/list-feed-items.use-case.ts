@@ -35,6 +35,7 @@ export class ListFeedItemsUseCase {
 
         return {
           id: snapshot.id,
+          topicId: snapshot.topicId,
           sourceItemId: snapshot.sourceItemId,
           sourceBindingId: snapshot.sourceBindingId,
           canonicalUrl: snapshot.canonicalUrl,

@@ -7,12 +7,14 @@ const makeItem = (params: {
   readonly id: string;
   readonly sourceItemId: string;
   readonly tenant?: string;
+  readonly topicId?: string;
   readonly canonicalUrl: string;
 }) =>
   FeedItem.publish({
     id: params.id,
     tenantId: tenantId(params.tenant ?? 'tenant-1'),
     workspaceId: workspaceId('workspace-1'),
+    topicId: params.topicId ?? 'topic-1',
     sourceItemId: params.sourceItemId,
     sourceBindingId: 'binding-1',
     canonicalUrl: params.canonicalUrl,
@@ -58,6 +60,55 @@ describe('InMemoryFeedItemReadRepository', () => {
     await expect(repository.list({
       tenantId: tenantId('tenant-2'),
       workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+    })).resolves.toEqual({
+      items: [
+        expect.objectContaining({
+          toSnapshot: expect.any(Function),
+        }),
+      ],
+      nextCursor: undefined,
+    });
+  });
+
+  it('dedupes canonical URLs inside topic scope but keeps the same URL for another topic', async () => {
+    const repository = new InMemoryFeedItemReadRepository();
+    repository.upsert(makeItem({
+      id: 'topic-1-feed-1',
+      sourceItemId: 'topic-1-source-1',
+      topicId: 'topic-1',
+      canonicalUrl: 'https://example.test/story?utm_source=email&a=1',
+    }));
+    repository.upsert(makeItem({
+      id: 'topic-1-feed-2',
+      sourceItemId: 'topic-1-source-2',
+      topicId: 'topic-1',
+      canonicalUrl: 'https://example.test/story?a=1',
+    }));
+    repository.upsert(makeItem({
+      id: 'topic-2-feed-1',
+      sourceItemId: 'topic-2-source-1',
+      topicId: 'topic-2',
+      canonicalUrl: 'https://example.test/story?a=1',
+    }));
+
+    await expect(repository.list({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      limit: 10,
+    })).resolves.toEqual({
+      items: [
+        expect.objectContaining({
+          toSnapshot: expect.any(Function),
+        }),
+      ],
+      nextCursor: undefined,
+    });
+    await expect(repository.list({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-2',
       limit: 10,
     })).resolves.toEqual({
       items: [

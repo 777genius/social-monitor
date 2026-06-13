@@ -85,6 +85,7 @@ const run = async (): Promise<void> => {
         tenantId: tenant,
         workspaceId: workspace,
         scanJobId: 'scan-rss-smoke',
+        topicId: 'topic-rss-smoke',
         sourceBindingId: 'rss-binding-smoke',
         scanPolicyId: 'rss-policy-smoke',
         providerKey: 'rss',
@@ -92,7 +93,12 @@ const run = async (): Promise<void> => {
       },
       schemaVersion: 1,
     });
-    const feedResult = await feedItems.list({ tenantId: tenant, workspaceId: workspace, limit: 10 });
+    const feedResult = await feedItems.list({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: 'topic-rss-smoke',
+      limit: 10,
+    });
     const snapshots = feedResult.items.map((item) => item.toSnapshot());
     const firstFeedItem = snapshots[0];
     const cursor = await scanCursors.findBySourceBinding({

@@ -113,6 +113,7 @@ export class ExecuteScanUseCase {
       const projectionResult = await this.feedProjection.project({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
+        topicId: command.topicId,
         sourceBindingId: command.sourceBindingId,
         sourceItems: items,
       });

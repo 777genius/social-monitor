@@ -24,6 +24,7 @@ const makeItem = (id: string) =>
     id,
     tenantId: tenantId('tenant-1'),
     workspaceId: workspaceId('workspace-1'),
+    topicId: 'topic-1',
     sourceItemId: `source-${id}`,
     sourceBindingId: 'binding-1',
     canonicalUrl: `https://example.test/${id}`,
@@ -54,6 +55,7 @@ describe('ListFeedItemsUseCase', () => {
         items: [
           {
             id: '1',
+            topicId: 'topic-1',
             sourceItemId: 'source-1',
             sourceBindingId: 'binding-1',
             canonicalUrl: 'https://example.test/1',

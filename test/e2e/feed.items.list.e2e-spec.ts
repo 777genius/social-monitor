@@ -136,6 +136,27 @@ describe('Feed items list (e2e)', () => {
       items: [],
     });
 
+    seedFeedItem({
+      id: 'feed-other-topic',
+      sourceItemId: 'source-other-topic',
+      tenant: 'tenant-feed-e2e',
+      workspace: 'workspace-feed-e2e',
+      topicId: 'topic-feed-other-e2e',
+      publishedAt: new Date('2026-06-05T12:30:00.000Z'),
+    });
+    const topicFiltered = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 10, topicId: 'topic-feed-e2e' })
+      .set('x-tenant-id', 'tenant-feed-e2e')
+      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(topicFiltered.body.items).toEqual([
+      expect.objectContaining({ id: 'feed-2', topicId: 'topic-feed-e2e' }),
+      expect.objectContaining({ id: 'feed-1', topicId: 'topic-feed-e2e' }),
+    ]);
+
     const detail = await request(app.getHttpServer())
       .get('/feed/items/feed-1')
       .set('x-tenant-id', 'tenant-feed-e2e')
@@ -228,6 +249,7 @@ describe('Feed items list (e2e)', () => {
     readonly sourceItemId: string;
     readonly tenant: string;
     readonly workspace: string;
+    readonly topicId?: string;
     readonly canonicalUrl?: string;
     readonly publishedAt: Date;
   }): void => {
@@ -236,6 +258,7 @@ describe('Feed items list (e2e)', () => {
         id: params.id,
         tenantId: tenantId(params.tenant),
         workspaceId: workspaceId(params.workspace),
+        topicId: params.topicId ?? 'topic-feed-e2e',
         sourceItemId: params.sourceItemId,
         sourceBindingId: 'binding-feed-e2e',
         canonicalUrl: params.canonicalUrl ?? `https://example.test/${params.id}`,

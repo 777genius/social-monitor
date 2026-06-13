@@ -101,6 +101,7 @@ describe('Request scan flow (e2e)', () => {
       causationId: 'request-scan-now',
       payload: {
         scanJobId: first.body.scanJobId,
+        topicId: topic.body.topicId,
         sourceBindingId: binding.body.sourceBindingId,
       },
     });

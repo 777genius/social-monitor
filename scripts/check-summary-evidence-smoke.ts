@@ -29,6 +29,7 @@ const run = async (): Promise<void> => {
     id: 'feed:summary-smoke:1',
     tenantId: tenant,
     workspaceId: workspace,
+    topicId,
     sourceItemId: 'rss-binding-smoke:rss-guid-1',
     sourceBindingId: 'rss-binding-smoke',
     canonicalUrl: 'https://example.test/rss/item-1',

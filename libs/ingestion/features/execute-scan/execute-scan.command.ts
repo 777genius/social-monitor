@@ -5,6 +5,7 @@ export type ExecuteScanCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly scanJobId: string;
+  readonly topicId: string;
   readonly sourceBindingId: string;
   readonly scanPolicyId: string;
   readonly providerKey: string;

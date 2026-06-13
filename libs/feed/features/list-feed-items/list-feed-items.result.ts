@@ -1,5 +1,6 @@
 export type FeedItemListEntry = {
   readonly id: string;
+  readonly topicId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
   readonly canonicalUrl: string;

@@ -195,6 +195,7 @@ describe('ScheduleDueScansUseCase', () => {
     expect(queue.commands).toEqual([
       expect.objectContaining({
         scanJobId: 'scan-job-1',
+        topicId: 'topic-1',
         sourceBindingId: 'binding-1',
         scanPolicyId: 'policy-1',
         providerKey: 'fake-source',

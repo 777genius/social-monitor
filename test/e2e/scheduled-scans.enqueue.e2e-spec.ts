@@ -103,6 +103,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       payload: {
         tenantId: tenant,
         workspaceId: workspace,
+        topicId: topic.body.topicId,
         sourceBindingId: binding.body.sourceBindingId,
         scanPolicyId: policy.body.scanPolicyId,
       },

@@ -17,7 +17,11 @@ class FakeFeedItems implements FeedItemReadRepositoryPort {
         .filter((item) => {
           const snapshot = item.toSnapshot();
 
-          return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId;
+          return (
+            snapshot.tenantId === query.tenantId &&
+            snapshot.workspaceId === query.workspaceId &&
+            (query.topicId === undefined || snapshot.topicId === query.topicId)
+          );
         })
         .sort((left, right) =>
           right.toSnapshot().publishedAt.getTime() - left.toSnapshot().publishedAt.getTime(),
@@ -41,6 +45,7 @@ describe('FeedSummaryEvidenceSelector', () => {
       id: 'feed-old',
       tenantId: tenant,
       workspaceId: workspace,
+      topicId: 'topic-1',
       sourceItemId: 'binding-1:item-old',
       sourceBindingId: 'binding-1',
       canonicalUrl: 'https://example.test/old',
@@ -53,6 +58,7 @@ describe('FeedSummaryEvidenceSelector', () => {
       id: 'feed-new',
       tenantId: tenant,
       workspaceId: workspace,
+      topicId: 'topic-1',
       sourceItemId: 'binding-2:item-new',
       sourceBindingId: 'binding-2',
       canonicalUrl: 'https://example.test/new',
@@ -65,6 +71,7 @@ describe('FeedSummaryEvidenceSelector', () => {
       id: 'feed-other-tenant',
       tenantId: tenantId('tenant-2'),
       workspaceId: workspace,
+      topicId: 'topic-1',
       sourceItemId: 'binding-3:item-other',
       sourceBindingId: 'binding-3',
       canonicalUrl: 'https://example.test/other',

@@ -39,6 +39,7 @@ export class InMemoryScanQueueAdapter implements ScanQueuePort {
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         scanJobId: command.scanJobId,
+        topicId: command.topicId,
         sourceBindingId: command.sourceBindingId,
         scanPolicyId: command.scanPolicyId,
         providerKey: command.providerKey,

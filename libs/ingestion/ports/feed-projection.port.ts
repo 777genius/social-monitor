@@ -5,6 +5,7 @@ import type { SourceItem } from '../domain';
 export type ProjectFeedItemsCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
+  readonly topicId: string;
   readonly sourceBindingId: string;
   readonly sourceItems: readonly SourceItem[];
 };

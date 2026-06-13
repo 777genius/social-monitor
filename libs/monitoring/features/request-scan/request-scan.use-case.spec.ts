@@ -235,6 +235,7 @@ describe('RequestScanUseCase', () => {
     expect(outbox.events).toHaveLength(1);
     expect(queue.commands).toEqual([
       expect.objectContaining({
+        topicId: 'topic-1',
         providerKey: 'fake-source',
         sourceQuery: { mode: 'search', query: 'binding-1' },
       }),

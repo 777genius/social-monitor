@@ -76,6 +76,7 @@ export class ScheduleDueScansUseCase {
           tenantId: policySnapshot.tenantId,
           workspaceId: policySnapshot.workspaceId,
           scanJobId: this.ids.generate(),
+          topicId: bindingSnapshot.topicId,
           sourceBindingId: policySnapshot.sourceBindingId,
           scanPolicyId: policySnapshot.id,
           providerKey: bindingSnapshot.providerKey,

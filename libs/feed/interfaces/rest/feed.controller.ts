@@ -32,6 +32,7 @@ export class FeedController {
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
+  @ApiQuery({ name: 'topicId', required: false, type: String })
   @ApiQuery({ name: 'q', required: false, type: String })
   async list(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -39,6 +40,7 @@ export class FeedController {
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
+    @Query('topicId') topicId: string | undefined,
     @Query('q') searchQuery: string | undefined,
   ): Promise<ListFeedItemsResponseDto> {
     const scope = requireTenantScope({
@@ -51,6 +53,7 @@ export class FeedController {
       workspaceId: scope.workspaceId,
       limit: parseLimit(limitQuery),
       cursor,
+      topicId: normalizeTopicId(topicId),
       searchQuery: normalizeSearchQuery(searchQuery),
     });
 
@@ -119,6 +122,16 @@ const parseLimit = (value: string | undefined): number => {
 };
 
 const normalizeSearchQuery = (value: string | undefined): string | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed.length === 0 ? undefined : trimmed;
+};
+
+const normalizeTopicId = (value: string | undefined): string | undefined => {
   if (value === undefined) {
     return undefined;
   }
