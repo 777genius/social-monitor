@@ -6,6 +6,7 @@ import type {
   SummaryEvalFailureCode,
   SummaryEvalFixtureResult,
 } from './evaluate-summary-quality.result';
+import { validateSummaryCitationsAgainstEvidence } from '../shared/summary-citation-validator';
 
 type MutableEvalFailure = {
   readonly code: SummaryEvalFailureCode;
@@ -47,6 +48,8 @@ export class EvaluateSummaryQualityUseCase {
           message: providerValidation.failure.message,
         });
       }
+
+      validateSummaryCitationsAgainstEvidence(attempt.draft, fixture.input.evidence);
 
       SummaryArtifact.create({
         schemaVersion: 'summary.artifact.v1',

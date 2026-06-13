@@ -88,7 +88,19 @@ export class SummaryArtifact {
       throw new Error('Summary source window end must be after start');
     }
 
-    const citationIds = new Set(props.citationMap.map((citation) => citation.citationId));
+    const citationIds = new Set<string>();
+
+    for (const citation of props.citationMap) {
+      if (citation.citationId.trim().length === 0) {
+        throw new Error('Summary citation id must be non-empty');
+      }
+
+      if (citationIds.has(citation.citationId)) {
+        throw new Error('Summary citation ids must be unique');
+      }
+
+      citationIds.add(citation.citationId);
+    }
 
     for (const keyPoint of props.keyPoints) {
       if (keyPoint.claim.trim().length === 0 || keyPoint.citationIds.length === 0) {
@@ -98,6 +110,14 @@ export class SummaryArtifact {
       for (const citationId of keyPoint.citationIds) {
         if (!citationIds.has(citationId)) {
           throw new Error('Summary key point cites evidence outside citation map');
+        }
+      }
+    }
+
+    for (const risk of props.risksAndUnknowns) {
+      for (const citationId of risk.citationIds ?? []) {
+        if (!citationIds.has(citationId)) {
+          throw new Error('Summary risk cites evidence outside citation map');
         }
       }
     }

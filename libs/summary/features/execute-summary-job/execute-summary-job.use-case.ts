@@ -22,6 +22,7 @@ import type {
 } from '../../ports';
 import type { ExecuteSummaryJobCommand } from './execute-summary-job.command';
 import type { ExecuteSummaryJobResult } from './execute-summary-job.result';
+import { validateSummaryCitationsAgainstEvidence } from '../shared/summary-citation-validator';
 
 type ExecuteSummaryJobFailure = DomainError | Error;
 
@@ -161,6 +162,8 @@ export class ExecuteSummaryJobUseCase {
     if (!validation.ok) {
       throw new Error(validation.failure.message);
     }
+
+    validateSummaryCitationsAgainstEvidence(attempt.draft, evidence);
 
     const artifact = SummaryArtifact.create({
       schemaVersion: 'summary.artifact.v1',

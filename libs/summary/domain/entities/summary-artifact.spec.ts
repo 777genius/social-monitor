@@ -78,6 +78,36 @@ describe('SummaryArtifact', () => {
     }))).toThrow('Summary key point must have a claim and citations');
   });
 
+  it('rejects duplicate citation identifiers', () => {
+    expect(() => SummaryArtifact.create(baseArtifact({
+      citationMap: [
+        {
+          citationId: 'citation-1',
+          feedItemId: 'feed-1',
+          sourceItemId: 'source-1',
+          field: 'title',
+        },
+        {
+          citationId: 'citation-1',
+          feedItemId: 'feed-2',
+          sourceItemId: 'source-2',
+          field: 'bodyPreview',
+        },
+      ],
+    }))).toThrow('Summary citation ids must be unique');
+  });
+
+  it('rejects risk citations outside the citation map', () => {
+    expect(() => SummaryArtifact.create(baseArtifact({
+      risksAndUnknowns: [
+        {
+          description: 'Risk cites a missing source.',
+          citationIds: ['missing-citation'],
+        },
+      ],
+    }))).toThrow('Summary risk cites evidence outside citation map');
+  });
+
   it('accepts no-signal artifact only with no-signal flag and reason', () => {
     expect(SummaryArtifact.create(baseArtifact({
       keyPoints: [],

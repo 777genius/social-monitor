@@ -156,6 +156,14 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
       };
     }
 
+    if (message.toLowerCase().includes('citation')) {
+      return {
+        kind: 'citation_validation_failed',
+        retryable: false,
+        message,
+      };
+    }
+
     return {
       kind: 'unknown',
       retryable: false,

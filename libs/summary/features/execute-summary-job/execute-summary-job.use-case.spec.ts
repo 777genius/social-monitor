@@ -88,6 +88,32 @@ class EmptyEvidenceSelector implements SummaryEvidenceSelectorPort {
   }
 }
 
+class SelectedEvidenceSelector implements SummaryEvidenceSelectorPort {
+  async select(params: Parameters<SummaryEvidenceSelectorPort['select']>[0]): Promise<SummaryEvidenceSelection> {
+    void params;
+
+    return {
+      sourceWindow: {
+        windowId: 'topic-1:selected',
+        startedAt: new Date('2026-06-06T00:00:00.000Z'),
+        endedAt: new Date('2026-06-06T00:00:01.000Z'),
+        selectedFeedItemIds: ['feed-1'],
+      },
+      items: [
+        {
+          feedItemId: 'feed-1',
+          sourceItemId: 'source-1',
+          sourceBindingId: 'binding-1',
+          title: 'Selected source',
+          bodyPreview: 'Selected body',
+          canonicalUrl: 'https://example.test/source-1',
+          observedAt: new Date('2026-06-06T00:00:00.000Z'),
+        },
+      ],
+    };
+  }
+}
+
 class NoSignalSummaryModel implements SummaryModelPort {
   route(input: SummaryModelInput, policy: SummaryModelPolicy, budget: SummaryModelBudget): SummaryModelRoute {
     void input;
@@ -169,6 +195,60 @@ class NoSignalSummaryModel implements SummaryModelPort {
   }
 }
 
+class InvalidCitationSummaryModel extends NoSignalSummaryModel {
+  override async summarize(input: SummaryModelInput, route: SummaryModelRoute): Promise<ProviderSummaryAttempt> {
+    void input;
+
+    return {
+      route,
+      draft: {
+        headline: 'Invalid citation summary',
+        executiveSummary: 'This draft cites a feed item outside the selected evidence window.',
+        keyPoints: [{ claim: 'Invalid claim', citationIds: ['c1'] }],
+        risksAndUnknowns: [{ description: 'Invalid risk citation.', citationIds: ['c1'] }],
+        sourceHighlights: ['Invalid highlight'],
+        citationMap: [
+          {
+            citationId: 'c1',
+            feedItemId: 'feed-outside-window',
+            sourceItemId: 'source-1',
+            field: 'title',
+          },
+        ],
+        qualityFlags: [],
+        confidence: {
+          level: 'low',
+          score: 0.25,
+          rationale: 'Invalid citation fixture.',
+        },
+        lineage: {
+          promptVersion: route.promptVersion,
+          schemaVersion: route.schemaVersion,
+          modelVersion: route.model,
+          providerVersion: route.provider,
+          rulesVersion: 'summary.rules.test.v1',
+          evalDatasetVersion: 'summary.eval.test.v1',
+        },
+        usage: {
+          inputTokens: 10,
+          outputTokens: 20,
+          estimatedCostUsd: 0,
+        },
+      },
+    };
+  }
+
+  override classifyError(error: unknown): SummaryModelFailure {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+
+    return {
+      kind: message.toLowerCase().includes('citation') ? 'citation_validation_failed' : 'unknown',
+      retryable: false,
+      message,
+    };
+  }
+}
+
 class FakeSummaryEvents implements SummaryEventPublisherPort {
   readonly events: EventEnvelope<Readonly<Record<string, unknown>>>[] = [];
 
@@ -240,6 +320,68 @@ describe('ExecuteSummaryJobUseCase', () => {
         summaryId: 'summary-artifact-1',
         status: 'no_signal',
       },
+    });
+  });
+
+  it('fails the job without publishing when provider citations point outside selected evidence', async () => {
+    const jobs = new FakeSummaryJobs();
+    const artifacts = new FakeSummaryArtifacts();
+    const events = new FakeSummaryEvents();
+    const tenant = tenantId('tenant-1');
+    const workspace = workspaceId('workspace-1');
+    await jobs.save(
+      SummaryJob.request({
+        id: 'summary-job-invalid-citation',
+        tenantId: tenant,
+        workspaceId: workspace,
+        topicId: 'topic-1',
+        idempotencyKey: 'summary-request-invalid-citation',
+        requestedAt: new Date('2026-06-06T00:00:00.000Z'),
+      }),
+    );
+    const useCase = new ExecuteSummaryJobUseCase(
+      jobs,
+      artifacts,
+      new SelectedEvidenceSelector(),
+      new InvalidCitationSummaryModel(),
+      events,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-06T00:00:02.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: 'summary-job-invalid-citation',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'external.dependency_unavailable',
+        details: {
+          kind: 'citation_validation_failed',
+        },
+      }),
+    });
+    await expect(
+      artifacts.list({
+        tenantId: tenant,
+        workspaceId: workspace,
+        limit: 10,
+      }),
+    ).resolves.toEqual({
+      items: [],
+      nextCursor: undefined,
+    });
+    expect(events.events).toHaveLength(0);
+    expect((await jobs.findById({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: 'summary-job-invalid-citation',
+    }))?.toSnapshot()).toMatchObject({
+      status: 'failed',
+      failureReason: 'Summary citation validation failed: citation c1 references unselected feed item',
     });
   });
 });
