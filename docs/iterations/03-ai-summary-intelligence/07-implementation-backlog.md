@@ -61,3 +61,9 @@ Build summarization as a governed domain workflow with citations, budget control
 - Invalid model output is rejected and retried safely.
 - Cost and token usage are visible.
 - Summary rules change output without changing domain code.
+
+## Implemented Evidence
+
+- PR 38 feed-backed summary evidence selection added: `SummaryEvidenceSelectorPort` now has a runtime adapter backed by the Feed read repository port, so completed summaries can cite real feed/source items instead of always producing `no_signal`.
+- Feed exposes a DI token for `FeedItemReadRepositoryPort`; Summary imports only the Feed port and `FeedRestModule`, preserving Clean Architecture and avoiding cross-context adapter imports.
+- Fast smoke coverage proves a feed item can become a completed summary artifact with key point `c1`, citation map, selected feed item ids and `summary.ready` event.
