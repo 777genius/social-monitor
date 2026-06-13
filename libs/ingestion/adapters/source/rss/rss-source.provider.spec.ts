@@ -60,6 +60,42 @@ describe('RssSourceProvider', () => {
         publishedAt: new Date('2026-06-05T10:01:00.000Z'),
       },
     ]);
+    expect(result.nextCursor).toBe(JSON.stringify({
+      etag: '"fixture-rss-etag"',
+      lastModified: 'Fri, 05 Jun 2026 10:02:00 GMT',
+    }));
     expect(result.warnings).toEqual(['Some RSS items had no GUID; canonical URL fallback was used.']);
+  });
+
+  it('passes ETag and Last-Modified cursor metadata to the RSS client', async () => {
+    const client = new FixtureRssClient();
+    const provider = new RssSourceProvider(client);
+    const context = {
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'rss-binding-1',
+      scanJobId: 'scan-job-1',
+      correlationId: 'correlation-1',
+    };
+    const query = { mode: 'url' as const, query: 'https://example.test/feed.xml' };
+
+    const result = await provider.scan({
+      ...provider.planScan(query, context),
+      cursor: JSON.stringify({ etag: '"old-etag"', lastModified: 'Fri, 05 Jun 2026 09:00:00 GMT' }),
+    }, context);
+
+    expect(result.items).toHaveLength(2);
+    expect(client.lastRead).toEqual({
+      feedUrl: 'https://example.test/feed.xml',
+      limit: 30,
+      options: {
+        etag: '"old-etag"',
+        lastModified: 'Fri, 05 Jun 2026 09:00:00 GMT',
+      },
+    });
+    expect(result.nextCursor).toBe(JSON.stringify({
+      etag: '"fixture-rss-etag"',
+      lastModified: 'Fri, 05 Jun 2026 10:02:00 GMT',
+    }));
   });
 });

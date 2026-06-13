@@ -37,7 +37,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   },
   {
     providerKey: 'rss',
-    state: 'profiled',
+    state: 'enabled_beta',
     acquisitionMode: 'feed_polling_with_site_policy_respect',
     approvalOwner: 'engineering',
     termsNotes: 'Use RSS/Atom feeds with ETag/Last-Modified where available; no broad page scraping.',
@@ -49,7 +49,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     supportedContentUnits: ['post', 'link'],
     unsupportedContentUnits: ['comment', 'profile', 'community', 'media'],
     estimatedCostPerScan: 'low_to_medium',
-    betaEnablementCriteria: ['RSS malformed/duplicate fixtures pass', 'HTTP cache headers supported'],
+    betaEnablementCriteria: ['RSS malformed/duplicate fixtures pass', 'HTTP cache headers supported', 'SSRF URL policy enforced'],
     rollbackPlan: 'Pause affected feed bindings and expose source health degraded.',
   },
   {

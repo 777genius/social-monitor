@@ -18,6 +18,7 @@ describe('RegistrySourceFetcherAdapter', () => {
       providerKey: 'fake-source',
       sourceQuery: { mode: 'search', query: 'registry monitoring' },
       correlationId: 'correlation-registry-fetcher',
+      cursor: 'cursor-before-registry-fetcher',
     });
 
     expect(result.items).toHaveLength(2);

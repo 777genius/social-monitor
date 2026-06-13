@@ -7,6 +7,18 @@ export type RssFeedItem = {
   readonly publishedAt?: Date;
 };
 
+export type RssReadFeedOptions = {
+  readonly etag?: string;
+  readonly lastModified?: string;
+};
+
+export type RssReadFeedResult = {
+  readonly items: readonly RssFeedItem[];
+  readonly etag?: string;
+  readonly lastModified?: string;
+  readonly notModified?: boolean;
+};
+
 export interface RssClientPort {
-  readFeed(feedUrl: string, limit: number): Promise<readonly RssFeedItem[]>;
+  readFeed(feedUrl: string, limit: number, options?: RssReadFeedOptions): Promise<RssReadFeedResult>;
 }

@@ -36,6 +36,7 @@ const command: FetchSourceItemsCommand = {
   providerKey: 'fake-source',
   sourceQuery: { mode: 'search', query: 'monitoring' },
   correlationId: 'correlation-1',
+  cursor: 'cursor-before-scan',
 };
 
 describe('CircuitBreakerSourceFetcherAdapter', () => {

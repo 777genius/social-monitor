@@ -132,13 +132,19 @@ class FakeScanAttemptRepository implements ScanAttemptRepositoryPort {
 
 class FakeScanCursorRepository implements ScanCursorRepositoryPort {
   readonly saved: unknown[] = [];
+  private cursor: Parameters<ScanCursorRepositoryPort['save']>[0] | null = null;
 
   async save(command: Parameters<ScanCursorRepositoryPort['save']>[0]): Promise<void> {
     this.saved.push(command);
+    this.cursor = command;
   }
 
-  async findBySourceBinding(): Promise<null> {
-    return null;
+  seed(command: Parameters<ScanCursorRepositoryPort['save']>[0]): void {
+    this.cursor = command;
+  }
+
+  async findBySourceBinding(): Promise<Parameters<ScanCursorRepositoryPort['save']>[0] | null> {
+    return this.cursor;
   }
 }
 
@@ -235,6 +241,11 @@ describe('ExecuteScanUseCase', () => {
       },
     });
     expect(fetcher.calls).toHaveLength(1);
+    expect(fetcher.calls[0]).toEqual(expect.objectContaining({
+      providerKey: 'fake-source',
+      sourceQuery: { mode: 'search', query: 'monitoring' },
+      cursor: undefined,
+    }));
     expect(repository.all()).toHaveLength(2);
     expect(projection.commands).toHaveLength(1);
     expect(reporter.succeeded).toEqual([
@@ -303,6 +314,42 @@ describe('ExecuteScanUseCase', () => {
       },
     });
     expect(repository.all()).toHaveLength(2);
+  });
+
+  it('passes the last committed cursor to the source fetcher before saving the next cursor', async () => {
+    const fetcher = new FixedSourceFetcher();
+    const cursors = new FakeScanCursorRepository();
+    cursors.seed({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'source-binding-1',
+      cursor: 'cursor-before-scan',
+      committedAt: new Date('2026-06-05T11:00:00.000Z'),
+    });
+    const useCase = new ExecuteScanUseCase(
+      fetcher,
+      new FakeSourceItemRepository(),
+      new FakeFeedProjection(),
+      new FakeScanAttemptRepository(),
+      cursors,
+      new FakeScanExecutionReporter(),
+      new FakeScanFailureQueue(),
+      new FakeScanLease(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute(makeExecuteScanCommand());
+
+    expect(result.ok).toBe(true);
+    expect(fetcher.calls[0]).toEqual(expect.objectContaining({
+      cursor: 'cursor-before-scan',
+    }));
+    expect(cursors.saved).toEqual([
+      expect.objectContaining({
+        cursor: 'cursor-after-scan',
+      }),
+    ]);
   });
 
   it('marks scan attempt as failed when provider fetch fails', async () => {

@@ -27,7 +27,10 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
       scanJobId: command.scanJobId,
       correlationId: command.correlationId,
     };
-    const plan = provider.planScan(command.sourceQuery, context);
+    const plan = {
+      ...provider.planScan(command.sourceQuery, context),
+      cursor: command.cursor,
+    };
     const result = await provider.scan(plan, context);
 
     return {

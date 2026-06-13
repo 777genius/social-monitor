@@ -72,6 +72,11 @@ export class ExecuteScanUseCase {
     await this.scanAttempts.save(attempt);
 
     try {
+      const existingCursor = await this.scanCursors.findBySourceBinding({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        sourceBindingId: command.sourceBindingId,
+      });
       const fetched = await this.sourceFetcher.fetch({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
@@ -80,6 +85,7 @@ export class ExecuteScanUseCase {
         providerKey: command.providerKey,
         sourceQuery: command.sourceQuery,
         correlationId: command.correlationId,
+        cursor: existingCursor?.cursor,
       });
 
       const ingestedAt = this.clock.now();

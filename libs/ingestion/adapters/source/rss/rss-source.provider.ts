@@ -15,14 +15,14 @@ const capabilityProfile: SourceCapabilityProfile = {
   providerKey: 'rss',
   displayName: 'RSS/Atom',
   version: 1,
-  productionSafe: false,
+  productionSafe: true,
   supportedContentUnits: ['post', 'link'],
   supportedQueryModes: ['url'],
   cursorModel: 'etag_last_modified',
   stableIdentity: ['guid', 'canonicalUrl', 'contentHash'],
   quotaModel: 'per_source_binding',
   limitations: [
-    'Fixture-backed MVP provider; production HTTP client must enforce SSRF policy, ETag and Last-Modified.',
+    'Uses SSRF-checked HTTP feed polling with ETag and Last-Modified cursor metadata. Publisher policy and retry budget still apply.',
   ],
 };
 
@@ -68,11 +68,12 @@ export class RssSourceProvider implements SourceProviderPort {
       throw new Error(validation.reason);
     }
 
-    const items = await this.client.readFeed(plan.query.query, plan.maxItems);
+    const feed = await this.client.readFeed(plan.query.query, plan.maxItems, decodeCursor(plan.cursor));
 
     return {
-      items: items.flatMap((item, index) => normalizeItem(item, plan.query.query, index)),
-      warnings: items.some((item) => item.guid === undefined)
+      items: feed.items.flatMap((item, index) => normalizeItem(item, plan.query.query, index)),
+      nextCursor: encodeCursor(feed, plan.cursor),
+      warnings: feed.items.some((item) => item.guid === undefined)
         ? ['Some RSS items had no GUID; canonical URL fallback was used.']
         : [],
     };
@@ -107,4 +108,35 @@ const normalizeItem = (item: RssFeedItem, feedUrl: string, index: number) => {
       publishedAt: item.publishedAt ?? new Date(0),
     },
   ];
+};
+
+const decodeCursor = (cursor: string | undefined) => {
+  if (cursor === undefined) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(cursor) as Readonly<Record<string, unknown>>;
+
+    return {
+      etag: typeof parsed.etag === 'string' ? parsed.etag : undefined,
+      lastModified: typeof parsed.lastModified === 'string' ? parsed.lastModified : undefined,
+    };
+  } catch {
+    return {};
+  }
+};
+
+const encodeCursor = (
+  feed: { readonly etag?: string; readonly lastModified?: string },
+  previousCursor: string | undefined,
+): string | undefined => {
+  if (feed.etag === undefined && feed.lastModified === undefined) {
+    return previousCursor;
+  }
+
+  return JSON.stringify({
+    etag: feed.etag,
+    lastModified: feed.lastModified,
+  });
 };

@@ -11,6 +11,8 @@ import { InMemoryFeedItemReadRepository } from '../../libs/feed/adapters/persist
 import { InMemorySourceItemRepository } from '../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { NoopScanExecutionReporterAdapter } from '../../libs/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter';
 import { RegistrySourceFetcherAdapter } from '../../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
+import { FixtureRssClient } from '../../libs/ingestion/adapters/source/rss/fixture-rss-client';
+import { RssSourceProvider } from '../../libs/ingestion/adapters/source/rss/rss-source.provider';
 import { ExecuteScanCommandHandler } from '../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
 import type {
   FetchSourceItemsResult,
@@ -59,6 +61,8 @@ class FailingSourceFetcher implements SourceFetcherPort {
     throw new Error('Provider unavailable');
   }
 }
+
+jest.setTimeout(120_000);
 
 describe('API to ingestion worker queue contract (e2e)', () => {
   let api: INestApplication;
@@ -226,6 +230,135 @@ describe('API to ingestion worker queue contract (e2e)', () => {
           ],
         });
       });
+    await request(api.getHttpServer())
+      .get(`/scan-requests/${scan.body.scanJobId}/status`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          scanJobId: scan.body.scanJobId,
+          status: 'succeeded',
+          completedAt: expect.any(String),
+        });
+      });
+
+    await workerModuleRef.close();
+  });
+
+  it('publishes and executes an RSS scan command through the same API-to-feed path', async () => {
+    const tenant = 'tenant-rss-contract-e2e';
+    const workspace = 'workspace-rss-contract-e2e';
+    const queue = api.get(InMemoryQueuePublisher);
+    const initialQueueLength = queue.all().length;
+
+    const topic = await request(api.getHttpServer())
+      .post('/topics')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'rss-contract-topic')
+      .set('idempotency-key', 'rss-contract-topic')
+      .send({
+        name: 'RSS Contract Monitoring',
+        query: 'rss contract monitoring',
+      })
+      .expect(201);
+
+    const binding = await request(api.getHttpServer())
+      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'rss-contract-binding')
+      .set('idempotency-key', 'rss-contract-binding')
+      .send({
+        providerKey: 'rss',
+        config: { feedUrl: 'https://example.test/feed.xml' },
+      })
+      .expect(201);
+
+    await request(api.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'rss-contract-policy')
+      .set('idempotency-key', 'rss-contract-policy')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(201);
+
+    const scan = await request(api.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
+      .set('x-request-id', 'rss-contract-scan')
+      .set('idempotency-key', 'rss-contract-scan')
+      .expect(201);
+    const command = queue.all()[initialQueueLength];
+
+    expect(command?.payload).toEqual(expect.objectContaining({
+      providerKey: 'rss',
+      sourceQuery: { mode: 'url', query: 'https://example.test/feed.xml' },
+    }));
+
+    if (command === undefined) {
+      throw new Error('Expected API gateway to publish RSS ingestion scan command');
+    }
+
+    const workerModuleRef = await Test.createTestingModule({
+      imports: [IngestionWorkerModule],
+    })
+      .overrideProvider(NoopScanExecutionReporterAdapter)
+      .useValue(new MonitoringScanExecutionReporter(api.get(RecordScanExecutionUseCase)))
+      .overrideProvider(InMemoryFeedItemReadRepository)
+      .useValue(api.get(InMemoryFeedItemReadRepository))
+      .overrideProvider(RssSourceProvider)
+      .useValue(new RssSourceProvider(new FixtureRssClient()))
+      .compile();
+    await workerModuleRef.init();
+
+    const handler = workerModuleRef.get(ExecuteScanCommandHandler);
+    const result = await handler.handle(command);
+
+    expect(result).toEqual({
+      scanJobId: scan.body.scanJobId,
+      fetched: 2,
+      inserted: 2,
+      skippedDuplicates: 0,
+      projected: 2,
+    });
+
+    await request(api.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 10 })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toEqual({
+          items: [
+            expect.objectContaining({
+              sourceBindingId: binding.body.sourceBindingId,
+              title: 'RSS item 2 without guid',
+              canonicalUrl: 'https://example.test/rss/item-2',
+            }),
+            expect.objectContaining({
+              sourceBindingId: binding.body.sourceBindingId,
+              title: 'RSS item 1',
+              canonicalUrl: 'https://example.test/rss/item-1',
+            }),
+          ],
+        });
+      });
+
     await request(api.getHttpServer())
       .get(`/scan-requests/${scan.body.scanJobId}/status`)
       .set('x-tenant-id', tenant)

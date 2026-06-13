@@ -1,4 +1,4 @@
-import type { RssClientPort, RssFeedItem } from './rss-client.port';
+import type { RssClientPort, RssFeedItem, RssReadFeedOptions, RssReadFeedResult } from './rss-client.port';
 
 const fixtureItems: readonly RssFeedItem[] = [
   {
@@ -22,7 +22,25 @@ const fixtureItems: readonly RssFeedItem[] = [
 ];
 
 export class FixtureRssClient implements RssClientPort {
-  async readFeed(_feedUrl: string, limit: number): Promise<readonly RssFeedItem[]> {
-    return fixtureItems.slice(0, limit);
+  lastRead:
+    | {
+      readonly feedUrl: string;
+      readonly limit: number;
+      readonly options?: RssReadFeedOptions;
+    }
+    | undefined;
+
+  async readFeed(feedUrl: string, limit: number, options?: RssReadFeedOptions): Promise<RssReadFeedResult> {
+    this.lastRead = {
+      feedUrl,
+      limit,
+      options,
+    };
+
+    return {
+      items: fixtureItems.slice(0, limit),
+      etag: '"fixture-rss-etag"',
+      lastModified: 'Fri, 05 Jun 2026 10:02:00 GMT',
+    };
   }
 }

@@ -16,6 +16,8 @@ import { HackerNewsSourceProvider } from '../../../libs/ingestion/adapters/sourc
 import { HttpHackerNewsClient } from '../../../libs/ingestion/adapters/source/hacker-news/http-hacker-news-client';
 import { InMemorySourceProviderRegistry } from '../../../libs/ingestion/adapters/source/in-memory-source-provider.registry';
 import { RegistrySourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
+import { HttpRssClient } from '../../../libs/ingestion/adapters/source/rss/http-rss-client';
+import { RssSourceProvider } from '../../../libs/ingestion/adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfiles } from '../../../libs/ingestion/adapters/source/source-readiness-profiles';
 import { ExecuteScanUseCase } from '../../../libs/ingestion/features/execute-scan/execute-scan.use-case';
 import { ExecuteScanCommandHandler } from '../../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
@@ -35,10 +37,23 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
       inject: [HttpHackerNewsClient],
     },
     {
+      provide: HttpRssClient,
+      useFactory: () => new HttpRssClient(),
+    },
+    {
+      provide: RssSourceProvider,
+      useFactory: (client: HttpRssClient) => new RssSourceProvider(client),
+      inject: [HttpRssClient],
+    },
+    {
       provide: InMemorySourceProviderRegistry,
-      useFactory: (fakeProvider: FakeSourceProvider, hackerNewsProvider: HackerNewsSourceProvider) =>
-        new InMemorySourceProviderRegistry([fakeProvider, hackerNewsProvider], sourceReadinessProfiles),
-      inject: [FakeSourceProvider, HackerNewsSourceProvider],
+      useFactory: (
+        fakeProvider: FakeSourceProvider,
+        hackerNewsProvider: HackerNewsSourceProvider,
+        rssProvider: RssSourceProvider,
+      ) =>
+        new InMemorySourceProviderRegistry([fakeProvider, hackerNewsProvider, rssProvider], sourceReadinessProfiles),
+      inject: [FakeSourceProvider, HackerNewsSourceProvider, RssSourceProvider],
     },
     {
       provide: RegistrySourceFetcherAdapter,

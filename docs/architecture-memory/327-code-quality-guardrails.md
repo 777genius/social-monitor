@@ -38,6 +38,17 @@ npm run check:release
 
 `npm run check:release` also verifies that every release gate command is included in `npm run verify`, so code-quality cannot remain only a release-document entry.
 
+## Test Cadence Guardrail
+
+During active MVP implementation, do not run broad Jest/e2e suites after every small edit. Move in meaningful vertical slices, then run the smallest evidence set that proves the changed contract:
+
+- `npm run build` after typed contracts, DI wiring or public interface changes.
+- Focused unit specs for changed use cases/adapters.
+- Fast smoke checks for vertical paths when Jest/Nest e2e startup is too slow for the edit loop.
+- Targeted Jest e2e only at critical REST/worker boundaries or before a commit that changes those boundaries.
+
+`npm test` and `npm run test:e2e` must run through `scripts/run-with-timeout.mjs`, so a slow or leaked Jest handle fails explicitly instead of blocking implementation progress indefinitely.
+
 ## Why This Exists
 
 Clean Architecture fails slowly when use cases stop being directly testable, controllers skip tenant scope, or application code starts depending on adapters. These are high-leverage quality failures, so they are checked by script instead of relying on reviewer memory.

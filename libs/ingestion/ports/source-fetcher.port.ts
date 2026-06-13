@@ -9,6 +9,7 @@ export type FetchSourceItemsCommand = {
   readonly providerKey: string;
   readonly sourceQuery: SourceQuery;
   readonly correlationId: string;
+  readonly cursor?: string;
 };
 
 export type FetchedSourceItem = {

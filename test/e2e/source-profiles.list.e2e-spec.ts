@@ -4,6 +4,8 @@ import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 
+jest.setTimeout(120_000);
+
 describe('Source profiles list (e2e)', () => {
   let app: INestApplication;
 
@@ -54,8 +56,8 @@ describe('Source profiles list (e2e)', () => {
         }),
         expect.objectContaining({
           providerKey: 'rss',
-          productionSafe: false,
-          readinessState: 'profiled',
+          productionSafe: true,
+          readinessState: 'enabled_beta',
           supportedQueryModes: ['url'],
         }),
         expect.objectContaining({

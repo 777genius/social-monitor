@@ -14,9 +14,17 @@ const hackerNewsProfile: SourceCapabilityProfile = {
   supportsCursor: true,
 };
 
+const rssProfile: SourceCapabilityProfile = {
+  providerKey: 'rss',
+  version: 1,
+  productionSafe: true,
+  supportsCursor: true,
+};
+
 const sourceProfiles = new Map([
   [fakeSourceProfile.providerKey, fakeSourceProfile],
   [hackerNewsProfile.providerKey, hackerNewsProfile],
+  [rssProfile.providerKey, rssProfile],
 ]);
 
 export class FakeSourceCatalogAdapter implements SourceCatalogPort {

@@ -67,6 +67,17 @@ References:
 - Pact: https://docs.pact.io/
 - Buf breaking: https://buf.build/docs/breaking/
 
+## Execution Cadence
+
+Implementation should not stall on broad test suites. For MVP work, write code in coherent vertical slices and test in batches:
+
+- use fast deterministic unit tests for domain/use-case/adapter behavior;
+- use smoke scripts for expensive end-to-end paths when they prove the same wiring faster than Jest startup;
+- run targeted Jest e2e for changed REST/worker contracts, not the whole e2e suite after every small edit;
+- keep `npm test` and `npm run test:e2e` behind a hard timeout wrapper so leaked handles fail visibly.
+
+Full e2e and load gates remain release/promotion gates, not the default inner development loop.
+
 ## Quality Gates
 
 CI must block:
