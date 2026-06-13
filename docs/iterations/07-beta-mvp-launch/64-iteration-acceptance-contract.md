@@ -8,7 +8,7 @@ Post-MVP roadmap owners receive prioritized backlog, ADR updates and quality-gat
 
 ## Handoff Promises
 - Beta scope and supported sources are documented.
-- Onboarding and core loop results are recorded.
+- Onboarding results are recorded and backend core loop passes `npm run check:mvp-core-loop`.
 - Feedback is classified with evidence.
 - Unsupported source requests are policy-safe backlog items.
 - Post-MVP work preserves architecture guardrails.
@@ -21,6 +21,7 @@ Post-MVP roadmap owners receive prioritized backlog, ADR updates and quality-gat
 ## Blocking Defects
 - Feedback has no owner or evidence.
 - Unsupported source bypasses policy.
+- Backend core-loop release gate fails.
 - Core onboarding cannot be completed.
 - Launch cannot be paused safely.
 

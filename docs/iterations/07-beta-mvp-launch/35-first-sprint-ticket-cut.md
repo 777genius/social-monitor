@@ -15,7 +15,7 @@ Freeze beta scope, prepare onboarding/support, run launch checks and create a fe
 
 ## Ticket 3 - Onboarding Checklist
 - Define account setup, topic setup, source binding and first summary path.
-- Acceptance: a new beta user can complete the core loop without engineering help.
+- Acceptance: a new beta user can complete the core loop without engineering help, and backend evidence is covered by `npm run check:mvp-core-loop`.
 - Edge cases: onboarding must cover failed source binding and empty feed.
 
 ## Ticket 4 - Launch And Rollback Checklist

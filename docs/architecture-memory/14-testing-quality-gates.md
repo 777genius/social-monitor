@@ -77,6 +77,7 @@ Implementation should not stall on broad test suites. For MVP work, write code i
 - keep `npm test` and `npm run test:e2e` behind a hard timeout wrapper so leaked handles fail visibly.
 - keep provider certification as a deterministic no-network smoke gate through `npm run check:source-certification`.
 - keep realtime replay and delivery idempotency as a deterministic no-network smoke gate through `npm run check:delivery-replay`.
+- keep the backend MVP core loop as a deterministic no-network smoke gate through `npm run check:mvp-core-loop`.
 
 Full e2e and load gates remain release/promotion gates, not the default inner development loop.
 
@@ -96,6 +97,7 @@ CI must block:
 - connector changes without certification tests;
 - `enabled_beta` source providers without a current `ops/ingestion/source-provider-certification.json` artifact;
 - delivery/realtime changes without replay-window, resync and idempotency evidence;
+- broken topic/source/scan/feed/summary/realtime vertical flow;
 - prompt/model changes without eval gate;
 - unsafe commands without idempotency support;
 - new large collections without cursor pagination.
@@ -108,3 +110,4 @@ CI must block:
 4. Connector certification is a release gate.
 5. Prompt/model eval is a release gate.
 6. `npm run check:code-quality` is mandatory before release evidence can pass.
+7. `npm run check:mvp-core-loop` is mandatory before beta MVP release evidence can pass.

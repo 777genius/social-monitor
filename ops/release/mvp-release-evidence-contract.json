@@ -70,6 +70,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "mvp-core-loop",
+      "command": "npm run check:mvp-core-loop",
+      "blocksRelease": true
+    },
+    {
       "gateId": "summary-eval-regression",
       "command": "npm run check:summary-evals",
       "blocksRelease": true

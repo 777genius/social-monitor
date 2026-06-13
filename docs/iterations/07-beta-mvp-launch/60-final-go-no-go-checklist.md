@@ -4,7 +4,8 @@
 Decide whether beta can close and post-MVP roadmap execution can start.
 
 ## Go Conditions
-- Beta user can complete onboarding and core loop.
+- Backend MVP core loop passes `npm run check:mvp-core-loop`.
+- Beta user can complete onboarding against the same topic/source/scan/feed/summary/realtime path.
 - Supported source list is frozen or change-controlled.
 - Known limitations are explicit.
 - Rollback/pause path has owners.
@@ -29,6 +30,7 @@ Decide whether beta can close and post-MVP roadmap execution can start.
 - Launch cannot be paused safely.
 - Feedback has no owner/category/evidence.
 - Users cannot complete core onboarding.
+- `npm run check:mvp-core-loop` fails or is removed from release evidence.
 - Cross-tenant, secret leakage, uncited summary or idempotency/cursor data-loss risk remains open.
 - Known limitation hides a failure that users will hit in the core loop.
 - Launch evidence bundle is incomplete for security, source certification, summary eval or restore.
@@ -63,7 +65,7 @@ Record decision as `go`, `hold` or `rework` with onboarding, launch, feedback an
 
 Required evidence links:
 
-1. fresh tenant E2E result
+1. fresh tenant E2E result or `npm run check:mvp-core-loop` result for backend MVP loop
 2. supported source certification
 3. summary eval/citation gate
 4. tenant isolation/redaction checks

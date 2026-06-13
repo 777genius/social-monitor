@@ -32,8 +32,13 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 - Post-MVP owners accept prioritized backlog.
 - ADR and quality-gate updates are linked.
 
+## Executable Evidence Added
+- `npm run check:mvp-core-loop` proves the backend MVP loop without network or paid provider access:
+  topic creation -> source binding -> scan policy -> scan request queue -> ingestion execution -> feed projection -> summary request/execution -> `summary.ready` event -> realtime projection/replay.
+- The gate uses real use cases and ports across monitoring, ingestion, feed, summary and delivery. Only external source/model dependencies are deterministic adapters.
+- The gate is now a blocking release evidence item in `ops/release/mvp-release-evidence-contract.json` and is included in `npm run verify`.
+
 ## Missing Evidence Blocks
-- User cannot complete core loop.
 - Feedback has no owner/category/evidence.
 - Unsupported source request bypasses policy.
 - Ring expansion lacks capacity/cost/source-health evidence.
