@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.module';
+import { FEED_ITEM_READ_REPOSITORY, type FeedItemReadRepositoryPort } from '@social-monitor/feed/ports';
 import { IdentityAuthorizationModule } from '@social-monitor/identity/interfaces/authorization/identity-authorization.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
@@ -6,7 +8,7 @@ import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
 import { UsageSummaryQuotaAdapter } from '../../adapters/quota/usage-summary-quota.adapter';
-import { EmptySummaryEvidenceSelector } from '../../adapters/evidence/empty-summary-evidence.selector';
+import { FeedSummaryEvidenceSelector } from '../../adapters/evidence/feed-summary-evidence.selector';
 import { InMemorySummaryEventPublisher } from '../../adapters/messaging/in-memory-summary-event-publisher';
 import { DeterministicSummaryModelAdapter } from '../../adapters/model/deterministic-summary-model.adapter';
 import { MeteredSummaryModelAdapter } from '../../adapters/model/metered-summary-model.adapter';
@@ -24,13 +26,17 @@ import { SummaryRequestController } from './summary-request.controller';
 import { SummaryController } from './summary.controller';
 
 @Module({
-  imports: [UsageRestModule, IdentityAuthorizationModule],
+  imports: [UsageRestModule, IdentityAuthorizationModule, FeedRestModule],
   controllers: [SummaryController, SummaryJobController, SummaryRequestController],
   providers: [
     InMemorySummaryJobRepository,
     InMemorySummaryArtifactRepository,
     InMemorySummaryEventPublisher,
-    EmptySummaryEvidenceSelector,
+    {
+      provide: FeedSummaryEvidenceSelector,
+      useFactory: (feedItems: FeedItemReadRepositoryPort) => new FeedSummaryEvidenceSelector(feedItems),
+      inject: [FEED_ITEM_READ_REPOSITORY],
+    },
     InMemoryMetricsRecorder,
     DeterministicSummaryModelAdapter,
     {
@@ -59,7 +65,7 @@ import { SummaryController } from './summary.controller';
       useFactory: (
         summaryJobs: InMemorySummaryJobRepository,
         summaryArtifacts: InMemorySummaryArtifactRepository,
-        evidenceSelector: EmptySummaryEvidenceSelector,
+        evidenceSelector: FeedSummaryEvidenceSelector,
         summaryModel: MeteredSummaryModelAdapter,
         events: InMemorySummaryEventPublisher,
       ) =>
@@ -75,7 +81,7 @@ import { SummaryController } from './summary.controller';
       inject: [
         InMemorySummaryJobRepository,
         InMemorySummaryArtifactRepository,
-        EmptySummaryEvidenceSelector,
+        FeedSummaryEvidenceSelector,
         MeteredSummaryModelAdapter,
         InMemorySummaryEventPublisher,
       ],

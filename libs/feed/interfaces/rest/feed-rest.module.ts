@@ -4,6 +4,7 @@ import { IdentityAuthorizationModule } from '@social-monitor/identity/interfaces
 import { InMemoryFeedItemReadRepository } from '../../adapters/persistence/in-memory-feed-item-read.repository';
 import { GetFeedItemUseCase } from '../../features/get-feed-item/get-feed-item.use-case';
 import { ListFeedItemsUseCase } from '../../features/list-feed-items/list-feed-items.use-case';
+import { FEED_ITEM_READ_REPOSITORY } from '../../ports';
 import { FeedController } from './feed.controller';
 
 @Module({
@@ -11,6 +12,10 @@ import { FeedController } from './feed.controller';
   controllers: [FeedController],
   providers: [
     InMemoryFeedItemReadRepository,
+    {
+      provide: FEED_ITEM_READ_REPOSITORY,
+      useExisting: InMemoryFeedItemReadRepository,
+    },
     {
       provide: ListFeedItemsUseCase,
       useFactory: (feedItems: InMemoryFeedItemReadRepository) => new ListFeedItemsUseCase(feedItems),
@@ -22,6 +27,6 @@ import { FeedController } from './feed.controller';
       inject: [InMemoryFeedItemReadRepository],
     },
   ],
-  exports: [InMemoryFeedItemReadRepository],
+  exports: [FEED_ITEM_READ_REPOSITORY, InMemoryFeedItemReadRepository],
 })
 export class FeedRestModule {}

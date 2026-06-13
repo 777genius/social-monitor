@@ -2,6 +2,8 @@ import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { FeedItem } from '../domain';
 
+export const FEED_ITEM_READ_REPOSITORY = Symbol('FEED_ITEM_READ_REPOSITORY');
+
 export type ListFeedItemsQuery = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
