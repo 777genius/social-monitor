@@ -39,7 +39,8 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 - Summary feedback now records category, triage owner, immutable summary/citation evidence and eval-fixture eligibility.
 - The gate is now a blocking release evidence item in `ops/release/mvp-release-evidence-contract.json` and is included in `npm run verify`.
 - `npm run check:beta-scope-policy` proves unsupported/deferred providers stay out of the beta binding catalog, binding attempts are rejected, and source demand is captured as `source_request` feedback routed to `source-owner`.
+- `npm run check:beta-ring-policy` proves ring expansion thresholds link capacity, cost, source health and degradation evidence before inviting more users.
 
 ## Missing Evidence Blocks
 - Real beta feedback classification report is not produced from user samples yet.
-- Ring expansion lacks capacity/cost/source-health evidence.
+- Real beta ring expansion decision record is not produced from live user samples yet.

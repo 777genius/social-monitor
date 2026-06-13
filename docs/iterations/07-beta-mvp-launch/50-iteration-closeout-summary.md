@@ -11,6 +11,7 @@
 ## Closure Gates
 - Backend MVP core loop and feedback submission have executable evidence through `npm run check:mvp-core-loop`.
 - Unsupported/deferred source policy has executable evidence through `npm run check:beta-scope-policy`.
+- Ring expansion policy has executable evidence through `npm run check:beta-ring-policy`.
 - Beta user onboarding walkthrough is linked to the same topic/source/scan/feed/summary/feedback/realtime path.
 - Supported sources are frozen or change-controlled.
 - Rollback/pause path is clear.
@@ -19,6 +20,7 @@
 
 ## Blockers To Resolve Before Promotion
 - Unsupported source added during launch or `npm run check:beta-scope-policy` fails.
+- Ring expansion requested while `npm run check:beta-ring-policy` fails.
 - Onboarding walkthrough evidence not linked to the core-loop release gate.
 - Real beta feedback report without owner/category/evidence.
 - Launch cannot be paused safely.

@@ -22,6 +22,7 @@ const requiredGateIds = new Set([
   'delivery-replay-idempotency',
   'mvp-core-loop',
   'beta-scope-policy',
+  'beta-ring-policy',
   'summary-eval-regression',
   'summary-cost-attribution',
   'summary-window-freshness',

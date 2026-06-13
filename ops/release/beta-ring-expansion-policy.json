@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "policyId": "beta-ring-expansion-policy-mvp-v1",
+  "decisionModel": "go_hold_rework",
+  "rings": [
+    {
+      "ringId": "internal-dogfood",
+      "maxUsers": 3,
+      "maxTopicsPerWorkspace": 5,
+      "maxEnabledSourcesPerTopic": 3,
+      "maxManualScansPerWorkspacePerHour": 20,
+      "maxSummaryRequestsPerWorkspacePerHour": 10,
+      "requiredGates": [
+        "check:mvp-core-loop",
+        "check:source-certification",
+        "check:beta-scope-policy",
+        "check:delivery-replay"
+      ]
+    },
+    {
+      "ringId": "private-beta-1",
+      "maxUsers": 5,
+      "maxTopicsPerWorkspace": 10,
+      "maxEnabledSourcesPerTopic": 3,
+      "maxManualScansPerWorkspacePerHour": 50,
+      "maxSummaryRequestsPerWorkspacePerHour": 20,
+      "requiredGates": [
+        "check:mvp-core-loop",
+        "check:source-certification",
+        "check:beta-scope-policy",
+        "check:load-cost",
+        "check:observability",
+        "check:summary-evals",
+        "check:delivery-replay"
+      ]
+    },
+    {
+      "ringId": "private-beta-2",
+      "maxUsers": 20,
+      "maxTopicsPerWorkspace": 10,
+      "maxEnabledSourcesPerTopic": 3,
+      "maxManualScansPerWorkspacePerHour": 50,
+      "maxSummaryRequestsPerWorkspacePerHour": 20,
+      "requiredGates": [
+        "check:mvp-core-loop",
+        "check:source-certification",
+        "check:beta-scope-policy",
+        "check:load-cost",
+        "check:observability",
+        "check:summary-evals",
+        "check:summary-cost",
+        "check:delivery-replay",
+        "check:drills"
+      ]
+    }
+  ],
+  "capacityEvidence": {
+    "loadCostGate": "npm run check:load-cost",
+    "summaryCostArtifact": "ops/cost/summary-cost-attribution.json",
+    "healthDashboard": "ops/observability/dashboards/mvp-health.json",
+    "alerts": "ops/observability/alerts/mvp-alerts.json"
+  },
+  "sourceHealthThresholds": {
+    "certificationGate": "npm run check:source-certification",
+    "scopePolicyGate": "npm run check:beta-scope-policy",
+    "maxProviderFailureRatePercent": 5,
+    "maxCursorResetRatePercent": 2,
+    "unsupportedSourceBindingPolicy": "reject_binding_capture_source_request_feedback"
+  },
+  "costThresholds": {
+    "maxSummaryEstimatedCostUsdPerWorkspacePerDay": 5,
+    "maxManualScanRequestsPerWorkspacePerHour": 50,
+    "defaultActionOnCostSpike": "hold_ring_expansion_reduce_frequency"
+  },
+  "degradationActions": [
+    "hold_ring_expansion",
+    "reduce_scan_frequency",
+    "pause_affected_source_bindings",
+    "lower_summary_budget",
+    "keep_workers_paused_during_restore_or_replay_validation"
+  ],
+  "forbiddenFirstActions": [
+    "expand_ring_without_gates",
+    "enable_deferred_source_without_readiness",
+    "add_workers_before_quota_or_source_pause_review",
+    "replay_failed_jobs_before_restore_validation"
+  ]
+}
