@@ -46,6 +46,7 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
           (query.topicId === undefined || snapshot.topicId === query.topicId) &&
+          (query.observedAfter === undefined || snapshot.observedAt.getTime() > query.observedAfter.getTime()) &&
           matchesSearch(item, query.searchQuery)
         );
       })

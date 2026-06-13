@@ -5,6 +5,8 @@ import type {
   ListSummaryArtifactsQuery,
   ListSummaryArtifactsResult,
   SummaryArtifactRepositoryPort,
+  SummaryFreshness,
+  SummaryFreshnessPort,
 } from '../../ports';
 import { ListSummariesUseCase } from './list-summaries.use-case';
 
@@ -36,6 +38,15 @@ class FakeSummaryArtifacts implements SummaryArtifactRepositoryPort {
   }
 }
 
+class FakeFreshness implements SummaryFreshnessPort {
+  async evaluate(): Promise<SummaryFreshness> {
+    return {
+      status: 'fresh',
+      checkedAt: new Date('2026-06-06T00:02:00.000Z'),
+    };
+  }
+}
+
 describe('ListSummariesUseCase', () => {
   it('lists summaries in tenant/workspace scope and supports topic filter', async () => {
     const repository = new FakeSummaryArtifacts();
@@ -51,7 +62,7 @@ describe('ListSummariesUseCase', () => {
         workspaceId: workspace,
       }),
     );
-    const useCase = new ListSummariesUseCase(repository);
+    const useCase = new ListSummariesUseCase(repository, new FakeFreshness());
 
     const result = await useCase.execute({
       tenantId: tenant,
@@ -67,6 +78,10 @@ describe('ListSummariesUseCase', () => {
           expect.objectContaining({
             summaryId: 'summary-1',
             topicId: 'topic-1',
+            freshness: {
+              status: 'fresh',
+              checkedAt: '2026-06-06T00:02:00.000Z',
+            },
           }),
         ],
         nextCursor: undefined,

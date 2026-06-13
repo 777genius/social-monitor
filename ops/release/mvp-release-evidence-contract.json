@@ -70,6 +70,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "summary-window-freshness",
+      "command": "npm run check:summary-window",
+      "blocksRelease": true
+    },
+    {
       "gateId": "backup-restore-contract",
       "command": "npm run check:backup-restore",
       "blocksRelease": true

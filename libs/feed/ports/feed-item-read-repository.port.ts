@@ -11,6 +11,7 @@ export type ListFeedItemsQuery = {
   readonly cursor?: string;
   readonly topicId?: string;
   readonly searchQuery?: string;
+  readonly observedAfter?: Date;
 };
 
 export type ListFeedItemsResult = {

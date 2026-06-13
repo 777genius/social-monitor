@@ -20,6 +20,7 @@ const requiredGateIds = new Set([
   'load-cost-guardrail',
   'summary-eval-regression',
   'summary-cost-attribution',
+  'summary-window-freshness',
   'backup-restore-contract',
   'retention-contract',
   'staging-drills',

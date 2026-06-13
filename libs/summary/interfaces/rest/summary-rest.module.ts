@@ -9,6 +9,7 @@ import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-res
 
 import { UsageSummaryQuotaAdapter } from '../../adapters/quota/usage-summary-quota.adapter';
 import { FeedSummaryEvidenceSelector } from '../../adapters/evidence/feed-summary-evidence.selector';
+import { FeedSummaryFreshnessProbe } from '../../adapters/evidence/feed-summary-freshness.probe';
 import { InMemorySummaryEventPublisher } from '../../adapters/messaging/in-memory-summary-event-publisher';
 import { DeterministicSummaryModelAdapter } from '../../adapters/model/deterministic-summary-model.adapter';
 import { MeteredSummaryModelAdapter } from '../../adapters/model/metered-summary-model.adapter';
@@ -35,6 +36,12 @@ import { SummaryController } from './summary.controller';
     {
       provide: FeedSummaryEvidenceSelector,
       useFactory: (feedItems: FeedItemReadRepositoryPort) => new FeedSummaryEvidenceSelector(feedItems),
+      inject: [FEED_ITEM_READ_REPOSITORY],
+    },
+    {
+      provide: FeedSummaryFreshnessProbe,
+      useFactory: (feedItems: FeedItemReadRepositoryPort) =>
+        new FeedSummaryFreshnessProbe(feedItems, new SystemClock()),
       inject: [FEED_ITEM_READ_REPOSITORY],
     },
     InMemoryMetricsRecorder,
@@ -93,13 +100,19 @@ import { SummaryController } from './summary.controller';
     },
     {
       provide: GetSummaryUseCase,
-      useFactory: (summaryArtifacts: InMemorySummaryArtifactRepository) => new GetSummaryUseCase(summaryArtifacts),
-      inject: [InMemorySummaryArtifactRepository],
+      useFactory: (
+        summaryArtifacts: InMemorySummaryArtifactRepository,
+        freshness: FeedSummaryFreshnessProbe,
+      ) => new GetSummaryUseCase(summaryArtifacts, freshness),
+      inject: [InMemorySummaryArtifactRepository, FeedSummaryFreshnessProbe],
     },
     {
       provide: ListSummariesUseCase,
-      useFactory: (summaryArtifacts: InMemorySummaryArtifactRepository) => new ListSummariesUseCase(summaryArtifacts),
-      inject: [InMemorySummaryArtifactRepository],
+      useFactory: (
+        summaryArtifacts: InMemorySummaryArtifactRepository,
+        freshness: FeedSummaryFreshnessProbe,
+      ) => new ListSummariesUseCase(summaryArtifacts, freshness),
+      inject: [InMemorySummaryArtifactRepository, FeedSummaryFreshnessProbe],
     },
     {
       provide: GetSummaryJobStatusUseCase,

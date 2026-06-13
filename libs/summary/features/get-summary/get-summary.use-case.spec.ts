@@ -5,6 +5,8 @@ import type {
   ListSummaryArtifactsQuery,
   ListSummaryArtifactsResult,
   SummaryArtifactRepositoryPort,
+  SummaryFreshness,
+  SummaryFreshnessPort,
 } from '../../ports';
 import { GetSummaryUseCase } from './get-summary.use-case';
 
@@ -28,6 +30,17 @@ class FakeSummaryArtifacts implements SummaryArtifactRepositoryPort {
   }
 }
 
+class FakeFreshness implements SummaryFreshnessPort {
+  constructor(private readonly freshness: SummaryFreshness = {
+    status: 'fresh',
+    checkedAt: new Date('2026-06-06T00:02:00.000Z'),
+  }) {}
+
+  async evaluate(): Promise<SummaryFreshness> {
+    return this.freshness;
+  }
+}
+
 describe('GetSummaryUseCase', () => {
   it('returns a scoped summary artifact with citation labels', async () => {
     const summaries = new FakeSummaryArtifacts();
@@ -37,7 +50,14 @@ describe('GetSummaryUseCase', () => {
       workspaceId: workspaceId('workspace-1'),
     }));
 
-    const result = await new GetSummaryUseCase(summaries).execute({
+    const result = await new GetSummaryUseCase(summaries, new FakeFreshness({
+      status: 'stale',
+      checkedAt: new Date('2026-06-06T00:05:00.000Z'),
+      staleMarkedAt: new Date('2026-06-06T00:05:00.000Z'),
+      reason: 'new_evidence_after_window',
+      newestFeedItemId: 'feed-2',
+      newestObservedAt: new Date('2026-06-06T00:04:00.000Z'),
+    })).execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
       summaryId: 'summary-1',
@@ -51,6 +71,14 @@ describe('GetSummaryUseCase', () => {
           startedAt: '2026-06-06T00:00:00.000Z',
           endedAt: '2026-06-06T00:01:00.000Z',
         }),
+        freshness: {
+          status: 'stale',
+          checkedAt: '2026-06-06T00:05:00.000Z',
+          staleMarkedAt: '2026-06-06T00:05:00.000Z',
+          reason: 'new_evidence_after_window',
+          newestFeedItemId: 'feed-2',
+          newestObservedAt: '2026-06-06T00:04:00.000Z',
+        },
         citations: [
           {
             citationId: 'citation-1',
@@ -72,7 +100,7 @@ describe('GetSummaryUseCase', () => {
       workspaceId: workspaceId('workspace-1'),
     }));
 
-    await expect(new GetSummaryUseCase(summaries).execute({
+    await expect(new GetSummaryUseCase(summaries, new FakeFreshness()).execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
       summaryId: 'summary-1',
@@ -85,7 +113,7 @@ describe('GetSummaryUseCase', () => {
   });
 
   it('rejects blank summary ids before repository lookup', async () => {
-    await expect(new GetSummaryUseCase(new FakeSummaryArtifacts()).execute({
+    await expect(new GetSummaryUseCase(new FakeSummaryArtifacts(), new FakeFreshness()).execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
       summaryId: '',

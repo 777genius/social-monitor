@@ -1,6 +1,6 @@
 import { DomainError, err, ok, type Result } from '@social-monitor/shared-kernel';
 
-import type { SummaryArtifactRepositoryPort } from '../../ports';
+import type { SummaryArtifactRepositoryPort, SummaryFreshnessPort } from '../../ports';
 import { presentSummaryArtifact } from '../shared/summary-artifact-presenter';
 import type { ListSummariesQuery } from './list-summaries.query';
 import type { ListSummariesResult } from './list-summaries.result';
@@ -10,7 +10,10 @@ type ListSummariesFailure = DomainError;
 const MAX_LIMIT = 100;
 
 export class ListSummariesUseCase {
-  constructor(private readonly summaries: SummaryArtifactRepositoryPort) {}
+  constructor(
+    private readonly summaries: SummaryArtifactRepositoryPort,
+    private readonly freshness: SummaryFreshnessPort,
+  ) {}
 
   async execute(query: ListSummariesQuery): Promise<Result<ListSummariesResult, ListSummariesFailure>> {
     if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > MAX_LIMIT) {
@@ -25,8 +28,20 @@ export class ListSummariesUseCase {
 
     const result = await this.summaries.list(query);
 
+    const items = await Promise.all(result.items.map(async (summary) => {
+      const snapshot = summary.toSnapshot();
+      const freshness = await this.freshness.evaluate({
+        tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId,
+        topicId: snapshot.topicId,
+        sourceWindow: snapshot.sourceWindow,
+      });
+
+      return presentSummaryArtifact(summary, freshness);
+    }));
+
     return ok({
-      items: result.items.map(presentSummaryArtifact),
+      items,
       nextCursor: result.nextCursor,
     });
   }

@@ -51,10 +51,25 @@ describe('presentSummaryArtifact', () => {
       },
     });
 
-    expect(presentSummaryArtifact(artifact)).toMatchObject({
+    expect(presentSummaryArtifact(artifact, {
+      status: 'stale',
+      checkedAt: new Date('2026-06-06T00:05:00.000Z'),
+      staleMarkedAt: new Date('2026-06-06T00:05:00.000Z'),
+      reason: 'new_evidence_after_window',
+      newestFeedItemId: 'feed-2',
+      newestObservedAt: new Date('2026-06-06T00:04:00.000Z'),
+    })).toMatchObject({
       sourceWindow: {
         startedAt: '2026-06-06T00:00:00.000Z',
         endedAt: '2026-06-06T00:01:00.000Z',
+      },
+      freshness: {
+        status: 'stale',
+        checkedAt: '2026-06-06T00:05:00.000Z',
+        staleMarkedAt: '2026-06-06T00:05:00.000Z',
+        reason: 'new_evidence_after_window',
+        newestFeedItemId: 'feed-2',
+        newestObservedAt: '2026-06-06T00:04:00.000Z',
       },
       citations: [
         {

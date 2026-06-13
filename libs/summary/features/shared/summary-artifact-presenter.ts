@@ -1,4 +1,5 @@
 import type { SummaryArtifact, SummaryArtifactProps } from '../../domain';
+import type { SummaryFreshness } from '../../ports';
 
 export type SummaryCitationView = {
   readonly citationId: string;
@@ -14,9 +15,27 @@ export type SummaryArtifactView = Omit<SummaryArtifactProps, 'sourceWindow'> & {
     readonly endedAt: string;
   };
   readonly citations: readonly SummaryCitationView[];
+  readonly freshness: SummaryFreshnessView;
 };
 
-export const presentSummaryArtifact = (artifact: SummaryArtifact): SummaryArtifactView => {
+export type SummaryFreshnessView =
+  | {
+      readonly status: 'fresh';
+      readonly checkedAt: string;
+    }
+  | {
+      readonly status: 'stale';
+      readonly checkedAt: string;
+      readonly staleMarkedAt: string;
+      readonly reason: 'new_evidence_after_window';
+      readonly newestFeedItemId: string;
+      readonly newestObservedAt: string;
+    };
+
+export const presentSummaryArtifact = (
+  artifact: SummaryArtifact,
+  freshness: SummaryFreshness,
+): SummaryArtifactView => {
   const snapshot = artifact.toSnapshot();
 
   return {
@@ -33,5 +52,24 @@ export const presentSummaryArtifact = (artifact: SummaryArtifact): SummaryArtifa
       sourceItemId: citation.sourceItemId,
       field: citation.field,
     })),
+    freshness: presentFreshness(freshness),
+  };
+};
+
+const presentFreshness = (freshness: SummaryFreshness): SummaryFreshnessView => {
+  if (freshness.status === 'fresh') {
+    return {
+      status: 'fresh',
+      checkedAt: freshness.checkedAt.toISOString(),
+    };
+  }
+
+  return {
+    status: 'stale',
+    checkedAt: freshness.checkedAt.toISOString(),
+    staleMarkedAt: freshness.staleMarkedAt.toISOString(),
+    reason: freshness.reason,
+    newestFeedItemId: freshness.newestFeedItemId,
+    newestObservedAt: freshness.newestObservedAt.toISOString(),
   };
 };
