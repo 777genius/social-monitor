@@ -34,7 +34,7 @@ Prove that summaries are cited, validated, evaluated and cost-aware.
 - Residual summary quality risks are owned.
 
 ## Missing Evidence Blocks
-- Missing temporal window evidence for summary selection and stale marking.
+- None for MVP promotion. Larger eval datasets and additional providers remain post-MVP hardening work.
 
 ## PR 38 Feed-Backed Summary Evidence Selection
 
@@ -129,3 +129,24 @@ Evidence notes:
 - `ops/cost/summary-cost-attribution.json` records per-fixture tenant, workspace, topic, source window, provider, model, prompt and schema dimensions plus token/cost totals and aggregates.
 - `npm run check:summary-cost` recomputes the report and blocks release if eval metrics drift from model preflight estimates, if any fixture lacks attribution, if fixture/policy/budget limits are exceeded, or if the committed JSON is stale.
 - The beta MVP release contract now includes `summary-cost-attribution` as a blocking gate, and `npm run verify` includes `check:summary-cost`.
+
+## PR 43 Summary Window Freshness Gate
+
+- `8cfab43 feat: add summary freshness window gate`
+
+Verified commands:
+
+- `npm run check:summary-window`
+- `npm run check:release`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run build`
+- `NODE_OPTIONS=--max-old-space-size=1024 node scripts/run-with-timeout.mjs --timeout-ms 120000 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath libs/summary/adapters/evidence/feed-summary-freshness.probe.spec.ts libs/summary/features/shared/summary-artifact-presenter.spec.ts libs/summary/features/get-summary/get-summary.use-case.spec.ts libs/summary/features/list-summaries/list-summaries.use-case.spec.ts`
+- `git diff --check`
+
+Evidence notes:
+
+- Summary read models now include `freshness.status` as `fresh` or `stale` without mutating completed summary text or citation history.
+- `FeedSummaryFreshnessProbe` marks a summary stale only when same-tenant/workspace/topic evidence has `observedAt` after the frozen source window end.
+- `npm run check:summary-window` proves the selected source window remains frozen, an item exactly at `endedAt` stays fresh and a later item marks the summary stale with `newestFeedItemId` and `newestObservedAt`.
+- The beta MVP release contract now includes `summary-window-freshness` as a blocking gate, and `npm run verify` includes `check:summary-window`.

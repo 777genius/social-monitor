@@ -16,9 +16,13 @@
 - Mobile can display trust and failure state.
 
 ## Blockers To Resolve Before Promotion
-- Uncited final summaries.
-- Provider schema leaking into public API.
-- Missing eval path.
+- None remain open for MVP after PR 43.
+
+## Historical Blockers Covered
+- Uncited final summaries are covered by citation validation.
+- Provider schema leakage is covered by structured artifact validation and presenter DTO boundaries.
+- Missing eval path is covered by `check:summary-evals`.
+- Missing cost and stale-window evidence are covered by `check:summary-cost` and `check:summary-window`.
 
 ## Carryover
 - Larger eval datasets can grow after beta.
