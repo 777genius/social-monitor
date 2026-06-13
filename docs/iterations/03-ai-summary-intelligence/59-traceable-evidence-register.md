@@ -56,4 +56,21 @@ Evidence notes:
 - `FeedSummaryEvidenceSelector` maps tenant/workspace feed items into `SummaryEvidenceItem` records with feed id, source item id, source binding id, title, body preview, canonical URL and observed timestamp.
 - Summary runtime wiring now depends on `FeedItemReadRepositoryPort` through the exported `FEED_ITEM_READ_REPOSITORY` token; no Summary feature imports Feed adapters.
 - The smoke check proves an evidence-backed summary job completes with a citation-backed key point instead of `no_signal`, persists the artifact and emits one `summary.ready` event.
-- MVP residual risk: feed items currently do not carry `topicId`, so the selector uses latest tenant/workspace feed items for the requested topic window. Topic-specific evidence filtering remains a follow-up read-model/port slice.
+- Closed by PR 39: topic-specific evidence filtering is now supported end to end by the scan queue contract, ingestion feed projection, feed read model and summary evidence selector.
+
+## PR 39 Topic-Scoped Feed Evidence
+
+- `acc4b48 feat: scope feed evidence by topic`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:architecture`
+- `git diff --check`
+
+Evidence notes:
+
+- Monitoring scan enqueue commands include the source binding `topicId`; the ingestion worker validates the payload and passes `topicId` into `ExecuteScanUseCase`.
+- Feed projection persists `topicId` onto `FeedItem`; feed list/get DTOs expose it and `GET /feed/items?topicId=...` can filter read-model results.
+- `FeedSummaryEvidenceSelector` asks the Feed read port for the requested topic only, so summary evidence cannot leak from another topic in the same workspace.
+- Feed canonical URL dedupe is tenant/workspace/topic scoped; the same URL can appear once per topic while remaining deduped inside each topic.
