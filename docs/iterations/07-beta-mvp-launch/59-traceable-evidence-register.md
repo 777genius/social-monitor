@@ -38,8 +38,8 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 - The gate uses real use cases and ports across monitoring, ingestion, feed, summary and delivery. Only external source/model dependencies are deterministic adapters.
 - Summary feedback now records category, triage owner, immutable summary/citation evidence and eval-fixture eligibility.
 - The gate is now a blocking release evidence item in `ops/release/mvp-release-evidence-contract.json` and is included in `npm run verify`.
+- `npm run check:beta-scope-policy` proves unsupported/deferred providers stay out of the beta binding catalog, binding attempts are rejected, and source demand is captured as `source_request` feedback routed to `source-owner`.
 
 ## Missing Evidence Blocks
 - Real beta feedback classification report is not produced from user samples yet.
-- Unsupported source request bypasses policy.
 - Ring expansion lacks capacity/cost/source-health evidence.

@@ -75,6 +75,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "beta-scope-policy",
+      "command": "npm run check:beta-scope-policy",
+      "blocksRelease": true
+    },
+    {
       "gateId": "summary-eval-regression",
       "command": "npm run check:summary-evals",
       "blocksRelease": true

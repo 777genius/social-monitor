@@ -7,13 +7,14 @@ Approve movement from MVP beta into post-MVP roadmap execution.
 - Beta scope freeze is respected.
 - Supported source list is unchanged or change-controlled.
 - Backend MVP core loop and feedback submission pass `npm run check:mvp-core-loop`.
+- Unsupported/deferred sources pass `npm run check:beta-scope-policy`.
 - Launch and rollback checklist is executed.
 - Support triage captures known limitations and incidents.
 - Feedback is classified by demand, reliability, trust, UX, source risk and cost.
 
 ## Promotion Checks
 - Beta validated the user-facing core loop and the backend core-loop/feedback gate is green.
-- Unsupported source requests did not bypass policy.
+- Unsupported source requests did not bypass policy and are captured as source-owner backlog evidence.
 - Roadmap items cite evidence.
 - Residual risks have owners.
 

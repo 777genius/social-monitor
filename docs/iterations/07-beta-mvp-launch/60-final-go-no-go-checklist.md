@@ -5,6 +5,7 @@ Decide whether beta can close and post-MVP roadmap execution can start.
 
 ## Go Conditions
 - Backend MVP core loop and feedback submission pass `npm run check:mvp-core-loop`.
+- Unsupported/deferred source policy passes `npm run check:beta-scope-policy`.
 - Beta user can complete onboarding against the same topic/source/scan/feed/summary/feedback/realtime path.
 - Supported source list is frozen or change-controlled.
 - Known limitations are explicit.
@@ -27,6 +28,7 @@ Decide whether beta can close and post-MVP roadmap execution can start.
 
 ## Rework Conditions
 - Unsupported source entered launch scope.
+- `npm run check:beta-scope-policy` fails or is removed from release evidence.
 - Launch cannot be paused safely.
 - Real beta feedback report has no owner/category/evidence.
 - Users cannot complete core onboarding.
@@ -66,7 +68,7 @@ Record decision as `go`, `hold` or `rework` with onboarding, launch, feedback an
 Required evidence links:
 
 1. fresh tenant E2E result or `npm run check:mvp-core-loop` result for backend MVP loop
-2. supported source certification
+2. supported source certification and beta scope source policy
 3. summary eval/citation gate
 4. tenant isolation/redaction checks
 5. cost/usage dashboard
