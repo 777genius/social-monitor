@@ -34,7 +34,6 @@ Prove that summaries are cited, validated, evaluated and cost-aware.
 - Residual summary quality risks are owned.
 
 ## Missing Evidence Blocks
-- Missing eval output.
 - Missing cost attribution.
 - Missing temporal window evidence for summary selection and stale marking.
 
@@ -91,3 +90,21 @@ Evidence notes:
 - Runtime summary execution validates provider draft citations against the frozen evidence window before saving artifacts or publishing `summary.ready`.
 - The eval harness uses the same citation validator, so invalid citation regressions fail quality gates instead of only product runtime.
 - The targeted Jest run reported `3 passed / 11 passed`; the outer 60s wrapper returned timeout after Jest had printed success at 67s, so the guard is recorded as behaviorally passed with timeout-cadence risk noted.
+
+## PR 41 Summary Eval Release Gate
+
+- `3009343 feat: add summary eval release gate`
+
+Verified commands:
+
+- `npm run check:summary-evals -- --update`
+- `npm run check:summary-evals`
+- `npm run check:release`
+- `npm run build`
+- `git diff --check`
+
+Evidence notes:
+
+- `ops/evals/summary-eval-output.json` records deterministic eval output for empty/no-signal, HN citation and RSS prompt-injection fixtures.
+- `npm run check:summary-evals` recomputes the report, blocks if any fixture fails and blocks if the committed eval output is stale.
+- The beta MVP release contract now includes `summary-eval-regression` as a blocking gate, and `npm run verify` includes `check:summary-evals`.
