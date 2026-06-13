@@ -64,4 +64,31 @@ Evidence notes:
 - `RegistrySourceFetcherAdapter` resolves the requested provider through `SourceProviderRegistryPort`; `ExecuteScanUseCase` remains provider-neutral.
 - `HttpHackerNewsClient` uses public HN Firebase listing endpoints for `top/new/best/ask/show/job` and HN Algolia `search_by_date` for keyword search; no API key or paid API is required for this MVP HN path.
 - `HackerNewsSourceProvider` is now `productionSafe: true` and readiness profile state is `enabled_beta`.
-- RSS is still intentionally not enabled for production-safe scans; it remains the next connector slice because it needs conditional HTTP, parser hardening and SSRF checks beyond the current fixture provider.
+- RSS enablement is covered by PR 37 evidence below.
+
+## PR 37 RSS Live-Capable Connector Evidence
+
+- `87786eb feat: enable rss scan provider path`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:rss-smoke`
+- `npm run test -- libs/ingestion/adapters/source/rss/http-rss-client.spec.ts libs/ingestion/adapters/source/rss/rss-source.provider.spec.ts libs/ingestion/features/execute-scan/execute-scan.use-case.spec.ts libs/ingestion/adapters/source/registry-source-fetcher.adapter.spec.ts libs/ingestion/adapters/source/in-memory-source-provider.registry.spec.ts libs/monitoring/features/shared/source-binding-scan-query.spec.ts libs/monitoring/adapters/queue/in-memory-scan-queue.adapter.spec.ts libs/monitoring/features/request-scan/request-scan.use-case.spec.ts libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case.spec.ts`
+- `npm run test:e2e -- test/e2e/source-profiles.list.e2e-spec.ts --verbose`
+- `node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` live HTTP smoke verified `HttpRssClient.readFeed('https://hnrss.org/frontpage', 2)` parses real public RSS without API keys and receives cursor metadata.
+- `node scripts/run-with-timeout.mjs --timeout-ms 1000 -- node -e "setTimeout(() => {}, 10000)"` verified the hard timeout guard exits with code `124` for hung commands.
+- `npm run check:architecture`
+- `npm run check:events`
+- `npm run check:code-quality`
+- `npm run check:release`
+- `git diff --check`
+
+Evidence notes:
+
+- RSS source bindings now derive safe queue metadata as `{ mode: 'url', query: feedUrl }` without exposing raw protected config fields.
+- `FetchSourceItemsCommand` accepts the last committed cursor, and `ExecuteScanUseCase` passes it to the provider before saving a new cursor after successful source item/feed projection.
+- `HttpRssClient` validates initial and final redirect URLs through the feed URL policy, rejects private/local network targets, sends conditional `If-None-Match` and `If-Modified-Since` headers and parses RSS 2.0 plus Atom entries through `fast-xml-parser`.
+- `RssSourceProvider` is now `productionSafe: true`; readiness profile state is `enabled_beta`, with cursor model `etag_last_modified`.
+- `scripts/run-with-timeout.mjs` is now the hard guard behind `npm test` and `npm run test:e2e`, so Jest/Nest open handles fail explicitly instead of blocking implementation progress indefinitely.
+- Inner-loop testing cadence is locked in code quality docs: implement coherent vertical MVP slices, use fast smoke checks for expensive paths and run targeted Jest e2e only at critical REST/worker boundaries or before boundary-changing commits.

@@ -79,4 +79,5 @@ Implement ingestion as a replaceable provider platform, not as hardcoded scrapin
 
 - PR 36 HN live-capable connector path added: scan queue commands now carry safe `providerKey` and `sourceQuery` metadata from source bindings, ingestion resolves providers through `SourceProviderRegistryPort`, and the worker registers a production-safe Hacker News provider backed by public HN Firebase listings plus HN Algolia search.
 - The implementation keeps Monitoring and Ingestion separated by a queue contract. Ingestion does not import Monitoring repositories or raw source binding config, and protected credential-like config fields are not copied into scan commands.
-- Fake source remains the deterministic local provider for tests. Hacker News is enabled for beta. RSS remains profiled until its HTTP/conditional-fetch adapter is implemented.
+- PR 37 RSS live-capable connector path added: RSS is now `enabled_beta`, uses an SSRF-checked HTTP client with RSS/Atom parsing, ETag/Last-Modified conditional request support, cursor propagation through scan execution and worker registration.
+- Fake source remains the deterministic local provider for tests. Hacker News and RSS are enabled for beta. Reddit/X/Telegram remain readiness-profiled until approved access paths and cost/quota policies exist.
