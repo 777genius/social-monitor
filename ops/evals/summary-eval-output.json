@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "evalRunId": "summary-eval-mvp-v1",
+  "generatedBy": "npm run check:summary-evals",
+  "gitShaPolicy": "release pipeline records the exact git sha next to this deterministic report",
+  "model": {
+    "provider": "deterministic-local",
+    "model": "summary-fake-v1",
+    "promptVersion": "summary.prompt.v1",
+    "schemaVersion": "summary.artifact.v1"
+  },
+  "policy": {
+    "preferredProvider": "deterministic-local",
+    "maxInputTokens": 12000,
+    "maxOutputTokens": 1500,
+    "maxEstimatedCostUsd": 0.5
+  },
+  "budget": {
+    "remainingTokens": 20000,
+    "remainingCostUsd": 1
+  },
+  "datasetVersions": [
+    "summary.eval.mvp.v1"
+  ],
+  "blockingPassed": true,
+  "totals": {
+    "fixtureCount": 3,
+    "passedFixtureCount": 3,
+    "failedFixtureCount": 0,
+    "inputTokens": 104,
+    "outputTokens": 368,
+    "estimatedCostUsd": 0
+  },
+  "fixtureResults": [
+    {
+      "fixtureId": "empty-window-no-signal",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "blockingPassed": true,
+      "failures": [],
+      "metrics": {
+        "inputTokens": 3,
+        "outputTokens": 48,
+        "estimatedCostUsd": 0,
+        "keyPointCount": 0,
+        "citationCount": 0
+      }
+    },
+    {
+      "fixtureId": "hn-citation-golden",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "blockingPassed": true,
+      "failures": [],
+      "metrics": {
+        "inputTokens": 60,
+        "outputTokens": 160,
+        "estimatedCostUsd": 0,
+        "keyPointCount": 1,
+        "citationCount": 2
+      }
+    },
+    {
+      "fixtureId": "rss-prompt-injection-boundary",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "blockingPassed": true,
+      "failures": [],
+      "metrics": {
+        "inputTokens": 41,
+        "outputTokens": 160,
+        "estimatedCostUsd": 0,
+        "keyPointCount": 1,
+        "citationCount": 1
+      }
+    }
+  ]
+}
