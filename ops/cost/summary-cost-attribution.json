@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "reportId": "summary-cost-attribution-mvp-v1",
+  "generatedBy": "npm run check:summary-cost",
+  "attributionMode": "summary_eval_preflight",
+  "datasetVersions": [
+    "summary.eval.mvp.v1"
+  ],
+  "policy": {
+    "preferredProvider": "deterministic-local",
+    "maxInputTokens": 12000,
+    "maxOutputTokens": 1500,
+    "maxEstimatedCostUsd": 0.5
+  },
+  "budget": {
+    "remainingTokens": 20000,
+    "remainingCostUsd": 1
+  },
+  "blockingPassed": true,
+  "totals": {
+    "fixtureCount": 3,
+    "attributedFixtureCount": 3,
+    "inputTokens": 104,
+    "outputTokens": 368,
+    "estimatedCostUsd": 0,
+    "estimatedCostMicroUsd": 0
+  },
+  "rows": [
+    {
+      "fixtureId": "empty-window-no-signal",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "tenantId": "eval-tenant",
+      "workspaceId": "eval-workspace",
+      "topicId": "empty-topic",
+      "sourceWindowId": "eval-empty-window",
+      "provider": "deterministic-local",
+      "model": "summary-fake-v1",
+      "promptVersion": "summary.prompt.v1",
+      "schemaVersion": "summary.artifact.v1",
+      "usage": {
+        "inputTokens": 3,
+        "outputTokens": 48,
+        "estimatedCostUsd": 0,
+        "estimatedCostMicroUsd": 0
+      },
+      "maxFixtureCostUsd": 0
+    },
+    {
+      "fixtureId": "hn-citation-golden",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "tenantId": "eval-tenant",
+      "workspaceId": "eval-workspace",
+      "topicId": "developer-tools",
+      "sourceWindowId": "eval-hn-window",
+      "provider": "deterministic-local",
+      "model": "summary-fake-v1",
+      "promptVersion": "summary.prompt.v1",
+      "schemaVersion": "summary.artifact.v1",
+      "usage": {
+        "inputTokens": 60,
+        "outputTokens": 160,
+        "estimatedCostUsd": 0,
+        "estimatedCostMicroUsd": 0
+      },
+      "maxFixtureCostUsd": 0
+    },
+    {
+      "fixtureId": "rss-prompt-injection-boundary",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "tenantId": "eval-tenant",
+      "workspaceId": "eval-workspace",
+      "topicId": "security-research",
+      "sourceWindowId": "eval-rss-injection-window",
+      "provider": "deterministic-local",
+      "model": "summary-fake-v1",
+      "promptVersion": "summary.prompt.v1",
+      "schemaVersion": "summary.artifact.v1",
+      "usage": {
+        "inputTokens": 41,
+        "outputTokens": 160,
+        "estimatedCostUsd": 0,
+        "estimatedCostMicroUsd": 0
+      },
+      "maxFixtureCostUsd": 0
+    }
+  ],
+  "aggregates": {
+    "byTenantWorkspaceTopic": [
+      {
+        "tenantId": "eval-tenant",
+        "workspaceId": "eval-workspace",
+        "topicId": "empty-topic",
+        "fixtureCount": 1,
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 48,
+          "estimatedCostUsd": 0,
+          "estimatedCostMicroUsd": 0
+        }
+      },
+      {
+        "tenantId": "eval-tenant",
+        "workspaceId": "eval-workspace",
+        "topicId": "developer-tools",
+        "fixtureCount": 1,
+        "usage": {
+          "inputTokens": 60,
+          "outputTokens": 160,
+          "estimatedCostUsd": 0,
+          "estimatedCostMicroUsd": 0
+        }
+      },
+      {
+        "tenantId": "eval-tenant",
+        "workspaceId": "eval-workspace",
+        "topicId": "security-research",
+        "fixtureCount": 1,
+        "usage": {
+          "inputTokens": 41,
+          "outputTokens": 160,
+          "estimatedCostUsd": 0,
+          "estimatedCostMicroUsd": 0
+        }
+      }
+    ],
+    "byProviderModel": [
+      {
+        "provider": "deterministic-local",
+        "model": "summary-fake-v1",
+        "fixtureCount": 3,
+        "usage": {
+          "inputTokens": 104,
+          "outputTokens": 368,
+          "estimatedCostUsd": 0,
+          "estimatedCostMicroUsd": 0
+        }
+      }
+    ]
+  },
+  "violations": []
+}

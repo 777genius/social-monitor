@@ -65,6 +65,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "summary-cost-attribution",
+      "command": "npm run check:summary-cost",
+      "blocksRelease": true
+    },
+    {
       "gateId": "backup-restore-contract",
       "command": "npm run check:backup-restore",
       "blocksRelease": true
