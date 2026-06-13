@@ -26,7 +26,7 @@ Decide whether realtime delivery is ready for production hardening.
 
 ## Critical Audit Evidence
 - WS replay/resync and REST snapshot recovery tests pass.
-- Notification/delivery idempotency and preference recheck evidence is attached.
+- Notification/delivery idempotency and preference recheck evidence is attached through `npm run check:delivery-replay`.
 - Realtime events do not become durable source of truth.
 - Membership revoke, preference change and endpoint quarantine races are tested.
 - Digest/replay/webhook temporal boundaries are covered by fake-clock and timestamp-skew fixtures.

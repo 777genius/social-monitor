@@ -16,10 +16,14 @@
 - Delivery failures are observable.
 
 ## Blockers To Resolve Before Promotion
-- Unauthorized subscription.
-- Permanent state loss after reconnect.
-- Duplicate notification.
 - Event payload exposing internal/provider data.
+
+## Promotion Evidence Now Attached
+- Realtime replay and notification idempotency are enforced by `npm run check:delivery-replay`.
+- Unauthorized REST replay is covered by `test/e2e/realtime-events.list.e2e-spec.ts`.
+- Reconnect after replay-window trim now returns `resyncRequired` instead of partial state loss.
+- Duplicate delivery queue commands reuse the existing attempt by idempotency key.
+- Preference changes are rechecked before provider send, so suppressed recipients do not receive stale notifications.
 
 ## Carryover
 - External webhooks remain future scope.

@@ -65,6 +65,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "delivery-replay-idempotency",
+      "command": "npm run check:delivery-replay",
+      "blocksRelease": true
+    },
+    {
       "gateId": "summary-eval-regression",
       "command": "npm run check:summary-evals",
       "blocksRelease": true

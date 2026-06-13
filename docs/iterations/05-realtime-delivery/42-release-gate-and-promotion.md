@@ -15,11 +15,13 @@ Approve movement from realtime delivery into production hardening.
 - Event DTOs are versioned and tenant-scoped.
 - Mobile can recover through snapshot/resync.
 - Notification read model has durable state.
+- `npm run check:delivery-replay` passes and is present in the release evidence contract.
 
 ## Hold Conditions
 - Unauthorized subscription is possible.
 - Reconnect loses state permanently.
 - Duplicate event creates duplicate notification.
+- Delivery replay/idempotency gate is missing or failing.
 - Delivery logs cannot support debugging.
 
 ## Rollback Or Rework

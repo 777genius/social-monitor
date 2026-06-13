@@ -60,7 +60,7 @@ describe('RecordRealtimeEventUseCase', () => {
       value: {
         eventId: 'realtime-event-1',
         sequence: 42,
-        replayCursor: Buffer.from(JSON.stringify({ offset: 42 })).toString('base64url'),
+        replayCursor: Buffer.from(JSON.stringify({ afterSequence: 42 })).toString('base64url'),
       },
     });
     expect(realtimeEvents.events[0]?.toSnapshot()).toMatchObject({

@@ -7,38 +7,59 @@ import type {
 
 const REPLAY_WINDOW_SIZE = 100;
 
+type ScopeState = {
+  readonly events: readonly RealtimeEvent[];
+  readonly lastSequence: number;
+};
+
 export class InMemoryRealtimeEventRepository implements RealtimeEventRepositoryPort {
-  private readonly eventsByScope = new Map<string, RealtimeEvent[]>();
+  private readonly statesByScope = new Map<string, ScopeState>();
 
   async nextSequence(params: Parameters<RealtimeEventRepositoryPort['nextSequence']>[0]): Promise<number> {
-    return (this.eventsByScope.get(scopeKey(params))?.length ?? 0) + 1;
+    return (this.statesByScope.get(scopeKey(params))?.lastSequence ?? 0) + 1;
   }
 
   async append(event: RealtimeEvent): Promise<void> {
     const snapshot = event.toSnapshot();
     const key = scopeKey(snapshot);
-    const events = [...(this.eventsByScope.get(key) ?? []), event].slice(-REPLAY_WINDOW_SIZE);
+    const current = this.statesByScope.get(key);
+    const events = [...(current?.events ?? []), event].slice(-REPLAY_WINDOW_SIZE);
 
-    this.eventsByScope.set(key, events);
+    this.statesByScope.set(key, {
+      events,
+      lastSequence: Math.max(current?.lastSequence ?? 0, snapshot.sequence),
+    });
   }
 
   async list(query: ListRealtimeEventsQuery): Promise<ListRealtimeEventsResult> {
-    const events = this.eventsByScope.get(scopeKey(query)) ?? [];
-    const offset = parseCursor(query.cursor);
+    const state = this.statesByScope.get(scopeKey(query)) ?? { events: [], lastSequence: 0 };
+    const cursor = parseCursor(query.cursor);
 
-    if (offset === null || offset > events.length) {
+    if (cursor === null || cursor.afterSequence > state.lastSequence) {
       return {
         events: [],
         resyncRequired: true,
       };
     }
 
-    const selected = events.slice(offset, offset + query.limit);
-    const nextOffset = offset + selected.length;
+    const oldestSequence = state.events[0]?.toSnapshot().sequence;
+    if (query.cursor !== undefined && oldestSequence !== undefined && cursor.afterSequence < oldestSequence - 1) {
+      return {
+        events: [],
+        resyncRequired: true,
+      };
+    }
+
+    const selected = state.events
+      .filter((event) => event.toSnapshot().sequence > cursor.afterSequence)
+      .slice(0, query.limit);
+    const lastSelectedSequence = selected.at(-1)?.toSnapshot().sequence;
 
     return {
       events: selected,
-      nextCursor: nextOffset < events.length ? encodeCursor(nextOffset) : undefined,
+      nextCursor: lastSelectedSequence !== undefined && lastSelectedSequence < state.lastSequence
+        ? encodeCursor(lastSelectedSequence)
+        : undefined,
       resyncRequired: false,
     };
   }
@@ -47,18 +68,24 @@ export class InMemoryRealtimeEventRepository implements RealtimeEventRepositoryP
 const scopeKey = (params: { readonly tenantId: string; readonly workspaceId: string; readonly channel: string }): string =>
   `${params.tenantId}:${params.workspaceId}:${params.channel}`;
 
-const encodeCursor = (offset: number): string => Buffer.from(JSON.stringify({ offset })).toString('base64url');
+const encodeCursor = (afterSequence: number): string => Buffer
+  .from(JSON.stringify({ afterSequence }))
+  .toString('base64url');
 
-const parseCursor = (cursor: string | undefined): number | null => {
+const parseCursor = (cursor: string | undefined): { readonly afterSequence: number } | null => {
   if (cursor === undefined) {
-    return 0;
+    return { afterSequence: 0 };
   }
 
   try {
-    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { offset?: unknown };
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
+      afterSequence?: unknown;
+      offset?: unknown;
+    };
+    const afterSequence = parsed.afterSequence ?? parsed.offset;
 
-    if (typeof parsed.offset === 'number' && Number.isInteger(parsed.offset) && parsed.offset >= 0) {
-      return parsed.offset;
+    if (typeof afterSequence === 'number' && Number.isInteger(afterSequence) && afterSequence >= 0) {
+      return { afterSequence };
     }
   } catch {
     return null;

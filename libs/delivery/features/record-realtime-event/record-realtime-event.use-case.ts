@@ -22,7 +22,7 @@ export class RecordRealtimeEventUseCase {
     }
 
     const sequence = await this.realtimeEvents.nextSequence(command);
-    const replayCursor = Buffer.from(JSON.stringify({ offset: sequence })).toString('base64url');
+    const replayCursor = Buffer.from(JSON.stringify({ afterSequence: sequence })).toString('base64url');
     const event = RealtimeEvent.create({
       id: this.ids.generate(),
       protocolVersion: 1,

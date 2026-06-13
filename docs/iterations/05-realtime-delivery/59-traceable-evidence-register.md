@@ -34,7 +34,20 @@ Prove that realtime is authorized, recoverable and idempotent.
 - Support receives missed-update diagnostic notes.
 
 ## Missing Evidence Blocks
-- Unauthorized subscription test absent.
-- Resync scenario absent.
-- Notification idempotency evidence absent.
 - Temporal delivery evidence absent for digest window, replay expiry or webhook timestamp skew.
+
+## Delivery Replay Safety Gate Evidence
+
+- Gate: `npm run check:delivery-replay`
+- Release gate id: `delivery-replay-idempotency`
+- Focused spec: `libs/delivery/adapters/persistence/in-memory-realtime-event.repository.spec.ts`
+
+Verified guarantees:
+
+- unauthorized REST replay without workspace role is covered by `test/e2e/realtime-events.list.e2e-spec.ts`;
+- realtime replay cursors use absolute `afterSequence`, not retained-array offsets;
+- stale cursors older than the retained replay window return `resyncRequired: true` instead of partial event loss;
+- current REST snapshot without cursor remains available from the retained window;
+- caught-up replay cursor returns no events and does not force resync;
+- duplicate delivery queue commands reuse the same delivery attempt through idempotency key;
+- notification preference recheck happens immediately before provider send and suppresses delivery without calling provider.
