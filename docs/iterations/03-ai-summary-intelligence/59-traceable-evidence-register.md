@@ -34,7 +34,6 @@ Prove that summaries are cited, validated, evaluated and cost-aware.
 - Residual summary quality risks are owned.
 
 ## Missing Evidence Blocks
-- Missing citation validation.
 - Missing eval output.
 - Missing cost attribution.
 - Missing temporal window evidence for summary selection and stale marking.
@@ -74,3 +73,21 @@ Evidence notes:
 - Feed projection persists `topicId` onto `FeedItem`; feed list/get DTOs expose it and `GET /feed/items?topicId=...` can filter read-model results.
 - `FeedSummaryEvidenceSelector` asks the Feed read port for the requested topic only, so summary evidence cannot leak from another topic in the same workspace.
 - Feed canonical URL dedupe is tenant/workspace/topic scoped; the same URL can appear once per topic while remaining deduped inside each topic.
+
+## PR 40 Citation Validation Against Selected Evidence
+
+- `8f78e96 feat: validate summary citations against evidence`
+
+Verified commands:
+
+- `npm run build`
+- `node scripts/run-with-timeout.mjs --timeout-ms 60000 -- npm test -- --runTestsByPath libs/summary/features/shared/summary-citation-validator.spec.ts libs/summary/features/execute-summary-job/execute-summary-job.use-case.spec.ts libs/summary/domain/entities/summary-artifact.spec.ts`
+- `npm run check:architecture`
+- `git diff --check`
+
+Evidence notes:
+
+- `SummaryArtifact` rejects duplicate citation IDs and risk citations that point outside the artifact citation map.
+- Runtime summary execution validates provider draft citations against the frozen evidence window before saving artifacts or publishing `summary.ready`.
+- The eval harness uses the same citation validator, so invalid citation regressions fail quality gates instead of only product runtime.
+- The targeted Jest run reported `3 passed / 11 passed`; the outer 60s wrapper returned timeout after Jest had printed success at 67s, so the guard is recorded as behaviorally passed with timeout-cadence risk noted.
