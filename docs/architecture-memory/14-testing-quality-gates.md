@@ -75,6 +75,7 @@ Implementation should not stall on broad test suites. For MVP work, write code i
 - use smoke scripts for expensive end-to-end paths when they prove the same wiring faster than Jest startup;
 - run targeted Jest e2e for changed REST/worker contracts, not the whole e2e suite after every small edit;
 - keep `npm test` and `npm run test:e2e` behind a hard timeout wrapper so leaked handles fail visibly.
+- keep provider certification as a deterministic no-network smoke gate through `npm run check:source-certification`.
 
 Full e2e and load gates remain release/promotion gates, not the default inner development loop.
 
@@ -92,6 +93,7 @@ CI must block:
 - breaking event/protobuf schemas;
 - migrations without tests/review;
 - connector changes without certification tests;
+- `enabled_beta` source providers without a current `ops/ingestion/source-provider-certification.json` artifact;
 - prompt/model changes without eval gate;
 - unsafe commands without idempotency support;
 - new large collections without cursor pagination.

@@ -72,9 +72,14 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
     const stories = plan.query.mode === 'listing'
       ? await this.client.listStories(plan.query.query as HackerNewsListing, plan.maxItems)
       : await this.client.searchStories(plan.query.query, plan.maxItems);
+    const cursorTime = decodeTimeCursor(plan.cursor);
+    const items = stories
+      .flatMap((story) => normalizeStory(story))
+      .filter((item) => cursorTime === undefined || item.publishedAt.getTime() > cursorTime);
 
     return {
-      items: stories.flatMap((story) => normalizeStory(story)),
+      items,
+      nextCursor: encodeTimeCursor(items, plan.cursor),
       warnings: stories.some((story) => story.deleted || story.dead)
         ? ['Some Hacker News stories were deleted/dead and skipped.']
         : [],
@@ -98,6 +103,33 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
     };
   }
 }
+
+const decodeTimeCursor = (cursor: string | undefined): number | undefined => {
+  if (cursor === undefined) {
+    return undefined;
+  }
+
+  const parsed = Date.parse(cursor);
+
+  return Number.isNaN(parsed) ? undefined : parsed;
+};
+
+const encodeTimeCursor = (
+  items: readonly { readonly publishedAt: Date }[],
+  previousCursor: string | undefined,
+): string | undefined => {
+  const previousTime = decodeTimeCursor(previousCursor);
+  const maxPublishedAt = items.reduce(
+    (max, item) => Math.max(max, item.publishedAt.getTime()),
+    previousTime ?? Number.NEGATIVE_INFINITY,
+  );
+
+  if (maxPublishedAt === Number.NEGATIVE_INFINITY || maxPublishedAt === previousTime) {
+    return previousCursor;
+  }
+
+  return new Date(maxPublishedAt).toISOString();
+};
 
 const normalizeStory = (story: HackerNewsStory) => {
   if (story.deleted || story.dead || story.title === undefined) {

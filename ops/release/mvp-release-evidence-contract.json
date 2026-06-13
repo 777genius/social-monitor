@@ -60,6 +60,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "source-provider-certification",
+      "command": "npm run check:source-certification",
+      "blocksRelease": true
+    },
+    {
       "gateId": "summary-eval-regression",
       "command": "npm run check:summary-evals",
       "blocksRelease": true

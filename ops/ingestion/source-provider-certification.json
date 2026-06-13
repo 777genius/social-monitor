@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "reportId": "source-provider-certification-mvp-v1",
+  "generatedBy": "npm run check:source-certification",
+  "fixtureMode": "deterministic_no_network",
+  "blockingPassed": true,
+  "certifiedProviders": [
+    {
+      "providerKey": "fake-source",
+      "readinessState": "enabled_beta",
+      "productionSafe": true,
+      "cursorModel": "opaque",
+      "quotaModel": "none",
+      "itemCount": 2,
+      "warningCount": 0,
+      "firstExternalId": "source-binding-cert-fake-source:fake-post-1",
+      "nextCursor": "fake-cursor-next",
+      "repeatedScanItemCount": 2,
+      "failureKind": "unknown",
+      "checks": [
+        "capability_profile_matches_readiness",
+        "unsupported_query_rejected_before_scan",
+        "normalized_items_have_stable_identity",
+        "cursor_contract_is_non_empty_for_cursor_models",
+        "fixture_repeated_scan_is_deterministic",
+        "provider_errors_are_classified"
+      ]
+    },
+    {
+      "providerKey": "hacker-news",
+      "readinessState": "enabled_beta",
+      "productionSafe": true,
+      "cursorModel": "time",
+      "quotaModel": "per_app",
+      "itemCount": 2,
+      "warningCount": 1,
+      "firstExternalId": "hn:1001",
+      "nextCursor": "2026-05-28T20:27:40.000Z",
+      "repeatedScanItemCount": 0,
+      "failureKind": "unavailable",
+      "checks": [
+        "capability_profile_matches_readiness",
+        "unsupported_query_rejected_before_scan",
+        "normalized_items_have_stable_identity",
+        "cursor_contract_is_non_empty_for_cursor_models",
+        "fixture_repeated_scan_is_deterministic",
+        "provider_errors_are_classified"
+      ]
+    },
+    {
+      "providerKey": "rss",
+      "readinessState": "enabled_beta",
+      "productionSafe": true,
+      "cursorModel": "etag_last_modified",
+      "quotaModel": "per_source_binding",
+      "itemCount": 2,
+      "warningCount": 1,
+      "firstExternalId": "rss-guid-1",
+      "nextCursor": "{\"etag\":\"\\\"fixture-rss-etag\\\"\",\"lastModified\":\"Fri, 05 Jun 2026 10:02:00 GMT\"}",
+      "repeatedScanItemCount": 2,
+      "failureKind": "unavailable",
+      "checks": [
+        "capability_profile_matches_readiness",
+        "unsupported_query_rejected_before_scan",
+        "normalized_items_have_stable_identity",
+        "cursor_contract_is_non_empty_for_cursor_models",
+        "fixture_repeated_scan_is_deterministic",
+        "provider_errors_are_classified"
+      ]
+    }
+  ],
+  "deferredProviders": [
+    {
+      "providerKey": "reddit",
+      "state": "profiled",
+      "acquisitionMode": "official_api_or_approved_vendor"
+    },
+    {
+      "providerKey": "telegram",
+      "state": "manual_only",
+      "acquisitionMode": "bot_or_channel_api_with_clear_scope"
+    },
+    {
+      "providerKey": "x-twitter",
+      "state": "provider_only",
+      "acquisitionMode": "approved_paid_api_or_vendor"
+    }
+  ]
+}

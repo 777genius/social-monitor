@@ -26,6 +26,7 @@ Decide whether ingestion is ready for summary intelligence.
 
 ## Critical Audit Evidence
 - Adapter certification, cursor crash/retry and normalized feed provenance evidence is attached.
+- `ops/ingestion/source-provider-certification.json` proves fake-source, Hacker News and RSS certification without network/API keys.
 - Provider DTO leakage checks pass.
 - Deferred sources remain readiness profiles, not hidden implementation dependencies.
 - Raw payload deletion and citation-unavailable behavior are covered by fixtures.

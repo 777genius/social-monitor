@@ -17,8 +17,12 @@
 ## Blockers To Resolve Before Promotion
 - Provider-specific downstream fields.
 - Unsafe cursor behavior.
-- Missing certification coverage.
 - Source policy exception without owner.
+
+## Promotion Evidence Now Attached
+- Source provider certification is enforced by `npm run check:source-certification`.
+- Committed certification artifact: `ops/ingestion/source-provider-certification.json`.
+- MVP beta providers certified: fake source, Hacker News and RSS.
 
 ## Carryover
 - Reddit, X/Twitter and Telegram remain future adapters.

@@ -22,7 +22,8 @@ Code quality rules must be enforceable, not only documented. `npm run verify` mu
 10. Summary or LLM-cost producing changes must keep cost attribution executable through `npm run check:summary-cost`; token/cost telemetry cannot be documented only in prose.
 11. Summary source-window or feed freshness changes must keep `npm run check:summary-window` passing; completed artifact text remains immutable and freshness is exposed as read-model metadata.
 12. Summary execution retry changes must keep `npm run check:summary-retry` passing; transient provider failures must not publish artifacts/events and successful retries must clear failure state.
-13. Architecture boundaries remain separately enforced by `npm run check:architecture`.
+13. Source provider changes must keep `npm run check:source-certification` passing; every `enabled_beta` provider needs deterministic fixture certification and a current `ops/ingestion/source-provider-certification.json` artifact.
+14. Architecture boundaries remain separately enforced by `npm run check:architecture`.
 
 ## Current Gate
 
@@ -69,6 +70,7 @@ Clean Architecture fails slowly when use cases stop being directly testable, con
 - Summary cost or model-routing changes must refresh committed cost attribution evidence and keep the release gate blocking.
 - Summary window/freshness changes must prove UTC boundary behavior and stale marking with executable smoke or focused tests.
 - Summary retry changes must prove failure isolation, same-job replay and single-event success semantics with executable smoke or focused tests.
+- Source provider changes must prove capability/readiness alignment, stable identity, cursor contract and classified failures through `npm run check:source-certification`.
 - Evidence docs must be updated from temporary branch markers to concrete commit SHAs before merge.
 
 ## MVP Boundary

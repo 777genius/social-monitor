@@ -49,7 +49,11 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     supportedContentUnits: ['post', 'link'],
     unsupportedContentUnits: ['comment', 'profile', 'community', 'media'],
     estimatedCostPerScan: 'low_to_medium',
-    betaEnablementCriteria: ['RSS malformed/duplicate fixtures pass', 'HTTP cache headers supported', 'SSRF URL policy enforced'],
+    betaEnablementCriteria: [
+      'RSS certification fixtures pass for malformed, duplicate and missing GUID items',
+      'HTTP cache headers supported',
+      'SSRF URL policy enforced',
+    ],
     rollbackPlan: 'Pause affected feed bindings and expose source health degraded.',
   },
   {

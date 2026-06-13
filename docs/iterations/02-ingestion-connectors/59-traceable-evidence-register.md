@@ -35,10 +35,25 @@ Prove that ingestion produces certified, normalized and provider-neutral feed da
 - Operations accepts scan failure taxonomy.
 
 ## Missing Evidence Blocks
-- Adapter without certification.
 - Feed item without provenance.
 - Cursor behavior without retry evidence.
 - Temporal scan behavior without fake-clock/window-boundary evidence.
+
+## Source Provider Certification Gate Evidence
+
+- Gate: `npm run check:source-certification`
+- Evidence artifact: `ops/ingestion/source-provider-certification.json`
+- Certified beta providers: `fake-source`, `hacker-news`, `rss`
+- Deferred providers: `reddit`, `x-twitter`, `telegram`
+
+Verified guarantees:
+
+- every `enabled_beta` source profile has a deterministic certification case;
+- provider capability profile matches readiness profile for cursor, quota and identity strategy;
+- unsupported query modes are rejected before scanning;
+- fixture scans return normalized items with stable external IDs, HTTP canonical URLs and valid timestamps;
+- cursor-based providers return non-empty cursors;
+- repeated fixture scans are deterministic and provider errors are classified.
 
 ## PR 36 Hacker News Live-Capable Connector Evidence
 

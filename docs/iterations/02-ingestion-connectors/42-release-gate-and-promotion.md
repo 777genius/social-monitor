@@ -15,10 +15,11 @@ Approve movement from ingestion into summary intelligence.
 - Cursor advances only after durable writes.
 - Duplicate provider items do not duplicate feed records.
 - Provider failures map to stable error categories.
+- `npm run check:source-certification` passes and `ops/ingestion/source-provider-certification.json` is current.
 
 ## Hold Conditions
 - Feed schema is still provider-shaped.
-- Certification tests are incomplete.
+- Source certification gate or evidence artifact is missing/stale.
 - Cursor behavior under crash/retry is unclear.
 - Unsupported source strategy is treated as production-ready.
 
