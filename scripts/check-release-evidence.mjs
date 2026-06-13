@@ -21,6 +21,7 @@ const requiredGateIds = new Set([
   'summary-eval-regression',
   'summary-cost-attribution',
   'summary-window-freshness',
+  'summary-retry-safety',
   'backup-restore-contract',
   'retention-contract',
   'staging-drills',

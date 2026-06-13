@@ -77,11 +77,10 @@ export class ExecuteSummaryJobUseCase {
       return err(new DomainError('operation.conflict', 'Summary job is already running'));
     }
 
-    if (snapshot.status === 'failed') {
-      return err(new DomainError('operation.conflict', 'Failed summary job retry is not implemented yet'));
-    }
-
-    const runningJob = job.start({ startedAt: this.clock.now() });
+    const executableJob = snapshot.status === 'failed'
+      ? job.retry({ requestedAt: this.clock.now() })
+      : job;
+    const runningJob = executableJob.start({ startedAt: this.clock.now() });
     await this.summaryJobs.save(runningJob);
 
     try {

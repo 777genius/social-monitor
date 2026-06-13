@@ -249,6 +249,30 @@ class InvalidCitationSummaryModel extends NoSignalSummaryModel {
   }
 }
 
+class TransientFailureSummaryModel extends NoSignalSummaryModel {
+  private attemptCount = 0;
+
+  override async summarize(input: SummaryModelInput, route: SummaryModelRoute): Promise<ProviderSummaryAttempt> {
+    this.attemptCount += 1;
+
+    if (this.attemptCount === 1) {
+      throw new Error('Transient provider unavailable');
+    }
+
+    return super.summarize(input, route);
+  }
+
+  override classifyError(error: unknown): SummaryModelFailure {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+
+    return {
+      kind: 'provider_unavailable',
+      retryable: true,
+      message,
+    };
+  }
+}
+
 class FakeSummaryEvents implements SummaryEventPublisherPort {
   readonly events: EventEnvelope<Readonly<Record<string, unknown>>>[] = [];
 
@@ -383,5 +407,87 @@ describe('ExecuteSummaryJobUseCase', () => {
       status: 'failed',
       failureReason: 'Summary citation validation failed: citation c1 references unselected feed item',
     });
+  });
+
+  it('retries a failed job with the same job id and clears the failure state on success', async () => {
+    const jobs = new FakeSummaryJobs();
+    const artifacts = new FakeSummaryArtifacts();
+    const events = new FakeSummaryEvents();
+    const tenant = tenantId('tenant-1');
+    const workspace = workspaceId('workspace-1');
+    await jobs.save(
+      SummaryJob.request({
+        id: 'summary-job-transient',
+        tenantId: tenant,
+        workspaceId: workspace,
+        topicId: 'topic-1',
+        idempotencyKey: 'summary-request-transient',
+        requestedAt: new Date('2026-06-06T00:00:00.000Z'),
+      }),
+    );
+    const useCase = new ExecuteSummaryJobUseCase(
+      jobs,
+      artifacts,
+      new EmptyEvidenceSelector(),
+      new TransientFailureSummaryModel(),
+      events,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-06T00:00:02.000Z')),
+    );
+
+    const first = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: 'summary-job-transient',
+    });
+    const failedSnapshot = (await jobs.findById({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: 'summary-job-transient',
+    }))?.toSnapshot();
+    const second = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: 'summary-job-transient',
+    });
+    const completedSnapshot = (await jobs.findById({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: 'summary-job-transient',
+    }))?.toSnapshot();
+
+    expect(first).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'external.dependency_unavailable',
+        details: {
+          kind: 'provider_unavailable',
+        },
+      }),
+    });
+    expect(failedSnapshot).toMatchObject({
+      status: 'failed',
+      failureReason: 'Transient provider unavailable',
+    });
+    expect(second).toEqual({
+      ok: true,
+      value: {
+        summaryJobId: 'summary-job-transient',
+        status: 'no_signal',
+        summaryId: 'summary-artifact-1',
+      },
+    });
+    expect(completedSnapshot).toMatchObject({
+      status: 'no_signal',
+      summaryId: 'summary-artifact-1',
+    });
+    expect(completedSnapshot?.failureReason).toBeUndefined();
+    expect(completedSnapshot?.failedAt).toBeUndefined();
+    expect(events.events).toHaveLength(1);
+    await expect(artifacts.findById({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryId: 'summary-artifact-1',
+    })).resolves.not.toBeNull();
   });
 });

@@ -94,6 +94,22 @@ export class SummaryJob {
     });
   }
 
+  retry(params: { readonly requestedAt: Date }): SummaryJob {
+    if (this.props.status !== 'failed') {
+      throw new Error('Summary job can only retry from failed status');
+    }
+
+    return new SummaryJob({
+      id: this.props.id,
+      tenantId: this.props.tenantId,
+      workspaceId: this.props.workspaceId,
+      topicId: this.props.topicId,
+      status: 'requested',
+      idempotencyKey: this.props.idempotencyKey,
+      requestedAt: params.requestedAt,
+    });
+  }
+
   toSnapshot(): SummaryJobProps {
     return { ...this.props };
   }
