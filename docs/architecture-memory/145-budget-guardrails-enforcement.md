@@ -56,7 +56,10 @@ Track unit economics:
 - cost per active tenant;
 - provider cost by source kind.
 
+## MVP Enforcement Evidence
+
+Summary cost attribution is executable release evidence, not a spreadsheet task. `npm run check:summary-cost` recomputes `ops/cost/summary-cost-attribution.json` from deterministic summary eval fixtures and validates tenant, workspace, topic, source window, provider, model, prompt and schema dimensions before release.
+
 ## Best-Fact Choice
 
 For this product, uncontrolled AI/source costs are a reliability risk. Budget enforcement must sit in the execution path, not only in monthly finance reports.
-

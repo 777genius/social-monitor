@@ -34,7 +34,6 @@ Prove that summaries are cited, validated, evaluated and cost-aware.
 - Residual summary quality risks are owned.
 
 ## Missing Evidence Blocks
-- Missing cost attribution.
 - Missing temporal window evidence for summary selection and stale marking.
 
 ## PR 38 Feed-Backed Summary Evidence Selection
@@ -108,3 +107,25 @@ Evidence notes:
 - `ops/evals/summary-eval-output.json` records deterministic eval output for empty/no-signal, HN citation and RSS prompt-injection fixtures.
 - `npm run check:summary-evals` recomputes the report, blocks if any fixture fails and blocks if the committed eval output is stale.
 - The beta MVP release contract now includes `summary-eval-regression` as a blocking gate, and `npm run verify` includes `check:summary-evals`.
+
+## PR 42 Summary Cost Attribution Gate
+
+- `80adeee feat: add summary cost attribution gate`
+
+Verified commands:
+
+- `npm run check:summary-cost -- --update`
+- `npm run check:summary-cost`
+- `npm run check:release`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run build`
+- `NODE_OPTIONS=--max-old-space-size=1024 node scripts/run-with-timeout.mjs --timeout-ms 120000 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath libs/summary/features/build-summary-cost-attribution/build-summary-cost-attribution.use-case.spec.ts`
+- `git diff --check`
+
+Evidence notes:
+
+- `BuildSummaryCostAttributionUseCase` derives a deterministic cost attribution report from the same summary eval fixtures and model preflight estimates used by the eval gate.
+- `ops/cost/summary-cost-attribution.json` records per-fixture tenant, workspace, topic, source window, provider, model, prompt and schema dimensions plus token/cost totals and aggregates.
+- `npm run check:summary-cost` recomputes the report and blocks release if eval metrics drift from model preflight estimates, if any fixture lacks attribution, if fixture/policy/budget limits are exceeded, or if the committed JSON is stale.
+- The beta MVP release contract now includes `summary-cost-attribution` as a blocking gate, and `npm run verify` includes `check:summary-cost`.

@@ -19,7 +19,6 @@
 - Uncited final summaries.
 - Provider schema leaking into public API.
 - Missing eval path.
-- Missing cost attribution.
 
 ## Carryover
 - Larger eval datasets can grow after beta.

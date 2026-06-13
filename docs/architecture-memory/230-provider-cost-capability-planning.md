@@ -127,6 +127,12 @@ OpenAI:
 - batch option for non-urgent workloads
 - prompt caching can reduce repeated prompt cost/latency
 
+Summary MVP:
+
+- cost attribution is checked through `npm run check:summary-cost`
+- committed report path is `ops/cost/summary-cost-attribution.json`
+- every eval fixture must attribute estimated tokens/cost to tenant, workspace, topic, source window, provider, model, prompt version and schema version
+
 ## Architecture Rule
 
 No provider is "free" in architecture.
