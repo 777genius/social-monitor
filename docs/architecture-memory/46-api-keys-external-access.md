@@ -1,7 +1,7 @@
 # API Keys & External Access
 
 Date: 2026-05-31
-Status: baseline API key memory
+Status: MVP durable API key baseline
 
 ## Decision
 
@@ -18,6 +18,8 @@ References:
 ## API Key Storage
 
 Store only hashed API keys.
+
+MVP runtime can persist API keys through `IDENTITY_PERSISTENCE=prisma`. The executable gate is `npm run check:identity-persistence`, covering create/list/verify/revoke, scope enforcement, revoked-key rejection and no secret-hash exposure.
 
 Required fields:
 
@@ -81,4 +83,3 @@ Later:
 3. API keys cannot bypass budget/authorization.
 4. Full API key is shown only once.
 5. High-security partner auth can evolve to OAuth client credentials/DPoP later.
-

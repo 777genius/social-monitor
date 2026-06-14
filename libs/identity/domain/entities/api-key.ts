@@ -27,6 +27,10 @@ export class ApiKey {
   private constructor(private readonly props: ApiKeyProps) {}
 
   static create(props: ApiKeyProps): ApiKey {
+    return this.rehydrate(props);
+  }
+
+  static rehydrate(props: ApiKeyProps): ApiKey {
     if (props.id.trim().length === 0) {
       throw new Error('API key id must be non-empty');
     }
@@ -43,14 +47,25 @@ export class ApiKey {
       throw new Error('API key must include at least one scope');
     }
 
+    if (props.status === 'active' && props.revokedAt !== undefined) {
+      throw new Error('Active API key must not have revoke time');
+    }
+
+    if (props.status === 'revoked' && props.revokedAt === undefined) {
+      throw new Error('Revoked API key must include revoke time');
+    }
+
     return new ApiKey({
       ...props,
+      name: props.name.trim(),
+      keyPrefix: props.keyPrefix.trim(),
+      secretHash: props.secretHash.trim(),
       scopes: [...new Set(props.scopes)].sort((left, right) => left.localeCompare(right)),
     });
   }
 
   revoke(params: { readonly revokedAt: Date }): ApiKey {
-    return new ApiKey({
+    return ApiKey.rehydrate({
       ...this.props,
       status: 'revoked',
       revokedAt: params.revokedAt,

@@ -81,6 +81,11 @@ enum ScanAttemptStatus {
   FAILED
 }
 
+enum ApiKeyCredentialStatus {
+  ACTIVE
+  REVOKED
+}
+
 model Tenant {
   id         String      @id @db.Uuid
   slug       String      @unique
@@ -141,6 +146,24 @@ model Membership {
   @@unique([tenantId, workspaceId, userId])
   @@index([tenantId, userId])
   @@map("memberships")
+}
+
+model ApiKeyCredential {
+  id          String                 @id @db.Uuid
+  tenantId    String                 @map("tenant_id") @db.Uuid
+  workspaceId String                 @map("workspace_id") @db.Uuid
+  name        String
+  keyPrefix   String                 @unique @map("key_prefix")
+  secretHash  String                 @map("secret_hash")
+  scopes      String[]
+  status      ApiKeyCredentialStatus @default(ACTIVE)
+  createdAt   DateTime               @map("created_at") @db.Timestamptz(6)
+  revokedAt   DateTime?              @map("revoked_at") @db.Timestamptz(6)
+  updatedAt   DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, createdAt])
+  @@index([tenantId, workspaceId, status])
+  @@map("api_keys")
 }
 
 model Topic {

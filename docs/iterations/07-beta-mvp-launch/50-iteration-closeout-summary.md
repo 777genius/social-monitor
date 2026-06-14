@@ -16,6 +16,7 @@
 - Monitoring Prisma persistence foundation and opt-in monitoring runtime selector for topics, source bindings, scan policies and scan jobs has executable evidence through `npm run check:monitoring-persistence`.
 - Ingestion/feed Prisma persistence foundation for source items, cursors, feed read models, scan failure queue, scan attempts and scan leases, plus opt-in feed API, ingestion-worker and ingestion-support runtime selectors, has executable evidence through `npm run check:ingestion-feed-persistence`.
 - Summary Prisma persistence foundation for summary jobs, artifacts and feedback, plus opt-in summary API runtime selector, has executable evidence through `npm run check:summary-persistence`.
+- Identity Prisma persistence foundation for hashed API key lifecycle, plus opt-in identity API runtime selector, has executable evidence through `npm run check:identity-persistence`.
 - Source binding pause/resume has executable evidence through `npm run check:mvp-core-loop`.
 - Beta user onboarding walkthrough is linked to the same topic/source/scan/feed/summary/feedback/realtime path.
 - Supported sources are frozen or change-controlled.

@@ -75,7 +75,7 @@
       "owner": "identity-owner",
       "inMemoryStateAdapters": ["InMemoryApiKeyRepository"],
       "risk": "API keys disappear on restart and cannot be shared across API replicas",
-      "durableReplacementPlan": "Prisma API key repository with hashed key lookup"
+      "durableReplacementPlan": "IdentityRestModule can opt into Prisma hashed API key persistence with IDENTITY_PERSISTENCE=prisma; keep in-memory only for deterministic local smoke"
     },
     {
       "moduleFile": "libs/usage/interfaces/rest/usage-rest.module.ts",

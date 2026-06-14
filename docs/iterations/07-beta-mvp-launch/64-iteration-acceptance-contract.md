@@ -16,6 +16,7 @@ Post-MVP roadmap owners receive prioritized backlog, ADR updates and quality-gat
 - Monitoring Prisma persistence foundation for topics, source bindings, scan policies and scan jobs is gated by `npm run check:monitoring-persistence`.
 - Ingestion/feed Prisma persistence foundation plus feed API, ingestion-worker and ingestion-support runtime selectors, including scan attempts and scan leases, are gated by `npm run check:ingestion-feed-persistence`.
 - Summary Prisma persistence foundation and summary API runtime selector are gated by `npm run check:summary-persistence`.
+- Identity Prisma persistence foundation and identity API runtime selector are gated by `npm run check:identity-persistence`.
 - Post-MVP work preserves architecture guardrails.
 
 ## Receiver Expectations
@@ -32,6 +33,7 @@ Post-MVP roadmap owners receive prioritized backlog, ADR updates and quality-gat
 - Backend monitoring persistence gate fails.
 - Backend ingestion/feed persistence gate fails.
 - Backend summary persistence gate fails.
+- Backend identity persistence gate fails.
 - Backend core-loop release gate fails.
 - Core onboarding cannot be completed.
 - Launch cannot be paused safely or paused source bindings can still enqueue new scan work.
