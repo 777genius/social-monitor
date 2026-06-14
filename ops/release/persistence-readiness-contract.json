@@ -36,7 +36,7 @@
       "owner": "feed-owner",
       "inMemoryStateAdapters": ["InMemoryFeedItemReadRepository"],
       "risk": "feed items are process-local and not shared with ingestion workers",
-      "durableReplacementPlan": "Prisma feed read repository foundation exists; wire FeedRestModule to the shared Prisma feed client when feed runtime persistence is enabled"
+      "durableReplacementPlan": "FeedRestModule can opt into Prisma read persistence with FEED_PERSISTENCE=prisma; remaining blocker is worker runtime wiring to shared Prisma source/cursor/feed projection state"
     },
     {
       "moduleFile": "libs/summary/interfaces/rest/summary-rest.module.ts",
@@ -49,7 +49,7 @@
         "InMemorySummaryEventPublisher"
       ],
       "risk": "summary jobs, artifacts, feedback and events are process-local and disappear on restart",
-      "durableReplacementPlan": "Prisma summary job, artifact and feedback repository foundations exist; remaining blockers are runtime selector wiring and durable summary event publisher/outbox"
+      "durableReplacementPlan": "SummaryRestModule can opt into Prisma job/artifact/feedback persistence with SUMMARY_PERSISTENCE=prisma; remaining blockers are durable summary event publisher/outbox and cross-worker summary execution wiring"
     },
     {
       "moduleFile": "libs/delivery/interfaces/rest/delivery-rest.module.ts",

@@ -4,6 +4,7 @@ import { PrismaFeedItemReadRepository } from '../libs/feed/adapters/persistence/
 import { PrismaFeedProjectionAdapter } from '../libs/feed/adapters/persistence/prisma/prisma-feed-projection.adapter';
 import type { PrismaFeedClient } from '../libs/feed/adapters/persistence/prisma/prisma-feed-client';
 import type { PrismaFeedItemRecord } from '../libs/feed/adapters/persistence/prisma/prisma-feed-records';
+import { resolveFeedPersistenceMode } from '../libs/feed/interfaces/rest/feed-provider-tokens';
 import { SourceItem } from '../libs/ingestion/domain';
 import { PrismaScanCursorRepository } from '../libs/ingestion/adapters/persistence/prisma/prisma-scan-cursor.repository';
 import { PrismaSourceItemRepository } from '../libs/ingestion/adapters/persistence/prisma/prisma-source-item.repository';
@@ -20,6 +21,19 @@ const sourceBindingId = '00000000-0000-7000-8000-000000000103';
 const topicId = '00000000-0000-7000-8000-000000000104';
 
 async function main(): Promise<void> {
+  assert(resolveFeedPersistenceMode({}) === 'in-memory', 'feed persistence must default to in-memory');
+  assertThrows(
+    () => resolveFeedPersistenceMode({ FEED_PERSISTENCE: 'prisma' }),
+    'FEED_PERSISTENCE=prisma must require DATABASE_URL',
+  );
+  assert(
+    resolveFeedPersistenceMode({
+      FEED_PERSISTENCE: 'prisma',
+      DATABASE_URL: 'postgresql://example.test/social-monitor',
+    }) === 'prisma',
+    'feed persistence must accept explicit Prisma mode with DATABASE_URL',
+  );
+
   const prisma = new FakePrismaIngestionFeedClient();
   const ids = new SequenceIdGenerator([
     '00000000-0000-7000-8000-000000000201',
@@ -252,6 +266,16 @@ function assert(condition: unknown, message: string): asserts condition {
     throw new Error(message);
   }
 }
+
+const assertThrows = (operation: () => unknown, message: string): void => {
+  try {
+    operation();
+  } catch {
+    return;
+  }
+
+  throw new Error(message);
+};
 
 void main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);

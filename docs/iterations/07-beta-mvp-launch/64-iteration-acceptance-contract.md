@@ -14,8 +14,8 @@ Post-MVP roadmap owners receive prioritized backlog, ADR updates and quality-gat
 - Ring expansion decisions are gated by `npm run check:beta-ring-policy`.
 - Runtime persistence gaps are declared and gated by `npm run check:persistence-readiness`.
 - Monitoring Prisma persistence foundation for topics, source bindings, scan policies and scan jobs is gated by `npm run check:monitoring-persistence`.
-- Ingestion/feed Prisma persistence foundation for source items, cursors and feed read models is gated by `npm run check:ingestion-feed-persistence`.
-- Summary Prisma persistence foundation for jobs, artifacts and feedback is gated by `npm run check:summary-persistence`.
+- Ingestion/feed Prisma persistence foundation and feed API runtime selector are gated by `npm run check:ingestion-feed-persistence`.
+- Summary Prisma persistence foundation and summary API runtime selector are gated by `npm run check:summary-persistence`.
 - Post-MVP work preserves architecture guardrails.
 
 ## Receiver Expectations

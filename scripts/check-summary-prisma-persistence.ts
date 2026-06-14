@@ -5,6 +5,7 @@ import { PrismaSummaryArtifactRepository } from '../libs/summary/adapters/persis
 import type { PrismaSummaryClient } from '../libs/summary/adapters/persistence/prisma/prisma-summary-client';
 import { PrismaSummaryFeedbackRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-feedback.repository';
 import { PrismaSummaryJobRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-job.repository';
+import { resolveSummaryPersistenceMode } from '../libs/summary/interfaces/rest/summary-provider-tokens';
 import type {
   PrismaSummaryArtifactRecord,
   PrismaSummaryFeedbackRecord,
@@ -18,6 +19,19 @@ const workspace = workspaceId('00000000-0000-7000-8000-000000000402');
 const topicId = '00000000-0000-7000-8000-000000000403';
 
 async function main(): Promise<void> {
+  assert(resolveSummaryPersistenceMode({}) === 'in-memory', 'summary persistence must default to in-memory');
+  assertThrows(
+    () => resolveSummaryPersistenceMode({ SUMMARY_PERSISTENCE: 'prisma' }),
+    'SUMMARY_PERSISTENCE=prisma must require DATABASE_URL',
+  );
+  assert(
+    resolveSummaryPersistenceMode({
+      SUMMARY_PERSISTENCE: 'prisma',
+      DATABASE_URL: 'postgresql://example.test/social-monitor',
+    }) === 'prisma',
+    'summary persistence must accept explicit Prisma mode with DATABASE_URL',
+  );
+
   const prisma = new FakePrismaSummaryClient();
   const summaryJobs = new PrismaSummaryJobRepository(prisma);
   const summaryArtifacts = new PrismaSummaryArtifactRepository(prisma);
@@ -371,6 +385,16 @@ function assert(condition: unknown, message: string): asserts condition {
     throw new Error(message);
   }
 }
+
+const assertThrows = (operation: () => unknown, message: string): void => {
+  try {
+    operation();
+  } catch {
+    return;
+  }
+
+  throw new Error(message);
+};
 
 void main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
