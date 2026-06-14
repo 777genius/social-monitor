@@ -29,8 +29,8 @@ enum SourceBindingStatus {
 }
 
 enum ScanJobStatus {
-  PENDING
-  LEASED
+  REQUESTED
+  ENQUEUED
   SUCCEEDED
   FAILED
   CANCELLED
@@ -214,12 +214,17 @@ model ScanJob {
   tenantId        String        @map("tenant_id") @db.Uuid
   workspaceId     String        @map("workspace_id") @db.Uuid
   sourceBindingId String        @map("source_binding_id") @db.Uuid
-  status          ScanJobStatus @default(PENDING)
+  scanPolicyId    String        @map("scan_policy_id") @db.Uuid
+  status          ScanJobStatus @default(REQUESTED)
   idempotencyKey  String        @map("idempotency_key")
   leasedUntil     DateTime?     @map("leased_until") @db.Timestamptz(6)
   retryCount      Int           @default(0) @map("retry_count")
   failureClass    String?       @map("failure_class")
-  correlationId   String        @map("correlation_id")
+  requestedAt     DateTime      @map("requested_at") @db.Timestamptz(6)
+  enqueuedAt      DateTime?     @map("enqueued_at") @db.Timestamptz(6)
+  completedAt     DateTime?     @map("completed_at") @db.Timestamptz(6)
+  failureReason   String?       @map("failure_reason")
+  correlationId   String?       @map("correlation_id")
   causationId     String?       @map("causation_id")
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)

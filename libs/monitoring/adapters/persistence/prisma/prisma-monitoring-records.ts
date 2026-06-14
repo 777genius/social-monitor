@@ -1,6 +1,9 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import {
+  ScanJob,
+  type ScanJobProps,
+  type ScanJobStatus,
   ScanPolicy,
   type ScanPolicyProps,
   SourceBinding,
@@ -48,6 +51,21 @@ export type PrismaScanPolicyRecord = {
   readonly createdAt: Date;
 };
 
+export type PrismaScanJobRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly sourceBindingId: string;
+  readonly scanPolicyId: string;
+  readonly status: 'REQUESTED' | 'ENQUEUED' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  readonly idempotencyKey: string;
+  readonly requestedAt: Date;
+  readonly enqueuedAt: Date | null;
+  readonly completedAt: Date | null;
+  readonly failureReason: string | null;
+  readonly createdAt: Date;
+};
+
 export const topicFromPrisma = (record: PrismaTopicRecord): Topic =>
   Topic.rehydrate({
     id: record.id,
@@ -87,8 +105,41 @@ export const scanPolicyFromPrisma = (record: PrismaScanPolicyRecord): ScanPolicy
     createdAt: record.createdAt,
   } satisfies ScanPolicyProps);
 
+export const scanJobFromPrisma = (record: PrismaScanJobRecord): ScanJob =>
+  ScanJob.rehydrate({
+    id: record.id,
+    tenantId: tenantId(record.tenantId),
+    workspaceId: workspaceId(record.workspaceId),
+    sourceBindingId: record.sourceBindingId,
+    scanPolicyId: record.scanPolicyId,
+    status: scanJobStatusFromPrisma(record.status),
+    idempotencyKey: record.idempotencyKey,
+    requestedAt: record.requestedAt,
+    enqueuedAt: record.enqueuedAt ?? undefined,
+    completedAt: record.completedAt ?? undefined,
+    failureReason: record.failureReason ?? undefined,
+  } satisfies ScanJobProps);
+
 export const sourceBindingStatusToPrisma = (status: SourceBindingStatus): 'ENABLED' | 'PAUSED' =>
   status === 'enabled' ? 'ENABLED' : 'PAUSED';
+
+export const scanJobStatusToPrisma = (
+  status: ScanJobStatus,
+): 'REQUESTED' | 'ENQUEUED' | 'SUCCEEDED' | 'FAILED' => {
+  if (status === 'requested') {
+    return 'REQUESTED';
+  }
+
+  if (status === 'enqueued') {
+    return 'ENQUEUED';
+  }
+
+  if (status === 'succeeded') {
+    return 'SUCCEEDED';
+  }
+
+  return 'FAILED';
+};
 
 const sourceBindingStatusFromPrisma = (status: PrismaSourceBindingRecord['status']): SourceBindingStatus => {
   if (status === 'ENABLED') {
@@ -100,6 +151,26 @@ const sourceBindingStatusFromPrisma = (status: PrismaSourceBindingRecord['status
   }
 
   throw new Error(`Cannot rehydrate unsupported source binding status "${status}"`);
+};
+
+const scanJobStatusFromPrisma = (status: PrismaScanJobRecord['status']): ScanJobStatus => {
+  if (status === 'REQUESTED') {
+    return 'requested';
+  }
+
+  if (status === 'ENQUEUED') {
+    return 'enqueued';
+  }
+
+  if (status === 'SUCCEEDED') {
+    return 'succeeded';
+  }
+
+  if (status === 'FAILED') {
+    return 'failed';
+  }
+
+  throw new Error(`Cannot rehydrate unsupported scan job status "${status}"`);
 };
 
 const normalizeRecordObject = (value: unknown): Readonly<Record<string, unknown>> => {

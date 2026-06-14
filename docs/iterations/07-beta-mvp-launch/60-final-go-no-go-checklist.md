@@ -8,7 +8,7 @@ Decide whether beta can close and post-MVP roadmap execution can start.
 - Unsupported/deferred source policy passes `npm run check:beta-scope-policy`.
 - Ring expansion policy passes `npm run check:beta-ring-policy`.
 - Persistence readiness passes `npm run check:persistence-readiness`.
-- Monitoring Prisma persistence foundation passes `npm run check:monitoring-persistence`.
+- Monitoring Prisma persistence foundation for topics, source bindings, scan policies and scan jobs passes `npm run check:monitoring-persistence`.
 - Beta user can complete onboarding against the same topic/source/scan/feed/summary/feedback/realtime path.
 - Supported source list is frozen or change-controlled.
 - Known limitations are explicit.
@@ -83,4 +83,4 @@ Required evidence links:
 10. post-MVP backlog classification
 11. capacity envelope and degradation drill, including `npm run check:beta-ring-policy`
 12. persistence readiness evidence, including `npm run check:persistence-readiness`
-13. monitoring persistence smoke, including `npm run check:monitoring-persistence`
+13. monitoring persistence smoke for topics, source bindings, scan policies and scan jobs, including `npm run check:monitoring-persistence`

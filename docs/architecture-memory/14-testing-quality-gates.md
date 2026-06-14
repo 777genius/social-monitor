@@ -81,7 +81,7 @@ Implementation should not stall on broad test suites. For MVP work, write code i
 - keep unsupported/deferred source scope policy as a deterministic no-network smoke gate through `npm run check:beta-scope-policy`.
 - keep beta ring expansion policy as an executable contract through `npm run check:beta-ring-policy`.
 - keep runtime persistence readiness as an executable contract through `npm run check:persistence-readiness`; in-memory/noop runtime adapters must be declared with owner, risk and durable replacement plan.
-- keep monitoring Prisma persistence adapters covered by `npm run check:monitoring-persistence`, including persisted source binding pause state and scan policy `nextRunAt`.
+- keep monitoring Prisma persistence adapters covered by `npm run check:monitoring-persistence`, including persisted source binding pause state, scan policy `nextRunAt` and scan job status transitions.
 
 Full e2e and load gates remain release/promotion gates, not the default inner development loop.
 

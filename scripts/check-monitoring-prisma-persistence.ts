@@ -1,11 +1,13 @@
 import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { ScanPolicy, SourceBinding, Topic } from '../libs/monitoring/domain';
+import { ScanJob, ScanPolicy, SourceBinding, Topic } from '../libs/monitoring/domain';
+import { PrismaScanJobRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-job.repository';
 import { PrismaScanPolicyRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-policy.repository';
 import { PrismaSourceBindingRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-source-binding.repository';
 import { PrismaTopicRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-topic.repository';
 import type { PrismaMonitoringClient } from '../libs/monitoring/adapters/persistence/prisma/prisma-monitoring-client';
 import type {
+  PrismaScanJobRecord,
   PrismaScanPolicyRecord,
   PrismaSourceBindingRecord,
   PrismaSourceCatalogEntryRecord,
@@ -27,6 +29,7 @@ async function main(): Promise<void> {
   const topics = new PrismaTopicRepository(prisma);
   const bindings = new PrismaSourceBindingRepository(prisma);
   const policies = new PrismaScanPolicyRepository(prisma);
+  const scanJobs = new PrismaScanJobRepository(prisma);
 
   const topic = Topic.create({
     id: '00000000-0000-7000-8000-000000000020',
@@ -106,6 +109,53 @@ async function main(): Promise<void> {
   });
   assert(dueAt.length === 1, 'scan policy must be due at nextRunAt');
 
+  const scanJob = ScanJob.request({
+    id: '00000000-0000-7000-8000-000000000050',
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: sourceBinding.toSnapshot().id,
+    scanPolicyId: scanPolicy.toSnapshot().id,
+    idempotencyKey: 'manual:fake-source:monitoring',
+    requestedAt: clock.now(),
+  });
+  await scanJobs.save(scanJob);
+
+  const foundByIdempotency = await scanJobs.findByIdempotencyKey({
+    tenantId: tenant,
+    workspaceId: workspace,
+    idempotencyKey: 'manual:fake-source:monitoring',
+  });
+  assert(foundByIdempotency?.toSnapshot().status === 'requested', 'scan job requested state must persist');
+
+  const enqueuedScanJob = scanJob.markEnqueued({ enqueuedAt: new Date('2026-06-06T00:00:05.000Z') });
+  await scanJobs.save(enqueuedScanJob);
+
+  const activeScanJob = await scanJobs.findActiveBySourceBinding({
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: sourceBinding.toSnapshot().id,
+  });
+  assert(activeScanJob?.toSnapshot().status === 'enqueued', 'active scan job lookup must include enqueued jobs');
+
+  const succeededScanJob = enqueuedScanJob.markSucceeded({
+    completedAt: new Date('2026-06-06T00:00:10.000Z'),
+  });
+  await scanJobs.save(succeededScanJob);
+
+  const noActiveScanJob = await scanJobs.findActiveBySourceBinding({
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: sourceBinding.toSnapshot().id,
+  });
+  assert(noActiveScanJob === null, 'completed scan jobs must no longer block active scan lookup');
+
+  const completedById = await scanJobs.findById({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scanJobId: scanJob.toSnapshot().id,
+  });
+  assert(completedById?.toSnapshot().status === 'succeeded', 'scan job completion state must persist');
+
   console.log('Monitoring Prisma persistence smoke OK');
 }
 
@@ -115,6 +165,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   private readonly topics = new Map<string, PrismaTopicRecord>();
   private readonly sourceBindings = new Map<string, PrismaSourceBindingRecord>();
   private readonly scanPolicies = new Map<string, PrismaScanPolicyRecord>();
+  private readonly scanJobs = new Map<string, PrismaScanJobRecord>();
 
   readonly topic: PrismaMonitoringClient['topic'] = {
     upsert: async (args) => {
@@ -219,6 +270,50 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         ))
         .sort((left, right) => left.nextRunAt.getTime() - right.nextRunAt.getTime())
         .slice(0, args.take),
+  };
+
+  readonly scanJob: PrismaMonitoringClient['scanJob'] = {
+    upsert: async (args) => {
+      const existing = this.scanJobs.get(args.where.id);
+      const record: PrismaScanJobRecord = {
+        id: args.where.id,
+        tenantId: existing?.tenantId ?? args.create.tenantId,
+        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
+        sourceBindingId: existing?.sourceBindingId ?? args.create.sourceBindingId,
+        scanPolicyId: existing?.scanPolicyId ?? args.create.scanPolicyId,
+        status: args.update.status,
+        idempotencyKey: args.update.idempotencyKey,
+        requestedAt: args.update.requestedAt,
+        enqueuedAt: args.update.enqueuedAt ?? null,
+        completedAt: args.update.completedAt ?? null,
+        failureReason: args.update.failureReason ?? null,
+        createdAt: existing?.createdAt ?? clock.now(),
+      };
+      this.scanJobs.set(record.id, record);
+
+      return record;
+    },
+    findFirst: async (args) => {
+      const records = [...this.scanJobs.values()]
+        .filter((record) => (
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          (args.where.id === undefined || record.id === args.where.id) &&
+          (args.where.idempotencyKey === undefined || record.idempotencyKey === args.where.idempotencyKey) &&
+          (args.where.sourceBindingId === undefined || record.sourceBindingId === args.where.sourceBindingId) &&
+          (args.where.status === undefined || args.where.status.in.some((status) => status === record.status))
+        ));
+
+      if (args.orderBy?.requestedAt === 'asc') {
+        records.sort((left, right) => left.requestedAt.getTime() - right.requestedAt.getTime());
+      }
+
+      if (args.orderBy?.requestedAt === 'desc') {
+        records.sort((left, right) => right.requestedAt.getTime() - left.requestedAt.getTime());
+      }
+
+      return records[0] ?? null;
+    },
   };
 
   private reindexSourceCatalog(): void {

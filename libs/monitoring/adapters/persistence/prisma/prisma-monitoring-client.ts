@@ -1,4 +1,5 @@
 import type {
+  PrismaScanJobRecord,
   PrismaScanPolicyRecord,
   PrismaSourceBindingRecord,
   PrismaSourceCatalogEntryRecord,
@@ -102,5 +103,42 @@ export type PrismaMonitoringClient = {
       readonly orderBy: { readonly nextRunAt: 'asc' };
       readonly take: number;
     }): Promise<readonly PrismaScanPolicyRecord[]>;
+  };
+  readonly scanJob: {
+    upsert(args: {
+      readonly where: { readonly id: string };
+      readonly update: {
+        readonly status: 'REQUESTED' | 'ENQUEUED' | 'SUCCEEDED' | 'FAILED';
+        readonly idempotencyKey: string;
+        readonly requestedAt: Date;
+        readonly enqueuedAt?: Date | null;
+        readonly completedAt?: Date | null;
+        readonly failureReason?: string | null;
+      };
+      readonly create: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly sourceBindingId: string;
+        readonly scanPolicyId: string;
+        readonly status: 'REQUESTED' | 'ENQUEUED' | 'SUCCEEDED' | 'FAILED';
+        readonly idempotencyKey: string;
+        readonly requestedAt: Date;
+        readonly enqueuedAt?: Date | null;
+        readonly completedAt?: Date | null;
+        readonly failureReason?: string | null;
+      };
+    }): Promise<PrismaScanJobRecord>;
+    findFirst(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly id?: string;
+        readonly idempotencyKey?: string;
+        readonly sourceBindingId?: string;
+        readonly status?: { readonly in: readonly ('REQUESTED' | 'ENQUEUED')[] };
+      };
+      readonly orderBy?: { readonly requestedAt: 'asc' | 'desc' };
+    }): Promise<PrismaScanJobRecord | null>;
   };
 };

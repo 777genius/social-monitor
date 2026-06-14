@@ -20,17 +20,44 @@ export class ScanJob {
   private constructor(private readonly props: ScanJobProps) {}
 
   static request(props: Omit<ScanJobProps, 'status'>): ScanJob {
-    if (props.sourceBindingId.trim().length === 0) {
-      throw new Error('Source binding id must be non-empty');
-    }
-
-    if (props.scanPolicyId.trim().length === 0) {
-      throw new Error('Scan policy id must be non-empty');
-    }
+    this.assertRequiredIds(props.sourceBindingId, props.scanPolicyId);
 
     return new ScanJob({
       ...props,
       status: 'requested',
+    });
+  }
+
+  static rehydrate(props: ScanJobProps): ScanJob {
+    this.assertRequiredIds(props.sourceBindingId, props.scanPolicyId);
+
+    if (props.status === 'enqueued' && props.enqueuedAt === undefined) {
+      throw new Error('Enqueued scan jobs must have enqueue time');
+    }
+
+    if ((props.status === 'succeeded' || props.status === 'failed') && props.completedAt === undefined) {
+      throw new Error('Completed scan jobs must have completion time');
+    }
+
+    if (props.status === 'failed' && (props.failureReason ?? '').trim().length === 0) {
+      throw new Error('Failed scan jobs must have failure reason');
+    }
+
+    if (props.enqueuedAt !== undefined && props.enqueuedAt.getTime() < props.requestedAt.getTime()) {
+      throw new Error('Scan job enqueue time cannot be before request time');
+    }
+
+    if (
+      props.completedAt !== undefined &&
+      props.enqueuedAt !== undefined &&
+      props.completedAt.getTime() < props.enqueuedAt.getTime()
+    ) {
+      throw new Error('Scan job completion time cannot be before enqueue time');
+    }
+
+    return new ScanJob({
+      ...props,
+      failureReason: props.failureReason?.trim(),
     });
   }
 
@@ -86,6 +113,16 @@ export class ScanJob {
 
     if (this.props.enqueuedAt !== undefined && completedAt.getTime() < this.props.enqueuedAt.getTime()) {
       throw new Error('Scan job completion time cannot be before enqueue time');
+    }
+  }
+
+  private static assertRequiredIds(sourceBindingId: string, scanPolicyId: string): void {
+    if (sourceBindingId.trim().length === 0) {
+      throw new Error('Source binding id must be non-empty');
+    }
+
+    if (scanPolicyId.trim().length === 0) {
+      throw new Error('Scan policy id must be non-empty');
     }
   }
 }
