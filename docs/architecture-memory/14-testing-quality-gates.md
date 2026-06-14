@@ -83,6 +83,7 @@ Implementation should not stall on broad test suites. For MVP work, write code i
 - keep runtime persistence readiness as an executable contract through `npm run check:persistence-readiness`; in-memory/noop runtime adapters must be declared with owner, risk and durable replacement plan.
 - keep monitoring Prisma persistence adapters covered by `npm run check:monitoring-persistence`, including persisted source binding pause state, scan policy `nextRunAt` and scan job status transitions.
 - keep ingestion/feed Prisma persistence adapters covered by `npm run check:ingestion-feed-persistence`, including source item dedupe, scan cursor roundtrip, feed canonical dedupe and feed item rehydration.
+- keep summary Prisma persistence adapters covered by `npm run check:summary-persistence`, including summary job transitions, artifact payload rehydration, pagination and feedback evidence.
 
 Full e2e and load gates remain release/promotion gates, not the default inner development loop.
 
@@ -101,6 +102,7 @@ CI must block:
 - migrations without tests/review;
 - runtime modules adding in-memory or noop state adapters without persistence-readiness evidence;
 - monitoring persistence changes that lose `nextRunAt`, source binding status or source catalog provider rehydration;
+- summary persistence changes that lose job idempotency/status transitions, artifact payload rehydration or feedback evidence;
 - connector changes without certification tests;
 - `enabled_beta` source providers without a current `ops/ingestion/source-provider-certification.json` artifact;
 - delivery/realtime changes without replay-window, resync and idempotency evidence;
@@ -126,3 +128,4 @@ CI must block:
 10. `npm run check:persistence-readiness` is mandatory before beta MVP release evidence can pass; external beta remains blocked while runtime state is only in-memory/noop-backed.
 11. `npm run check:monitoring-persistence` is mandatory before beta MVP release evidence can pass.
 12. `npm run check:ingestion-feed-persistence` is mandatory before beta MVP release evidence can pass.
+13. `npm run check:summary-persistence` is mandatory before beta MVP release evidence can pass.

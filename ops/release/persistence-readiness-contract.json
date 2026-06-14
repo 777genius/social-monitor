@@ -49,7 +49,7 @@
         "InMemorySummaryEventPublisher"
       ],
       "risk": "summary jobs, artifacts, feedback and events are process-local and disappear on restart",
-      "durableReplacementPlan": "Prisma repositories plus durable summary event publisher/outbox"
+      "durableReplacementPlan": "Prisma summary job, artifact and feedback repository foundations exist; remaining blockers are runtime selector wiring and durable summary event publisher/outbox"
     },
     {
       "moduleFile": "libs/delivery/interfaces/rest/delivery-rest.module.ts",

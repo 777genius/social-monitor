@@ -46,6 +46,7 @@ enum SummaryStatus {
   REQUESTED
   RUNNING
   COMPLETED
+  NO_SIGNAL
   FAILED
   REJECTED
 }
@@ -301,11 +302,13 @@ model SummaryArtifact {
   tenantId       String        @map("tenant_id") @db.Uuid
   workspaceId    String        @map("workspace_id") @db.Uuid
   topicId        String        @map("topic_id") @db.Uuid
-  status         SummaryStatus @default(REQUESTED)
+  status         SummaryStatus @default(COMPLETED)
   schemaVersion  Int           @default(1) @map("schema_version")
   modelVersion   String        @map("model_version")
   promptVersion  String        @map("prompt_version")
+  headline       String
   summaryText    String?       @map("summary_text")
+  artifactPayload Json         @map("artifact_payload")
   citations      Json
   qualitySignals Json          @map("quality_signals")
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -315,15 +318,44 @@ model SummaryArtifact {
   @@map("summary_artifacts")
 }
 
-model SummaryFeedback {
-  id                String   @id @db.Uuid
-  tenantId          String   @map("tenant_id") @db.Uuid
-  workspaceId       String   @map("workspace_id") @db.Uuid
-  summaryArtifactId String   @map("summary_artifact_id") @db.Uuid
-  rating            Int
-  note              String?
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+model SummaryJob {
+  id                String        @id @db.Uuid
+  tenantId          String        @map("tenant_id") @db.Uuid
+  workspaceId       String        @map("workspace_id") @db.Uuid
+  topicId           String        @map("topic_id") @db.Uuid
+  status            SummaryStatus @default(REQUESTED)
+  idempotencyKey    String        @map("idempotency_key")
+  requestedAt       DateTime      @map("requested_at") @db.Timestamptz(6)
+  startedAt         DateTime?     @map("started_at") @db.Timestamptz(6)
+  completedAt       DateTime?     @map("completed_at") @db.Timestamptz(6)
+  failedAt          DateTime?     @map("failed_at") @db.Timestamptz(6)
+  summaryArtifactId String?       @map("summary_artifact_id") @db.Uuid
+  failureReason     String?       @map("failure_reason")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, workspaceId, topicId, status, createdAt])
+  @@map("summary_jobs")
+}
+
+model SummaryFeedback {
+  id                     String   @id @db.Uuid
+  tenantId               String   @map("tenant_id") @db.Uuid
+  workspaceId            String   @map("workspace_id") @db.Uuid
+  summaryArtifactId      String   @map("summary_artifact_id") @db.Uuid
+  topicId                String   @map("topic_id") @db.Uuid
+  idempotencyKey         String   @map("idempotency_key")
+  submittedBy            String   @map("submitted_by")
+  rating                 Int
+  category               String
+  triageOwner            String   @map("triage_owner")
+  eligibleForEvalFixture Boolean  @default(false) @map("eligible_for_eval_fixture")
+  note                   String?
+  evidence               Json
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, idempotencyKey])
   @@index([tenantId, workspaceId, summaryArtifactId])
   @@map("summary_feedback")
 }

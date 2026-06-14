@@ -21,13 +21,39 @@ export class SummaryJob {
   private constructor(private readonly props: SummaryJobProps) {}
 
   static request(props: Omit<SummaryJobProps, 'status'>): SummaryJob {
-    if (props.topicId.trim().length === 0) {
-      throw new Error('Summary topic id must be non-empty');
-    }
+    this.assertTopic(props.topicId);
 
     return new SummaryJob({
       ...props,
       status: 'requested',
+    });
+  }
+
+  static rehydrate(props: SummaryJobProps): SummaryJob {
+    this.assertTopic(props.topicId);
+
+    if ((props.status === 'completed' || props.status === 'no_signal') && props.summaryId === undefined) {
+      throw new Error('Completed summary job must reference a summary artifact');
+    }
+
+    if (props.status === 'running' && props.startedAt === undefined) {
+      throw new Error('Running summary job must have start time');
+    }
+
+    if ((props.status === 'completed' || props.status === 'no_signal') && props.completedAt === undefined) {
+      throw new Error('Completed summary job must have completion time');
+    }
+
+    if (
+      props.status === 'failed' &&
+      ((props.failureReason ?? '').trim().length === 0 || props.failedAt === undefined)
+    ) {
+      throw new Error('Failed summary job must include failure time and reason');
+    }
+
+    return new SummaryJob({
+      ...props,
+      failureReason: props.failureReason?.trim(),
     });
   }
 
@@ -112,5 +138,11 @@ export class SummaryJob {
 
   toSnapshot(): SummaryJobProps {
     return { ...this.props };
+  }
+
+  private static assertTopic(topicId: string): void {
+    if (topicId.trim().length === 0) {
+      throw new Error('Summary topic id must be non-empty');
+    }
   }
 }

@@ -76,6 +76,22 @@ export class SummaryArtifact {
   private constructor(private readonly props: SummaryArtifactProps) {}
 
   static create(props: SummaryArtifactProps): SummaryArtifact {
+    this.assertValid(props);
+
+    return new SummaryArtifact(props);
+  }
+
+  static rehydrate(props: SummaryArtifactProps): SummaryArtifact {
+    this.assertValid(props);
+
+    return new SummaryArtifact(props);
+  }
+
+  toSnapshot(): SummaryArtifactProps {
+    return { ...this.props };
+  }
+
+  private static assertValid(props: SummaryArtifactProps): void {
     if (props.schemaVersion !== 'summary.artifact.v1') {
       throw new Error('Unsupported summary schema version');
     }
@@ -145,11 +161,5 @@ export class SummaryArtifact {
     if (props.confidence.rationale.trim().length === 0) {
       throw new Error('Summary confidence rationale must be non-empty');
     }
-
-    return new SummaryArtifact(props);
-  }
-
-  toSnapshot(): SummaryArtifactProps {
-    return { ...this.props };
   }
 }

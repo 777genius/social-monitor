@@ -20,6 +20,7 @@ const requiredGateIds = new Set([
   'persistence-readiness',
   'monitoring-prisma-persistence',
   'ingestion-feed-prisma-persistence',
+  'summary-prisma-persistence',
   'load-cost-guardrail',
   'source-provider-certification',
   'delivery-replay-idempotency',

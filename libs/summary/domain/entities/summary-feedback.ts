@@ -49,6 +49,22 @@ export class SummaryFeedback {
   private constructor(private readonly props: SummaryFeedbackProps) {}
 
   static record(props: SummaryFeedbackProps): SummaryFeedback {
+    this.assertValid(props);
+
+    return new SummaryFeedback(props);
+  }
+
+  static rehydrate(props: SummaryFeedbackProps): SummaryFeedback {
+    this.assertValid(props);
+
+    return new SummaryFeedback(props);
+  }
+
+  toSnapshot(): SummaryFeedbackProps {
+    return { ...this.props };
+  }
+
+  private static assertValid(props: SummaryFeedbackProps): void {
     if (props.id.trim().length === 0) {
       throw new Error('Summary feedback id must be non-empty');
     }
@@ -88,12 +104,6 @@ export class SummaryFeedback {
     if (props.category === 'source_request' && (props.comment ?? '').trim().length === 0) {
       throw new Error('Source request feedback must include a comment with requested source evidence');
     }
-
-    return new SummaryFeedback(props);
-  }
-
-  toSnapshot(): SummaryFeedbackProps {
-    return { ...this.props };
   }
 }
 
