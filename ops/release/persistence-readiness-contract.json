@@ -118,8 +118,8 @@
       "moduleFile": "apps/ingestion-worker/src/ingestion-worker.module.ts",
       "adapter": "NoopScanExecutionReporterAdapter",
       "owner": "ingestion-owner",
-      "risk": "worker execution does not update durable scan job status across the monitoring boundary",
-      "durableReplacementPlan": "replace with monitoring scan execution reporter backed by shared repository/event contract"
+      "risk": "default worker execution does not update durable scan job status across the monitoring boundary",
+      "durableReplacementPlan": "use INGESTION_SCAN_REPORTER=monitoring with MONITORING_PERSISTENCE=prisma after shared queue/feed/cursor runtime gaps are resolved"
     }
   ]
 }

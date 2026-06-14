@@ -1,5 +1,6 @@
 import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
+import { resolveIngestionScanReporterMode } from '../apps/ingestion-worker/src/ingestion-worker-provider-tokens';
 import { ScanJob, ScanPolicy, SourceBinding, Topic } from '../libs/monitoring/domain';
 import { PrismaScanJobRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-job.repository';
 import { PrismaScanPolicyRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-policy.repository';
@@ -35,6 +36,18 @@ async function main(): Promise<void> {
   assertThrows(
     () => resolveMonitoringPersistenceMode({ MONITORING_PERSISTENCE: 'prisma' }),
     'Prisma monitoring persistence must require DATABASE_URL',
+  );
+  assert(resolveIngestionScanReporterMode({}) === 'noop', 'ingestion scan reporter must default to noop');
+  assertThrows(
+    () => resolveIngestionScanReporterMode({ INGESTION_SCAN_REPORTER: 'monitoring' }),
+    'monitoring scan reporter must require Prisma monitoring persistence',
+  );
+  assert(
+    resolveIngestionScanReporterMode({
+      INGESTION_SCAN_REPORTER: 'monitoring',
+      MONITORING_PERSISTENCE: 'prisma',
+    }) === 'monitoring',
+    'monitoring scan reporter must be opt-in when Prisma monitoring persistence is enabled',
   );
 
   const prisma = new FakePrismaMonitoringClient();

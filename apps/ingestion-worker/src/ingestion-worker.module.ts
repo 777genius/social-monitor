@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
+import { MonitoringScanExecutionReporterAdapter } from '@social-monitor/monitoring/adapters/reporting/monitoring-scan-execution-reporter.adapter';
+import { RecordScanExecutionUseCase } from '@social-monitor/monitoring/features/record-scan-execution/record-scan-execution.use-case';
+import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
@@ -21,11 +24,22 @@ import { RssSourceProvider } from '../../../libs/ingestion/adapters/source/rss/r
 import { sourceReadinessProfiles } from '../../../libs/ingestion/adapters/source/source-readiness-profiles';
 import { ExecuteScanUseCase } from '../../../libs/ingestion/features/execute-scan/execute-scan.use-case';
 import { ExecuteScanCommandHandler } from '../../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
+import type { ScanExecutionReporterPort } from '../../../libs/ingestion/ports';
 import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-projection.adapter';
+import {
+  INGESTION_SCAN_EXECUTION_REPORTER,
+  INGESTION_SCAN_REPORTER_MODE,
+  type IngestionScanReporterMode,
+  resolveIngestionScanReporterMode,
+} from './ingestion-worker-provider-tokens';
 
 @Module({
-  imports: [WorkerRuntimeModule.register({ serviceName: 'ingestion-worker' })],
+  imports: [WorkerRuntimeModule.register({ serviceName: 'ingestion-worker' }), MonitoringRestModule],
   providers: [
+    {
+      provide: INGESTION_SCAN_REPORTER_MODE,
+      useFactory: () => resolveIngestionScanReporterMode(process.env),
+    },
     FakeSourceProvider,
     {
       provide: HttpHackerNewsClient,
@@ -79,6 +93,18 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     InMemoryScanLeaseAdapter,
     InMemoryMetricsRecorder,
     NoopScanExecutionReporterAdapter,
+    {
+      provide: INGESTION_SCAN_EXECUTION_REPORTER,
+      useFactory: (
+        mode: IngestionScanReporterMode,
+        noopReporter: NoopScanExecutionReporterAdapter,
+        recordScanExecution: RecordScanExecutionUseCase,
+      ): ScanExecutionReporterPort =>
+        mode === 'monitoring'
+          ? new MonitoringScanExecutionReporterAdapter(recordScanExecution)
+          : noopReporter,
+      inject: [INGESTION_SCAN_REPORTER_MODE, NoopScanExecutionReporterAdapter, RecordScanExecutionUseCase],
+    },
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     {
@@ -94,7 +120,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
         feedProjection: InMemoryFeedProjectionAdapter,
         scanAttempts: InMemoryScanAttemptRepository,
         scanCursors: InMemoryScanCursorRepository,
-        scanExecutionReporter: NoopScanExecutionReporterAdapter,
+        scanExecutionReporter: ScanExecutionReporterPort,
         scanFailures: InMemoryScanFailureQueueAdapter,
         scanLeases: InMemoryScanLeaseAdapter,
       ) =>
@@ -116,7 +142,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
         InMemoryFeedProjectionAdapter,
         InMemoryScanAttemptRepository,
         InMemoryScanCursorRepository,
-        NoopScanExecutionReporterAdapter,
+        INGESTION_SCAN_EXECUTION_REPORTER,
         InMemoryScanFailureQueueAdapter,
         InMemoryScanLeaseAdapter,
       ],
@@ -136,6 +162,7 @@ import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-pr
     InMemoryScanLeaseAdapter,
     InMemoryMetricsRecorder,
     NoopScanExecutionReporterAdapter,
+    INGESTION_SCAN_EXECUTION_REPORTER,
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     InMemorySourceProviderRegistry,
