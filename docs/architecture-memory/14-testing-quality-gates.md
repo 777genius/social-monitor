@@ -85,6 +85,7 @@ Implementation should not stall on broad test suites. For MVP work, write code i
 - keep ingestion/feed Prisma persistence adapters covered by `npm run check:ingestion-feed-persistence`, including source item dedupe, scan cursor roundtrip, feed canonical dedupe, feed item rehydration, scan failure queue persistence, scan attempt persistence, scan lease fencing/release behavior, feed persistence mode validation, ingestion-worker persistence mode validation and ingestion-support persistence mode validation.
 - keep summary Prisma persistence adapters covered by `npm run check:summary-persistence`, including summary job transitions, artifact payload rehydration, pagination, feedback evidence and summary persistence mode validation.
 - keep identity Prisma persistence adapters covered by `npm run check:identity-persistence`, including API key create/list/verify/revoke, scope enforcement, revoked-key rejection, no secret-hash exposure and identity persistence mode validation.
+- keep usage Prisma persistence adapters covered by `npm run check:usage-persistence`, including public API audit redaction/listing, rate-limit bucket counting, quota bucket reservation and usage persistence mode validation.
 
 Full e2e and load gates remain release/promotion gates, not the default inner development loop.
 
@@ -105,6 +106,7 @@ CI must block:
 - monitoring persistence changes that lose `nextRunAt`, source binding status or source catalog provider rehydration;
 - summary persistence changes that lose job idempotency/status transitions, artifact payload rehydration or feedback evidence;
 - identity persistence changes that expose API key hashes, lose scope enforcement or accept revoked keys;
+- usage persistence changes that lose audit redaction, rate-limit windows or quota rejection behavior;
 - connector changes without certification tests;
 - `enabled_beta` source providers without a current `ops/ingestion/source-provider-certification.json` artifact;
 - delivery/realtime changes without replay-window, resync and idempotency evidence;
@@ -132,3 +134,4 @@ CI must block:
 12. `npm run check:ingestion-feed-persistence` is mandatory before beta MVP release evidence can pass.
 13. `npm run check:summary-persistence` is mandatory before beta MVP release evidence can pass.
 14. `npm run check:identity-persistence` is mandatory before beta MVP release evidence can pass.
+15. `npm run check:usage-persistence` is mandatory before beta MVP release evidence can pass.

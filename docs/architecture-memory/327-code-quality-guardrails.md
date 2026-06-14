@@ -32,7 +32,8 @@ Code quality rules must be enforceable, not only documented. `npm run verify` mu
 20. Ingestion/feed durable persistence changes must keep `npm run check:ingestion-feed-persistence` passing; source item dedupe, cursor roundtrip, feed canonical dedupe, feed read rehydration, scan failure queue persistence, scan attempt persistence, scan lease fencing/release behavior, feed persistence mode validation, ingestion-worker persistence mode validation and ingestion-support persistence mode validation must stay executable.
 21. Summary durable persistence changes must keep `npm run check:summary-persistence` passing; summary job idempotency/status transitions, artifact payload rehydration, pagination, feedback evidence roundtrip and summary persistence mode validation must stay executable.
 22. Identity durable persistence changes must keep `npm run check:identity-persistence` passing; API key create/list/verify/revoke, hash-only storage exposure and identity persistence mode validation must stay executable.
-23. Architecture boundaries remain separately enforced by `npm run check:architecture`.
+23. Usage durable persistence changes must keep `npm run check:usage-persistence` passing; public API audit redaction, rate-limit bucket counting, quota bucket reservation and usage persistence mode validation must stay executable.
+24. Architecture boundaries remain separately enforced by `npm run check:architecture`.
 
 ## Current Gate
 
@@ -87,6 +88,7 @@ Clean Architecture fails slowly when use cases stop being directly testable, con
 - Ingestion/feed Prisma adapter changes must prove source item, cursor, feed read-model, scan failure queue, scan attempt and scan lease behavior through `npm run check:ingestion-feed-persistence`.
 - Summary Prisma adapter changes must prove summary job, artifact and feedback behavior through `npm run check:summary-persistence`.
 - Identity Prisma adapter/runtime-selector changes must prove API key create/list/verify/revoke behavior and no secret-hash exposure through `npm run check:identity-persistence`.
+- Usage Prisma adapter/runtime-selector changes must prove audit/rate-limit/quota behavior through `npm run check:usage-persistence`.
 - Delivery/realtime changes must prove stale replay cursor resync, duplicate notification idempotency and preference suppression before provider send through `npm run check:delivery-replay`.
 - Monitoring, ingestion, feed, summary, feedback or realtime changes must keep the deterministic backend MVP loop green through `npm run check:mvp-core-loop`; paused source bindings must not accept new scan work, reserve quota or enqueue ingestion commands.
 - Evidence docs must be updated from temporary branch markers to concrete commit SHAs before merge.

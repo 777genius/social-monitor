@@ -482,6 +482,53 @@ model UsageRecord {
   @@map("usage_records")
 }
 
+model PublicApiAuditEvent {
+  id           String   @id @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  actorType    String   @map("actor_type")
+  actorId      String   @map("actor_id")
+  action       String
+  outcome      String
+  reasonCode   String?  @map("reason_code")
+  resourceType String   @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  metadata     Json
+  occurredAt   DateTime @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, occurredAt])
+  @@index([tenantId, workspaceId, actorType, actorId, occurredAt])
+  @@map("public_api_audit_events")
+}
+
+model RateLimitBucket {
+  bucketKey       String   @id @map("bucket_key")
+  windowStartedAt DateTime @map("window_started_at") @db.Timestamptz(6)
+  windowEndsAt    DateTime @map("window_ends_at") @db.Timestamptz(6)
+  count           Int
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([windowEndsAt])
+  @@map("rate_limit_buckets")
+}
+
+model UsageQuotaBucket {
+  bucketKey       String   @id @map("bucket_key")
+  tenantId         String   @map("tenant_id") @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  subjectKey       String   @map("subject_key")
+  operation        String
+  windowStartedAt  DateTime @map("window_started_at") @db.Timestamptz(6)
+  windowEndsAt     DateTime @map("window_ends_at") @db.Timestamptz(6)
+  consumed         Int
+  limit            Int
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, subjectKey, operation, windowStartedAt])
+  @@index([windowEndsAt])
+  @@map("usage_quota_buckets")
+}
+
 model OutboxEvent {
   id            String       @id @db.Uuid
   tenantId      String?      @map("tenant_id") @db.Uuid

@@ -12,6 +12,7 @@ Decide whether beta can close and post-MVP roadmap execution can start.
 - Ingestion/feed Prisma persistence foundation plus feed API, ingestion-worker and ingestion-support runtime selectors, including scan attempts and scan leases, pass `npm run check:ingestion-feed-persistence`.
 - Summary Prisma persistence foundation and summary API runtime selector pass `npm run check:summary-persistence`.
 - Identity Prisma persistence foundation and identity API runtime selector pass `npm run check:identity-persistence`.
+- Usage Prisma persistence foundation and usage runtime selector pass `npm run check:usage-persistence`.
 - Beta user can complete onboarding against the same topic/source/scan/feed/summary/feedback/realtime path.
 - Supported source list is frozen or change-controlled.
 - Known limitations are explicit.
@@ -90,3 +91,4 @@ Required evidence links:
 14. ingestion/feed persistence smoke for source items, cursors, feed read models, scan failure queue, scan attempts, scan leases, feed runtime selector, ingestion-worker runtime selector and ingestion-support runtime selector, including `npm run check:ingestion-feed-persistence`
 15. summary persistence smoke for jobs, artifacts, feedback and summary runtime selector, including `npm run check:summary-persistence`
 16. identity persistence smoke for hashed API key lifecycle and identity runtime selector, including `npm run check:identity-persistence`
+17. usage persistence smoke for public API audit, rate-limit buckets, quota buckets and usage runtime selector, including `npm run check:usage-persistence`

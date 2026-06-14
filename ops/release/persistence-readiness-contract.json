@@ -87,7 +87,7 @@
         "InMemoryUsageQuotaLedger"
       ],
       "risk": "audit records, rate limits and quota reservations are process-local",
-      "durableReplacementPlan": "Prisma usage records plus Redis/Postgres-backed rate limit and quota ledger adapters"
+      "durableReplacementPlan": "UsageRestModule can opt into Prisma public API audit, rate-limit bucket and quota bucket persistence with USAGE_PERSISTENCE=prisma; remaining hardening is distributed conditional quota update/Redis strategy for high concurrency"
     },
     {
       "moduleFile": "libs/ingestion/interfaces/rest/ingestion-rest.module.ts",
