@@ -75,6 +75,12 @@ enum ScanFailureQueueStatus {
   DEAD_LETTERED
 }
 
+enum ScanAttemptStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
 model Tenant {
   id         String      @id @db.Uuid
   slug       String      @unique
@@ -298,6 +304,40 @@ model ScanFailureQueueEntry {
   @@index([tenantId, workspaceId, status, createdAt])
   @@index([tenantId, scanJobId])
   @@map("scan_failure_queue_entries")
+}
+
+model ScanAttempt {
+  scanJobId         String            @id @map("scan_job_id") @db.Uuid
+  tenantId          String            @map("tenant_id") @db.Uuid
+  workspaceId       String            @map("workspace_id") @db.Uuid
+  sourceBindingId   String            @map("source_binding_id") @db.Uuid
+  status            ScanAttemptStatus @default(RUNNING)
+  startedAt         DateTime          @map("started_at") @db.Timestamptz(6)
+  finishedAt        DateTime?         @map("finished_at") @db.Timestamptz(6)
+  fetched           Int               @default(0)
+  inserted          Int               @default(0)
+  skippedDuplicates Int               @default(0) @map("skipped_duplicates")
+  projected         Int               @default(0)
+  failureReason     String?           @map("failure_reason")
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, status, startedAt])
+  @@map("scan_attempts")
+}
+
+model ScanLeaseEntry {
+  id           String   @id @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  scanJobId    String   @map("scan_job_id") @db.Uuid
+  workerId     String   @map("worker_id")
+  fencingToken String   @map("fencing_token")
+  leasedAt     DateTime @map("leased_at") @db.Timestamptz(6)
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, scanJobId])
+  @@index([expiresAt])
+  @@map("scan_leases")
 }
 
 model FeedItem {

@@ -29,7 +29,7 @@ Code quality rules must be enforceable, not only documented. `npm run verify` mu
 17. Ring expansion, capacity, cost or source-health policy changes must keep `npm run check:beta-ring-policy` passing.
 18. Runtime persistence or worker wiring changes must keep `npm run check:persistence-readiness` passing; in-memory/noop state adapters in runtime modules require owner, risk and durable replacement plan.
 19. Monitoring durable persistence changes must keep `npm run check:monitoring-persistence` passing; topic/source binding/scan policy/scan job adapters must preserve tenant scope, pause status, source catalog provider rehydration, scan policy `nextRunAt` and scan job status transitions.
-20. Ingestion/feed durable persistence changes must keep `npm run check:ingestion-feed-persistence` passing; source item dedupe, cursor roundtrip, feed canonical dedupe, feed read rehydration, scan failure queue persistence, feed persistence mode validation, ingestion-worker persistence mode validation and ingestion-support persistence mode validation must stay executable.
+20. Ingestion/feed durable persistence changes must keep `npm run check:ingestion-feed-persistence` passing; source item dedupe, cursor roundtrip, feed canonical dedupe, feed read rehydration, scan failure queue persistence, scan attempt persistence, scan lease fencing/release behavior, feed persistence mode validation, ingestion-worker persistence mode validation and ingestion-support persistence mode validation must stay executable.
 21. Summary durable persistence changes must keep `npm run check:summary-persistence` passing; summary job idempotency/status transitions, artifact payload rehydration, pagination, feedback evidence roundtrip and summary persistence mode validation must stay executable.
 22. Architecture boundaries remain separately enforced by `npm run check:architecture`.
 
@@ -83,7 +83,7 @@ Clean Architecture fails slowly when use cases stop being directly testable, con
 - Ring expansion changes must prove capacity, cost, source-health thresholds and degradation actions through `npm run check:beta-ring-policy`.
 - Runtime module changes must declare any in-memory/noop state adapter through `npm run check:persistence-readiness`; external beta cannot be treated as complete until the durable replacement exit criteria are met.
 - Monitoring Prisma adapter/runtime-selector changes must prove mapper/repository behavior for topics, source bindings, scan policies and scan jobs through `npm run check:monitoring-persistence`.
-- Ingestion/feed Prisma adapter changes must prove source item, cursor and feed read-model behavior through `npm run check:ingestion-feed-persistence`.
+- Ingestion/feed Prisma adapter changes must prove source item, cursor, feed read-model, scan failure queue, scan attempt and scan lease behavior through `npm run check:ingestion-feed-persistence`.
 - Summary Prisma adapter changes must prove summary job, artifact and feedback behavior through `npm run check:summary-persistence`.
 - Delivery/realtime changes must prove stale replay cursor resync, duplicate notification idempotency and preference suppression before provider send through `npm run check:delivery-replay`.
 - Monitoring, ingestion, feed, summary, feedback or realtime changes must keep the deterministic backend MVP loop green through `npm run check:mvp-core-loop`; paused source bindings must not accept new scan work, reserve quota or enqueue ingestion commands.

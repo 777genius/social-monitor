@@ -6,16 +6,20 @@ import { PrismaFeedProjectionAdapter } from '../libs/feed/adapters/persistence/p
 import type { PrismaFeedClient } from '../libs/feed/adapters/persistence/prisma/prisma-feed-client';
 import type { PrismaFeedItemRecord } from '../libs/feed/adapters/persistence/prisma/prisma-feed-records';
 import { resolveFeedPersistenceMode } from '../libs/feed/interfaces/rest/feed-provider-tokens';
-import { SourceItem } from '../libs/ingestion/domain';
+import { ScanAttempt, SourceItem } from '../libs/ingestion/domain';
+import { PrismaScanAttemptRepository } from '../libs/ingestion/adapters/persistence/prisma/prisma-scan-attempt.repository';
 import { PrismaScanCursorRepository } from '../libs/ingestion/adapters/persistence/prisma/prisma-scan-cursor.repository';
 import { PrismaSourceItemRepository } from '../libs/ingestion/adapters/persistence/prisma/prisma-source-item.repository';
 import type { PrismaIngestionClient } from '../libs/ingestion/adapters/persistence/prisma/prisma-ingestion-client';
 import type {
   PrismaCursorCheckpointRecord,
+  PrismaScanAttemptRecord,
   PrismaScanFailureQueueEntryRecord,
+  PrismaScanLeaseEntryRecord,
   PrismaSourceItemRecord,
 } from '../libs/ingestion/adapters/persistence/prisma/prisma-ingestion-records';
 import { PrismaScanFailureQueueAdapter } from '../libs/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter';
+import { PrismaScanLeaseAdapter } from '../libs/ingestion/adapters/persistence/prisma/prisma-scan-lease.adapter';
 import { resolveIngestionSupportPersistenceMode } from '../libs/ingestion/interfaces/rest/ingestion-provider-tokens';
 import { resolveIngestionWorkerPersistenceMode } from '../apps/ingestion-worker/src/ingestion-worker-provider-tokens';
 
@@ -76,12 +80,17 @@ async function main(): Promise<void> {
     '00000000-0000-7000-8000-000000000203',
     '00000000-0000-7000-8000-000000000204',
     '00000000-0000-7000-8000-000000000205',
+    '00000000-0000-7000-8000-000000000206',
+    '00000000-0000-7000-8000-000000000207',
+    '00000000-0000-7000-8000-000000000208',
   ]);
   const sourceItems = new PrismaSourceItemRepository(prisma);
   const cursors = new PrismaScanCursorRepository(prisma, ids);
   const feedProjection = new PrismaFeedProjectionAdapter(prisma, ids);
   const feedRead = new PrismaFeedItemReadRepository(prisma);
   const failureQueue = new PrismaScanFailureQueueAdapter(prisma, new InMemoryMetricsRecorder(), ids);
+  const scanAttempts = new PrismaScanAttemptRepository(prisma);
+  const scanLeases = new PrismaScanLeaseAdapter(prisma, ids);
   const firstItem = makeSourceItem({
     id: '00000000-0000-7000-8000-000000000301',
     externalId: 'story-1',
@@ -179,6 +188,71 @@ async function main(): Promise<void> {
     'scan failure queue dead letter reason must round-trip',
   );
 
+  const startedAttempt = ScanAttempt.start({
+    scanJobId: '00000000-0000-7000-8000-000000000405',
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId,
+    startedAt: clock.now(),
+  });
+  await scanAttempts.save(startedAttempt);
+  const runningAttempt = await scanAttempts.findByScanJob({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scanJobId: startedAttempt.toSnapshot().scanJobId,
+  });
+  assert(runningAttempt?.toSnapshot().status === 'running', 'scan attempt must persist running state');
+
+  await scanAttempts.save(
+    startedAttempt.succeed({
+      finishedAt: new Date('2026-06-07T00:00:05.000Z'),
+      fetched: 2,
+      inserted: 1,
+      skippedDuplicates: 1,
+      projected: 2,
+    }),
+  );
+  const completedAttempt = await scanAttempts.findByScanJob({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scanJobId: startedAttempt.toSnapshot().scanJobId,
+  });
+  const completedAttemptSnapshot = completedAttempt?.toSnapshot();
+  assert(completedAttemptSnapshot?.status === 'succeeded', 'scan attempt must persist terminal state');
+  assert(completedAttemptSnapshot.inserted === 1, 'scan attempt counters must round-trip');
+
+  const lease = await scanLeases.acquire({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scanJobId: '00000000-0000-7000-8000-000000000406',
+    workerId: 'worker-1',
+    leasedAt: clock.now(),
+    ttlSeconds: 60,
+  });
+  assert(lease !== null, 'scan lease must be acquired when no active lease exists');
+
+  const contestedLease = await scanLeases.acquire({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scanJobId: lease.scanJobId,
+    workerId: 'worker-2',
+    leasedAt: new Date('2026-06-07T00:00:01.000Z'),
+    ttlSeconds: 60,
+  });
+  assert(contestedLease === null, 'scan lease must reject competing workers before expiry');
+
+  await scanLeases.release(lease);
+  const reacquiredLease = await scanLeases.acquire({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scanJobId: lease.scanJobId,
+    workerId: 'worker-2',
+    leasedAt: new Date('2026-06-07T00:00:02.000Z'),
+    ttlSeconds: 60,
+  });
+  assert(reacquiredLease !== null, 'scan lease must be reusable after release');
+  assert(reacquiredLease.workerId === 'worker-2', 'scan lease release must remove only the fenced lease');
+
   console.log('Ingestion/feed Prisma persistence smoke OK');
 }
 
@@ -225,6 +299,8 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
   private readonly cursors = new Map<string, PrismaCursorCheckpointRecord>();
   private readonly feedItems = new Map<string, PrismaFeedItemRecord>();
   private readonly failureEntries: PrismaScanFailureQueueEntryRecord[] = [];
+  private readonly attempts = new Map<string, PrismaScanAttemptRecord>();
+  private readonly leases = new Map<string, PrismaScanLeaseEntryRecord>();
 
   readonly sourceItem: PrismaIngestionClient['sourceItem'] = {
     findFirst: async (args) =>
@@ -297,6 +373,70 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
       )).length,
   };
 
+  readonly scanAttempt: PrismaIngestionClient['scanAttempt'] = {
+    upsert: async (args) => {
+      const existing = this.attempts.get(args.where.scanJobId);
+      const record: PrismaScanAttemptRecord = {
+        scanJobId: existing?.scanJobId ?? args.create.scanJobId,
+        tenantId: existing?.tenantId ?? args.create.tenantId,
+        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
+        sourceBindingId: existing?.sourceBindingId ?? args.create.sourceBindingId,
+        status: args.update.status,
+        startedAt: args.update.startedAt,
+        finishedAt: args.update.finishedAt ?? null,
+        fetched: args.update.fetched,
+        inserted: args.update.inserted,
+        skippedDuplicates: args.update.skippedDuplicates,
+        projected: args.update.projected,
+        failureReason: args.update.failureReason ?? null,
+      };
+      this.attempts.set(record.scanJobId, record);
+
+      return record;
+    },
+    findFirst: async (args) =>
+      [...this.attempts.values()].find((record) => (
+        record.tenantId === args.where.tenantId &&
+        record.workspaceId === args.where.workspaceId &&
+        record.scanJobId === args.where.scanJobId
+      )) ?? null,
+  };
+
+  readonly scanLeaseEntry: PrismaIngestionClient['scanLeaseEntry'] = {
+    deleteMany: async (args) => {
+      let count = 0;
+
+      for (const [key, record] of this.leases.entries()) {
+        if (!matchesLeaseWhere(record, args.where)) {
+          continue;
+        }
+
+        this.leases.delete(key);
+        count += 1;
+      }
+
+      return { count };
+    },
+    create: async (args) => {
+      const key = leaseKey(args.data);
+
+      if (this.leases.has(key)) {
+        throw Object.assign(new Error('Unique scan lease constraint violation'), { code: 'P2002' });
+      }
+
+      const record: PrismaScanLeaseEntryRecord = { ...args.data };
+      this.leases.set(key, record);
+
+      return record;
+    },
+    findFirst: async (args) =>
+      [...this.leases.values()].find((record) => (
+        record.tenantId === args.where.tenantId &&
+        record.workspaceId === args.where.workspaceId &&
+        record.scanJobId === args.where.scanJobId
+      )) ?? null,
+  };
+
   readonly feedItem: PrismaFeedClient['feedItem'] = {
     upsert: async (args) => {
       const key = [
@@ -351,6 +491,47 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
     ));
   }
 }
+
+const leaseKey = (record: {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly scanJobId: string;
+}): string => [record.tenantId, record.workspaceId, record.scanJobId].join(':');
+
+const matchesLeaseWhere = (
+  record: PrismaScanLeaseEntryRecord,
+  where: Parameters<PrismaIngestionClient['scanLeaseEntry']['deleteMany']>[0]['where'],
+): boolean => {
+  const matchesBase =
+    record.tenantId === where.tenantId &&
+    record.workspaceId === where.workspaceId &&
+    record.scanJobId === where.scanJobId;
+
+  if (!matchesBase) {
+    return false;
+  }
+
+  if (where.expiresAt !== undefined && record.expiresAt.getTime() > where.expiresAt.lte.getTime()) {
+    return false;
+  }
+
+  if (where.fencingToken !== undefined && record.fencingToken !== where.fencingToken) {
+    return false;
+  }
+
+  return where.OR === undefined || where.OR.some((condition) => matchesLeaseOrCondition(record, condition));
+};
+
+const matchesLeaseOrCondition = (
+  record: PrismaScanLeaseEntryRecord,
+  condition: NonNullable<Parameters<PrismaIngestionClient['scanLeaseEntry']['deleteMany']>[0]['where']['OR']>[number],
+): boolean => {
+  if ('expiresAt' in condition) {
+    return record.expiresAt.getTime() <= condition.expiresAt.lte.getTime();
+  }
+
+  return record.fencingToken === condition.fencingToken;
+};
 
 const compareFeedRecords = (left: PrismaFeedItemRecord, right: PrismaFeedItemRecord): number => {
   const publishedDiff = right.publishedAt.getTime() - left.publishedAt.getTime();

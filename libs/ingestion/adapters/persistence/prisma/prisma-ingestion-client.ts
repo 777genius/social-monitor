@@ -1,6 +1,8 @@
 import type {
   PrismaCursorCheckpointRecord,
+  PrismaScanAttemptRecord,
   PrismaScanFailureQueueEntryRecord,
+  PrismaScanLeaseEntryRecord,
   PrismaSourceItemRecord,
 } from './prisma-ingestion-records';
 
@@ -88,5 +90,75 @@ export type PrismaIngestionClient = {
         readonly status: 'RETRY_ENQUEUED' | 'DEAD_LETTERED';
       };
     }): Promise<number>;
+  };
+  readonly scanAttempt: {
+    upsert(args: {
+      readonly where: { readonly scanJobId: string };
+      readonly update: {
+        readonly status: 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+        readonly startedAt: Date;
+        readonly finishedAt?: Date | null;
+        readonly fetched: number;
+        readonly inserted: number;
+        readonly skippedDuplicates: number;
+        readonly projected: number;
+        readonly failureReason?: string | null;
+      };
+      readonly create: {
+        readonly scanJobId: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly sourceBindingId: string;
+        readonly status: 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+        readonly startedAt: Date;
+        readonly finishedAt?: Date | null;
+        readonly fetched: number;
+        readonly inserted: number;
+        readonly skippedDuplicates: number;
+        readonly projected: number;
+        readonly failureReason?: string | null;
+      };
+    }): Promise<PrismaScanAttemptRecord>;
+    findFirst(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly scanJobId: string;
+      };
+    }): Promise<PrismaScanAttemptRecord | null>;
+  };
+  readonly scanLeaseEntry: {
+    deleteMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly scanJobId: string;
+        readonly expiresAt?: { readonly lte: Date };
+        readonly fencingToken?: string;
+        readonly OR?: readonly (
+          | { readonly expiresAt: { readonly lte: Date } }
+          | { readonly fencingToken: string }
+        )[];
+      };
+    }): Promise<{ readonly count: number }>;
+    create(args: {
+      readonly data: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly scanJobId: string;
+        readonly workerId: string;
+        readonly fencingToken: string;
+        readonly leasedAt: Date;
+        readonly expiresAt: Date;
+      };
+    }): Promise<PrismaScanLeaseEntryRecord>;
+    findFirst(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly scanJobId: string;
+      };
+    }): Promise<PrismaScanLeaseEntryRecord | null>;
   };
 };

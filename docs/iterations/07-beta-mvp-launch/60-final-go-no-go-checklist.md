@@ -9,7 +9,7 @@ Decide whether beta can close and post-MVP roadmap execution can start.
 - Ring expansion policy passes `npm run check:beta-ring-policy`.
 - Persistence readiness passes `npm run check:persistence-readiness`.
 - Monitoring Prisma persistence foundation for topics, source bindings, scan policies and scan jobs passes `npm run check:monitoring-persistence`.
-- Ingestion/feed Prisma persistence foundation plus feed API, ingestion-worker and ingestion-support runtime selectors pass `npm run check:ingestion-feed-persistence`.
+- Ingestion/feed Prisma persistence foundation plus feed API, ingestion-worker and ingestion-support runtime selectors, including scan attempts and scan leases, pass `npm run check:ingestion-feed-persistence`.
 - Summary Prisma persistence foundation and summary API runtime selector pass `npm run check:summary-persistence`.
 - Beta user can complete onboarding against the same topic/source/scan/feed/summary/feedback/realtime path.
 - Supported source list is frozen or change-controlled.
@@ -86,5 +86,5 @@ Required evidence links:
 11. capacity envelope and degradation drill, including `npm run check:beta-ring-policy`
 12. persistence readiness evidence, including `npm run check:persistence-readiness`
 13. monitoring persistence smoke for topics, source bindings, scan policies and scan jobs, including `npm run check:monitoring-persistence`
-14. ingestion/feed persistence smoke for source items, cursors, feed read models, scan failure queue, feed runtime selector, ingestion-worker runtime selector and ingestion-support runtime selector, including `npm run check:ingestion-feed-persistence`
+14. ingestion/feed persistence smoke for source items, cursors, feed read models, scan failure queue, scan attempts, scan leases, feed runtime selector, ingestion-worker runtime selector and ingestion-support runtime selector, including `npm run check:ingestion-feed-persistence`
 15. summary persistence smoke for jobs, artifacts, feedback and summary runtime selector, including `npm run check:summary-persistence`

@@ -2,8 +2,14 @@ import { createHash } from 'node:crypto';
 
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { SourceItem, type SourceItemProps } from '../../../domain';
-import type { FailedScanCommand, ScanCursorRecord } from '../../../ports';
+import {
+  ScanAttempt,
+  type ScanAttemptProps,
+  type ScanAttemptStatus,
+  SourceItem,
+  type SourceItemProps,
+} from '../../../domain';
+import type { FailedScanCommand, ScanCursorRecord, ScanLease } from '../../../ports';
 
 export type PrismaSourceItemRecord = {
   readonly id: string;
@@ -47,6 +53,34 @@ export type PrismaScanFailureQueueEntryRecord = {
   readonly failureReason: string;
   readonly status: PrismaScanFailureQueueStatus;
   readonly createdAt: Date;
+};
+
+export type PrismaScanAttemptStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+
+export type PrismaScanAttemptRecord = {
+  readonly scanJobId: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly sourceBindingId: string;
+  readonly status: PrismaScanAttemptStatus;
+  readonly startedAt: Date;
+  readonly finishedAt: Date | null;
+  readonly fetched: number;
+  readonly inserted: number;
+  readonly skippedDuplicates: number;
+  readonly projected: number;
+  readonly failureReason: string | null;
+};
+
+export type PrismaScanLeaseEntryRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly scanJobId: string;
+  readonly workerId: string;
+  readonly fencingToken: string;
+  readonly leasedAt: Date;
+  readonly expiresAt: Date;
 };
 
 export const sourceItemFromPrisma = (record: PrismaSourceItemRecord): SourceItem =>
@@ -107,6 +141,56 @@ export const failedScanCommandFromPrisma = (
   retryBudget: record.retryBudget,
   failureReason: record.failureReason,
 });
+
+export const scanAttemptFromPrisma = (record: PrismaScanAttemptRecord): ScanAttempt =>
+  ScanAttempt.rehydrate({
+    scanJobId: record.scanJobId,
+    tenantId: tenantId(record.tenantId),
+    workspaceId: workspaceId(record.workspaceId),
+    sourceBindingId: record.sourceBindingId,
+    status: scanAttemptStatusFromPrisma(record.status),
+    startedAt: record.startedAt,
+    finishedAt: record.finishedAt ?? undefined,
+    fetched: record.fetched,
+    inserted: record.inserted,
+    skippedDuplicates: record.skippedDuplicates,
+    projected: record.projected,
+    failureReason: record.failureReason ?? undefined,
+  } satisfies ScanAttemptProps);
+
+export const scanAttemptStatusToPrisma = (status: ScanAttemptStatus): PrismaScanAttemptStatus => {
+  if (status === 'running') {
+    return 'RUNNING';
+  }
+
+  if (status === 'succeeded') {
+    return 'SUCCEEDED';
+  }
+
+  return 'FAILED';
+};
+
+export const scanLeaseFromPrisma = (record: PrismaScanLeaseEntryRecord): ScanLease => ({
+  tenantId: tenantId(record.tenantId),
+  workspaceId: workspaceId(record.workspaceId),
+  scanJobId: record.scanJobId,
+  workerId: record.workerId,
+  fencingToken: record.fencingToken,
+  leasedAt: record.leasedAt,
+  expiresAt: record.expiresAt,
+});
+
+const scanAttemptStatusFromPrisma = (status: PrismaScanAttemptStatus): ScanAttemptStatus => {
+  if (status === 'RUNNING') {
+    return 'running';
+  }
+
+  if (status === 'SUCCEEDED') {
+    return 'succeeded';
+  }
+
+  return 'failed';
+};
 
 const normalizeCursorPayload = (payload: unknown): { readonly cursor: string } | null => {
   if (payload !== null && typeof payload === 'object' && !Array.isArray(payload)) {

@@ -36,7 +36,7 @@
       "owner": "feed-owner",
       "inMemoryStateAdapters": ["InMemoryFeedItemReadRepository"],
       "risk": "feed items are process-local and not shared with ingestion workers",
-      "durableReplacementPlan": "FeedRestModule can opt into Prisma read persistence with FEED_PERSISTENCE=prisma; remaining blocker is worker runtime wiring to shared Prisma source/cursor/feed projection state"
+      "durableReplacementPlan": "FeedRestModule can opt into Prisma read persistence with FEED_PERSISTENCE=prisma; worker runtime can share Prisma source/cursor/feed projection state with INGESTION_WORKER_PERSISTENCE=prisma"
     },
     {
       "moduleFile": "libs/summary/interfaces/rest/summary-rest.module.ts",
@@ -110,7 +110,7 @@
         "InMemoryScanFailureQueueAdapter"
       ],
       "risk": "worker scan attempts, source items, cursors, leases, failures and projected feed are process-local",
-      "durableReplacementPlan": "IngestionWorkerModule can opt into Prisma source item, cursor, feed projection and scan failure queue persistence with INGESTION_WORKER_PERSISTENCE=prisma; remaining blockers are durable leases and attempts"
+      "durableReplacementPlan": "IngestionWorkerModule can opt into Prisma source item, cursor, feed projection, scan failure queue, scan attempt and scan lease persistence with INGESTION_WORKER_PERSISTENCE=prisma; remaining blockers are broker-backed queue/outbox/idempotency and cross-process scheduler rollout"
     }
   ],
   "runtimeNoopAdapters": [

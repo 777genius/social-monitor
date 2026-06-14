@@ -20,22 +20,28 @@ export type ScanAttemptProps = {
 export class ScanAttempt {
   private constructor(private readonly props: ScanAttemptProps) {}
 
-  static start(props: Omit<ScanAttemptProps, 'status' | 'finishedAt' | 'fetched' | 'inserted' | 'skippedDuplicates' | 'projected' | 'failureReason'>): ScanAttempt {
-    if (props.scanJobId.trim().length === 0) {
-      throw new Error('Scan job id must be non-empty');
-    }
-
-    if (props.sourceBindingId.trim().length === 0) {
-      throw new Error('Source binding id must be non-empty');
-    }
-
-    return new ScanAttempt({
+  static start(
+    props: Omit<
+      ScanAttemptProps,
+      'status' | 'finishedAt' | 'fetched' | 'inserted' | 'skippedDuplicates' | 'projected' | 'failureReason'
+    >,
+  ): ScanAttempt {
+    return this.rehydrate({
       ...props,
       status: 'running',
       fetched: 0,
       inserted: 0,
       skippedDuplicates: 0,
       projected: 0,
+    });
+  }
+
+  static rehydrate(props: ScanAttemptProps): ScanAttempt {
+    this.assertValid(props);
+
+    return new ScanAttempt({
+      ...props,
+      failureReason: props.failureReason?.trim(),
     });
   }
 
@@ -46,7 +52,7 @@ export class ScanAttempt {
     readonly skippedDuplicates: number;
     readonly projected: number;
   }): ScanAttempt {
-    return new ScanAttempt({
+    return ScanAttempt.rehydrate({
       ...this.props,
       status: 'succeeded',
       finishedAt: props.finishedAt,
@@ -59,7 +65,7 @@ export class ScanAttempt {
   }
 
   fail(props: { readonly finishedAt: Date; readonly failureReason: string }): ScanAttempt {
-    return new ScanAttempt({
+    return ScanAttempt.rehydrate({
       ...this.props,
       status: 'failed',
       finishedAt: props.finishedAt,
@@ -69,5 +75,33 @@ export class ScanAttempt {
 
   toSnapshot(): ScanAttemptProps {
     return { ...this.props };
+  }
+
+  private static assertValid(props: ScanAttemptProps): void {
+    if (props.scanJobId.trim().length === 0) {
+      throw new Error('Scan job id must be non-empty');
+    }
+
+    if (props.sourceBindingId.trim().length === 0) {
+      throw new Error('Source binding id must be non-empty');
+    }
+
+    for (const value of [props.fetched, props.inserted, props.skippedDuplicates, props.projected]) {
+      if (!Number.isInteger(value) || value < 0) {
+        throw new Error('Scan attempt counters must be non-negative integers');
+      }
+    }
+
+    if (props.status === 'running' && props.finishedAt !== undefined) {
+      throw new Error('Running scan attempt must not have finish time');
+    }
+
+    if ((props.status === 'succeeded' || props.status === 'failed') && props.finishedAt === undefined) {
+      throw new Error('Finished scan attempt must include finish time');
+    }
+
+    if (props.status === 'failed' && (props.failureReason ?? '').trim().length === 0) {
+      throw new Error('Failed scan attempt must include failure reason');
+    }
   }
 }

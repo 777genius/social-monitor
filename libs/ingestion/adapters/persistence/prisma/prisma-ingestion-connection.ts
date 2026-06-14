@@ -23,6 +23,8 @@ export class PrismaIngestionConnection implements PrismaIngestionClient {
   readonly sourceItem: PrismaIngestionClient['sourceItem'];
   readonly cursorCheckpoint: PrismaIngestionClient['cursorCheckpoint'];
   readonly scanFailureQueueEntry: PrismaIngestionClient['scanFailureQueueEntry'];
+  readonly scanAttempt: PrismaIngestionClient['scanAttempt'];
+  readonly scanLeaseEntry: PrismaIngestionClient['scanLeaseEntry'];
 
   private readonly pool: Pool;
   private readonly client: PrismaIngestionRuntimeClient;
@@ -39,6 +41,8 @@ export class PrismaIngestionConnection implements PrismaIngestionClient {
     this.sourceItem = this.client.sourceItem;
     this.cursorCheckpoint = this.client.cursorCheckpoint;
     this.scanFailureQueueEntry = this.client.scanFailureQueueEntry;
+    this.scanAttempt = this.client.scanAttempt;
+    this.scanLeaseEntry = this.client.scanLeaseEntry;
   }
 
   async close(): Promise<void> {

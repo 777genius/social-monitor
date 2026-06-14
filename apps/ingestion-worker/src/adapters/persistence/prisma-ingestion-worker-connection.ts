@@ -25,6 +25,8 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
   readonly sourceItem: PrismaIngestionClient['sourceItem'];
   readonly cursorCheckpoint: PrismaIngestionClient['cursorCheckpoint'];
   readonly scanFailureQueueEntry: PrismaIngestionClient['scanFailureQueueEntry'];
+  readonly scanAttempt: PrismaIngestionClient['scanAttempt'];
+  readonly scanLeaseEntry: PrismaIngestionClient['scanLeaseEntry'];
   readonly feedItem: PrismaFeedClient['feedItem'];
 
   private readonly pool: Pool;
@@ -42,6 +44,8 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
     this.sourceItem = this.client.sourceItem;
     this.cursorCheckpoint = this.client.cursorCheckpoint;
     this.scanFailureQueueEntry = this.client.scanFailureQueueEntry;
+    this.scanAttempt = this.client.scanAttempt;
+    this.scanLeaseEntry = this.client.scanLeaseEntry;
     this.feedItem = this.client.feedItem;
   }
 
