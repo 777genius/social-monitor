@@ -14,6 +14,7 @@ import { InMemoryScanAttemptRepository } from '../../../libs/ingestion/adapters/
 import { InMemoryScanCursorRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
 import { InMemorySourceItemRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { PrismaScanCursorRepository } from '../../../libs/ingestion/adapters/persistence/prisma/prisma-scan-cursor.repository';
+import { PrismaScanFailureQueueAdapter } from '../../../libs/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter';
 import { PrismaSourceItemRepository } from '../../../libs/ingestion/adapters/persistence/prisma/prisma-source-item.repository';
 import { InMemoryScanFailureQueueAdapter } from '../../../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
 import { CircuitBreakerSourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
@@ -31,6 +32,7 @@ import type { ScanExecutionReporterPort } from '../../../libs/ingestion/ports';
 import type {
   FeedProjectionPort,
   ScanCursorRepositoryPort,
+  ScanFailureQueuePort,
   SourceItemRepositoryPort,
 } from '../../../libs/ingestion/ports';
 import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-projection.adapter';
@@ -42,6 +44,7 @@ import {
   INGESTION_FEED_PROJECTION,
   INGESTION_SCAN_CURSOR_REPOSITORY,
   INGESTION_SCAN_EXECUTION_REPORTER,
+  INGESTION_SCAN_FAILURE_QUEUE,
   INGESTION_SCAN_REPORTER_MODE,
   INGESTION_SOURCE_ITEM_REPOSITORY,
   INGESTION_WORKER_PERSISTENCE_MODE,
@@ -178,6 +181,28 @@ import {
       inject: [INGESTION_WORKER_PERSISTENCE_MODE, INGESTION_WORKER_PRISMA_CLIENT, InMemoryFeedProjectionAdapter],
     },
     {
+      provide: INGESTION_SCAN_FAILURE_QUEUE,
+      useFactory: (
+        mode: IngestionWorkerPersistenceMode,
+        prisma: PrismaIngestionWorkerClient | null,
+        inMemoryScanFailures: InMemoryScanFailureQueueAdapter,
+        metrics: InMemoryMetricsRecorder,
+      ): ScanFailureQueuePort =>
+        mode === 'prisma'
+          ? new PrismaScanFailureQueueAdapter(
+              requirePrismaIngestionWorkerClient(prisma),
+              metrics,
+              new CryptoIdGenerator(),
+            )
+          : inMemoryScanFailures,
+      inject: [
+        INGESTION_WORKER_PERSISTENCE_MODE,
+        INGESTION_WORKER_PRISMA_CLIENT,
+        InMemoryScanFailureQueueAdapter,
+        InMemoryMetricsRecorder,
+      ],
+    },
+    {
       provide: ExecuteScanUseCase,
       useFactory: (
         sourceFetcher: CircuitBreakerSourceFetcherAdapter,
@@ -186,7 +211,7 @@ import {
         scanAttempts: InMemoryScanAttemptRepository,
         scanCursors: ScanCursorRepositoryPort,
         scanExecutionReporter: ScanExecutionReporterPort,
-        scanFailures: InMemoryScanFailureQueueAdapter,
+        scanFailures: ScanFailureQueuePort,
         scanLeases: InMemoryScanLeaseAdapter,
       ) =>
         new ExecuteScanUseCase(
@@ -208,7 +233,7 @@ import {
         InMemoryScanAttemptRepository,
         INGESTION_SCAN_CURSOR_REPOSITORY,
         INGESTION_SCAN_EXECUTION_REPORTER,
-        InMemoryScanFailureQueueAdapter,
+        INGESTION_SCAN_FAILURE_QUEUE,
         InMemoryScanLeaseAdapter,
       ],
     },
@@ -232,6 +257,7 @@ import {
     InMemoryFeedItemReadRepository,
     INGESTION_FEED_PROJECTION,
     INGESTION_SCAN_CURSOR_REPOSITORY,
+    INGESTION_SCAN_FAILURE_QUEUE,
     InMemorySourceProviderRegistry,
     INGESTION_SOURCE_ITEM_REPOSITORY,
     RegistrySourceFetcherAdapter,

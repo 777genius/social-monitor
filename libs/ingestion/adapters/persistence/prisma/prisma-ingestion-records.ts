@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { SourceItem, type SourceItemProps } from '../../../domain';
-import type { ScanCursorRecord } from '../../../ports';
+import type { FailedScanCommand, ScanCursorRecord } from '../../../ports';
 
 export type PrismaSourceItemRecord = {
   readonly id: string;
@@ -28,6 +28,25 @@ export type PrismaCursorCheckpointRecord = {
   readonly sourceBindingId: string;
   readonly cursorPayload: unknown;
   readonly updatedAt: Date;
+};
+
+export type PrismaScanFailureQueueStatus = 'RETRY_ENQUEUED' | 'DEAD_LETTERED';
+
+export type PrismaScanFailureQueueEntryRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly scanJobId: string;
+  readonly sourceBindingId: string;
+  readonly scanPolicyId: string;
+  readonly correlationId: string;
+  readonly causationId: string;
+  readonly attemptNumber: number;
+  readonly retryBudget: number;
+  readonly nextAttemptNumber: number | null;
+  readonly failureReason: string;
+  readonly status: PrismaScanFailureQueueStatus;
+  readonly createdAt: Date;
 };
 
 export const sourceItemFromPrisma = (record: PrismaSourceItemRecord): SourceItem =>
@@ -73,6 +92,21 @@ export const contentHashForSourceItem = (snapshot: SourceItemProps): string =>
       snapshot.publishedAt.toISOString(),
     ].join('\u001f'))
     .digest('hex');
+
+export const failedScanCommandFromPrisma = (
+  record: PrismaScanFailureQueueEntryRecord,
+): FailedScanCommand => ({
+  tenantId: tenantId(record.tenantId),
+  workspaceId: workspaceId(record.workspaceId),
+  scanJobId: record.scanJobId,
+  sourceBindingId: record.sourceBindingId,
+  scanPolicyId: record.scanPolicyId,
+  correlationId: record.correlationId,
+  causationId: record.causationId,
+  attemptNumber: record.attemptNumber,
+  retryBudget: record.retryBudget,
+  failureReason: record.failureReason,
+});
 
 const normalizeCursorPayload = (payload: unknown): { readonly cursor: string } | null => {
   if (payload !== null && typeof payload === 'object' && !Array.isArray(payload)) {

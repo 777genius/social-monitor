@@ -95,7 +95,7 @@
       "owner": "ingestion-owner",
       "inMemoryStateAdapters": ["InMemoryScanFailureQueueAdapter"],
       "risk": "scan dead-letter support view is process-local",
-      "durableReplacementPlan": "Prisma scan failure queue/read model backed by scan_jobs and failure events"
+      "durableReplacementPlan": "IngestionRestModule can opt into Prisma scan failure queue inspection with INGESTION_SUPPORT_PERSISTENCE=prisma; keep in-memory only for deterministic local smoke"
     },
     {
       "moduleFile": "apps/ingestion-worker/src/ingestion-worker.module.ts",
@@ -110,7 +110,7 @@
         "InMemoryScanFailureQueueAdapter"
       ],
       "risk": "worker scan attempts, source items, cursors, leases, failures and projected feed are process-local",
-      "durableReplacementPlan": "IngestionWorkerModule can opt into Prisma source item, cursor and feed projection persistence with INGESTION_WORKER_PERSISTENCE=prisma; remaining blockers are durable leases, attempts and shared scan failure queue"
+      "durableReplacementPlan": "IngestionWorkerModule can opt into Prisma source item, cursor, feed projection and scan failure queue persistence with INGESTION_WORKER_PERSISTENCE=prisma; remaining blockers are durable leases and attempts"
     }
   ],
   "runtimeNoopAdapters": [

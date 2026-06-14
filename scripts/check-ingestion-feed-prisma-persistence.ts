@@ -1,4 +1,5 @@
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 
 import { PrismaFeedItemReadRepository } from '../libs/feed/adapters/persistence/prisma/prisma-feed-item-read.repository';
 import { PrismaFeedProjectionAdapter } from '../libs/feed/adapters/persistence/prisma/prisma-feed-projection.adapter';
@@ -11,8 +12,11 @@ import { PrismaSourceItemRepository } from '../libs/ingestion/adapters/persisten
 import type { PrismaIngestionClient } from '../libs/ingestion/adapters/persistence/prisma/prisma-ingestion-client';
 import type {
   PrismaCursorCheckpointRecord,
+  PrismaScanFailureQueueEntryRecord,
   PrismaSourceItemRecord,
 } from '../libs/ingestion/adapters/persistence/prisma/prisma-ingestion-records';
+import { PrismaScanFailureQueueAdapter } from '../libs/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter';
+import { resolveIngestionSupportPersistenceMode } from '../libs/ingestion/interfaces/rest/ingestion-provider-tokens';
 import { resolveIngestionWorkerPersistenceMode } from '../apps/ingestion-worker/src/ingestion-worker-provider-tokens';
 
 const clock = new FixedClock(new Date('2026-06-07T00:00:00.000Z'));
@@ -49,17 +53,35 @@ async function main(): Promise<void> {
     }) === 'prisma',
     'ingestion worker persistence must accept explicit Prisma mode with DATABASE_URL',
   );
+  assert(
+    resolveIngestionSupportPersistenceMode({}) === 'in-memory',
+    'ingestion support persistence must default to in-memory',
+  );
+  assertThrows(
+    () => resolveIngestionSupportPersistenceMode({ INGESTION_SUPPORT_PERSISTENCE: 'prisma' }),
+    'INGESTION_SUPPORT_PERSISTENCE=prisma must require DATABASE_URL',
+  );
+  assert(
+    resolveIngestionSupportPersistenceMode({
+      INGESTION_SUPPORT_PERSISTENCE: 'prisma',
+      DATABASE_URL: 'postgresql://example.test/social-monitor',
+    }) === 'prisma',
+    'ingestion support persistence must accept explicit Prisma mode with DATABASE_URL',
+  );
 
   const prisma = new FakePrismaIngestionFeedClient();
   const ids = new SequenceIdGenerator([
     '00000000-0000-7000-8000-000000000201',
     '00000000-0000-7000-8000-000000000202',
     '00000000-0000-7000-8000-000000000203',
+    '00000000-0000-7000-8000-000000000204',
+    '00000000-0000-7000-8000-000000000205',
   ]);
   const sourceItems = new PrismaSourceItemRepository(prisma);
   const cursors = new PrismaScanCursorRepository(prisma, ids);
   const feedProjection = new PrismaFeedProjectionAdapter(prisma, ids);
   const feedRead = new PrismaFeedItemReadRepository(prisma);
+  const failureQueue = new PrismaScanFailureQueueAdapter(prisma, new InMemoryMetricsRecorder(), ids);
   const firstItem = makeSourceItem({
     id: '00000000-0000-7000-8000-000000000301',
     externalId: 'story-1',
@@ -123,6 +145,40 @@ async function main(): Promise<void> {
   });
   assert(found?.toSnapshot().canonicalUrl === 'https://example.test/story?a=1&b=2', 'feed item findById must rehydrate item');
 
+  await failureQueue.enqueueRetry({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scanJobId: '00000000-0000-7000-8000-000000000401',
+    sourceBindingId,
+    scanPolicyId: '00000000-0000-7000-8000-000000000402',
+    correlationId: 'corr-1',
+    causationId: 'cause-1',
+    attemptNumber: 1,
+    retryBudget: 2,
+    nextAttemptNumber: 2,
+    failureReason: 'temporary provider failure',
+  });
+  await failureQueue.deadLetter({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scanJobId: '00000000-0000-7000-8000-000000000403',
+    sourceBindingId,
+    scanPolicyId: '00000000-0000-7000-8000-000000000404',
+    correlationId: 'corr-2',
+    causationId: 'cause-2',
+    attemptNumber: 2,
+    retryBudget: 2,
+    failureReason: 'provider exhausted retry budget',
+  });
+  const deadLetters = await failureQueue.listDeadLetters({ tenantId: tenant, workspaceId: workspace, limit: 10 });
+  assert(deadLetters.length === 1, 'scan failure queue must list durable dead letters');
+  const deadLetter = deadLetters[0];
+  assert(deadLetter !== undefined, 'scan failure queue must return dead letter command');
+  assert(
+    deadLetter.failureReason === 'provider exhausted retry budget',
+    'scan failure queue dead letter reason must round-trip',
+  );
+
   console.log('Ingestion/feed Prisma persistence smoke OK');
 }
 
@@ -168,6 +224,7 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
   private readonly sourceItems = new Map<string, PrismaSourceItemRecord>();
   private readonly cursors = new Map<string, PrismaCursorCheckpointRecord>();
   private readonly feedItems = new Map<string, PrismaFeedItemRecord>();
+  private readonly failureEntries: PrismaScanFailureQueueEntryRecord[] = [];
 
   readonly sourceItem: PrismaIngestionClient['sourceItem'] = {
     findFirst: async (args) =>
@@ -210,6 +267,34 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
         record.workspaceId === args.where.workspaceId &&
         record.sourceBindingId === args.where.sourceBindingId
       )) ?? null,
+  };
+
+  readonly scanFailureQueueEntry: PrismaIngestionClient['scanFailureQueueEntry'] = {
+    create: async (args) => {
+      const record: PrismaScanFailureQueueEntryRecord = {
+        ...args.data,
+        nextAttemptNumber: args.data.nextAttemptNumber ?? null,
+        createdAt: clock.now(),
+      };
+      this.failureEntries.push(record);
+
+      return record;
+    },
+    findMany: async (args) =>
+      this.failureEntries
+        .filter((record) => (
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          record.status === args.where.status
+        ))
+        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+        .slice(0, args.take),
+    count: async (args) =>
+      this.failureEntries.filter((record) => (
+        record.tenantId === args.where.tenantId &&
+        record.workspaceId === args.where.workspaceId &&
+        record.status === args.where.status
+      )).length,
   };
 
   readonly feedItem: PrismaFeedClient['feedItem'] = {

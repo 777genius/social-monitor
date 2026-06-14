@@ -2,6 +2,7 @@ import type {
   FeedProjectionPort,
   ScanCursorRepositoryPort,
   ScanExecutionReporterPort,
+  ScanFailureQueuePort,
   SourceItemRepositoryPort,
 } from '@social-monitor/ingestion/ports';
 
@@ -15,6 +16,7 @@ export const INGESTION_SCAN_EXECUTION_REPORTER = Symbol('INGESTION_SCAN_EXECUTIO
 export const INGESTION_SOURCE_ITEM_REPOSITORY = Symbol('INGESTION_SOURCE_ITEM_REPOSITORY');
 export const INGESTION_SCAN_CURSOR_REPOSITORY = Symbol('INGESTION_SCAN_CURSOR_REPOSITORY');
 export const INGESTION_FEED_PROJECTION = Symbol('INGESTION_FEED_PROJECTION');
+export const INGESTION_SCAN_FAILURE_QUEUE = Symbol('INGESTION_SCAN_FAILURE_QUEUE');
 
 export type IngestionWorkerProviderTokenMap = {
   readonly [INGESTION_WORKER_PERSISTENCE_MODE]: IngestionWorkerPersistenceMode;
@@ -24,6 +26,7 @@ export type IngestionWorkerProviderTokenMap = {
   readonly [INGESTION_SOURCE_ITEM_REPOSITORY]: SourceItemRepositoryPort;
   readonly [INGESTION_SCAN_CURSOR_REPOSITORY]: ScanCursorRepositoryPort;
   readonly [INGESTION_FEED_PROJECTION]: FeedProjectionPort;
+  readonly [INGESTION_SCAN_FAILURE_QUEUE]: ScanFailureQueuePort;
 };
 
 export const resolveIngestionWorkerPersistenceMode = (

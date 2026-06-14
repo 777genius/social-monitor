@@ -70,6 +70,11 @@ enum OutboxStatus {
   FAILED
 }
 
+enum ScanFailureQueueStatus {
+  RETRY_ENQUEUED
+  DEAD_LETTERED
+}
+
 model Tenant {
   id         String      @id @db.Uuid
   slug       String      @unique
@@ -272,6 +277,27 @@ model SourceItem {
   @@unique([tenantId, providerKey, providerItemId])
   @@index([tenantId, workspaceId, sourceBindingId, observedAt])
   @@map("source_items")
+}
+
+model ScanFailureQueueEntry {
+  id                String                 @id @db.Uuid
+  tenantId          String                 @map("tenant_id") @db.Uuid
+  workspaceId       String                 @map("workspace_id") @db.Uuid
+  scanJobId         String                 @map("scan_job_id") @db.Uuid
+  sourceBindingId   String                 @map("source_binding_id") @db.Uuid
+  scanPolicyId      String                 @map("scan_policy_id") @db.Uuid
+  correlationId     String                 @map("correlation_id")
+  causationId       String                 @map("causation_id")
+  attemptNumber     Int                    @map("attempt_number")
+  retryBudget       Int                    @map("retry_budget")
+  nextAttemptNumber Int?                   @map("next_attempt_number")
+  failureReason     String                 @map("failure_reason")
+  status            ScanFailureQueueStatus @default(RETRY_ENQUEUED)
+  createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, status, createdAt])
+  @@index([tenantId, scanJobId])
+  @@map("scan_failure_queue_entries")
 }
 
 model FeedItem {

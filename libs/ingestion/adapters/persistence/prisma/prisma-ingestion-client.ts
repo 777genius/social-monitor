@@ -1,4 +1,8 @@
-import type { PrismaCursorCheckpointRecord, PrismaSourceItemRecord } from './prisma-ingestion-records';
+import type {
+  PrismaCursorCheckpointRecord,
+  PrismaScanFailureQueueEntryRecord,
+  PrismaSourceItemRecord,
+} from './prisma-ingestion-records';
 
 export type PrismaIngestionClient = {
   readonly sourceItem: {
@@ -49,5 +53,40 @@ export type PrismaIngestionClient = {
         readonly sourceBindingId: string;
       };
     }): Promise<PrismaCursorCheckpointRecord | null>;
+  };
+  readonly scanFailureQueueEntry: {
+    create(args: {
+      readonly data: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly scanJobId: string;
+        readonly sourceBindingId: string;
+        readonly scanPolicyId: string;
+        readonly correlationId: string;
+        readonly causationId: string;
+        readonly attemptNumber: number;
+        readonly retryBudget: number;
+        readonly nextAttemptNumber?: number | null;
+        readonly failureReason: string;
+        readonly status: 'RETRY_ENQUEUED' | 'DEAD_LETTERED';
+      };
+    }): Promise<PrismaScanFailureQueueEntryRecord>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly status: 'DEAD_LETTERED';
+      };
+      readonly orderBy: { readonly createdAt: 'desc' };
+      readonly take: number;
+    }): Promise<readonly PrismaScanFailureQueueEntryRecord[]>;
+    count(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly status: 'RETRY_ENQUEUED' | 'DEAD_LETTERED';
+      };
+    }): Promise<number>;
   };
 };
