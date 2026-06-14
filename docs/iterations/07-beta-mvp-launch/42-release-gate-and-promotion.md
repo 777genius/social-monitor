@@ -9,6 +9,7 @@ Approve movement from MVP beta into post-MVP roadmap execution.
 - Backend MVP core loop and feedback submission pass `npm run check:mvp-core-loop`.
 - Unsupported/deferred sources pass `npm run check:beta-scope-policy`.
 - Ring expansion policy passes `npm run check:beta-ring-policy`.
+- Persistence readiness passes `npm run check:persistence-readiness`; external beta is blocked until durable adapter exit criteria are met.
 - Launch pause for source bindings is covered by `npm run check:mvp-core-loop`.
 - Launch and rollback checklist is executed.
 - Support triage captures known limitations and incidents.
@@ -18,6 +19,7 @@ Approve movement from MVP beta into post-MVP roadmap execution.
 - Beta validated the user-facing core loop and the backend core-loop/feedback gate is green.
 - Unsupported source requests did not bypass policy and are captured as source-owner backlog evidence.
 - Ring expansion cites capacity, cost, source-health and degradation evidence.
+- Persistence readiness cites every runtime in-memory/noop state adapter with owner, risk and durable replacement plan.
 - Roadmap items cite evidence.
 - Residual risks have owners.
 
@@ -26,6 +28,7 @@ Approve movement from MVP beta into post-MVP roadmap execution.
 - Feedback is anecdotal and unclassified.
 - Source expansion is requested without risk/cost review.
 - Users cannot complete onboarding reliably.
+- Runtime persistence is still in-memory/noop-backed for any external beta or multi-process claim.
 
 ## Rollback Or Rework
 - Pause beta if reliability or trust drops below gate.

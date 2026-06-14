@@ -80,6 +80,7 @@ Implementation should not stall on broad test suites. For MVP work, write code i
 - keep the backend MVP core loop, feedback submission and source binding pause/resume as a deterministic no-network smoke gate through `npm run check:mvp-core-loop`.
 - keep unsupported/deferred source scope policy as a deterministic no-network smoke gate through `npm run check:beta-scope-policy`.
 - keep beta ring expansion policy as an executable contract through `npm run check:beta-ring-policy`.
+- keep runtime persistence readiness as an executable contract through `npm run check:persistence-readiness`; in-memory/noop runtime adapters must be declared with owner, risk and durable replacement plan.
 
 Full e2e and load gates remain release/promotion gates, not the default inner development loop.
 
@@ -96,6 +97,7 @@ CI must block:
 - breaking OpenAPI changes without migration note;
 - breaking event/protobuf schemas;
 - migrations without tests/review;
+- runtime modules adding in-memory or noop state adapters without persistence-readiness evidence;
 - connector changes without certification tests;
 - `enabled_beta` source providers without a current `ops/ingestion/source-provider-certification.json` artifact;
 - delivery/realtime changes without replay-window, resync and idempotency evidence;
@@ -118,3 +120,4 @@ CI must block:
 7. `npm run check:mvp-core-loop` is mandatory before beta MVP release evidence can pass, including feedback category, owner, evidence capture and source binding pause/resume behavior.
 8. `npm run check:beta-scope-policy` is mandatory before beta MVP release evidence can pass.
 9. `npm run check:beta-ring-policy` is mandatory before beta MVP release evidence can pass.
+10. `npm run check:persistence-readiness` is mandatory before beta MVP release evidence can pass; external beta remains blocked while runtime state is only in-memory/noop-backed.

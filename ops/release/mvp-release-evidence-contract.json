@@ -55,6 +55,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "persistence-readiness",
+      "command": "npm run check:persistence-readiness",
+      "blocksRelease": true
+    },
+    {
       "gateId": "load-cost-guardrail",
       "command": "npm run check:load-cost",
       "blocksRelease": true

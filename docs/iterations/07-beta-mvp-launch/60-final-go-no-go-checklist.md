@@ -7,6 +7,7 @@ Decide whether beta can close and post-MVP roadmap execution can start.
 - Backend MVP core loop, feedback submission and source binding pause/resume pass `npm run check:mvp-core-loop`.
 - Unsupported/deferred source policy passes `npm run check:beta-scope-policy`.
 - Ring expansion policy passes `npm run check:beta-ring-policy`.
+- Persistence readiness passes `npm run check:persistence-readiness`.
 - Beta user can complete onboarding against the same topic/source/scan/feed/summary/feedback/realtime path.
 - Supported source list is frozen or change-controlled.
 - Known limitations are explicit.
@@ -40,6 +41,7 @@ Decide whether beta can close and post-MVP roadmap execution can start.
 - Support requires developer shell/database access for common beta failures.
 - Beta ring expansion is requested while blockers are open.
 - Capacity/cost/source-health evidence is missing for launch or `npm run check:beta-ring-policy` fails.
+- External beta or multi-process deployment is claimed before durable runtime persistence exit criteria are met.
 
 ## Accepted Exceptions
 - Broad source catalog remains post-MVP.
@@ -79,3 +81,4 @@ Required evidence links:
 9. feedback classification report
 10. post-MVP backlog classification
 11. capacity envelope and degradation drill, including `npm run check:beta-ring-policy`
+12. persistence readiness evidence, including `npm run check:persistence-readiness`

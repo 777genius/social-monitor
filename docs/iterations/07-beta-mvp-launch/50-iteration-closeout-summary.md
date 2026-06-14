@@ -12,6 +12,7 @@
 - Backend MVP core loop and feedback submission have executable evidence through `npm run check:mvp-core-loop`.
 - Unsupported/deferred source policy has executable evidence through `npm run check:beta-scope-policy`.
 - Ring expansion policy has executable evidence through `npm run check:beta-ring-policy`.
+- Runtime persistence readiness has executable evidence through `npm run check:persistence-readiness`.
 - Source binding pause/resume has executable evidence through `npm run check:mvp-core-loop`.
 - Beta user onboarding walkthrough is linked to the same topic/source/scan/feed/summary/feedback/realtime path.
 - Supported sources are frozen or change-controlled.
@@ -25,6 +26,7 @@
 - Onboarding walkthrough evidence not linked to the core-loop release gate.
 - Real beta feedback report without owner/category/evidence.
 - Launch cannot be paused safely or paused source bindings can still enqueue new scan work.
+- External beta or multi-process deployment is claimed while runtime state is still in-memory/noop-backed.
 
 ## Carryover
 - Source expansion ranking goes to post-MVP roadmap.

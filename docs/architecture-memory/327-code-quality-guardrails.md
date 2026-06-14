@@ -27,7 +27,8 @@ Code quality rules must be enforceable, not only documented. `npm run verify` mu
 15. Core-loop changes across monitoring, ingestion, feed, summary or delivery must keep `npm run check:mvp-core-loop` passing; the topic/source/scan/feed/summary/feedback/realtime path and source binding pause/resume behavior must stay executable without network access.
 16. Source readiness, source catalog or beta scope changes must keep `npm run check:beta-scope-policy` passing; deferred providers must not become bindable without explicit readiness approval.
 17. Ring expansion, capacity, cost or source-health policy changes must keep `npm run check:beta-ring-policy` passing.
-18. Architecture boundaries remain separately enforced by `npm run check:architecture`.
+18. Runtime persistence or worker wiring changes must keep `npm run check:persistence-readiness` passing; in-memory/noop state adapters in runtime modules require owner, risk and durable replacement plan.
+19. Architecture boundaries remain separately enforced by `npm run check:architecture`.
 
 ## Current Gate
 
@@ -77,6 +78,7 @@ Clean Architecture fails slowly when use cases stop being directly testable, con
 - Source provider changes must prove capability/readiness alignment, stable identity, cursor contract and classified failures through `npm run check:source-certification`.
 - Beta scope/source policy changes must prove unsupported providers stay out of binding and route demand to source-owner feedback through `npm run check:beta-scope-policy`.
 - Ring expansion changes must prove capacity, cost, source-health thresholds and degradation actions through `npm run check:beta-ring-policy`.
+- Runtime module changes must declare any in-memory/noop state adapter through `npm run check:persistence-readiness`; external beta cannot be treated as complete until the durable replacement exit criteria are met.
 - Delivery/realtime changes must prove stale replay cursor resync, duplicate notification idempotency and preference suppression before provider send through `npm run check:delivery-replay`.
 - Monitoring, ingestion, feed, summary, feedback or realtime changes must keep the deterministic backend MVP loop green through `npm run check:mvp-core-loop`; paused source bindings must not accept new scan work, reserve quota or enqueue ingestion commands.
 - Evidence docs must be updated from temporary branch markers to concrete commit SHAs before merge.

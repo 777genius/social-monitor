@@ -17,6 +17,7 @@ const requiredGateIds = new Set([
   'openapi-drift',
   'event-contracts',
   'migration-safety',
+  'persistence-readiness',
   'load-cost-guardrail',
   'source-provider-certification',
   'delivery-replay-idempotency',

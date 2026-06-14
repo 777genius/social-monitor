@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "posture": "durability_gap_declared",
+  "mvpRuntimeDecision": {
+    "allowedRuntime": "single_process_private_mvp_and_deterministic_smoke_only",
+    "blocksExternalBeta": true,
+    "owner": "platform-owner",
+    "exitCriteria": [
+      "replace API runtime repositories with Prisma adapters for monitoring, feed, summary, delivery, identity and usage state",
+      "replace in-memory queue/outbox/idempotency runtime adapters with durable broker/outbox/inbox adapters",
+      "replace worker persistence, cursor, lease and scan reporter adapters with durable adapters sharing the same database/broker state",
+      "prove restart survival and cross-process scan status/feed/summary visibility through a targeted integration smoke"
+    ]
+  },
+  "runtimeModules": [
+    {
+      "moduleFile": "libs/monitoring/interfaces/rest/monitoring-rest.module.ts",
+      "context": "monitoring-api",
+      "owner": "monitoring-owner",
+      "inMemoryStateAdapters": [
+        "InMemoryTopicRepository",
+        "InMemorySourceBindingRepository",
+        "InMemoryScanPolicyRepository",
+        "InMemoryScanJobRepository",
+        "InMemoryQueuePublisher",
+        "InMemoryScanQueueAdapter",
+        "InMemoryOutboxAdapter",
+        "InMemoryIdempotencyAdapter"
+      ],
+      "risk": "topics, source bindings, scan policies, scan jobs and queued scan commands are lost on restart and are not shared with workers",
+      "durableReplacementPlan": "Prisma repositories plus durable outbox/idempotency and broker-backed scan queue"
+    },
+    {
+      "moduleFile": "libs/feed/interfaces/rest/feed-rest.module.ts",
+      "context": "feed-api",
+      "owner": "feed-owner",
+      "inMemoryStateAdapters": ["InMemoryFeedItemReadRepository"],
+      "risk": "feed items are process-local and not shared with ingestion workers",
+      "durableReplacementPlan": "Prisma feed read repository backed by feed_items"
+    },
+    {
+      "moduleFile": "libs/summary/interfaces/rest/summary-rest.module.ts",
+      "context": "summary-api",
+      "owner": "summary-owner",
+      "inMemoryStateAdapters": [
+        "InMemorySummaryJobRepository",
+        "InMemorySummaryArtifactRepository",
+        "InMemorySummaryFeedbackRepository",
+        "InMemorySummaryEventPublisher"
+      ],
+      "risk": "summary jobs, artifacts, feedback and events are process-local and disappear on restart",
+      "durableReplacementPlan": "Prisma repositories plus durable summary event publisher/outbox"
+    },
+    {
+      "moduleFile": "libs/delivery/interfaces/rest/delivery-rest.module.ts",
+      "context": "delivery-api",
+      "owner": "delivery-owner",
+      "inMemoryStateAdapters": [
+        "InMemoryDeliveryAttemptRepository",
+        "InMemoryDigestScheduleRepository",
+        "InMemoryDigestRepository",
+        "InMemoryDigestSourceReader",
+        "InMemoryNotificationPreferenceReader",
+        "InMemoryRealtimeEventRepository",
+        "InMemoryWebhookEndpointRepository",
+        "InMemoryWebhookReplayStore",
+        "InMemoryWebhookSecretVault"
+      ],
+      "risk": "delivery attempts, digests, realtime events, webhook endpoints, replay cursors and secrets are process-local",
+      "durableReplacementPlan": "Prisma repositories, encrypted secret vault and durable replay cursor store"
+    },
+    {
+      "moduleFile": "libs/identity/interfaces/rest/identity-rest.module.ts",
+      "context": "identity-api",
+      "owner": "identity-owner",
+      "inMemoryStateAdapters": ["InMemoryApiKeyRepository"],
+      "risk": "API keys disappear on restart and cannot be shared across API replicas",
+      "durableReplacementPlan": "Prisma API key repository with hashed key lookup"
+    },
+    {
+      "moduleFile": "libs/usage/interfaces/rest/usage-rest.module.ts",
+      "context": "usage-api",
+      "owner": "usage-owner",
+      "inMemoryStateAdapters": [
+        "InMemoryPublicApiAuditLog",
+        "InMemoryRateLimitCounter",
+        "InMemoryUsageQuotaLedger"
+      ],
+      "risk": "audit records, rate limits and quota reservations are process-local",
+      "durableReplacementPlan": "Prisma usage records plus Redis/Postgres-backed rate limit and quota ledger adapters"
+    },
+    {
+      "moduleFile": "libs/ingestion/interfaces/rest/ingestion-rest.module.ts",
+      "context": "ingestion-support-api",
+      "owner": "ingestion-owner",
+      "inMemoryStateAdapters": ["InMemoryScanFailureQueueAdapter"],
+      "risk": "scan dead-letter support view is process-local",
+      "durableReplacementPlan": "Prisma scan failure queue/read model backed by scan_jobs and failure events"
+    },
+    {
+      "moduleFile": "apps/ingestion-worker/src/ingestion-worker.module.ts",
+      "context": "ingestion-worker",
+      "owner": "ingestion-owner",
+      "inMemoryStateAdapters": [
+        "InMemoryFeedItemReadRepository",
+        "InMemoryScanLeaseAdapter",
+        "InMemoryScanAttemptRepository",
+        "InMemoryScanCursorRepository",
+        "InMemorySourceItemRepository",
+        "InMemoryScanFailureQueueAdapter"
+      ],
+      "risk": "worker scan attempts, source items, cursors, leases, failures and projected feed are process-local",
+      "durableReplacementPlan": "Prisma scan/source/feed repositories, durable lease/cursor adapters and shared scan failure queue"
+    }
+  ],
+  "runtimeNoopAdapters": [
+    {
+      "moduleFile": "apps/ingestion-worker/src/ingestion-worker.module.ts",
+      "adapter": "NoopScanExecutionReporterAdapter",
+      "owner": "ingestion-owner",
+      "risk": "worker execution does not update durable scan job status across the monitoring boundary",
+      "durableReplacementPlan": "replace with monitoring scan execution reporter backed by shared repository/event contract"
+    }
+  ]
+}
