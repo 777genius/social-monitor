@@ -31,6 +31,10 @@ export class ScanPolicy {
     return new ScanPolicy(props);
   }
 
+  static rehydrate(props: ScanPolicyProps): ScanPolicy {
+    return new ScanPolicy(props);
+  }
+
   scheduleNext(params: { readonly nextRunAt: Date }): ScanPolicy {
     if (params.nextRunAt.getTime() <= this.props.nextRunAt.getTime()) {
       throw new Error('Next scan run must move forward');

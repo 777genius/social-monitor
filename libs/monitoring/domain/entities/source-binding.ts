@@ -33,6 +33,21 @@ export class SourceBinding {
     });
   }
 
+  static rehydrate(props: SourceBindingProps): SourceBinding {
+    if (props.providerKey.trim().length === 0) {
+      throw new Error('Source provider key must be non-empty');
+    }
+
+    if (props.capabilityProfileVersion < 1) {
+      throw new Error('Capability profile version must be positive');
+    }
+
+    return new SourceBinding({
+      ...props,
+      providerKey: props.providerKey.trim(),
+    });
+  }
+
   pause(): SourceBinding {
     return new SourceBinding({
       ...this.props,

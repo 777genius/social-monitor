@@ -10,6 +10,7 @@ Approve movement from MVP beta into post-MVP roadmap execution.
 - Unsupported/deferred sources pass `npm run check:beta-scope-policy`.
 - Ring expansion policy passes `npm run check:beta-ring-policy`.
 - Persistence readiness passes `npm run check:persistence-readiness`; external beta is blocked until durable adapter exit criteria are met.
+- Monitoring Prisma persistence smoke passes `npm run check:monitoring-persistence`.
 - Launch pause for source bindings is covered by `npm run check:mvp-core-loop`.
 - Launch and rollback checklist is executed.
 - Support triage captures known limitations and incidents.

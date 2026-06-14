@@ -18,6 +18,7 @@ const requiredGateIds = new Set([
   'event-contracts',
   'migration-safety',
   'persistence-readiness',
+  'monitoring-prisma-persistence',
   'load-cost-guardrail',
   'source-provider-certification',
   'delivery-replay-idempotency',

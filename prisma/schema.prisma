@@ -200,6 +200,7 @@ model ScanPolicy {
   intervalSeconds Int      @map("interval_seconds")
   freshnessSeconds Int     @map("freshness_seconds")
   retryBudget     Int      @map("retry_budget")
+  nextRunAt       DateTime @map("next_run_at") @db.Timestamptz(6)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

@@ -42,6 +42,7 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 - `npm run check:beta-scope-policy` proves unsupported/deferred providers stay out of the beta binding catalog, binding attempts are rejected, and source demand is captured as `source_request` feedback routed to `source-owner`.
 - `npm run check:beta-ring-policy` proves ring expansion thresholds link capacity, cost, source health and degradation evidence before inviting more users.
 - `npm run check:persistence-readiness` proves runtime in-memory/noop state adapters are not hidden: every API/worker module gap has owner, risk and durable replacement plan, and external beta remains blocked until durable adapters replace those gaps.
+- `npm run check:monitoring-persistence` proves the first monitoring Prisma adapter foundation: topics round-trip, source binding pause status persists through source catalog provider rehydration, and scan policy `nextRunAt` is stored for durable scheduling.
 
 ## Missing Evidence Blocks
 - Real beta feedback classification report is not produced from user samples yet.

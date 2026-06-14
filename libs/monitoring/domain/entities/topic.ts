@@ -28,6 +28,14 @@ export class Topic {
     });
   }
 
+  static rehydrate(props: TopicProps): Topic {
+    return new Topic({
+      ...props,
+      name: props.name.trim(),
+      query: props.query.trim(),
+    });
+  }
+
   toSnapshot(): TopicProps {
     return { ...this.props };
   }
