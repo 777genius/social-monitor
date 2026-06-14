@@ -77,7 +77,7 @@ Implementation should not stall on broad test suites. For MVP work, write code i
 - keep `npm test` and `npm run test:e2e` behind a hard timeout wrapper so leaked handles fail visibly.
 - keep provider certification as a deterministic no-network smoke gate through `npm run check:source-certification`.
 - keep realtime replay and delivery idempotency as a deterministic no-network smoke gate through `npm run check:delivery-replay`.
-- keep the backend MVP core loop and feedback submission as a deterministic no-network smoke gate through `npm run check:mvp-core-loop`.
+- keep the backend MVP core loop, feedback submission and source binding pause/resume as a deterministic no-network smoke gate through `npm run check:mvp-core-loop`.
 - keep unsupported/deferred source scope policy as a deterministic no-network smoke gate through `npm run check:beta-scope-policy`.
 - keep beta ring expansion policy as an executable contract through `npm run check:beta-ring-policy`.
 
@@ -100,6 +100,7 @@ CI must block:
 - `enabled_beta` source providers without a current `ops/ingestion/source-provider-certification.json` artifact;
 - delivery/realtime changes without replay-window, resync and idempotency evidence;
 - broken topic/source/scan/feed/summary/feedback/realtime vertical flow;
+- paused source bindings accepting new scan work or spending quota;
 - unsupported/deferred source providers becoming beta-bindable without readiness approval;
 - beta ring expansion without capacity, cost, source-health and degradation evidence;
 - prompt/model changes without eval gate;
@@ -114,6 +115,6 @@ CI must block:
 4. Connector certification is a release gate.
 5. Prompt/model eval is a release gate.
 6. `npm run check:code-quality` is mandatory before release evidence can pass.
-7. `npm run check:mvp-core-loop` is mandatory before beta MVP release evidence can pass, including feedback category, owner and evidence capture.
+7. `npm run check:mvp-core-loop` is mandatory before beta MVP release evidence can pass, including feedback category, owner, evidence capture and source binding pause/resume behavior.
 8. `npm run check:beta-scope-policy` is mandatory before beta MVP release evidence can pass.
 9. `npm run check:beta-ring-policy` is mandatory before beta MVP release evidence can pass.

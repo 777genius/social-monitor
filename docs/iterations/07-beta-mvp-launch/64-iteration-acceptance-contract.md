@@ -8,7 +8,7 @@ Post-MVP roadmap owners receive prioritized backlog, ADR updates and quality-gat
 
 ## Handoff Promises
 - Beta scope and supported sources are documented.
-- Onboarding results are recorded and backend core loop plus feedback submission pass `npm run check:mvp-core-loop`.
+- Onboarding results are recorded and backend core loop, source binding pause/resume and feedback submission pass `npm run check:mvp-core-loop`.
 - Feedback is classified with evidence.
 - Unsupported source requests are policy-safe backlog items and `npm run check:beta-scope-policy` passes.
 - Ring expansion decisions are gated by `npm run check:beta-ring-policy`.
@@ -26,7 +26,7 @@ Post-MVP roadmap owners receive prioritized backlog, ADR updates and quality-gat
 - Backend beta ring policy gate fails.
 - Backend core-loop release gate fails.
 - Core onboarding cannot be completed.
-- Launch cannot be paused safely.
+- Launch cannot be paused safely or paused source bindings can still enqueue new scan work.
 
 ## Allowed Exceptions
 - Broad source catalog remains post-MVP.

@@ -138,8 +138,8 @@
     },
     {
       "smokeId": "worker-pause-resume",
-      "target": "ingestion-worker",
-      "expectedSignal": "workers can stay paused during rollback or restore validation"
+      "target": "ingestion-worker/source-bindings",
+      "expectedSignal": "workers can stay paused during rollback or restore validation and paused source bindings reject new scan work"
     }
   ],
   "rollbackTriggers": [

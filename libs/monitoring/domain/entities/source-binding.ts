@@ -33,6 +33,20 @@ export class SourceBinding {
     });
   }
 
+  pause(): SourceBinding {
+    return new SourceBinding({
+      ...this.props,
+      status: 'paused',
+    });
+  }
+
+  resume(): SourceBinding {
+    return new SourceBinding({
+      ...this.props,
+      status: 'enabled',
+    });
+  }
+
   toSnapshot(): SourceBindingProps {
     return { ...this.props };
   }

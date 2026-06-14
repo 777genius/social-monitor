@@ -128,6 +128,32 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     });
   });
 
+  it('allows only owner and admin roles to pause or resume source bindings', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'source_bindings.update_status',
+      roles: ['owner'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'source_bindings.update_status',
+      roles: ['member'],
+    })).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'authorization.denied',
+      }),
+    });
+  });
+
   it('allows owner and admin roles to set scan policies', () => {
     const policy = new StaticWorkspaceAuthorizationPolicy();
 

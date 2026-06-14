@@ -70,6 +70,14 @@ export class RequestScanUseCase {
     if (!binding) {
       return err(new DomainError('resource.not_found', 'Source binding not found', { sourceBindingId: command.sourceBindingId }));
     }
+    const bindingSnapshot = binding.toSnapshot();
+
+    if (bindingSnapshot.status !== 'enabled') {
+      return err(new DomainError('validation.failed', 'Source binding is paused and cannot accept new scan requests', {
+        sourceBindingId: command.sourceBindingId,
+        status: bindingSnapshot.status,
+      }));
+    }
 
     const policy = await this.scanPolicies.findBySourceBinding({
       tenantId: command.tenantId,
@@ -95,7 +103,6 @@ export class RequestScanUseCase {
     }
 
     const policySnapshot = policy.toSnapshot();
-    const bindingSnapshot = binding.toSnapshot();
     const queueCommand = {
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,

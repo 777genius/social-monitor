@@ -39,6 +39,7 @@ import type {
 } from '../libs/ingestion/ports';
 import { InMemoryFeedProjectionAdapter } from '../apps/ingestion-worker/src/adapters/feed/in-memory-feed-projection.adapter';
 import { BindSourceUseCase } from '../libs/monitoring/features/bind-source/bind-source.use-case';
+import { ChangeSourceBindingStatusUseCase } from '../libs/monitoring/features/change-source-binding-status/change-source-binding-status.use-case';
 import { CreateTopicUseCase } from '../libs/monitoring/features/create-topic/create-topic.use-case';
 import { GetScanStatusUseCase } from '../libs/monitoring/features/get-scan-status/get-scan-status.use-case';
 import { RecordScanExecutionUseCase } from '../libs/monitoring/features/record-scan-execution/record-scan-execution.use-case';
@@ -150,25 +151,71 @@ async function main(): Promise<void> {
   );
   assert(scanPolicy.created, 'scan policy should be created on first command');
 
+  const changeSourceBindingStatus = new ChangeSourceBindingStatusUseCase(bindings, outbox, idempotency, ids, clock);
+  const requestScan = new RequestScanUseCase(
+    bindings,
+    scanPolicies,
+    scanJobs,
+    scanQueue,
+    outbox,
+    idempotency,
+    new AllowingScanRequestQuota(),
+    ids,
+    clock,
+  );
+  const pausedBinding = unwrap(
+    await changeSourceBindingStatus.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: topic.topicId,
+      sourceBindingId: sourceBinding.sourceBindingId,
+      status: 'paused',
+      idempotencyKey: 'source:status:pause',
+      correlationId: correlation,
+    }),
+    'pause source binding',
+  );
+  assert(pausedBinding.changed, 'source binding pause should change status');
+  assert(pausedBinding.status === 'paused', `expected paused source binding, got ${pausedBinding.status}`);
+
+  const pausedScanRequest = await requestScan.execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: sourceBinding.sourceBindingId,
+    idempotencyKey: 'scan:request:paused',
+    correlationId: correlation,
+  });
+  assert(!pausedScanRequest.ok, 'paused source binding must reject new manual scan request');
+  assert(
+    pausedScanRequest.error instanceof DomainError && pausedScanRequest.error.code === 'validation.failed',
+    'paused scan request should fail with validation.failed',
+  );
+  assert(queuePublisher.all().length === 0, 'paused source binding must not enqueue scan commands');
+
+  const resumedBinding = unwrap(
+    await changeSourceBindingStatus.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: topic.topicId,
+      sourceBindingId: sourceBinding.sourceBindingId,
+      status: 'enabled',
+      idempotencyKey: 'source:status:resume',
+      correlationId: correlation,
+    }),
+    'resume source binding',
+  );
+  assert(resumedBinding.changed, 'source binding resume should change status');
+  assert(resumedBinding.status === 'enabled', `expected enabled source binding, got ${resumedBinding.status}`);
+
   const requestedScan = unwrap(
-    await new RequestScanUseCase(
-      bindings,
-      scanPolicies,
-      scanJobs,
-      scanQueue,
-      outbox,
-      idempotency,
-      new AllowingScanRequestQuota(),
-      ids,
-      clock,
-    ).execute({
+    await requestScan.execute({
       tenantId: tenant,
       workspaceId: workspace,
       sourceBindingId: sourceBinding.sourceBindingId,
       idempotencyKey: 'scan:request:manual',
       correlationId: correlation,
     }),
-    'request scan',
+    'request scan after resume',
   );
   assert(requestedScan.created, 'scan request should create a job');
   assert(requestedScan.status === 'enqueued', `expected enqueued scan job, got ${requestedScan.status}`);

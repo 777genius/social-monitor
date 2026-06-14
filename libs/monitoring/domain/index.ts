@@ -5,4 +5,5 @@ export * from './entities/topic';
 export * from './events/scan-requested.event';
 export * from './events/scan-policy-set.event';
 export * from './events/source-binding-enabled.event';
+export * from './events/source-binding-status-changed.event';
 export * from './events/topic-created.event';

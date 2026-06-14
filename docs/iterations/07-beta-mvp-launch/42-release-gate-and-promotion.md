@@ -9,6 +9,7 @@ Approve movement from MVP beta into post-MVP roadmap execution.
 - Backend MVP core loop and feedback submission pass `npm run check:mvp-core-loop`.
 - Unsupported/deferred sources pass `npm run check:beta-scope-policy`.
 - Ring expansion policy passes `npm run check:beta-ring-policy`.
+- Launch pause for source bindings is covered by `npm run check:mvp-core-loop`.
 - Launch and rollback checklist is executed.
 - Support triage captures known limitations and incidents.
 - Feedback is classified by demand, reliability, trust, UX, source risk and cost.
@@ -21,7 +22,7 @@ Approve movement from MVP beta into post-MVP roadmap execution.
 - Residual risks have owners.
 
 ## Hold Conditions
-- Launch cannot be paused safely.
+- Launch cannot be paused safely or `npm run check:mvp-core-loop` no longer proves paused source bindings reject new scan work.
 - Feedback is anecdotal and unclassified.
 - Source expansion is requested without risk/cost review.
 - Users cannot complete onboarding reliably.

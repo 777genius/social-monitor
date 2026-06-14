@@ -15,6 +15,7 @@ export type WorkspaceAction =
   | 'scan_dead_letters.read'
   | 'topics.create'
   | 'source_bindings.create'
+  | 'source_bindings.update_status'
   | 'scan_policies.set'
   | 'scan_jobs.read'
   | 'scan_requests.create'

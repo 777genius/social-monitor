@@ -292,6 +292,47 @@ describe('RequestScanUseCase', () => {
     expect(queue.commands).toHaveLength(1);
   });
 
+  it('rejects new manual scan requests when the source binding is paused', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding().pause());
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const queue = new FakeScanQueue();
+    const quota = new AllowingScanRequestQuota();
+    const useCase = new RequestScanUseCase(
+      bindings,
+      policies,
+      new FakeScanJobs(),
+      queue,
+      new FakeOutbox(),
+      new FakeIdempotency(),
+      quota,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'scan-paused-1',
+      correlationId: 'correlation-1',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'validation.failed',
+        details: {
+          sourceBindingId: 'binding-1',
+          status: 'paused',
+        },
+      }),
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect(quota.reservationCount).toBe(0);
+  });
+
   it('rejects request when scan policy is missing', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding());

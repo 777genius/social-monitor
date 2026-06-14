@@ -25,6 +25,22 @@
       ]
     },
     {
+      "eventType": "monitoring.source-binding.status-changed",
+      "schemaVersion": 1,
+      "producer": "monitoring",
+      "tenantScoped": true,
+      "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
+      "requiredPayloadFields": [
+        "sourceBindingId",
+        "tenantId",
+        "workspaceId",
+        "topicId",
+        "providerKey",
+        "previousStatus",
+        "status"
+      ]
+    },
+    {
       "eventType": "monitoring.scan-policy.set",
       "schemaVersion": 1,
       "producer": "monitoring",

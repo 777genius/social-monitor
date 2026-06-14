@@ -17,6 +17,7 @@ import { InMemoryScanQueueAdapter } from '../../adapters/queue/in-memory-scan-qu
 import { AesGcmSourceBindingConfigProtector } from '../../adapters/security/aes-gcm-source-binding-config-protector';
 import { FakeSourceCatalogAdapter } from '../../adapters/source-catalog/fake-source-catalog.adapter';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
+import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
 import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
 import { RecordScanExecutionUseCase } from '../../features/record-scan-execution/record-scan-execution.use-case';
@@ -128,6 +129,26 @@ import { TopicController } from './topic.controller';
       inject: [
         InMemorySourceBindingRepository,
         InMemoryScanPolicyRepository,
+        InMemoryOutboxAdapter,
+        InMemoryIdempotencyAdapter,
+      ],
+    },
+    {
+      provide: ChangeSourceBindingStatusUseCase,
+      useFactory: (
+        bindings: InMemorySourceBindingRepository,
+        outbox: InMemoryOutboxAdapter,
+        idempotency: InMemoryIdempotencyAdapter,
+      ) =>
+        new ChangeSourceBindingStatusUseCase(
+          bindings,
+          outbox,
+          idempotency,
+          new CryptoIdGenerator(),
+          new SystemClock(),
+        ),
+      inject: [
+        InMemorySourceBindingRepository,
         InMemoryOutboxAdapter,
         InMemoryIdempotencyAdapter,
       ],
