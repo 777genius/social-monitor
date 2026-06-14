@@ -19,6 +19,22 @@ export class FeedItem {
   private constructor(private readonly props: FeedItemProps) {}
 
   static publish(props: FeedItemProps): FeedItem {
+    this.assertValid(props);
+
+    return new FeedItem(props);
+  }
+
+  static rehydrate(props: FeedItemProps): FeedItem {
+    this.assertValid(props);
+
+    return new FeedItem(props);
+  }
+
+  toSnapshot(): FeedItemProps {
+    return { ...this.props };
+  }
+
+  private static assertValid(props: FeedItemProps): void {
     if (props.id.trim().length === 0) {
       throw new Error('Feed item id must be non-empty');
     }
@@ -38,11 +54,5 @@ export class FeedItem {
     if (props.title.trim().length === 0 && props.bodyPreview.trim().length === 0) {
       throw new Error('Feed item title or body preview must be non-empty');
     }
-
-    return new FeedItem(props);
-  }
-
-  toSnapshot(): FeedItemProps {
-    return { ...this.props };
   }
 }

@@ -36,7 +36,7 @@
       "owner": "feed-owner",
       "inMemoryStateAdapters": ["InMemoryFeedItemReadRepository"],
       "risk": "feed items are process-local and not shared with ingestion workers",
-      "durableReplacementPlan": "Prisma feed read repository backed by feed_items"
+      "durableReplacementPlan": "Prisma feed read repository foundation exists; wire FeedRestModule to the shared Prisma feed client when feed runtime persistence is enabled"
     },
     {
       "moduleFile": "libs/summary/interfaces/rest/summary-rest.module.ts",
@@ -110,7 +110,7 @@
         "InMemoryScanFailureQueueAdapter"
       ],
       "risk": "worker scan attempts, source items, cursors, leases, failures and projected feed are process-local",
-      "durableReplacementPlan": "Prisma scan/source/feed repositories, durable lease/cursor adapters and shared scan failure queue"
+      "durableReplacementPlan": "Prisma source item, cursor and feed projection foundations exist; remaining blockers are runtime wiring, durable leases, attempts and shared scan failure queue"
     }
   ],
   "runtimeNoopAdapters": [

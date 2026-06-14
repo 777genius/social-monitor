@@ -5,6 +5,7 @@ import type { SourceItem } from '../domain';
 export type SaveSourceItemsCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
+  readonly providerKey: string;
   readonly items: readonly SourceItem[];
 };
 

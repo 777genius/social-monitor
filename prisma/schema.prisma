@@ -256,7 +256,11 @@ model SourceItem {
   sourceBindingId String   @map("source_binding_id") @db.Uuid
   providerKey     String   @map("provider_key")
   providerItemId  String   @map("provider_item_id")
-  canonicalUrl    String?  @map("canonical_url")
+  canonicalUrl    String   @map("canonical_url")
+  title           String
+  body            String
+  authorHandle    String?  @map("author_handle")
+  publishedAt     DateTime @map("published_at") @db.Timestamptz(6)
   contentHash     String   @map("content_hash")
   observedAt      DateTime @map("observed_at") @db.Timestamptz(6)
   rawPointer      String?  @map("raw_pointer")
@@ -275,7 +279,14 @@ model FeedItem {
   workspaceId   String         @map("workspace_id") @db.Uuid
   topicId       String         @map("topic_id") @db.Uuid
   sourceItemId  String         @map("source_item_id") @db.Uuid
+  sourceBindingId String       @map("source_binding_id") @db.Uuid
   dedupeKey     String         @map("dedupe_key")
+  canonicalUrl  String         @map("canonical_url")
+  title         String
+  bodyPreview   String         @map("body_preview")
+  authorHandle  String?        @map("author_handle")
+  publishedAt   DateTime       @map("published_at") @db.Timestamptz(6)
+  observedAt    DateTime       @map("observed_at") @db.Timestamptz(6)
   status        FeedItemStatus @default(VISIBLE)
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)

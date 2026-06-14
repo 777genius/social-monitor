@@ -18,6 +18,22 @@ export class SourceItem {
   private constructor(private readonly props: SourceItemProps) {}
 
   static ingest(props: SourceItemProps): SourceItem {
+    this.assertValid(props);
+
+    return new SourceItem(props);
+  }
+
+  static rehydrate(props: SourceItemProps): SourceItem {
+    this.assertValid(props);
+
+    return new SourceItem(props);
+  }
+
+  toSnapshot(): SourceItemProps {
+    return { ...this.props };
+  }
+
+  private static assertValid(props: SourceItemProps): void {
     if (props.sourceBindingId.trim().length === 0) {
       throw new Error('Source binding id must be non-empty');
     }
@@ -33,11 +49,5 @@ export class SourceItem {
     if (props.title.trim().length === 0 && props.body.trim().length === 0) {
       throw new Error('Source item title or body must be non-empty');
     }
-
-    return new SourceItem(props);
-  }
-
-  toSnapshot(): SourceItemProps {
-    return { ...this.props };
   }
 }

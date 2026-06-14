@@ -14,6 +14,7 @@ Post-MVP roadmap owners receive prioritized backlog, ADR updates and quality-gat
 - Ring expansion decisions are gated by `npm run check:beta-ring-policy`.
 - Runtime persistence gaps are declared and gated by `npm run check:persistence-readiness`.
 - Monitoring Prisma persistence foundation for topics, source bindings, scan policies and scan jobs is gated by `npm run check:monitoring-persistence`.
+- Ingestion/feed Prisma persistence foundation for source items, cursors and feed read models is gated by `npm run check:ingestion-feed-persistence`.
 - Post-MVP work preserves architecture guardrails.
 
 ## Receiver Expectations
@@ -28,6 +29,7 @@ Post-MVP roadmap owners receive prioritized backlog, ADR updates and quality-gat
 - Backend beta ring policy gate fails.
 - Backend persistence readiness gate fails.
 - Backend monitoring persistence gate fails.
+- Backend ingestion/feed persistence gate fails.
 - Backend core-loop release gate fails.
 - Core onboarding cannot be completed.
 - Launch cannot be paused safely or paused source bindings can still enqueue new scan work.

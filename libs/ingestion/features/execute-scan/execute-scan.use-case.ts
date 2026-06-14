@@ -108,6 +108,7 @@ export class ExecuteScanUseCase {
       const saveResult = await this.sourceItems.saveBatch({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
+        providerKey: command.providerKey,
         items,
       });
       const projectionResult = await this.feedProjection.project({

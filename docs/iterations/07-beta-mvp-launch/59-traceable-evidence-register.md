@@ -43,6 +43,7 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 - `npm run check:beta-ring-policy` proves ring expansion thresholds link capacity, cost, source health and degradation evidence before inviting more users.
 - `npm run check:persistence-readiness` proves runtime in-memory/noop state adapters are not hidden: every API/worker module gap has owner, risk and durable replacement plan, and external beta remains blocked until durable adapters replace those gaps.
 - `npm run check:monitoring-persistence` proves the first monitoring Prisma adapter foundation and runtime selector: topics round-trip, source binding pause status persists through source catalog provider rehydration, scan policy `nextRunAt` is stored for durable scheduling, scan job status transitions persist across requested/enqueued/succeeded states, and `MONITORING_PERSISTENCE=prisma` is only valid with `DATABASE_URL`.
+- `npm run check:ingestion-feed-persistence` proves the first ingestion/feed Prisma adapter foundation: provider-level source item dedupe, scan cursor roundtrip, feed canonical URL dedupe, feed search/list and feed item rehydration.
 - Ingestion worker scan execution reporting now has an explicit runtime selector: default `noop` remains valid for isolated deterministic worker smoke, while `INGESTION_SCAN_REPORTER=monitoring` is accepted only together with `MONITORING_PERSISTENCE=prisma`.
 
 ## Missing Evidence Blocks

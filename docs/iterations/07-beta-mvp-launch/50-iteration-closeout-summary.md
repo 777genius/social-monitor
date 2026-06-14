@@ -14,6 +14,7 @@
 - Ring expansion policy has executable evidence through `npm run check:beta-ring-policy`.
 - Runtime persistence readiness has executable evidence through `npm run check:persistence-readiness`.
 - Monitoring Prisma persistence foundation and opt-in monitoring runtime selector for topics, source bindings, scan policies and scan jobs has executable evidence through `npm run check:monitoring-persistence`.
+- Ingestion/feed Prisma persistence foundation for source items, cursors and feed read models has executable evidence through `npm run check:ingestion-feed-persistence`.
 - Source binding pause/resume has executable evidence through `npm run check:mvp-core-loop`.
 - Beta user onboarding walkthrough is linked to the same topic/source/scan/feed/summary/feedback/realtime path.
 - Supported sources are frozen or change-controlled.

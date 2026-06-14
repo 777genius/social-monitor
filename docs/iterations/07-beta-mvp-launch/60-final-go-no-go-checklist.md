@@ -9,6 +9,7 @@ Decide whether beta can close and post-MVP roadmap execution can start.
 - Ring expansion policy passes `npm run check:beta-ring-policy`.
 - Persistence readiness passes `npm run check:persistence-readiness`.
 - Monitoring Prisma persistence foundation for topics, source bindings, scan policies and scan jobs passes `npm run check:monitoring-persistence`.
+- Ingestion/feed Prisma persistence foundation for source items, cursors and feed read models passes `npm run check:ingestion-feed-persistence`.
 - Beta user can complete onboarding against the same topic/source/scan/feed/summary/feedback/realtime path.
 - Supported source list is frozen or change-controlled.
 - Known limitations are explicit.
@@ -84,3 +85,4 @@ Required evidence links:
 11. capacity envelope and degradation drill, including `npm run check:beta-ring-policy`
 12. persistence readiness evidence, including `npm run check:persistence-readiness`
 13. monitoring persistence smoke for topics, source bindings, scan policies and scan jobs, including `npm run check:monitoring-persistence`
+14. ingestion/feed persistence smoke for source items, cursors and feed read models, including `npm run check:ingestion-feed-persistence`

@@ -65,6 +65,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "ingestion-feed-prisma-persistence",
+      "command": "npm run check:ingestion-feed-persistence",
+      "blocksRelease": true
+    },
+    {
       "gateId": "load-cost-guardrail",
       "command": "npm run check:load-cost",
       "blocksRelease": true

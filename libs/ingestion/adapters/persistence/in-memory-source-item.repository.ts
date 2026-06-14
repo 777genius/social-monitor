@@ -13,7 +13,7 @@ export class InMemorySourceItemRepository implements SourceItemRepositoryPort {
       const key = [
         command.tenantId,
         command.workspaceId,
-        snapshot.sourceBindingId,
+        command.providerKey,
         snapshot.externalId,
       ].join(':');
 
