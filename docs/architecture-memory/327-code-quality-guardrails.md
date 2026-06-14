@@ -80,7 +80,7 @@ Clean Architecture fails slowly when use cases stop being directly testable, con
 - Beta scope/source policy changes must prove unsupported providers stay out of binding and route demand to source-owner feedback through `npm run check:beta-scope-policy`.
 - Ring expansion changes must prove capacity, cost, source-health thresholds and degradation actions through `npm run check:beta-ring-policy`.
 - Runtime module changes must declare any in-memory/noop state adapter through `npm run check:persistence-readiness`; external beta cannot be treated as complete until the durable replacement exit criteria are met.
-- Monitoring Prisma adapter changes must prove mapper/repository behavior for topics, source bindings, scan policies and scan jobs through `npm run check:monitoring-persistence`.
+- Monitoring Prisma adapter/runtime-selector changes must prove mapper/repository behavior for topics, source bindings, scan policies and scan jobs through `npm run check:monitoring-persistence`.
 - Delivery/realtime changes must prove stale replay cursor resync, duplicate notification idempotency and preference suppression before provider send through `npm run check:delivery-replay`.
 - Monitoring, ingestion, feed, summary, feedback or realtime changes must keep the deterministic backend MVP loop green through `npm run check:mvp-core-loop`; paused source bindings must not accept new scan work, reserve quota or enqueue ingestion commands.
 - Evidence docs must be updated from temporary branch markers to concrete commit SHAs before merge.

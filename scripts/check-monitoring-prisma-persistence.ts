@@ -5,6 +5,7 @@ import { PrismaScanJobRepository } from '../libs/monitoring/adapters/persistence
 import { PrismaScanPolicyRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-policy.repository';
 import { PrismaSourceBindingRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-source-binding.repository';
 import { PrismaTopicRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-topic.repository';
+import { resolveMonitoringPersistenceMode } from '../libs/monitoring/interfaces/rest/monitoring-provider-tokens';
 import type { PrismaMonitoringClient } from '../libs/monitoring/adapters/persistence/prisma/prisma-monitoring-client';
 import type {
   PrismaScanJobRecord,
@@ -20,6 +21,22 @@ const tenant = tenantId('00000000-0000-7000-8000-000000000001');
 const workspace = workspaceId('00000000-0000-7000-8000-000000000002');
 
 async function main(): Promise<void> {
+  assert(
+    resolveMonitoringPersistenceMode({}) === 'in-memory',
+    'monitoring persistence mode must default to in-memory for deterministic private MVP smoke',
+  );
+  assert(
+    resolveMonitoringPersistenceMode({
+      MONITORING_PERSISTENCE: 'prisma',
+      DATABASE_URL: 'postgresql://social_monitor:social_monitor_local_password@localhost:5432/social_monitor',
+    }) === 'prisma',
+    'monitoring persistence mode must allow explicit Prisma runtime wiring',
+  );
+  assertThrows(
+    () => resolveMonitoringPersistenceMode({ MONITORING_PERSISTENCE: 'prisma' }),
+    'Prisma monitoring persistence must require DATABASE_URL',
+  );
+
   const prisma = new FakePrismaMonitoringClient();
   prisma.sourceCatalogEntries.set('fake-source', {
     id: '00000000-0000-7000-8000-000000000010',
@@ -328,6 +345,16 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function assertThrows(action: () => void, message: string): void {
+  try {
+    action();
+  } catch {
+    return;
+  }
+
+  throw new Error(message);
 }
 
 void main().catch((error) => {
