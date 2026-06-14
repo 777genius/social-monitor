@@ -13,6 +13,7 @@ import type {
   PrismaCursorCheckpointRecord,
   PrismaSourceItemRecord,
 } from '../libs/ingestion/adapters/persistence/prisma/prisma-ingestion-records';
+import { resolveIngestionWorkerPersistenceMode } from '../apps/ingestion-worker/src/ingestion-worker-provider-tokens';
 
 const clock = new FixedClock(new Date('2026-06-07T00:00:00.000Z'));
 const tenant = tenantId('00000000-0000-7000-8000-000000000101');
@@ -32,6 +33,21 @@ async function main(): Promise<void> {
       DATABASE_URL: 'postgresql://example.test/social-monitor',
     }) === 'prisma',
     'feed persistence must accept explicit Prisma mode with DATABASE_URL',
+  );
+  assert(
+    resolveIngestionWorkerPersistenceMode({}) === 'in-memory',
+    'ingestion worker persistence must default to in-memory',
+  );
+  assertThrows(
+    () => resolveIngestionWorkerPersistenceMode({ INGESTION_WORKER_PERSISTENCE: 'prisma' }),
+    'INGESTION_WORKER_PERSISTENCE=prisma must require DATABASE_URL',
+  );
+  assert(
+    resolveIngestionWorkerPersistenceMode({
+      INGESTION_WORKER_PERSISTENCE: 'prisma',
+      DATABASE_URL: 'postgresql://example.test/social-monitor',
+    }) === 'prisma',
+    'ingestion worker persistence must accept explicit Prisma mode with DATABASE_URL',
   );
 
   const prisma = new FakePrismaIngestionFeedClient();

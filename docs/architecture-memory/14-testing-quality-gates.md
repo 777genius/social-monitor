@@ -82,7 +82,7 @@ Implementation should not stall on broad test suites. For MVP work, write code i
 - keep beta ring expansion policy as an executable contract through `npm run check:beta-ring-policy`.
 - keep runtime persistence readiness as an executable contract through `npm run check:persistence-readiness`; in-memory/noop runtime adapters must be declared with owner, risk and durable replacement plan.
 - keep monitoring Prisma persistence adapters covered by `npm run check:monitoring-persistence`, including persisted source binding pause state, scan policy `nextRunAt` and scan job status transitions.
-- keep ingestion/feed Prisma persistence adapters covered by `npm run check:ingestion-feed-persistence`, including source item dedupe, scan cursor roundtrip, feed canonical dedupe, feed item rehydration and feed persistence mode validation.
+- keep ingestion/feed Prisma persistence adapters covered by `npm run check:ingestion-feed-persistence`, including source item dedupe, scan cursor roundtrip, feed canonical dedupe, feed item rehydration, feed persistence mode validation and ingestion-worker persistence mode validation.
 - keep summary Prisma persistence adapters covered by `npm run check:summary-persistence`, including summary job transitions, artifact payload rehydration, pagination, feedback evidence and summary persistence mode validation.
 
 Full e2e and load gates remain release/promotion gates, not the default inner development loop.

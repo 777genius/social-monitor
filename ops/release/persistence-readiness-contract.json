@@ -110,7 +110,7 @@
         "InMemoryScanFailureQueueAdapter"
       ],
       "risk": "worker scan attempts, source items, cursors, leases, failures and projected feed are process-local",
-      "durableReplacementPlan": "Prisma source item, cursor and feed projection foundations exist; remaining blockers are runtime wiring, durable leases, attempts and shared scan failure queue"
+      "durableReplacementPlan": "IngestionWorkerModule can opt into Prisma source item, cursor and feed projection persistence with INGESTION_WORKER_PERSISTENCE=prisma; remaining blockers are durable leases, attempts and shared scan failure queue"
     }
   ],
   "runtimeNoopAdapters": [
