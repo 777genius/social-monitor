@@ -52,9 +52,14 @@ enum SummaryStatus {
 }
 
 enum DeliveryStatus {
-  PENDING
-  SENT
-  FAILED
+  QUEUED
+  ASSEMBLING
+  SUPPRESSED
+  SENDING
+  DELIVERED
+  FAILED_RETRYABLE
+  FAILED_TERMINAL
+  DEAD_LETTERED
   CANCELLED
 }
 
@@ -453,18 +458,29 @@ model DeliveryAttempt {
   id                String         @id @db.Uuid
   tenantId          String         @map("tenant_id") @db.Uuid
   workspaceId       String         @map("workspace_id") @db.Uuid
-  targetKind        String         @map("target_kind")
-  targetRef         String         @map("target_ref")
-  artifactRef       String         @map("artifact_ref")
-  status            DeliveryStatus @default(PENDING)
   idempotencyKey    String         @map("idempotency_key")
-  failureClass      String?        @map("failure_class")
-  correlationId     String         @map("correlation_id")
+  channel           String
+  recipientKey      String         @map("recipient_key")
+  resourceType      String         @map("resource_type")
+  resourceId        String         @map("resource_id")
+  state             DeliveryStatus @default(QUEUED)
+  queuedAt          DateTime       @map("queued_at") @db.Timestamptz(6)
+  assemblingAt      DateTime?      @map("assembling_at") @db.Timestamptz(6)
+  suppressedAt      DateTime?      @map("suppressed_at") @db.Timestamptz(6)
+  sendingAt         DateTime?      @map("sending_at") @db.Timestamptz(6)
+  deliveredAt       DateTime?      @map("delivered_at") @db.Timestamptz(6)
+  failedAt          DateTime?      @map("failed_at") @db.Timestamptz(6)
+  deadLetteredAt    DateTime?      @map("dead_lettered_at") @db.Timestamptz(6)
+  cancelledAt       DateTime?      @map("cancelled_at") @db.Timestamptz(6)
+  retryCount        Int            @default(0) @map("retry_count")
+  maxRetries        Int            @default(3) @map("max_retries")
+  failureReason     String?        @map("failure_reason")
+  suppressionReason String?        @map("suppression_reason")
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  @@unique([tenantId, idempotencyKey])
-  @@index([tenantId, workspaceId, status, createdAt])
+  @@unique([tenantId, workspaceId, idempotencyKey])
+  @@index([tenantId, workspaceId, state, queuedAt])
   @@map("delivery_attempts")
 }
 

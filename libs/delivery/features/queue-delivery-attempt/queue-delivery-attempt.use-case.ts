@@ -56,7 +56,28 @@ export class QueueDeliveryAttemptUseCase {
       queuedAt: this.clock.now(),
       maxRetries: command.maxRetries ?? 3,
     });
-    await this.deliveryAttempts.save(attempt);
+    try {
+      await this.deliveryAttempts.save(attempt);
+    } catch (error) {
+      const racedExisting = await this.deliveryAttempts.findByIdempotencyKey({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        idempotencyKey: command.idempotencyKey,
+      });
+
+      if (racedExisting !== null) {
+        const snapshot = racedExisting.toSnapshot();
+
+        return ok({
+          deliveryAttemptId: snapshot.id,
+          state: snapshot.state,
+          created: false,
+        });
+      }
+
+      return err(error instanceof Error ? error : new Error('Delivery attempt save failed'));
+    }
+
     const snapshot = attempt.toSnapshot();
 
     return ok({

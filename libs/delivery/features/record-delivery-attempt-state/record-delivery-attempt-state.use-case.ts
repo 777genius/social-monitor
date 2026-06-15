@@ -50,6 +50,7 @@ export class RecordDeliveryAttemptStateUseCase {
         return attempt.fail({
           failedAt: now,
           failureReason: command.reason ?? 'Delivery attempt failed',
+          retryable: command.nextState === 'failed_retryable',
         });
       case 'dead_lettered':
         return attempt.deadLetter({

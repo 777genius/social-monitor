@@ -12,6 +12,9 @@ import { InMemoryDigestScheduleRepository } from '../../adapters/persistence/in-
 import { InMemoryDigestRepository } from '../../adapters/persistence/in-memory-digest.repository';
 import { InMemoryRealtimeEventRepository } from '../../adapters/persistence/in-memory-realtime-event.repository';
 import { InMemoryWebhookEndpointRepository } from '../../adapters/persistence/in-memory-webhook-endpoint.repository';
+import { PrismaDeliveryAttemptRepository } from '../../adapters/persistence/prisma/prisma-delivery-attempt.repository';
+import type { PrismaDeliveryClient } from '../../adapters/persistence/prisma/prisma-delivery-client';
+import { PrismaDeliveryConnection } from '../../adapters/persistence/prisma/prisma-delivery-connection';
 import { InMemoryNotificationPreferenceReader } from '../../adapters/preferences/in-memory-notification-preference.reader';
 import { InMemoryWebhookReplayStore } from '../../adapters/replay/in-memory-webhook-replay.store';
 import { InMemoryWebhookSecretVault } from '../../adapters/secrets/in-memory-webhook-secret.vault';
@@ -36,10 +39,17 @@ import { SendDeliveryAttemptUseCase } from '../../features/send-delivery-attempt
 import { SignWebhookPayloadUseCase } from '../../features/sign-webhook-payload/sign-webhook-payload.use-case';
 import { VerifyWebhookSignatureUseCase } from '../../features/verify-webhook-signature/verify-webhook-signature.use-case';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
+import {
+  DELIVERY_ATTEMPT_REPOSITORY,
+  DELIVERY_PERSISTENCE_MODE,
+  DELIVERY_PRISMA_CLIENT,
+  resolveDeliveryPersistenceMode,
+  type DeliveryPersistenceMode,
+} from './delivery-provider-tokens';
 import { DigestsController } from './digests.controller';
 import { RealtimeEventsController } from './realtime-events.controller';
 import { WebhookEndpointsController } from './webhook-endpoints.controller';
-import type { DeliveryProviderPort } from '../../ports';
+import type { DeliveryAttemptRepositoryPort, DeliveryProviderPort } from '../../ports';
 
 export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
 
@@ -47,6 +57,16 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
   imports: [IdentityRestModule, UsageRestModule],
   controllers: [DeliveryAttemptsController, DigestsController, RealtimeEventsController, WebhookEndpointsController],
   providers: [
+    {
+      provide: DELIVERY_PERSISTENCE_MODE,
+      useFactory: () => resolveDeliveryPersistenceMode(process.env),
+    },
+    {
+      provide: DELIVERY_PRISMA_CLIENT,
+      useFactory: (mode: DeliveryPersistenceMode): PrismaDeliveryClient | null =>
+        mode === 'prisma' ? new PrismaDeliveryConnection(process.env.DATABASE_URL ?? '') : null,
+      inject: [DELIVERY_PERSISTENCE_MODE],
+    },
     InMemoryDeliveryAttemptRepository,
     InMemoryDigestScheduleRepository,
     InMemoryDigestRepository,
@@ -67,15 +87,27 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       inject: [InMemoryMetricsRecorder],
     },
     {
+      provide: DELIVERY_ATTEMPT_REPOSITORY,
+      useFactory: (
+        mode: DeliveryPersistenceMode,
+        prisma: PrismaDeliveryClient | null,
+        inMemoryAttempts: InMemoryDeliveryAttemptRepository,
+      ): DeliveryAttemptRepositoryPort =>
+        mode === 'prisma'
+          ? new PrismaDeliveryAttemptRepository(requirePrismaDeliveryClient(prisma))
+          : inMemoryAttempts,
+      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryDeliveryAttemptRepository],
+    },
+    {
       provide: QueueDeliveryAttemptUseCase,
-      useFactory: (attempts: InMemoryDeliveryAttemptRepository) =>
+      useFactory: (attempts: DeliveryAttemptRepositoryPort) =>
         new QueueDeliveryAttemptUseCase(attempts, new CryptoIdGenerator(), new SystemClock()),
-      inject: [InMemoryDeliveryAttemptRepository],
+      inject: [DELIVERY_ATTEMPT_REPOSITORY],
     },
     {
       provide: GetDeliveryAttemptUseCase,
-      useFactory: (attempts: InMemoryDeliveryAttemptRepository) => new GetDeliveryAttemptUseCase(attempts),
-      inject: [InMemoryDeliveryAttemptRepository],
+      useFactory: (attempts: DeliveryAttemptRepositoryPort) => new GetDeliveryAttemptUseCase(attempts),
+      inject: [DELIVERY_ATTEMPT_REPOSITORY],
     },
     {
       provide: AssembleDigestUseCase,
@@ -147,32 +179,32 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     },
     {
       provide: ApplyDeliverySuppressionUseCase,
-      useFactory: (attempts: InMemoryDeliveryAttemptRepository) =>
+      useFactory: (attempts: DeliveryAttemptRepositoryPort) =>
         new ApplyDeliverySuppressionUseCase(attempts, new SystemClock()),
-      inject: [InMemoryDeliveryAttemptRepository],
+      inject: [DELIVERY_ATTEMPT_REPOSITORY],
     },
     {
       provide: RecordDeliveryAttemptStateUseCase,
-      useFactory: (attempts: InMemoryDeliveryAttemptRepository) =>
+      useFactory: (attempts: DeliveryAttemptRepositoryPort) =>
         new RecordDeliveryAttemptStateUseCase(attempts, new SystemClock()),
-      inject: [InMemoryDeliveryAttemptRepository],
+      inject: [DELIVERY_ATTEMPT_REPOSITORY],
     },
     {
       provide: SendDeliveryAttemptUseCase,
       useFactory: (
-        attempts: InMemoryDeliveryAttemptRepository,
+        attempts: DeliveryAttemptRepositoryPort,
         providers: readonly DeliveryProviderPort[],
         preferences: InMemoryNotificationPreferenceReader,
       ) => new SendDeliveryAttemptUseCase(attempts, providers, preferences, new SystemClock()),
-      inject: [InMemoryDeliveryAttemptRepository, DELIVERY_PROVIDERS, InMemoryNotificationPreferenceReader],
+      inject: [DELIVERY_ATTEMPT_REPOSITORY, DELIVERY_PROVIDERS, InMemoryNotificationPreferenceReader],
     },
     {
       provide: RetryDeliveryAttemptUseCase,
       useFactory: (
-        attempts: InMemoryDeliveryAttemptRepository,
+        attempts: DeliveryAttemptRepositoryPort,
         sendDeliveryAttempt: SendDeliveryAttemptUseCase,
       ) => new RetryDeliveryAttemptUseCase(attempts, sendDeliveryAttempt),
-      inject: [InMemoryDeliveryAttemptRepository, SendDeliveryAttemptUseCase],
+      inject: [DELIVERY_ATTEMPT_REPOSITORY, SendDeliveryAttemptUseCase],
     },
     {
       provide: ScheduleDueDigestsUseCase,
@@ -230,6 +262,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     SendDeliveryAttemptUseCase,
     SignWebhookPayloadUseCase,
     VerifyWebhookSignatureUseCase,
+    DELIVERY_ATTEMPT_REPOSITORY,
     DELIVERY_PROVIDERS,
   ],
 })
@@ -246,3 +279,11 @@ const createDeliveryProvider = (
     }),
     metrics,
   );
+
+const requirePrismaDeliveryClient = (client: PrismaDeliveryClient | null): PrismaDeliveryClient => {
+  if (client === null) {
+    throw new Error('Prisma delivery client is required when DELIVERY_PERSISTENCE=prisma');
+  }
+
+  return client;
+};
