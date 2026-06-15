@@ -32,6 +32,14 @@ export class Digest {
   private constructor(private readonly props: DigestProps) {}
 
   static assemble(props: DigestProps): Digest {
+    return this.rehydrate(props);
+  }
+
+  static rehydrate(props: DigestProps): Digest {
+    if (props.id.trim().length === 0) {
+      throw new Error('Digest id must be non-empty');
+    }
+
     if (props.recipientKey.trim().length === 0) {
       throw new Error('Digest recipient key must be non-empty');
     }
@@ -52,10 +60,31 @@ export class Digest {
       throw new Error('Assembled digest must include provenance');
     }
 
-    return new Digest(props);
+    return new Digest({
+      ...props,
+      recipientKey: props.recipientKey.trim(),
+      summaryIds: uniqueSorted(props.summaryIds),
+      feedItemIds: uniqueSorted(props.feedItemIds),
+      provenance: [...props.provenance].sort(compareProvenance),
+      contentHash: props.contentHash.trim(),
+    });
   }
 
   toSnapshot(): DigestProps {
     return { ...this.props };
   }
 }
+
+const uniqueSorted = (values: readonly string[]): string[] =>
+  [...new Set(values.map((value) => value.trim()))].filter((value) => value.length > 0)
+    .sort((left, right) => left.localeCompare(right));
+
+const compareProvenance = (left: DigestProvenanceItem, right: DigestProvenanceItem): number => {
+  const typeDiff = left.resourceType.localeCompare(right.resourceType);
+
+  if (typeDiff !== 0) {
+    return typeDiff;
+  }
+
+  return left.resourceId.localeCompare(right.resourceId);
+};

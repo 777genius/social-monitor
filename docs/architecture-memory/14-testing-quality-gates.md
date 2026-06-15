@@ -86,7 +86,7 @@ Implementation should not stall on broad test suites. For MVP work, write code i
 - keep summary Prisma persistence adapters covered by `npm run check:summary-persistence`, including summary job transitions, artifact payload rehydration, pagination, feedback evidence and summary persistence mode validation.
 - keep identity Prisma persistence adapters covered by `npm run check:identity-persistence`, including API key create/list/verify/revoke, scope enforcement, revoked-key rejection, no secret-hash exposure and identity persistence mode validation.
 - keep usage Prisma persistence adapters covered by `npm run check:usage-persistence`, including public API audit redaction/listing, rate-limit bucket counting, quota bucket reservation and usage persistence mode validation.
-- keep delivery attempt Prisma persistence adapters covered by `npm run check:delivery-persistence`, including idempotent queueing, full state rehydration, list pagination, terminal failure state and delivery persistence mode validation.
+- keep delivery Prisma persistence adapters covered by `npm run check:delivery-persistence`, including idempotent attempt queueing, full attempt state rehydration, attempt list pagination, terminal failure state, digest window lookup, digest provenance rehydration, due digest schedule lookup/update and delivery persistence mode validation.
 
 Full e2e and load gates remain release/promotion gates, not the default inner development loop.
 
@@ -108,7 +108,7 @@ CI must block:
 - summary persistence changes that lose job idempotency/status transitions, artifact payload rehydration or feedback evidence;
 - identity persistence changes that expose API key hashes, lose scope enforcement or accept revoked keys;
 - usage persistence changes that lose audit redaction, rate-limit windows or quota rejection behavior;
-- delivery attempt persistence changes that lose idempotency scope, retry counters, transition timestamps or terminal failure semantics;
+- delivery persistence changes that lose attempt idempotency scope, retry counters, transition timestamps, terminal failure semantics, digest window idempotency or schedule `nextRunAt` updates;
 - connector changes without certification tests;
 - `enabled_beta` source providers without a current `ops/ingestion/source-provider-certification.json` artifact;
 - delivery/realtime changes without replay-window, resync and idempotency evidence;

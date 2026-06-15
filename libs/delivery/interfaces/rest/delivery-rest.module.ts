@@ -15,6 +15,8 @@ import { InMemoryWebhookEndpointRepository } from '../../adapters/persistence/in
 import { PrismaDeliveryAttemptRepository } from '../../adapters/persistence/prisma/prisma-delivery-attempt.repository';
 import type { PrismaDeliveryClient } from '../../adapters/persistence/prisma/prisma-delivery-client';
 import { PrismaDeliveryConnection } from '../../adapters/persistence/prisma/prisma-delivery-connection';
+import { PrismaDigestScheduleRepository } from '../../adapters/persistence/prisma/prisma-digest-schedule.repository';
+import { PrismaDigestRepository } from '../../adapters/persistence/prisma/prisma-digest.repository';
 import { InMemoryNotificationPreferenceReader } from '../../adapters/preferences/in-memory-notification-preference.reader';
 import { InMemoryWebhookReplayStore } from '../../adapters/replay/in-memory-webhook-replay.store';
 import { InMemoryWebhookSecretVault } from '../../adapters/secrets/in-memory-webhook-secret.vault';
@@ -41,6 +43,8 @@ import { VerifyWebhookSignatureUseCase } from '../../features/verify-webhook-sig
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
 import {
   DELIVERY_ATTEMPT_REPOSITORY,
+  DELIVERY_DIGEST_REPOSITORY,
+  DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
   DELIVERY_PERSISTENCE_MODE,
   DELIVERY_PRISMA_CLIENT,
   resolveDeliveryPersistenceMode,
@@ -49,7 +53,12 @@ import {
 import { DigestsController } from './digests.controller';
 import { RealtimeEventsController } from './realtime-events.controller';
 import { WebhookEndpointsController } from './webhook-endpoints.controller';
-import type { DeliveryAttemptRepositoryPort, DeliveryProviderPort } from '../../ports';
+import type {
+  DeliveryAttemptRepositoryPort,
+  DeliveryProviderPort,
+  DigestRepositoryPort,
+  DigestScheduleRepositoryPort,
+} from '../../ports';
 
 export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
 
@@ -99,6 +108,30 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryDeliveryAttemptRepository],
     },
     {
+      provide: DELIVERY_DIGEST_REPOSITORY,
+      useFactory: (
+        mode: DeliveryPersistenceMode,
+        prisma: PrismaDeliveryClient | null,
+        inMemoryDigests: InMemoryDigestRepository,
+      ): DigestRepositoryPort =>
+        mode === 'prisma'
+          ? new PrismaDigestRepository(requirePrismaDeliveryClient(prisma))
+          : inMemoryDigests,
+      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryDigestRepository],
+    },
+    {
+      provide: DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
+      useFactory: (
+        mode: DeliveryPersistenceMode,
+        prisma: PrismaDeliveryClient | null,
+        inMemorySchedules: InMemoryDigestScheduleRepository,
+      ): DigestScheduleRepositoryPort =>
+        mode === 'prisma'
+          ? new PrismaDigestScheduleRepository(requirePrismaDeliveryClient(prisma))
+          : inMemorySchedules,
+      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryDigestScheduleRepository],
+    },
+    {
       provide: QueueDeliveryAttemptUseCase,
       useFactory: (attempts: DeliveryAttemptRepositoryPort) =>
         new QueueDeliveryAttemptUseCase(attempts, new CryptoIdGenerator(), new SystemClock()),
@@ -112,7 +145,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     {
       provide: AssembleDigestUseCase,
       useFactory: (
-        digests: InMemoryDigestRepository,
+        digests: DigestRepositoryPort,
         sources: InMemoryDigestSourceReader,
         queueDeliveryAttempt: QueueDeliveryAttemptUseCase,
       ) =>
@@ -123,12 +156,12 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
           new CryptoIdGenerator(),
           new SystemClock(),
         ),
-      inject: [InMemoryDigestRepository, InMemoryDigestSourceReader, QueueDeliveryAttemptUseCase],
+      inject: [DELIVERY_DIGEST_REPOSITORY, InMemoryDigestSourceReader, QueueDeliveryAttemptUseCase],
     },
     {
       provide: GetDigestUseCase,
-      useFactory: (digests: InMemoryDigestRepository) => new GetDigestUseCase(digests),
-      inject: [InMemoryDigestRepository],
+      useFactory: (digests: DigestRepositoryPort) => new GetDigestUseCase(digests),
+      inject: [DELIVERY_DIGEST_REPOSITORY],
     },
     {
       provide: CreateWebhookEndpointUseCase,
@@ -209,10 +242,10 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     {
       provide: ScheduleDueDigestsUseCase,
       useFactory: (
-        schedules: InMemoryDigestScheduleRepository,
+        schedules: DigestScheduleRepositoryPort,
         assembleDigest: AssembleDigestUseCase,
       ) => new ScheduleDueDigestsUseCase(schedules, assembleDigest, new SystemClock()),
-      inject: [InMemoryDigestScheduleRepository, AssembleDigestUseCase],
+      inject: [DELIVERY_DIGEST_SCHEDULE_REPOSITORY, AssembleDigestUseCase],
     },
     {
       provide: RecordRealtimeEventUseCase,
@@ -263,6 +296,8 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     SignWebhookPayloadUseCase,
     VerifyWebhookSignatureUseCase,
     DELIVERY_ATTEMPT_REPOSITORY,
+    DELIVERY_DIGEST_REPOSITORY,
+    DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
     DELIVERY_PROVIDERS,
   ],
 })

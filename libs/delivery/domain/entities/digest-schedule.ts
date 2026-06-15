@@ -22,6 +22,13 @@ export class DigestSchedule {
   private constructor(private readonly props: DigestScheduleProps) {}
 
   static create(props: Omit<DigestScheduleProps, 'status'> & { readonly status?: DigestScheduleStatus }): DigestSchedule {
+    return this.rehydrate({
+      ...props,
+      status: props.status ?? 'enabled',
+    });
+  }
+
+  static rehydrate(props: DigestScheduleProps): DigestSchedule {
     if (props.id.trim().length === 0) {
       throw new Error('Digest schedule id must be non-empty');
     }
@@ -41,12 +48,11 @@ export class DigestSchedule {
     return new DigestSchedule({
       ...props,
       topicIds: [...new Set(props.topicIds)].sort((left, right) => left.localeCompare(right)),
-      status: props.status ?? 'enabled',
     });
   }
 
   scheduleNext(params: { readonly nextRunAt: Date }): DigestSchedule {
-    return new DigestSchedule({
+    return DigestSchedule.rehydrate({
       ...this.props,
       nextRunAt: params.nextRunAt,
     });

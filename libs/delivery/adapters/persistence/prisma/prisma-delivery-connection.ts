@@ -21,6 +21,8 @@ const runtimeRequire = createRequire(`${process.cwd()}/package.json`);
 
 export class PrismaDeliveryConnection implements PrismaDeliveryClient {
   readonly deliveryAttempt: PrismaDeliveryClient['deliveryAttempt'];
+  readonly digest: PrismaDeliveryClient['digest'];
+  readonly digestSchedule: PrismaDeliveryClient['digestSchedule'];
 
   private readonly pool: Pool;
   private readonly client: PrismaDeliveryRuntimeClient;
@@ -35,6 +37,8 @@ export class PrismaDeliveryConnection implements PrismaDeliveryClient {
     this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
 
     this.deliveryAttempt = this.client.deliveryAttempt;
+    this.digest = this.client.digest;
+    this.digestSchedule = this.client.digestSchedule;
   }
 
   async close(): Promise<void> {

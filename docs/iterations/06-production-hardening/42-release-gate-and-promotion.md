@@ -8,7 +8,7 @@ Approve movement from hardening into controlled beta launch.
 - Secrets are encrypted and redacted.
 - CI blocks breaking contracts, events and migrations.
 - Dashboards cover scan, summary, cost, queue and delivery failures.
-- Delivery attempts have executable Prisma persistence evidence for idempotent queueing, rehydration and terminal failure transitions.
+- Delivery attempts, digests and digest schedules have executable Prisma persistence evidence for idempotent queueing, rehydration, terminal failure transitions, digest window lookup and due schedule updates.
 - Quotas and backup/restore checks are validated.
 
 ## Promotion Checks
@@ -22,7 +22,7 @@ Approve movement from hardening into controlled beta launch.
 - Any critical security gate is unresolved.
 - Observability omits user-visible failures.
 - CI does not protect public contracts.
-- Delivery attempt state is only process-local or cannot prove restart-safe idempotency.
+- Delivery attempt/digest state is only process-local or cannot prove restart-safe idempotency and due-schedule updates.
 - Backup/restore evidence is missing.
 
 ## Rollback Or Rework

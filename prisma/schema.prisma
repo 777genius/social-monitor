@@ -63,6 +63,16 @@ enum DeliveryStatus {
   CANCELLED
 }
 
+enum DeliveryDigestStatus {
+  ASSEMBLED
+  EMPTY
+}
+
+enum DigestScheduleStatus {
+  ENABLED
+  DISABLED
+}
+
 enum UsageKind {
   SCAN
   AI_SUMMARY
@@ -482,6 +492,47 @@ model DeliveryAttempt {
   @@unique([tenantId, workspaceId, idempotencyKey])
   @@index([tenantId, workspaceId, state, queuedAt])
   @@map("delivery_attempts")
+}
+
+model Digest {
+  id              String               @id @db.Uuid
+  tenantId        String               @map("tenant_id") @db.Uuid
+  workspaceId     String               @map("workspace_id") @db.Uuid
+  recipientKey    String               @map("recipient_key")
+  channel         String
+  windowId        String               @map("window_id")
+  windowStartedAt DateTime             @map("window_started_at") @db.Timestamptz(6)
+  windowEndedAt   DateTime             @map("window_ended_at") @db.Timestamptz(6)
+  status          DeliveryDigestStatus @default(ASSEMBLED)
+  summaryIds      String[]             @map("summary_ids")
+  feedItemIds     String[]             @map("feed_item_ids")
+  provenance      Json
+  contentHash     String               @map("content_hash")
+  assembledAt     DateTime             @map("assembled_at") @db.Timestamptz(6)
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, recipientKey, channel, windowId])
+  @@index([tenantId, workspaceId, status, assembledAt])
+  @@map("digests")
+}
+
+model DigestSchedule {
+  id               String               @id @db.Uuid
+  tenantId         String               @map("tenant_id") @db.Uuid
+  workspaceId      String               @map("workspace_id") @db.Uuid
+  recipientKey     String               @map("recipient_key")
+  channel          String
+  topicIds         String[]             @map("topic_ids")
+  intervalSeconds  Int                  @map("interval_seconds")
+  includeNoSignal  Boolean              @map("include_no_signal")
+  nextRunAt        DateTime             @map("next_run_at") @db.Timestamptz(6)
+  createdAt        DateTime             @map("created_at") @db.Timestamptz(6)
+  status           DigestScheduleStatus @default(ENABLED)
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, status, nextRunAt])
+  @@map("digest_schedules")
 }
 
 model UsageRecord {

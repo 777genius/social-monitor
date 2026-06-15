@@ -66,8 +66,8 @@
         "InMemoryWebhookReplayStore",
         "InMemoryWebhookSecretVault"
       ],
-      "risk": "delivery attempts can opt into Prisma but default local mode, digests, realtime events, webhook endpoints, replay cursors and secrets are process-local",
-      "durableReplacementPlan": "Delivery attempts can opt into Prisma with DELIVERY_PERSISTENCE=prisma; remaining blockers are digest schedule/digest persistence, realtime event fanout storage, webhook endpoint persistence, encrypted secret vault and durable replay cursor store"
+      "risk": "delivery attempts, digests and digest schedules can opt into Prisma but default local mode, while realtime events, webhook endpoints, replay cursors, source readers and secrets are process-local",
+      "durableReplacementPlan": "Delivery attempts, digests and digest schedules can opt into Prisma with DELIVERY_PERSISTENCE=prisma; remaining blockers are realtime event fanout storage, webhook endpoint persistence, encrypted secret vault, durable replay cursor store and non-memory digest source reader"
     },
     {
       "moduleFile": "libs/identity/interfaces/rest/identity-rest.module.ts",

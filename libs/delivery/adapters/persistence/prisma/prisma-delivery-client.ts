@@ -1,4 +1,11 @@
-import type { PrismaDeliveryAttemptRecord, PrismaDeliveryAttemptState } from './prisma-delivery-records';
+import type {
+  PrismaDeliveryAttemptRecord,
+  PrismaDeliveryAttemptState,
+  PrismaDeliveryDigestStatus,
+  PrismaDigestRecord,
+  PrismaDigestScheduleRecord,
+  PrismaDigestScheduleStatus,
+} from './prisma-delivery-records';
 
 export type PrismaDeliveryAttemptWriteData = {
   readonly tenantId: string;
@@ -21,6 +28,35 @@ export type PrismaDeliveryAttemptWriteData = {
   readonly maxRetries: number;
   readonly failureReason?: string | null;
   readonly suppressionReason?: string | null;
+};
+
+export type PrismaDigestWriteData = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly recipientKey: string;
+  readonly channel: string;
+  readonly windowId: string;
+  readonly windowStartedAt: Date;
+  readonly windowEndedAt: Date;
+  readonly status: PrismaDeliveryDigestStatus;
+  readonly summaryIds: readonly string[];
+  readonly feedItemIds: readonly string[];
+  readonly provenance: unknown;
+  readonly contentHash: string;
+  readonly assembledAt: Date;
+};
+
+export type PrismaDigestScheduleWriteData = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly recipientKey: string;
+  readonly channel: string;
+  readonly topicIds: readonly string[];
+  readonly intervalSeconds: number;
+  readonly includeNoSignal: boolean;
+  readonly nextRunAt: Date;
+  readonly createdAt: Date;
+  readonly status: PrismaDigestScheduleStatus;
 };
 
 export type PrismaDeliveryClient = {
@@ -56,5 +92,49 @@ export type PrismaDeliveryClient = {
         readonly workspaceId: string;
       };
     }): Promise<number>;
+  };
+  readonly digest: {
+    upsert(args: {
+      readonly where: { readonly id: string };
+      readonly update: PrismaDigestWriteData;
+      readonly create: PrismaDigestWriteData & { readonly id: string };
+    }): Promise<PrismaDigestRecord>;
+    findFirst(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly id?: string;
+        readonly recipientKey?: string;
+        readonly channel?: string;
+        readonly windowId?: string;
+      };
+    }): Promise<PrismaDigestRecord | null>;
+  };
+  readonly digestSchedule: {
+    upsert(args: {
+      readonly where: { readonly id: string };
+      readonly update: PrismaDigestScheduleWriteData;
+      readonly create: PrismaDigestScheduleWriteData & { readonly id: string };
+    }): Promise<PrismaDigestScheduleRecord>;
+    findFirst(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly id: string;
+      };
+    }): Promise<PrismaDigestScheduleRecord | null>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId?: string;
+        readonly workspaceId?: string;
+        readonly status: PrismaDigestScheduleStatus;
+        readonly nextRunAt: { readonly lte: Date };
+      };
+      readonly orderBy: readonly [
+        { readonly nextRunAt: 'asc' },
+        { readonly id: 'asc' },
+      ];
+      readonly take: number;
+    }): Promise<readonly PrismaDigestScheduleRecord[]>;
   };
 };

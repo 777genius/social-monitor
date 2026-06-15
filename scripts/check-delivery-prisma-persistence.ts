@@ -4,11 +4,19 @@ import { PrismaDeliveryAttemptRepository } from '../libs/delivery/adapters/persi
 import type {
   PrismaDeliveryAttemptWriteData,
   PrismaDeliveryClient,
+  PrismaDigestScheduleWriteData,
+  PrismaDigestWriteData,
 } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-client';
+import { PrismaDigestScheduleRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-digest-schedule.repository';
+import { PrismaDigestRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-digest.repository';
 import type {
   PrismaDeliveryAttemptRecord,
+  PrismaDigestRecord,
+  PrismaDigestScheduleRecord,
 } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-records';
+import { Digest, DigestSchedule } from '../libs/delivery/domain';
 import { GetDeliveryAttemptUseCase } from '../libs/delivery/features/get-delivery-attempt/get-delivery-attempt.use-case';
+import { GetDigestUseCase } from '../libs/delivery/features/get-digest/get-digest.use-case';
 import { QueueDeliveryAttemptUseCase } from '../libs/delivery/features/queue-delivery-attempt/queue-delivery-attempt.use-case';
 import { RecordDeliveryAttemptStateUseCase } from '../libs/delivery/features/record-delivery-attempt-state/record-delivery-attempt-state.use-case';
 import { resolveDeliveryPersistenceMode } from '../libs/delivery/interfaces/rest/delivery-provider-tokens';
@@ -33,6 +41,8 @@ async function main(): Promise<void> {
 
   const prisma = new FakePrismaDeliveryClient();
   const attempts = new PrismaDeliveryAttemptRepository(prisma);
+  const digests = new PrismaDigestRepository(prisma);
+  const schedules = new PrismaDigestScheduleRepository(prisma);
   const ids = new SequenceIdGenerator([
     '00000000-0000-7000-8000-000000000703',
     '00000000-0000-7000-8000-000000000704',
@@ -100,6 +110,89 @@ async function main(): Promise<void> {
   assert(listed.attempts.length === 1, 'delivery attempt list must return persisted attempt');
   assert(listed.attempts[0]?.toSnapshot().state === 'failed_terminal', 'delivery attempt list must hydrate latest state');
 
+  const digest = Digest.assemble({
+    id: '00000000-0000-7000-8000-000000000705',
+    tenantId: tenant,
+    workspaceId: workspace,
+    recipientKey: 'endpoint-1',
+    channel: 'webhook',
+    window: {
+      windowId: 'digest:2026-06-07T00:00:00.000Z:2026-06-07T01:00:00.000Z',
+      startedAt: new Date('2026-06-07T00:00:00.000Z'),
+      endedAt: new Date('2026-06-07T01:00:00.000Z'),
+    },
+    status: 'assembled',
+    summaryIds: ['summary-2', 'summary-1', 'summary-1'],
+    feedItemIds: ['feed-item-1'],
+    provenance: [
+      {
+        resourceType: 'summary',
+        resourceId: 'summary-1',
+        topicId: 'topic-1',
+        includedReason: 'high_signal',
+      },
+    ],
+    contentHash: 'digest-content-hash',
+    assembledAt: new Date('2026-06-07T01:00:05.000Z'),
+  });
+  await digests.save(digest);
+
+  const digestByWindow = await digests.findByWindow({
+    tenantId: tenant,
+    workspaceId: workspace,
+    recipientKey: 'endpoint-1',
+    channel: 'webhook',
+    windowId: 'digest:2026-06-07T00:00:00.000Z:2026-06-07T01:00:00.000Z',
+  });
+  assert(digestByWindow !== null, 'digest repository must find persisted digest by natural window key');
+  assert(
+    digestByWindow.toSnapshot().summaryIds.join(',') === 'summary-1,summary-2',
+    'digest repository must hydrate normalized summary ids',
+  );
+
+  const digestView = await new GetDigestUseCase(digests).execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    digestId: '00000000-0000-7000-8000-000000000705',
+  });
+  assert(isOk(digestView), 'get digest use case must read through Prisma repository');
+  assert(digestView.value.provenance.length === 1, 'digest view must preserve provenance');
+
+  const schedule = DigestSchedule.create({
+    id: '00000000-0000-7000-8000-000000000706',
+    tenantId: tenant,
+    workspaceId: workspace,
+    recipientKey: 'endpoint-1',
+    channel: 'webhook',
+    topicIds: ['topic-2', 'topic-1', 'topic-1'],
+    intervalSeconds: 3600,
+    includeNoSignal: false,
+    nextRunAt: new Date('2026-06-07T00:00:00.000Z'),
+    createdAt: new Date('2026-06-06T00:00:00.000Z'),
+  });
+  await schedules.save(schedule);
+
+  const dueSchedules = await schedules.findDue({
+    tenantId: tenant,
+    workspaceId: workspace,
+    now: new Date('2026-06-07T00:00:10.000Z'),
+    limit: 10,
+  });
+  assert(dueSchedules.length === 1, 'digest schedule repository must find due persisted schedules');
+  assert(
+    dueSchedules[0]?.toSnapshot().topicIds.join(',') === 'topic-1,topic-2',
+    'digest schedule repository must hydrate normalized topic ids',
+  );
+
+  await schedules.save(schedule.scheduleNext({ nextRunAt: new Date('2026-06-07T01:00:00.000Z') }));
+  const noLongerDue = await schedules.findDue({
+    tenantId: tenant,
+    workspaceId: workspace,
+    now: new Date('2026-06-07T00:00:10.000Z'),
+    limit: 10,
+  });
+  assert(noLongerDue.length === 0, 'digest schedule nextRunAt update must persist');
+
   console.log('Delivery Prisma persistence smoke OK');
 }
 
@@ -123,6 +216,8 @@ class SequenceIdGenerator implements IdGenerator {
 
 class FakePrismaDeliveryClient implements PrismaDeliveryClient {
   private readonly attempts = new Map<string, PrismaDeliveryAttemptRecord>();
+  private readonly digests = new Map<string, PrismaDigestRecord>();
+  private readonly schedules = new Map<string, PrismaDigestScheduleRecord>();
 
   readonly deliveryAttempt: PrismaDeliveryClient['deliveryAttempt'] = {
     upsert: async (args) => {
@@ -144,6 +239,41 @@ class FakePrismaDeliveryClient implements PrismaDeliveryClient {
         .slice(args.skip, args.skip + args.take),
     count: async (args) =>
       [...this.attempts.values()].filter((record) => matchesDeliveryAttemptWhere(record, args.where)).length,
+  };
+
+  readonly digest: PrismaDeliveryClient['digest'] = {
+    upsert: async (args) => {
+      const existing = this.digests.get(args.where.id);
+      const record: PrismaDigestRecord = {
+        id: existing?.id ?? args.create.id,
+        ...normalizeDigestWriteData(args.update),
+      };
+      this.digests.set(record.id, record);
+
+      return record;
+    },
+    findFirst: async (args) =>
+      [...this.digests.values()].find((record) => matchesDigestWhere(record, args.where)) ?? null,
+  };
+
+  readonly digestSchedule: PrismaDeliveryClient['digestSchedule'] = {
+    upsert: async (args) => {
+      const existing = this.schedules.get(args.where.id);
+      const record: PrismaDigestScheduleRecord = {
+        id: existing?.id ?? args.create.id,
+        ...normalizeDigestScheduleWriteData(args.update),
+      };
+      this.schedules.set(record.id, record);
+
+      return record;
+    },
+    findFirst: async (args) =>
+      [...this.schedules.values()].find((record) => matchesDigestScheduleWhere(record, args.where)) ?? null,
+    findMany: async (args) =>
+      [...this.schedules.values()]
+        .filter((record) => matchesDigestScheduleWhere(record, args.where))
+        .sort(compareDigestScheduleRecords)
+        .slice(0, args.take),
   };
 }
 
@@ -168,6 +298,37 @@ const normalizeWriteData = (data: PrismaDeliveryAttemptWriteData): Omit<PrismaDe
   maxRetries: data.maxRetries,
   failureReason: data.failureReason ?? null,
   suppressionReason: data.suppressionReason ?? null,
+});
+
+const normalizeDigestWriteData = (data: PrismaDigestWriteData): Omit<PrismaDigestRecord, 'id'> => ({
+  tenantId: data.tenantId,
+  workspaceId: data.workspaceId,
+  recipientKey: data.recipientKey,
+  channel: data.channel,
+  windowId: data.windowId,
+  windowStartedAt: data.windowStartedAt,
+  windowEndedAt: data.windowEndedAt,
+  status: data.status,
+  summaryIds: data.summaryIds,
+  feedItemIds: data.feedItemIds,
+  provenance: data.provenance,
+  contentHash: data.contentHash,
+  assembledAt: data.assembledAt,
+});
+
+const normalizeDigestScheduleWriteData = (
+  data: PrismaDigestScheduleWriteData,
+): Omit<PrismaDigestScheduleRecord, 'id'> => ({
+  tenantId: data.tenantId,
+  workspaceId: data.workspaceId,
+  recipientKey: data.recipientKey,
+  channel: data.channel,
+  topicIds: data.topicIds,
+  intervalSeconds: data.intervalSeconds,
+  includeNoSignal: data.includeNoSignal,
+  nextRunAt: data.nextRunAt,
+  createdAt: data.createdAt,
+  status: data.status,
 });
 
 const matchesDeliveryAttemptWhere = (
@@ -195,6 +356,53 @@ const compareDeliveryAttemptRecords = (
   }
 
   return right.id.localeCompare(left.id);
+};
+
+const matchesDigestWhere = (
+  record: PrismaDigestRecord,
+  where: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly id?: string;
+    readonly recipientKey?: string;
+    readonly channel?: string;
+    readonly windowId?: string;
+  },
+): boolean =>
+  record.tenantId === where.tenantId &&
+  record.workspaceId === where.workspaceId &&
+  (where.id === undefined || record.id === where.id) &&
+  (where.recipientKey === undefined || record.recipientKey === where.recipientKey) &&
+  (where.channel === undefined || record.channel === where.channel) &&
+  (where.windowId === undefined || record.windowId === where.windowId);
+
+const matchesDigestScheduleWhere = (
+  record: PrismaDigestScheduleRecord,
+  where: {
+    readonly tenantId?: string;
+    readonly workspaceId?: string;
+    readonly id?: string;
+    readonly status?: string;
+    readonly nextRunAt?: { readonly lte: Date };
+  },
+): boolean =>
+  (where.tenantId === undefined || record.tenantId === where.tenantId) &&
+  (where.workspaceId === undefined || record.workspaceId === where.workspaceId) &&
+  (where.id === undefined || record.id === where.id) &&
+  (where.status === undefined || record.status === where.status) &&
+  (where.nextRunAt === undefined || record.nextRunAt.getTime() <= where.nextRunAt.lte.getTime());
+
+const compareDigestScheduleRecords = (
+  left: PrismaDigestScheduleRecord,
+  right: PrismaDigestScheduleRecord,
+): number => {
+  const nextRunDiff = left.nextRunAt.getTime() - right.nextRunAt.getTime();
+
+  if (nextRunDiff !== 0) {
+    return nextRunDiff;
+  }
+
+  return left.id.localeCompare(right.id);
 };
 
 function assert(condition: unknown, message: string): asserts condition {

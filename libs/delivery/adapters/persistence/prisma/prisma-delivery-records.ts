@@ -1,6 +1,12 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import {
+  Digest,
+  DigestSchedule,
+  type DigestProvenanceItem,
+  type DigestProps,
+  type DigestScheduleProps,
+  type DigestScheduleStatus,
   DeliveryAttempt,
   type DeliveryAttemptProps,
   type DeliveryAttemptState,
@@ -17,6 +23,9 @@ export type PrismaDeliveryAttemptState =
   | 'FAILED_TERMINAL'
   | 'DEAD_LETTERED'
   | 'CANCELLED';
+
+export type PrismaDeliveryDigestStatus = 'ASSEMBLED' | 'EMPTY';
+export type PrismaDigestScheduleStatus = 'ENABLED' | 'DISABLED';
 
 export type PrismaDeliveryAttemptRecord = {
   readonly id: string;
@@ -42,8 +51,45 @@ export type PrismaDeliveryAttemptRecord = {
   readonly suppressionReason: string | null;
 };
 
+export type PrismaDigestRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly recipientKey: string;
+  readonly channel: string;
+  readonly windowId: string;
+  readonly windowStartedAt: Date;
+  readonly windowEndedAt: Date;
+  readonly status: PrismaDeliveryDigestStatus;
+  readonly summaryIds: readonly string[];
+  readonly feedItemIds: readonly string[];
+  readonly provenance: unknown;
+  readonly contentHash: string;
+  readonly assembledAt: Date;
+};
+
+export type PrismaDigestScheduleRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly recipientKey: string;
+  readonly channel: string;
+  readonly topicIds: readonly string[];
+  readonly intervalSeconds: number;
+  readonly includeNoSignal: boolean;
+  readonly nextRunAt: Date;
+  readonly createdAt: Date;
+  readonly status: PrismaDigestScheduleStatus;
+};
+
 const deliveryChannels = ['in_app', 'email', 'webhook'] as const satisfies readonly DeliveryChannel[];
 const resourceTypes = ['summary', 'digest', 'scan', 'feed'] as const satisfies readonly DeliveryAttemptProps['resourceType'][];
+const digestProvenanceResourceTypes = ['summary', 'feed_item'] as const satisfies readonly DigestProvenanceItem['resourceType'][];
+const digestProvenanceReasons = [
+  'within_window',
+  'high_signal',
+  'user_selected_topic',
+] as const satisfies readonly DigestProvenanceItem['includedReason'][];
 
 const deliveryAttemptStateToPrismaMap: Record<DeliveryAttemptState, PrismaDeliveryAttemptState> = {
   queued: 'QUEUED',
@@ -67,6 +113,26 @@ const deliveryAttemptStateFromPrismaMap: Record<PrismaDeliveryAttemptState, Deli
   FAILED_TERMINAL: 'failed_terminal',
   DEAD_LETTERED: 'dead_lettered',
   CANCELLED: 'cancelled',
+};
+
+const digestStatusToPrismaMap: Record<DigestProps['status'], PrismaDeliveryDigestStatus> = {
+  assembled: 'ASSEMBLED',
+  empty: 'EMPTY',
+};
+
+const digestStatusFromPrismaMap: Record<PrismaDeliveryDigestStatus, DigestProps['status']> = {
+  ASSEMBLED: 'assembled',
+  EMPTY: 'empty',
+};
+
+const digestScheduleStatusToPrismaMap: Record<DigestScheduleStatus, PrismaDigestScheduleStatus> = {
+  enabled: 'ENABLED',
+  disabled: 'DISABLED',
+};
+
+const digestScheduleStatusFromPrismaMap: Record<PrismaDigestScheduleStatus, DigestScheduleStatus> = {
+  ENABLED: 'enabled',
+  DISABLED: 'disabled',
 };
 
 export const deliveryAttemptFromPrisma = (record: PrismaDeliveryAttemptRecord): DeliveryAttempt =>
@@ -97,11 +163,72 @@ export const deliveryAttemptFromPrisma = (record: PrismaDeliveryAttemptRecord): 
 export const deliveryAttemptStateToPrisma = (state: DeliveryAttemptState): PrismaDeliveryAttemptState =>
   deliveryAttemptStateToPrismaMap[state];
 
+export const digestFromPrisma = (record: PrismaDigestRecord): Digest =>
+  Digest.rehydrate({
+    id: record.id,
+    tenantId: tenantId(record.tenantId),
+    workspaceId: workspaceId(record.workspaceId),
+    recipientKey: record.recipientKey,
+    channel: deliveryChannelFromPrisma(record.channel),
+    window: {
+      windowId: record.windowId,
+      startedAt: record.windowStartedAt,
+      endedAt: record.windowEndedAt,
+    },
+    status: digestStatusFromPrisma(record.status),
+    summaryIds: record.summaryIds,
+    feedItemIds: record.feedItemIds,
+    provenance: digestProvenanceFromPrisma(record.provenance),
+    contentHash: record.contentHash,
+    assembledAt: record.assembledAt,
+  } satisfies DigestProps);
+
+export const digestStatusToPrisma = (status: DigestProps['status']): PrismaDeliveryDigestStatus =>
+  digestStatusToPrismaMap[status];
+
+export const digestScheduleFromPrisma = (record: PrismaDigestScheduleRecord): DigestSchedule =>
+  DigestSchedule.rehydrate({
+    id: record.id,
+    tenantId: tenantId(record.tenantId),
+    workspaceId: workspaceId(record.workspaceId),
+    recipientKey: record.recipientKey,
+    channel: deliveryChannelFromPrisma(record.channel),
+    topicIds: record.topicIds,
+    intervalSeconds: record.intervalSeconds,
+    includeNoSignal: record.includeNoSignal,
+    nextRunAt: record.nextRunAt,
+    createdAt: record.createdAt,
+    status: digestScheduleStatusFromPrisma(record.status),
+  } satisfies DigestScheduleProps);
+
+export const digestScheduleStatusToPrisma = (status: DigestScheduleStatus): PrismaDigestScheduleStatus =>
+  digestScheduleStatusToPrismaMap[status];
+
 const deliveryAttemptStateFromPrisma = (state: PrismaDeliveryAttemptState): DeliveryAttemptState => {
   const mapped = deliveryAttemptStateFromPrismaMap[state];
 
   if (mapped === undefined) {
     throw new Error(`Unknown delivery attempt state from Prisma: ${state}`);
+  }
+
+  return mapped;
+};
+
+const digestStatusFromPrisma = (status: PrismaDeliveryDigestStatus): DigestProps['status'] => {
+  const mapped = digestStatusFromPrismaMap[status];
+
+  if (mapped === undefined) {
+    throw new Error(`Unknown digest status from Prisma: ${status}`);
+  }
+
+  return mapped;
+};
+
+const digestScheduleStatusFromPrisma = (status: PrismaDigestScheduleStatus): DigestScheduleStatus => {
+  const mapped = digestScheduleStatusFromPrismaMap[status];
+
+  if (mapped === undefined) {
+    throw new Error(`Unknown digest schedule status from Prisma: ${status}`);
   }
 
   return mapped;
@@ -121,4 +248,51 @@ const resourceTypeFromPrisma = (resourceType: string): DeliveryAttemptProps['res
   }
 
   throw new Error(`Unknown delivery resource type from Prisma: ${resourceType}`);
+};
+
+const digestProvenanceFromPrisma = (value: unknown): readonly DigestProvenanceItem[] => {
+  if (!Array.isArray(value)) {
+    throw new Error('Digest provenance from Prisma must be an array');
+  }
+
+  return value.map((item) => {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error('Digest provenance item from Prisma must be an object');
+    }
+
+    const record = item as Readonly<Record<string, unknown>>;
+    const resourceType = digestProvenanceResourceTypeFromPrisma(record.resourceType);
+    const includedReason = digestProvenanceReasonFromPrisma(record.includedReason);
+
+    if (typeof record.resourceId !== 'string' || record.resourceId.trim().length === 0) {
+      throw new Error('Digest provenance resource id from Prisma must be non-empty');
+    }
+
+    if (typeof record.topicId !== 'string' || record.topicId.trim().length === 0) {
+      throw new Error('Digest provenance topic id from Prisma must be non-empty');
+    }
+
+    return {
+      resourceType,
+      resourceId: record.resourceId,
+      topicId: record.topicId,
+      includedReason,
+    };
+  });
+};
+
+const digestProvenanceResourceTypeFromPrisma = (value: unknown): DigestProvenanceItem['resourceType'] => {
+  if (typeof value === 'string' && (digestProvenanceResourceTypes as readonly string[]).includes(value)) {
+    return value as DigestProvenanceItem['resourceType'];
+  }
+
+  throw new Error(`Unknown digest provenance resource type from Prisma: ${String(value)}`);
+};
+
+const digestProvenanceReasonFromPrisma = (value: unknown): DigestProvenanceItem['includedReason'] => {
+  if (typeof value === 'string' && (digestProvenanceReasons as readonly string[]).includes(value)) {
+    return value as DigestProvenanceItem['includedReason'];
+  }
+
+  throw new Error(`Unknown digest provenance reason from Prisma: ${String(value)}`);
 };
