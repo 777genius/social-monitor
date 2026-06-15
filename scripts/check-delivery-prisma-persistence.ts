@@ -14,23 +14,40 @@ import type {
   PrismaDigestScheduleWriteData,
   PrismaDigestWriteData,
   PrismaRealtimeEventWriteData,
+  PrismaWebhookEndpointWriteData,
+  PrismaWebhookReplayDeliveryWriteData,
+  PrismaWebhookSecretWriteData,
 } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-client';
 import { PrismaDigestScheduleRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-digest-schedule.repository';
 import { PrismaDigestRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-digest.repository';
 import { PrismaRealtimeEventRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-realtime-event.repository';
+import { PrismaWebhookEndpointRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-webhook-endpoint.repository';
+import { PrismaWebhookReplayStore } from '../libs/delivery/adapters/replay/prisma/prisma-webhook-replay.store';
+import {
+  PrismaWebhookSecretVault,
+  resolveWebhookSecretEncryptionKey,
+} from '../libs/delivery/adapters/secrets/prisma/prisma-webhook-secret.vault';
 import type {
   PrismaDeliveryAttemptRecord,
   PrismaDigestRecord,
   PrismaDigestScheduleRecord,
   PrismaRealtimeEventRecord,
+  PrismaWebhookEndpointRecord,
+  PrismaWebhookReplayDeliveryRecord,
+  PrismaWebhookSecretRecord,
 } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-records';
 import { Digest, DigestSchedule } from '../libs/delivery/domain';
+import { CreateWebhookEndpointUseCase } from '../libs/delivery/features/create-webhook-endpoint/create-webhook-endpoint.use-case';
+import { DisableWebhookEndpointUseCase } from '../libs/delivery/features/disable-webhook-endpoint/disable-webhook-endpoint.use-case';
 import { GetDeliveryAttemptUseCase } from '../libs/delivery/features/get-delivery-attempt/get-delivery-attempt.use-case';
 import { GetDigestUseCase } from '../libs/delivery/features/get-digest/get-digest.use-case';
+import { ListWebhookEndpointsUseCase } from '../libs/delivery/features/list-webhook-endpoints/list-webhook-endpoints.use-case';
 import { ListRealtimeEventsUseCase } from '../libs/delivery/features/list-realtime-events/list-realtime-events.use-case';
 import { QueueDeliveryAttemptUseCase } from '../libs/delivery/features/queue-delivery-attempt/queue-delivery-attempt.use-case';
 import { RecordDeliveryAttemptStateUseCase } from '../libs/delivery/features/record-delivery-attempt-state/record-delivery-attempt-state.use-case';
 import { RecordRealtimeEventUseCase } from '../libs/delivery/features/record-realtime-event/record-realtime-event.use-case';
+import { SignWebhookPayloadUseCase } from '../libs/delivery/features/sign-webhook-payload/sign-webhook-payload.use-case';
+import { VerifyWebhookSignatureUseCase } from '../libs/delivery/features/verify-webhook-signature/verify-webhook-signature.use-case';
 import { resolveDeliveryPersistenceMode } from '../libs/delivery/interfaces/rest/delivery-provider-tokens';
 
 const clock = new FixedClock(new Date('2026-06-07T00:00:10.000Z'));
@@ -50,16 +67,34 @@ async function main(): Promise<void> {
     }) === 'prisma',
     'delivery persistence must accept explicit Prisma mode with DATABASE_URL',
   );
+  assertThrows(
+    () => resolveWebhookSecretEncryptionKey({}),
+    'Prisma webhook secret vault must require an encryption key',
+  );
+  assert(
+    resolveWebhookSecretEncryptionKey({
+      DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64url'),
+    }).equals(Buffer.alloc(32, 7)),
+    'Prisma webhook secret vault must accept a 32-byte base64url encryption key',
+  );
 
   const prisma = new FakePrismaDeliveryClient();
   const attempts = new PrismaDeliveryAttemptRepository(prisma);
   const digests = new PrismaDigestRepository(prisma);
   const realtimeEvents = new PrismaRealtimeEventRepository(prisma);
   const schedules = new PrismaDigestScheduleRepository(prisma);
+  const webhookEndpoints = new PrismaWebhookEndpointRepository(prisma);
+  const webhookSecrets = new PrismaWebhookSecretVault(prisma, Buffer.alloc(32, 7));
+  const webhookReplayStore = new PrismaWebhookReplayStore(prisma);
   const ids = new SequenceIdGenerator([
     '00000000-0000-7000-8000-000000000703',
     '00000000-0000-7000-8000-000000000704',
     '00000000-0000-7000-8000-000000000707',
+    '00000000-0000-7000-8000-000000000708',
+    '00000000-0000-7000-8000-000000000709',
+    '00000000-0000-7000-8000-000000000710',
+    '00000000-0000-7000-8000-000000000711',
+    '00000000-0000-7000-8000-000000000712',
   ]);
   const queue = new QueueDeliveryAttemptUseCase(attempts, ids, clock);
   const getAttempt = new GetDeliveryAttemptUseCase(attempts);
@@ -257,6 +292,96 @@ async function main(): Promise<void> {
   });
   assert(invalidRealtimeCursor.resyncRequired, 'invalid realtime replay cursor must require resync');
 
+  const createdWebhook = await new CreateWebhookEndpointUseCase(
+    webhookEndpoints,
+    webhookSecrets,
+    ids,
+    clock,
+  ).execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    url: 'https://example.com/webhooks/social-monitor',
+    eventTypes: ['digest.ready.v1'],
+  });
+  assert(isOk(createdWebhook), 'webhook endpoint create must persist endpoint and encrypted secret');
+  const webhookEndpointId = createdWebhook.value.endpoint.id;
+  const secretKeyId = createdWebhook.value.endpoint.secretKeyId;
+  assert(
+    await webhookSecrets.get({ secretKeyId }) === createdWebhook.value.signingSecret,
+    'webhook secret vault must decrypt the persisted signing secret',
+  );
+
+  const signedWebhook = await new SignWebhookPayloadUseCase(webhookEndpoints, webhookSecrets).execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    webhookEndpointId,
+    deliveryId: 'delivery-webhook-1',
+    eventType: 'digest.ready.v1',
+    occurredAt: new Date('2026-06-07T00:00:10.000Z'),
+    resourceType: 'digest',
+    resourceId: 'digest-1',
+    idempotencyKey: 'digest:weekly:recipient-1',
+    correlationId: 'correlation-webhook-1',
+    resourceLinks: {
+      digest: '/digests/digest-1',
+    },
+    summary: {
+      headline: 'Weekly signal ready',
+      itemCount: 1,
+    },
+  });
+  assert(isOk(signedWebhook), 'webhook payload signing must use persisted encrypted secret');
+
+  const verifyWebhook = new VerifyWebhookSignatureUseCase(webhookEndpoints, webhookSecrets, webhookReplayStore, clock);
+  const verifiedWebhook = await verifyWebhook.execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    webhookEndpointId,
+    deliveryId: signedWebhook.value.payload.deliveryId,
+    timestamp: signedWebhook.value.headers['x-social-monitor-timestamp'],
+    rawBody: signedWebhook.value.rawBody,
+    signatureHeader: signedWebhook.value.headers['x-social-monitor-signature'],
+    keyId: signedWebhook.value.headers['x-social-monitor-key-id'],
+    toleranceSeconds: 300,
+  });
+  assert(isOk(verifiedWebhook), 'webhook signature verification must succeed through Prisma adapters');
+  assert(verifiedWebhook.value.verified, 'first webhook signature verification must be accepted');
+
+  const replayedWebhook = await verifyWebhook.execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    webhookEndpointId,
+    deliveryId: signedWebhook.value.payload.deliveryId,
+    timestamp: signedWebhook.value.headers['x-social-monitor-timestamp'],
+    rawBody: signedWebhook.value.rawBody,
+    signatureHeader: signedWebhook.value.headers['x-social-monitor-signature'],
+    keyId: signedWebhook.value.headers['x-social-monitor-key-id'],
+    toleranceSeconds: 300,
+  });
+  assert(isOk(replayedWebhook), 'duplicate webhook signature verification must return a domain result');
+  assert(!replayedWebhook.value.verified, 'duplicate webhook delivery id must be rejected as replay');
+  assert(replayedWebhook.value.reason === 'replay_detected', 'duplicate webhook delivery id must report replay_detected');
+
+  const disabledWebhook = await new DisableWebhookEndpointUseCase(webhookEndpoints, clock).execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    webhookEndpointId,
+  });
+  assert(isOk(disabledWebhook), 'webhook endpoint disable must persist through Prisma repository');
+  assert(disabledWebhook.value.status === 'disabled', 'webhook endpoint disabled state must hydrate from Prisma');
+
+  const listedWebhooks = await new ListWebhookEndpointsUseCase(webhookEndpoints).execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    limit: 10,
+  });
+  assert(isOk(listedWebhooks), 'webhook endpoint list must read through Prisma repository');
+  assert(listedWebhooks.value.endpoints.length === 1, 'webhook endpoint list must return persisted endpoint');
+  assert(
+    listedWebhooks.value.endpoints[0]?.secretPreview === createdWebhook.value.endpoint.secretPreview,
+    'webhook endpoint list must expose only secret preview metadata',
+  );
+
   console.log('Delivery Prisma persistence smoke OK');
 }
 
@@ -283,6 +408,9 @@ class FakePrismaDeliveryClient implements PrismaDeliveryClient {
   private readonly digests = new Map<string, PrismaDigestRecord>();
   private readonly realtimeEvents = new Map<string, PrismaRealtimeEventRecord>();
   private readonly schedules = new Map<string, PrismaDigestScheduleRecord>();
+  private readonly webhookEndpoints = new Map<string, PrismaWebhookEndpointRecord>();
+  private readonly webhookReplayDeliveries = new Map<string, PrismaWebhookReplayDeliveryRecord>();
+  private readonly webhookSecrets = new Map<string, PrismaWebhookSecretRecord>();
 
   readonly deliveryAttempt: PrismaDeliveryClient['deliveryAttempt'] = {
     upsert: async (args) => {
@@ -366,6 +494,76 @@ class FakePrismaDeliveryClient implements PrismaDeliveryClient {
         .sort(compareRealtimeEventRecordsAsc)
         .slice(0, args.take),
   };
+
+  readonly webhookEndpoint: PrismaDeliveryClient['webhookEndpoint'] = {
+    upsert: async (args) => {
+      const existing = this.webhookEndpoints.get(args.where.id);
+      const record: PrismaWebhookEndpointRecord = {
+        id: existing?.id ?? args.create.id,
+        ...normalizeWebhookEndpointWriteData(args.update),
+      };
+      this.webhookEndpoints.set(record.id, record);
+
+      return record;
+    },
+    findFirst: async (args) =>
+      [...this.webhookEndpoints.values()].find((record) => matchesWebhookEndpointWhere(record, args.where)) ?? null,
+    findMany: async (args) =>
+      [...this.webhookEndpoints.values()]
+        .filter((record) => matchesWebhookEndpointWhere(record, args.where))
+        .sort(compareWebhookEndpointRecords)
+        .slice(args.skip, args.skip + args.take),
+    count: async (args) =>
+      [...this.webhookEndpoints.values()].filter((record) => matchesWebhookEndpointWhere(record, args.where)).length,
+  };
+
+  readonly webhookSecret: PrismaDeliveryClient['webhookSecret'] = {
+    upsert: async (args) => {
+      const existing = this.webhookSecrets.get(args.where.id);
+      const record: PrismaWebhookSecretRecord = {
+        id: existing?.id ?? args.create.id,
+        ...normalizeWebhookSecretWriteData(args.update),
+      };
+      this.webhookSecrets.set(record.id, record);
+
+      return record;
+    },
+    findUnique: async (args) => this.webhookSecrets.get(args.where.id) ?? null,
+  };
+
+  readonly webhookReplayDelivery: PrismaDeliveryClient['webhookReplayDelivery'] = {
+    findUnique: async (args) =>
+      this.webhookReplayDeliveries.get(webhookReplayDeliveryKey(args.where.webhookEndpointId_deliveryId)) ?? null,
+    create: async (args) => {
+      const key = webhookReplayDeliveryKey(args.data);
+
+      if (this.webhookReplayDeliveries.has(key)) {
+        throw Object.assign(new Error('Unique webhook replay delivery constraint violation'), { code: 'P2002' });
+      }
+
+      const record: PrismaWebhookReplayDeliveryRecord = normalizeWebhookReplayDeliveryWriteData(args.data);
+      this.webhookReplayDeliveries.set(key, record);
+
+      return record;
+    },
+    update: async (args) => {
+      const key = webhookReplayDeliveryKey(args.where.webhookEndpointId_deliveryId);
+      const existing = this.webhookReplayDeliveries.get(key);
+
+      if (existing === undefined) {
+        throw new Error('Webhook replay delivery not found');
+      }
+
+      const record: PrismaWebhookReplayDeliveryRecord = {
+        ...existing,
+        rememberedAt: args.data.rememberedAt,
+        expiresAt: args.data.expiresAt,
+      };
+      this.webhookReplayDeliveries.set(key, record);
+
+      return record;
+    },
+  };
 }
 
 const normalizeWriteData = (data: PrismaDeliveryAttemptWriteData): Omit<PrismaDeliveryAttemptRecord, 'id'> => ({
@@ -437,6 +635,40 @@ const normalizeRealtimeEventWriteData = (
   occurredAt: data.occurredAt,
   correlationId: data.correlationId,
   payload: data.payload,
+});
+
+const normalizeWebhookEndpointWriteData = (
+  data: PrismaWebhookEndpointWriteData,
+): Omit<PrismaWebhookEndpointRecord, 'id'> => ({
+  tenantId: data.tenantId,
+  workspaceId: data.workspaceId,
+  url: data.url,
+  eventTypes: data.eventTypes,
+  status: data.status,
+  secretKeyId: data.secretKeyId,
+  secretPreview: data.secretPreview,
+  createdAt: data.createdAt,
+  disabledAt: data.disabledAt ?? null,
+  quarantinedAt: data.quarantinedAt ?? null,
+  quarantineReason: data.quarantineReason ?? null,
+});
+
+const normalizeWebhookSecretWriteData = (
+  data: PrismaWebhookSecretWriteData,
+): Omit<PrismaWebhookSecretRecord, 'id'> => ({
+  algorithm: data.algorithm,
+  ciphertext: data.ciphertext,
+  iv: data.iv,
+  authTag: data.authTag,
+});
+
+const normalizeWebhookReplayDeliveryWriteData = (
+  data: PrismaWebhookReplayDeliveryWriteData,
+): PrismaWebhookReplayDeliveryRecord => ({
+  webhookEndpointId: data.webhookEndpointId,
+  deliveryId: data.deliveryId,
+  rememberedAt: data.rememberedAt,
+  expiresAt: data.expiresAt,
 });
 
 const matchesDeliveryAttemptWhere = (
@@ -564,6 +796,36 @@ const compareRealtimeEventRecordsDesc = (
 
   return right.id.localeCompare(left.id);
 };
+
+const matchesWebhookEndpointWhere = (
+  record: PrismaWebhookEndpointRecord,
+  where: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly id?: string;
+  },
+): boolean =>
+  record.tenantId === where.tenantId &&
+  record.workspaceId === where.workspaceId &&
+  (where.id === undefined || record.id === where.id);
+
+const compareWebhookEndpointRecords = (
+  left: PrismaWebhookEndpointRecord,
+  right: PrismaWebhookEndpointRecord,
+): number => {
+  const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
+
+  if (createdDiff !== 0) {
+    return createdDiff;
+  }
+
+  return right.id.localeCompare(left.id);
+};
+
+const webhookReplayDeliveryKey = (params: {
+  readonly webhookEndpointId: string;
+  readonly deliveryId: string;
+}): string => `${params.webhookEndpointId}:${params.deliveryId}`;
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {

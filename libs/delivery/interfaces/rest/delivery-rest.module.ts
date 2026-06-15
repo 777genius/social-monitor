@@ -18,9 +18,15 @@ import { PrismaDeliveryConnection } from '../../adapters/persistence/prisma/pris
 import { PrismaDigestScheduleRepository } from '../../adapters/persistence/prisma/prisma-digest-schedule.repository';
 import { PrismaDigestRepository } from '../../adapters/persistence/prisma/prisma-digest.repository';
 import { PrismaRealtimeEventRepository } from '../../adapters/persistence/prisma/prisma-realtime-event.repository';
+import { PrismaWebhookEndpointRepository } from '../../adapters/persistence/prisma/prisma-webhook-endpoint.repository';
 import { InMemoryNotificationPreferenceReader } from '../../adapters/preferences/in-memory-notification-preference.reader';
 import { InMemoryWebhookReplayStore } from '../../adapters/replay/in-memory-webhook-replay.store';
+import { PrismaWebhookReplayStore } from '../../adapters/replay/prisma/prisma-webhook-replay.store';
 import { InMemoryWebhookSecretVault } from '../../adapters/secrets/in-memory-webhook-secret.vault';
+import {
+  PrismaWebhookSecretVault,
+  resolveWebhookSecretEncryptionKey,
+} from '../../adapters/secrets/prisma/prisma-webhook-secret.vault';
 import { InMemoryDigestSourceReader } from '../../adapters/source/in-memory-digest-source.reader';
 import { ApplyDeliverySuppressionUseCase } from '../../features/apply-delivery-suppression/apply-delivery-suppression.use-case';
 import { AssembleDigestUseCase } from '../../features/assemble-digest/assemble-digest.use-case';
@@ -49,6 +55,9 @@ import {
   DELIVERY_PERSISTENCE_MODE,
   DELIVERY_PRISMA_CLIENT,
   DELIVERY_REALTIME_EVENT_REPOSITORY,
+  DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
+  DELIVERY_WEBHOOK_REPLAY_STORE,
+  DELIVERY_WEBHOOK_SECRET_VAULT,
   resolveDeliveryPersistenceMode,
   type DeliveryPersistenceMode,
 } from './delivery-provider-tokens';
@@ -61,6 +70,9 @@ import type {
   DigestRepositoryPort,
   DigestScheduleRepositoryPort,
   RealtimeEventRepositoryPort,
+  WebhookEndpointRepositoryPort,
+  WebhookReplayStorePort,
+  WebhookSecretVaultPort,
 } from '../../ports';
 
 export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
@@ -147,6 +159,45 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryRealtimeEventRepository],
     },
     {
+      provide: DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
+      useFactory: (
+        mode: DeliveryPersistenceMode,
+        prisma: PrismaDeliveryClient | null,
+        inMemoryEndpoints: InMemoryWebhookEndpointRepository,
+      ): WebhookEndpointRepositoryPort =>
+        mode === 'prisma'
+          ? new PrismaWebhookEndpointRepository(requirePrismaDeliveryClient(prisma))
+          : inMemoryEndpoints,
+      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryWebhookEndpointRepository],
+    },
+    {
+      provide: DELIVERY_WEBHOOK_SECRET_VAULT,
+      useFactory: (
+        mode: DeliveryPersistenceMode,
+        prisma: PrismaDeliveryClient | null,
+        inMemorySecrets: InMemoryWebhookSecretVault,
+      ): WebhookSecretVaultPort =>
+        mode === 'prisma'
+          ? new PrismaWebhookSecretVault(
+            requirePrismaDeliveryClient(prisma),
+            resolveWebhookSecretEncryptionKey(process.env),
+          )
+          : inMemorySecrets,
+      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryWebhookSecretVault],
+    },
+    {
+      provide: DELIVERY_WEBHOOK_REPLAY_STORE,
+      useFactory: (
+        mode: DeliveryPersistenceMode,
+        prisma: PrismaDeliveryClient | null,
+        inMemoryReplayStore: InMemoryWebhookReplayStore,
+      ): WebhookReplayStorePort =>
+        mode === 'prisma'
+          ? new PrismaWebhookReplayStore(requirePrismaDeliveryClient(prisma))
+          : inMemoryReplayStore,
+      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryWebhookReplayStore],
+    },
+    {
       provide: QueueDeliveryAttemptUseCase,
       useFactory: (attempts: DeliveryAttemptRepositoryPort) =>
         new QueueDeliveryAttemptUseCase(attempts, new CryptoIdGenerator(), new SystemClock()),
@@ -181,49 +232,49 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     {
       provide: CreateWebhookEndpointUseCase,
       useFactory: (
-        endpoints: InMemoryWebhookEndpointRepository,
-        secrets: InMemoryWebhookSecretVault,
+        endpoints: WebhookEndpointRepositoryPort,
+        secrets: WebhookSecretVaultPort,
       ) => new CreateWebhookEndpointUseCase(endpoints, secrets, new CryptoIdGenerator(), new SystemClock()),
-      inject: [InMemoryWebhookEndpointRepository, InMemoryWebhookSecretVault],
+      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_SECRET_VAULT],
     },
     {
       provide: GetWebhookEndpointUseCase,
-      useFactory: (endpoints: InMemoryWebhookEndpointRepository) => new GetWebhookEndpointUseCase(endpoints),
-      inject: [InMemoryWebhookEndpointRepository],
+      useFactory: (endpoints: WebhookEndpointRepositoryPort) => new GetWebhookEndpointUseCase(endpoints),
+      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY],
     },
     {
       provide: ListWebhookEndpointsUseCase,
-      useFactory: (endpoints: InMemoryWebhookEndpointRepository) => new ListWebhookEndpointsUseCase(endpoints),
-      inject: [InMemoryWebhookEndpointRepository],
+      useFactory: (endpoints: WebhookEndpointRepositoryPort) => new ListWebhookEndpointsUseCase(endpoints),
+      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY],
     },
     {
       provide: DisableWebhookEndpointUseCase,
-      useFactory: (endpoints: InMemoryWebhookEndpointRepository) =>
+      useFactory: (endpoints: WebhookEndpointRepositoryPort) =>
         new DisableWebhookEndpointUseCase(endpoints, new SystemClock()),
-      inject: [InMemoryWebhookEndpointRepository],
+      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY],
     },
     {
       provide: SignWebhookPayloadUseCase,
       useFactory: (
-        endpoints: InMemoryWebhookEndpointRepository,
-        secrets: InMemoryWebhookSecretVault,
+        endpoints: WebhookEndpointRepositoryPort,
+        secrets: WebhookSecretVaultPort,
       ) => new SignWebhookPayloadUseCase(endpoints, secrets),
-      inject: [InMemoryWebhookEndpointRepository, InMemoryWebhookSecretVault],
+      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_SECRET_VAULT],
     },
     {
       provide: QuarantineWebhookEndpointUseCase,
-      useFactory: (endpoints: InMemoryWebhookEndpointRepository) =>
+      useFactory: (endpoints: WebhookEndpointRepositoryPort) =>
         new QuarantineWebhookEndpointUseCase(endpoints, new SystemClock()),
-      inject: [InMemoryWebhookEndpointRepository],
+      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY],
     },
     {
       provide: VerifyWebhookSignatureUseCase,
       useFactory: (
-        endpoints: InMemoryWebhookEndpointRepository,
-        secrets: InMemoryWebhookSecretVault,
-        replayStore: InMemoryWebhookReplayStore,
+        endpoints: WebhookEndpointRepositoryPort,
+        secrets: WebhookSecretVaultPort,
+        replayStore: WebhookReplayStorePort,
       ) => new VerifyWebhookSignatureUseCase(endpoints, secrets, replayStore, new SystemClock()),
-      inject: [InMemoryWebhookEndpointRepository, InMemoryWebhookSecretVault, InMemoryWebhookReplayStore],
+      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_SECRET_VAULT, DELIVERY_WEBHOOK_REPLAY_STORE],
     },
     {
       provide: ApplyDeliverySuppressionUseCase,
@@ -314,6 +365,9 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     DELIVERY_DIGEST_REPOSITORY,
     DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
     DELIVERY_REALTIME_EVENT_REPOSITORY,
+    DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
+    DELIVERY_WEBHOOK_SECRET_VAULT,
+    DELIVERY_WEBHOOK_REPLAY_STORE,
     DELIVERY_PROVIDERS,
   ],
 })

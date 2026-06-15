@@ -6,6 +6,10 @@ import type {
   PrismaDigestScheduleRecord,
   PrismaDigestScheduleStatus,
   PrismaRealtimeEventRecord,
+  PrismaWebhookEndpointRecord,
+  PrismaWebhookEndpointStatus,
+  PrismaWebhookReplayDeliveryRecord,
+  PrismaWebhookSecretRecord,
 } from './prisma-delivery-records';
 
 export type PrismaDeliveryAttemptWriteData = {
@@ -73,6 +77,34 @@ export type PrismaRealtimeEventWriteData = {
   readonly occurredAt: Date;
   readonly correlationId: string;
   readonly payload: unknown;
+};
+
+export type PrismaWebhookEndpointWriteData = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly url: string;
+  readonly eventTypes: readonly string[];
+  readonly status: PrismaWebhookEndpointStatus;
+  readonly secretKeyId: string;
+  readonly secretPreview: string;
+  readonly createdAt: Date;
+  readonly disabledAt?: Date | null;
+  readonly quarantinedAt?: Date | null;
+  readonly quarantineReason?: string | null;
+};
+
+export type PrismaWebhookSecretWriteData = {
+  readonly algorithm: string;
+  readonly ciphertext: string;
+  readonly iv: string;
+  readonly authTag: string;
+};
+
+export type PrismaWebhookReplayDeliveryWriteData = {
+  readonly webhookEndpointId: string;
+  readonly deliveryId: string;
+  readonly rememberedAt: Date;
+  readonly expiresAt: Date;
 };
 
 export type PrismaDeliveryClient = {
@@ -178,5 +210,72 @@ export type PrismaDeliveryClient = {
       ];
       readonly take: number;
     }): Promise<readonly PrismaRealtimeEventRecord[]>;
+  };
+  readonly webhookEndpoint: {
+    upsert(args: {
+      readonly where: { readonly id: string };
+      readonly update: PrismaWebhookEndpointWriteData;
+      readonly create: PrismaWebhookEndpointWriteData & { readonly id: string };
+    }): Promise<PrismaWebhookEndpointRecord>;
+    findFirst(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly id?: string;
+      };
+    }): Promise<PrismaWebhookEndpointRecord | null>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+      };
+      readonly orderBy: readonly [
+        { readonly createdAt: 'desc' },
+        { readonly id: 'desc' },
+      ];
+      readonly skip: number;
+      readonly take: number;
+    }): Promise<readonly PrismaWebhookEndpointRecord[]>;
+    count(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+      };
+    }): Promise<number>;
+  };
+  readonly webhookSecret: {
+    upsert(args: {
+      readonly where: { readonly id: string };
+      readonly update: PrismaWebhookSecretWriteData;
+      readonly create: PrismaWebhookSecretWriteData & { readonly id: string };
+    }): Promise<PrismaWebhookSecretRecord>;
+    findUnique(args: {
+      readonly where: { readonly id: string };
+    }): Promise<PrismaWebhookSecretRecord | null>;
+  };
+  readonly webhookReplayDelivery: {
+    findUnique(args: {
+      readonly where: {
+        readonly webhookEndpointId_deliveryId: {
+          readonly webhookEndpointId: string;
+          readonly deliveryId: string;
+        };
+      };
+    }): Promise<PrismaWebhookReplayDeliveryRecord | null>;
+    create(args: {
+      readonly data: PrismaWebhookReplayDeliveryWriteData;
+    }): Promise<PrismaWebhookReplayDeliveryRecord>;
+    update(args: {
+      readonly where: {
+        readonly webhookEndpointId_deliveryId: {
+          readonly webhookEndpointId: string;
+          readonly deliveryId: string;
+        };
+      };
+      readonly data: {
+        readonly rememberedAt: Date;
+        readonly expiresAt: Date;
+      };
+    }): Promise<PrismaWebhookReplayDeliveryRecord>;
   };
 };

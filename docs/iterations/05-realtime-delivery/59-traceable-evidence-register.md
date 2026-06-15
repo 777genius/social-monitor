@@ -53,4 +53,7 @@ Verified guarantees:
 - current REST snapshot without cursor remains available from the retained window;
 - caught-up replay cursor returns no events and does not force resync;
 - duplicate delivery queue commands reuse the same delivery attempt through idempotency key;
+- `DELIVERY_PERSISTENCE=prisma` can persist webhook endpoint metadata, encrypted webhook secrets and webhook replay delivery ids;
+- Prisma webhook secrets use AES-256-GCM and require `DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY`;
+- delivery Prisma smoke covers webhook create, sign, verify, replay rejection, disable and list behavior;
 - notification preference recheck happens immediately before provider send and suppresses delivery without calling provider.

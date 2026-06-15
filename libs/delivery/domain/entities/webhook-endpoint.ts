@@ -21,6 +21,14 @@ export class WebhookEndpoint {
   private constructor(private readonly props: WebhookEndpointProps) {}
 
   static create(props: WebhookEndpointProps): WebhookEndpoint {
+    return WebhookEndpoint.fromProps(props);
+  }
+
+  static rehydrate(props: WebhookEndpointProps): WebhookEndpoint {
+    return WebhookEndpoint.fromProps(props);
+  }
+
+  private static fromProps(props: WebhookEndpointProps): WebhookEndpoint {
     if (props.id.trim().length === 0) {
       throw new Error('Webhook endpoint id must be non-empty');
     }
@@ -35,6 +43,24 @@ export class WebhookEndpoint {
 
     if (props.secretKeyId.trim().length === 0 || props.secretPreview.trim().length === 0) {
       throw new Error('Webhook endpoint secret metadata must be non-empty');
+    }
+
+    if (!webhookEndpointStatuses.includes(props.status)) {
+      throw new Error(`Unknown webhook endpoint status: ${String(props.status)}`);
+    }
+
+    if (props.status === 'disabled' && props.disabledAt === undefined) {
+      throw new Error('Disabled webhook endpoint must have disabledAt');
+    }
+
+    if (props.status === 'quarantined') {
+      if (props.quarantinedAt === undefined) {
+        throw new Error('Quarantined webhook endpoint must have quarantinedAt');
+      }
+
+      if (props.quarantineReason === undefined || props.quarantineReason.trim().length === 0) {
+        throw new Error('Quarantined webhook endpoint must have quarantine reason');
+      }
     }
 
     return new WebhookEndpoint({
@@ -68,6 +94,8 @@ export class WebhookEndpoint {
     });
   }
 }
+
+const webhookEndpointStatuses = ['enabled', 'disabled', 'quarantined'] as const satisfies readonly WebhookEndpointStatus[];
 
 const isHttpsUrl = (value: string): boolean => {
   try {

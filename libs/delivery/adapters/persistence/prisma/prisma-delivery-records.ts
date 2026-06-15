@@ -14,6 +14,9 @@ import {
   RealtimeEvent,
   type RealtimeEventProps,
   type RealtimeResourceType,
+  WebhookEndpoint,
+  type WebhookEndpointProps,
+  type WebhookEndpointStatus,
 } from '../../../domain';
 
 export type PrismaDeliveryAttemptState =
@@ -29,6 +32,7 @@ export type PrismaDeliveryAttemptState =
 
 export type PrismaDeliveryDigestStatus = 'ASSEMBLED' | 'EMPTY';
 export type PrismaDigestScheduleStatus = 'ENABLED' | 'DISABLED';
+export type PrismaWebhookEndpointStatus = 'ENABLED' | 'DISABLED' | 'QUARANTINED';
 
 export type PrismaDeliveryAttemptRecord = {
   readonly id: string;
@@ -101,6 +105,36 @@ export type PrismaRealtimeEventRecord = {
   readonly payload: unknown;
 };
 
+export type PrismaWebhookEndpointRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly url: string;
+  readonly eventTypes: readonly string[];
+  readonly status: PrismaWebhookEndpointStatus;
+  readonly secretKeyId: string;
+  readonly secretPreview: string;
+  readonly createdAt: Date;
+  readonly disabledAt: Date | null;
+  readonly quarantinedAt: Date | null;
+  readonly quarantineReason: string | null;
+};
+
+export type PrismaWebhookSecretRecord = {
+  readonly id: string;
+  readonly algorithm: string;
+  readonly ciphertext: string;
+  readonly iv: string;
+  readonly authTag: string;
+};
+
+export type PrismaWebhookReplayDeliveryRecord = {
+  readonly webhookEndpointId: string;
+  readonly deliveryId: string;
+  readonly rememberedAt: Date;
+  readonly expiresAt: Date;
+};
+
 const deliveryChannels = ['in_app', 'email', 'webhook'] as const satisfies readonly DeliveryChannel[];
 const resourceTypes = ['summary', 'digest', 'scan', 'feed'] as const satisfies readonly DeliveryAttemptProps['resourceType'][];
 const realtimeResourceTypes = [
@@ -159,6 +193,18 @@ const digestScheduleStatusToPrismaMap: Record<DigestScheduleStatus, PrismaDigest
 const digestScheduleStatusFromPrismaMap: Record<PrismaDigestScheduleStatus, DigestScheduleStatus> = {
   ENABLED: 'enabled',
   DISABLED: 'disabled',
+};
+
+const webhookEndpointStatusToPrismaMap: Record<WebhookEndpointStatus, PrismaWebhookEndpointStatus> = {
+  enabled: 'ENABLED',
+  disabled: 'DISABLED',
+  quarantined: 'QUARANTINED',
+};
+
+const webhookEndpointStatusFromPrismaMap: Record<PrismaWebhookEndpointStatus, WebhookEndpointStatus> = {
+  ENABLED: 'enabled',
+  DISABLED: 'disabled',
+  QUARANTINED: 'quarantined',
 };
 
 export const deliveryAttemptFromPrisma = (record: PrismaDeliveryAttemptRecord): DeliveryAttempt =>
@@ -247,6 +293,25 @@ export const realtimeEventFromPrisma = (record: PrismaRealtimeEventRecord): Real
     payload: realtimePayloadFromPrisma(record.payload),
   } satisfies RealtimeEventProps);
 
+export const webhookEndpointFromPrisma = (record: PrismaWebhookEndpointRecord): WebhookEndpoint =>
+  WebhookEndpoint.rehydrate({
+    id: record.id,
+    tenantId: tenantId(record.tenantId),
+    workspaceId: workspaceId(record.workspaceId),
+    url: record.url,
+    eventTypes: record.eventTypes,
+    status: webhookEndpointStatusFromPrisma(record.status),
+    secretKeyId: record.secretKeyId,
+    secretPreview: record.secretPreview,
+    createdAt: record.createdAt,
+    disabledAt: record.disabledAt ?? undefined,
+    quarantinedAt: record.quarantinedAt ?? undefined,
+    quarantineReason: record.quarantineReason ?? undefined,
+  } satisfies WebhookEndpointProps);
+
+export const webhookEndpointStatusToPrisma = (status: WebhookEndpointStatus): PrismaWebhookEndpointStatus =>
+  webhookEndpointStatusToPrismaMap[status];
+
 const deliveryAttemptStateFromPrisma = (state: PrismaDeliveryAttemptState): DeliveryAttemptState => {
   const mapped = deliveryAttemptStateFromPrismaMap[state];
 
@@ -272,6 +337,16 @@ const digestScheduleStatusFromPrisma = (status: PrismaDigestScheduleStatus): Dig
 
   if (mapped === undefined) {
     throw new Error(`Unknown digest schedule status from Prisma: ${status}`);
+  }
+
+  return mapped;
+};
+
+const webhookEndpointStatusFromPrisma = (status: PrismaWebhookEndpointStatus): WebhookEndpointStatus => {
+  const mapped = webhookEndpointStatusFromPrismaMap[status];
+
+  if (mapped === undefined) {
+    throw new Error(`Unknown webhook endpoint status from Prisma: ${status}`);
   }
 
   return mapped;

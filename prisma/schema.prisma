@@ -73,6 +73,12 @@ enum DigestScheduleStatus {
   DISABLED
 }
 
+enum WebhookEndpointStatus {
+  ENABLED
+  DISABLED
+  QUARANTINED
+}
+
 enum UsageKind {
   SCAN
   AI_SUMMARY
@@ -555,6 +561,48 @@ model RealtimeEvent {
   @@index([tenantId, workspaceId, channel, sequence])
   @@index([tenantId, workspaceId, occurredAt])
   @@map("realtime_events")
+}
+
+model WebhookEndpoint {
+  id               String                @id @db.Uuid
+  tenantId         String                @map("tenant_id") @db.Uuid
+  workspaceId      String                @map("workspace_id") @db.Uuid
+  url              String
+  eventTypes       String[]              @map("event_types")
+  status           WebhookEndpointStatus @default(ENABLED)
+  secretKeyId      String                @map("secret_key_id")
+  secretPreview    String                @map("secret_preview")
+  createdAt        DateTime              @map("created_at") @db.Timestamptz(6)
+  disabledAt       DateTime?             @map("disabled_at") @db.Timestamptz(6)
+  quarantinedAt    DateTime?             @map("quarantined_at") @db.Timestamptz(6)
+  quarantineReason String?               @map("quarantine_reason")
+  updatedAt        DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, status, createdAt])
+  @@map("webhook_endpoints")
+}
+
+model WebhookSecret {
+  id         String   @id
+  algorithm  String
+  ciphertext String
+  iv         String
+  authTag    String   @map("auth_tag")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("webhook_secrets")
+}
+
+model WebhookReplayDelivery {
+  webhookEndpointId String   @map("webhook_endpoint_id") @db.Uuid
+  deliveryId        String   @map("delivery_id")
+  rememberedAt      DateTime @map("remembered_at") @db.Timestamptz(6)
+  expiresAt         DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@id([webhookEndpointId, deliveryId])
+  @@index([expiresAt])
+  @@map("webhook_replay_deliveries")
 }
 
 model UsageRecord {

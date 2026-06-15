@@ -87,6 +87,20 @@ Reference:
 
 - RFC 9421 HTTP Message Signatures: https://www.ietf.org/rfc/rfc9421.html
 
+## MVP Persistence
+
+Webhook delivery state is behind ports:
+
+- `WebhookEndpointRepositoryPort` stores endpoint metadata and status.
+- `WebhookSecretVaultPort` stores signing secrets.
+- `WebhookReplayStorePort` stores delivery ids inside the replay tolerance window.
+
+MVP runtime supports in-memory adapters for deterministic local smoke and Prisma adapters when `DELIVERY_PERSISTENCE=prisma`.
+
+Prisma webhook secrets must be encrypted with AES-256-GCM using `DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY`, a base64/base64url encoded 32-byte key. Do not store webhook signing secrets as plaintext, and do not log the returned one-time signing secret after endpoint creation.
+
+Replay protection uses `(webhookEndpointId, deliveryId)` uniqueness. Duplicate active delivery ids return `replay_detected`; expired ids may be remembered again.
+
 ## WebSub
 
 Do not expose raw internal Kafka streams to customers.
@@ -105,4 +119,3 @@ Reference:
 4. Webhooks are signed, async, retried, bounded and SSRF-protected.
 5. Webhook users need replay APIs.
 6. Do not expose internal Kafka directly to customers.
-

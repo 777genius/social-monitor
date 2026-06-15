@@ -24,6 +24,9 @@ export class PrismaDeliveryConnection implements PrismaDeliveryClient {
   readonly digest: PrismaDeliveryClient['digest'];
   readonly digestSchedule: PrismaDeliveryClient['digestSchedule'];
   readonly realtimeEvent: PrismaDeliveryClient['realtimeEvent'];
+  readonly webhookEndpoint: PrismaDeliveryClient['webhookEndpoint'];
+  readonly webhookSecret: PrismaDeliveryClient['webhookSecret'];
+  readonly webhookReplayDelivery: PrismaDeliveryClient['webhookReplayDelivery'];
 
   private readonly pool: Pool;
   private readonly client: PrismaDeliveryRuntimeClient;
@@ -41,6 +44,9 @@ export class PrismaDeliveryConnection implements PrismaDeliveryClient {
     this.digest = this.client.digest;
     this.digestSchedule = this.client.digestSchedule;
     this.realtimeEvent = this.client.realtimeEvent;
+    this.webhookEndpoint = this.client.webhookEndpoint;
+    this.webhookSecret = this.client.webhookSecret;
+    this.webhookReplayDelivery = this.client.webhookReplayDelivery;
   }
 
   async close(): Promise<void> {
