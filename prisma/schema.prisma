@@ -535,6 +535,28 @@ model DigestSchedule {
   @@map("digest_schedules")
 }
 
+model RealtimeEvent {
+  id              String   @id @db.Uuid
+  protocolVersion Int      @map("protocol_version")
+  eventType       String   @map("event_type")
+  tenantId        String   @map("tenant_id") @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  channel         String
+  resourceType    String   @map("resource_type")
+  resourceId      String   @map("resource_id")
+  sequence        Int
+  replayCursor    String   @map("replay_cursor")
+  occurredAt      DateTime @map("occurred_at") @db.Timestamptz(6)
+  correlationId   String   @map("correlation_id")
+  payload         Json
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, channel, sequence])
+  @@index([tenantId, workspaceId, channel, sequence])
+  @@index([tenantId, workspaceId, occurredAt])
+  @@map("realtime_events")
+}
+
 model UsageRecord {
   id          String    @id @db.Uuid
   tenantId    String    @map("tenant_id") @db.Uuid

@@ -47,6 +47,9 @@ Verified guarantees:
 - unauthorized REST replay without workspace role is covered by `test/e2e/realtime-events.list.e2e-spec.ts`;
 - realtime replay cursors use absolute `afterSequence`, not retained-array offsets;
 - stale cursors older than the retained replay window return `resyncRequired: true` instead of partial event loss;
+- `DELIVERY_PERSISTENCE=prisma` can persist realtime replay events through `PrismaRealtimeEventRepository`;
+- Prisma realtime replay protects `(tenantId, workspaceId, channel, sequence)` with a unique constraint and use-case retry on sequence conflicts;
+- delivery Prisma smoke covers record, list, caught-up cursor and invalid cursor behavior for realtime events;
 - current REST snapshot without cursor remains available from the retained window;
 - caught-up replay cursor returns no events and does not force resync;
 - duplicate delivery queue commands reuse the same delivery attempt through idempotency key;

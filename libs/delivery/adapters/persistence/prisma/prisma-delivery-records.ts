@@ -1,4 +1,4 @@
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { correlationId, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import {
   Digest,
@@ -11,6 +11,9 @@ import {
   type DeliveryAttemptProps,
   type DeliveryAttemptState,
   type DeliveryChannel,
+  RealtimeEvent,
+  type RealtimeEventProps,
+  type RealtimeResourceType,
 } from '../../../domain';
 
 export type PrismaDeliveryAttemptState =
@@ -82,8 +85,31 @@ export type PrismaDigestScheduleRecord = {
   readonly status: PrismaDigestScheduleStatus;
 };
 
+export type PrismaRealtimeEventRecord = {
+  readonly id: string;
+  readonly protocolVersion: number;
+  readonly eventType: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly channel: string;
+  readonly resourceType: string;
+  readonly resourceId: string;
+  readonly sequence: number;
+  readonly replayCursor: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+  readonly payload: unknown;
+};
+
 const deliveryChannels = ['in_app', 'email', 'webhook'] as const satisfies readonly DeliveryChannel[];
 const resourceTypes = ['summary', 'digest', 'scan', 'feed'] as const satisfies readonly DeliveryAttemptProps['resourceType'][];
+const realtimeResourceTypes = [
+  'workspace',
+  'topic',
+  'source_binding',
+  'summary',
+  'scan',
+] as const satisfies readonly RealtimeResourceType[];
 const digestProvenanceResourceTypes = ['summary', 'feed_item'] as const satisfies readonly DigestProvenanceItem['resourceType'][];
 const digestProvenanceReasons = [
   'within_window',
@@ -204,6 +230,23 @@ export const digestScheduleFromPrisma = (record: PrismaDigestScheduleRecord): Di
 export const digestScheduleStatusToPrisma = (status: DigestScheduleStatus): PrismaDigestScheduleStatus =>
   digestScheduleStatusToPrismaMap[status];
 
+export const realtimeEventFromPrisma = (record: PrismaRealtimeEventRecord): RealtimeEvent =>
+  RealtimeEvent.rehydrate({
+    id: record.id,
+    protocolVersion: realtimeProtocolVersionFromPrisma(record.protocolVersion),
+    eventType: record.eventType,
+    tenantId: tenantId(record.tenantId),
+    workspaceId: workspaceId(record.workspaceId),
+    channel: record.channel,
+    resourceType: realtimeResourceTypeFromPrisma(record.resourceType),
+    resourceId: record.resourceId,
+    sequence: record.sequence,
+    replayCursor: record.replayCursor,
+    occurredAt: record.occurredAt,
+    correlationId: correlationId(record.correlationId),
+    payload: realtimePayloadFromPrisma(record.payload),
+  } satisfies RealtimeEventProps);
+
 const deliveryAttemptStateFromPrisma = (state: PrismaDeliveryAttemptState): DeliveryAttemptState => {
   const mapped = deliveryAttemptStateFromPrismaMap[state];
 
@@ -248,6 +291,30 @@ const resourceTypeFromPrisma = (resourceType: string): DeliveryAttemptProps['res
   }
 
   throw new Error(`Unknown delivery resource type from Prisma: ${resourceType}`);
+};
+
+const realtimeProtocolVersionFromPrisma = (version: number): 1 => {
+  if (version === 1) {
+    return 1;
+  }
+
+  throw new Error(`Unknown realtime protocol version from Prisma: ${version}`);
+};
+
+const realtimeResourceTypeFromPrisma = (resourceType: string): RealtimeResourceType => {
+  if ((realtimeResourceTypes as readonly string[]).includes(resourceType)) {
+    return resourceType as RealtimeResourceType;
+  }
+
+  throw new Error(`Unknown realtime resource type from Prisma: ${resourceType}`);
+};
+
+const realtimePayloadFromPrisma = (value: unknown): Readonly<Record<string, unknown>> => {
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Readonly<Record<string, unknown>>;
+  }
+
+  throw new Error('Realtime payload from Prisma must be an object');
 };
 
 const digestProvenanceFromPrisma = (value: unknown): readonly DigestProvenanceItem[] => {

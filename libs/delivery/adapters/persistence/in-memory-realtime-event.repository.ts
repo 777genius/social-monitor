@@ -1,4 +1,4 @@
-import type { RealtimeEvent } from '../../domain';
+import { parseRealtimeReplayCursor, encodeRealtimeReplayCursor, type RealtimeEvent } from '../../domain';
 import type {
   ListRealtimeEventsQuery,
   ListRealtimeEventsResult,
@@ -33,7 +33,7 @@ export class InMemoryRealtimeEventRepository implements RealtimeEventRepositoryP
 
   async list(query: ListRealtimeEventsQuery): Promise<ListRealtimeEventsResult> {
     const state = this.statesByScope.get(scopeKey(query)) ?? { events: [], lastSequence: 0 };
-    const cursor = parseCursor(query.cursor);
+    const cursor = parseRealtimeReplayCursor(query.cursor);
 
     if (cursor === null || cursor.afterSequence > state.lastSequence) {
       return {
@@ -58,7 +58,7 @@ export class InMemoryRealtimeEventRepository implements RealtimeEventRepositoryP
     return {
       events: selected,
       nextCursor: lastSelectedSequence !== undefined && lastSelectedSequence < state.lastSequence
-        ? encodeCursor(lastSelectedSequence)
+        ? encodeRealtimeReplayCursor(lastSelectedSequence)
         : undefined,
       resyncRequired: false,
     };
@@ -67,29 +67,3 @@ export class InMemoryRealtimeEventRepository implements RealtimeEventRepositoryP
 
 const scopeKey = (params: { readonly tenantId: string; readonly workspaceId: string; readonly channel: string }): string =>
   `${params.tenantId}:${params.workspaceId}:${params.channel}`;
-
-const encodeCursor = (afterSequence: number): string => Buffer
-  .from(JSON.stringify({ afterSequence }))
-  .toString('base64url');
-
-const parseCursor = (cursor: string | undefined): { readonly afterSequence: number } | null => {
-  if (cursor === undefined) {
-    return { afterSequence: 0 };
-  }
-
-  try {
-    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
-      afterSequence?: unknown;
-      offset?: unknown;
-    };
-    const afterSequence = parsed.afterSequence ?? parsed.offset;
-
-    if (typeof afterSequence === 'number' && Number.isInteger(afterSequence) && afterSequence >= 0) {
-      return { afterSequence };
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-};

@@ -1,4 +1,11 @@
-import { FixedClock, type IdGenerator, isOk, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import {
+  correlationId,
+  FixedClock,
+  type IdGenerator,
+  isOk,
+  tenantId,
+  workspaceId,
+} from '@social-monitor/shared-kernel';
 
 import { PrismaDeliveryAttemptRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-attempt.repository';
 import type {
@@ -6,19 +13,24 @@ import type {
   PrismaDeliveryClient,
   PrismaDigestScheduleWriteData,
   PrismaDigestWriteData,
+  PrismaRealtimeEventWriteData,
 } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-client';
 import { PrismaDigestScheduleRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-digest-schedule.repository';
 import { PrismaDigestRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-digest.repository';
+import { PrismaRealtimeEventRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-realtime-event.repository';
 import type {
   PrismaDeliveryAttemptRecord,
   PrismaDigestRecord,
   PrismaDigestScheduleRecord,
+  PrismaRealtimeEventRecord,
 } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-records';
 import { Digest, DigestSchedule } from '../libs/delivery/domain';
 import { GetDeliveryAttemptUseCase } from '../libs/delivery/features/get-delivery-attempt/get-delivery-attempt.use-case';
 import { GetDigestUseCase } from '../libs/delivery/features/get-digest/get-digest.use-case';
+import { ListRealtimeEventsUseCase } from '../libs/delivery/features/list-realtime-events/list-realtime-events.use-case';
 import { QueueDeliveryAttemptUseCase } from '../libs/delivery/features/queue-delivery-attempt/queue-delivery-attempt.use-case';
 import { RecordDeliveryAttemptStateUseCase } from '../libs/delivery/features/record-delivery-attempt-state/record-delivery-attempt-state.use-case';
+import { RecordRealtimeEventUseCase } from '../libs/delivery/features/record-realtime-event/record-realtime-event.use-case';
 import { resolveDeliveryPersistenceMode } from '../libs/delivery/interfaces/rest/delivery-provider-tokens';
 
 const clock = new FixedClock(new Date('2026-06-07T00:00:10.000Z'));
@@ -42,14 +54,17 @@ async function main(): Promise<void> {
   const prisma = new FakePrismaDeliveryClient();
   const attempts = new PrismaDeliveryAttemptRepository(prisma);
   const digests = new PrismaDigestRepository(prisma);
+  const realtimeEvents = new PrismaRealtimeEventRepository(prisma);
   const schedules = new PrismaDigestScheduleRepository(prisma);
   const ids = new SequenceIdGenerator([
     '00000000-0000-7000-8000-000000000703',
     '00000000-0000-7000-8000-000000000704',
+    '00000000-0000-7000-8000-000000000707',
   ]);
   const queue = new QueueDeliveryAttemptUseCase(attempts, ids, clock);
   const getAttempt = new GetDeliveryAttemptUseCase(attempts);
   const recordState = new RecordDeliveryAttemptStateUseCase(attempts, clock);
+  const recordRealtime = new RecordRealtimeEventUseCase(realtimeEvents, ids, clock);
 
   const queued = await queue.execute({
     tenantId: tenant,
@@ -193,6 +208,55 @@ async function main(): Promise<void> {
   });
   assert(noLongerDue.length === 0, 'digest schedule nextRunAt update must persist');
 
+  const recordedRealtime = await recordRealtime.execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    channel: 'topic:topic-1:summary-status',
+    eventType: 'summary.status.changed.v1',
+    resourceType: 'summary',
+    resourceId: 'summary-1',
+    correlationId: correlationId('correlation-realtime-1'),
+    payload: {
+      topicId: 'topic-1',
+      summaryId: 'summary-1',
+      status: 'completed',
+    },
+  });
+  assert(isOk(recordedRealtime), 'realtime event record must persist through Prisma repository');
+  assert(recordedRealtime.value.sequence === 1, 'first realtime event sequence must start at one');
+
+  const listedRealtime = await new ListRealtimeEventsUseCase(realtimeEvents).execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    channel: 'topic:topic-1:summary-status',
+    limit: 10,
+  });
+  assert(isOk(listedRealtime), 'realtime event list use case must read through Prisma repository');
+  assert(listedRealtime.value.events.length === 1, 'realtime event list must return persisted event');
+  assert(
+    listedRealtime.value.events[0]?.payload.summaryId === 'summary-1',
+    'realtime event payload must hydrate from Prisma JSON',
+  );
+
+  const caughtUpRealtime = await realtimeEvents.list({
+    tenantId: tenant,
+    workspaceId: workspace,
+    channel: 'topic:topic-1:summary-status',
+    limit: 10,
+    cursor: recordedRealtime.value.replayCursor,
+  });
+  assert(caughtUpRealtime.events.length === 0, 'caught-up realtime replay cursor must return no events');
+  assert(!caughtUpRealtime.resyncRequired, 'caught-up realtime replay cursor must not require resync');
+
+  const invalidRealtimeCursor = await realtimeEvents.list({
+    tenantId: tenant,
+    workspaceId: workspace,
+    channel: 'topic:topic-1:summary-status',
+    limit: 10,
+    cursor: 'not-a-valid-cursor',
+  });
+  assert(invalidRealtimeCursor.resyncRequired, 'invalid realtime replay cursor must require resync');
+
   console.log('Delivery Prisma persistence smoke OK');
 }
 
@@ -217,6 +281,7 @@ class SequenceIdGenerator implements IdGenerator {
 class FakePrismaDeliveryClient implements PrismaDeliveryClient {
   private readonly attempts = new Map<string, PrismaDeliveryAttemptRecord>();
   private readonly digests = new Map<string, PrismaDigestRecord>();
+  private readonly realtimeEvents = new Map<string, PrismaRealtimeEventRecord>();
   private readonly schedules = new Map<string, PrismaDigestScheduleRecord>();
 
   readonly deliveryAttempt: PrismaDeliveryClient['deliveryAttempt'] = {
@@ -275,6 +340,32 @@ class FakePrismaDeliveryClient implements PrismaDeliveryClient {
         .sort(compareDigestScheduleRecords)
         .slice(0, args.take),
   };
+
+  readonly realtimeEvent: PrismaDeliveryClient['realtimeEvent'] = {
+    create: async (args) => {
+      if ([...this.realtimeEvents.values()].some((record) => isRealtimeEventUniqueConflict(record, args.data))) {
+        throw Object.assign(new Error('Unique realtime event constraint violation'), { code: 'P2002' });
+      }
+
+      const record: PrismaRealtimeEventRecord = {
+        id: args.data.id,
+        ...normalizeRealtimeEventWriteData(args.data),
+      };
+      this.realtimeEvents.set(record.id, record);
+
+      return record;
+    },
+    findFirst: async (args) =>
+      [...this.realtimeEvents.values()]
+        .filter((record) => matchesRealtimeEventWhere(record, args.where))
+        .sort(compareRealtimeEventRecordsDesc)
+        .at(0) ?? null,
+    findMany: async (args) =>
+      [...this.realtimeEvents.values()]
+        .filter((record) => matchesRealtimeEventWhere(record, args.where))
+        .sort(compareRealtimeEventRecordsAsc)
+        .slice(0, args.take),
+  };
 }
 
 const normalizeWriteData = (data: PrismaDeliveryAttemptWriteData): Omit<PrismaDeliveryAttemptRecord, 'id'> => ({
@@ -329,6 +420,23 @@ const normalizeDigestScheduleWriteData = (
   nextRunAt: data.nextRunAt,
   createdAt: data.createdAt,
   status: data.status,
+});
+
+const normalizeRealtimeEventWriteData = (
+  data: PrismaRealtimeEventWriteData,
+): Omit<PrismaRealtimeEventRecord, 'id'> => ({
+  protocolVersion: data.protocolVersion,
+  eventType: data.eventType,
+  tenantId: data.tenantId,
+  workspaceId: data.workspaceId,
+  channel: data.channel,
+  resourceType: data.resourceType,
+  resourceId: data.resourceId,
+  sequence: data.sequence,
+  replayCursor: data.replayCursor,
+  occurredAt: data.occurredAt,
+  correlationId: data.correlationId,
+  payload: data.payload,
 });
 
 const matchesDeliveryAttemptWhere = (
@@ -403,6 +511,58 @@ const compareDigestScheduleRecords = (
   }
 
   return left.id.localeCompare(right.id);
+};
+
+const matchesRealtimeEventWhere = (
+  record: PrismaRealtimeEventRecord,
+  where: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly channel: string;
+    readonly sequence?: { readonly gt: number };
+  },
+): boolean =>
+  record.tenantId === where.tenantId &&
+  record.workspaceId === where.workspaceId &&
+  record.channel === where.channel &&
+  (where.sequence === undefined || record.sequence > where.sequence.gt);
+
+const isRealtimeEventUniqueConflict = (
+  existing: PrismaRealtimeEventRecord,
+  incoming: PrismaRealtimeEventWriteData & { readonly id: string },
+): boolean =>
+  existing.id === incoming.id ||
+  (
+    existing.tenantId === incoming.tenantId &&
+    existing.workspaceId === incoming.workspaceId &&
+    existing.channel === incoming.channel &&
+    existing.sequence === incoming.sequence
+  );
+
+const compareRealtimeEventRecordsAsc = (
+  left: PrismaRealtimeEventRecord,
+  right: PrismaRealtimeEventRecord,
+): number => {
+  const sequenceDiff = left.sequence - right.sequence;
+
+  if (sequenceDiff !== 0) {
+    return sequenceDiff;
+  }
+
+  return left.id.localeCompare(right.id);
+};
+
+const compareRealtimeEventRecordsDesc = (
+  left: PrismaRealtimeEventRecord,
+  right: PrismaRealtimeEventRecord,
+): number => {
+  const sequenceDiff = right.sequence - left.sequence;
+
+  if (sequenceDiff !== 0) {
+    return sequenceDiff;
+  }
+
+  return right.id.localeCompare(left.id);
 };
 
 function assert(condition: unknown, message: string): asserts condition {

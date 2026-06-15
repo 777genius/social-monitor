@@ -85,6 +85,17 @@ requires_full_refresh = true
 
 Client then reloads REST read models.
 
+## Durable Replay Storage
+
+Realtime replay events are stored behind `RealtimeEventRepositoryPort`.
+
+MVP runtime supports two adapters:
+
+- `InMemoryRealtimeEventRepository` for deterministic local smoke and single-process demos.
+- `PrismaRealtimeEventRepository` when `DELIVERY_PERSISTENCE=prisma`, with unique `(tenantId, workspaceId, channel, sequence)` protection.
+
+`RecordRealtimeEventUseCase` retries short sequence races reported by persistence. If a cursor is invalid or points beyond the latest persisted sequence, REST replay returns `resyncRequired=true` so the client refreshes REST read models instead of accepting a partial stream.
+
 ## Backpressure
 
 If client is slow:

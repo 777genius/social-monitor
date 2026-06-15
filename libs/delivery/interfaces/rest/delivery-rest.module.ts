@@ -17,6 +17,7 @@ import type { PrismaDeliveryClient } from '../../adapters/persistence/prisma/pri
 import { PrismaDeliveryConnection } from '../../adapters/persistence/prisma/prisma-delivery-connection';
 import { PrismaDigestScheduleRepository } from '../../adapters/persistence/prisma/prisma-digest-schedule.repository';
 import { PrismaDigestRepository } from '../../adapters/persistence/prisma/prisma-digest.repository';
+import { PrismaRealtimeEventRepository } from '../../adapters/persistence/prisma/prisma-realtime-event.repository';
 import { InMemoryNotificationPreferenceReader } from '../../adapters/preferences/in-memory-notification-preference.reader';
 import { InMemoryWebhookReplayStore } from '../../adapters/replay/in-memory-webhook-replay.store';
 import { InMemoryWebhookSecretVault } from '../../adapters/secrets/in-memory-webhook-secret.vault';
@@ -47,6 +48,7 @@ import {
   DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
   DELIVERY_PERSISTENCE_MODE,
   DELIVERY_PRISMA_CLIENT,
+  DELIVERY_REALTIME_EVENT_REPOSITORY,
   resolveDeliveryPersistenceMode,
   type DeliveryPersistenceMode,
 } from './delivery-provider-tokens';
@@ -58,6 +60,7 @@ import type {
   DeliveryProviderPort,
   DigestRepositoryPort,
   DigestScheduleRepositoryPort,
+  RealtimeEventRepositoryPort,
 } from '../../ports';
 
 export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
@@ -130,6 +133,18 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
           ? new PrismaDigestScheduleRepository(requirePrismaDeliveryClient(prisma))
           : inMemorySchedules,
       inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryDigestScheduleRepository],
+    },
+    {
+      provide: DELIVERY_REALTIME_EVENT_REPOSITORY,
+      useFactory: (
+        mode: DeliveryPersistenceMode,
+        prisma: PrismaDeliveryClient | null,
+        inMemoryEvents: InMemoryRealtimeEventRepository,
+      ): RealtimeEventRepositoryPort =>
+        mode === 'prisma'
+          ? new PrismaRealtimeEventRepository(requirePrismaDeliveryClient(prisma))
+          : inMemoryEvents,
+      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryRealtimeEventRepository],
     },
     {
       provide: QueueDeliveryAttemptUseCase,
@@ -249,14 +264,14 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     },
     {
       provide: RecordRealtimeEventUseCase,
-      useFactory: (events: InMemoryRealtimeEventRepository) =>
+      useFactory: (events: RealtimeEventRepositoryPort) =>
         new RecordRealtimeEventUseCase(events, new CryptoIdGenerator(), new SystemClock()),
-      inject: [InMemoryRealtimeEventRepository],
+      inject: [DELIVERY_REALTIME_EVENT_REPOSITORY],
     },
     {
       provide: ListRealtimeEventsUseCase,
-      useFactory: (events: InMemoryRealtimeEventRepository) => new ListRealtimeEventsUseCase(events),
-      inject: [InMemoryRealtimeEventRepository],
+      useFactory: (events: RealtimeEventRepositoryPort) => new ListRealtimeEventsUseCase(events),
+      inject: [DELIVERY_REALTIME_EVENT_REPOSITORY],
     },
     {
       provide: ProjectSummaryReadyEventUseCase,
@@ -298,6 +313,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     DELIVERY_ATTEMPT_REPOSITORY,
     DELIVERY_DIGEST_REPOSITORY,
     DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
+    DELIVERY_REALTIME_EVENT_REPOSITORY,
     DELIVERY_PROVIDERS,
   ],
 })

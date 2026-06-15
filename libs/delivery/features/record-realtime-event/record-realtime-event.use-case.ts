@@ -1,11 +1,12 @@
 import { type Clock, DomainError, type IdGenerator, err, ok, type Result } from '@social-monitor/shared-kernel';
 
-import { RealtimeEvent } from '../../domain';
-import type { RealtimeEventRepositoryPort } from '../../ports';
+import { encodeRealtimeReplayCursor, RealtimeEvent } from '../../domain';
+import { RealtimeEventSequenceConflictError, type RealtimeEventRepositoryPort } from '../../ports';
 import type { RecordRealtimeEventCommand } from './record-realtime-event.command';
 import type { RecordRealtimeEventResult } from './record-realtime-event.result';
 
 type RecordRealtimeEventFailure = DomainError | Error;
+const MAX_SEQUENCE_RETRIES = 3;
 
 export class RecordRealtimeEventUseCase {
   constructor(
@@ -21,30 +22,43 @@ export class RecordRealtimeEventUseCase {
       return err(new DomainError('validation.failed', 'Realtime channel must be non-empty'));
     }
 
-    const sequence = await this.realtimeEvents.nextSequence(command);
-    const replayCursor = Buffer.from(JSON.stringify({ afterSequence: sequence })).toString('base64url');
-    const event = RealtimeEvent.create({
-      id: this.ids.generate(),
-      protocolVersion: 1,
-      eventType: command.eventType,
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      channel: command.channel,
-      resourceType: command.resourceType,
-      resourceId: command.resourceId,
-      sequence,
-      replayCursor,
-      occurredAt: this.clock.now(),
-      correlationId: command.correlationId,
-      payload: command.payload,
-    });
-    await this.realtimeEvents.append(event);
-    const snapshot = event.toSnapshot();
+    for (let attempt = 1; attempt <= MAX_SEQUENCE_RETRIES; attempt += 1) {
+      const sequence = await this.realtimeEvents.nextSequence(command);
+      const event = RealtimeEvent.create({
+        id: this.ids.generate(),
+        protocolVersion: 1,
+        eventType: command.eventType,
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        channel: command.channel,
+        resourceType: command.resourceType,
+        resourceId: command.resourceId,
+        sequence,
+        replayCursor: encodeRealtimeReplayCursor(sequence),
+        occurredAt: this.clock.now(),
+        correlationId: command.correlationId,
+        payload: command.payload,
+      });
 
-    return ok({
-      eventId: snapshot.id,
-      sequence: snapshot.sequence,
-      replayCursor: snapshot.replayCursor,
-    });
+      try {
+        await this.realtimeEvents.append(event);
+      } catch (error) {
+        if (error instanceof RealtimeEventSequenceConflictError && attempt < MAX_SEQUENCE_RETRIES) {
+          continue;
+        }
+
+        return err(error instanceof Error ? error : new Error('Realtime event append failed'));
+      }
+
+      const snapshot = event.toSnapshot();
+
+      return ok({
+        eventId: snapshot.id,
+        sequence: snapshot.sequence,
+        replayCursor: snapshot.replayCursor,
+      });
+    }
+
+    return err(new DomainError('operation.conflict', 'Realtime event sequence conflict was not resolved'));
   }
 }

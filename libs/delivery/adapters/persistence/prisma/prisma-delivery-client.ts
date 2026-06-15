@@ -5,6 +5,7 @@ import type {
   PrismaDigestRecord,
   PrismaDigestScheduleRecord,
   PrismaDigestScheduleStatus,
+  PrismaRealtimeEventRecord,
 } from './prisma-delivery-records';
 
 export type PrismaDeliveryAttemptWriteData = {
@@ -57,6 +58,21 @@ export type PrismaDigestScheduleWriteData = {
   readonly nextRunAt: Date;
   readonly createdAt: Date;
   readonly status: PrismaDigestScheduleStatus;
+};
+
+export type PrismaRealtimeEventWriteData = {
+  readonly protocolVersion: number;
+  readonly eventType: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly channel: string;
+  readonly resourceType: string;
+  readonly resourceId: string;
+  readonly sequence: number;
+  readonly replayCursor: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+  readonly payload: unknown;
 };
 
 export type PrismaDeliveryClient = {
@@ -136,5 +152,31 @@ export type PrismaDeliveryClient = {
       ];
       readonly take: number;
     }): Promise<readonly PrismaDigestScheduleRecord[]>;
+  };
+  readonly realtimeEvent: {
+    create(args: {
+      readonly data: PrismaRealtimeEventWriteData & { readonly id: string };
+    }): Promise<PrismaRealtimeEventRecord>;
+    findFirst(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly channel: string;
+      };
+      readonly orderBy: { readonly sequence: 'desc' };
+    }): Promise<PrismaRealtimeEventRecord | null>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly channel: string;
+        readonly sequence?: { readonly gt: number };
+      };
+      readonly orderBy: readonly [
+        { readonly sequence: 'asc' },
+        { readonly id: 'asc' },
+      ];
+      readonly take: number;
+    }): Promise<readonly PrismaRealtimeEventRecord[]>;
   };
 };

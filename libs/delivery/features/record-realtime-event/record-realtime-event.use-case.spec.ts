@@ -7,7 +7,12 @@ import {
 } from '@social-monitor/shared-kernel';
 
 import type { RealtimeEvent } from '../../domain';
-import type { ListRealtimeEventsQuery, ListRealtimeEventsResult, RealtimeEventRepositoryPort } from '../../ports';
+import {
+  RealtimeEventSequenceConflictError,
+  type ListRealtimeEventsQuery,
+  type ListRealtimeEventsResult,
+  type RealtimeEventRepositoryPort,
+} from '../../ports';
 import { RecordRealtimeEventUseCase } from './record-realtime-event.use-case';
 
 class FixedIdGenerator implements IdGenerator {
@@ -24,6 +29,35 @@ class FakeRealtimeEvents implements RealtimeEventRepositoryPort {
   }
 
   async append(event: RealtimeEvent): Promise<void> {
+    this.events.push(event);
+  }
+
+  async list(_query: ListRealtimeEventsQuery): Promise<ListRealtimeEventsResult> {
+    return {
+      events: this.events,
+      nextCursor: undefined,
+      resyncRequired: false,
+    };
+  }
+}
+
+class SequenceConflictOnceRealtimeEvents implements RealtimeEventRepositoryPort {
+  readonly events: RealtimeEvent[] = [];
+  private nextSequenceCalls = 0;
+  private appendCalls = 0;
+
+  async nextSequence(): Promise<number> {
+    this.nextSequenceCalls += 1;
+    return this.nextSequenceCalls;
+  }
+
+  async append(event: RealtimeEvent): Promise<void> {
+    this.appendCalls += 1;
+
+    if (this.appendCalls === 1) {
+      throw new RealtimeEventSequenceConflictError();
+    }
+
     this.events.push(event);
   }
 
@@ -69,6 +103,36 @@ describe('RecordRealtimeEventUseCase', () => {
       occurredAt: new Date('2026-06-06T00:00:00.000Z'),
       payload: { summaryId: 'summary-1' },
     });
+  });
+
+  it('retries append when persistence reports a realtime sequence conflict', async () => {
+    const realtimeEvents = new SequenceConflictOnceRealtimeEvents();
+
+    const result = await new RecordRealtimeEventUseCase(
+      realtimeEvents,
+      new FixedIdGenerator(),
+      new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
+    ).execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      channel: 'workspace:workspace-1',
+      eventType: 'summary.ready.v1',
+      resourceType: 'summary',
+      resourceId: 'summary-1',
+      correlationId: correlationId('corr-1'),
+      payload: { summaryId: 'summary-1' },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        eventId: 'realtime-event-1',
+        sequence: 2,
+        replayCursor: Buffer.from(JSON.stringify({ afterSequence: 2 })).toString('base64url'),
+      },
+    });
+    expect(realtimeEvents.events).toHaveLength(1);
+    expect(realtimeEvents.events[0]?.toSnapshot().sequence).toBe(2);
   });
 
   it('rejects blank realtime channels before appending', async () => {

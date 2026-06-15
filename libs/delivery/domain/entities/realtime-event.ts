@@ -22,6 +22,18 @@ export class RealtimeEvent {
   private constructor(private readonly props: RealtimeEventProps) {}
 
   static create(props: RealtimeEventProps): RealtimeEvent {
+    return RealtimeEvent.fromProps(props);
+  }
+
+  static rehydrate(props: RealtimeEventProps): RealtimeEvent {
+    return RealtimeEvent.fromProps(props);
+  }
+
+  private static fromProps(props: RealtimeEventProps): RealtimeEvent {
+    if (props.protocolVersion !== 1) {
+      throw new Error('Realtime protocol version must be 1');
+    }
+
     if (props.eventType.trim().length === 0) {
       throw new Error('Realtime event type must be non-empty');
     }

@@ -25,3 +25,10 @@ export interface RealtimeEventRepositoryPort {
   append(event: RealtimeEvent): Promise<void>;
   list(query: ListRealtimeEventsQuery): Promise<ListRealtimeEventsResult>;
 }
+
+export class RealtimeEventSequenceConflictError extends Error {
+  constructor() {
+    super('Realtime event sequence already exists for channel');
+    this.name = 'RealtimeEventSequenceConflictError';
+  }
+}
