@@ -1,6 +1,7 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { FetchedSourceItem } from './source-fetcher.port';
+import type { SourceRuntimeConfig } from './source-config-reader.port';
 
 export type ProviderKey = string;
 
@@ -34,6 +35,7 @@ export type SourceProviderScanContext = {
   readonly sourceBindingId: string;
   readonly scanJobId: string;
   readonly correlationId: string;
+  readonly config?: SourceRuntimeConfig;
 };
 
 export type SourceProviderScanPlan = {

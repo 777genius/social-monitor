@@ -6,6 +6,14 @@ import { RecordScanExecutionUseCase } from '@social-monitor/monitoring/features/
 import { ScheduleDueScansUseCase } from '@social-monitor/monitoring/features/schedule-due-scans/schedule-due-scans.use-case';
 import { ScheduleDueScansCommandHandler } from '@social-monitor/monitoring/interfaces/queue/schedule-due-scans-command.handler';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
+import {
+  MONITORING_CONFIG_PROTECTOR,
+  MONITORING_SOURCE_BINDING_REPOSITORY,
+} from '@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens';
+import type {
+  SourceBindingConfigProtectorPort,
+  SourceBindingRepositoryPort,
+} from '@social-monitor/monitoring/ports';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
@@ -37,6 +45,7 @@ import type {
   FeedProjectionPort,
   ScanAttemptRepositoryPort,
   ScanCursorRepositoryPort,
+  SourceConfigReaderPort,
   ScanFailureQueuePort,
   ScanLeasePort,
   SourceItemRepositoryPort,
@@ -46,6 +55,7 @@ import {
   PrismaIngestionWorkerConnection,
   type PrismaIngestionWorkerClient,
 } from './adapters/persistence/prisma-ingestion-worker-connection';
+import { MonitoringSourceConfigReaderAdapter } from './adapters/source/monitoring-source-config-reader.adapter';
 import {
   INGESTION_FEED_PROJECTION,
   INGESTION_SCAN_ATTEMPT_REPOSITORY,
@@ -125,8 +135,19 @@ import { ScanSchedulerLoop } from './scan-scheduler-loop';
     },
     {
       provide: RegistrySourceFetcherAdapter,
-      useFactory: (registry: InMemorySourceProviderRegistry) => new RegistrySourceFetcherAdapter(registry),
-      inject: [InMemorySourceProviderRegistry],
+      useFactory: (
+        registry: InMemorySourceProviderRegistry,
+        sourceConfigReader: SourceConfigReaderPort,
+      ) => new RegistrySourceFetcherAdapter(registry, sourceConfigReader),
+      inject: [InMemorySourceProviderRegistry, MonitoringSourceConfigReaderAdapter],
+    },
+    {
+      provide: MonitoringSourceConfigReaderAdapter,
+      useFactory: (
+        sourceBindings: SourceBindingRepositoryPort,
+        configProtector: SourceBindingConfigProtectorPort,
+      ) => new MonitoringSourceConfigReaderAdapter(sourceBindings, configProtector),
+      inject: [MONITORING_SOURCE_BINDING_REPOSITORY, MONITORING_CONFIG_PROTECTOR],
     },
     {
       provide: CircuitBreakerSourceFetcherAdapter,

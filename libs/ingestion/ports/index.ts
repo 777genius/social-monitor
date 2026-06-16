@@ -4,6 +4,7 @@ export * from './scan-cursor-repository.port';
 export * from './scan-execution-reporter.port';
 export * from './scan-failure-queue.port';
 export * from './scan-lease.port';
+export * from './source-config-reader.port';
 export * from './source-fetcher.port';
 export * from './source-provider.port';
 export * from './source-provider-registry.port';

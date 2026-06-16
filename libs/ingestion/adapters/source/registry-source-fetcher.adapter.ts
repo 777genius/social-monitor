@@ -1,12 +1,17 @@
 import type {
   FetchSourceItemsCommand,
   FetchSourceItemsResult,
+  SourceConfigReaderPort,
   SourceFetcherPort,
+  SourceProviderScanContext,
   SourceProviderRegistryPort,
 } from '../../ports';
 
 export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
-  constructor(private readonly registry: SourceProviderRegistryPort) {}
+  constructor(
+    private readonly registry: SourceProviderRegistryPort,
+    private readonly sourceConfigs?: SourceConfigReaderPort,
+  ) {}
 
   async fetch(command: FetchSourceItemsCommand): Promise<FetchSourceItemsResult> {
     const provider = await this.registry.getProvider(command.providerKey);
@@ -20,13 +25,7 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
       throw new Error(validation.reason);
     }
 
-    const context = {
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      sourceBindingId: command.sourceBindingId,
-      scanJobId: command.scanJobId,
-      correlationId: command.correlationId,
-    };
+    const context = await this.buildContext(command);
     const plan = {
       ...provider.planScan(command.sourceQuery, context),
       cursor: command.cursor,
@@ -37,5 +36,24 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
       items: result.items,
       nextCursor: result.nextCursor,
     };
+  }
+
+  private async buildContext(command: FetchSourceItemsCommand): Promise<SourceProviderScanContext> {
+    const baseContext = {
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      sourceBindingId: command.sourceBindingId,
+      scanJobId: command.scanJobId,
+      correlationId: command.correlationId,
+    };
+    const config = await this.sourceConfigs?.readConfig({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      sourceBindingId: command.sourceBindingId,
+    });
+
+    return config === undefined || config === null
+      ? baseContext
+      : { ...baseContext, config };
   }
 }
