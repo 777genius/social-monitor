@@ -2,6 +2,7 @@ import type { Provider } from '@nestjs/common';
 
 import type {
   SummaryArtifactRepositoryPort,
+  SummaryEventPublisherPort,
   SummaryFeedbackRepositoryPort,
   SummaryJobQueuePort,
   SummaryJobRepositoryPort,
@@ -17,6 +18,7 @@ export const SUMMARY_JOB_QUEUE = Symbol('SUMMARY_JOB_QUEUE');
 export const SUMMARY_ARTIFACT_REPOSITORY = Symbol('SUMMARY_ARTIFACT_REPOSITORY');
 export const SUMMARY_FEEDBACK_REPOSITORY = Symbol('SUMMARY_FEEDBACK_REPOSITORY');
 export const SUMMARY_POLICY_REPOSITORY = Symbol('SUMMARY_POLICY_REPOSITORY');
+export const SUMMARY_EVENT_PUBLISHER = Symbol('SUMMARY_EVENT_PUBLISHER');
 
 export type SummaryProviderTokenMap = {
   readonly [SUMMARY_PERSISTENCE_MODE]: SummaryPersistenceMode;
@@ -26,6 +28,7 @@ export type SummaryProviderTokenMap = {
   readonly [SUMMARY_ARTIFACT_REPOSITORY]: SummaryArtifactRepositoryPort;
   readonly [SUMMARY_FEEDBACK_REPOSITORY]: SummaryFeedbackRepositoryPort;
   readonly [SUMMARY_POLICY_REPOSITORY]: SummaryPolicyRepositoryPort;
+  readonly [SUMMARY_EVENT_PUBLISHER]: SummaryEventPublisherPort;
 };
 
 export const summaryPersistenceModeProvider: Provider<SummaryPersistenceMode> = {

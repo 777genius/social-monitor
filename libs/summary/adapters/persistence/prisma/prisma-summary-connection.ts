@@ -24,6 +24,7 @@ export class PrismaSummaryConnection implements PrismaSummaryClient {
   readonly summaryArtifact: PrismaSummaryClient['summaryArtifact'];
   readonly summaryFeedback: PrismaSummaryClient['summaryFeedback'];
   readonly summaryPolicy: PrismaSummaryClient['summaryPolicy'];
+  readonly outboxEvent: PrismaSummaryClient['outboxEvent'];
 
   private readonly pool: Pool;
   private readonly client: PrismaSummaryRuntimeClient;
@@ -41,6 +42,7 @@ export class PrismaSummaryConnection implements PrismaSummaryClient {
     this.summaryArtifact = this.client.summaryArtifact;
     this.summaryFeedback = this.client.summaryFeedback;
     this.summaryPolicy = this.client.summaryPolicy;
+    this.outboxEvent = this.client.outboxEvent;
   }
 
   async close(): Promise<void> {

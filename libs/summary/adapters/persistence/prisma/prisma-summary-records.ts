@@ -97,6 +97,20 @@ export type PrismaSummaryPolicyRecord = {
   readonly updatedAt: Date;
 };
 
+export type PrismaSummaryOutboxEventRecord = {
+  readonly id: string;
+  readonly tenantId: string | null;
+  readonly workspaceId: string | null;
+  readonly eventType: string;
+  readonly schemaVersion: number;
+  readonly payload: unknown;
+  readonly status: 'PENDING' | 'PUBLISHED' | 'FAILED';
+  readonly correlationId: string;
+  readonly causationId: string | null;
+  readonly createdAt: Date;
+  readonly publishedAt: Date | null;
+};
+
 export const summaryJobFromPrisma = (record: PrismaSummaryJobRecord): SummaryJob =>
   SummaryJob.rehydrate({
     id: record.id,

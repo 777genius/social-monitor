@@ -1,8 +1,16 @@
-import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import {
+  causationId,
+  correlationId,
+  eventId,
+  FixedClock,
+  tenantId,
+  workspaceId,
+} from '@social-monitor/shared-kernel';
 
 import { SummaryArtifact, SummaryFeedback, SummaryJob, SummaryPolicy } from '../libs/summary/domain';
 import { PrismaSummaryArtifactRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-artifact.repository';
 import type { PrismaSummaryClient } from '../libs/summary/adapters/persistence/prisma/prisma-summary-client';
+import { PrismaSummaryEventPublisher } from '../libs/summary/adapters/persistence/prisma/prisma-summary-event.publisher';
 import { PrismaSummaryFeedbackRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-feedback.repository';
 import { PrismaSummaryJobRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-job.repository';
 import { PrismaSummaryPolicyRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-policy.repository';
@@ -11,6 +19,7 @@ import type {
   PrismaSummaryArtifactRecord,
   PrismaSummaryFeedbackRecord,
   PrismaSummaryJobRecord,
+  PrismaSummaryOutboxEventRecord,
   PrismaSummaryPolicyRecord,
   PrismaSummaryStatus,
 } from '../libs/summary/adapters/persistence/prisma/prisma-summary-records';
@@ -39,6 +48,7 @@ async function main(): Promise<void> {
   const summaryArtifacts = new PrismaSummaryArtifactRepository(prisma);
   const feedbackRepository = new PrismaSummaryFeedbackRepository(prisma);
   const summaryPolicies = new PrismaSummaryPolicyRepository(prisma);
+  const summaryEvents = new PrismaSummaryEventPublisher(prisma);
   const completedArtifact = makeCompletedArtifact('00000000-0000-7000-8000-000000000501');
   const noSignalArtifact = makeNoSignalArtifact('00000000-0000-7000-8000-000000000502');
 
@@ -181,6 +191,28 @@ async function main(): Promise<void> {
     'summary policy custom instructions must round-trip',
   );
 
+  await summaryEvents.publish({
+    eventId: eventId('00000000-0000-7000-8000-000000000901'),
+    eventType: 'summary.ready',
+    schemaVersion: 1,
+    occurredAt: clock.now(),
+    tenantId: tenant,
+    workspaceId: workspace,
+    correlationId: correlationId('summary-prisma-outbox-smoke'),
+    causationId: causationId('summary-job:topic:2026-06-08'),
+    payload: {
+      summaryId: completedArtifact.toSnapshot().summaryId,
+      topicId,
+      summaryJobId: completedJob.toSnapshot().id,
+    },
+  });
+
+  const outboxRecord = prisma.outboxEvents.get('00000000-0000-7000-8000-000000000901');
+  assert(outboxRecord?.eventType === 'summary.ready', 'summary event publisher must persist event type');
+  assert(outboxRecord.status === 'PENDING', 'summary outbox event must start pending');
+  assert(outboxRecord.tenantId === tenant, 'summary outbox event must preserve tenant scope');
+  assert(outboxRecord.workspaceId === workspace, 'summary outbox event must preserve workspace scope');
+
   console.log('Summary Prisma persistence smoke OK');
 }
 
@@ -292,6 +324,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
   private readonly artifacts = new Map<string, PrismaSummaryArtifactRecord>();
   private readonly feedback = new Map<string, PrismaSummaryFeedbackRecord>();
   private readonly policies = new Map<string, PrismaSummaryPolicyRecord>();
+  readonly outboxEvents = new Map<string, PrismaSummaryOutboxEventRecord>();
 
   readonly summaryJob: PrismaSummaryClient['summaryJob'] = {
     upsert: async (args) => {
@@ -446,6 +479,27 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         record.workspaceId === args.where.workspaceId &&
         record.topicId === args.where.topicId
       )) ?? null,
+  };
+
+  readonly outboxEvent: PrismaSummaryClient['outboxEvent'] = {
+    create: async (args) => {
+      const record: PrismaSummaryOutboxEventRecord = {
+        id: args.data.id,
+        tenantId: args.data.tenantId ?? null,
+        workspaceId: args.data.workspaceId ?? null,
+        eventType: args.data.eventType,
+        schemaVersion: args.data.schemaVersion,
+        payload: args.data.payload,
+        status: 'PENDING',
+        correlationId: args.data.correlationId,
+        causationId: args.data.causationId ?? null,
+        createdAt: clock.now(),
+        publishedAt: null,
+      };
+      this.outboxEvents.set(record.id, record);
+
+      return record;
+    },
   };
 
   private filterArtifacts(where: {

@@ -22,6 +22,7 @@ import { InMemorySummaryPolicyRepository } from '../../adapters/persistence/in-m
 import { PrismaSummaryConnection } from '../../adapters/persistence/prisma/prisma-summary-connection';
 import type { PrismaSummaryClient } from '../../adapters/persistence/prisma/prisma-summary-client';
 import { PrismaSummaryArtifactRepository } from '../../adapters/persistence/prisma/prisma-summary-artifact.repository';
+import { PrismaSummaryEventPublisher } from '../../adapters/persistence/prisma/prisma-summary-event.publisher';
 import { PrismaSummaryFeedbackRepository } from '../../adapters/persistence/prisma/prisma-summary-feedback.repository';
 import { PrismaSummaryJobRepository } from '../../adapters/persistence/prisma/prisma-summary-job.repository';
 import { PrismaSummaryPolicyRepository } from '../../adapters/persistence/prisma/prisma-summary-policy.repository';
@@ -38,6 +39,7 @@ import { RequestSummaryUseCase } from '../../features/request-summary/request-su
 import { UpsertSummaryPolicyUseCase } from '../../features/upsert-summary-policy/upsert-summary-policy.use-case';
 import type {
   SummaryArtifactRepositoryPort,
+  SummaryEventPublisherPort,
   SummaryFeedbackRepositoryPort,
   SummaryJobQueuePort,
   SummaryJobRepositoryPort,
@@ -48,6 +50,7 @@ import { SummaryJobController } from './summary-job.controller';
 import { SummaryPolicyController } from './summary-policy.controller';
 import {
   SUMMARY_ARTIFACT_REPOSITORY,
+  SUMMARY_EVENT_PUBLISHER,
   SUMMARY_FEEDBACK_REPOSITORY,
   SUMMARY_JOB_QUEUE,
   SUMMARY_JOB_REPOSITORY,
@@ -138,6 +141,18 @@ import { SummaryController } from './summary.controller';
     },
     InMemorySummaryEventPublisher,
     {
+      provide: SUMMARY_EVENT_PUBLISHER,
+      useFactory: (
+        mode: SummaryPersistenceMode,
+        prisma: PrismaSummaryClient | null,
+        inMemoryEvents: InMemorySummaryEventPublisher,
+      ): SummaryEventPublisherPort =>
+        mode === 'prisma'
+          ? new PrismaSummaryEventPublisher(requirePrismaSummaryClient(prisma))
+          : inMemoryEvents,
+      inject: [SUMMARY_PERSISTENCE_MODE, SUMMARY_PRISMA_CLIENT, InMemorySummaryEventPublisher],
+    },
+    {
       provide: FeedSummaryEvidenceSelector,
       useFactory: (feedItems: FeedItemReadRepositoryPort) => new FeedSummaryEvidenceSelector(feedItems),
       inject: [FEED_ITEM_READ_REPOSITORY],
@@ -186,7 +201,7 @@ import { SummaryController } from './summary.controller';
         summaryPolicies: SummaryPolicyRepositoryPort,
         evidenceSelector: FeedSummaryEvidenceSelector,
         summaryModel: MeteredSummaryModelAdapter,
-        events: InMemorySummaryEventPublisher,
+        events: SummaryEventPublisherPort,
       ) =>
         new ExecuteSummaryJobUseCase(
           summaryJobs,
@@ -204,7 +219,7 @@ import { SummaryController } from './summary.controller';
         SUMMARY_POLICY_REPOSITORY,
         FeedSummaryEvidenceSelector,
         MeteredSummaryModelAdapter,
-        InMemorySummaryEventPublisher,
+        SUMMARY_EVENT_PUBLISHER,
       ],
     },
     {
@@ -298,6 +313,7 @@ import { SummaryController } from './summary.controller';
     ListSummaryFeedbackUseCase,
     SUMMARY_ARTIFACT_REPOSITORY,
     SUMMARY_FEEDBACK_REPOSITORY,
+    SUMMARY_EVENT_PUBLISHER,
     SUMMARY_JOB_QUEUE,
     SUMMARY_JOB_REPOSITORY,
     SUMMARY_POLICY_REPOSITORY,

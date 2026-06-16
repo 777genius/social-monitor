@@ -1,6 +1,7 @@
 import type {
   PrismaSummaryArtifactRecord,
   PrismaSummaryFeedbackRecord,
+  PrismaSummaryOutboxEventRecord,
   PrismaSummaryStatus,
   PrismaSummaryJobRecord,
   PrismaSummaryPolicyRecord,
@@ -200,5 +201,19 @@ export type PrismaSummaryClient = {
         readonly topicId: string;
       };
     }): Promise<PrismaSummaryPolicyRecord | null>;
+  };
+  readonly outboxEvent: {
+    create(args: {
+      readonly data: {
+        readonly id: string;
+        readonly tenantId?: string | null;
+        readonly workspaceId?: string | null;
+        readonly eventType: string;
+        readonly schemaVersion: number;
+        readonly payload: Readonly<Record<string, unknown>>;
+        readonly correlationId: string;
+        readonly causationId?: string | null;
+      };
+    }): Promise<PrismaSummaryOutboxEventRecord>;
   };
 };
