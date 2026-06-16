@@ -19,8 +19,12 @@ export type PrismaApiKeyCredentialRecord = {
 
 const apiKeyScopes = [
   'read:topics',
+  'write:topics',
+  'write:source_bindings',
+  'write:scan_requests',
   'read:feed',
   'read:summaries',
+  'write:summaries',
   'read:delivery_status',
   'read:webhook_endpoints',
   'write:webhook_endpoints',

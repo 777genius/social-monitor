@@ -5,6 +5,10 @@ import {
   parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import {
+  ApiKeyRequestAuthorizer,
+  hasBearerAuthorizationHeader,
+} from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
@@ -21,6 +25,7 @@ export class ScanPolicyController {
     private readonly setScanPolicy: SetScanPolicyUseCase,
     private readonly getScanPolicy: GetScanPolicyUseCase,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
+    private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
@@ -36,6 +41,7 @@ export class ScanPolicyController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
     @Body() body: SetScanPolicyRequestDto,
@@ -44,16 +50,12 @@ export class ScanPolicyController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId: scope.tenantId,
-      workspaceId: scope.workspaceId,
-      action: 'scan_policies.set',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
-    });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
+    await this.authorizeScanPolicyWrite(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
 
     const result = await this.setScanPolicy.execute({
       tenantId: scope.tenantId,
@@ -102,21 +104,18 @@ export class ScanPolicyController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
   ): Promise<GetScanPolicyResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId: scope.tenantId,
-      workspaceId: scope.workspaceId,
-      action: 'scan_policies.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
-    });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
+    await this.authorizeScanPolicyRead(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
 
     const result = await this.getScanPolicy.execute({
       tenantId: scope.tenantId,
@@ -151,6 +150,64 @@ export class ScanPolicyController {
 
     if (!result.ok) {
       throw result.error;
+    }
+  }
+
+  private async authorizeScanPolicyWrite(
+    tenantId: TenantId,
+    workspaceId: WorkspaceId,
+    workspaceRoleHeader: string | undefined,
+    authorizationHeader: string | undefined,
+  ): Promise<void> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      await this.apiKeyRequestAuthorizer.authorize({
+        authorizationHeader,
+        tenantId,
+        workspaceId,
+        requiredScope: 'write:source_bindings',
+        operation: 'scan_policies.set',
+      });
+      return;
+    }
+
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId,
+      workspaceId,
+      action: 'scan_policies.set',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+  }
+
+  private async authorizeScanPolicyRead(
+    tenantId: TenantId,
+    workspaceId: WorkspaceId,
+    workspaceRoleHeader: string | undefined,
+    authorizationHeader: string | undefined,
+  ): Promise<void> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      await this.apiKeyRequestAuthorizer.authorize({
+        authorizationHeader,
+        tenantId,
+        workspaceId,
+        requiredScope: 'read:topics',
+        operation: 'scan_policies.read',
+      });
+      return;
+    }
+
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId,
+      workspaceId,
+      action: 'scan_policies.read',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
     }
   }
 }

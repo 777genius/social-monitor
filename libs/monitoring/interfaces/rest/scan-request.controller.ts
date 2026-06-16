@@ -5,6 +5,10 @@ import {
   parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import {
+  ApiKeyRequestAuthorizer,
+  hasBearerAuthorizationHeader,
+} from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { buildRequestContext } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
@@ -19,6 +23,7 @@ export class ScanRequestController {
   constructor(
     private readonly requestScan: RequestScanUseCase,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
+    private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
@@ -35,6 +40,7 @@ export class ScanRequestController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
     @Headers('x-correlation-id') correlationHeader: string | undefined,
@@ -43,16 +49,12 @@ export class ScanRequestController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId: scope.tenantId,
-      workspaceId: scope.workspaceId,
-      action: 'scan_requests.create',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
-    });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
+    await this.authorizeScanRequestWrite(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
 
     const requestContext = buildRequestContext({
       requestId,
@@ -107,6 +109,35 @@ export class ScanRequestController {
 
     if (!result.ok) {
       throw result.error;
+    }
+  }
+
+  private async authorizeScanRequestWrite(
+    tenantId: TenantId,
+    workspaceId: WorkspaceId,
+    workspaceRoleHeader: string | undefined,
+    authorizationHeader: string | undefined,
+  ): Promise<void> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      await this.apiKeyRequestAuthorizer.authorize({
+        authorizationHeader,
+        tenantId,
+        workspaceId,
+        requiredScope: 'write:scan_requests',
+        operation: 'scan_requests.create',
+      });
+      return;
+    }
+
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId,
+      workspaceId,
+      action: 'scan_requests.create',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
     }
   }
 }

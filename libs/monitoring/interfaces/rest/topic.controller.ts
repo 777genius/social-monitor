@@ -37,6 +37,7 @@ export class TopicController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
     @Body() body: CreateTopicRequestDto,
@@ -45,18 +46,13 @@ export class TopicController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId: scope.tenantId,
-      workspaceId: scope.workspaceId,
-      action: 'topics.create',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
-    });
 
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
-
-    return this.createTopic
+    return this.authorizeTopicWrite(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    ).then(() => this.createTopic
       .execute({
         tenantId: scope.tenantId,
         workspaceId: scope.workspaceId,
@@ -71,7 +67,7 @@ export class TopicController {
         }
 
         return result.value;
-      });
+      }));
   }
 
   @Get()
@@ -134,6 +130,35 @@ export class TopicController {
       tenantId,
       workspaceId,
       action: 'topics.read',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+  }
+
+  private async authorizeTopicWrite(
+    tenantId: TenantId,
+    workspaceId: WorkspaceId,
+    workspaceRoleHeader: string | undefined,
+    authorizationHeader: string | undefined,
+  ): Promise<void> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      await this.apiKeyRequestAuthorizer.authorize({
+        authorizationHeader,
+        tenantId,
+        workspaceId,
+        requiredScope: 'write:topics',
+        operation: 'topics.create',
+      });
+      return;
+    }
+
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId,
+      workspaceId,
+      action: 'topics.create',
       roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
     });
 

@@ -41,7 +41,26 @@ Fields:
 - Scope keys by action/source where possible.
 - Log key id/prefix, never full secret.
 
+## MVP Scope Set
+
+Read scopes:
+
+- `read:topics`
+- `read:feed`
+- `read:summaries`
+- `read:delivery_status`
+- `read:webhook_endpoints`
+
+Write scopes:
+
+- `write:topics`
+- `write:source_bindings`
+- `write:scan_requests`
+- `write:summaries`
+- `write:webhook_endpoints`
+
+Headless MVP clients can create topics, bind sources, set scan policy, request scans, request summaries and manage webhook endpoints with API keys. Workspace role headers remain supported for operator/admin flows.
+
 ## Best-Fact Choice
 
 API keys are security principals. They need scopes, audit, rotation and revocation from the first public API release.
-

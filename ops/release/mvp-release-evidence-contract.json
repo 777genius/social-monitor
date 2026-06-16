@@ -200,6 +200,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "api-key-write-scope",
+      "command": "npm run check:write-api-key-scope",
+      "blocksRelease": true
+    },
+    {
       "gateId": "usage-prisma-persistence",
       "command": "npm run check:usage-persistence",
       "blocksRelease": true

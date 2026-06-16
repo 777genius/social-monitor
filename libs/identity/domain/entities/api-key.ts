@@ -2,8 +2,12 @@ import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 export type ApiKeyScope =
   | 'read:topics'
+  | 'write:topics'
+  | 'write:source_bindings'
+  | 'write:scan_requests'
   | 'read:feed'
   | 'read:summaries'
+  | 'write:summaries'
   | 'read:delivery_status'
   | 'read:webhook_endpoints'
   | 'write:webhook_endpoints';

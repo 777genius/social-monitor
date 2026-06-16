@@ -5,7 +5,11 @@ import {
   parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
-import { requireTenantScope } from '@social-monitor/shared-kernel';
+import {
+  ApiKeyRequestAuthorizer,
+  hasBearerAuthorizationHeader,
+} from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
 import type { RequestSummaryResponseDto } from './request-summary.dto';
@@ -15,6 +19,7 @@ import type { RequestSummaryResponseDto } from './request-summary.dto';
 export class SummaryRequestController {
   constructor(
     private readonly requestSummary: RequestSummaryUseCase,
+    private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
@@ -30,6 +35,7 @@ export class SummaryRequestController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
   ): Promise<RequestSummaryResponseDto> {
@@ -37,16 +43,13 @@ export class SummaryRequestController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId: scope.tenantId,
-      workspaceId: scope.workspaceId,
-      action: 'summary_requests.create',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
-    });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
+    await this.authorizeSummaryWrite(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+      'summary_requests.create',
+    );
 
     const result = await this.requestSummary.execute({
       tenantId: scope.tenantId,
@@ -61,5 +64,35 @@ export class SummaryRequestController {
     }
 
     return result.value;
+  }
+
+  private async authorizeSummaryWrite(
+    tenantId: TenantId,
+    workspaceId: WorkspaceId,
+    workspaceRoleHeader: string | undefined,
+    authorizationHeader: string | undefined,
+    operation: 'summary_requests.create',
+  ): Promise<void> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      await this.apiKeyRequestAuthorizer.authorize({
+        authorizationHeader,
+        tenantId,
+        workspaceId,
+        requiredScope: 'write:summaries',
+        operation,
+      });
+      return;
+    }
+
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId,
+      workspaceId,
+      action: operation,
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
   }
 }

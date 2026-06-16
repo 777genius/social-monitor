@@ -117,6 +117,7 @@ export class SummaryController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
   ): Promise<RegenerateSummaryResponseDto> {
@@ -124,16 +125,13 @@ export class SummaryController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId: scope.tenantId,
-      workspaceId: scope.workspaceId,
-      action: 'summary_regenerations.create',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
-    });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
+    await this.authorizeSummaryWrite(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+      'summary_regenerations.create',
+    );
 
     const result = await this.regenerateSummary.execute({
       tenantId: scope.tenantId,
@@ -171,6 +169,36 @@ export class SummaryController {
       tenantId,
       workspaceId,
       action: 'summaries.read',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+  }
+
+  private async authorizeSummaryWrite(
+    tenantId: TenantId,
+    workspaceId: WorkspaceId,
+    workspaceRoleHeader: string | undefined,
+    authorizationHeader: string | undefined,
+    operation: 'summary_regenerations.create',
+  ): Promise<void> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      await this.apiKeyRequestAuthorizer.authorize({
+        authorizationHeader,
+        tenantId,
+        workspaceId,
+        requiredScope: 'write:summaries',
+        operation,
+      });
+      return;
+    }
+
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId,
+      workspaceId,
+      action: operation,
       roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
     });
 

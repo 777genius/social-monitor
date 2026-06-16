@@ -5,7 +5,12 @@ import {
   parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
-import { requireTenantScope } from '@social-monitor/shared-kernel';
+import {
+  ApiKeyRequestAuthorizer,
+  hasBearerAuthorizationHeader,
+  type ApiKeyRequestAuthorization,
+} from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { ListSummaryFeedbackUseCase } from '../../features/list-summary-feedback/list-summary-feedback.use-case';
 import { RecordSummaryFeedbackUseCase } from '../../features/record-summary-feedback/record-summary-feedback.use-case';
@@ -21,6 +26,7 @@ export class SummaryFeedbackController {
   constructor(
     private readonly listSummaryFeedback: ListSummaryFeedbackUseCase,
     private readonly recordSummaryFeedback: RecordSummaryFeedbackUseCase,
+    private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
@@ -41,6 +47,7 @@ export class SummaryFeedbackController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
   ): Promise<ListSummaryFeedbackResponseDto> {
@@ -48,16 +55,12 @@ export class SummaryFeedbackController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId: scope.tenantId,
-      workspaceId: scope.workspaceId,
-      action: 'summary_feedback.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
-    });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
+    await this.authorizeSummaryFeedbackRead(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
 
     const result = await this.listSummaryFeedback.execute({
       tenantId: scope.tenantId,
@@ -90,6 +93,7 @@ export class SummaryFeedbackController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Headers('x-actor-id') actorHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
@@ -99,23 +103,19 @@ export class SummaryFeedbackController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId: scope.tenantId,
-      workspaceId: scope.workspaceId,
-      action: 'summary_feedback.create',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
-    });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
+    const authorization = await this.authorizeSummaryFeedbackWrite(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
 
     const result = await this.recordSummaryFeedback.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       summaryId,
       idempotencyKey,
-      submittedBy: actorHeader ?? '',
+      submittedBy: actorHeader ?? authorization?.apiKeyId ?? '',
       rating: body.rating,
       category: body.category,
       comment: body.comment,
@@ -128,6 +128,66 @@ export class SummaryFeedbackController {
     }
 
     return result.value;
+  }
+
+  private async authorizeSummaryFeedbackRead(
+    tenantId: TenantId,
+    workspaceId: WorkspaceId,
+    workspaceRoleHeader: string | undefined,
+    authorizationHeader: string | undefined,
+  ): Promise<ApiKeyRequestAuthorization | undefined> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      return this.apiKeyRequestAuthorizer.authorize({
+        authorizationHeader,
+        tenantId,
+        workspaceId,
+        requiredScope: 'read:summaries',
+        operation: 'summary_feedback.read',
+      });
+    }
+
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId,
+      workspaceId,
+      action: 'summary_feedback.read',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+
+    return undefined;
+  }
+
+  private async authorizeSummaryFeedbackWrite(
+    tenantId: TenantId,
+    workspaceId: WorkspaceId,
+    workspaceRoleHeader: string | undefined,
+    authorizationHeader: string | undefined,
+  ): Promise<ApiKeyRequestAuthorization | undefined> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      return this.apiKeyRequestAuthorizer.authorize({
+        authorizationHeader,
+        tenantId,
+        workspaceId,
+        requiredScope: 'write:summaries',
+        operation: 'summary_feedback.create',
+      });
+    }
+
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId,
+      workspaceId,
+      action: 'summary_feedback.create',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+
+    return undefined;
   }
 }
 

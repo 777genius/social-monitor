@@ -5,7 +5,11 @@ import {
   parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
-import { requireTenantScope } from '@social-monitor/shared-kernel';
+import {
+  ApiKeyRequestAuthorizer,
+  hasBearerAuthorizationHeader,
+} from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { GetSummaryJobStatusUseCase } from '../../features/get-summary-job-status/get-summary-job-status.use-case';
 import type { SummaryJobStatusResponseDto } from './summary-job-status.dto';
@@ -15,6 +19,7 @@ import type { SummaryJobStatusResponseDto } from './summary-job-status.dto';
 export class SummaryJobController {
   constructor(
     private readonly getSummaryJobStatus: GetSummaryJobStatusUseCase,
+    private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
@@ -33,21 +38,18 @@ export class SummaryJobController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
   ): Promise<SummaryJobStatusResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId: scope.tenantId,
-      workspaceId: scope.workspaceId,
-      action: 'summary_jobs.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
-    });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
+    await this.authorizeSummaryJobRead(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
 
     const result = await this.getSummaryJobStatus.execute({
       tenantId: scope.tenantId,
@@ -60,5 +62,34 @@ export class SummaryJobController {
     }
 
     return result.value;
+  }
+
+  private async authorizeSummaryJobRead(
+    tenantId: TenantId,
+    workspaceId: WorkspaceId,
+    workspaceRoleHeader: string | undefined,
+    authorizationHeader: string | undefined,
+  ): Promise<void> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      await this.apiKeyRequestAuthorizer.authorize({
+        authorizationHeader,
+        tenantId,
+        workspaceId,
+        requiredScope: 'read:summaries',
+        operation: 'summary_jobs.read',
+      });
+      return;
+    }
+
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId,
+      workspaceId,
+      action: 'summary_jobs.read',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
   }
 }

@@ -46,6 +46,7 @@ const requiredGateIds = new Set([
   'summary-ready-projection-handler',
   'identity-prisma-persistence',
   'api-key-read-scope',
+  'api-key-write-scope',
   'usage-prisma-persistence',
   'delivery-prisma-persistence',
   'delivery-attempt-rest',
