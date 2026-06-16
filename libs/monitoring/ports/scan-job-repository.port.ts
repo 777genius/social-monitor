@@ -14,6 +14,11 @@ export interface ScanJobRepositoryPort {
     workspaceId: WorkspaceId;
     sourceBindingId: string;
   }): Promise<ScanJob | null>;
+  findLatestBySourceBinding(params: {
+    tenantId: TenantId;
+    workspaceId: WorkspaceId;
+    sourceBindingId: string;
+  }): Promise<ScanJob | null>;
   findByIdempotencyKey(params: {
     tenantId: TenantId;
     workspaceId: WorkspaceId;

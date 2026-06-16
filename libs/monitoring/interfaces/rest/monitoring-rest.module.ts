@@ -29,6 +29,7 @@ import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-b
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
 import { GetScanPolicyUseCase } from '../../features/get-scan-policy/get-scan-policy.use-case';
 import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
+import { GetSourceBindingHealthUseCase } from '../../features/get-source-binding-health/get-source-binding-health.use-case';
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
 import { ListTopicsUseCase } from '../../features/list-topics/list-topics.use-case';
 import { RecordScanExecutionUseCase } from '../../features/record-scan-execution/record-scan-execution.use-case';
@@ -229,6 +230,28 @@ import { TopicController } from './topic.controller';
         bindings: SourceBindingRepositoryPort,
       ) => new ListSourceBindingsUseCase(topics, bindings),
       inject: [MONITORING_TOPIC_REPOSITORY, MONITORING_SOURCE_BINDING_REPOSITORY],
+    },
+    {
+      provide: GetSourceBindingHealthUseCase,
+      useFactory: (
+        bindings: SourceBindingRepositoryPort,
+        scanPolicies: ScanPolicyRepositoryPort,
+        scanJobs: ScanJobRepositoryPort,
+        scanExecutionAttempts: ScanExecutionAttemptReadPort,
+      ) =>
+        new GetSourceBindingHealthUseCase(
+          bindings,
+          scanPolicies,
+          scanJobs,
+          scanExecutionAttempts,
+          new SystemClock(),
+        ),
+      inject: [
+        MONITORING_SOURCE_BINDING_REPOSITORY,
+        MONITORING_SCAN_POLICY_REPOSITORY,
+        MONITORING_SCAN_JOB_REPOSITORY,
+        MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
+      ],
     },
     {
       provide: SetScanPolicyUseCase,

@@ -11,6 +11,7 @@ import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
 
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
+import { GetSourceBindingHealthUseCase } from '../../features/get-source-binding-health/get-source-binding-health.use-case';
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
 import { BindSourceRequestDto, normalizeSourceBindingConfig, type BindSourceResponseDto } from './bind-source.dto';
 import type { ListSourceBindingsResponseDto } from './list-source-bindings.dto';
@@ -18,6 +19,7 @@ import {
   ChangeSourceBindingStatusRequestDto,
   type ChangeSourceBindingStatusResponseDto,
 } from './source-binding-status.dto';
+import type { SourceBindingHealthResponseDto } from './source-binding-health.dto';
 
 @ApiTags('source-bindings')
 @Controller('topics/:topicId/source-bindings')
@@ -26,6 +28,7 @@ export class SourceBindingController {
     private readonly bindSource: BindSourceUseCase,
     private readonly changeSourceBindingStatus: ChangeSourceBindingStatusUseCase,
     private readonly listSourceBindings: ListSourceBindingsUseCase,
+    private readonly getSourceBindingHealth: GetSourceBindingHealthUseCase,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
@@ -132,6 +135,51 @@ export class SourceBindingController {
       topicId,
       limit: limitQuery === undefined ? 50 : Number(limitQuery),
       cursor,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
+
+  @Get(':sourceBindingId/health')
+  @ApiOperation({ summary: 'Get source binding operational health.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({
+    name: 'x-workspace-role',
+    required: true,
+    description: 'Comma-separated workspace roles. Source binding health reads allow owner, admin, member or viewer.',
+  })
+  async health(
+    @Param('topicId') topicId: string,
+    @Param('sourceBindingId') sourceBindingId: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+  ): Promise<SourceBindingHealthResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      action: 'source_bindings.read',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+
+    const result = await this.getSourceBindingHealth.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      topicId,
+      sourceBindingId,
     });
 
     if (!result.ok) {

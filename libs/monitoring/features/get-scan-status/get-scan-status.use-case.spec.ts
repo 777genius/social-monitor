@@ -40,6 +40,24 @@ class FakeScanJobs implements ScanJobRepositoryPort {
     );
   }
 
+  async findLatestBySourceBinding(
+    params: Parameters<ScanJobRepositoryPort['findLatestBySourceBinding']>[0],
+  ): Promise<ScanJobEntity | null> {
+    const jobs = [...this.jobsById.values()]
+      .filter((job) => {
+        const snapshot = job.toSnapshot();
+
+        return (
+          snapshot.tenantId === params.tenantId &&
+          snapshot.workspaceId === params.workspaceId &&
+          snapshot.sourceBindingId === params.sourceBindingId
+        );
+      })
+      .sort((left, right) => right.toSnapshot().requestedAt.getTime() - left.toSnapshot().requestedAt.getTime());
+
+    return jobs[0] ?? null;
+  }
+
   async findByIdempotencyKey(
     params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0],
   ): Promise<ScanJobEntity | null> {

@@ -43,6 +43,36 @@ export class InMemoryScanJobRepository implements ScanJobRepositoryPort {
     );
   }
 
+  async findLatestBySourceBinding(params: {
+    tenantId: TenantId;
+    workspaceId: WorkspaceId;
+    sourceBindingId: string;
+  }): Promise<ScanJob | null> {
+    const jobs = [...this.jobsById.values()]
+      .filter((job) => {
+        const snapshot = job.toSnapshot();
+
+        return (
+          snapshot.tenantId === params.tenantId &&
+          snapshot.workspaceId === params.workspaceId &&
+          snapshot.sourceBindingId === params.sourceBindingId
+        );
+      })
+      .sort((left, right) => {
+        const leftSnapshot = left.toSnapshot();
+        const rightSnapshot = right.toSnapshot();
+        const requestedDiff = rightSnapshot.requestedAt.getTime() - leftSnapshot.requestedAt.getTime();
+
+        if (requestedDiff !== 0) {
+          return requestedDiff;
+        }
+
+        return rightSnapshot.id.localeCompare(leftSnapshot.id);
+      });
+
+    return jobs[0] ?? null;
+  }
+
   async findByIdempotencyKey(params: {
     tenantId: TenantId;
     workspaceId: WorkspaceId;

@@ -74,6 +74,23 @@ export class PrismaScanJobRepository implements ScanJobRepositoryPort {
     return record === null ? null : scanJobFromPrisma(record);
   }
 
+  async findLatestBySourceBinding(params: {
+    tenantId: TenantId;
+    workspaceId: WorkspaceId;
+    sourceBindingId: string;
+  }): Promise<ScanJob | null> {
+    const record = await this.prisma.scanJob.findFirst({
+      where: {
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        sourceBindingId: params.sourceBindingId,
+      },
+      orderBy: { requestedAt: 'desc' },
+    });
+
+    return record === null ? null : scanJobFromPrisma(record);
+  }
+
   async findByIdempotencyKey(params: {
     tenantId: TenantId;
     workspaceId: WorkspaceId;

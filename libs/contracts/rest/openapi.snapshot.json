@@ -2015,6 +2015,63 @@
         ]
       }
     },
+    "/topics/{topicId}/source-bindings/{sourceBindingId}/health": {
+      "get": {
+        "operationId": "SourceBindingController_health",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topicId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sourceBindingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source binding health reads allow owner, admin, member or viewer.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get source binding operational health.",
+        "tags": [
+          "source-bindings"
+        ]
+      }
+    },
     "/topics/{topicId}/source-bindings/{sourceBindingId}/status": {
       "patch": {
         "operationId": "SourceBindingController_updateStatus",
