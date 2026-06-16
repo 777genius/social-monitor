@@ -3,6 +3,7 @@ import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.m
 import { FEED_ITEM_READ_REPOSITORY, type FeedItemReadRepositoryPort } from '@social-monitor/feed/ports';
 import { IdentityAuthorizationModule } from '@social-monitor/identity/interfaces/authorization/identity-authorization.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
@@ -11,6 +12,7 @@ import { UsageSummaryQuotaAdapter } from '../../adapters/quota/usage-summary-quo
 import { FeedSummaryEvidenceSelector } from '../../adapters/evidence/feed-summary-evidence.selector';
 import { FeedSummaryFreshnessProbe } from '../../adapters/evidence/feed-summary-freshness.probe';
 import { InMemorySummaryEventPublisher } from '../../adapters/messaging/in-memory-summary-event-publisher';
+import { InMemorySummaryJobQueueAdapter } from '../../adapters/messaging/in-memory-summary-job-queue.adapter';
 import { DeterministicSummaryModelAdapter } from '../../adapters/model/deterministic-summary-model.adapter';
 import { MeteredSummaryModelAdapter } from '../../adapters/model/metered-summary-model.adapter';
 import { InMemorySummaryArtifactRepository } from '../../adapters/persistence/in-memory-summary-artifact.repository';
@@ -37,6 +39,7 @@ import { UpsertSummaryPolicyUseCase } from '../../features/upsert-summary-policy
 import type {
   SummaryArtifactRepositoryPort,
   SummaryFeedbackRepositoryPort,
+  SummaryJobQueuePort,
   SummaryJobRepositoryPort,
   SummaryPolicyRepositoryPort,
 } from '../../ports';
@@ -46,6 +49,7 @@ import { SummaryPolicyController } from './summary-policy.controller';
 import {
   SUMMARY_ARTIFACT_REPOSITORY,
   SUMMARY_FEEDBACK_REPOSITORY,
+  SUMMARY_JOB_QUEUE,
   SUMMARY_JOB_REPOSITORY,
   SUMMARY_PERSISTENCE_MODE,
   SUMMARY_POLICY_REPOSITORY,
@@ -77,6 +81,12 @@ import { SummaryController } from './summary.controller';
     InMemorySummaryArtifactRepository,
     InMemorySummaryFeedbackRepository,
     InMemorySummaryPolicyRepository,
+    {
+      provide: SUMMARY_JOB_QUEUE,
+      useFactory: (metrics: InMemoryMetricsRecorder): SummaryJobQueuePort =>
+        new InMemorySummaryJobQueueAdapter(new InMemoryQueuePublisher(), metrics),
+      inject: [InMemoryMetricsRecorder],
+    },
     {
       provide: SUMMARY_JOB_REPOSITORY,
       useFactory: (
@@ -155,10 +165,17 @@ import { SummaryController } from './summary.controller';
       provide: RequestSummaryUseCase,
       useFactory: (
         summaryJobs: SummaryJobRepositoryPort,
+        summaryJobQueue: SummaryJobQueuePort,
         summaryQuota: UsageSummaryQuotaAdapter,
       ) =>
-        new RequestSummaryUseCase(summaryJobs, summaryQuota, new CryptoIdGenerator(), new SystemClock()),
-      inject: [SUMMARY_JOB_REPOSITORY, UsageSummaryQuotaAdapter],
+        new RequestSummaryUseCase(
+          summaryJobs,
+          summaryJobQueue,
+          summaryQuota,
+          new CryptoIdGenerator(),
+          new SystemClock(),
+        ),
+      inject: [SUMMARY_JOB_REPOSITORY, SUMMARY_JOB_QUEUE, UsageSummaryQuotaAdapter],
     },
     {
       provide: ExecuteSummaryJobUseCase,

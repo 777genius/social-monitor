@@ -69,6 +69,7 @@ import type {
 import { FeedSummaryEvidenceSelector } from '../libs/summary/adapters/evidence/feed-summary-evidence.selector';
 import { FeedSummaryFreshnessProbe } from '../libs/summary/adapters/evidence/feed-summary-freshness.probe';
 import { InMemorySummaryEventPublisher } from '../libs/summary/adapters/messaging/in-memory-summary-event-publisher';
+import { InMemorySummaryJobQueueAdapter } from '../libs/summary/adapters/messaging/in-memory-summary-job-queue.adapter';
 import { DeterministicSummaryModelAdapter } from '../libs/summary/adapters/model/deterministic-summary-model.adapter';
 import { InMemorySummaryArtifactRepository } from '../libs/summary/adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryFeedbackRepository } from '../libs/summary/adapters/persistence/in-memory-summary-feedback.repository';
@@ -100,6 +101,8 @@ async function main(): Promise<void> {
   const scanQueue = new InMemoryScanQueueAdapter(queuePublisher, new InMemoryMetricsRecorder());
   const feedItems = new InMemoryFeedItemReadRepository();
   const summaryJobs = new InMemorySummaryJobRepository();
+  const summaryQueuePublisher = new InMemoryQueuePublisher();
+  const summaryQueue = new InMemorySummaryJobQueueAdapter(summaryQueuePublisher, new InMemoryMetricsRecorder());
   const summaryArtifacts = new InMemorySummaryArtifactRepository();
   const summaryPolicies = new InMemorySummaryPolicyRepository();
   const summaryFeedback = new InMemorySummaryFeedbackRepository();
@@ -304,7 +307,7 @@ async function main(): Promise<void> {
   );
 
   const summaryJob = unwrap(
-    await new RequestSummaryUseCase(summaryJobs, new AllowingSummaryQuota(), ids, clock).execute({
+    await new RequestSummaryUseCase(summaryJobs, summaryQueue, new AllowingSummaryQuota(), ids, clock).execute({
       tenantId: tenant,
       workspaceId: workspace,
       topicId: topic.topicId,
@@ -314,6 +317,9 @@ async function main(): Promise<void> {
     'request summary',
   );
   assert(summaryJob.created, 'summary request should create a job');
+  const queuedSummary = summaryQueuePublisher.all()[0];
+  assert(queuedSummary !== undefined, 'summary request must enqueue summary job execution command');
+  assert(queuedSummary.commandType === 'summary.job.execute', `unexpected summary command ${queuedSummary.commandType}`);
 
   const summaryExecution = unwrap(
     await new ExecuteSummaryJobUseCase(
@@ -328,7 +334,7 @@ async function main(): Promise<void> {
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
-      summaryJobId: summaryJob.summaryJobId,
+      summaryJobId: readStringPayload(queuedSummary.payload, 'summaryJobId'),
       maxEvidenceItems: 20,
     }),
     'execute summary',
@@ -573,6 +579,14 @@ function assertSourceQuery(value: unknown): asserts value is SourceQuery {
     'sourceQuery mode is invalid',
   );
   assert(typeof record.query === 'string' && record.query.length > 0, 'sourceQuery query is required');
+}
+
+function readStringPayload(payload: Readonly<Record<string, unknown>>, field: string): string {
+  const value = payload[field];
+
+  assert(typeof value === 'string' && value.length > 0, `${field} payload field is required`);
+
+  return value;
 }
 
 function assertSummaryReadyEvent(

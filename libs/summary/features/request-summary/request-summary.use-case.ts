@@ -8,7 +8,7 @@ import {
 } from '@social-monitor/shared-kernel';
 
 import { SummaryJob } from '../../domain';
-import type { SummaryJobRepositoryPort, SummaryQuotaPort } from '../../ports';
+import type { SummaryJobQueuePort, SummaryJobRepositoryPort, SummaryQuotaPort } from '../../ports';
 import type { RequestSummaryCommand } from './request-summary.command';
 import type { RequestSummaryResult } from './request-summary.result';
 
@@ -17,6 +17,7 @@ type RequestSummaryFailure = DomainError | Error;
 export class RequestSummaryUseCase {
   constructor(
     private readonly summaryJobs: SummaryJobRepositoryPort,
+    private readonly summaryJobQueue: SummaryJobQueuePort,
     private readonly summaryQuota: SummaryQuotaPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
@@ -43,6 +44,20 @@ export class RequestSummaryUseCase {
       });
     }
 
+    const summaryJobId = this.ids.generate();
+    const queueCommand = {
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      summaryJobId,
+      correlationId: command.correlationId,
+      causationId: command.idempotencyKey,
+    };
+    if (!(await this.summaryJobQueue.canAccept(queueCommand))) {
+      return err(new DomainError('operation.backpressure', 'Summary job queue backpressure limit reached', {
+        topicId: command.topicId,
+      }));
+    }
+
     const quota = await this.summaryQuota.reserveSummaryJob({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
@@ -54,7 +69,7 @@ export class RequestSummaryUseCase {
     }
 
     const job = SummaryJob.request({
-      id: this.ids.generate(),
+      id: summaryJobId,
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       topicId: command.topicId,
@@ -62,6 +77,7 @@ export class RequestSummaryUseCase {
       requestedAt: this.clock.now(),
     });
     await this.summaryJobs.save(job);
+    await this.summaryJobQueue.enqueue(queueCommand);
     const snapshot = job.toSnapshot();
 
     return ok({
