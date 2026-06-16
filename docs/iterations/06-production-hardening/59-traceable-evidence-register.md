@@ -1037,3 +1037,31 @@ Evidence notes:
 - The test keeps the architecture honest by sharing the feed read repository through Nest provider override instead of pretending separate in-memory API and worker processes share state.
 - This is still an in-memory MVP integration path. Production parity still requires Postgres-backed feed/source/scan repositories or another shared persistence adapter.
 - Targeted Jest e2e execution for `test/e2e/api-to-ingestion-contract.e2e-spec.ts` timed out in the current shell without assertion output, so it is not claimed as passed evidence here; the standalone AppModule/supertest smoke is the recorded e2e evidence for this slice.
+
+## PR 36 Public API-Key Read/Audit Consistency Evidence
+
+- `f11826c feat: authorize delivery reads with api keys`
+- `a4f4a84 feat: audit api key requests`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:delivery-attempt-rest`
+- `npm run check:digest-schedule-rest`
+- `npm run check:realtime-websocket`
+- `npm run check:read-api-key-scope`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run check:secrets`
+- `git diff --check`
+
+Evidence notes:
+
+- Delivery status REST read endpoints now accept the same `read:delivery_status` API-key scope already used by realtime WebSocket authorization.
+- `DeliveryReadAuthorizer` centralizes delivery read API-key checks, public API rate limiting and workspace-role fallback, keeping HTTP auth decisions at the interface boundary.
+- Delivery attempt list/get, digest schedule list/get, digest get and realtime REST replay keep tenant/workspace validation before authorization and before read use cases.
+- Delivery retry and digest schedule creation remain role-based mutation paths; `read:delivery_status` does not grant write or retry authority.
+- `ApiKeyRequestAuthorizer` now records support-safe `public_api_request` audit events for successful API-key requests and for verified API keys denied by tenant/workspace mismatch or rate limit.
+- API-key request audit metadata records `requiredScope` and key prefix only; raw `smk_...` secrets and bearer headers are not persisted.
+- `check:read-api-key-scope` now proves feed/topic/source-binding/summary read scopes and confirms API-key read requests create audit events.
+- Delivery REST/WS smoke checks prove `read:delivery_status` works without `x-workspace-role` and wrong scopes are rejected with `403`.
