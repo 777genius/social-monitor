@@ -35,8 +35,18 @@
       "blocksRelease": true
     },
     {
+      "gateId": "runtime-compose-contract",
+      "command": "npm run check:runtime-compose",
+      "blocksRelease": true
+    },
+    {
       "gateId": "observability-contract",
       "command": "npm run check:observability",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "api-health-smoke",
+      "command": "npm run check:api-health",
       "blocksRelease": true
     },
     {
@@ -47,6 +57,31 @@
     {
       "gateId": "event-contracts",
       "command": "npm run check:events",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "platform-event-store",
+      "command": "npm run check:event-store",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "event-relay",
+      "command": "npm run check:event-relay",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "cross-process-scheduler",
+      "command": "npm run check:cross-process-scheduler",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "local-infra-contract",
+      "command": "npm run check:local-infra",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "rabbitmq-queue-publisher",
+      "command": "npm run check:rabbitmq-queue-publisher",
       "blocksRelease": true
     },
     {
@@ -65,6 +100,51 @@
       "blocksRelease": true
     },
     {
+      "gateId": "monitoring-read-rest",
+      "command": "npm run check:monitoring-read-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "source-binding-health-rest",
+      "command": "npm run check:source-binding-health-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "source-profile-rest",
+      "command": "npm run check:source-profile-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "source-config-protector",
+      "command": "npm run check:source-config-protector",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "source-config-reader-boundary",
+      "command": "npm run check:source-config-reader-boundary",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "scan-status-attempt-rest",
+      "command": "npm run check:scan-status-attempt-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "scan-scheduler-command",
+      "command": "npm run check:scan-scheduler-command",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "scan-scheduler-loop",
+      "command": "npm run check:scan-scheduler-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "scan-queue-drain-loop",
+      "command": "npm run check:scan-queue-drain-loop",
+      "blocksRelease": true
+    },
+    {
       "gateId": "ingestion-feed-prisma-persistence",
       "command": "npm run check:ingestion-feed-persistence",
       "blocksRelease": true
@@ -72,6 +152,41 @@
     {
       "gateId": "summary-prisma-persistence",
       "command": "npm run check:summary-persistence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-feedback-rest",
+      "command": "npm run check:summary-feedback-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-policy-rest",
+      "command": "npm run check:summary-policy-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-request-queue",
+      "command": "npm run check:summary-request-queue",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-worker-command",
+      "command": "npm run check:summary-worker-command",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-job-polling-loop",
+      "command": "npm run check:summary-job-polling-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-queue-drain-loop",
+      "command": "npm run check:summary-queue-drain-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-ready-projection-handler",
+      "command": "npm run check:summary-ready-projection-handler",
       "blocksRelease": true
     },
     {
@@ -92,6 +207,51 @@
     {
       "gateId": "delivery-prisma-persistence",
       "command": "npm run check:delivery-persistence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "delivery-attempt-rest",
+      "command": "npm run check:delivery-attempt-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "delivery-worker-command",
+      "command": "npm run check:delivery-worker-command",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "delivery-attempt-dispatch-loop",
+      "command": "npm run check:delivery-attempt-dispatch-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "delivery-attempt-queue-drain-loop",
+      "command": "npm run check:delivery-attempt-queue-drain-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "http-webhook-delivery-provider",
+      "command": "npm run check:http-webhook-delivery-provider",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "realtime-websocket",
+      "command": "npm run check:realtime-websocket",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "digest-scheduler-loop",
+      "command": "npm run check:digest-scheduler-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "digest-schedule-rest",
+      "command": "npm run check:digest-schedule-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "notification-preference-rest",
+      "command": "npm run check:notification-preference-rest",
       "blocksRelease": true
     },
     {
@@ -197,6 +357,11 @@
     {
       "gateId": "retention-contract",
       "command": "npm run check:retention",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "retention-plan",
+      "command": "npm run check:retention-plan",
       "blocksRelease": true
     },
     {

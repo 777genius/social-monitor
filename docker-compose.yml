@@ -18,6 +18,8 @@ x-app-common: &app-common
       condition: service_healthy
     rabbitmq:
       condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
   profiles: ["app"]
 
 services:
@@ -95,6 +97,23 @@ services:
       timeout: 10s
       retries: 30
       start_period: 30s
+
+  migrate:
+    build:
+      context: .
+      args:
+        SERVICE: api
+    env_file:
+      - .env.example
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://social_monitor:social_monitor_local_password@postgres:5432/social_monitor
+    command: ["npm", "run", "migrate:deploy"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["app"]
+    restart: "no"
 
   api:
     <<: *app-common

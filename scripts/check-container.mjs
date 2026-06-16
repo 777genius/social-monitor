@@ -31,6 +31,17 @@ for (const required of ['FROM node:22', 'npm ci', 'npm run prisma:generate', 'np
   }
 }
 
+const npmCiIndex = dockerfile.indexOf('RUN npm ci');
+const nodeEnvIndex = dockerfile.indexOf('ENV NODE_ENV=production');
+const buildIndex = dockerfile.indexOf('npm run build');
+if (npmCiIndex === -1 || nodeEnvIndex === -1 || buildIndex === -1) {
+  violations.push(`${policy.dockerfile}: must install, build, then set production NODE_ENV`);
+} else if (nodeEnvIndex < npmCiIndex || nodeEnvIndex < buildIndex) {
+  violations.push(
+    `${policy.dockerfile}: NODE_ENV=production must be set after npm ci/build because MVP runtime uses ts-node and Prisma CLI`,
+  );
+}
+
 for (const ignored of ['.git', 'node_modules', 'dist', 'coverage']) {
   if (!dockerignore.split(/\r?\n/).includes(ignored)) {
     violations.push(`${policy.dockerignore}: must ignore ${ignored}`);

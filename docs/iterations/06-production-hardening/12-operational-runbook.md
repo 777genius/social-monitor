@@ -38,6 +38,15 @@
 - Hand off failure taxonomy and support macros for common beta issues.
 - Hand off DLQ triage and replay rules.
 
+## Runtime App Profile
+
+- Use `docker compose --profile app up -d --build` for the durable local MVP runtime: API, ingestion worker, intelligence worker, delivery service, event relay, PostgreSQL and RabbitMQ.
+- The `migrate` service must complete successfully before app services accept traffic. If migration fails, keep workers stopped and inspect schema compatibility before replaying queued work.
+- Required durable selectors for the app profile: `MONITORING_PERSISTENCE=prisma`, `FEED_PERSISTENCE=prisma`, `SUMMARY_PERSISTENCE=prisma`, `DELIVERY_PERSISTENCE=prisma`, `IDENTITY_PERSISTENCE=prisma`, `USAGE_PERSISTENCE=prisma`, `MONITORING_SCAN_QUEUE=rabbitmq`, `SUMMARY_JOB_QUEUE_MODE=rabbitmq`, `INGESTION_SCAN_QUEUE_READER=rabbitmq`, `INTELLIGENCE_SUMMARY_QUEUE_READER=rabbitmq`, `DELIVERY_ATTEMPT_QUEUE_READER=rabbitmq`.
+- Event relay must run with `EVENT_RELAY_LOOP=enabled`; otherwise durable outbox events can accumulate without fanout to RabbitMQ-backed consumers.
+- Delivery service uses `DELIVERY_ATTEMPT_DISPATCH_TARGET=queue`, `DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq`, `DELIVERY_ATTEMPT_QUEUE_READER=rabbitmq` and `DELIVERY_WEBHOOK_PROVIDER=http` in app profile. If webhook failures spike, follow Delivery Failure Triage before replaying attempts.
+- Run `npm run check:runtime-compose`, `npm run check:container`, `npm run check:api-health`, `npm run check:event-relay`, `npm run check:cross-process-scheduler`, `npm run check:summary-queue-drain-loop` and `npm run check:delivery-attempt-queue-drain-loop` as targeted confidence checks when runtime wiring changes.
+
 ## Support And Ops Impact
 
 - Support must diagnose scan, provider, summary and delivery failures from dashboards.
@@ -121,7 +130,7 @@ Scan status API responses expose support-safe fields for beta triage:
 ## Release Rollback Triage
 
 - Use `ops/release/mvp-release-evidence-contract.json` as the beta release evidence contract before promoting hardening changes.
-- Release evidence must include release commit SHA, immutable image digest, OpenAPI snapshot, event catalog, migration schema and blocking gate output.
+- Release evidence must include release commit SHA, immutable image digest, OpenAPI snapshot, event catalog, migration schema and blocking gate output for architecture, container/runtime compose, OpenAPI, events, persistence, RabbitMQ queues, event relay, source adapters, summary, delivery, retention and drills.
 - Run deploy smoke checks for API health, OpenAPI contract, migration compatibility and worker pause/resume readiness before inviting beta traffic.
 - If tenant isolation, redaction or credential protection fails, hold release and keep beta traffic disabled.
 - If migration or restore validation fails, stop workers, avoid queue replay and rework or restore before resuming provider/AI jobs.

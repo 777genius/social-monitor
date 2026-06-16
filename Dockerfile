@@ -1,7 +1,6 @@
 FROM node:22-bookworm-slim AS app
 
 WORKDIR /app
-ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -14,6 +13,7 @@ COPY libs ./libs
 RUN npm run prisma:generate && npm run build
 
 ARG SERVICE=api
+ENV NODE_ENV=production
 ENV SERVICE=${SERVICE}
 USER node
 

@@ -13,6 +13,27 @@ const runtimeServices = [
   ['event-relay', 'event-relay'],
 ];
 
+const migrateBlock = serviceBlock('migrate');
+if (migrateBlock.length === 0) {
+  violations.push('docker-compose.yml missing runtime service migrate');
+} else {
+  if (!migrateBlock.includes('SERVICE: api')) {
+    violations.push('migrate must build the API image variant used for Prisma migration commands');
+  }
+
+  if (!migrateBlock.includes('command: ["npm", "run", "migrate:deploy"]')) {
+    violations.push('migrate must run npm run migrate:deploy before app services start');
+  }
+
+  if (!migrateBlock.includes('postgres:') || !migrateBlock.includes('condition: service_healthy')) {
+    violations.push('migrate must wait for healthy postgres');
+  }
+
+  if (!migrateBlock.includes('profiles: ["app"]')) {
+    violations.push('migrate must run behind the app profile');
+  }
+}
+
 for (const [service, npmService] of runtimeServices) {
   const block = serviceBlock(service);
 
@@ -36,6 +57,8 @@ for (const [service, npmService] of runtimeServices) {
 }
 
 for (const marker of [
+  'migrate:',
+  'condition: service_completed_successfully',
   'MONITORING_PERSISTENCE: prisma',
   'MONITORING_SCAN_QUEUE: rabbitmq',
   'INGESTION_WORKER_PERSISTENCE: prisma',
@@ -77,5 +100,8 @@ if (violations.length > 0) {
 console.log('Runtime compose contract OK');
 
 function serviceBlock(service) {
-  return compose.split(`  ${service}:`)[1]?.split(/\n {2}[a-z0-9-]+:/)[0] ?? '';
+  const escapedService = service.replaceAll('-', '\\-');
+  const match = compose.match(new RegExp(`\\n  ${escapedService}:\\n([\\s\\S]*?)(?=\\n  [a-z0-9-]+:|\\nvolumes:)`));
+
+  return match?.[1] ?? '';
 }

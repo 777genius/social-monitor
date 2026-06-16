@@ -4,7 +4,7 @@ Social Monitor is an API-first backend for building social, news, and web signal
 
 It is designed for teams that need to collect public signals, normalize them into reliable events, search and analyze them, and route important findings into dashboards, alerts, reports, or downstream AI workflows.
 
-The repository currently contains a TypeScript/NestJS backend, tests, infrastructure helpers, and a large architecture memory that documents the product and system design decisions behind the platform.
+The repository currently contains a TypeScript/NestJS backend, worker services, tests, infrastructure helpers, and a large architecture memory that documents the product and system design decisions behind the platform.
 
 ## What You Can Build With It
 
@@ -20,7 +20,7 @@ Social Monitor is not a hosted SaaS in this repo. It is a backend and architectu
 
 ## Project Status
 
-This is an early MVP/reference implementation. The codebase already has a structured backend and extensive architecture docs, but some integrations are intentionally in-memory or local-first while the production design is being hardened.
+This is an early MVP/reference implementation. The codebase already has a structured backend, app-profile Docker Compose runtime, durable Prisma/RabbitMQ runtime selectors, and extensive architecture docs. Some integrations remain intentionally local-first while production operations are being hardened.
 
 Good fit today:
 
@@ -40,7 +40,7 @@ Not a good fit yet:
 - TypeScript on Node.js 22+
 - NestJS for application modules and REST APIs
 - Prisma for database schema and migrations
-- PostgreSQL and Redis for local infrastructure
+- PostgreSQL, RabbitMQ and Redis for local infrastructure
 - Jest and Supertest for unit and end-to-end tests
 - ESLint for code quality checks
 - Ports/adapters style boundaries for domain modules
@@ -50,13 +50,18 @@ Not a good fit yet:
     apps/
       api-gateway/          REST API entrypoint
       delivery-service/     delivery and notification workflows
+      event-relay/          outbox-to-broker relay for durable domain events
       ingestion-worker/     ingestion processing entrypoint
       intelligence-worker/  analysis and intelligence processing entrypoint
 
     libs/
       delivery/             delivery domain and adapters
+      feed/                 deduplicated feed read models
       identity/             tenants, API keys, and auth-related flows
+      ingestion/            source providers, scan execution, cursors and feed projection
       monitoring/           scan requests and monitoring workflows
+      summary/              summary jobs, artifacts, feedback and model adapters
+      usage/                audit, quota and rate-limit controls
       platform/             shared platform utilities and infrastructure ports
 
     docs/
@@ -91,9 +96,15 @@ Create local environment config:
 
     cp .env.example .env
 
-Start local infrastructure:
+Start local infrastructure only:
 
     docker compose up -d
+
+Start the durable MVP app profile with API, workers, event relay, PostgreSQL and RabbitMQ:
+
+    docker compose --profile app up -d --build
+
+The app profile runs a one-shot `migrate` service before starting the API and workers. The runtime selectors in `docker-compose.yml` use Prisma persistence, RabbitMQ command queues and the signed HTTP webhook delivery provider where available.
 
 Validate database and generate Prisma client:
 
@@ -113,6 +124,7 @@ Other worker entrypoints are available:
     npm run start:ingestion
     npm run start:intelligence
     npm run start:delivery
+    npm run start:event-relay
 
 ## Useful Commands
 
@@ -120,6 +132,7 @@ Other worker entrypoints are available:
     npm run lint               # ESLint check
     npm run check:architecture # Architecture boundary checks
     npm run check:local-infra  # Local infrastructure checks
+    npm run check:runtime-compose # App-profile Docker Compose runtime contract
     npm run check:live-open-connectors # Optional network smoke for HN/RSS without API keys
     npm run verify             # Full local verification pipeline
 
