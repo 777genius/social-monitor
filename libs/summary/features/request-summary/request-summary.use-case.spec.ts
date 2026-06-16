@@ -32,6 +32,21 @@ class FakeSummaryJobs implements SummaryJobRepositoryPort {
   ): Promise<SummaryJob | null> {
     return this.jobs.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
   }
+
+  async findRequested(params: Parameters<SummaryJobRepositoryPort['findRequested']>[0]): Promise<readonly SummaryJob[]> {
+    return [...this.jobs.values()]
+      .filter((job, index, all) => all.indexOf(job) === index)
+      .filter((job) => {
+        const snapshot = job.toSnapshot();
+
+        return (
+          snapshot.status === 'requested' &&
+          (params.tenantId === undefined || snapshot.tenantId === params.tenantId) &&
+          (params.workspaceId === undefined || snapshot.workspaceId === params.workspaceId)
+        );
+      })
+      .slice(0, params.limit);
+  }
 }
 
 class AllowingSummaryQuota implements SummaryQuotaPort {

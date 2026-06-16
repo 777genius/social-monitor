@@ -323,6 +323,19 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         (args.where.id === undefined || record.id === args.where.id) &&
         (args.where.idempotencyKey === undefined || record.idempotencyKey === args.where.idempotencyKey)
       )) ?? null,
+    findMany: async (args) =>
+      [...this.jobs.values()]
+        .filter((record) => (
+          record.status === args.where.status &&
+          (args.where.tenantId === undefined || record.tenantId === args.where.tenantId) &&
+          (args.where.workspaceId === undefined || record.workspaceId === args.where.workspaceId)
+        ))
+        .sort((left, right) => {
+          const requestedDiff = left.requestedAt.getTime() - right.requestedAt.getTime();
+
+          return requestedDiff === 0 ? left.id.localeCompare(right.id) : requestedDiff;
+        })
+        .slice(0, args.take),
   };
 
   readonly summaryArtifact: PrismaSummaryClient['summaryArtifact'] = {

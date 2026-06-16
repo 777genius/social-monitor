@@ -14,4 +14,9 @@ export interface SummaryJobRepositoryPort {
     workspaceId: WorkspaceId;
     idempotencyKey: string;
   }): Promise<SummaryJob | null>;
+  findRequested(params: {
+    tenantId?: TenantId;
+    workspaceId?: WorkspaceId;
+    limit: number;
+  }): Promise<readonly SummaryJob[]>;
 }

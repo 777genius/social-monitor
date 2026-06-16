@@ -47,6 +47,10 @@ class FakeSummaryJobs implements SummaryJobRepositoryPort {
   async findByIdempotencyKey(): Promise<SummaryJob | null> {
     return null;
   }
+
+  async findRequested(): Promise<readonly SummaryJob[]> {
+    return [];
+  }
 }
 
 class FakeSummaryArtifacts implements SummaryArtifactRepositoryPort {

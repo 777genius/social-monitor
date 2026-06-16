@@ -65,6 +65,10 @@ class FakeSummaryJobs implements SummaryJobRepositoryPort {
   ): Promise<SummaryJob | null> {
     return this.jobsByIdempotencyKey.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
   }
+
+  async findRequested(): Promise<readonly SummaryJob[]> {
+    return [];
+  }
 }
 
 class AllowingSummaryQuota implements SummaryQuotaPort {

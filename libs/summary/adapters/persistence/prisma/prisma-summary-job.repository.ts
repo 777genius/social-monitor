@@ -72,4 +72,18 @@ export class PrismaSummaryJobRepository implements SummaryJobRepositoryPort {
 
     return record === null ? null : summaryJobFromPrisma(record);
   }
+
+  async findRequested(params: Parameters<SummaryJobRepositoryPort['findRequested']>[0]): Promise<readonly SummaryJob[]> {
+    const records = await this.prisma.summaryJob.findMany({
+      where: {
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        status: 'REQUESTED',
+      },
+      orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
+      take: params.limit,
+    });
+
+    return records.map((record) => summaryJobFromPrisma(record));
+  }
 }

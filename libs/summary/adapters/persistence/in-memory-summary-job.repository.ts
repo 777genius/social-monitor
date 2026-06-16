@@ -23,4 +23,31 @@ export class InMemorySummaryJobRepository implements SummaryJobRepositoryPort {
   ): Promise<SummaryJob | null> {
     return this.jobsByIdempotencyKey.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
   }
+
+  async findRequested(params: Parameters<SummaryJobRepositoryPort['findRequested']>[0]): Promise<readonly SummaryJob[]> {
+    return [...this.jobsById.values()]
+      .filter((job) => {
+        const snapshot = job.toSnapshot();
+
+        return (
+          snapshot.status === 'requested' &&
+          (params.tenantId === undefined || snapshot.tenantId === params.tenantId) &&
+          (params.workspaceId === undefined || snapshot.workspaceId === params.workspaceId)
+        );
+      })
+      .sort(compareRequestedJobs)
+      .slice(0, params.limit);
+  }
 }
+
+const compareRequestedJobs = (left: SummaryJob, right: SummaryJob): number => {
+  const leftSnapshot = left.toSnapshot();
+  const rightSnapshot = right.toSnapshot();
+  const requestedDiff = leftSnapshot.requestedAt.getTime() - rightSnapshot.requestedAt.getTime();
+
+  if (requestedDiff !== 0) {
+    return requestedDiff;
+  }
+
+  return leftSnapshot.id.localeCompare(rightSnapshot.id);
+};

@@ -6,9 +6,19 @@ import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summa
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { WorkerRuntime, WorkerRuntimeModule } from '@social-monitor/platform-worker';
 
+import {
+  INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS,
+  resolveIntelligenceSummaryJobLoopOptions,
+} from './intelligence-worker-provider-tokens';
+import { SummaryJobPollingLoop } from './summary-job-polling-loop';
+
 @Module({
   imports: [WorkerRuntimeModule.register({ serviceName: 'intelligence-worker' }), SummaryRestModule],
   providers: [
+    {
+      provide: INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS,
+      useFactory: () => resolveIntelligenceSummaryJobLoopOptions(process.env),
+    },
     {
       provide: ExecuteSummaryJobCommandHandler,
       useFactory: (
@@ -18,7 +28,8 @@ import { WorkerRuntime, WorkerRuntimeModule } from '@social-monitor/platform-wor
       ) => new ExecuteSummaryJobCommandHandler(executeSummaryJob, metrics, runtime),
       inject: [ExecuteSummaryJobUseCase, InMemoryMetricsRecorder, WorkerRuntime],
     },
+    SummaryJobPollingLoop,
   ],
-  exports: [ExecuteSummaryJobCommandHandler],
+  exports: [ExecuteSummaryJobCommandHandler, SummaryJobPollingLoop],
 })
 export class IntelligenceWorkerModule {}

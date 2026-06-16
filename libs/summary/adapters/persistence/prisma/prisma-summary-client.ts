@@ -102,6 +102,15 @@ export type PrismaSummaryClient = {
         readonly idempotencyKey?: string;
       };
     }): Promise<PrismaSummaryJobRecord | null>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId?: string;
+        readonly workspaceId?: string;
+        readonly status: PrismaSummaryStatus;
+      };
+      readonly orderBy: readonly [{ readonly requestedAt: 'asc' }, { readonly id: 'asc' }];
+      readonly take: number;
+    }): Promise<readonly PrismaSummaryJobRecord[]>;
   };
   readonly summaryArtifact: {
     upsert(args: {
