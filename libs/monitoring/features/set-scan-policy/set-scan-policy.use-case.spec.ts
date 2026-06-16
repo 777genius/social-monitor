@@ -3,6 +3,8 @@ import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-mon
 import { SourceBinding, type ScanPolicy } from '../../domain';
 import type {
   IdempotencyPort,
+  ListSourceBindingsQuery,
+  ListSourceBindingsResult,
   OutboxPort,
   ScanPolicyRepositoryPort,
   SourceBindingRepositoryPort,
@@ -38,6 +40,21 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
 
   async findById(params: Parameters<SourceBindingRepositoryPort['findById']>[0]): Promise<SourceBinding | null> {
     return this.bindings.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
+  }
+
+  async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
+    return {
+      sourceBindings: [...this.bindings.values()].filter((binding) => {
+        const snapshot = binding.toSnapshot();
+
+        return (
+          snapshot.tenantId === query.tenantId &&
+          snapshot.workspaceId === query.workspaceId &&
+          snapshot.topicId === query.topicId
+        );
+      }),
+      nextCursor: undefined,
+    };
   }
 }
 
@@ -149,5 +166,35 @@ describe('SetScanPolicyUseCase', () => {
     });
 
     expect(result.ok).toBe(false);
+  });
+
+  it('rejects freshness windows smaller than the scan interval without throwing', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+
+    const result = await new SetScanPolicyUseCase(
+      bindings,
+      new FakeScanPolicies(),
+      new FakeOutbox(),
+      new FakeIdempotency(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+    ).execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      intervalSeconds: 900,
+      freshnessSeconds: 300,
+      retryBudget: 3,
+      idempotencyKey: 'scan-policy-invalid',
+      correlationId: 'correlation-1',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'validation.failed',
+      }),
+    });
   });
 });

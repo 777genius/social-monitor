@@ -94,7 +94,8 @@ REST-backed MVP management surfaces:
 - `POST /topics/:topicId/source-bindings` binds a production-safe source provider to a topic.
 - `GET /topics/:topicId/source-bindings` lists source bindings with opaque cursor pagination and safe config previews; encrypted credential fields must expose only metadata, never ciphertext.
 - `PATCH /topics/:topicId/source-bindings/:sourceBindingId/status` pauses or resumes scanning.
-- `POST /topics/:topicId/source-bindings/:sourceBindingId/scan-policy` sets scan cadence.
+- `POST /source-bindings/:sourceBindingId/scan-policy` sets scan cadence.
+- `GET /source-bindings/:sourceBindingId/scan-policy` returns current scan cadence and next run time.
 - `POST /scan-requests` requests a manual scan within quota.
 - `GET /scan-jobs/:scanJobId` returns scan status for resync.
 

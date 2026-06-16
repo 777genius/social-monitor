@@ -25,6 +25,7 @@ import { FakeSourceCatalogAdapter } from '../../adapters/source-catalog/fake-sou
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
+import { GetScanPolicyUseCase } from '../../features/get-scan-policy/get-scan-policy.use-case';
 import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
 import { ListTopicsUseCase } from '../../features/list-topics/list-topics.use-case';
@@ -236,6 +237,14 @@ import { TopicController } from './topic.controller';
         MONITORING_OUTBOX,
         MONITORING_IDEMPOTENCY,
       ],
+    },
+    {
+      provide: GetScanPolicyUseCase,
+      useFactory: (
+        bindings: SourceBindingRepositoryPort,
+        scanPolicies: ScanPolicyRepositoryPort,
+      ) => new GetScanPolicyUseCase(bindings, scanPolicies),
+      inject: [MONITORING_SOURCE_BINDING_REPOSITORY, MONITORING_SCAN_POLICY_REPOSITORY],
     },
     {
       provide: ChangeSourceBindingStatusUseCase,

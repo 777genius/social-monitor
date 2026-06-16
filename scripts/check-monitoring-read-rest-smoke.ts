@@ -144,6 +144,32 @@ async function main(): Promise<void> {
       'source binding REST list must expose safe encrypted config marker',
     );
 
+    const scanPolicy = await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set(headers)
+      .set('x-workspace-role', 'admin')
+      .set('idempotency-key', 'scan-policy-fake-source')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(201);
+
+    assert(scanPolicy.body.created === true, 'scan policy REST set must create policy');
+
+    const fetchedScanPolicy = await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set(headers)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    assert(
+      fetchedScanPolicy.body.id === scanPolicy.body.scanPolicyId,
+      'scan policy REST get must return created policy',
+    );
+    assert(fetchedScanPolicy.body.intervalSeconds === 300, 'scan policy REST get must preserve interval');
+
     await request(app.getHttpServer())
       .get('/topics/missing-topic/source-bindings')
       .set(headers)

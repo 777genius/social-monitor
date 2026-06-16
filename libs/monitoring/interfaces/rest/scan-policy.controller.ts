@@ -1,4 +1,4 @@
-import { Body, Controller, Headers, Inject, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Inject, Param, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
@@ -9,7 +9,9 @@ import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-mon
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
 
+import { GetScanPolicyUseCase } from '../../features/get-scan-policy/get-scan-policy.use-case';
 import { SetScanPolicyUseCase } from '../../features/set-scan-policy/set-scan-policy.use-case';
+import type { GetScanPolicyResponseDto } from './get-scan-policy.dto';
 import { SetScanPolicyRequestDto, type SetScanPolicyResponseDto } from './set-scan-policy.dto';
 
 @ApiTags('scan-policies')
@@ -17,6 +19,7 @@ import { SetScanPolicyRequestDto, type SetScanPolicyResponseDto } from './set-sc
 export class ScanPolicyController {
   constructor(
     private readonly setScanPolicy: SetScanPolicyUseCase,
+    private readonly getScanPolicy: GetScanPolicyUseCase,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
@@ -80,6 +83,49 @@ export class ScanPolicyController {
           created: result.value.created,
         },
       });
+    }
+
+    return result.value;
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get scan policy for a source binding.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({
+    name: 'x-workspace-role',
+    required: true,
+    description: 'Comma-separated workspace roles. Scan policy reads allow owner, admin, member or viewer.',
+  })
+  async get(
+    @Param('sourceBindingId') sourceBindingId: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+  ): Promise<GetScanPolicyResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      action: 'scan_policies.read',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+
+    const result = await this.getScanPolicy.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      sourceBindingId,
+    });
+
+    if (!result.ok) {
+      throw result.error;
     }
 
     return result.value;

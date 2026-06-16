@@ -33,6 +33,12 @@ export class SetScanPolicyUseCase {
   ) {}
 
   async execute(command: SetScanPolicyCommand): Promise<Result<SetScanPolicyResult, SetScanPolicyFailure>> {
+    const validation = validate(command);
+
+    if (validation !== null) {
+      return err(validation);
+    }
+
     const cached = await this.idempotency.get<SetScanPolicyResult>({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
@@ -122,3 +128,30 @@ export class SetScanPolicyUseCase {
     return ok(result);
   }
 }
+
+const validate = (command: SetScanPolicyCommand): DomainError | null => {
+  if (command.sourceBindingId.trim().length === 0) {
+    return new DomainError('validation.failed', 'Source binding id is required');
+  }
+
+  if (!Number.isInteger(command.intervalSeconds) || command.intervalSeconds < 60) {
+    return new DomainError('validation.failed', 'Scan interval must be at least 60 seconds', {
+      intervalSeconds: command.intervalSeconds,
+    });
+  }
+
+  if (!Number.isInteger(command.freshnessSeconds) || command.freshnessSeconds < command.intervalSeconds) {
+    return new DomainError('validation.failed', 'Freshness target must be greater than or equal to scan interval', {
+      intervalSeconds: command.intervalSeconds,
+      freshnessSeconds: command.freshnessSeconds,
+    });
+  }
+
+  if (!Number.isInteger(command.retryBudget) || command.retryBudget < 0 || command.retryBudget > 10) {
+    return new DomainError('validation.failed', 'Retry budget must be between 0 and 10', {
+      retryBudget: command.retryBudget,
+    });
+  }
+
+  return null;
+};

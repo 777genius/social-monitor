@@ -3,6 +3,8 @@ import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-mon
 import { SourceBinding } from '../../domain';
 import type {
   IdempotencyPort,
+  ListSourceBindingsQuery,
+  ListSourceBindingsResult,
   OutboxPort,
   SourceBindingRepositoryPort,
 } from '../../ports';
@@ -47,6 +49,21 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
 
   async findById(params: Parameters<SourceBindingRepositoryPort['findById']>[0]): Promise<SourceBinding | null> {
     return this.bindingsById.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
+  }
+
+  async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
+    return {
+      sourceBindings: [...this.bindingsById.values()].filter((binding) => {
+        const snapshot = binding.toSnapshot();
+
+        return (
+          snapshot.tenantId === query.tenantId &&
+          snapshot.workspaceId === query.workspaceId &&
+          snapshot.topicId === query.topicId
+        );
+      }),
+      nextCursor: undefined,
+    };
   }
 }
 

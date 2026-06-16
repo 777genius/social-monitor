@@ -3,6 +3,10 @@ import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-mon
 import { Topic, type SourceBinding } from '../../domain';
 import type {
   IdempotencyPort,
+  ListSourceBindingsQuery,
+  ListSourceBindingsResult,
+  ListTopicsQuery,
+  ListTopicsResult,
   OutboxPort,
   SourceBindingConfig,
   SourceBindingConfigProtectorPort,
@@ -43,6 +47,17 @@ class FakeTopics implements TopicRepositoryPort {
   async findById(params: Parameters<TopicRepositoryPort['findById']>[0]): Promise<Topic | null> {
     return this.topics.get(`${params.tenantId}:${params.workspaceId}:${params.topicId}`) ?? null;
   }
+
+  async list(query: ListTopicsQuery): Promise<ListTopicsResult> {
+    return {
+      topics: [...this.topics.values()].filter((topic) => {
+        const snapshot = topic.toSnapshot();
+
+        return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId;
+      }),
+      nextCursor: undefined,
+    };
+  }
 }
 
 class FakeBindings implements SourceBindingRepositoryPort {
@@ -69,6 +84,21 @@ class FakeBindings implements SourceBindingRepositoryPort {
 
   async findById(params: Parameters<SourceBindingRepositoryPort['findById']>[0]): Promise<SourceBinding | null> {
     return this.bindingsById.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
+  }
+
+  async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
+    return {
+      sourceBindings: [...this.bindingsById.values()].filter((binding) => {
+        const snapshot = binding.toSnapshot();
+
+        return (
+          snapshot.tenantId === query.tenantId &&
+          snapshot.workspaceId === query.workspaceId &&
+          snapshot.topicId === query.topicId
+        );
+      }),
+      nextCursor: undefined,
+    };
   }
 }
 

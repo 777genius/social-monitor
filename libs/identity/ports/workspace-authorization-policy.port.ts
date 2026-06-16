@@ -22,6 +22,7 @@ export type WorkspaceAction =
   | 'source_bindings.create'
   | 'source_bindings.read'
   | 'source_bindings.update_status'
+  | 'scan_policies.read'
   | 'scan_policies.set'
   | 'scan_jobs.read'
   | 'scan_requests.create'

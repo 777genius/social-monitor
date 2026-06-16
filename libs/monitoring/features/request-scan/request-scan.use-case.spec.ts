@@ -3,6 +3,8 @@ import { DomainError, FixedClock, type IdGenerator, ok, tenantId, workspaceId } 
 import { ScanPolicy, SourceBinding, type ScanJob } from '../../domain';
 import type {
   IdempotencyPort,
+  ListSourceBindingsQuery,
+  ListSourceBindingsResult,
   OutboxPort,
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
@@ -41,6 +43,21 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
 
   async findById(params: Parameters<SourceBindingRepositoryPort['findById']>[0]): Promise<SourceBinding | null> {
     return this.bindings.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
+  }
+
+  async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
+    return {
+      sourceBindings: [...this.bindings.values()].filter((binding) => {
+        const snapshot = binding.toSnapshot();
+
+        return (
+          snapshot.tenantId === query.tenantId &&
+          snapshot.workspaceId === query.workspaceId &&
+          snapshot.topicId === query.topicId
+        );
+      }),
+      nextCursor: undefined,
+    };
   }
 }
 

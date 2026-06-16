@@ -1,7 +1,7 @@
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { Topic } from '../../domain';
-import type { IdempotencyPort, OutboxPort, TopicRepositoryPort } from '../../ports';
+import type { IdempotencyPort, ListTopicsQuery, ListTopicsResult, OutboxPort, TopicRepositoryPort } from '../../ports';
 import type { CreateTopicResult } from './create-topic.result';
 import { CreateTopicUseCase } from './create-topic.use-case';
 
@@ -40,6 +40,17 @@ class FakeTopicRepository implements TopicRepositoryPort {
 
   async findById(params: Parameters<TopicRepositoryPort['findById']>[0]): Promise<Topic | null> {
     return this.topics.get(`${params.tenantId}:${params.workspaceId}:${params.topicId}`) ?? null;
+  }
+
+  async list(query: ListTopicsQuery): Promise<ListTopicsResult> {
+    return {
+      topics: [...this.topics.values()].filter((topic) => {
+        const snapshot = topic.toSnapshot();
+
+        return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId;
+      }),
+      nextCursor: undefined,
+    };
   }
 }
 
