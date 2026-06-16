@@ -114,6 +114,23 @@ REST/GraphQL search for public discovery
 GitHub App webhooks for tenant-owned repos
 ```
 
+## MVP Implementation Status
+
+Implemented in code:
+
+- source provider key: `github`
+- adapter path: `libs/ingestion/adapters/source/github`
+- acquisition mode: official REST Search API for public issues
+- query mode: `search`
+- cursor model: page token
+- auth model: optional tenant token through encrypted source config; unauthenticated public search remains supported for low-volume validation
+- fixture/live evidence: `npm run check:github-smoke`, `npm run check:source-certification`, optional `npm run check:live-open-connectors`
+
+MVP limitation:
+
+- pull requests are skipped by the issue-search provider until issue/PR content policies are separated.
+- GitHub App webhooks are still deferred because they require installation flow and tenant-owned repo scope.
+
 ## Architecture Rule
 
 GitHub has two modes: public discovery and installed-app monitoring.

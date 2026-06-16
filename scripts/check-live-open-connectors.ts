@@ -1,3 +1,4 @@
+import { HttpGitHubClient } from '../libs/ingestion/adapters/source/github/http-github-client';
 import { HttpHackerNewsClient } from '../libs/ingestion/adapters/source/hacker-news/http-hacker-news-client';
 import { HttpRssClient } from '../libs/ingestion/adapters/source/rss/http-rss-client';
 
@@ -28,11 +29,22 @@ async function main(): Promise<void> {
     'HNRSS frontpage feed must include readable title or content',
   );
 
+  const github = await new HttpGitHubClient(10_000).searchIssues({
+    query: 'repo:microsoft/TypeScript is:issue',
+    limit: 1,
+  });
+  assert(github.items.length > 0, 'GitHub public issue search must return at least one issue without an API key');
+  assert(
+    github.items.every((item) => item.isPullRequest !== true && (item.htmlUrl ?? '').startsWith('https://github.com/')),
+    'GitHub public issue search must return issue URLs and must not include pull requests for is:issue query',
+  );
+
   console.log([
     'Live open connector smoke OK',
     `HN top stories: ${topStories.length}`,
     `HN search stories: ${searchStories.length}`,
     `RSS items: ${rss.items.length}`,
+    `GitHub issues: ${github.items.length}`,
   ].join('\n'));
 }
 
