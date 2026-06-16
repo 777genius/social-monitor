@@ -6,6 +6,7 @@ import { RecordRealtimeEventUseCase } from '@social-monitor/delivery/features/re
 import { correlationId, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { io, type Socket } from 'socket.io-client';
 import type { AddressInfo } from 'node:net';
+import request from 'supertest';
 
 import { DomainErrorFilter } from '../apps/api-gateway/src/domain-error.filter';
 
@@ -62,16 +63,55 @@ async function main(): Promise<void> {
   await app.init();
   await app.listen(0, '127.0.0.1');
 
+  const baseUrl = baseUrlFromAddress(app.getHttpServer().address());
+  const authHeaders = {
+    'x-tenant-id': 'tenant-realtime-ws-smoke',
+    'x-workspace-id': 'workspace-realtime-ws-smoke',
+    'x-workspace-role': 'admin',
+  };
+  const realtimeKey = await request(app.getHttpServer())
+    .post('/identity/api-keys')
+    .set(authHeaders)
+    .send({
+      name: 'Realtime reader key',
+      scopes: ['read:delivery_status'],
+    })
+    .expect(201);
+  const wrongScopeKey = await request(app.getHttpServer())
+    .post('/identity/api-keys')
+    .set(authHeaders)
+    .send({
+      name: 'Wrong realtime scope key',
+      scopes: ['read:feed'],
+    })
+    .expect(201);
   const socket = connectSocket(baseUrlFromAddress(app.getHttpServer().address()), {
     tenantId: 'tenant-realtime-ws-smoke',
     workspaceId: 'workspace-realtime-ws-smoke',
-    workspaceRole: 'viewer',
+    authorization: `Bearer ${realtimeKey.body.secret}`,
+  });
+  const rejectedSocket = connectSocket(baseUrl, {
+    tenantId: 'tenant-realtime-ws-smoke',
+    workspaceId: 'workspace-realtime-ws-smoke',
+    authorization: `Bearer ${wrongScopeKey.body.secret}`,
   });
 
   try {
     await waitForConnect(socket);
+    await waitForConnect(rejectedSocket);
 
     const channel = 'topic:topic-realtime-ws-smoke:summary-status';
+    const rejectedByScope = await emitAck<RealtimeAck>(rejectedSocket, 'realtime.subscribe', {
+      channel,
+      limit: 10,
+    });
+
+    assert(!rejectedByScope.ok, 'wrong-scope realtime API key must be rejected');
+    assert(
+      rejectedByScope.error?.code === 'authorization.denied',
+      'wrong-scope realtime API key rejection must be authorization.denied',
+    );
+
     const initialReplay = await emitAck<RealtimeAck>(socket, 'realtime.subscribe', {
       channel,
       limit: 10,
@@ -139,6 +179,7 @@ async function main(): Promise<void> {
     console.log('Realtime websocket smoke OK');
   } finally {
     socket.disconnect();
+    rejectedSocket.disconnect();
     await app.close();
   }
 }
@@ -148,7 +189,8 @@ const connectSocket = (
   auth: {
     readonly tenantId: string;
     readonly workspaceId: string;
-    readonly workspaceRole: string;
+    readonly authorization?: string;
+    readonly workspaceRole?: string;
   },
 ): Socket =>
   io(`${baseUrl}/realtime`, {

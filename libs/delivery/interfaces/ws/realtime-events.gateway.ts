@@ -7,11 +7,15 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import {
+  ApiKeyRequestAuthorizer,
+  hasBearerAuthorizationHeader,
+} from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import {
   WORKSPACE_AUTHORIZATION_POLICY,
   parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
-import { DomainError, requireTenantScope } from '@social-monitor/shared-kernel';
+import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import type { Server, Socket } from 'socket.io';
 
 import type { RealtimeEvent } from '../../domain';
@@ -55,6 +59,7 @@ export class RealtimeEventsGateway implements RealtimeFanoutPort {
 
   constructor(
     private readonly listRealtimeEvents: ListRealtimeEventsUseCase,
+    private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
@@ -97,16 +102,12 @@ export class RealtimeEventsGateway implements RealtimeFanoutPort {
         tenantIdHeader: readSocketScopeValue(socket, 'x-tenant-id', 'tenantId'),
         workspaceIdHeader: readSocketScopeValue(socket, 'x-workspace-id', 'workspaceId'),
       });
-      const authorization = this.workspaceAuthorization.authorize({
-        tenantId: scope.tenantId,
-        workspaceId: scope.workspaceId,
-        action: 'realtime_events.read',
-        roles: parseWorkspaceRolesHeader(readSocketScopeValue(socket, 'x-workspace-role', 'workspaceRole')),
-      });
-
-      if (!authorization.ok) {
-        throw authorization.error;
-      }
+      await this.authorizeRealtimeRead(
+        scope.tenantId,
+        scope.workspaceId,
+        readSocketScopeValue(socket, 'authorization', 'authorization'),
+        readSocketScopeValue(socket, 'x-workspace-role', 'workspaceRole'),
+      );
 
       const channel = readNonEmptyString(payload.channel, 'channel');
       const result = await this.listRealtimeEvents.execute({
@@ -134,6 +135,35 @@ export class RealtimeEventsGateway implements RealtimeFanoutPort {
       };
     } catch (error) {
       return errorAck(error);
+    }
+  }
+
+  private async authorizeRealtimeRead(
+    tenantId: TenantId,
+    workspaceId: WorkspaceId,
+    authorizationHeader: string | undefined,
+    workspaceRoleHeader: string | undefined,
+  ): Promise<void> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      await this.apiKeyRequestAuthorizer.authorize({
+        authorizationHeader,
+        tenantId,
+        workspaceId,
+        requiredScope: 'read:delivery_status',
+        operation: 'realtime_events.read',
+      });
+      return;
+    }
+
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId,
+      workspaceId,
+      action: 'realtime_events.read',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
     }
   }
 }
