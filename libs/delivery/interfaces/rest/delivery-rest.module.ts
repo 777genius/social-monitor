@@ -67,6 +67,7 @@ import {
   DELIVERY_PERSISTENCE_MODE,
   DELIVERY_PRISMA_CLIENT,
   DELIVERY_REALTIME_EVENT_REPOSITORY,
+  DELIVERY_REALTIME_FANOUT,
   DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
   DELIVERY_WEBHOOK_REPLAY_STORE,
   DELIVERY_WEBHOOK_SECRET_VAULT,
@@ -77,6 +78,7 @@ import { DigestsController } from './digests.controller';
 import { NotificationPreferencesController } from './notification-preferences.controller';
 import { RealtimeEventsController } from './realtime-events.controller';
 import { WebhookEndpointsController } from './webhook-endpoints.controller';
+import { RealtimeEventsGateway } from '../ws/realtime-events.gateway';
 import type {
   DeliveryAttemptRepositoryPort,
   DeliveryProviderPort,
@@ -85,6 +87,7 @@ import type {
   DigestSourceReaderPort,
   NotificationPreferenceManagementPort,
   NotificationPreferenceReaderPort,
+  RealtimeFanoutPort,
   RealtimeEventRepositoryPort,
   WebhookEndpointRepositoryPort,
   WebhookReplayStorePort,
@@ -124,6 +127,11 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     InMemoryWebhookReplayStore,
     InMemoryWebhookSecretVault,
     InMemoryMetricsRecorder,
+    RealtimeEventsGateway,
+    {
+      provide: DELIVERY_REALTIME_FANOUT,
+      useExisting: RealtimeEventsGateway,
+    },
     {
       provide: DELIVERY_PROVIDERS,
       useFactory: (metrics: InMemoryMetricsRecorder) => [
@@ -399,9 +407,9 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     },
     {
       provide: RecordRealtimeEventUseCase,
-      useFactory: (events: RealtimeEventRepositoryPort) =>
-        new RecordRealtimeEventUseCase(events, new CryptoIdGenerator(), new SystemClock()),
-      inject: [DELIVERY_REALTIME_EVENT_REPOSITORY],
+      useFactory: (events: RealtimeEventRepositoryPort, fanout: RealtimeFanoutPort) =>
+        new RecordRealtimeEventUseCase(events, new CryptoIdGenerator(), new SystemClock(), fanout),
+      inject: [DELIVERY_REALTIME_EVENT_REPOSITORY, DELIVERY_REALTIME_FANOUT],
     },
     {
       provide: ListRealtimeEventsUseCase,
@@ -456,6 +464,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
     DELIVERY_DIGEST_SOURCE_READER,
     DELIVERY_REALTIME_EVENT_REPOSITORY,
+    DELIVERY_REALTIME_FANOUT,
     DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
     DELIVERY_WEBHOOK_SECRET_VAULT,
     DELIVERY_WEBHOOK_REPLAY_STORE,

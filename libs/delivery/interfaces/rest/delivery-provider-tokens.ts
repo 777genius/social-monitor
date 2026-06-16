@@ -5,6 +5,7 @@ import type {
   DigestSourceReaderPort,
   NotificationPreferenceManagementPort,
   NotificationPreferenceReaderPort,
+  RealtimeFanoutPort,
   RealtimeEventRepositoryPort,
   WebhookEndpointRepositoryPort,
   WebhookReplayStorePort,
@@ -20,6 +21,7 @@ export const DELIVERY_DIGEST_REPOSITORY = Symbol('DELIVERY_DIGEST_REPOSITORY');
 export const DELIVERY_DIGEST_SCHEDULE_REPOSITORY = Symbol('DELIVERY_DIGEST_SCHEDULE_REPOSITORY');
 export const DELIVERY_DIGEST_SOURCE_READER = Symbol('DELIVERY_DIGEST_SOURCE_READER');
 export const DELIVERY_REALTIME_EVENT_REPOSITORY = Symbol('DELIVERY_REALTIME_EVENT_REPOSITORY');
+export const DELIVERY_REALTIME_FANOUT = Symbol('DELIVERY_REALTIME_FANOUT');
 export const DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY = Symbol('DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY');
 export const DELIVERY_WEBHOOK_SECRET_VAULT = Symbol('DELIVERY_WEBHOOK_SECRET_VAULT');
 export const DELIVERY_WEBHOOK_REPLAY_STORE = Symbol('DELIVERY_WEBHOOK_REPLAY_STORE');
@@ -34,6 +36,7 @@ export type DeliveryProviderTokenMap = {
   readonly [DELIVERY_DIGEST_SCHEDULE_REPOSITORY]: DigestScheduleRepositoryPort;
   readonly [DELIVERY_DIGEST_SOURCE_READER]: DigestSourceReaderPort;
   readonly [DELIVERY_REALTIME_EVENT_REPOSITORY]: RealtimeEventRepositoryPort;
+  readonly [DELIVERY_REALTIME_FANOUT]: RealtimeFanoutPort;
   readonly [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY]: WebhookEndpointRepositoryPort;
   readonly [DELIVERY_WEBHOOK_SECRET_VAULT]: WebhookSecretVaultPort;
   readonly [DELIVERY_WEBHOOK_REPLAY_STORE]: WebhookReplayStorePort;

@@ -1,18 +1,28 @@
 import { type Clock, DomainError, type IdGenerator, err, ok, type Result } from '@social-monitor/shared-kernel';
 
 import { encodeRealtimeReplayCursor, RealtimeEvent } from '../../domain';
-import { RealtimeEventSequenceConflictError, type RealtimeEventRepositoryPort } from '../../ports';
+import {
+  RealtimeEventSequenceConflictError,
+  type RealtimeEventRepositoryPort,
+  type RealtimeFanoutPort,
+} from '../../ports';
 import type { RecordRealtimeEventCommand } from './record-realtime-event.command';
 import type { RecordRealtimeEventResult } from './record-realtime-event.result';
 
 type RecordRealtimeEventFailure = DomainError | Error;
 const MAX_SEQUENCE_RETRIES = 3;
+const noopRealtimeFanout: RealtimeFanoutPort = {
+  async publish(): Promise<void> {
+    return undefined;
+  },
+};
 
 export class RecordRealtimeEventUseCase {
   constructor(
     private readonly realtimeEvents: RealtimeEventRepositoryPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
+    private readonly fanout: RealtimeFanoutPort = noopRealtimeFanout,
   ) {}
 
   async execute(
@@ -50,6 +60,8 @@ export class RecordRealtimeEventUseCase {
         return err(error instanceof Error ? error : new Error('Realtime event append failed'));
       }
 
+      await this.publishBestEffort(event);
+
       const snapshot = event.toSnapshot();
 
       return ok({
@@ -60,5 +72,13 @@ export class RecordRealtimeEventUseCase {
     }
 
     return err(new DomainError('operation.conflict', 'Realtime event sequence conflict was not resolved'));
+  }
+
+  private async publishBestEffort(event: RealtimeEvent): Promise<void> {
+    try {
+      await this.fanout.publish(event);
+    } catch {
+      return undefined;
+    }
   }
 }

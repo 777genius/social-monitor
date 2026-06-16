@@ -46,6 +46,7 @@
     "check:openapi": "ts-node -r tsconfig-paths/register scripts/check-openapi.ts",
     "check:persistence-readiness": "node scripts/check-persistence-readiness.mjs",
     "check:rabbitmq-queue-publisher": "NODE_OPTIONS=--max-old-space-size=1024 node scripts/run-with-timeout.mjs --timeout-ms 60000 -- ts-node -r tsconfig-paths/register scripts/check-rabbitmq-queue-publisher-smoke.ts",
+    "check:realtime-websocket": "NODE_OPTIONS=--max-old-space-size=1024 node scripts/run-with-timeout.mjs --timeout-ms 60000 -- ts-node -r tsconfig-paths/register scripts/check-realtime-websocket-smoke.ts",
     "check:release": "node scripts/check-release-evidence.mjs",
     "check:retention": "node scripts/check-retention.mjs",
     "check:retention-plan": "ts-node -r tsconfig-paths/register scripts/check-retention-plan.ts",
@@ -75,17 +76,19 @@
     "test": "NODE_OPTIONS=--max-old-space-size=1024 node scripts/run-with-timeout.mjs --timeout-ms 600000 -- jest --config jest.config.ts --runInBand",
     "test:e2e": "NODE_OPTIONS=--max-old-space-size=1024 node scripts/run-with-timeout.mjs --timeout-ms 480000 -- jest --config test/jest-e2e.config.ts --runInBand",
     "update:openapi": "ts-node -r tsconfig-paths/register scripts/check-openapi.ts --update",
-    "verify": "npm run lint && npm run check:architecture && npm run check:code-quality && npm run check:secrets && npm run check:dependencies && npm run check:container && npm run check:observability && npm run check:api-health && npm run check:openapi && npm run check:events && npm run check:local-infra && npm run check:migrations && npm run check:persistence-readiness && npm run check:rabbitmq-queue-publisher && npm run check:monitoring-persistence && npm run check:monitoring-read-rest && npm run check:source-binding-health-rest && npm run check:source-profile-rest && npm run check:source-config-protector && npm run check:source-config-reader-boundary && npm run check:scan-status-attempt-rest && npm run check:scan-scheduler-command && npm run check:scan-scheduler-loop && npm run check:scan-queue-drain-loop && npm run check:ingestion-feed-persistence && npm run check:summary-persistence && npm run check:summary-feedback-rest && npm run check:summary-policy-rest && npm run check:summary-request-queue && npm run check:summary-worker-command && npm run check:summary-job-polling-loop && npm run check:summary-ready-projection-handler && npm run check:identity-persistence && npm run check:usage-persistence && npm run check:usage-audit-rest && npm run check:delivery-persistence && npm run check:delivery-attempt-rest && npm run check:delivery-worker-command && npm run check:delivery-attempt-dispatch-loop && npm run check:digest-scheduler-loop && npm run check:digest-schedule-rest && npm run check:notification-preference-rest && npm run check:load-cost && npm run check:source-certification && npm run check:hn-smoke && npm run check:reddit-smoke && npm run check:rss-smoke && npm run check:delivery-replay && npm run check:mvp-core-loop && npm run check:beta-scope-policy && npm run check:beta-ring-policy && npm run check:summary-evals && npm run check:summary-cost && npm run check:summary-window && npm run check:summary-retry && npm run check:backup-restore && npm run check:retention && npm run check:retention-plan && npm run check:drills && npm run check:release && npm run build && npm run test && npm run test:e2e",
+    "verify": "npm run lint && npm run check:architecture && npm run check:code-quality && npm run check:secrets && npm run check:dependencies && npm run check:container && npm run check:observability && npm run check:api-health && npm run check:openapi && npm run check:events && npm run check:local-infra && npm run check:migrations && npm run check:persistence-readiness && npm run check:rabbitmq-queue-publisher && npm run check:monitoring-persistence && npm run check:monitoring-read-rest && npm run check:source-binding-health-rest && npm run check:source-profile-rest && npm run check:source-config-protector && npm run check:source-config-reader-boundary && npm run check:scan-status-attempt-rest && npm run check:scan-scheduler-command && npm run check:scan-scheduler-loop && npm run check:scan-queue-drain-loop && npm run check:ingestion-feed-persistence && npm run check:summary-persistence && npm run check:summary-feedback-rest && npm run check:summary-policy-rest && npm run check:summary-request-queue && npm run check:summary-worker-command && npm run check:summary-job-polling-loop && npm run check:summary-ready-projection-handler && npm run check:identity-persistence && npm run check:usage-persistence && npm run check:usage-audit-rest && npm run check:delivery-persistence && npm run check:delivery-attempt-rest && npm run check:delivery-worker-command && npm run check:delivery-attempt-dispatch-loop && npm run check:realtime-websocket && npm run check:digest-scheduler-loop && npm run check:digest-schedule-rest && npm run check:notification-preference-rest && npm run check:load-cost && npm run check:source-certification && npm run check:hn-smoke && npm run check:reddit-smoke && npm run check:rss-smoke && npm run check:delivery-replay && npm run check:mvp-core-loop && npm run check:beta-scope-policy && npm run check:beta-ring-policy && npm run check:summary-evals && npm run check:summary-cost && npm run check:summary-window && npm run check:summary-retry && npm run check:backup-restore && npm run check:retention && npm run check:retention-plan && npm run check:drills && npm run check:release && npm run build && npm run test && npm run test:e2e",
     "start:api": "ts-node -r tsconfig-paths/register apps/api-gateway/src/main.ts",
     "start:delivery": "ts-node -r tsconfig-paths/register apps/delivery-service/src/main.ts",
     "start:ingestion": "ts-node -r tsconfig-paths/register apps/ingestion-worker/src/main.ts",
     "start:intelligence": "ts-node -r tsconfig-paths/register apps/intelligence-worker/src/main.ts"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.24",
-    "@nestjs/core": "^11.1.24",
-    "@nestjs/platform-express": "^11.1.24",
+    "@nestjs/common": "^11.1.27",
+    "@nestjs/core": "^11.1.27",
+    "@nestjs/platform-express": "^11.1.27",
+    "@nestjs/platform-socket.io": "^11.1.27",
     "@nestjs/swagger": "^11.4.4",
+    "@nestjs/websockets": "^11.1.27",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "class-transformer": "^0.5.1",
@@ -99,7 +102,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
-    "@nestjs/testing": "^11.1.24",
+    "@nestjs/testing": "^11.1.27",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.10.1",
@@ -108,6 +111,7 @@
     "eslint": "^9.39.1",
     "jest": "^30.4.2",
     "prisma": "^7.8.0",
+    "socket.io-client": "^4.8.3",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
@@ -119,6 +123,7 @@
     "node": ">=22.0.0"
   },
   "overrides": {
-    "@prisma/dev": "0.24.10"
+    "@prisma/dev": "0.24.10",
+    "form-data": "4.0.6"
   }
 }
