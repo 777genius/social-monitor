@@ -34,9 +34,10 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 
 ## Executable Evidence Added
 - `npm run check:mvp-core-loop` proves the backend MVP loop without network or paid provider access:
-  topic creation -> source binding -> scan policy -> scan request queue -> ingestion execution -> feed projection -> summary request/execution -> feedback classification -> `summary.ready` event -> realtime projection/replay.
+  topic creation -> source binding -> scan policy -> scan request queue -> ingestion execution -> feed projection -> summary request/execution -> digest assembly -> queued delivery attempt -> feedback classification -> `summary.ready` event -> realtime projection/replay.
 - The same gate now proves launch pause safety for the core loop: source binding pause blocks new manual scan requests before quota reservation or queue enqueue, then resume allows the validated scan/feed/summary path to continue.
 - The gate uses real use cases and ports across monitoring, ingestion, feed, summary and delivery. Only external source/model dependencies are deterministic adapters.
+- Digest evidence in the same gate proves completed summaries and scanned feed items become digest provenance and a non-empty digest queues an in-app delivery attempt.
 - Summary feedback now records category, triage owner, immutable summary/citation evidence and eval-fixture eligibility.
 - The gate is now a blocking release evidence item in `ops/release/mvp-release-evidence-contract.json` and is included in `npm run verify`.
 - `npm run check:beta-scope-policy` proves unsupported/deferred providers stay out of the beta binding catalog, binding attempts are rejected, and source demand is captured as `source_request` feedback routed to `source-owner`.

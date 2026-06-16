@@ -17,7 +17,14 @@ import { ProjectSummaryReadyEventUseCase } from '../libs/delivery/features/proje
 import type { SummaryReadyProjectionPayload } from '../libs/delivery/features/project-summary-ready-event/project-summary-ready-event.command';
 import { ListRealtimeEventsUseCase } from '../libs/delivery/features/list-realtime-events/list-realtime-events.use-case';
 import { RecordRealtimeEventUseCase } from '../libs/delivery/features/record-realtime-event/record-realtime-event.use-case';
+import { InMemoryDeliveryAttemptRepository } from '../libs/delivery/adapters/persistence/in-memory-delivery-attempt.repository';
+import { InMemoryDigestRepository } from '../libs/delivery/adapters/persistence/in-memory-digest.repository';
 import { InMemoryRealtimeEventRepository } from '../libs/delivery/adapters/persistence/in-memory-realtime-event.repository';
+import { InMemoryDigestSourceReader } from '../libs/delivery/adapters/source/in-memory-digest-source.reader';
+import { AssembleDigestUseCase } from '../libs/delivery/features/assemble-digest/assemble-digest.use-case';
+import { GetDeliveryAttemptUseCase } from '../libs/delivery/features/get-delivery-attempt/get-delivery-attempt.use-case';
+import { GetDigestUseCase } from '../libs/delivery/features/get-digest/get-digest.use-case';
+import { QueueDeliveryAttemptUseCase } from '../libs/delivery/features/queue-delivery-attempt/queue-delivery-attempt.use-case';
 import { InMemoryFeedItemReadRepository } from '../libs/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { ListFeedItemsUseCase } from '../libs/feed/features/list-feed-items/list-feed-items.use-case';
 import { InMemoryScanAttemptRepository } from '../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
@@ -95,6 +102,9 @@ async function main(): Promise<void> {
   const summaryArtifacts = new InMemorySummaryArtifactRepository();
   const summaryFeedback = new InMemorySummaryFeedbackRepository();
   const summaryEvents = new InMemorySummaryEventPublisher();
+  const deliveryAttempts = new InMemoryDeliveryAttemptRepository();
+  const digestRepository = new InMemoryDigestRepository();
+  const digestSources = new InMemoryDigestSourceReader();
   const realtimeEvents = new InMemoryRealtimeEventRepository();
 
   const topic = unwrap(
@@ -323,6 +333,80 @@ async function main(): Promise<void> {
   assert(summary.citations.length === 2, `expected 2 summary citations, got ${summary.citations.length}`);
   assert(summary.qualityFlags.includes('limited_sources'), 'deterministic MVP summary should flag limited_sources');
   assert(summary.freshness.status === 'fresh', `expected fresh summary, got ${summary.freshness.status}`);
+
+  const digestWindowStartedAt = new Date(fixedNow.getTime() - 60 * 60 * 1000);
+  const digestWindowEndedAt = new Date(fixedNow.getTime() + 1000);
+  digestSources.addSummary({
+    tenantId: tenant,
+    workspaceId: workspace,
+    summaryId: summaryExecution.summaryId,
+    topicId: topic.topicId,
+    sourceWindowStartedAt: digestWindowStartedAt,
+    sourceWindowEndedAt: fixedNow,
+    signal: 'high',
+  });
+  for (const feedItem of feedPage.items) {
+    digestSources.addFeedItem({
+      tenantId: tenant,
+      workspaceId: workspace,
+      feedItemId: feedItem.id,
+      topicId: feedItem.topicId,
+      observedAt: new Date(feedItem.observedAt),
+      signal: 'normal',
+    });
+  }
+
+  const assembledDigest = unwrap(
+    await new AssembleDigestUseCase(
+      digestRepository,
+      digestSources,
+      new QueueDeliveryAttemptUseCase(deliveryAttempts, ids, clock),
+      ids,
+      clock,
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      recipientKey: 'beta-user-1',
+      channel: 'in_app',
+      topicIds: [topic.topicId],
+      windowStartedAt: digestWindowStartedAt,
+      windowEndedAt: digestWindowEndedAt,
+      includeNoSignal: false,
+      maxRetries: 3,
+    }),
+    'assemble digest',
+  );
+  assert(assembledDigest.created, 'digest should be assembled for the MVP core loop');
+  assert(assembledDigest.digest.status === 'assembled', `expected assembled digest, got ${assembledDigest.digest.status}`);
+  assert(
+    assembledDigest.digest.summaryIds.join(',') === summaryExecution.summaryId,
+    'digest must include the completed summary artifact',
+  );
+  assert(assembledDigest.digest.feedItemIds.length === 2, 'digest must include scanned feed item provenance');
+  assert(assembledDigest.deliveryAttemptId !== undefined, 'assembled digest must queue a delivery attempt');
+
+  const digestView = unwrap(
+    await new GetDigestUseCase(digestRepository).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      digestId: assembledDigest.digest.id,
+    }),
+    'get assembled digest',
+  );
+  assert(digestView.provenance.length === 3, 'digest read model must expose summary and feed provenance');
+
+  const deliveryAttemptView = unwrap(
+    await new GetDeliveryAttemptUseCase(deliveryAttempts).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      deliveryAttemptId: assembledDigest.deliveryAttemptId,
+    }),
+    'get digest delivery attempt',
+  );
+  assert(deliveryAttemptView.state === 'queued', `expected queued delivery attempt, got ${deliveryAttemptView.state}`);
+  assert(deliveryAttemptView.channel === 'in_app', 'digest delivery attempt channel should be in-app');
+  assert(deliveryAttemptView.resourceType === 'digest', 'digest delivery attempt must target digest resource type');
+  assert(deliveryAttemptView.resourceId === assembledDigest.digest.id, 'digest delivery attempt must target assembled digest');
 
   const firstCitation = summary.citations[0];
   assert(firstCitation !== undefined, 'summary should expose at least one citation for feedback evidence');

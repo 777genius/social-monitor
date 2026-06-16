@@ -4,7 +4,7 @@
 Decide whether beta can close and post-MVP roadmap execution can start.
 
 ## Go Conditions
-- Backend MVP core loop, feedback submission and source binding pause/resume pass `npm run check:mvp-core-loop`.
+- Backend MVP core loop, digest delivery, feedback submission and source binding pause/resume pass `npm run check:mvp-core-loop`.
 - Unsupported/deferred source policy passes `npm run check:beta-scope-policy`.
 - Ring expansion policy passes `npm run check:beta-ring-policy`.
 - Persistence readiness passes `npm run check:persistence-readiness`.
@@ -13,7 +13,7 @@ Decide whether beta can close and post-MVP roadmap execution can start.
 - Summary Prisma persistence foundation and summary API runtime selector pass `npm run check:summary-persistence`.
 - Identity Prisma persistence foundation and identity API runtime selector pass `npm run check:identity-persistence`.
 - Usage Prisma persistence foundation and usage runtime selector pass `npm run check:usage-persistence`.
-- Beta user can complete onboarding against the same topic/source/scan/feed/summary/feedback/realtime path.
+- Beta user can complete onboarding against the same topic/source/scan/feed/summary/digest/delivery/feedback/realtime path.
 - Supported source list is frozen or change-controlled.
 - Known limitations are explicit.
 - Rollback/pause path has owners and source binding pause blocks new scan queue work.
@@ -75,7 +75,7 @@ Record decision as `go`, `hold` or `rework` with onboarding, launch, feedback an
 
 Required evidence links:
 
-1. fresh tenant E2E result or `npm run check:mvp-core-loop` result for backend MVP loop and pause/resume behavior
+1. fresh tenant E2E result or `npm run check:mvp-core-loop` result for backend MVP loop, digest delivery and pause/resume behavior
 2. supported source certification and beta scope source policy
 3. summary eval/citation gate
 4. tenant isolation/redaction checks
