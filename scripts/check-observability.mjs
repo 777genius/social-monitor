@@ -14,6 +14,8 @@ const allowedMetrics = new Set([
   'scan_failure_queue_events_total',
   'scan_failures_total',
   'scan_jobs_total',
+  'summary_job_failures_total',
+  'summary_jobs_total',
   'summary_model_estimated_cost_usd',
   'summary_model_requests_total',
   'summary_model_tokens_total',
