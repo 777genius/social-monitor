@@ -9,6 +9,7 @@ import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case';
 import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summary-rest.module';
+import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/in-memory-public-api-audit-log';
 import request from 'supertest';
 
 import { DomainErrorFilter } from '../apps/api-gateway/src/domain-error.filter';
@@ -52,6 +53,7 @@ async function main(): Promise<void> {
       'x-workspace-id': workspace,
     };
     const feedItems = moduleRef.get(InMemoryFeedItemReadRepository);
+    const auditLog = moduleRef.get(InMemoryPublicApiAuditLog);
 
     feedItems.upsert(FeedItem.publish({
       id: 'feed-read-api-key-smoke',
@@ -115,6 +117,22 @@ async function main(): Promise<void> {
       .set(headers)
       .set('Authorization', `Bearer ${feedSecret}`)
       .expect(200);
+
+    const feedReadAudit = await auditLog.list({
+      tenantId: tenant,
+      workspaceId: workspace,
+      actorType: 'api_key',
+      action: 'feed.read',
+      outcome: 'succeeded',
+      resourceType: 'public_api_request',
+      limit: 10,
+    });
+
+    assert(feedReadAudit.records.length >= 2, 'read:feed API key requests must create public API audit events');
+    assert(
+      feedReadAudit.records.every((record) => record.metadata.requiredScope === 'read:feed'),
+      'API key request audit events must preserve the required scope without storing secrets',
+    );
 
     await request(app.getHttpServer())
       .get('/feed/items')
