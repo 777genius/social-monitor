@@ -1,4 +1,4 @@
-import { createCipheriv, randomBytes } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
 import type {
   SourceBindingConfig,
@@ -35,6 +35,10 @@ export class AesGcmSourceBindingConfigProtector implements SourceBindingConfigPr
     return this.protectObject(config);
   }
 
+  async unprotect(config: SourceBindingConfig): Promise<SourceBindingConfig> {
+    return this.unprotectObject(config);
+  }
+
   private protectObject(config: SourceBindingConfig): SourceBindingConfig {
     return Object.fromEntries(
       Object.entries(config).map(([key, value]) => [key, this.protectValue(key, value)]),
@@ -69,6 +73,28 @@ export class AesGcmSourceBindingConfigProtector implements SourceBindingConfigPr
     return value;
   }
 
+  private unprotectObject(config: SourceBindingConfig): SourceBindingConfig {
+    return Object.fromEntries(
+      Object.entries(config).map(([key, value]) => [key, this.unprotectValue(value)]),
+    );
+  }
+
+  private unprotectValue(value: SourceBindingConfigValue): SourceBindingConfigValue {
+    if (isEncryptedConfigValue(value)) {
+      return this.decrypt(value);
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) => this.unprotectValue(item));
+    }
+
+    if (isConfigObject(value)) {
+      return this.unprotectObject(value);
+    }
+
+    return value;
+  }
+
   private encrypt(value: SourceBindingConfigValue): EncryptedConfigValue {
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', this.key, iv);
@@ -87,7 +113,41 @@ export class AesGcmSourceBindingConfigProtector implements SourceBindingConfigPr
       authTag: cipher.getAuthTag().toString('base64url'),
     };
   }
+
+  private decrypt(value: EncryptedConfigValue): SourceBindingConfigValue {
+    if (value.keyId !== this.keyId) {
+      throw new Error(`Source credential key mismatch: ${value.keyId}`);
+    }
+
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      this.key,
+      Buffer.from(value.iv, 'base64url'),
+    );
+    decipher.setAuthTag(Buffer.from(value.authTag, 'base64url'));
+    const plaintext = Buffer.concat([
+      decipher.update(Buffer.from(value.ciphertext, 'base64url')),
+      decipher.final(),
+    ]).toString('utf8');
+
+    return JSON.parse(plaintext) as SourceBindingConfigValue;
+  }
 }
 
 const isConfigObject = (value: SourceBindingConfigValue): value is SourceBindingConfig =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isEncryptedConfigValue = (value: SourceBindingConfigValue): value is EncryptedConfigValue => {
+  if (!isConfigObject(value)) {
+    return false;
+  }
+
+  return (
+    value.encrypted === true &&
+    value.algorithm === 'aes-256-gcm' &&
+    typeof value.keyId === 'string' &&
+    typeof value.iv === 'string' &&
+    typeof value.ciphertext === 'string' &&
+    typeof value.authTag === 'string'
+  );
+};

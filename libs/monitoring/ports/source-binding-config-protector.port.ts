@@ -10,4 +10,5 @@ export type SourceBindingConfig = Readonly<Record<string, SourceBindingConfigVal
 
 export interface SourceBindingConfigProtectorPort {
   protect(config: SourceBindingConfig): Promise<SourceBindingConfig>;
+  unprotect(config: SourceBindingConfig): Promise<SourceBindingConfig>;
 }

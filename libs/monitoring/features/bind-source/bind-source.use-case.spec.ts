@@ -157,6 +157,10 @@ class FakeConfigProtector implements SourceBindingConfigProtectorPort {
       },
     };
   }
+
+  async unprotect(config: SourceBindingConfig): Promise<SourceBindingConfig> {
+    return config;
+  }
 }
 
 const makeTopic = () =>

@@ -48,5 +48,19 @@ describe('AesGcmSourceBindingConfigProtector', () => {
     });
     expect(JSON.stringify(protectedConfig)).not.toContain('raw-token');
     expect(JSON.stringify(protectedConfig)).not.toContain('raw-password');
+
+    await expect(protector.unprotect(protectedConfig)).resolves.toEqual({
+      query: 'openai monitoring',
+      apiToken: 'raw-token',
+      nested: {
+        password: 'raw-password',
+        safe: 'visible',
+      },
+      headers: [
+        {
+          authorization: 'Bearer raw-token',
+        },
+      ],
+    });
   });
 });

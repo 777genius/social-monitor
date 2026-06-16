@@ -136,6 +136,10 @@ class PassThroughConfigProtector implements SourceBindingConfigProtectorPort {
   async protect(config: SourceBindingConfig): Promise<SourceBindingConfig> {
     return config;
   }
+
+  async unprotect(config: SourceBindingConfig): Promise<SourceBindingConfig> {
+    return config;
+  }
 }
 
 const makeSummary = (params: {
