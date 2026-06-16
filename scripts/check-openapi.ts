@@ -26,7 +26,8 @@ async function main(): Promise<void> {
     expected = readFileSync(snapshotPath, 'utf8');
   } catch {
     console.error(`OpenAPI snapshot missing: ${snapshotPath}. Run "npm run update:openapi".`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   if (expected !== serialized) {
@@ -37,7 +38,8 @@ async function main(): Promise<void> {
         'Run "npm run update:openapi" intentionally, review the diff and update generated clients/contracts.',
       ].join('\n'),
     );
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   console.log('OpenAPI snapshot OK');
@@ -76,4 +78,7 @@ function sortJson(value: unknown): unknown {
   return value;
 }
 
-void main();
+void main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+});
