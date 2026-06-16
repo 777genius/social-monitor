@@ -11,6 +11,8 @@ import { FakeSourceProvider } from '../../adapters/source/fake-source.provider';
 import { FixtureHackerNewsClient } from '../../adapters/source/hacker-news/fixture-hacker-news-client';
 import { HackerNewsSourceProvider } from '../../adapters/source/hacker-news/hacker-news-source.provider';
 import { InMemorySourceProviderRegistry } from '../../adapters/source/in-memory-source-provider.registry';
+import { FixtureRedditClient } from '../../adapters/source/reddit/fixture-reddit-client';
+import { RedditSourceProvider } from '../../adapters/source/reddit/reddit-source.provider';
 import { FixtureRssClient } from '../../adapters/source/rss/fixture-rss-client';
 import { RssSourceProvider } from '../../adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfiles } from '../../adapters/source/source-readiness-profiles';
@@ -64,6 +66,7 @@ import { SourceProfileController } from './source-profile.controller';
     },
     FakeSourceProvider,
     FixtureHackerNewsClient,
+    FixtureRedditClient,
     FixtureRssClient,
     {
       provide: HackerNewsSourceProvider,
@@ -76,17 +79,23 @@ import { SourceProfileController } from './source-profile.controller';
       inject: [FixtureRssClient],
     },
     {
+      provide: RedditSourceProvider,
+      useFactory: (client: FixtureRedditClient) => new RedditSourceProvider(client),
+      inject: [FixtureRedditClient],
+    },
+    {
       provide: InMemorySourceProviderRegistry,
       useFactory: (
         fakeProvider: FakeSourceProvider,
         hackerNewsProvider: HackerNewsSourceProvider,
+        redditProvider: RedditSourceProvider,
         rssProvider: RssSourceProvider,
       ) =>
         new InMemorySourceProviderRegistry(
-          [fakeProvider, hackerNewsProvider, rssProvider],
+          [fakeProvider, hackerNewsProvider, redditProvider, rssProvider],
           sourceReadinessProfiles,
         ),
-      inject: [FakeSourceProvider, HackerNewsSourceProvider, RssSourceProvider],
+      inject: [FakeSourceProvider, HackerNewsSourceProvider, RedditSourceProvider, RssSourceProvider],
     },
     {
       provide: ListSourceProfilesUseCase,
