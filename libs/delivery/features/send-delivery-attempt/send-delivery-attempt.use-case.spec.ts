@@ -47,6 +47,10 @@ class FakeDeliveryAttempts implements DeliveryAttemptRepositoryPort {
     return this.attemptsByIdempotencyKey.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
   }
 
+  async findQueued(): Promise<readonly DeliveryAttempt[]> {
+    return [];
+  }
+
   async list(query: ListDeliveryAttemptsQuery): Promise<ListDeliveryAttemptsResult> {
     return {
       attempts: [...this.attemptsById.values()].filter((attempt) => {

@@ -26,5 +26,10 @@ export interface DeliveryAttemptRepositoryPort {
     workspaceId: WorkspaceId;
     idempotencyKey: string;
   }): Promise<DeliveryAttempt | null>;
+  findQueued(params: {
+    tenantId?: TenantId;
+    workspaceId?: WorkspaceId;
+    limit: number;
+  }): Promise<readonly DeliveryAttempt[]>;
   list(query: ListDeliveryAttemptsQuery): Promise<ListDeliveryAttemptsResult>;
 }

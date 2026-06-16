@@ -29,6 +29,21 @@ export class InMemoryDeliveryAttemptRepository implements DeliveryAttemptReposit
     return this.attemptsByIdempotencyKey.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
   }
 
+  async findQueued(params: Parameters<DeliveryAttemptRepositoryPort['findQueued']>[0]): Promise<readonly DeliveryAttempt[]> {
+    return [...this.attemptsById.values()]
+      .filter((attempt) => {
+        const snapshot = attempt.toSnapshot();
+
+        return (
+          snapshot.state === 'queued' &&
+          (params.tenantId === undefined || snapshot.tenantId === params.tenantId) &&
+          (params.workspaceId === undefined || snapshot.workspaceId === params.workspaceId)
+        );
+      })
+      .sort(compareQueuedAttempts)
+      .slice(0, params.limit);
+  }
+
   async list(query: ListDeliveryAttemptsQuery): Promise<ListDeliveryAttemptsResult> {
     const offset = parseCursor(query.cursor);
     const allAttempts = [...this.attemptsById.values()]
@@ -58,6 +73,18 @@ const compareAttempts = (left: DeliveryAttempt, right: DeliveryAttempt): number 
   }
 
   return rightSnapshot.id.localeCompare(leftSnapshot.id);
+};
+
+const compareQueuedAttempts = (left: DeliveryAttempt, right: DeliveryAttempt): number => {
+  const leftSnapshot = left.toSnapshot();
+  const rightSnapshot = right.toSnapshot();
+  const queuedDiff = leftSnapshot.queuedAt.getTime() - rightSnapshot.queuedAt.getTime();
+
+  if (queuedDiff !== 0) {
+    return queuedDiff;
+  }
+
+  return leftSnapshot.id.localeCompare(rightSnapshot.id);
 };
 
 const encodeCursor = (offset: number): string => Buffer.from(JSON.stringify({ offset })).toString('base64url');

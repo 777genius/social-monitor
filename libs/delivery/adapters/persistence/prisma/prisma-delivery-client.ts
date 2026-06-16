@@ -138,14 +138,20 @@ export type PrismaDeliveryClient = {
     }): Promise<PrismaDeliveryAttemptRecord | null>;
     findMany(args: {
       readonly where: {
-        readonly tenantId: string;
-        readonly workspaceId: string;
+        readonly tenantId?: string;
+        readonly workspaceId?: string;
+        readonly state?: PrismaDeliveryAttemptState;
       };
-      readonly orderBy: readonly [
-        { readonly queuedAt: 'desc' },
-        { readonly id: 'desc' },
-      ];
-      readonly skip: number;
+      readonly orderBy:
+        | readonly [
+          { readonly queuedAt: 'desc' },
+          { readonly id: 'desc' },
+        ]
+        | readonly [
+          { readonly queuedAt: 'asc' },
+          { readonly id: 'asc' },
+        ];
+      readonly skip?: number;
       readonly take: number;
     }): Promise<readonly PrismaDeliveryAttemptRecord[]>;
     count(args: {

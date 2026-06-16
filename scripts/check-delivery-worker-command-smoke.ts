@@ -14,6 +14,11 @@ const assert = (condition: unknown, message: string): void => {
 };
 
 async function main(): Promise<void> {
+  const previousDigestLoop = process.env.DELIVERY_DIGEST_SCHEDULER_LOOP;
+  const previousDispatchLoop = process.env.DELIVERY_ATTEMPT_DISPATCH_LOOP;
+  process.env.DELIVERY_DIGEST_SCHEDULER_LOOP = 'disabled';
+  process.env.DELIVERY_ATTEMPT_DISPATCH_LOOP = 'disabled';
+
   const app = await NestFactory.createApplicationContext(DeliveryServiceModule, { logger: false });
 
   try {
@@ -99,7 +104,18 @@ async function main(): Promise<void> {
     console.log('Delivery worker command smoke OK');
   } finally {
     await app.close();
+    restoreEnv('DELIVERY_DIGEST_SCHEDULER_LOOP', previousDigestLoop);
+    restoreEnv('DELIVERY_ATTEMPT_DISPATCH_LOOP', previousDispatchLoop);
   }
 }
 
 void main();
+
+const restoreEnv = (key: string, value: string | undefined): void => {
+  if (value === undefined) {
+    delete process.env[key];
+    return;
+  }
+
+  process.env[key] = value;
+};

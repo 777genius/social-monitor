@@ -7,7 +7,17 @@ export type DeliveryDigestSchedulerLoopOptions = {
   readonly workspaceId?: string;
 };
 
+export type DeliveryAttemptDispatchLoopOptions = {
+  readonly enabled: boolean;
+  readonly intervalMs: number;
+  readonly limit: number;
+  readonly runOnStart: boolean;
+  readonly tenantId?: string;
+  readonly workspaceId?: string;
+};
+
 export const DELIVERY_DIGEST_SCHEDULER_LOOP_OPTIONS = Symbol('DELIVERY_DIGEST_SCHEDULER_LOOP_OPTIONS');
+export const DELIVERY_ATTEMPT_DISPATCH_LOOP_OPTIONS = Symbol('DELIVERY_ATTEMPT_DISPATCH_LOOP_OPTIONS');
 
 export const resolveDeliveryDigestSchedulerLoopOptions = (
   env: NodeJS.ProcessEnv,
@@ -30,6 +40,32 @@ export const resolveDeliveryDigestSchedulerLoopOptions = (
     intervalMs: parseBoundedInteger(env.DELIVERY_DIGEST_SCHEDULER_INTERVAL_MS, 60_000, 1_000, 3_600_000),
     limit: parseBoundedInteger(env.DELIVERY_DIGEST_SCHEDULER_LIMIT, 20, 1, 100),
     runOnStart: parseBoolean(env.DELIVERY_DIGEST_SCHEDULER_RUN_ON_START, true),
+    tenantId: tenant,
+    workspaceId: workspace,
+  };
+};
+
+export const resolveDeliveryAttemptDispatchLoopOptions = (
+  env: NodeJS.ProcessEnv,
+): DeliveryAttemptDispatchLoopOptions => {
+  const loopMode = env.DELIVERY_ATTEMPT_DISPATCH_LOOP ?? (env.NODE_ENV === 'test' ? 'disabled' : 'enabled');
+
+  if (loopMode !== 'enabled' && loopMode !== 'disabled') {
+    throw new Error('DELIVERY_ATTEMPT_DISPATCH_LOOP must be "enabled" or "disabled"');
+  }
+
+  const tenant = emptyToUndefined(env.DELIVERY_ATTEMPT_DISPATCH_TENANT_ID);
+  const workspace = emptyToUndefined(env.DELIVERY_ATTEMPT_DISPATCH_WORKSPACE_ID);
+
+  if ((tenant === undefined) !== (workspace === undefined)) {
+    throw new Error('DELIVERY_ATTEMPT_DISPATCH_TENANT_ID and DELIVERY_ATTEMPT_DISPATCH_WORKSPACE_ID must be set together');
+  }
+
+  return {
+    enabled: loopMode === 'enabled',
+    intervalMs: parseBoundedInteger(env.DELIVERY_ATTEMPT_DISPATCH_INTERVAL_MS, 60_000, 1_000, 3_600_000),
+    limit: parseBoundedInteger(env.DELIVERY_ATTEMPT_DISPATCH_LIMIT, 20, 1, 100),
+    runOnStart: parseBoolean(env.DELIVERY_ATTEMPT_DISPATCH_RUN_ON_START, true),
     tenantId: tenant,
     workspaceId: workspace,
   };

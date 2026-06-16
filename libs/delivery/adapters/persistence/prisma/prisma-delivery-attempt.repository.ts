@@ -71,6 +71,20 @@ export class PrismaDeliveryAttemptRepository implements DeliveryAttemptRepositor
     return record === null ? null : deliveryAttemptFromPrisma(record);
   }
 
+  async findQueued(params: Parameters<DeliveryAttemptRepositoryPort['findQueued']>[0]): Promise<readonly DeliveryAttempt[]> {
+    const records = await this.prisma.deliveryAttempt.findMany({
+      where: {
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        state: 'QUEUED',
+      },
+      orderBy: [{ queuedAt: 'asc' }, { id: 'asc' }],
+      take: params.limit,
+    });
+
+    return records.map(deliveryAttemptFromPrisma);
+  }
+
   async list(query: ListDeliveryAttemptsQuery): Promise<ListDeliveryAttemptsResult> {
     const offset = parseCursor(query.cursor);
     const take = Math.max(1, Math.min(query.limit, 100));

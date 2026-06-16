@@ -669,8 +669,10 @@ class FakePrismaDeliveryClient implements PrismaDeliveryClient {
     findMany: async (args) =>
       [...this.attempts.values()]
         .filter((record) => matchesDeliveryAttemptWhere(record, args.where))
-        .sort(compareDeliveryAttemptRecords)
-        .slice(args.skip, args.skip + args.take),
+        .sort(isDeliveryAttemptAscendingOrder(args.orderBy)
+          ? compareDeliveryAttemptRecordsAsc
+          : compareDeliveryAttemptRecordsDesc)
+        .slice(args.skip ?? 0, (args.skip ?? 0) + args.take),
     count: async (args) =>
       [...this.attempts.values()].filter((record) => matchesDeliveryAttemptWhere(record, args.where)).length,
   };
@@ -964,18 +966,24 @@ const notificationPreferenceKey = (params: {
 const matchesDeliveryAttemptWhere = (
   record: PrismaDeliveryAttemptRecord,
   where: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
+    readonly tenantId?: string;
+    readonly workspaceId?: string;
     readonly id?: string;
     readonly idempotencyKey?: string;
+    readonly state?: PrismaDeliveryAttemptRecord['state'];
   },
 ): boolean =>
-  record.tenantId === where.tenantId &&
-  record.workspaceId === where.workspaceId &&
+  (where.tenantId === undefined || record.tenantId === where.tenantId) &&
+  (where.workspaceId === undefined || record.workspaceId === where.workspaceId) &&
   (where.id === undefined || record.id === where.id) &&
-  (where.idempotencyKey === undefined || record.idempotencyKey === where.idempotencyKey);
+  (where.idempotencyKey === undefined || record.idempotencyKey === where.idempotencyKey) &&
+  (where.state === undefined || record.state === where.state);
 
-const compareDeliveryAttemptRecords = (
+const isDeliveryAttemptAscendingOrder = (
+  orderBy: Parameters<PrismaDeliveryClient['deliveryAttempt']['findMany']>[0]['orderBy'],
+): boolean => orderBy[0].queuedAt === 'asc';
+
+const compareDeliveryAttemptRecordsDesc = (
   left: PrismaDeliveryAttemptRecord,
   right: PrismaDeliveryAttemptRecord,
 ): number => {
@@ -986,6 +994,19 @@ const compareDeliveryAttemptRecords = (
   }
 
   return right.id.localeCompare(left.id);
+};
+
+const compareDeliveryAttemptRecordsAsc = (
+  left: PrismaDeliveryAttemptRecord,
+  right: PrismaDeliveryAttemptRecord,
+): number => {
+  const queuedDiff = left.queuedAt.getTime() - right.queuedAt.getTime();
+
+  if (queuedDiff !== 0) {
+    return queuedDiff;
+  }
+
+  return left.id.localeCompare(right.id);
 };
 
 const matchesDigestWhere = (

@@ -134,6 +134,10 @@ class FakeDeliveryAttemptRepository implements DeliveryAttemptRepositoryPort {
     ) ?? null;
   }
 
+  async findQueued(): Promise<readonly DeliveryAttempt[]> {
+    return [];
+  }
+
   async list(query: ListDeliveryAttemptsQuery): Promise<RepositoryListDeliveryAttemptsResult> {
     const offset = parseCursor(query.cursor);
     const allAttempts = [...this.attempts.values()]
