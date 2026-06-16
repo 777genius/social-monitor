@@ -747,7 +747,37 @@
     },
     "/health": {
       "get": {
-        "operationId": "HealthController_health",
+        "operationId": "HealthController_health[0]",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Liveness probe for the API gateway.",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "HealthController_ready[1]",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Readiness probe for the API gateway.",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "HealthController_health[1]",
         "parameters": [],
         "responses": {
           "200": {
@@ -942,7 +972,7 @@
     },
     "/ready": {
       "get": {
-        "operationId": "HealthController_ready",
+        "operationId": "HealthController_ready[0]",
         "parameters": [],
         "responses": {
           "200": {

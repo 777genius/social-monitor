@@ -62,7 +62,7 @@ Required healthchecks:
 - Redis ping
 - RabbitMQ management/health endpoint
 - object storage ready
-- API `/healthz`
+- API `/health` and `/healthz` liveness aliases, plus `/ready` or `/health/ready` readiness
 - worker readiness where meaningful
 
 ## Environment Files

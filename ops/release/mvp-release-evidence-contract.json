@@ -168,8 +168,8 @@
   "deploySmokeChecks": [
     {
       "smokeId": "api-health",
-      "target": "GET /health",
-      "expectedSignal": "service accepts REST traffic"
+      "target": "GET /health and GET /healthz",
+      "expectedSignal": "service accepts REST traffic and exposes compatible liveness aliases"
     },
     {
       "smokeId": "openapi-contract",
