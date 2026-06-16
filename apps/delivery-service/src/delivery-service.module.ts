@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 
 import { ScheduleDueDigestsUseCase } from '@social-monitor/delivery/features/schedule-due-digests/schedule-due-digests.use-case';
 import { SendDeliveryAttemptUseCase } from '@social-monitor/delivery/features/send-delivery-attempt/send-delivery-attempt.use-case';
+import { ProjectSummaryReadyEventUseCase } from '@social-monitor/delivery/features/project-summary-ready-event/project-summary-ready-event.use-case';
+import { ProjectSummaryReadyEventHandler } from '@social-monitor/delivery/interfaces/events/project-summary-ready-event.handler';
 import { ScheduleDueDigestsCommandHandler } from '@social-monitor/delivery/interfaces/queue/schedule-due-digests-command.handler';
 import { SendDeliveryAttemptCommandHandler } from '@social-monitor/delivery/interfaces/queue/send-delivery-attempt-command.handler';
 import { DeliveryRestModule } from '@social-monitor/delivery/interfaces/rest/delivery-rest.module';
@@ -46,9 +48,18 @@ import { DigestSchedulerLoop } from './digest-scheduler-loop';
       ) => new SendDeliveryAttemptCommandHandler(sendDeliveryAttempt, metrics, runtime),
       inject: [SendDeliveryAttemptUseCase, InMemoryMetricsRecorder, WorkerRuntime],
     },
+    {
+      provide: ProjectSummaryReadyEventHandler,
+      useFactory: (
+        projectSummaryReady: ProjectSummaryReadyEventUseCase,
+        metrics: InMemoryMetricsRecorder,
+        runtime: WorkerRuntime,
+      ) => new ProjectSummaryReadyEventHandler(projectSummaryReady, metrics, runtime),
+      inject: [ProjectSummaryReadyEventUseCase, InMemoryMetricsRecorder, WorkerRuntime],
+    },
     DeliveryAttemptDispatchLoop,
     DigestSchedulerLoop,
   ],
-  exports: [ScheduleDueDigestsCommandHandler, SendDeliveryAttemptCommandHandler],
+  exports: [ProjectSummaryReadyEventHandler, ScheduleDueDigestsCommandHandler, SendDeliveryAttemptCommandHandler],
 })
 export class DeliveryServiceModule {}
