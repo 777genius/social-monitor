@@ -35,6 +35,7 @@ const requiredGateIds = new Set([
   'mvp-core-loop',
   'beta-scope-policy',
   'beta-ring-policy',
+  'summary-evidence-citations',
   'summary-eval-regression',
   'summary-cost-attribution',
   'summary-window-freshness',

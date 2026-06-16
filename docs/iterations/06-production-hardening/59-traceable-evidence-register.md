@@ -1176,7 +1176,7 @@ Evidence notes:
 
 ## PR 42 Lightweight OpenAPI Contract Gate Evidence
 
-- `pending commit: chore: make openapi contract check lightweight`
+- `e2b1bca chore: make openapi contract check lightweight`
 
 Verified commands:
 

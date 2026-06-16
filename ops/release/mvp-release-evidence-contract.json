@@ -145,6 +145,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "summary-evidence-citations",
+      "command": "npm run check:summary-evidence-smoke",
+      "blocksRelease": true
+    },
+    {
       "gateId": "summary-eval-regression",
       "command": "npm run check:summary-evals",
       "blocksRelease": true
