@@ -81,6 +81,20 @@ export type PrismaScanAttemptRecord = {
   readonly failureReason: string | null;
 };
 
+export type PrismaOutboxEventRecord = {
+  readonly id: string;
+  readonly tenantId: string | null;
+  readonly workspaceId: string | null;
+  readonly eventType: string;
+  readonly schemaVersion: number;
+  readonly payload: unknown;
+  readonly status: 'PENDING' | 'PUBLISHED' | 'FAILED';
+  readonly correlationId: string;
+  readonly causationId: string | null;
+  readonly createdAt: Date;
+  readonly publishedAt: Date | null;
+};
+
 export const topicFromPrisma = (record: PrismaTopicRecord): Topic =>
   Topic.rehydrate({
     id: record.id,

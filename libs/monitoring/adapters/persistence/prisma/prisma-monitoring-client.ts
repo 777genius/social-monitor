@@ -1,5 +1,6 @@
 import type {
   PrismaScanJobRecord,
+  PrismaOutboxEventRecord,
   PrismaScanAttemptRecord,
   PrismaScanPolicyRecord,
   PrismaSourceBindingRecord,
@@ -177,5 +178,19 @@ export type PrismaMonitoringClient = {
         readonly scanJobId: string;
       };
     }): Promise<PrismaScanAttemptRecord | null>;
+  };
+  readonly outboxEvent: {
+    create(args: {
+      readonly data: {
+        readonly id: string;
+        readonly tenantId?: string | null;
+        readonly workspaceId?: string | null;
+        readonly eventType: string;
+        readonly schemaVersion: number;
+        readonly payload: Readonly<Record<string, unknown>>;
+        readonly correlationId: string;
+        readonly causationId?: string | null;
+      };
+    }): Promise<PrismaOutboxEventRecord>;
   };
 };

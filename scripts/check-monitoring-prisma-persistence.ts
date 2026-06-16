@@ -1,4 +1,11 @@
-import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import {
+  causationId,
+  correlationId,
+  eventId,
+  FixedClock,
+  tenantId,
+  workspaceId,
+} from '@social-monitor/shared-kernel';
 
 import { resolveIngestionScanReporterMode } from '../apps/ingestion-worker/src/ingestion-worker-provider-tokens';
 import { ScanJob, ScanPolicy, SourceBinding, Topic } from '../libs/monitoring/domain';
@@ -6,10 +13,12 @@ import { PrismaScanJobRepository } from '../libs/monitoring/adapters/persistence
 import { PrismaScanPolicyRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-policy.repository';
 import { PrismaSourceBindingRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-source-binding.repository';
 import { PrismaTopicRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-topic.repository';
+import { PrismaMonitoringOutboxAdapter } from '../libs/monitoring/adapters/persistence/prisma/prisma-monitoring-outbox.adapter';
 import { resolveMonitoringPersistenceMode } from '../libs/monitoring/interfaces/rest/monitoring-provider-tokens';
 import type { PrismaMonitoringClient } from '../libs/monitoring/adapters/persistence/prisma/prisma-monitoring-client';
 import type {
   PrismaScanJobRecord,
+  PrismaOutboxEventRecord,
   PrismaScanAttemptRecord,
   PrismaScanPolicyRecord,
   PrismaSourceBindingRecord,
@@ -61,6 +70,7 @@ async function main(): Promise<void> {
   const bindings = new PrismaSourceBindingRepository(prisma);
   const policies = new PrismaScanPolicyRepository(prisma);
   const scanJobs = new PrismaScanJobRepository(prisma);
+  const outbox = new PrismaMonitoringOutboxAdapter(prisma);
 
   const topic = Topic.create({
     id: '00000000-0000-7000-8000-000000000020',
@@ -210,6 +220,30 @@ async function main(): Promise<void> {
   });
   assert(completedById?.toSnapshot().status === 'succeeded', 'scan job completion state must persist');
 
+  await outbox.append({
+    eventId: eventId('00000000-0000-7000-8000-000000000060'),
+    eventType: 'monitoring.topic.created',
+    schemaVersion: 1,
+    occurredAt: clock.now(),
+    tenantId: tenant,
+    workspaceId: workspace,
+    correlationId: correlationId('monitoring-prisma-outbox-smoke'),
+    causationId: causationId('topic:create:monitoring-prisma-outbox-smoke'),
+    payload: {
+      topicId: topic.toSnapshot().id,
+      tenantId: tenant,
+      workspaceId: workspace,
+      name: topic.toSnapshot().name,
+      query: topic.toSnapshot().query,
+    },
+  });
+
+  const outboxRecord = prisma.outboxEvents.get('00000000-0000-7000-8000-000000000060');
+  assert(outboxRecord?.eventType === 'monitoring.topic.created', 'outbox must persist event type');
+  assert(outboxRecord.status === 'PENDING', 'outbox events must start pending for dispatcher delivery');
+  assert(outboxRecord.tenantId === tenant, 'outbox event must preserve tenant scope');
+  assert(outboxRecord.workspaceId === workspace, 'outbox event must preserve workspace scope');
+
   console.log('Monitoring Prisma persistence smoke OK');
 }
 
@@ -221,6 +255,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   private readonly scanPolicies = new Map<string, PrismaScanPolicyRecord>();
   private readonly scanJobs = new Map<string, PrismaScanJobRecord>();
   private readonly scanAttempts = new Map<string, PrismaScanAttemptRecord>();
+  readonly outboxEvents = new Map<string, PrismaOutboxEventRecord>();
 
   readonly topic: PrismaMonitoringClient['topic'] = {
     upsert: async (args) => {
@@ -392,6 +427,27 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         record.workspaceId === args.where.workspaceId &&
         record.scanJobId === args.where.scanJobId
       )) ?? null,
+  };
+
+  readonly outboxEvent: PrismaMonitoringClient['outboxEvent'] = {
+    create: async (args) => {
+      const record: PrismaOutboxEventRecord = {
+        id: args.data.id,
+        tenantId: args.data.tenantId ?? null,
+        workspaceId: args.data.workspaceId ?? null,
+        eventType: args.data.eventType,
+        schemaVersion: args.data.schemaVersion,
+        payload: args.data.payload,
+        status: 'PENDING',
+        correlationId: args.data.correlationId,
+        causationId: args.data.causationId ?? null,
+        createdAt: clock.now(),
+        publishedAt: null,
+      };
+      this.outboxEvents.set(record.id, record);
+
+      return record;
+    },
   };
 
   private reindexSourceCatalog(): void {

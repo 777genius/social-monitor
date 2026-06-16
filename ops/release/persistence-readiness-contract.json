@@ -28,7 +28,7 @@
         "InMemoryIdempotencyAdapter"
       ],
       "risk": "topics, source bindings, scan policies, scan jobs and queued scan commands are lost on restart and are not shared with workers",
-      "durableReplacementPlan": "Monitoring repositories can opt into Prisma with MONITORING_PERSISTENCE=prisma; remaining blockers are durable outbox/idempotency and broker-backed scan queue"
+      "durableReplacementPlan": "Monitoring repositories and outbox events can opt into Prisma with MONITORING_PERSISTENCE=prisma; remaining blockers are durable idempotency and broker-backed scan queue"
     },
     {
       "moduleFile": "libs/feed/interfaces/rest/feed-rest.module.ts",
@@ -47,10 +47,12 @@
         "InMemorySummaryArtifactRepository",
         "InMemorySummaryFeedbackRepository",
         "InMemorySummaryPolicyRepository",
+        "InMemoryQueuePublisher",
+        "InMemorySummaryJobQueueAdapter",
         "InMemorySummaryEventPublisher"
       ],
       "risk": "summary jobs, artifacts, feedback, policies and events are process-local and disappear on restart",
-      "durableReplacementPlan": "SummaryRestModule can opt into Prisma job/artifact/feedback/policy persistence with SUMMARY_PERSISTENCE=prisma; remaining blockers are durable summary event publisher/outbox and cross-worker summary execution wiring"
+      "durableReplacementPlan": "SummaryRestModule can opt into Prisma job/artifact/feedback/policy persistence with SUMMARY_PERSISTENCE=prisma; remaining blockers are durable summary queue publisher, durable summary event publisher/outbox and cross-worker summary execution wiring"
     },
     {
       "moduleFile": "libs/delivery/interfaces/rest/delivery-rest.module.ts",

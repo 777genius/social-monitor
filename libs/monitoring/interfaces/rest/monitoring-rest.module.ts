@@ -20,6 +20,7 @@ import { PrismaScanExecutionAttemptReadModel } from '../../adapters/persistence/
 import { PrismaScanPolicyRepository } from '../../adapters/persistence/prisma/prisma-scan-policy.repository';
 import { PrismaSourceBindingRepository } from '../../adapters/persistence/prisma/prisma-source-binding.repository';
 import { PrismaTopicRepository } from '../../adapters/persistence/prisma/prisma-topic.repository';
+import { PrismaMonitoringOutboxAdapter } from '../../adapters/persistence/prisma/prisma-monitoring-outbox.adapter';
 import { UsageScanRequestQuotaAdapter } from '../../adapters/quota/usage-scan-request-quota.adapter';
 import { InMemoryScanQueueAdapter } from '../../adapters/queue/in-memory-scan-queue.adapter';
 import { AesGcmSourceBindingConfigProtector } from '../../adapters/security/aes-gcm-source-binding-config-protector';
@@ -161,7 +162,14 @@ import { TopicController } from './topic.controller';
     },
     {
       provide: MONITORING_OUTBOX,
-      useClass: InMemoryOutboxAdapter,
+      useFactory: (
+        mode: MonitoringPersistenceMode,
+        prisma: PrismaMonitoringClient | null,
+      ): OutboxPort =>
+        mode === 'prisma'
+          ? new PrismaMonitoringOutboxAdapter(requirePrismaMonitoringClient(prisma))
+          : new InMemoryOutboxAdapter(),
+      inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
     },
     {
       provide: MONITORING_IDEMPOTENCY,
