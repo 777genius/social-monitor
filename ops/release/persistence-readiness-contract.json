@@ -110,10 +110,12 @@
         "InMemoryScanAttemptRepository",
         "InMemoryScanCursorRepository",
         "InMemorySourceItemRepository",
-        "InMemoryScanFailureQueueAdapter"
+        "InMemoryScanFailureQueueAdapter",
+        "InMemoryQueuePublisher",
+        "InMemoryScanCommandQueueReader"
       ],
-      "risk": "worker scan attempts, source items, cursors, leases, failures and projected feed are process-local",
-      "durableReplacementPlan": "IngestionWorkerModule can opt into Prisma source item, cursor, feed projection, scan failure queue, scan attempt and scan lease persistence with INGESTION_WORKER_PERSISTENCE=prisma; remaining blockers are broker-backed scan command consumer, outbox dispatcher/inbox rollout and cross-process scheduler rollout"
+      "risk": "worker scan attempts, source items, cursors, leases, failures, projected feed and default scan command reader are process-local",
+      "durableReplacementPlan": "IngestionWorkerModule can opt into Prisma source item, cursor, feed projection, scan failure queue, scan attempt and scan lease persistence with INGESTION_WORKER_PERSISTENCE=prisma; scan command reading can opt into RabbitMQ with INGESTION_SCAN_QUEUE_READER=rabbitmq; remaining blockers are outbox dispatcher/inbox rollout and cross-process scheduler rollout"
     }
   ],
   "runtimeNoopAdapters": [

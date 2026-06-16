@@ -1,6 +1,6 @@
 import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
-import { InMemoryQueuePublisher, type QueueCommandEnvelope } from '@social-monitor/platform-queue';
+import type { QueueCommandEnvelope } from '@social-monitor/platform-queue';
 import { ExecuteScanCommandHandler } from '@social-monitor/ingestion/interfaces/queue/execute-scan-command.handler';
 import type { RetryScanCommand, ScanRetryQueuePort } from '@social-monitor/ingestion/ports';
 
@@ -9,6 +9,11 @@ import {
   INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS,
   type IngestionScanQueueDrainLoopOptions,
 } from './ingestion-worker-provider-tokens';
+import {
+  INGESTION_SCAN_COMMAND_QUEUE_READER,
+  type QueueCommandDelivery,
+  type ScanCommandQueueReaderPort,
+} from './scan-command-queue-reader';
 
 @Injectable()
 export class ScanQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
@@ -18,7 +23,8 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
   private shuttingDown = false;
 
   constructor(
-    private readonly queue: InMemoryQueuePublisher,
+    @Inject(INGESTION_SCAN_COMMAND_QUEUE_READER)
+    private readonly queue: ScanCommandQueueReaderPort,
     private readonly handler: ExecuteScanCommandHandler,
     @Inject(INGESTION_SCAN_FAILURE_QUEUE)
     private readonly retryQueue: ScanRetryQueuePort,
@@ -71,15 +77,18 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
   }
 
   private async executeTick(trigger: 'startup' | 'interval'): Promise<void> {
-    const { commands, primaryCount, retryCount } = await this.drainExecutableCommands();
+    const { deliveries, primaryCount, retryCount } = await this.drainExecutableCommands();
     let completed = 0;
     let failed = 0;
 
-    for (const command of commands) {
+    for (const delivery of deliveries) {
+      const { command } = delivery;
       try {
         await this.handler.handle(command);
+        await delivery.ack();
         completed += 1;
       } catch (error) {
+        await delivery.nack({ requeue: false });
         failed += 1;
         this.logger.error('scan queue drain loop item failed', {
           commandId: command.commandId,
@@ -92,7 +101,7 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
 
     this.logger.info('scan queue drain loop tick completed', {
       trigger,
-      evaluated: commands.length,
+      evaluated: deliveries.length,
       primary: primaryCount,
       retry: retryCount,
       completed,
@@ -102,12 +111,12 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
   }
 
   private async drainExecutableCommands(): Promise<{
-    readonly commands: readonly QueueCommandEnvelope<Readonly<Record<string, unknown>>>[];
+    readonly deliveries: readonly QueueCommandDelivery[];
     readonly primaryCount: number;
     readonly retryCount: number;
   }> {
     const primaryLimit = Math.max(1, Math.ceil(this.options.limit / 2));
-    const primary = this.queue.drain({
+    const primary = await this.queue.drain({
       commandType: 'ingestion.scan.execute',
       limit: primaryLimit,
     });
@@ -117,16 +126,16 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
       : [];
     const spareLimit = this.options.limit - primary.length - retries.length;
     const extraPrimary = spareLimit > 0
-      ? this.queue.drain({
+      ? await this.queue.drain({
           commandType: 'ingestion.scan.execute',
           limit: spareLimit,
         })
       : [];
 
     return {
-      commands: [
+      deliveries: [
         ...primary,
-        ...retries.map(retryToQueueCommand),
+        ...retries.map(retryToDelivery),
         ...extraPrimary,
       ],
       primaryCount: primary.length + extraPrimary.length,
@@ -135,24 +144,28 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
   }
 }
 
-const retryToQueueCommand = (
+const retryToDelivery = (
   command: RetryScanCommand,
-): QueueCommandEnvelope<Readonly<Record<string, unknown>>> => ({
-  commandId: `${command.scanJobId}:retry:${command.nextAttemptNumber}`,
-  commandType: 'ingestion.scan.execute',
-  schemaVersion: 1,
-  correlationId: command.correlationId,
-  causationId: command.causationId,
-  payload: {
-    tenantId: command.tenantId,
-    workspaceId: command.workspaceId,
-    scanJobId: command.scanJobId,
-    topicId: command.topicId,
-    sourceBindingId: command.sourceBindingId,
-    scanPolicyId: command.scanPolicyId,
-    providerKey: command.providerKey,
-    sourceQuery: command.sourceQuery,
-    attemptNumber: command.nextAttemptNumber,
-    retryBudget: command.retryBudget,
+): QueueCommandDelivery => ({
+  command: {
+    commandId: `${command.scanJobId}:retry:${command.nextAttemptNumber}`,
+    commandType: 'ingestion.scan.execute',
+    schemaVersion: 1,
+    correlationId: command.correlationId,
+    causationId: command.causationId,
+    payload: {
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      scanJobId: command.scanJobId,
+      topicId: command.topicId,
+      sourceBindingId: command.sourceBindingId,
+      scanPolicyId: command.scanPolicyId,
+      providerKey: command.providerKey,
+      sourceQuery: command.sourceQuery,
+      attemptNumber: command.nextAttemptNumber,
+      retryBudget: command.retryBudget,
+    },
   },
+  ack: async () => undefined,
+  nack: async () => undefined,
 });

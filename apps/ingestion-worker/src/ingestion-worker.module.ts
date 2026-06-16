@@ -15,6 +15,7 @@ import type {
   SourceBindingRepositoryPort,
 } from '@social-monitor/monitoring/ports';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import { AmqplibRabbitMqChannel, InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { WorkerRuntime, WorkerRuntimeModule } from '@social-monitor/platform-worker';
@@ -63,11 +64,13 @@ import {
 import { MonitoringSourceConfigReaderAdapter } from './adapters/source/monitoring-source-config-reader.adapter';
 import {
   INGESTION_FEED_PROJECTION,
+  INGESTION_RABBITMQ_SCAN_QUEUE_READER_OPTIONS,
   INGESTION_SCAN_ATTEMPT_REPOSITORY,
   INGESTION_SCAN_CURSOR_REPOSITORY,
   INGESTION_SCAN_EXECUTION_REPORTER,
   INGESTION_SCAN_FAILURE_QUEUE,
   INGESTION_SCAN_LEASE,
+  INGESTION_SCAN_QUEUE_READER_MODE,
   INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS,
   INGESTION_SCAN_REPORTER_MODE,
   INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS,
@@ -75,14 +78,25 @@ import {
   INGESTION_WORKER_PERSISTENCE_MODE,
   INGESTION_WORKER_PRISMA_CLIENT,
   type IngestionWorkerPersistenceMode,
+  type IngestionScanQueueReaderMode,
   type IngestionScanReporterMode,
   resolveIngestionWorkerPersistenceMode,
+  resolveIngestionRabbitMqScanQueueReaderOptions,
+  resolveIngestionScanQueueReaderMode,
   resolveIngestionScanReporterMode,
   resolveIngestionScanQueueDrainLoopOptions,
   resolveIngestionScanSchedulerLoopOptions,
 } from './ingestion-worker-provider-tokens';
+import {
+  INGESTION_SCAN_COMMAND_QUEUE_READER,
+  InMemoryScanCommandQueueReader,
+  RabbitMqScanCommandQueueReader,
+  type ScanCommandQueueReaderPort,
+} from './scan-command-queue-reader';
 import { ScanQueueDrainLoop } from './scan-queue-drain-loop';
 import { ScanSchedulerLoop } from './scan-scheduler-loop';
+
+const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL');
 
 @Module({
   imports: [WorkerRuntimeModule.register({ serviceName: 'ingestion-worker' }), MonitoringRestModule],
@@ -100,6 +114,14 @@ import { ScanSchedulerLoop } from './scan-scheduler-loop';
     {
       provide: INGESTION_SCAN_REPORTER_MODE,
       useFactory: () => resolveIngestionScanReporterMode(process.env),
+    },
+    {
+      provide: INGESTION_SCAN_QUEUE_READER_MODE,
+      useFactory: () => resolveIngestionScanQueueReaderMode(process.env),
+    },
+    {
+      provide: INGESTION_RABBITMQ_SCAN_QUEUE_READER_OPTIONS,
+      useFactory: () => resolveIngestionRabbitMqScanQueueReaderOptions(process.env),
     },
     {
       provide: INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS,
@@ -201,6 +223,35 @@ import { ScanSchedulerLoop } from './scan-scheduler-loop';
     },
     InMemoryScanLeaseAdapter,
     InMemoryMetricsRecorder,
+    {
+      provide: INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL,
+      useFactory: (mode: IngestionScanQueueReaderMode): AmqplibRabbitMqChannel | null =>
+        mode === 'rabbitmq' ? new AmqplibRabbitMqChannel({ url: process.env.RABBITMQ_URL ?? '' }) : null,
+      inject: [INGESTION_SCAN_QUEUE_READER_MODE],
+    },
+    {
+      provide: InMemoryScanCommandQueueReader,
+      useFactory: (queue: InMemoryQueuePublisher) => new InMemoryScanCommandQueueReader(queue),
+      inject: [InMemoryQueuePublisher],
+    },
+    {
+      provide: RabbitMqScanCommandQueueReader,
+      useFactory: (
+        channel: AmqplibRabbitMqChannel | null,
+        options: ReturnType<typeof resolveIngestionRabbitMqScanQueueReaderOptions>,
+      ) => new RabbitMqScanCommandQueueReader(requireRabbitMqScanQueueChannel(channel), options),
+      inject: [INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL, INGESTION_RABBITMQ_SCAN_QUEUE_READER_OPTIONS],
+    },
+    {
+      provide: INGESTION_SCAN_COMMAND_QUEUE_READER,
+      useFactory: (
+        mode: IngestionScanQueueReaderMode,
+        inMemoryReader: InMemoryScanCommandQueueReader,
+        rabbitMqReader: RabbitMqScanCommandQueueReader,
+      ): ScanCommandQueueReaderPort =>
+        mode === 'rabbitmq' ? rabbitMqReader : inMemoryReader,
+      inject: [INGESTION_SCAN_QUEUE_READER_MODE, InMemoryScanCommandQueueReader, RabbitMqScanCommandQueueReader],
+    },
     NoopScanExecutionReporterAdapter,
     {
       provide: INGESTION_SCAN_EXECUTION_REPORTER,
@@ -389,4 +440,14 @@ const requirePrismaIngestionWorkerClient = (
   }
 
   return client;
+};
+
+const requireRabbitMqScanQueueChannel = (
+  channel: AmqplibRabbitMqChannel | null,
+): AmqplibRabbitMqChannel => {
+  if (channel === null) {
+    throw new Error('RabbitMQ scan queue channel is required when INGESTION_SCAN_QUEUE_READER=rabbitmq');
+  }
+
+  return channel;
 };

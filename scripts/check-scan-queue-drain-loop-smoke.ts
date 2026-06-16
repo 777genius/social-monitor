@@ -3,8 +3,14 @@ import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import type { GetMessage, Message } from 'amqplib';
 
 import { InMemoryFeedProjectionAdapter } from '../apps/ingestion-worker/src/adapters/feed/in-memory-feed-projection.adapter';
+import {
+  InMemoryScanCommandQueueReader,
+  RabbitMqScanCommandQueueReader,
+  type RabbitMqScanQueueReaderChannelPort,
+} from '../apps/ingestion-worker/src/scan-command-queue-reader';
 import { ScanQueueDrainLoop } from '../apps/ingestion-worker/src/scan-queue-drain-loop';
 import { NoopScanExecutionReporterAdapter } from '../libs/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter';
 import { InMemoryScanLeaseAdapter } from '../libs/ingestion/adapters/lease/in-memory-scan-lease.adapter';
@@ -35,6 +41,35 @@ class SequenceIdGenerator implements IdGenerator {
   }
 }
 
+class FakeRabbitMqReaderChannel implements RabbitMqScanQueueReaderChannelPort {
+  readonly assertedQueues: string[] = [];
+  readonly prefetchCounts: number[] = [];
+  acked = 0;
+  nacked = 0;
+
+  constructor(private readonly messages: GetMessage[]) {}
+
+  async assertQueue(queue: string): Promise<void> {
+    this.assertedQueues.push(queue);
+  }
+
+  async get(): Promise<GetMessage | false> {
+    return this.messages.shift() ?? false;
+  }
+
+  async ack(_message: Message): Promise<void> {
+    this.acked += 1;
+  }
+
+  async nack(_message: Message, _allUpTo: boolean, _requeue: boolean): Promise<void> {
+    this.nacked += 1;
+  }
+
+  async prefetch(count: number): Promise<void> {
+    this.prefetchCounts.push(count);
+  }
+}
+
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) {
     throw new Error(message);
@@ -49,6 +84,7 @@ async function main(): Promise<void> {
   const scanPolicies = new InMemoryScanPolicyRepository();
   const scanJobs = new InMemoryScanJobRepository();
   const queuePublisher = new InMemoryQueuePublisher();
+  const queueReader = new InMemoryScanCommandQueueReader(queuePublisher);
   const metrics = new InMemoryMetricsRecorder();
   const feedItems = new InMemoryFeedItemReadRepository();
   const sourceItems = new InMemorySourceItemRepository();
@@ -131,7 +167,7 @@ async function main(): Promise<void> {
   );
 
   const loop = new ScanQueueDrainLoop(
-    queuePublisher,
+    queueReader,
     handler,
     scanFailures,
     {
@@ -197,7 +233,7 @@ async function main(): Promise<void> {
   assert(scanFailures.retries().length === 1, 'retry queue must contain one retry before retry drain');
 
   const retryLoop = new ScanQueueDrainLoop(
-    queuePublisher,
+    queueReader,
     handler,
     scanFailures,
     {
@@ -238,6 +274,41 @@ async function main(): Promise<void> {
     }) === 2,
     'retry drain loop must record second succeeded scan metric',
   );
+
+  const rabbitMessage = {
+    content: Buffer.from(JSON.stringify({
+      commandId: 'rabbit-scan-command-smoke',
+      commandType: 'ingestion.scan.execute',
+      schemaVersion: 1,
+      correlationId: 'rabbit-scan-command-smoke-correlation',
+      payload: {
+        tenantId: tenant,
+        workspaceId: workspace,
+        scanJobId: 'rabbit-scan-command-smoke',
+      },
+    })),
+  } as GetMessage;
+  const rabbitChannel = new FakeRabbitMqReaderChannel([rabbitMessage]);
+  const rabbitReader = new RabbitMqScanCommandQueueReader(rabbitChannel, {
+    queue: 'jobs.freshness.scan',
+    deadLetterExchange: 'social-monitor.jobs.dlx',
+  });
+  const rabbitDeliveries = await rabbitReader.drain({
+    commandType: 'ingestion.scan.execute',
+    limit: 5,
+  });
+  assert(rabbitDeliveries.length === 1, 'RabbitMQ reader must drain one matching scan command');
+  assert(rabbitChannel.assertedQueues[0] === 'jobs.freshness.scan', 'RabbitMQ reader must assert configured scan queue');
+  assert(rabbitChannel.prefetchCounts[0] === 5, 'RabbitMQ reader must prefetch the drain limit');
+  const rabbitDelivery = rabbitDeliveries[0];
+  assert(rabbitDelivery !== undefined, 'RabbitMQ reader must return a delivery');
+  assert(
+    rabbitDelivery.command.commandId === 'rabbit-scan-command-smoke',
+    'RabbitMQ reader must parse command envelope',
+  );
+  await rabbitDelivery.ack();
+  assert(rabbitChannel.acked === 1, 'RabbitMQ reader delivery ack must ack broker message');
+  assert(rabbitChannel.nacked === 0, 'RabbitMQ reader must not nack successful broker message');
 
   console.log('Scan queue drain loop smoke OK');
 }

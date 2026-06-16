@@ -10,6 +10,7 @@ import type {
 } from '@social-monitor/ingestion/ports';
 
 export type IngestionScanReporterMode = 'noop' | 'monitoring';
+export type IngestionScanQueueReaderMode = 'in-memory' | 'rabbitmq';
 export type IngestionScanSchedulerLoopOptions = {
   readonly enabled: boolean;
   readonly intervalMs: number;
@@ -25,10 +26,17 @@ export type IngestionScanQueueDrainLoopOptions = {
   readonly runOnStart: boolean;
 };
 export type IngestionWorkerPersistenceMode = 'in-memory' | 'prisma';
+export type IngestionRabbitMqScanQueueReaderOptions = {
+  readonly queue: string;
+  readonly deadLetterExchange?: string;
+};
 
 export const INGESTION_WORKER_PERSISTENCE_MODE = Symbol('INGESTION_WORKER_PERSISTENCE_MODE');
 export const INGESTION_WORKER_PRISMA_CLIENT = Symbol('INGESTION_WORKER_PRISMA_CLIENT');
 export const INGESTION_SCAN_REPORTER_MODE = Symbol('INGESTION_SCAN_REPORTER_MODE');
+export const INGESTION_SCAN_QUEUE_READER_MODE = Symbol('INGESTION_SCAN_QUEUE_READER_MODE');
+export const INGESTION_RABBITMQ_SCAN_QUEUE_READER_OPTIONS =
+  Symbol('INGESTION_RABBITMQ_SCAN_QUEUE_READER_OPTIONS');
 export const INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS = Symbol('INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS');
 export const INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS = Symbol('INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS');
 export const INGESTION_SCAN_EXECUTION_REPORTER = Symbol('INGESTION_SCAN_EXECUTION_REPORTER');
@@ -43,6 +51,8 @@ export type IngestionWorkerProviderTokenMap = {
   readonly [INGESTION_WORKER_PERSISTENCE_MODE]: IngestionWorkerPersistenceMode;
   readonly [INGESTION_WORKER_PRISMA_CLIENT]: unknown;
   readonly [INGESTION_SCAN_REPORTER_MODE]: IngestionScanReporterMode;
+  readonly [INGESTION_SCAN_QUEUE_READER_MODE]: IngestionScanQueueReaderMode;
+  readonly [INGESTION_RABBITMQ_SCAN_QUEUE_READER_OPTIONS]: IngestionRabbitMqScanQueueReaderOptions;
   readonly [INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS]: IngestionScanSchedulerLoopOptions;
   readonly [INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS]: IngestionScanQueueDrainLoopOptions;
   readonly [INGESTION_SCAN_EXECUTION_REPORTER]: ScanExecutionReporterPort;
@@ -92,6 +102,31 @@ export const resolveIngestionScanReporterMode = (env: NodeJS.ProcessEnv): Ingest
   throw new Error('INGESTION_SCAN_REPORTER must be "noop" or "monitoring"');
 };
 
+export const resolveIngestionScanQueueReaderMode = (env: NodeJS.ProcessEnv): IngestionScanQueueReaderMode => {
+  const value = env.INGESTION_SCAN_QUEUE_READER ?? 'in-memory';
+
+  if (value === 'in-memory') {
+    return 'in-memory';
+  }
+
+  if (value === 'rabbitmq') {
+    if ((env.RABBITMQ_URL ?? '').trim().length === 0) {
+      throw new Error('INGESTION_SCAN_QUEUE_READER=rabbitmq requires RABBITMQ_URL');
+    }
+
+    return 'rabbitmq';
+  }
+
+  throw new Error('INGESTION_SCAN_QUEUE_READER must be "in-memory" or "rabbitmq"');
+};
+
+export const resolveIngestionRabbitMqScanQueueReaderOptions = (
+  env: NodeJS.ProcessEnv,
+): IngestionRabbitMqScanQueueReaderOptions => ({
+  queue: nonEmptyOrFallback(env.RABBITMQ_SCAN_QUEUE, 'jobs.freshness.scan'),
+  deadLetterExchange: emptyToUndefined(env.RABBITMQ_DEAD_LETTER_EXCHANGE),
+});
+
 export const resolveIngestionScanSchedulerLoopOptions = (
   env: NodeJS.ProcessEnv,
 ): IngestionScanSchedulerLoopOptions => {
@@ -139,6 +174,12 @@ const emptyToUndefined = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim();
 
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
+};
+
+const nonEmptyOrFallback = (value: string | undefined, fallback: string): string => {
+  const trimmed = value?.trim();
+
+  return trimmed === undefined || trimmed.length === 0 ? fallback : trimmed;
 };
 
 const parseBoolean = (value: string | undefined, fallback: boolean): boolean => {

@@ -1,4 +1,11 @@
-import { connect, type Channel, type ChannelModel, type SocketOptions } from 'amqplib';
+import {
+  connect,
+  type Channel,
+  type ChannelModel,
+  type GetMessage,
+  type Message,
+  type SocketOptions,
+} from 'amqplib';
 
 import type {
   RabbitMqPublishOptions,
@@ -54,6 +61,22 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
     options: RabbitMqPublishOptions,
   ): Promise<boolean> {
     return (await this.channel()).publish(exchange, routingKey, content, options);
+  }
+
+  async get(queue: string, options: { readonly noAck: boolean }): Promise<GetMessage | false> {
+    return (await this.channel()).get(queue, options);
+  }
+
+  async ack(message: Message): Promise<void> {
+    (await this.channel()).ack(message);
+  }
+
+  async nack(message: Message, allUpTo: boolean, requeue: boolean): Promise<void> {
+    (await this.channel()).nack(message, allUpTo, requeue);
+  }
+
+  async prefetch(count: number): Promise<unknown> {
+    return (await this.channel()).prefetch(count);
   }
 
   async close(): Promise<void> {
