@@ -17,12 +17,19 @@ export type IngestionScanSchedulerLoopOptions = {
   readonly tenantId?: string;
   readonly workspaceId?: string;
 };
+export type IngestionScanQueueDrainLoopOptions = {
+  readonly enabled: boolean;
+  readonly intervalMs: number;
+  readonly limit: number;
+  readonly runOnStart: boolean;
+};
 export type IngestionWorkerPersistenceMode = 'in-memory' | 'prisma';
 
 export const INGESTION_WORKER_PERSISTENCE_MODE = Symbol('INGESTION_WORKER_PERSISTENCE_MODE');
 export const INGESTION_WORKER_PRISMA_CLIENT = Symbol('INGESTION_WORKER_PRISMA_CLIENT');
 export const INGESTION_SCAN_REPORTER_MODE = Symbol('INGESTION_SCAN_REPORTER_MODE');
 export const INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS = Symbol('INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS');
+export const INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS = Symbol('INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS');
 export const INGESTION_SCAN_EXECUTION_REPORTER = Symbol('INGESTION_SCAN_EXECUTION_REPORTER');
 export const INGESTION_SOURCE_ITEM_REPOSITORY = Symbol('INGESTION_SOURCE_ITEM_REPOSITORY');
 export const INGESTION_SCAN_ATTEMPT_REPOSITORY = Symbol('INGESTION_SCAN_ATTEMPT_REPOSITORY');
@@ -36,6 +43,7 @@ export type IngestionWorkerProviderTokenMap = {
   readonly [INGESTION_WORKER_PRISMA_CLIENT]: unknown;
   readonly [INGESTION_SCAN_REPORTER_MODE]: IngestionScanReporterMode;
   readonly [INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS]: IngestionScanSchedulerLoopOptions;
+  readonly [INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS]: IngestionScanQueueDrainLoopOptions;
   readonly [INGESTION_SCAN_EXECUTION_REPORTER]: ScanExecutionReporterPort;
   readonly [INGESTION_SOURCE_ITEM_REPOSITORY]: SourceItemRepositoryPort;
   readonly [INGESTION_SCAN_ATTEMPT_REPOSITORY]: ScanAttemptRepositoryPort;
@@ -106,6 +114,23 @@ export const resolveIngestionScanSchedulerLoopOptions = (
     runOnStart: parseBoolean(env.INGESTION_SCAN_SCHEDULER_RUN_ON_START, true),
     tenantId: tenant,
     workspaceId: workspace,
+  };
+};
+
+export const resolveIngestionScanQueueDrainLoopOptions = (
+  env: NodeJS.ProcessEnv,
+): IngestionScanQueueDrainLoopOptions => {
+  const loopMode = env.INGESTION_SCAN_QUEUE_DRAIN_LOOP ?? (env.NODE_ENV === 'test' ? 'disabled' : 'enabled');
+
+  if (loopMode !== 'enabled' && loopMode !== 'disabled') {
+    throw new Error('INGESTION_SCAN_QUEUE_DRAIN_LOOP must be "enabled" or "disabled"');
+  }
+
+  return {
+    enabled: loopMode === 'enabled',
+    intervalMs: parseBoundedInteger(env.INGESTION_SCAN_QUEUE_DRAIN_INTERVAL_MS, 5_000, 500, 3_600_000),
+    limit: parseBoundedInteger(env.INGESTION_SCAN_QUEUE_DRAIN_LIMIT, 20, 1, 100),
+    runOnStart: parseBoolean(env.INGESTION_SCAN_QUEUE_DRAIN_RUN_ON_START, true),
   };
 };
 

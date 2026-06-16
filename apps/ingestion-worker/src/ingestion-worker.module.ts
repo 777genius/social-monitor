@@ -53,6 +53,7 @@ import {
   INGESTION_SCAN_EXECUTION_REPORTER,
   INGESTION_SCAN_FAILURE_QUEUE,
   INGESTION_SCAN_LEASE,
+  INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS,
   INGESTION_SCAN_REPORTER_MODE,
   INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS,
   INGESTION_SOURCE_ITEM_REPOSITORY,
@@ -62,8 +63,10 @@ import {
   type IngestionScanReporterMode,
   resolveIngestionWorkerPersistenceMode,
   resolveIngestionScanReporterMode,
+  resolveIngestionScanQueueDrainLoopOptions,
   resolveIngestionScanSchedulerLoopOptions,
 } from './ingestion-worker-provider-tokens';
+import { ScanQueueDrainLoop } from './scan-queue-drain-loop';
 import { ScanSchedulerLoop } from './scan-scheduler-loop';
 
 @Module({
@@ -86,6 +89,10 @@ import { ScanSchedulerLoop } from './scan-scheduler-loop';
     {
       provide: INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS,
       useFactory: () => resolveIngestionScanSchedulerLoopOptions(process.env),
+    },
+    {
+      provide: INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS,
+      useFactory: () => resolveIngestionScanQueueDrainLoopOptions(process.env),
     },
     FakeSourceProvider,
     {
@@ -292,6 +299,7 @@ import { ScanSchedulerLoop } from './scan-scheduler-loop';
         new ExecuteScanCommandHandler(executeScan, metrics, runtime),
       inject: [ExecuteScanUseCase, InMemoryMetricsRecorder, WorkerRuntime],
     },
+    ScanQueueDrainLoop,
   ],
   exports: [
     ExecuteScanCommandHandler,

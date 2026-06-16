@@ -369,7 +369,7 @@ import { TopicController } from './topic.controller';
       inject: [MONITORING_SCAN_JOB_REPOSITORY],
     },
   ],
-  exports: [ScheduleDueScansUseCase, GetScanStatusUseCase, RecordScanExecutionUseCase],
+  exports: [ScheduleDueScansUseCase, GetScanStatusUseCase, RecordScanExecutionUseCase, InMemoryQueuePublisher],
 })
 export class MonitoringRestModule {}
 
