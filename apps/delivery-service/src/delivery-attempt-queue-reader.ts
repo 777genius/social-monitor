@@ -1,0 +1,160 @@
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  InMemoryQueuePublisher,
+  type QueueCommandEnvelope,
+} from '@social-monitor/platform-queue';
+import type { GetMessage, Message } from 'amqplib';
+
+import {
+  DELIVERY_RABBITMQ_ATTEMPT_QUEUE_READER_OPTIONS,
+  type DeliveryRabbitMqAttemptQueueReaderOptions,
+} from './delivery-service-provider-tokens';
+
+export const DELIVERY_ATTEMPT_COMMAND_QUEUE_READER = Symbol('DELIVERY_ATTEMPT_COMMAND_QUEUE_READER');
+
+export type DeliveryAttemptCommandDelivery = {
+  readonly command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>;
+  ack(): Promise<void>;
+  nack(params: { readonly requeue: boolean }): Promise<void>;
+};
+
+export interface DeliveryAttemptQueueReaderPort {
+  drain(params: {
+    readonly commandType: string;
+    readonly limit: number;
+  }): Promise<readonly DeliveryAttemptCommandDelivery[]>;
+}
+
+export interface RabbitMqDeliveryAttemptQueueReaderChannelPort {
+  assertQueue(
+    queue: string,
+    options: {
+      readonly durable: boolean;
+      readonly arguments?: Readonly<Record<string, string | number | boolean>>;
+    },
+  ): Promise<unknown>;
+  get(queue: string, options: { readonly noAck: boolean }): Promise<GetMessage | false>;
+  ack(message: Message): Promise<void>;
+  nack(message: Message, allUpTo: boolean, requeue: boolean): Promise<void>;
+  prefetch(count: number): Promise<unknown>;
+}
+
+@Injectable()
+export class InMemoryDeliveryAttemptQueueReader implements DeliveryAttemptQueueReaderPort {
+  constructor(private readonly queue: InMemoryQueuePublisher) {}
+
+  async drain(params: {
+    readonly commandType: string;
+    readonly limit: number;
+  }): Promise<readonly DeliveryAttemptCommandDelivery[]> {
+    return this.queue.drain(params).map((command) => ({
+      command,
+      ack: async () => undefined,
+      nack: async () => undefined,
+    }));
+  }
+}
+
+@Injectable()
+export class RabbitMqDeliveryAttemptQueueReader implements DeliveryAttemptQueueReaderPort {
+  private routeAsserted = false;
+
+  constructor(
+    private readonly channel: RabbitMqDeliveryAttemptQueueReaderChannelPort,
+    @Inject(DELIVERY_RABBITMQ_ATTEMPT_QUEUE_READER_OPTIONS)
+    private readonly options: DeliveryRabbitMqAttemptQueueReaderOptions,
+  ) {}
+
+  async drain(params: {
+    readonly commandType: string;
+    readonly limit: number;
+  }): Promise<readonly DeliveryAttemptCommandDelivery[]> {
+    await this.ensureRoute(params.limit);
+
+    const deliveries: DeliveryAttemptCommandDelivery[] = [];
+    for (let index = 0; index < params.limit; index += 1) {
+      const message = await this.channel.get(this.options.queue, { noAck: false });
+
+      if (message === false) {
+        break;
+      }
+
+      const command = await parseQueueCommandOrNack(this.channel, message);
+      if (command.commandType !== params.commandType) {
+        await this.channel.nack(message, false, false);
+        continue;
+      }
+
+      deliveries.push({
+        command,
+        ack: async () => this.channel.ack(message),
+        nack: async ({ requeue }) => this.channel.nack(message, false, requeue),
+      });
+    }
+
+    return deliveries;
+  }
+
+  private async ensureRoute(prefetch: number): Promise<void> {
+    if (this.routeAsserted) {
+      return;
+    }
+
+    await this.channel.assertQueue(this.options.queue, {
+      durable: true,
+      arguments: this.options.deadLetterExchange === undefined
+        ? undefined
+        : { 'x-dead-letter-exchange': this.options.deadLetterExchange },
+    });
+    await this.channel.prefetch(prefetch);
+    this.routeAsserted = true;
+  }
+}
+
+const parseQueueCommand = (
+  message: GetMessage,
+): QueueCommandEnvelope<Readonly<Record<string, unknown>>> => {
+  const parsed = JSON.parse(message.content.toString('utf8')) as Readonly<Record<string, unknown>>;
+  const payload = parsed.payload;
+
+  if (typeof parsed.commandId !== 'string' || parsed.commandId.trim().length === 0) {
+    throw new Error('Invalid RabbitMQ delivery attempt command envelope: commandId');
+  }
+
+  if (typeof parsed.commandType !== 'string' || parsed.commandType.trim().length === 0) {
+    throw new Error('Invalid RabbitMQ delivery attempt command envelope: commandType');
+  }
+
+  if (typeof parsed.correlationId !== 'string' || parsed.correlationId.trim().length === 0) {
+    throw new Error('Invalid RabbitMQ delivery attempt command envelope: correlationId');
+  }
+
+  if (typeof parsed.schemaVersion !== 'number' || !Number.isInteger(parsed.schemaVersion)) {
+    throw new Error('Invalid RabbitMQ delivery attempt command envelope: schemaVersion');
+  }
+
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new Error('Invalid RabbitMQ delivery attempt command envelope: payload');
+  }
+
+  return {
+    commandId: parsed.commandId,
+    commandType: parsed.commandType,
+    schemaVersion: parsed.schemaVersion,
+    correlationId: parsed.correlationId,
+    causationId: typeof parsed.causationId === 'string' ? parsed.causationId : undefined,
+    payload: payload as Readonly<Record<string, unknown>>,
+  };
+};
+
+const parseQueueCommandOrNack = async (
+  channel: RabbitMqDeliveryAttemptQueueReaderChannelPort,
+  message: GetMessage,
+): Promise<QueueCommandEnvelope<Readonly<Record<string, unknown>>>> => {
+  try {
+    return parseQueueCommand(message);
+  } catch (error) {
+    await channel.nack(message, false, false);
+    throw error;
+  }
+};

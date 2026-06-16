@@ -14,10 +14,31 @@ export type DeliveryAttemptDispatchLoopOptions = {
   readonly runOnStart: boolean;
   readonly tenantId?: string;
   readonly workspaceId?: string;
+  readonly target?: DeliveryAttemptDispatchTarget;
+};
+
+export type DeliveryAttemptDispatchTarget = 'direct' | 'queue';
+export type DeliveryAttemptDispatchQueueMode = 'in-memory' | 'rabbitmq';
+export type DeliveryAttemptQueueReaderMode = 'in-memory' | 'rabbitmq';
+export type DeliveryRabbitMqAttemptQueueReaderOptions = {
+  readonly queue: string;
+  readonly deadLetterExchange?: string;
+};
+export type DeliveryAttemptQueueDrainLoopOptions = {
+  readonly enabled: boolean;
+  readonly intervalMs: number;
+  readonly limit: number;
+  readonly runOnStart: boolean;
 };
 
 export const DELIVERY_DIGEST_SCHEDULER_LOOP_OPTIONS = Symbol('DELIVERY_DIGEST_SCHEDULER_LOOP_OPTIONS');
 export const DELIVERY_ATTEMPT_DISPATCH_LOOP_OPTIONS = Symbol('DELIVERY_ATTEMPT_DISPATCH_LOOP_OPTIONS');
+export const DELIVERY_ATTEMPT_DISPATCH_QUEUE_MODE = Symbol('DELIVERY_ATTEMPT_DISPATCH_QUEUE_MODE');
+export const DELIVERY_ATTEMPT_QUEUE_READER_MODE = Symbol('DELIVERY_ATTEMPT_QUEUE_READER_MODE');
+export const DELIVERY_RABBITMQ_ATTEMPT_QUEUE_OPTIONS = Symbol('DELIVERY_RABBITMQ_ATTEMPT_QUEUE_OPTIONS');
+export const DELIVERY_RABBITMQ_ATTEMPT_QUEUE_READER_OPTIONS =
+  Symbol('DELIVERY_RABBITMQ_ATTEMPT_QUEUE_READER_OPTIONS');
+export const DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP_OPTIONS = Symbol('DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP_OPTIONS');
 
 export const resolveDeliveryDigestSchedulerLoopOptions = (
   env: NodeJS.ProcessEnv,
@@ -68,6 +89,104 @@ export const resolveDeliveryAttemptDispatchLoopOptions = (
     runOnStart: parseBoolean(env.DELIVERY_ATTEMPT_DISPATCH_RUN_ON_START, true),
     tenantId: tenant,
     workspaceId: workspace,
+    target: resolveDeliveryAttemptDispatchTarget(env),
+  };
+};
+
+export const resolveDeliveryAttemptDispatchTarget = (
+  env: NodeJS.ProcessEnv,
+): DeliveryAttemptDispatchTarget => {
+  const defaultTarget =
+    env.DELIVERY_ATTEMPT_DISPATCH_QUEUE === 'rabbitmq' || env.DELIVERY_ATTEMPT_QUEUE_READER === 'rabbitmq'
+      ? 'queue'
+      : 'direct';
+  const value = env.DELIVERY_ATTEMPT_DISPATCH_TARGET ?? defaultTarget;
+
+  if (value === 'direct' || value === 'queue') {
+    return value;
+  }
+
+  throw new Error('DELIVERY_ATTEMPT_DISPATCH_TARGET must be "direct" or "queue"');
+};
+
+export const resolveDeliveryAttemptDispatchQueueMode = (
+  env: NodeJS.ProcessEnv,
+): DeliveryAttemptDispatchQueueMode => {
+  const value = env.DELIVERY_ATTEMPT_DISPATCH_QUEUE ?? (
+    env.DELIVERY_ATTEMPT_QUEUE_READER === 'rabbitmq' ? 'rabbitmq' : 'in-memory'
+  );
+
+  if (value === 'in-memory') {
+    return 'in-memory';
+  }
+
+  if (value === 'rabbitmq') {
+    if ((env.RABBITMQ_URL ?? '').trim().length === 0) {
+      throw new Error('DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq requires RABBITMQ_URL');
+    }
+
+    return 'rabbitmq';
+  }
+
+  throw new Error('DELIVERY_ATTEMPT_DISPATCH_QUEUE must be "in-memory" or "rabbitmq"');
+};
+
+export const resolveDeliveryAttemptQueueReaderMode = (
+  env: NodeJS.ProcessEnv,
+): DeliveryAttemptQueueReaderMode => {
+  const value = env.DELIVERY_ATTEMPT_QUEUE_READER ?? 'in-memory';
+
+  if (value === 'in-memory') {
+    return 'in-memory';
+  }
+
+  if (value === 'rabbitmq') {
+    if ((env.RABBITMQ_URL ?? '').trim().length === 0) {
+      throw new Error('DELIVERY_ATTEMPT_QUEUE_READER=rabbitmq requires RABBITMQ_URL');
+    }
+
+    return 'rabbitmq';
+  }
+
+  throw new Error('DELIVERY_ATTEMPT_QUEUE_READER must be "in-memory" or "rabbitmq"');
+};
+
+export const resolveDeliveryRabbitMqAttemptQueueOptions = (
+  env: NodeJS.ProcessEnv,
+) => ({
+  exchange: nonEmptyOrFallback(env.RABBITMQ_DELIVERY_ATTEMPT_EXCHANGE, 'social-monitor.commands'),
+  exchangeType: 'direct' as const,
+  routes: {
+    'delivery.attempt.send': {
+      queue: nonEmptyOrFallback(env.RABBITMQ_DELIVERY_ATTEMPT_QUEUE, 'jobs.delivery.attempt.send'),
+      routingKey: 'delivery.attempt.send',
+      deadLetterExchange: emptyToUndefined(env.RABBITMQ_DEAD_LETTER_EXCHANGE),
+    },
+  },
+});
+
+export const resolveDeliveryRabbitMqAttemptQueueReaderOptions = (
+  env: NodeJS.ProcessEnv,
+): DeliveryRabbitMqAttemptQueueReaderOptions => ({
+  queue: nonEmptyOrFallback(env.RABBITMQ_DELIVERY_ATTEMPT_QUEUE, 'jobs.delivery.attempt.send'),
+  deadLetterExchange: emptyToUndefined(env.RABBITMQ_DEAD_LETTER_EXCHANGE),
+});
+
+export const resolveDeliveryAttemptQueueDrainLoopOptions = (
+  env: NodeJS.ProcessEnv,
+): DeliveryAttemptQueueDrainLoopOptions => {
+  const defaultMode = env.DELIVERY_ATTEMPT_QUEUE_READER === 'rabbitmq' ? 'enabled' : 'disabled';
+  const loopMode = env.DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP ?? (env.NODE_ENV === 'test' ? 'disabled' : defaultMode);
+
+  if (loopMode !== 'enabled' && loopMode !== 'disabled') {
+    throw new Error('DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP must be "enabled" or "disabled"');
+  }
+
+  return {
+    enabled: loopMode === 'enabled',
+    intervalMs: parseBoundedInteger(env.DELIVERY_ATTEMPT_QUEUE_DRAIN_INTERVAL_MS, 5_000, 500, 3_600_000),
+    limit: parseBoundedInteger(env.DELIVERY_ATTEMPT_QUEUE_DRAIN_LIMIT, 20, 1, 100),
+    runOnStart: parseBoolean(env.DELIVERY_ATTEMPT_QUEUE_DRAIN_RUN_ON_START, true),
   };
 };
 
@@ -75,6 +194,12 @@ const emptyToUndefined = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim();
 
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
+};
+
+const nonEmptyOrFallback = (value: string | undefined, fallback: string): string => {
+  const trimmed = value?.trim();
+
+  return trimmed === undefined || trimmed.length === 0 ? fallback : trimmed;
 };
 
 const parseBoolean = (value: string | undefined, fallback: boolean): boolean => {

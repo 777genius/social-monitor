@@ -1,5 +1,7 @@
 import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
+import type { DeliveryAttemptProps } from '@social-monitor/delivery/domain';
+import { EnqueueDeliveryAttemptDispatchUseCase } from '@social-monitor/delivery/features/enqueue-delivery-attempt-dispatch/enqueue-delivery-attempt-dispatch.use-case';
 import { SendDeliveryAttemptCommandHandler } from '@social-monitor/delivery/interfaces/queue/send-delivery-attempt-command.handler';
 import { DELIVERY_ATTEMPT_REPOSITORY } from '@social-monitor/delivery/interfaces/rest/delivery-provider-tokens';
 import type { DeliveryAttemptRepositoryPort } from '@social-monitor/delivery/ports';
@@ -23,6 +25,7 @@ export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnApplicationS
     private readonly deliveryAttempts: DeliveryAttemptRepositoryPort,
     @Inject(DELIVERY_ATTEMPT_DISPATCH_LOOP_OPTIONS)
     private readonly options: DeliveryAttemptDispatchLoopOptions,
+    private readonly enqueueDispatch?: EnqueueDeliveryAttemptDispatchUseCase,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -42,6 +45,7 @@ export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnApplicationS
     this.logger.info('delivery attempt dispatch loop started', {
       intervalMs: this.options.intervalMs,
       limit: this.options.limit,
+      target: this.options.target ?? 'direct',
       scoped: this.options.tenantId !== undefined,
       worker: 'delivery-service',
     });
@@ -88,21 +92,25 @@ export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnApplicationS
         const snapshot = attempt.toSnapshot();
 
         try {
-          await this.handler.handle({
-            commandId: `delivery-attempt-dispatch:${snapshot.id}:${Date.now()}`,
-            commandType: 'delivery.attempt.send',
-            schemaVersion: 1,
-            correlationId: `delivery-attempt-dispatch:${trigger}:${Date.now()}`,
-            payload: {
-              tenantId: snapshot.tenantId,
-              workspaceId: snapshot.workspaceId,
-              deliveryAttemptId: snapshot.id,
-              content: {
-                subject: `${snapshot.resourceType} ready`,
-                body: `Delivery resource ${snapshot.resourceType}:${snapshot.resourceId} is ready.`,
+          if ((this.options.target ?? 'direct') === 'queue') {
+            await this.enqueueQueuedAttempt(snapshot, trigger);
+          } else {
+            await this.handler.handle({
+              commandId: `delivery-attempt-dispatch:${snapshot.id}:${Date.now()}`,
+              commandType: 'delivery.attempt.send',
+              schemaVersion: 1,
+              correlationId: `delivery-attempt-dispatch:${trigger}:${Date.now()}`,
+              payload: {
+                tenantId: snapshot.tenantId,
+                workspaceId: snapshot.workspaceId,
+                deliveryAttemptId: snapshot.id,
+                content: {
+                  subject: `${snapshot.resourceType} ready`,
+                  body: `Delivery resource ${snapshot.resourceType}:${snapshot.resourceId} is ready.`,
+                },
               },
-            },
-          });
+            });
+          }
           dispatched += 1;
         } catch (error) {
           failed += 1;
@@ -128,6 +136,27 @@ export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnApplicationS
         error: error instanceof Error ? error.message : String(error),
         worker: 'delivery-service',
       });
+    }
+  }
+
+  private async enqueueQueuedAttempt(
+    snapshot: DeliveryAttemptProps,
+    trigger: 'startup' | 'interval',
+  ): Promise<void> {
+    if (this.enqueueDispatch === undefined) {
+      throw new Error('Delivery attempt dispatch queue target requires EnqueueDeliveryAttemptDispatchUseCase');
+    }
+
+    const result = await this.enqueueDispatch.execute({
+      tenantId: snapshot.tenantId,
+      workspaceId: snapshot.workspaceId,
+      deliveryAttemptId: snapshot.id,
+      correlationId: `delivery-attempt-dispatch:${trigger}:${Date.now()}`,
+      causationId: `delivery-attempt-dispatch-loop:${snapshot.id}`,
+    });
+
+    if (!result.ok) {
+      throw result.error;
     }
   }
 }

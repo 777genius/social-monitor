@@ -1,4 +1,5 @@
 export * from './delivery-attempt-repository.port';
+export * from './delivery-attempt-dispatch-queue.port';
 export * from './delivery-provider.port';
 export * from './digest-repository.port';
 export * from './digest-schedule-repository.port';

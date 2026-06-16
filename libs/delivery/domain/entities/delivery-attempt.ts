@@ -62,12 +62,14 @@ export class DeliveryAttempt {
   }
 
   markAssembling(params: { readonly assemblingAt: Date }): DeliveryAttempt {
-    this.assertState(['queued'], 'Delivery attempt can only assemble from queued state');
+    this.assertState(['queued', 'failed_retryable'], 'Delivery attempt can only assemble from a dispatchable state');
 
     return DeliveryAttempt.rehydrate({
       ...this.props,
       state: 'assembling',
       assemblingAt: params.assemblingAt,
+      failedAt: undefined,
+      failureReason: undefined,
     });
   }
 
