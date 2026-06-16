@@ -5,6 +5,11 @@ import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
 import { CircuitBreakerDeliveryProvider } from '../../adapters/notification/circuit-breaker-delivery.provider';
+import {
+  FetchWebhookHttpClient,
+  HttpWebhookDeliveryProvider,
+  resolveHttpWebhookDeliveryProviderOptions,
+} from '../../adapters/notification/http-webhook-delivery.provider';
 import { InMemoryDeliveryProvider } from '../../adapters/notification/in-memory-delivery.provider';
 import { MeteredDeliveryProvider } from '../../adapters/notification/metered-delivery.provider';
 import { InMemoryDeliveryAttemptRepository } from '../../adapters/persistence/in-memory-delivery-attempt.repository';
@@ -136,12 +141,16 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     },
     {
       provide: DELIVERY_PROVIDERS,
-      useFactory: (metrics: InMemoryMetricsRecorder) => [
-        createDeliveryProvider('in_app', metrics),
-        createDeliveryProvider('email', metrics),
-        createDeliveryProvider('webhook', metrics),
+      useFactory: (
+        metrics: InMemoryMetricsRecorder,
+        endpoints: WebhookEndpointRepositoryPort,
+        secrets: WebhookSecretVaultPort,
+      ) => [
+        createInMemoryDeliveryProvider('in_app', metrics),
+        createInMemoryDeliveryProvider('email', metrics),
+        createWebhookDeliveryProvider(metrics, endpoints, secrets),
       ],
-      inject: [InMemoryMetricsRecorder],
+      inject: [InMemoryMetricsRecorder, DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_SECRET_VAULT],
     },
     {
       provide: DELIVERY_ATTEMPT_REPOSITORY,
@@ -477,17 +486,52 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
 })
 export class DeliveryRestModule {}
 
-const createDeliveryProvider = (
+const createInMemoryDeliveryProvider = (
   channel: DeliveryProviderPort['channel'],
   metrics: InMemoryMetricsRecorder,
 ): DeliveryProviderPort =>
+  wrapDeliveryProvider(new InMemoryDeliveryProvider(channel), metrics);
+
+const createWebhookDeliveryProvider = (
+  metrics: InMemoryMetricsRecorder,
+  endpoints: WebhookEndpointRepositoryPort,
+  secrets: WebhookSecretVaultPort,
+): DeliveryProviderPort => {
+  const mode = resolveDeliveryWebhookProviderMode(process.env);
+  const delegate = mode === 'http'
+    ? new HttpWebhookDeliveryProvider(
+        endpoints,
+        new SignWebhookPayloadUseCase(endpoints, secrets),
+        new FetchWebhookHttpClient(),
+        new SystemClock(),
+        resolveHttpWebhookDeliveryProviderOptions(process.env),
+      )
+    : new InMemoryDeliveryProvider('webhook');
+
+  return wrapDeliveryProvider(delegate, metrics);
+};
+
+const wrapDeliveryProvider = (
+  provider: DeliveryProviderPort,
+  metrics: InMemoryMetricsRecorder,
+): DeliveryProviderPort =>
   new MeteredDeliveryProvider(
-    new CircuitBreakerDeliveryProvider(new InMemoryDeliveryProvider(channel), new SystemClock(), {
+    new CircuitBreakerDeliveryProvider(provider, new SystemClock(), {
       failureThreshold: 3,
       cooldownSeconds: 60,
     }),
     metrics,
   );
+
+const resolveDeliveryWebhookProviderMode = (env: NodeJS.ProcessEnv): 'in-memory' | 'http' => {
+  const value = env.DELIVERY_WEBHOOK_PROVIDER ?? 'in-memory';
+
+  if (value === 'in-memory' || value === 'http') {
+    return value;
+  }
+
+  throw new Error('DELIVERY_WEBHOOK_PROVIDER must be "in-memory" or "http"');
+};
 
 const requirePrismaDeliveryClient = (client: PrismaDeliveryClient | null): PrismaDeliveryClient => {
   if (client === null) {
