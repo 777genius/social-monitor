@@ -14,9 +14,10 @@
 10. Build notification read model.
 11. Add in-app notifications.
 12. Add digest foundation.
-13. Define webhook/API-key future ports.
-14. Add delivery logs.
-15. Add idempotency checks.
+13. Add digest schedule management REST API.
+14. Define webhook/API-key future ports.
+15. Add delivery logs.
+16. Add idempotency checks.
 
 ## First PR Sequence
 
@@ -26,7 +27,7 @@
 4. PR 4: replay cursor, replay window and `resync_required` behavior.
 5. PR 5: mobile-facing notification/read model and idempotency.
 6. PR 6: notification preferences and digest content schema.
-7. PR 7: digest scheduler/assembly with stale/no-signal/suppression rules.
+7. PR 7: digest scheduler/assembly and schedule management API with stale/no-signal/suppression rules.
 8. PR 8: delivery attempt state machine, retry and DLQ visibility.
 9. PR 9: optional webhook/API-key minimal surface and tests.
 10. PR 10: full reconnect/resync/delivery status integration test.
@@ -39,6 +40,7 @@
 - Delivery log schema.
 - Resync REST endpoint.
 - Delivery attempt state machine.
+- Digest schedule create/list/get REST contract.
 - Digest content/provenance schema.
 - Webhook payload/signature contract.
 
@@ -52,6 +54,7 @@
 - Out-of-order/duplicate event tests.
 - Authorization revocation during live connection.
 - Digest idempotency and suppression tests.
+- Digest schedule create/list/get authorization tests.
 - Webhook replay/signature/secret-rotation tests.
 - Slow client/backpressure test.
 

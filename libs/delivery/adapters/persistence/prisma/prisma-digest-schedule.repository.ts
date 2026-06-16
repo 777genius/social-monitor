@@ -1,5 +1,10 @@
 import type { DigestSchedule } from '../../../domain';
-import type { DigestScheduleRepositoryPort, FindDueDigestSchedulesQuery } from '../../../ports';
+import type {
+  DigestScheduleRepositoryPort,
+  FindDueDigestSchedulesQuery,
+  ListDigestSchedulesQuery,
+  ListDigestSchedulesResult,
+} from '../../../ports';
 import type { PrismaDeliveryClient, PrismaDigestScheduleWriteData } from './prisma-delivery-client';
 import { digestScheduleFromPrisma, digestScheduleStatusToPrisma } from './prisma-delivery-records';
 
@@ -43,6 +48,27 @@ export class PrismaDigestScheduleRepository implements DigestScheduleRepositoryP
     return record === null ? null : digestScheduleFromPrisma(record);
   }
 
+  async list(query: ListDigestSchedulesQuery): Promise<ListDigestSchedulesResult> {
+    const offset = parseCursor(query.cursor);
+    const limit = Math.max(1, Math.min(query.limit, 100));
+    const records = await this.prisma.digestSchedule.findMany({
+      where: {
+        tenantId: query.tenantId,
+        workspaceId: query.workspaceId,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: offset,
+      take: limit + 1,
+    });
+    const schedules = records.slice(0, limit).map(digestScheduleFromPrisma);
+    const nextOffset = offset + schedules.length;
+
+    return {
+      schedules,
+      nextCursor: records.length > limit ? encodeCursor(nextOffset) : undefined,
+    };
+  }
+
   async findDue(query: FindDueDigestSchedulesQuery): Promise<readonly DigestSchedule[]> {
     const records = await this.prisma.digestSchedule.findMany({
       where: {
@@ -58,3 +84,23 @@ export class PrismaDigestScheduleRepository implements DigestScheduleRepositoryP
     return records.map(digestScheduleFromPrisma);
   }
 }
+
+const encodeCursor = (offset: number): string => Buffer.from(JSON.stringify({ offset })).toString('base64url');
+
+const parseCursor = (cursor: string | undefined): number => {
+  if (cursor === undefined) {
+    return 0;
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { offset?: unknown };
+
+    if (typeof parsed.offset === 'number' && Number.isInteger(parsed.offset) && parsed.offset >= 0) {
+      return parsed.offset;
+    }
+  } catch {
+    return 0;
+  }
+
+  return 0;
+};

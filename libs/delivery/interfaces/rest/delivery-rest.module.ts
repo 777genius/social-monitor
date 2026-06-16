@@ -32,11 +32,14 @@ import { InMemoryDigestSourceReader } from '../../adapters/source/in-memory-dige
 import { PrismaDigestSourceReader } from '../../adapters/source/prisma/prisma-digest-source.reader';
 import { ApplyDeliverySuppressionUseCase } from '../../features/apply-delivery-suppression/apply-delivery-suppression.use-case';
 import { AssembleDigestUseCase } from '../../features/assemble-digest/assemble-digest.use-case';
+import { CreateDigestScheduleUseCase } from '../../features/create-digest-schedule/create-digest-schedule.use-case';
 import { CreateWebhookEndpointUseCase } from '../../features/create-webhook-endpoint/create-webhook-endpoint.use-case';
 import { DisableWebhookEndpointUseCase } from '../../features/disable-webhook-endpoint/disable-webhook-endpoint.use-case';
 import { GetDeliveryAttemptUseCase } from '../../features/get-delivery-attempt/get-delivery-attempt.use-case';
 import { GetDigestUseCase } from '../../features/get-digest/get-digest.use-case';
+import { GetDigestScheduleUseCase } from '../../features/get-digest-schedule/get-digest-schedule.use-case';
 import { GetWebhookEndpointUseCase } from '../../features/get-webhook-endpoint/get-webhook-endpoint.use-case';
+import { ListDigestSchedulesUseCase } from '../../features/list-digest-schedules/list-digest-schedules.use-case';
 import { ListWebhookEndpointsUseCase } from '../../features/list-webhook-endpoints/list-webhook-endpoints.use-case';
 import { ListRealtimeEventsUseCase } from '../../features/list-realtime-events/list-realtime-events.use-case';
 import { ProjectSummaryReadyEventUseCase } from '../../features/project-summary-ready-event/project-summary-ready-event.use-case';
@@ -50,6 +53,7 @@ import { SendDeliveryAttemptUseCase } from '../../features/send-delivery-attempt
 import { SignWebhookPayloadUseCase } from '../../features/sign-webhook-payload/sign-webhook-payload.use-case';
 import { VerifyWebhookSignatureUseCase } from '../../features/verify-webhook-signature/verify-webhook-signature.use-case';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
+import { DigestSchedulesController } from './digest-schedules.controller';
 import {
   DELIVERY_ATTEMPT_REPOSITORY,
   DELIVERY_DIGEST_REPOSITORY,
@@ -85,7 +89,13 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
 
 @Module({
   imports: [IdentityRestModule, UsageRestModule],
-  controllers: [DeliveryAttemptsController, DigestsController, RealtimeEventsController, WebhookEndpointsController],
+  controllers: [
+    DeliveryAttemptsController,
+    DigestSchedulesController,
+    DigestsController,
+    RealtimeEventsController,
+    WebhookEndpointsController,
+  ],
   providers: [
     {
       provide: DELIVERY_PERSISTENCE_MODE,
@@ -260,6 +270,22 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       inject: [DELIVERY_DIGEST_REPOSITORY],
     },
     {
+      provide: CreateDigestScheduleUseCase,
+      useFactory: (schedules: DigestScheduleRepositoryPort) =>
+        new CreateDigestScheduleUseCase(schedules, new CryptoIdGenerator(), new SystemClock()),
+      inject: [DELIVERY_DIGEST_SCHEDULE_REPOSITORY],
+    },
+    {
+      provide: GetDigestScheduleUseCase,
+      useFactory: (schedules: DigestScheduleRepositoryPort) => new GetDigestScheduleUseCase(schedules),
+      inject: [DELIVERY_DIGEST_SCHEDULE_REPOSITORY],
+    },
+    {
+      provide: ListDigestSchedulesUseCase,
+      useFactory: (schedules: DigestScheduleRepositoryPort) => new ListDigestSchedulesUseCase(schedules),
+      inject: [DELIVERY_DIGEST_SCHEDULE_REPOSITORY],
+    },
+    {
       provide: CreateWebhookEndpointUseCase,
       useFactory: (
         endpoints: WebhookEndpointRepositoryPort,
@@ -367,8 +393,11 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     GetDeliveryAttemptUseCase,
     GetDigestUseCase,
     CreateWebhookEndpointUseCase,
+    CreateDigestScheduleUseCase,
     DisableWebhookEndpointUseCase,
     GetWebhookEndpointUseCase,
+    GetDigestScheduleUseCase,
+    ListDigestSchedulesUseCase,
     ListWebhookEndpointsUseCase,
     InMemoryDeliveryAttemptRepository,
     InMemoryDigestScheduleRepository,

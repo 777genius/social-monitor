@@ -1,0 +1,182 @@
+import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from '@nestjs/common';
+import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  WORKSPACE_AUTHORIZATION_POLICY,
+  parseWorkspaceRolesHeader,
+  type WorkspaceAction,
+  type WorkspaceAuthorizationPolicyPort,
+} from '@social-monitor/identity/ports';
+import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
+
+import { CreateDigestScheduleUseCase } from '../../features/create-digest-schedule/create-digest-schedule.use-case';
+import { GetDigestScheduleUseCase } from '../../features/get-digest-schedule/get-digest-schedule.use-case';
+import { ListDigestSchedulesUseCase } from '../../features/list-digest-schedules/list-digest-schedules.use-case';
+import {
+  CreateDigestScheduleRequestDto,
+  type CreateDigestScheduleResponseDto,
+  type GetDigestScheduleResponseDto,
+  type ListDigestSchedulesResponseDto,
+} from './digest-schedules.dto';
+
+@ApiTags('delivery')
+@Controller('delivery/digest-schedules')
+export class DigestSchedulesController {
+  constructor(
+    private readonly createDigestSchedule: CreateDigestScheduleUseCase,
+    private readonly getDigestSchedule: GetDigestScheduleUseCase,
+    private readonly listDigestSchedules: ListDigestSchedulesUseCase,
+    @Inject(WORKSPACE_AUTHORIZATION_POLICY)
+    private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+  ) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Create a periodic digest schedule for one recipient and topic set.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({
+    name: 'x-workspace-role',
+    required: true,
+    description: 'Comma-separated workspace roles. Digest schedule creation allows owner, admin or member.',
+  })
+  async create(
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Body() body: CreateDigestScheduleRequestDto,
+  ): Promise<CreateDigestScheduleResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+    this.authorizeWorkspaceRole({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      workspaceRoleHeader,
+      action: 'digest_schedules.create',
+    });
+
+    const result = await this.createDigestSchedule.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      recipientKey: body.recipientKey,
+      channel: body.channel,
+      topicIds: body.topicIds,
+      intervalSeconds: body.intervalSeconds,
+      includeNoSignal: body.includeNoSignal,
+      nextRunAt: body.nextRunAt === undefined ? undefined : parseDate(body.nextRunAt, 'nextRunAt'),
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'List digest schedules for the current tenant/workspace.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({
+    name: 'x-workspace-role',
+    required: true,
+    description: 'Comma-separated workspace roles. Digest schedule reads allow owner, admin, member or viewer.',
+  })
+  async list(
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Query('limit') limitQuery: string | undefined,
+    @Query('cursor') cursor: string | undefined,
+  ): Promise<ListDigestSchedulesResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+    this.authorizeWorkspaceRole({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      workspaceRoleHeader,
+      action: 'digest_schedules.read',
+    });
+
+    const result = await this.listDigestSchedules.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      limit: limitQuery === undefined ? 50 : Number(limitQuery),
+      cursor,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
+
+  @Get(':digestScheduleId')
+  @ApiOperation({ summary: 'Get one digest schedule for the current tenant/workspace.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({
+    name: 'x-workspace-role',
+    required: true,
+    description: 'Comma-separated workspace roles. Digest schedule reads allow owner, admin, member or viewer.',
+  })
+  async get(
+    @Param('digestScheduleId') digestScheduleId: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+  ): Promise<GetDigestScheduleResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+    this.authorizeWorkspaceRole({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      workspaceRoleHeader,
+      action: 'digest_schedules.read',
+    });
+    const result = await this.getDigestSchedule.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      digestScheduleId,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
+
+  private authorizeWorkspaceRole(params: {
+    readonly tenantId: TenantId;
+    readonly workspaceId: WorkspaceId;
+    readonly workspaceRoleHeader: string | undefined;
+    readonly action: WorkspaceAction;
+  }): void {
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      action: params.action,
+      roles: parseWorkspaceRolesHeader(params.workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+  }
+}
+
+const parseDate = (value: string, fieldName: string): Date => {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new DomainError('validation.failed', `${fieldName} must be a valid ISO date`);
+  }
+
+  return parsed;
+};

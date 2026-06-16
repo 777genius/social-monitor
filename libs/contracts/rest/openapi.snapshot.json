@@ -13,6 +13,10 @@
         "properties": {},
         "type": "object"
       },
+      "CreateDigestScheduleRequestDto": {
+        "properties": {},
+        "type": "object"
+      },
       "CreateTopicRequestDto": {
         "properties": {},
         "type": "object"
@@ -114,6 +118,145 @@
           }
         },
         "summary": "Get one tenant/workspace delivery attempt status.",
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/delivery/digest-schedules": {
+      "get": {
+        "operationId": "DigestSchedulesController_list",
+        "parameters": [
+          {
+            "description": "Comma-separated workspace roles. Digest schedule reads allow owner, admin, member or viewer.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List digest schedules for the current tenant/workspace.",
+        "tags": [
+          "delivery"
+        ]
+      },
+      "post": {
+        "operationId": "DigestSchedulesController_create",
+        "parameters": [
+          {
+            "description": "Comma-separated workspace roles. Digest schedule creation allows owner, admin or member.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDigestScheduleRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Create a periodic digest schedule for one recipient and topic set.",
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/delivery/digest-schedules/{digestScheduleId}": {
+      "get": {
+        "operationId": "DigestSchedulesController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "digestScheduleId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Digest schedule reads allow owner, admin, member or viewer.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get one digest schedule for the current tenant/workspace.",
         "tags": [
           "delivery"
         ]

@@ -87,6 +87,7 @@ Implementation should not stall on broad test suites. For MVP work, write code i
 - keep identity Prisma persistence adapters covered by `npm run check:identity-persistence`, including API key create/list/verify/revoke, scope enforcement, revoked-key rejection, no secret-hash exposure and identity persistence mode validation.
 - keep usage Prisma persistence adapters covered by `npm run check:usage-persistence`, including public API audit redaction/listing, rate-limit bucket counting, quota bucket reservation and usage persistence mode validation.
 - keep delivery Prisma persistence adapters covered by `npm run check:delivery-persistence`, including idempotent attempt queueing, full attempt state rehydration, attempt list pagination, terminal failure state, digest window lookup, digest provenance rehydration, due digest schedule lookup/update and delivery persistence mode validation.
+- keep digest schedule REST management covered by `npm run check:digest-schedule-rest`, including create/list/get routing, workspace role authorization and topic-id normalization without requiring the full API gateway e2e suite on every inner-loop change.
 
 Full e2e and load gates remain release/promotion gates, not the default inner development loop.
 

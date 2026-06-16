@@ -189,13 +189,19 @@ export type PrismaDeliveryClient = {
       readonly where: {
         readonly tenantId?: string;
         readonly workspaceId?: string;
-        readonly status: PrismaDigestScheduleStatus;
-        readonly nextRunAt: { readonly lte: Date };
+        readonly status?: PrismaDigestScheduleStatus;
+        readonly nextRunAt?: { readonly lte: Date };
       };
-      readonly orderBy: readonly [
-        { readonly nextRunAt: 'asc' },
-        { readonly id: 'asc' },
-      ];
+      readonly orderBy:
+        | readonly [
+          { readonly nextRunAt: 'asc' },
+          { readonly id: 'asc' },
+        ]
+        | readonly [
+          { readonly createdAt: 'desc' },
+          { readonly id: 'desc' },
+        ];
+      readonly skip?: number;
       readonly take: number;
     }): Promise<readonly PrismaDigestScheduleRecord[]>;
   };

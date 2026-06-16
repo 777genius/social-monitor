@@ -43,10 +43,13 @@ import type {
 } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-records';
 import { Digest, DigestSchedule } from '../libs/delivery/domain';
 import { AssembleDigestUseCase } from '../libs/delivery/features/assemble-digest/assemble-digest.use-case';
+import { CreateDigestScheduleUseCase } from '../libs/delivery/features/create-digest-schedule/create-digest-schedule.use-case';
 import { CreateWebhookEndpointUseCase } from '../libs/delivery/features/create-webhook-endpoint/create-webhook-endpoint.use-case';
 import { DisableWebhookEndpointUseCase } from '../libs/delivery/features/disable-webhook-endpoint/disable-webhook-endpoint.use-case';
 import { GetDeliveryAttemptUseCase } from '../libs/delivery/features/get-delivery-attempt/get-delivery-attempt.use-case';
 import { GetDigestUseCase } from '../libs/delivery/features/get-digest/get-digest.use-case';
+import { GetDigestScheduleUseCase } from '../libs/delivery/features/get-digest-schedule/get-digest-schedule.use-case';
+import { ListDigestSchedulesUseCase } from '../libs/delivery/features/list-digest-schedules/list-digest-schedules.use-case';
 import { ListWebhookEndpointsUseCase } from '../libs/delivery/features/list-webhook-endpoints/list-webhook-endpoints.use-case';
 import { ListRealtimeEventsUseCase } from '../libs/delivery/features/list-realtime-events/list-realtime-events.use-case';
 import { QueueDeliveryAttemptUseCase } from '../libs/delivery/features/queue-delivery-attempt/queue-delivery-attempt.use-case';
@@ -103,6 +106,7 @@ async function main(): Promise<void> {
     '00000000-0000-7000-8000-000000000710',
     '00000000-0000-7000-8000-000000000711',
     '00000000-0000-7000-8000-000000000712',
+    '00000000-0000-7000-8000-000000000713',
   ]);
   const queue = new QueueDeliveryAttemptUseCase(attempts, ids, clock);
   const getAttempt = new GetDeliveryAttemptUseCase(attempts);
@@ -359,6 +363,39 @@ async function main(): Promise<void> {
     limit: 10,
   });
   assert(noLongerDue.length === 0, 'digest schedule nextRunAt update must persist');
+
+  const createdSchedule = await new CreateDigestScheduleUseCase(schedules, ids, clock).execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    recipientKey: 'endpoint-2',
+    channel: 'email',
+    topicIds: ['topic-3', 'topic-1', 'topic-1'],
+    intervalSeconds: 7200,
+    includeNoSignal: true,
+    nextRunAt: new Date('2026-06-07T02:00:00.000Z'),
+  });
+  assert(isOk(createdSchedule), 'create digest schedule use case must persist through Prisma repository');
+  assert(createdSchedule.value.schedule.topicIds.join(',') === 'topic-1,topic-3', 'created schedule topic ids must normalize');
+
+  const scheduleView = await new GetDigestScheduleUseCase(schedules).execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    digestScheduleId: createdSchedule.value.schedule.id,
+  });
+  assert(isOk(scheduleView), 'get digest schedule use case must read through Prisma repository');
+  assert(scheduleView.value.recipientKey === 'endpoint-2', 'get digest schedule must preserve recipient key');
+
+  const scheduleList = await new ListDigestSchedulesUseCase(schedules).execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    limit: 10,
+  });
+  assert(isOk(scheduleList), 'list digest schedules use case must read through Prisma repository');
+  assert(scheduleList.value.schedules.length === 2, 'list digest schedules must include manual and created schedules');
+  assert(
+    scheduleList.value.schedules.some((item) => item.id === createdSchedule.value.schedule.id),
+    'list digest schedules must include the newly created schedule',
+  );
 
   const recordedRealtime = await recordRealtime.execute({
     tenantId: tenant,
@@ -646,8 +683,10 @@ class FakePrismaDeliveryClient implements PrismaDeliveryClient {
     findMany: async (args) =>
       [...this.schedules.values()]
         .filter((record) => matchesDigestScheduleWhere(record, args.where))
-        .sort(compareDigestScheduleRecords)
-        .slice(0, args.take),
+        .sort(isDigestScheduleCreatedOrder(args.orderBy)
+          ? compareDigestScheduleRecordsByCreation
+          : compareDigestScheduleRecordsByNextRun)
+        .slice(args.skip ?? 0, (args.skip ?? 0) + args.take),
   };
 
   readonly realtimeEvent: PrismaDeliveryClient['realtimeEvent'] = {
@@ -1004,7 +1043,7 @@ const matchesDigestScheduleWhere = (
   (where.status === undefined || record.status === where.status) &&
   (where.nextRunAt === undefined || record.nextRunAt.getTime() <= where.nextRunAt.lte.getTime());
 
-const compareDigestScheduleRecords = (
+const compareDigestScheduleRecordsByNextRun = (
   left: PrismaDigestScheduleRecord,
   right: PrismaDigestScheduleRecord,
 ): number => {
@@ -1016,6 +1055,23 @@ const compareDigestScheduleRecords = (
 
   return left.id.localeCompare(right.id);
 };
+
+const compareDigestScheduleRecordsByCreation = (
+  left: PrismaDigestScheduleRecord,
+  right: PrismaDigestScheduleRecord,
+): number => {
+  const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
+
+  if (createdDiff !== 0) {
+    return createdDiff;
+  }
+
+  return right.id.localeCompare(left.id);
+};
+
+const isDigestScheduleCreatedOrder = (
+  orderBy: Parameters<PrismaDeliveryClient['digestSchedule']['findMany']>[0]['orderBy'],
+): boolean => 'createdAt' in orderBy[0];
 
 const matchesRealtimeEventWhere = (
   record: PrismaRealtimeEventRecord,
