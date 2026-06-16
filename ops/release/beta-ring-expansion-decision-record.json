@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "recordId": "beta-ring-expansion-decision-record-mvp-v1",
+  "recordedAt": "2026-06-16T00:00:00.000Z",
+  "decisionModel": "go_hold_rework",
+  "evidenceMode": "deterministic_pre_beta_fixture",
+  "currentRing": "internal-dogfood",
+  "candidateNextRing": "private-beta-1",
+  "decision": "hold",
+  "decisionOwner": "release-owner",
+  "policyReference": "ops/release/beta-ring-expansion-policy.json",
+  "feedbackReportReference": "ops/release/beta-feedback-classification-report.json",
+  "decisionInputs": {
+    "capacity": {
+      "status": "ready_for_internal_dogfood",
+      "evidence": [
+        "npm run check:load-cost",
+        "ops/observability/dashboards/mvp-health.json",
+        "ops/observability/alerts/mvp-alerts.json"
+      ],
+      "risk": "Private beta capacity is bounded, but external expansion waits for live feedback and durable runtime evidence."
+    },
+    "sourceHealth": {
+      "status": "ready_for_enabled_beta_sources",
+      "evidence": [
+        "npm run check:source-certification",
+        "npm run check:hn-smoke",
+        "npm run check:github-smoke",
+        "npm run check:reddit-smoke",
+        "npm run check:rss-smoke",
+        "npm run check:beta-scope-policy"
+      ],
+      "risk": "Deferred sources remain blocked and routed through source_request feedback."
+    },
+    "summaryQuality": {
+      "status": "needs_real_feedback_before_expansion",
+      "evidence": [
+        "npm run check:summary-evals",
+        "npm run check:summary-evidence-smoke",
+        "npm run check:beta-feedback-report"
+      ],
+      "risk": "Deterministic feedback report includes blocker examples that must become eval fixtures or explicit runbook actions."
+    },
+    "persistence": {
+      "status": "internal_only_until_runtime_selectors_are_durable",
+      "evidence": [
+        "npm run check:persistence-readiness",
+        "npm run check:monitoring-persistence",
+        "npm run check:ingestion-feed-persistence",
+        "npm run check:summary-persistence",
+        "npm run check:identity-persistence",
+        "npm run check:usage-persistence",
+        "npm run check:delivery-persistence"
+      ],
+      "risk": "External beta remains blocked while any API or worker runtime uses in-memory/noop state in the target environment."
+    }
+  },
+  "requiredGateCommands": [
+    "npm run check:mvp-core-loop",
+    "npm run check:source-certification",
+    "npm run check:hn-smoke",
+    "npm run check:rss-smoke",
+    "npm run check:beta-scope-policy",
+    "npm run check:load-cost",
+    "npm run check:observability",
+    "npm run check:summary-evals",
+    "npm run check:delivery-replay",
+    "npm run check:beta-feedback-report",
+    "npm run check:persistence-readiness",
+    "npm run check:release"
+  ],
+  "holdReasons": [
+    {
+      "reasonId": "feedback-report-is-fixture-only",
+      "owner": "product-owner",
+      "exitCondition": "Replace deterministic fixture report with redacted real beta samples."
+    },
+    {
+      "reasonId": "summary-feedback-blockers-exist",
+      "owner": "summary-owner",
+      "exitCondition": "Every blocker has a linked eval fixture, validator change or explicit runbook action."
+    },
+    {
+      "reasonId": "durable-runtime-not-proven-for-external-beta",
+      "owner": "backend-lead",
+      "exitCondition": "Target environment runtime selectors use durable adapters for API and worker state."
+    }
+  ],
+  "allowedWhileHeld": [
+    "Continue internal dogfood with supported sources.",
+    "Collect redacted feedback samples through summary feedback API.",
+    "Convert blocker examples into eval fixtures or documented runbook actions.",
+    "Keep deferred source requests in roadmap evidence without enabling bindings."
+  ],
+  "forbiddenWhileHeld": [
+    "Invite private-beta-1 users.",
+    "Enable x-twitter or telegram source bindings.",
+    "Increase worker concurrency to mask provider, quota or persistence gaps.",
+    "Replay failed jobs before restore and idempotency checks are green."
+  ],
+  "nextDecisionChecklist": [
+    {
+      "itemId": "real-feedback-report",
+      "owner": "product-owner",
+      "requiredEvidence": "ops/release/beta-feedback-classification-report.json uses redacted_beta_samples"
+    },
+    {
+      "itemId": "blocker-resolution",
+      "owner": "summary-owner",
+      "requiredEvidence": "No blocker finding lacks eval fixture or runbook action"
+    },
+    {
+      "itemId": "durable-runtime-selector-proof",
+      "owner": "backend-lead",
+      "requiredEvidence": "Runtime persistence gates match target environment configuration"
+    },
+    {
+      "itemId": "source-scope-stays-locked",
+      "owner": "source-owner",
+      "requiredEvidence": "Deferred source requests do not alter beta binding catalog"
+    }
+  ]
+}

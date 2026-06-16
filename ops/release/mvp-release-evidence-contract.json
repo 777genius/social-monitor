@@ -145,6 +145,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "beta-ring-decision",
+      "command": "npm run check:beta-ring-decision",
+      "blocksRelease": true
+    },
+    {
       "gateId": "beta-launch-support",
       "command": "npm run check:beta-launch-support",
       "blocksRelease": true

@@ -43,6 +43,7 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 - `npm run check:hn-smoke` and `npm run check:rss-smoke` prove the two enabled real-source worker paths with deterministic clients: queue handler, provider registry, normalized source item persistence, feed projection, cursor commit and scan success reporting.
 - `npm run check:beta-scope-policy` proves unsupported/deferred providers stay out of the beta binding catalog, binding attempts are rejected, and source demand is captured as `source_request` feedback routed to `source-owner`.
 - `npm run check:beta-ring-policy` proves ring expansion thresholds link capacity, cost, source health and degradation evidence before inviting more users.
+- `npm run check:beta-ring-decision` proves the current beta ring decision record is explicit go/hold/rework evidence: internal dogfood can continue, private-beta-1 expansion is held while feedback is fixture-only, blocker feedback exists, and target durable runtime evidence is not complete.
 - `npm run check:beta-launch-support` proves the beta launch support REST API exposes scoped known limitations, supported/deferred source coverage and post-MVP backlog classification for users/support/operator clients.
 - `npm run check:beta-feedback-report` proves beta feedback classification has a release artifact: sanitized feedback examples map to supported categories, deterministic triage owners, blocker/gap/opportunity/deferred classifications, eval-fixture eligibility, source-request no-binding behavior, backlog items and ring expansion impact.
 - `npm run check:persistence-readiness` proves runtime in-memory/noop state adapters are not hidden: every API/worker module gap has owner, risk and durable replacement plan, and external beta remains blocked until durable adapters replace those gaps.
@@ -55,7 +56,7 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 
 ## Missing Evidence Blocks
 - Real beta feedback classification report is not produced from user samples yet; deterministic pre-beta report exists at `ops/release/beta-feedback-classification-report.json` and must be replaced with redacted real samples before external ring expansion.
-- Real beta ring expansion decision record is not produced from live user samples yet.
+- Real beta ring expansion decision record is not produced from live user samples yet; deterministic hold record exists at `ops/release/beta-ring-expansion-decision-record.json` and must be replaced or updated after redacted beta feedback samples exist.
 - Durable runtime persistence evidence is not complete yet; current runtime is approved only for single-process private MVP and deterministic smoke validation.
 
 ## PR 14 Beta Feedback Classification Report Evidence
