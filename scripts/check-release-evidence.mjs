@@ -32,6 +32,7 @@ const requiredGateIds = new Set([
   'reddit-ingestion-smoke',
   'rss-ingestion-smoke',
   'delivery-replay-idempotency',
+  'write-idempotency-proof',
   'mvp-core-loop',
   'beta-scope-policy',
   'beta-ring-policy',

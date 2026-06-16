@@ -35,5 +35,9 @@ Prove that the platform baseline is buildable, contract-safe and ready for inges
 ## Missing Evidence Blocks
 - Domain boundary failure.
 - Missing OpenAPI artifact.
-- Missing idempotency proof for write path.
 - Missing contract compatibility evidence for generated clients, events or migrations.
+
+## Executable Evidence Added
+- `npm run check:write-idempotency` proves duplicate write commands do not duplicate side effects across monitoring topic/source/policy/scan paths, summary request queueing and delivery attempt queueing.
+- The gate checks duplicate idempotency keys return the original resource id with `created=false`, avoid duplicate outbox events, avoid duplicate queue commands and avoid duplicate quota reservations where applicable.
+- The gate is included in `npm run verify` and in the beta MVP release evidence contract as `write-idempotency-proof`.

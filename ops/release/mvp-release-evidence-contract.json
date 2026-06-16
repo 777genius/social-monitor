@@ -130,6 +130,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "write-idempotency-proof",
+      "command": "npm run check:write-idempotency",
+      "blocksRelease": true
+    },
+    {
       "gateId": "mvp-core-loop",
       "command": "npm run check:mvp-core-loop",
       "blocksRelease": true
