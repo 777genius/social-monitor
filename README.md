@@ -120,6 +120,7 @@ Other worker entrypoints are available:
     npm run lint               # ESLint check
     npm run check:architecture # Architecture boundary checks
     npm run check:local-infra  # Local infrastructure checks
+    npm run check:live-open-connectors # Optional network smoke for HN/RSS without API keys
     npm run verify             # Full local verification pipeline
 
 ## Start With The Architecture Docs

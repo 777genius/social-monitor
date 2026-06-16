@@ -26,6 +26,7 @@
     "check:hn-smoke": "NODE_OPTIONS=--max-old-space-size=1024 node scripts/run-with-timeout.mjs --timeout-ms 60000 -- ts-node -r tsconfig-paths/register scripts/check-hacker-news-ingestion-smoke.ts",
     "check:local-infra": "node scripts/check-local-infra.mjs",
     "check:load-cost": "node scripts/check-load-cost.mjs",
+    "check:live-open-connectors": "NODE_OPTIONS=--max-old-space-size=1024 node scripts/run-with-timeout.mjs --timeout-ms 45000 -- ts-node -r tsconfig-paths/register scripts/check-live-open-connectors.ts",
     "check:ingestion-feed-persistence": "NODE_OPTIONS=--max-old-space-size=1024 node scripts/run-with-timeout.mjs --timeout-ms 60000 -- ts-node -r tsconfig-paths/register scripts/check-ingestion-feed-prisma-persistence.ts",
     "check:monitoring-persistence": "NODE_OPTIONS=--max-old-space-size=1024 node scripts/run-with-timeout.mjs --timeout-ms 60000 -- ts-node -r tsconfig-paths/register scripts/check-monitoring-prisma-persistence.ts",
     "check:monitoring-read-rest": "NODE_OPTIONS=--max-old-space-size=1024 node scripts/run-with-timeout.mjs --timeout-ms 60000 -- ts-node -r tsconfig-paths/register scripts/check-monitoring-read-rest-smoke.ts",
