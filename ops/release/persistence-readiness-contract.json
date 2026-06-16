@@ -9,7 +9,7 @@
       "replace API runtime repositories with Prisma adapters for monitoring, feed, summary, delivery, identity and usage state",
       "replace in-memory queue/idempotency runtime adapters with durable broker/inbox adapters where local fallbacks remain",
       "deploy event-relay and worker persistence, cursor, lease and scan reporter adapters against shared database/broker state",
-      "prove restart survival and cross-process scan status/feed/summary visibility through a targeted integration smoke"
+      "prove restart survival and deployed cross-process scan status/feed/summary visibility through a targeted integration smoke"
     ]
   },
   "runtimeModules": [
@@ -115,7 +115,7 @@
         "InMemoryScanCommandQueueReader"
       ],
       "risk": "worker scan attempts, source items, cursors, leases, failures, projected feed and default scan command reader are process-local",
-      "durableReplacementPlan": "IngestionWorkerModule can opt into Prisma source item, cursor, feed projection, scan failure queue, scan attempt and scan lease persistence with INGESTION_WORKER_PERSISTENCE=prisma; scan command reading can opt into RabbitMQ with INGESTION_SCAN_QUEUE_READER=rabbitmq; platform inbox dedupe can use PrismaInboxStoreAdapter when event consumers are wired through it; remaining blocker is cross-process scheduler deployment evidence"
+      "durableReplacementPlan": "IngestionWorkerModule can opt into Prisma source item, cursor, feed projection, scan failure queue, scan attempt and scan lease persistence with INGESTION_WORKER_PERSISTENCE=prisma; scan command reading can opt into RabbitMQ with INGESTION_SCAN_QUEUE_READER=rabbitmq; platform inbox dedupe can use PrismaInboxStoreAdapter when event consumers are wired through it; check:cross-process-scheduler proves Prisma-backed scheduling into RabbitMQ command publication; remaining blocker is deployed shared-infra evidence"
     },
     {
       "moduleFile": "apps/intelligence-worker/src/intelligence-worker.module.ts",
