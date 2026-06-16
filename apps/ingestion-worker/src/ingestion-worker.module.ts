@@ -3,6 +3,8 @@ import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/pe
 import { PrismaFeedProjectionAdapter } from '@social-monitor/feed/adapters/persistence/prisma/prisma-feed-projection.adapter';
 import { MonitoringScanExecutionReporterAdapter } from '@social-monitor/monitoring/adapters/reporting/monitoring-scan-execution-reporter.adapter';
 import { RecordScanExecutionUseCase } from '@social-monitor/monitoring/features/record-scan-execution/record-scan-execution.use-case';
+import { ScheduleDueScansUseCase } from '@social-monitor/monitoring/features/schedule-due-scans/schedule-due-scans.use-case';
+import { ScheduleDueScansCommandHandler } from '@social-monitor/monitoring/interfaces/queue/schedule-due-scans-command.handler';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
@@ -268,6 +270,15 @@ import {
       ],
     },
     {
+      provide: ScheduleDueScansCommandHandler,
+      useFactory: (
+        scheduleDueScans: ScheduleDueScansUseCase,
+        metrics: InMemoryMetricsRecorder,
+        runtime: WorkerRuntime,
+      ) => new ScheduleDueScansCommandHandler(scheduleDueScans, metrics, runtime),
+      inject: [ScheduleDueScansUseCase, InMemoryMetricsRecorder, WorkerRuntime],
+    },
+    {
       provide: ExecuteScanCommandHandler,
       useFactory: (executeScan: ExecuteScanUseCase, metrics: InMemoryMetricsRecorder, runtime: WorkerRuntime) =>
         new ExecuteScanCommandHandler(executeScan, metrics, runtime),
@@ -276,6 +287,7 @@ import {
   ],
   exports: [
     ExecuteScanCommandHandler,
+    ScheduleDueScansCommandHandler,
     InMemoryScanAttemptRepository,
     InMemoryScanCursorRepository,
     InMemoryScanFailureQueueAdapter,
