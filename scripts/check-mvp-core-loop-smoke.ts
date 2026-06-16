@@ -12,19 +12,24 @@ import {
 } from '@social-monitor/shared-kernel';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
+import { WorkerRuntime } from '@social-monitor/platform-worker';
 
 import { ProjectSummaryReadyEventUseCase } from '../libs/delivery/features/project-summary-ready-event/project-summary-ready-event.use-case';
 import type { SummaryReadyProjectionPayload } from '../libs/delivery/features/project-summary-ready-event/project-summary-ready-event.command';
 import { ListRealtimeEventsUseCase } from '../libs/delivery/features/list-realtime-events/list-realtime-events.use-case';
 import { RecordRealtimeEventUseCase } from '../libs/delivery/features/record-realtime-event/record-realtime-event.use-case';
+import { InMemoryDeliveryProvider } from '../libs/delivery/adapters/notification/in-memory-delivery.provider';
 import { InMemoryDeliveryAttemptRepository } from '../libs/delivery/adapters/persistence/in-memory-delivery-attempt.repository';
 import { InMemoryDigestRepository } from '../libs/delivery/adapters/persistence/in-memory-digest.repository';
 import { InMemoryRealtimeEventRepository } from '../libs/delivery/adapters/persistence/in-memory-realtime-event.repository';
 import { InMemoryDigestSourceReader } from '../libs/delivery/adapters/source/in-memory-digest-source.reader';
+import { InMemoryNotificationPreferenceReader } from '../libs/delivery/adapters/preferences/in-memory-notification-preference.reader';
 import { AssembleDigestUseCase } from '../libs/delivery/features/assemble-digest/assemble-digest.use-case';
 import { GetDeliveryAttemptUseCase } from '../libs/delivery/features/get-delivery-attempt/get-delivery-attempt.use-case';
 import { GetDigestUseCase } from '../libs/delivery/features/get-digest/get-digest.use-case';
 import { QueueDeliveryAttemptUseCase } from '../libs/delivery/features/queue-delivery-attempt/queue-delivery-attempt.use-case';
+import { SendDeliveryAttemptUseCase } from '../libs/delivery/features/send-delivery-attempt/send-delivery-attempt.use-case';
+import { SendDeliveryAttemptCommandHandler } from '../libs/delivery/interfaces/queue/send-delivery-attempt-command.handler';
 import { InMemoryFeedItemReadRepository } from '../libs/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { ListFeedItemsUseCase } from '../libs/feed/features/list-feed-items/list-feed-items.use-case';
 import { InMemoryScanAttemptRepository } from '../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
@@ -80,6 +85,7 @@ import { GetSummaryUseCase } from '../libs/summary/features/get-summary/get-summ
 import { RecordSummaryFeedbackUseCase } from '../libs/summary/features/record-summary-feedback/record-summary-feedback.use-case';
 import { RequestSummaryUseCase } from '../libs/summary/features/request-summary/request-summary.use-case';
 import type { ReserveSummaryJobQuotaResult, SummaryQuotaPort } from '../libs/summary/ports';
+import { DeliveryAttemptDispatchLoop } from '../apps/delivery-service/src/delivery-attempt-dispatch-loop';
 
 type QueuedScanPayload = Omit<ExecuteScanCommand, 'correlationId' | 'causationId'>;
 
@@ -427,6 +433,74 @@ async function main(): Promise<void> {
   assert(deliveryAttemptView.channel === 'in_app', 'digest delivery attempt channel should be in-app');
   assert(deliveryAttemptView.resourceType === 'digest', 'digest delivery attempt must target digest resource type');
   assert(deliveryAttemptView.resourceId === assembledDigest.digest.id, 'digest delivery attempt must target assembled digest');
+
+  const deliveryProvider = new InMemoryDeliveryProvider('in_app');
+  const deliveryMetrics = new InMemoryMetricsRecorder();
+  const deliveryRuntime = new WorkerRuntime({ serviceName: 'delivery-service' });
+  deliveryRuntime.onModuleInit();
+  const deliveryDispatchLoop = new DeliveryAttemptDispatchLoop(
+    new SendDeliveryAttemptCommandHandler(
+      new SendDeliveryAttemptUseCase(
+        deliveryAttempts,
+        [deliveryProvider],
+        new InMemoryNotificationPreferenceReader(),
+        new FixedClock(new Date('2026-06-06T00:05:00.000Z')),
+      ),
+      deliveryMetrics,
+      deliveryRuntime,
+    ),
+    deliveryAttempts,
+    {
+      enabled: true,
+      intervalMs: 60_000,
+      limit: 10,
+      runOnStart: true,
+      tenantId: tenant,
+      workspaceId: workspace,
+    },
+  );
+  await deliveryDispatchLoop.onModuleInit();
+  await deliveryDispatchLoop.onApplicationShutdown('mvp-core-loop-delivery-complete');
+  await deliveryRuntime.onApplicationShutdown('mvp-core-loop-delivery-complete');
+
+  const deliveredDigestAttempt = unwrap(
+    await new GetDeliveryAttemptUseCase(deliveryAttempts).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      deliveryAttemptId: assembledDigest.deliveryAttemptId,
+    }),
+    'get delivered digest delivery attempt',
+  );
+  assert(
+    deliveredDigestAttempt.state === 'delivered',
+    `expected delivered digest attempt, got ${deliveredDigestAttempt.state}`,
+  );
+  assert(deliveryProvider.getSentRequests().length === 1, 'delivery loop must send the digest attempt once');
+  assert(
+    deliveryProvider.getSentRequests()[0]?.content.body ===
+      `Delivery resource digest:${assembledDigest.digest.id} is ready.`,
+    'delivery loop must render deterministic digest delivery content',
+  );
+  assert(
+    deliveryMetrics.counterValue('delivery_attempt_dispatch_total', {
+      status: 'started',
+      worker: 'delivery-service',
+    }) === 1,
+    'MVP core loop must record delivery dispatch start metric',
+  );
+  assert(
+    deliveryMetrics.counterValue('delivery_attempt_dispatch_total', {
+      status: 'succeeded',
+      worker: 'delivery-service',
+    }) === 1,
+    'MVP core loop must record delivery dispatch success metric',
+  );
+  const remainingDeliveryAttempts = await deliveryAttempts.findQueued({
+    tenantId: tenant,
+    workspaceId: workspace,
+    limit: 10,
+  });
+  assert(remainingDeliveryAttempts.length === 0, 'MVP core loop must drain digest delivery attempts');
 
   const firstCitation = summary.citations[0];
   assert(firstCitation !== undefined, 'summary should expose at least one citation for feedback evidence');
