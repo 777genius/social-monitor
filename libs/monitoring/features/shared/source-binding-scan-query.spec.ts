@@ -46,4 +46,22 @@ describe('sourceBindingScanQuery', () => {
       config: { feedUrl: 'https://example.test/feed.xml' },
     }))).toEqual({ mode: 'url', query: 'https://example.test/feed.xml' });
   });
+
+  it('maps Reddit listing bindings without exposing credentials', () => {
+    expect(sourceBindingScanQuery(makeBinding({
+      providerKey: 'reddit',
+      config: {
+        mode: 'listing',
+        subreddit: 'observability',
+        accessToken: {
+          encrypted: true,
+          algorithm: 'aes-256-gcm',
+          keyId: 'local',
+          iv: 'iv',
+          ciphertext: 'ciphertext',
+          authTag: 'tag',
+        },
+      },
+    }))).toEqual({ mode: 'listing', query: 'observability' });
+  });
 });

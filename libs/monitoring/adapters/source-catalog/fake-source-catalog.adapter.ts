@@ -26,10 +26,18 @@ const rssProfile: SourceCapabilityProfile = {
   supportsCursor: true,
 };
 
+const redditProfile: SourceCapabilityProfile = {
+  providerKey: 'reddit',
+  version: 1,
+  productionSafe: true,
+  supportsCursor: true,
+};
+
 const sourceProfiles = new Map([
   [fakeSourceProfile.providerKey, fakeSourceProfile],
   [hackerNewsProfile.providerKey, hackerNewsProfile],
   [rssProfile.providerKey, rssProfile],
+  [redditProfile.providerKey, redditProfile],
 ]);
 
 export class FakeSourceCatalogAdapter implements SourceCatalogPort {
@@ -75,6 +83,36 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
         : { ok: true };
     }
 
+    if (providerKey === 'reddit') {
+      const mode = firstNonEmptyString(config.mode) ?? 'search';
+      const accessToken = firstNonEmptyString(config.accessToken, config.apiToken, config.bearerToken);
+
+      if (accessToken === undefined) {
+        return { ok: false, reason: 'Reddit source requires accessToken, apiToken or bearerToken.' };
+      }
+
+      if (mode !== 'search' && mode !== 'listing') {
+        return { ok: false, reason: `Unsupported Reddit query mode: ${mode}` };
+      }
+
+      if (mode === 'listing') {
+        const subreddit = normalizeSubreddit(firstNonEmptyString(config.subreddit, config.query));
+        const listing = firstNonEmptyString(config.listing) ?? 'hot';
+
+        if (subreddit === undefined) {
+          return { ok: false, reason: 'Reddit listing source requires subreddit or query.' };
+        }
+
+        return supportedRedditListings.has(listing)
+          ? { ok: true }
+          : { ok: false, reason: `Unsupported Reddit listing: ${listing}` };
+      }
+
+      return firstNonEmptyString(config.query, config.term) === undefined
+        ? { ok: false, reason: 'Reddit search source requires query or term.' }
+        : { ok: true };
+    }
+
     const mode = firstNonEmptyString(config.mode) ?? 'search';
     if (mode !== 'search' && mode !== 'listing') {
       return { ok: false, reason: `Unsupported source query mode: ${mode}` };
@@ -87,6 +125,7 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
 }
 
 const supportedHackerNewsListings = new Set(['top', 'new', 'best', 'ask', 'show', 'job']);
+const supportedRedditListings = new Set(['hot', 'new', 'top', 'rising']);
 const blockedHosts = new Set(['localhost', 'localhost.localdomain']);
 
 const firstNonEmptyString = (...values: readonly unknown[]): string | undefined => {
@@ -123,6 +162,16 @@ const validateFeedUrl = (value: string): SourceBindingConfigValidationResult => 
   }
 
   return { ok: true };
+};
+
+const normalizeSubreddit = (value: string | undefined): string | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const normalized = value.replace(/^r\//i, '').trim();
+
+  return /^[A-Za-z0-9_]{2,21}$/.test(normalized) ? normalized : undefined;
 };
 
 const isPrivateIp = (hostname: string): boolean => {

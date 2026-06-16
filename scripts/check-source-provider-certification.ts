@@ -6,12 +6,15 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { FakeSourceProvider } from '../libs/ingestion/adapters/source/fake-source.provider';
 import { FixtureHackerNewsClient } from '../libs/ingestion/adapters/source/hacker-news/fixture-hacker-news-client';
 import { HackerNewsSourceProvider } from '../libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
+import { FixtureRedditClient } from '../libs/ingestion/adapters/source/reddit/fixture-reddit-client';
+import { RedditSourceProvider } from '../libs/ingestion/adapters/source/reddit/reddit-source.provider';
 import { FixtureRssClient } from '../libs/ingestion/adapters/source/rss/fixture-rss-client';
 import { RssSourceProvider } from '../libs/ingestion/adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
 import type {
   FetchedSourceItem,
   ProviderFailureKind,
+  SourceRuntimeConfig,
   SourceCursorModel,
   SourceProviderPort,
   SourceProviderScanContext,
@@ -28,6 +31,7 @@ type ProviderCase = {
   readonly unsupportedQueryMode: SourceQueryMode;
   readonly expectedProviderKey: string;
   readonly expectedFailureKind: ProviderFailureKind;
+  readonly contextConfig?: SourceRuntimeConfig;
 };
 
 type ProviderCertificationReport = {
@@ -80,6 +84,18 @@ const cases: readonly ProviderCase[] = [
     unsupportedQueryMode: 'thread',
     expectedProviderKey: 'rss',
     expectedFailureKind: 'unavailable',
+  },
+  {
+    providerFactory: () => new RedditSourceProvider(new FixtureRedditClient()),
+    validQuery: { mode: 'listing', query: 'observability:hot' },
+    unsupportedQueryMode: 'thread',
+    expectedProviderKey: 'reddit',
+    expectedFailureKind: 'unavailable',
+    contextConfig: {
+      accessToken: 'fixture-reddit-token',
+      subreddit: 'observability',
+      listing: 'hot',
+    },
   },
 ];
 
@@ -148,7 +164,7 @@ async function certifyProvider(
   const provider = providerCase.providerFactory();
   const profile = provider.capabilityProfile();
   const readiness = readinessByProvider.get(providerCase.expectedProviderKey);
-  const context = makeContext(providerCase.expectedProviderKey);
+  const context = makeContext(providerCase.expectedProviderKey, providerCase.contextConfig);
   const validation = provider.validateBinding(providerCase.validQuery);
   const unsupportedValidation = provider.validateBinding({
     ...providerCase.validQuery,
@@ -224,13 +240,17 @@ async function certifyProvider(
   };
 }
 
-function makeContext(providerKey: string): SourceProviderScanContext {
+function makeContext(
+  providerKey: string,
+  config?: SourceRuntimeConfig,
+): SourceProviderScanContext {
   return {
     tenantId: tenantId(`tenant-cert-${providerKey}`),
     workspaceId: workspaceId(`workspace-cert-${providerKey}`),
     sourceBindingId: `source-binding-cert-${providerKey}`,
     scanJobId: `scan-job-cert-${providerKey}`,
     correlationId: `correlation-cert-${providerKey}`,
+    ...(config === undefined ? {} : { config }),
   };
 }
 

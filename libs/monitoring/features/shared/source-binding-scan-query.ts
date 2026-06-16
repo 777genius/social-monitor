@@ -22,6 +22,17 @@ export const sourceBindingScanQuery = (
     };
   }
 
+  if (binding.providerKey === 'reddit') {
+    const mode = normalizeMode(binding.config.mode, ['search', 'listing']) ?? 'search';
+
+    return {
+      mode,
+      query: mode === 'listing'
+        ? firstNonEmptyString(binding.config.subreddit, binding.config.query) ?? binding.id
+        : firstNonEmptyString(binding.config.query, binding.config.term) ?? binding.id,
+    };
+  }
+
   return {
     mode: normalizeMode(binding.config.mode, ['search', 'listing']) ?? 'search',
     query: firstNonEmptyString(binding.config.query, binding.config.term) ?? binding.id,

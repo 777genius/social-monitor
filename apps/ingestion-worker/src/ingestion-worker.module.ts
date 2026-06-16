@@ -35,6 +35,8 @@ import { HackerNewsSourceProvider } from '../../../libs/ingestion/adapters/sourc
 import { HttpHackerNewsClient } from '../../../libs/ingestion/adapters/source/hacker-news/http-hacker-news-client';
 import { InMemorySourceProviderRegistry } from '../../../libs/ingestion/adapters/source/in-memory-source-provider.registry';
 import { RegistrySourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
+import { HttpRedditClient } from '../../../libs/ingestion/adapters/source/reddit/http-reddit-client';
+import { RedditSourceProvider } from '../../../libs/ingestion/adapters/source/reddit/reddit-source.provider';
 import { HttpRssClient } from '../../../libs/ingestion/adapters/source/rss/http-rss-client';
 import { RssSourceProvider } from '../../../libs/ingestion/adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfiles } from '../../../libs/ingestion/adapters/source/source-readiness-profiles';
@@ -119,19 +121,32 @@ import { ScanSchedulerLoop } from './scan-scheduler-loop';
       useFactory: () => new HttpRssClient(),
     },
     {
+      provide: HttpRedditClient,
+      useFactory: () => new HttpRedditClient(),
+    },
+    {
       provide: RssSourceProvider,
       useFactory: (client: HttpRssClient) => new RssSourceProvider(client),
       inject: [HttpRssClient],
+    },
+    {
+      provide: RedditSourceProvider,
+      useFactory: (client: HttpRedditClient) => new RedditSourceProvider(client),
+      inject: [HttpRedditClient],
     },
     {
       provide: InMemorySourceProviderRegistry,
       useFactory: (
         fakeProvider: FakeSourceProvider,
         hackerNewsProvider: HackerNewsSourceProvider,
+        redditProvider: RedditSourceProvider,
         rssProvider: RssSourceProvider,
       ) =>
-        new InMemorySourceProviderRegistry([fakeProvider, hackerNewsProvider, rssProvider], sourceReadinessProfiles),
-      inject: [FakeSourceProvider, HackerNewsSourceProvider, RssSourceProvider],
+        new InMemorySourceProviderRegistry(
+          [fakeProvider, hackerNewsProvider, redditProvider, rssProvider],
+          sourceReadinessProfiles,
+        ),
+      inject: [FakeSourceProvider, HackerNewsSourceProvider, RedditSourceProvider, RssSourceProvider],
     },
     {
       provide: RegistrySourceFetcherAdapter,

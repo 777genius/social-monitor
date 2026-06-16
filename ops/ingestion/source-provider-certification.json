@@ -48,6 +48,27 @@
       ]
     },
     {
+      "providerKey": "reddit",
+      "readinessState": "enabled_beta",
+      "productionSafe": true,
+      "cursorModel": "opaque",
+      "quotaModel": "per_credential",
+      "itemCount": 2,
+      "warningCount": 0,
+      "firstExternalId": "reddit:t3_fixturepost1",
+      "nextCursor": "t3_fixturepost2",
+      "repeatedScanItemCount": 2,
+      "failureKind": "unavailable",
+      "checks": [
+        "capability_profile_matches_readiness",
+        "unsupported_query_rejected_before_scan",
+        "normalized_items_have_stable_identity",
+        "cursor_contract_is_non_empty_for_cursor_models",
+        "fixture_repeated_scan_is_deterministic",
+        "provider_errors_are_classified"
+      ]
+    },
+    {
       "providerKey": "rss",
       "readinessState": "enabled_beta",
       "productionSafe": true,
@@ -70,11 +91,6 @@
     }
   ],
   "deferredProviders": [
-    {
-      "providerKey": "reddit",
-      "state": "profiled",
-      "acquisitionMode": "official_api_or_approved_vendor"
-    },
     {
       "providerKey": "telegram",
       "state": "manual_only",
