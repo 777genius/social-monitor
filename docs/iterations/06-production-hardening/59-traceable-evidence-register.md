@@ -1130,3 +1130,25 @@ Evidence notes:
 - The scenario executes topic creation, source binding, scan request, fake provider ingestion, feed projection, summary generation, digest assembly, delivery dispatch, realtime projection and summary feedback in one deterministic path.
 - Digest delivery goes through the real `DeliveryAttemptDispatchLoop`, `SendDeliveryAttemptCommandHandler` and `SendDeliveryAttemptUseCase` instead of directly mutating repository state.
 - The smoke asserts deterministic in-app delivery content, dispatch start/success metrics and an empty dispatchable delivery set after the worker tick.
+
+## PR 40 Non-Retryable Source Auth Failure Evidence
+
+- `049fbe2 feat: stop retrying non-retryable source auth failures`
+
+Verified commands:
+
+- `npm run check:reddit-smoke`
+- `npm run build`
+- `npm run check:source-certification`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run check:secrets`
+- `git diff --check`
+
+Evidence notes:
+
+- `SourceFetcherPort` now exposes a typed `SourceFetchError` so source adapters can communicate provider failure class and retryability without leaking provider SDK payloads.
+- `RegistrySourceFetcherAdapter` maps invalid queries to non-retryable `invalid_query` and maps provider plan/scan failures through each provider's `classifyError` contract.
+- `ExecuteScanUseCase` now retries only retryable source-fetch failures and immediately dead-letters non-retryable provider failures.
+- Reddit missing `accessToken` is classified as `auth_failed`, `retryable=false`, matching the official OAuth-only source policy.
+- `check:reddit-smoke` proves encrypted credential success, missing-token `SourceFetchError`, no retry enqueue and immediate DLQ for the non-retryable auth/config failure.
