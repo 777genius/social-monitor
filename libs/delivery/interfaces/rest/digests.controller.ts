@@ -1,13 +1,9 @@
-import { Controller, Get, Headers, Inject, Param } from '@nestjs/common';
+import { Controller, Get, Headers, Param } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import {
-  WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
-  type WorkspaceAuthorizationPolicyPort,
-} from '@social-monitor/identity/ports';
 import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { GetDigestUseCase } from '../../features/get-digest/get-digest.use-case';
+import { DeliveryReadAuthorizer } from './delivery-read.authorizer';
 import type { GetDigestResponseDto } from './digests.dto';
 
 @ApiTags('delivery')
@@ -15,8 +11,7 @@ import type { GetDigestResponseDto } from './digests.dto';
 export class DigestsController {
   constructor(
     private readonly getDigest: GetDigestUseCase,
-    @Inject(WORKSPACE_AUTHORIZATION_POLICY)
-    private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly deliveryReadAuthorizer: DeliveryReadAuthorizer,
   ) {}
 
   @Get(':digestId')
@@ -33,21 +28,20 @@ export class DigestsController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
   ): Promise<GetDigestResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = this.workspaceAuthorization.authorize({
+    await this.deliveryReadAuthorizer.authorize({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
       action: 'digests.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      operation: 'digests.read',
     });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
 
     const result = await this.getDigest.execute({
       tenantId: scope.tenantId,

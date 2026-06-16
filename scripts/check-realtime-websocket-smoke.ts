@@ -148,6 +148,27 @@ async function main(): Promise<void> {
     assert(event.sequence === recorded.value.sequence, 'WS push sequence must match durable event sequence');
     assert(event.payload.summaryId === 'summary-realtime-ws-smoke', 'WS push must include status hint payload');
 
+    const restReplayWithApiKey = await request(app.getHttpServer())
+      .get('/realtime/events')
+      .query({ channel, limit: 10 })
+      .set('x-tenant-id', 'tenant-realtime-ws-smoke')
+      .set('x-workspace-id', 'workspace-realtime-ws-smoke')
+      .set('Authorization', `Bearer ${realtimeKey.body.secret}`)
+      .expect(200);
+
+    assert(
+      restReplayWithApiKey.body.events[0].replayCursor === event.replayCursor,
+      'read:delivery_status API key must replay realtime events over REST without workspace role',
+    );
+
+    await request(app.getHttpServer())
+      .get('/realtime/events')
+      .query({ channel, limit: 10 })
+      .set('x-tenant-id', 'tenant-realtime-ws-smoke')
+      .set('x-workspace-id', 'workspace-realtime-ws-smoke')
+      .set('Authorization', `Bearer ${wrongScopeKey.body.secret}`)
+      .expect(403);
+
     const replay = await emitAck<RealtimeAck>(socket, 'realtime.refresh', {
       channel,
       limit: 10,

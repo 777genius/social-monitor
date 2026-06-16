@@ -17,6 +17,7 @@ import {
   type GetDigestScheduleResponseDto,
   type ListDigestSchedulesResponseDto,
 } from './digest-schedules.dto';
+import { DeliveryReadAuthorizer } from './delivery-read.authorizer';
 
 @ApiTags('delivery')
 @Controller('delivery/digest-schedules')
@@ -25,6 +26,7 @@ export class DigestSchedulesController {
     private readonly createDigestSchedule: CreateDigestScheduleUseCase,
     private readonly getDigestSchedule: GetDigestScheduleUseCase,
     private readonly listDigestSchedules: ListDigestSchedulesUseCase,
+    private readonly deliveryReadAuthorizer: DeliveryReadAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
@@ -86,6 +88,7 @@ export class DigestSchedulesController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
   ): Promise<ListDigestSchedulesResponseDto> {
@@ -93,11 +96,13 @@ export class DigestSchedulesController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    this.authorizeWorkspaceRole({
+    await this.deliveryReadAuthorizer.authorize({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       workspaceRoleHeader,
+      authorizationHeader,
       action: 'digest_schedules.read',
+      operation: 'digest_schedules.read',
     });
 
     const result = await this.listDigestSchedules.execute({
@@ -128,16 +133,19 @@ export class DigestSchedulesController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
   ): Promise<GetDigestScheduleResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    this.authorizeWorkspaceRole({
+    await this.deliveryReadAuthorizer.authorize({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       workspaceRoleHeader,
+      authorizationHeader,
       action: 'digest_schedules.read',
+      operation: 'digest_schedules.read',
     });
     const result = await this.getDigestSchedule.execute({
       tenantId: scope.tenantId,

@@ -1,13 +1,9 @@
-import { Controller, Get, Headers, Inject, Query } from '@nestjs/common';
+import { Controller, Get, Headers, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import {
-  WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
-  type WorkspaceAuthorizationPolicyPort,
-} from '@social-monitor/identity/ports';
 import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { ListRealtimeEventsUseCase } from '../../features/list-realtime-events/list-realtime-events.use-case';
+import { DeliveryReadAuthorizer } from './delivery-read.authorizer';
 import type { ListRealtimeEventsResponseDto } from './realtime-events.dto';
 
 @ApiTags('realtime')
@@ -15,8 +11,7 @@ import type { ListRealtimeEventsResponseDto } from './realtime-events.dto';
 export class RealtimeEventsController {
   constructor(
     private readonly listRealtimeEvents: ListRealtimeEventsUseCase,
-    @Inject(WORKSPACE_AUTHORIZATION_POLICY)
-    private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly deliveryReadAuthorizer: DeliveryReadAuthorizer,
   ) {}
 
   @Get()
@@ -35,6 +30,7 @@ export class RealtimeEventsController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Query('channel') channel: string,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
@@ -43,16 +39,14 @@ export class RealtimeEventsController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = this.workspaceAuthorization.authorize({
+    await this.deliveryReadAuthorizer.authorize({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
       action: 'realtime_events.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      operation: 'realtime_events.read',
     });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
 
     const result = await this.listRealtimeEvents.execute({
       tenantId: scope.tenantId,

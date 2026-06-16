@@ -44,6 +44,20 @@ async function main(): Promise<void> {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
     };
+    const deliveryStatusSecret = await createApiKey({
+      server: app.getHttpServer(),
+      tenant,
+      workspace,
+      name: 'Delivery attempt status reader',
+      scopes: ['read:delivery_status'],
+    });
+    const wrongScopeSecret = await createApiKey({
+      server: app.getHttpServer(),
+      tenant,
+      workspace,
+      name: 'Delivery attempt wrong reader',
+      scopes: ['read:feed'],
+    });
 
     const emptyList = await request(app.getHttpServer())
       .get('/delivery/attempts')
@@ -52,6 +66,17 @@ async function main(): Promise<void> {
       .expect(200);
 
     assert(emptyList.body.attempts.length === 0, 'delivery attempt REST list should start empty');
+
+    const emptyListWithApiKey = await request(app.getHttpServer())
+      .get('/delivery/attempts')
+      .set(headers)
+      .set('Authorization', `Bearer ${deliveryStatusSecret}`)
+      .expect(200);
+
+    assert(
+      emptyListWithApiKey.body.attempts.length === 0,
+      'read:delivery_status API key list should start empty',
+    );
 
     const queued = await moduleRef.get(QueueDeliveryAttemptUseCase).execute({
       tenantId: tenant,
@@ -81,6 +106,24 @@ async function main(): Promise<void> {
       'delivery attempt REST list must preserve attempt id',
     );
 
+    const listedWithApiKey = await request(app.getHttpServer())
+      .get('/delivery/attempts')
+      .query({ limit: 1 })
+      .set(headers)
+      .set('Authorization', `Bearer ${deliveryStatusSecret}`)
+      .expect(200);
+
+    assert(
+      listedWithApiKey.body.attempts[0].id === queued.value.deliveryAttemptId,
+      'read:delivery_status API key must list delivery attempts without workspace role',
+    );
+
+    await request(app.getHttpServer())
+      .get('/delivery/attempts')
+      .set(headers)
+      .set('Authorization', `Bearer ${wrongScopeSecret}`)
+      .expect(403);
+
     const fetched = await request(app.getHttpServer())
       .get(`/delivery/attempts/${queued.value.deliveryAttemptId}`)
       .set(headers)
@@ -88,6 +131,17 @@ async function main(): Promise<void> {
       .expect(200);
 
     assert(fetched.body.id === queued.value.deliveryAttemptId, 'delivery attempt REST get must return attempt');
+
+    const fetchedWithApiKey = await request(app.getHttpServer())
+      .get(`/delivery/attempts/${queued.value.deliveryAttemptId}`)
+      .set(headers)
+      .set('Authorization', `Bearer ${deliveryStatusSecret}`)
+      .expect(200);
+
+    assert(
+      fetchedWithApiKey.body.id === queued.value.deliveryAttemptId,
+      'read:delivery_status API key must read one delivery attempt without workspace role',
+    );
 
     const recorder = moduleRef.get(RecordDeliveryAttemptStateUseCase);
     const sending = await recorder.execute({
@@ -156,5 +210,26 @@ async function main(): Promise<void> {
     await app.close();
   }
 }
+
+const createApiKey = async (params: {
+  readonly server: Parameters<typeof request>[0];
+  readonly tenant: string;
+  readonly workspace: string;
+  readonly name: string;
+  readonly scopes: readonly string[];
+}): Promise<string> => {
+  const response = await request(params.server)
+    .post('/identity/api-keys')
+    .set('x-tenant-id', params.tenant)
+    .set('x-workspace-id', params.workspace)
+    .set('x-workspace-role', 'admin')
+    .send({
+      name: params.name,
+      scopes: params.scopes,
+    })
+    .expect(201);
+
+  return response.body.secret;
+};
 
 void main();

@@ -56,6 +56,7 @@ import { SetNotificationPreferenceUseCase } from '../../features/set-notificatio
 import { SignWebhookPayloadUseCase } from '../../features/sign-webhook-payload/sign-webhook-payload.use-case';
 import { VerifyWebhookSignatureUseCase } from '../../features/verify-webhook-signature/verify-webhook-signature.use-case';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
+import { DeliveryReadAuthorizer } from './delivery-read.authorizer';
 import { DigestSchedulesController } from './digest-schedules.controller';
 import {
   DELIVERY_ATTEMPT_REPOSITORY,
@@ -127,6 +128,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     InMemoryWebhookReplayStore,
     InMemoryWebhookSecretVault,
     InMemoryMetricsRecorder,
+    DeliveryReadAuthorizer,
     RealtimeEventsGateway,
     {
       provide: DELIVERY_REALTIME_FANOUT,

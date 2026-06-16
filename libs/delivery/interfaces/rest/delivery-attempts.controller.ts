@@ -17,6 +17,7 @@ import {
   type ListDeliveryAttemptsResponseDto,
   type RetryDeliveryAttemptResponseDto,
 } from './delivery-attempts.dto';
+import { DeliveryReadAuthorizer } from './delivery-read.authorizer';
 
 @ApiTags('delivery')
 @Controller('delivery/attempts')
@@ -25,6 +26,7 @@ export class DeliveryAttemptsController {
     private readonly getDeliveryAttempt: GetDeliveryAttemptUseCase,
     private readonly listDeliveryAttempts: ListDeliveryAttemptsUseCase,
     private readonly retryDeliveryAttempt: RetryDeliveryAttemptUseCase,
+    private readonly deliveryReadAuthorizer: DeliveryReadAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
@@ -44,6 +46,7 @@ export class DeliveryAttemptsController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
   ): Promise<ListDeliveryAttemptsResponseDto> {
@@ -51,11 +54,13 @@ export class DeliveryAttemptsController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    this.authorizeWorkspaceRole({
+    await this.deliveryReadAuthorizer.authorize({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       workspaceRoleHeader,
+      authorizationHeader,
       action: 'delivery_attempts.read',
+      operation: 'delivery_attempts.read',
     });
 
     const result = await this.listDeliveryAttempts.execute({
@@ -86,16 +91,19 @@ export class DeliveryAttemptsController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
   ): Promise<GetDeliveryAttemptResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    this.authorizeWorkspaceRole({
+    await this.deliveryReadAuthorizer.authorize({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       action: 'delivery_attempts.read',
       workspaceRoleHeader,
+      authorizationHeader,
+      operation: 'delivery_attempts.read',
     });
 
     const result = await this.getDeliveryAttempt.execute({
