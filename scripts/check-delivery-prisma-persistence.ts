@@ -20,6 +20,7 @@ import type {
 } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-client';
 import { PrismaDigestScheduleRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-digest-schedule.repository';
 import { PrismaDigestRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-digest.repository';
+import { PrismaNotificationPreferenceReader } from '../libs/delivery/adapters/preferences/prisma/prisma-notification-preference.reader';
 import { PrismaRealtimeEventRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-realtime-event.repository';
 import { PrismaWebhookEndpointRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-webhook-endpoint.repository';
 import { PrismaWebhookReplayStore } from '../libs/delivery/adapters/replay/prisma/prisma-webhook-replay.store';
@@ -31,6 +32,7 @@ import type {
   PrismaDeliveryAttemptRecord,
   PrismaDigestRecord,
   PrismaDigestScheduleRecord,
+  PrismaNotificationPreferenceRecord,
   PrismaRealtimeEventRecord,
   PrismaWebhookEndpointRecord,
   PrismaWebhookReplayDeliveryRecord,
@@ -83,6 +85,7 @@ async function main(): Promise<void> {
   const digests = new PrismaDigestRepository(prisma);
   const realtimeEvents = new PrismaRealtimeEventRepository(prisma);
   const schedules = new PrismaDigestScheduleRepository(prisma);
+  const preferences = new PrismaNotificationPreferenceReader(prisma);
   const webhookEndpoints = new PrismaWebhookEndpointRepository(prisma);
   const webhookSecrets = new PrismaWebhookSecretVault(prisma, Buffer.alloc(32, 7));
   const webhookReplayStore = new PrismaWebhookReplayStore(prisma);
@@ -382,6 +385,43 @@ async function main(): Promise<void> {
     'webhook endpoint list must expose only secret preview metadata',
   );
 
+  await preferences.suppressRecipientChannel({
+    tenantId: tenant,
+    workspaceId: workspace,
+    recipientKey: 'endpoint-1',
+    channel: 'webhook',
+    reason: 'User unsubscribed from webhook notifications',
+  });
+  const suppressedPreference = await preferences.getDeliveryPreference({
+    tenantId: tenant,
+    workspaceId: workspace,
+    recipientKey: 'endpoint-1',
+    channel: 'webhook',
+    resourceType: 'digest',
+    resourceId: 'digest-1',
+  });
+  assert(!suppressedPreference.allowed, 'Prisma notification preference must suppress recipient/channel delivery');
+  assert(
+    suppressedPreference.reason === 'User unsubscribed from webhook notifications',
+    'Prisma notification preference must preserve suppression reason',
+  );
+
+  await preferences.allowRecipientChannel({
+    tenantId: tenant,
+    workspaceId: workspace,
+    recipientKey: 'endpoint-1',
+    channel: 'webhook',
+  });
+  const allowedPreference = await preferences.getDeliveryPreference({
+    tenantId: tenant,
+    workspaceId: workspace,
+    recipientKey: 'endpoint-1',
+    channel: 'webhook',
+    resourceType: 'digest',
+    resourceId: 'digest-1',
+  });
+  assert(allowedPreference.allowed, 'Prisma notification preference allow must clear suppression decision');
+
   console.log('Delivery Prisma persistence smoke OK');
 }
 
@@ -406,6 +446,7 @@ class SequenceIdGenerator implements IdGenerator {
 class FakePrismaDeliveryClient implements PrismaDeliveryClient {
   private readonly attempts = new Map<string, PrismaDeliveryAttemptRecord>();
   private readonly digests = new Map<string, PrismaDigestRecord>();
+  private readonly notificationPreferences = new Map<string, PrismaNotificationPreferenceRecord>();
   private readonly realtimeEvents = new Map<string, PrismaRealtimeEventRecord>();
   private readonly schedules = new Map<string, PrismaDigestScheduleRecord>();
   private readonly webhookEndpoints = new Map<string, PrismaWebhookEndpointRecord>();
@@ -564,6 +605,30 @@ class FakePrismaDeliveryClient implements PrismaDeliveryClient {
       return record;
     },
   };
+
+  readonly notificationPreference: PrismaDeliveryClient['notificationPreference'] = {
+    upsert: async (args) => {
+      const key = notificationPreferenceKey(args.create);
+      const existing = this.notificationPreferences.get(key);
+      const record: PrismaNotificationPreferenceRecord = {
+        ...(existing ?? {
+          tenantId: args.create.tenantId,
+          workspaceId: args.create.workspaceId,
+          recipientKey: args.create.recipientKey,
+          channel: args.create.channel,
+        }),
+        allowed: args.update.allowed,
+        reason: args.update.reason ?? null,
+      };
+      this.notificationPreferences.set(key, record);
+
+      return record;
+    },
+    findUnique: async (args) =>
+      this.notificationPreferences.get(
+        notificationPreferenceKey(args.where.tenantId_workspaceId_recipientKey_channel),
+      ) ?? null,
+  };
 }
 
 const normalizeWriteData = (data: PrismaDeliveryAttemptWriteData): Omit<PrismaDeliveryAttemptRecord, 'id'> => ({
@@ -670,6 +735,13 @@ const normalizeWebhookReplayDeliveryWriteData = (
   rememberedAt: data.rememberedAt,
   expiresAt: data.expiresAt,
 });
+
+const notificationPreferenceKey = (params: {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly recipientKey: string;
+  readonly channel: string;
+}): string => [params.tenantId, params.workspaceId, params.recipientKey, params.channel].join(':');
 
 const matchesDeliveryAttemptWhere = (
   record: PrismaDeliveryAttemptRecord,

@@ -56,4 +56,5 @@ Verified guarantees:
 - `DELIVERY_PERSISTENCE=prisma` can persist webhook endpoint metadata, encrypted webhook secrets and webhook replay delivery ids;
 - Prisma webhook secrets use AES-256-GCM and require `DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY`;
 - delivery Prisma smoke covers webhook create, sign, verify, replay rejection, disable and list behavior;
+- `DELIVERY_PERSISTENCE=prisma` can persist recipient/channel notification preference suppression decisions used by the final send-time recheck;
 - notification preference recheck happens immediately before provider send and suppresses delivery without calling provider.

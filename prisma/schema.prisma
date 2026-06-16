@@ -605,6 +605,21 @@ model WebhookReplayDelivery {
   @@map("webhook_replay_deliveries")
 }
 
+model NotificationPreference {
+  tenantId     String   @map("tenant_id") @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  recipientKey String   @map("recipient_key")
+  channel      String
+  allowed      Boolean
+  reason       String?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@id([tenantId, workspaceId, recipientKey, channel])
+  @@index([tenantId, workspaceId, channel, allowed])
+  @@map("notification_preferences")
+}
+
 model UsageRecord {
   id          String    @id @db.Uuid
   tenantId    String    @map("tenant_id") @db.Uuid

@@ -20,6 +20,7 @@ import { PrismaDigestRepository } from '../../adapters/persistence/prisma/prisma
 import { PrismaRealtimeEventRepository } from '../../adapters/persistence/prisma/prisma-realtime-event.repository';
 import { PrismaWebhookEndpointRepository } from '../../adapters/persistence/prisma/prisma-webhook-endpoint.repository';
 import { InMemoryNotificationPreferenceReader } from '../../adapters/preferences/in-memory-notification-preference.reader';
+import { PrismaNotificationPreferenceReader } from '../../adapters/preferences/prisma/prisma-notification-preference.reader';
 import { InMemoryWebhookReplayStore } from '../../adapters/replay/in-memory-webhook-replay.store';
 import { PrismaWebhookReplayStore } from '../../adapters/replay/prisma/prisma-webhook-replay.store';
 import { InMemoryWebhookSecretVault } from '../../adapters/secrets/in-memory-webhook-secret.vault';
@@ -52,6 +53,7 @@ import {
   DELIVERY_ATTEMPT_REPOSITORY,
   DELIVERY_DIGEST_REPOSITORY,
   DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
+  DELIVERY_NOTIFICATION_PREFERENCE_READER,
   DELIVERY_PERSISTENCE_MODE,
   DELIVERY_PRISMA_CLIENT,
   DELIVERY_REALTIME_EVENT_REPOSITORY,
@@ -69,6 +71,7 @@ import type {
   DeliveryProviderPort,
   DigestRepositoryPort,
   DigestScheduleRepositoryPort,
+  NotificationPreferenceReaderPort,
   RealtimeEventRepositoryPort,
   WebhookEndpointRepositoryPort,
   WebhookReplayStorePort,
@@ -198,6 +201,18 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryWebhookReplayStore],
     },
     {
+      provide: DELIVERY_NOTIFICATION_PREFERENCE_READER,
+      useFactory: (
+        mode: DeliveryPersistenceMode,
+        prisma: PrismaDeliveryClient | null,
+        inMemoryPreferences: InMemoryNotificationPreferenceReader,
+      ): NotificationPreferenceReaderPort =>
+        mode === 'prisma'
+          ? new PrismaNotificationPreferenceReader(requirePrismaDeliveryClient(prisma))
+          : inMemoryPreferences,
+      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryNotificationPreferenceReader],
+    },
+    {
       provide: QueueDeliveryAttemptUseCase,
       useFactory: (attempts: DeliveryAttemptRepositoryPort) =>
         new QueueDeliveryAttemptUseCase(attempts, new CryptoIdGenerator(), new SystemClock()),
@@ -293,9 +308,9 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       useFactory: (
         attempts: DeliveryAttemptRepositoryPort,
         providers: readonly DeliveryProviderPort[],
-        preferences: InMemoryNotificationPreferenceReader,
+        preferences: NotificationPreferenceReaderPort,
       ) => new SendDeliveryAttemptUseCase(attempts, providers, preferences, new SystemClock()),
-      inject: [DELIVERY_ATTEMPT_REPOSITORY, DELIVERY_PROVIDERS, InMemoryNotificationPreferenceReader],
+      inject: [DELIVERY_ATTEMPT_REPOSITORY, DELIVERY_PROVIDERS, DELIVERY_NOTIFICATION_PREFERENCE_READER],
     },
     {
       provide: RetryDeliveryAttemptUseCase,
@@ -368,6 +383,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
     DELIVERY_WEBHOOK_SECRET_VAULT,
     DELIVERY_WEBHOOK_REPLAY_STORE,
+    DELIVERY_NOTIFICATION_PREFERENCE_READER,
     DELIVERY_PROVIDERS,
   ],
 })

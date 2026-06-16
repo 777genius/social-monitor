@@ -101,6 +101,8 @@ Prisma webhook secrets must be encrypted with AES-256-GCM using `DELIVERY_WEBHOO
 
 Replay protection uses `(webhookEndpointId, deliveryId)` uniqueness. Duplicate active delivery ids return `replay_detected`; expired ids may be remembered again.
 
+Notification preference reads are also behind `NotificationPreferenceReaderPort`. `PrismaNotificationPreferenceReader` persists recipient/channel suppression decisions so the last preference recheck before provider send survives process restarts.
+
 ## WebSub
 
 Do not expose raw internal Kafka streams to customers.

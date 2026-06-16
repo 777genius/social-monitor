@@ -135,6 +135,15 @@ export type PrismaWebhookReplayDeliveryRecord = {
   readonly expiresAt: Date;
 };
 
+export type PrismaNotificationPreferenceRecord = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly recipientKey: string;
+  readonly channel: string;
+  readonly allowed: boolean;
+  readonly reason: string | null;
+};
+
 const deliveryChannels = ['in_app', 'email', 'webhook'] as const satisfies readonly DeliveryChannel[];
 const resourceTypes = ['summary', 'digest', 'scan', 'feed'] as const satisfies readonly DeliveryAttemptProps['resourceType'][];
 const realtimeResourceTypes = [

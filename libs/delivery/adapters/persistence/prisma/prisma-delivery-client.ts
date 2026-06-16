@@ -5,6 +5,7 @@ import type {
   PrismaDigestRecord,
   PrismaDigestScheduleRecord,
   PrismaDigestScheduleStatus,
+  PrismaNotificationPreferenceRecord,
   PrismaRealtimeEventRecord,
   PrismaWebhookEndpointRecord,
   PrismaWebhookEndpointStatus,
@@ -105,6 +106,15 @@ export type PrismaWebhookReplayDeliveryWriteData = {
   readonly deliveryId: string;
   readonly rememberedAt: Date;
   readonly expiresAt: Date;
+};
+
+export type PrismaNotificationPreferenceWriteData = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly recipientKey: string;
+  readonly channel: string;
+  readonly allowed: boolean;
+  readonly reason?: string | null;
 };
 
 export type PrismaDeliveryClient = {
@@ -277,5 +287,32 @@ export type PrismaDeliveryClient = {
         readonly expiresAt: Date;
       };
     }): Promise<PrismaWebhookReplayDeliveryRecord>;
+  };
+  readonly notificationPreference: {
+    upsert(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_recipientKey_channel: {
+          readonly tenantId: string;
+          readonly workspaceId: string;
+          readonly recipientKey: string;
+          readonly channel: string;
+        };
+      };
+      readonly update: {
+        readonly allowed: boolean;
+        readonly reason?: string | null;
+      };
+      readonly create: PrismaNotificationPreferenceWriteData;
+    }): Promise<PrismaNotificationPreferenceRecord>;
+    findUnique(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_recipientKey_channel: {
+          readonly tenantId: string;
+          readonly workspaceId: string;
+          readonly recipientKey: string;
+          readonly channel: string;
+        };
+      };
+    }): Promise<PrismaNotificationPreferenceRecord | null>;
   };
 };
