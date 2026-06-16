@@ -1,17 +1,26 @@
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
-import type { InMemoryQueuePublisher, QueueCommandEnvelope } from '@social-monitor/platform-queue';
+import type { QueueCommandEnvelope, QueuePublisherPort } from '@social-monitor/platform-queue';
 
 import type { EnqueueScanCommand, ScanQueuePort } from '../../ports';
 
+type QueueBacklogReader = {
+  all(): readonly QueueCommandEnvelope<Readonly<Record<string, unknown>>>[];
+};
+
 export class InMemoryScanQueueAdapter implements ScanQueuePort {
+  private readonly backlogReader: QueueBacklogReader | undefined;
+
   constructor(
-    private readonly publisher: InMemoryQueuePublisher,
+    private readonly publisher: QueuePublisherPort,
     private readonly metrics: MetricsRecorderPort,
     private readonly maxDepth = 1000,
-  ) {}
+    backlogReader?: QueueBacklogReader,
+  ) {
+    this.backlogReader = backlogReader ?? (isQueueBacklogReader(publisher) ? publisher : undefined);
+  }
 
   async canAccept(): Promise<boolean> {
-    return this.publisher.all().length < this.maxDepth;
+    return this.backlogReader === undefined || this.backlogReader.all().length < this.maxDepth;
   }
 
   async enqueue(command: EnqueueScanCommand): Promise<void> {
@@ -58,9 +67,13 @@ export class InMemoryScanQueueAdapter implements ScanQueuePort {
   }
 
   private recordBacklog(): void {
+    if (this.backlogReader === undefined) {
+      return;
+    }
+
     this.metrics.recordGauge({
       name: 'queue_commands_backlog',
-      value: this.publisher.all().length,
+      value: this.backlogReader.all().length,
       labels: {
         command_type: 'ingestion.scan.execute',
         queue: 'scan',
@@ -69,6 +82,12 @@ export class InMemoryScanQueueAdapter implements ScanQueuePort {
   }
 
   all(): readonly QueueCommandEnvelope<Readonly<Record<string, unknown>>>[] {
-    return this.publisher.all();
+    return this.backlogReader?.all() ?? [];
   }
 }
+
+const isQueueBacklogReader = (value: unknown): value is QueueBacklogReader =>
+  typeof value === 'object' &&
+  value !== null &&
+  'all' in value &&
+  typeof (value as { readonly all?: unknown }).all === 'function';
