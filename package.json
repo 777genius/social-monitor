@@ -97,6 +97,7 @@
     "@nestjs/websockets": "^11.1.27",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "amqplib": "^2.0.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
     "dotenv": "^17.4.2",
@@ -130,6 +131,7 @@
   },
   "overrides": {
     "@prisma/dev": "0.24.10",
+    "hono": "4.12.25",
     "form-data": "4.0.6"
   }
 }

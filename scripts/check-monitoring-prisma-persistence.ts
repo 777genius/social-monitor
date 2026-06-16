@@ -15,7 +15,10 @@ import { PrismaScanPolicyRepository } from '../libs/monitoring/adapters/persiste
 import { PrismaSourceBindingRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-source-binding.repository';
 import { PrismaTopicRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-topic.repository';
 import { PrismaMonitoringOutboxAdapter } from '../libs/monitoring/adapters/persistence/prisma/prisma-monitoring-outbox.adapter';
-import { resolveMonitoringPersistenceMode } from '../libs/monitoring/interfaces/rest/monitoring-provider-tokens';
+import {
+  resolveMonitoringPersistenceMode,
+  resolveMonitoringScanQueueMode,
+} from '../libs/monitoring/interfaces/rest/monitoring-provider-tokens';
 import type { PrismaMonitoringClient } from '../libs/monitoring/adapters/persistence/prisma/prisma-monitoring-client';
 import type {
   PrismaScanJobRecord,
@@ -48,6 +51,21 @@ async function main(): Promise<void> {
   assertThrows(
     () => resolveMonitoringPersistenceMode({ MONITORING_PERSISTENCE: 'prisma' }),
     'Prisma monitoring persistence must require DATABASE_URL',
+  );
+  assert(
+    resolveMonitoringScanQueueMode({}) === 'in-memory',
+    'monitoring scan queue mode must default to in-memory for deterministic private MVP smoke',
+  );
+  assertThrows(
+    () => resolveMonitoringScanQueueMode({ MONITORING_SCAN_QUEUE: 'rabbitmq' }),
+    'RabbitMQ monitoring scan queue mode must require RABBITMQ_URL',
+  );
+  assert(
+    resolveMonitoringScanQueueMode({
+      MONITORING_SCAN_QUEUE: 'rabbitmq',
+      RABBITMQ_URL: 'amqp://social_monitor:password@localhost:5672',
+    }) === 'rabbitmq',
+    'monitoring scan queue mode must allow explicit RabbitMQ runtime wiring',
   );
   assert(resolveIngestionScanReporterMode({}) === 'noop', 'ingestion scan reporter must default to noop');
   assertThrows(

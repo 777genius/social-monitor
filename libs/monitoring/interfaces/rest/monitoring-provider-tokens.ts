@@ -14,8 +14,10 @@ import type {
 } from '../../ports';
 
 export type MonitoringPersistenceMode = 'in-memory' | 'prisma';
+export type MonitoringScanQueueMode = 'in-memory' | 'rabbitmq';
 
 export const MONITORING_PERSISTENCE_MODE = Symbol('MONITORING_PERSISTENCE_MODE');
+export const MONITORING_SCAN_QUEUE_MODE = Symbol('MONITORING_SCAN_QUEUE_MODE');
 export const MONITORING_PRISMA_CLIENT = Symbol('MONITORING_PRISMA_CLIENT');
 export const MONITORING_TOPIC_REPOSITORY = Symbol('MONITORING_TOPIC_REPOSITORY');
 export const MONITORING_SOURCE_BINDING_REPOSITORY = Symbol('MONITORING_SOURCE_BINDING_REPOSITORY');
@@ -31,6 +33,7 @@ export const MONITORING_CONFIG_PROTECTOR = Symbol('MONITORING_CONFIG_PROTECTOR')
 
 export type MonitoringProviderTokenMap = {
   readonly [MONITORING_PERSISTENCE_MODE]: MonitoringPersistenceMode;
+  readonly [MONITORING_SCAN_QUEUE_MODE]: MonitoringScanQueueMode;
   readonly [MONITORING_PRISMA_CLIENT]: unknown;
   readonly [MONITORING_TOPIC_REPOSITORY]: TopicRepositoryPort;
   readonly [MONITORING_SOURCE_BINDING_REPOSITORY]: SourceBindingRepositoryPort;
@@ -49,6 +52,11 @@ export const monitoringPersistenceModeProvider: Provider<MonitoringPersistenceMo
   useFactory: () => resolveMonitoringPersistenceMode(process.env),
 };
 
+export const monitoringScanQueueModeProvider: Provider<MonitoringScanQueueMode> = {
+  provide: MONITORING_SCAN_QUEUE_MODE,
+  useFactory: () => resolveMonitoringScanQueueMode(process.env),
+};
+
 export const resolveMonitoringPersistenceMode = (env: NodeJS.ProcessEnv): MonitoringPersistenceMode => {
   const value = env.MONITORING_PERSISTENCE ?? 'in-memory';
 
@@ -65,4 +73,22 @@ export const resolveMonitoringPersistenceMode = (env: NodeJS.ProcessEnv): Monito
   }
 
   throw new Error('MONITORING_PERSISTENCE must be "in-memory" or "prisma"');
+};
+
+export const resolveMonitoringScanQueueMode = (env: NodeJS.ProcessEnv): MonitoringScanQueueMode => {
+  const value = env.MONITORING_SCAN_QUEUE ?? 'in-memory';
+
+  if (value === 'in-memory') {
+    return 'in-memory';
+  }
+
+  if (value === 'rabbitmq') {
+    if ((env.RABBITMQ_URL ?? '').trim().length === 0) {
+      throw new Error('MONITORING_SCAN_QUEUE=rabbitmq requires RABBITMQ_URL');
+    }
+
+    return 'rabbitmq';
+  }
+
+  throw new Error('MONITORING_SCAN_QUEUE must be "in-memory" or "rabbitmq"');
 };

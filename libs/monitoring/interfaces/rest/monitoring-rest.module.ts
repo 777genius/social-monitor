@@ -1,7 +1,12 @@
 import { Module } from '@nestjs/common';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
-import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
+import {
+  AmqplibRabbitMqChannel,
+  InMemoryQueuePublisher,
+  RabbitMqQueuePublisher,
+  type QueuePublisherPort,
+} from '@social-monitor/platform-queue';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
@@ -56,6 +61,7 @@ import {
   MONITORING_OUTBOX,
   MONITORING_PERSISTENCE_MODE,
   MONITORING_PRISMA_CLIENT,
+  MONITORING_SCAN_QUEUE_MODE,
   MONITORING_SCAN_JOB_REPOSITORY,
   MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
   MONITORING_SCAN_POLICY_REPOSITORY,
@@ -64,13 +70,18 @@ import {
   MONITORING_SOURCE_CATALOG,
   MONITORING_TOPIC_REPOSITORY,
   type MonitoringPersistenceMode,
+  type MonitoringScanQueueMode,
   monitoringPersistenceModeProvider,
+  monitoringScanQueueModeProvider,
 } from './monitoring-provider-tokens';
 import { ScanPolicyController } from './scan-policy.controller';
 import { ScanRequestController } from './scan-request.controller';
 import { ScanStatusController } from './scan-status.controller';
 import { SourceBindingController } from './source-binding.controller';
 import { TopicController } from './topic.controller';
+
+const MONITORING_RABBITMQ_CHANNEL = Symbol('MONITORING_RABBITMQ_CHANNEL');
+const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
 
 @Module({
   imports: [UsageRestModule, IdentityRestModule],
@@ -83,6 +94,7 @@ import { TopicController } from './topic.controller';
   ],
   providers: [
     monitoringPersistenceModeProvider,
+    monitoringScanQueueModeProvider,
     {
       provide: MONITORING_PRISMA_CLIENT,
       useFactory: (mode: MonitoringPersistenceMode): PrismaMonitoringClient | null =>
@@ -147,10 +159,31 @@ import { TopicController } from './topic.controller';
     InMemoryQueuePublisher,
     InMemoryMetricsRecorder,
     {
+      provide: MONITORING_RABBITMQ_CHANNEL,
+      useFactory: (mode: MonitoringScanQueueMode): AmqplibRabbitMqChannel | null =>
+        mode === 'rabbitmq' ? new AmqplibRabbitMqChannel({ url: process.env.RABBITMQ_URL ?? '' }) : null,
+      inject: [MONITORING_SCAN_QUEUE_MODE],
+    },
+    {
+      provide: MONITORING_QUEUE_PUBLISHER,
+      useFactory: (
+        mode: MonitoringScanQueueMode,
+        inMemoryPublisher: InMemoryQueuePublisher,
+        rabbitMqChannel: AmqplibRabbitMqChannel | null,
+      ): QueuePublisherPort =>
+        mode === 'rabbitmq'
+          ? new RabbitMqQueuePublisher(
+              requireRabbitMqChannel(rabbitMqChannel),
+              monitoringScanQueueRabbitMqOptions(process.env),
+            )
+          : inMemoryPublisher,
+      inject: [MONITORING_SCAN_QUEUE_MODE, InMemoryQueuePublisher, MONITORING_RABBITMQ_CHANNEL],
+    },
+    {
       provide: MONITORING_SCAN_QUEUE,
-      useFactory: (publisher: InMemoryQueuePublisher, metrics: InMemoryMetricsRecorder): ScanQueuePort =>
+      useFactory: (publisher: QueuePublisherPort, metrics: InMemoryMetricsRecorder): ScanQueuePort =>
         new InMemoryScanQueueAdapter(publisher, metrics),
-      inject: [InMemoryQueuePublisher, InMemoryMetricsRecorder],
+      inject: [MONITORING_QUEUE_PUBLISHER, InMemoryMetricsRecorder],
     },
     {
       provide: MONITORING_SOURCE_CATALOG,
@@ -402,4 +435,35 @@ const requirePrismaMonitoringClient = (client: PrismaMonitoringClient | null): P
   }
 
   return client;
+};
+
+const requireRabbitMqChannel = (channel: AmqplibRabbitMqChannel | null): AmqplibRabbitMqChannel => {
+  if (channel === null) {
+    throw new Error('RabbitMQ channel is not configured');
+  }
+
+  return channel;
+};
+
+const monitoringScanQueueRabbitMqOptions = (env: NodeJS.ProcessEnv) => ({
+  exchange: envValue(env.RABBITMQ_COMMAND_EXCHANGE, 'social-monitor.jobs'),
+  routes: {
+    'ingestion.scan.execute': {
+      queue: envValue(env.RABBITMQ_SCAN_QUEUE, 'jobs.freshness.scan'),
+      routingKey: envValue(env.RABBITMQ_SCAN_ROUTING_KEY, 'scan.execute'),
+      deadLetterExchange: optionalEnvValue(env.RABBITMQ_DEAD_LETTER_EXCHANGE),
+    },
+  },
+});
+
+const envValue = (value: string | undefined, fallback: string): string => {
+  const trimmed = value?.trim();
+
+  return trimmed === undefined || trimmed.length === 0 ? fallback : trimmed;
+};
+
+const optionalEnvValue = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim();
+
+  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
 };
