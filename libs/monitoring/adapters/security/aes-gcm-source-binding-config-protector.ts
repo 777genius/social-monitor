@@ -6,6 +6,9 @@ import type {
   SourceBindingConfigValue,
 } from '../../ports/source-binding-config-protector.port';
 
+const algorithm = 'aes-256-gcm';
+const keyBytes = 32;
+
 type EncryptedConfigValue = {
   readonly encrypted: true;
   readonly algorithm: 'aes-256-gcm';
@@ -22,13 +25,34 @@ export class AesGcmSourceBindingConfigProtector implements SourceBindingConfigPr
     private readonly key: Buffer,
     private readonly keyId: string,
   ) {
-    if (key.length !== 32) {
+    if (key.length !== keyBytes) {
       throw new Error('Source credential encryption key must be 32 bytes');
     }
   }
 
   static withEphemeralDevelopmentKey(): AesGcmSourceBindingConfigProtector {
-    return new AesGcmSourceBindingConfigProtector(randomBytes(32), 'local-ephemeral');
+    return new AesGcmSourceBindingConfigProtector(randomBytes(keyBytes), 'local-ephemeral');
+  }
+
+  static fromBase64Key(encodedKey: string, keyId = 'env'): AesGcmSourceBindingConfigProtector {
+    return new AesGcmSourceBindingConfigProtector(decodeBase64Key(encodedKey), keyId);
+  }
+
+  static fromEnvironment(env: NodeJS.ProcessEnv): AesGcmSourceBindingConfigProtector {
+    const raw = env.SOURCE_CONFIG_ENCRYPTION_KEY;
+
+    if (raw === undefined || raw.trim().length === 0) {
+      if (env.NODE_ENV === 'production') {
+        throw new Error('SOURCE_CONFIG_ENCRYPTION_KEY is required in production');
+      }
+
+      return AesGcmSourceBindingConfigProtector.withEphemeralDevelopmentKey();
+    }
+
+    return AesGcmSourceBindingConfigProtector.fromBase64Key(
+      raw,
+      env.SOURCE_CONFIG_ENCRYPTION_KEY_ID?.trim() || 'env',
+    );
   }
 
   async protect(config: SourceBindingConfig): Promise<SourceBindingConfig> {
@@ -97,7 +121,7 @@ export class AesGcmSourceBindingConfigProtector implements SourceBindingConfigPr
 
   private encrypt(value: SourceBindingConfigValue): EncryptedConfigValue {
     const iv = randomBytes(12);
-    const cipher = createCipheriv('aes-256-gcm', this.key, iv);
+    const cipher = createCipheriv(algorithm, this.key, iv);
     const plaintext = JSON.stringify(value);
     const ciphertext = Buffer.concat([
       cipher.update(plaintext, 'utf8'),
@@ -106,7 +130,7 @@ export class AesGcmSourceBindingConfigProtector implements SourceBindingConfigPr
 
     return {
       encrypted: true,
-      algorithm: 'aes-256-gcm',
+      algorithm,
       keyId: this.keyId,
       iv: iv.toString('base64url'),
       ciphertext: ciphertext.toString('base64url'),
@@ -120,7 +144,7 @@ export class AesGcmSourceBindingConfigProtector implements SourceBindingConfigPr
     }
 
     const decipher = createDecipheriv(
-      'aes-256-gcm',
+      algorithm,
       this.key,
       Buffer.from(value.iv, 'base64url'),
     );
@@ -150,4 +174,17 @@ const isEncryptedConfigValue = (value: SourceBindingConfigValue): value is Encry
     typeof value.ciphertext === 'string' &&
     typeof value.authTag === 'string'
   );
+};
+
+const decodeBase64Key = (encodedKey: string): Buffer => {
+  const raw = encodedKey.trim();
+  const normalized = raw.replaceAll('-', '+').replaceAll('_', '/');
+  const padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), '=');
+  const key = Buffer.from(padded, 'base64');
+
+  if (key.length !== keyBytes) {
+    throw new Error('SOURCE_CONFIG_ENCRYPTION_KEY must decode to 32 bytes');
+  }
+
+  return key;
 };

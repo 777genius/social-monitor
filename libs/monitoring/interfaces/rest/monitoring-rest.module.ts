@@ -157,7 +157,7 @@ import { TopicController } from './topic.controller';
     {
       provide: MONITORING_CONFIG_PROTECTOR,
       useFactory: (): SourceBindingConfigProtectorPort =>
-        AesGcmSourceBindingConfigProtector.withEphemeralDevelopmentKey(),
+        AesGcmSourceBindingConfigProtector.fromEnvironment(process.env),
     },
     {
       provide: MONITORING_OUTBOX,

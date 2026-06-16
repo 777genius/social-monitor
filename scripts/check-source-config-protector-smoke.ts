@@ -7,7 +7,10 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
 };
 
 async function main(): Promise<void> {
-  const protector = new AesGcmSourceBindingConfigProtector(Buffer.alloc(32, 1), 'source-config-smoke-key');
+  const protector = AesGcmSourceBindingConfigProtector.fromEnvironment({
+    SOURCE_CONFIG_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64url'),
+    SOURCE_CONFIG_ENCRYPTION_KEY_ID: 'source-config-smoke-key',
+  });
   const protectedConfig = await protector.protect({
     query: 'reddit observability',
     accessToken: 'raw-access-token',
@@ -28,6 +31,16 @@ async function main(): Promise<void> {
   const nested = unprotectedConfig.nested as Readonly<Record<string, unknown>> | undefined;
   assert(nested?.refreshToken === 'raw-refresh-token', 'nested refresh token must decrypt');
   assert(nested.visible === 'safe-value', 'nested safe value must round-trip');
+
+  try {
+    AesGcmSourceBindingConfigProtector.fromEnvironment({ NODE_ENV: 'production' });
+    throw new Error('production source config protector must require encryption key');
+  } catch (error) {
+    assert(
+      error instanceof Error && error.message.includes('SOURCE_CONFIG_ENCRYPTION_KEY'),
+      'production source config protector must fail without encryption key',
+    );
+  }
 
   console.log('Source config protector smoke OK');
 }
