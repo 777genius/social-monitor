@@ -6,9 +6,19 @@ import { DeliveryRestModule } from '@social-monitor/delivery/interfaces/rest/del
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { WorkerRuntime, WorkerRuntimeModule } from '@social-monitor/platform-worker';
 
+import {
+  DELIVERY_DIGEST_SCHEDULER_LOOP_OPTIONS,
+  resolveDeliveryDigestSchedulerLoopOptions,
+} from './delivery-service-provider-tokens';
+import { DigestSchedulerLoop } from './digest-scheduler-loop';
+
 @Module({
   imports: [WorkerRuntimeModule.register({ serviceName: 'delivery-service' }), DeliveryRestModule],
   providers: [
+    {
+      provide: DELIVERY_DIGEST_SCHEDULER_LOOP_OPTIONS,
+      useFactory: () => resolveDeliveryDigestSchedulerLoopOptions(process.env),
+    },
     {
       provide: ScheduleDueDigestsCommandHandler,
       useFactory: (
@@ -18,6 +28,7 @@ import { WorkerRuntime, WorkerRuntimeModule } from '@social-monitor/platform-wor
       ) => new ScheduleDueDigestsCommandHandler(scheduleDueDigests, metrics, runtime),
       inject: [ScheduleDueDigestsUseCase, InMemoryMetricsRecorder, WorkerRuntime],
     },
+    DigestSchedulerLoop,
   ],
   exports: [ScheduleDueDigestsCommandHandler],
 })

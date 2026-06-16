@@ -1,29 +1,28 @@
 import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
+import { ScheduleDueDigestsCommandHandler } from '@social-monitor/delivery/interfaces/queue/schedule-due-digests-command.handler';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 
-import { ScheduleDueScansCommandHandler } from '@social-monitor/monitoring/interfaces/queue/schedule-due-scans-command.handler';
-
 import {
-  INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS,
-  type IngestionScanSchedulerLoopOptions,
-} from './ingestion-worker-provider-tokens';
+  DELIVERY_DIGEST_SCHEDULER_LOOP_OPTIONS,
+  type DeliveryDigestSchedulerLoopOptions,
+} from './delivery-service-provider-tokens';
 
 @Injectable()
-export class ScanSchedulerLoop implements OnModuleInit, OnApplicationShutdown {
-  private readonly logger: StructuredLogger = new NestStructuredLogger(ScanSchedulerLoop.name);
+export class DigestSchedulerLoop implements OnModuleInit, OnApplicationShutdown {
+  private readonly logger: StructuredLogger = new NestStructuredLogger(DigestSchedulerLoop.name);
   private timer: NodeJS.Timeout | undefined;
   private currentTick: Promise<void> | undefined;
   private shuttingDown = false;
 
   constructor(
-    private readonly handler: ScheduleDueScansCommandHandler,
-    @Inject(INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS)
-    private readonly options: IngestionScanSchedulerLoopOptions,
+    private readonly handler: ScheduleDueDigestsCommandHandler,
+    @Inject(DELIVERY_DIGEST_SCHEDULER_LOOP_OPTIONS)
+    private readonly options: DeliveryDigestSchedulerLoopOptions,
   ) {}
 
   async onModuleInit(): Promise<void> {
     if (!this.options.enabled) {
-      this.logger.info('scan scheduler loop disabled', { worker: 'ingestion-worker' });
+      this.logger.info('digest scheduler loop disabled', { worker: 'delivery-service' });
       return;
     }
 
@@ -35,11 +34,11 @@ export class ScanSchedulerLoop implements OnModuleInit, OnApplicationShutdown {
       void this.runTick('interval');
     }, this.options.intervalMs);
 
-    this.logger.info('scan scheduler loop started', {
+    this.logger.info('digest scheduler loop started', {
       intervalMs: this.options.intervalMs,
       limit: this.options.limit,
       scoped: this.options.tenantId !== undefined,
-      worker: 'ingestion-worker',
+      worker: 'delivery-service',
     });
   }
 
@@ -52,7 +51,7 @@ export class ScanSchedulerLoop implements OnModuleInit, OnApplicationShutdown {
     }
 
     await this.currentTick;
-    this.logger.info('scan scheduler loop stopped', { signal, worker: 'ingestion-worker' });
+    this.logger.info('digest scheduler loop stopped', { signal, worker: 'delivery-service' });
   }
 
   private async runTick(trigger: 'startup' | 'interval'): Promise<void> {
@@ -69,10 +68,10 @@ export class ScanSchedulerLoop implements OnModuleInit, OnApplicationShutdown {
   private async executeTick(trigger: 'startup' | 'interval'): Promise<void> {
     try {
       const result = await this.handler.handle({
-        commandId: `scan-scheduler:${Date.now()}`,
-        commandType: 'monitoring.scans.schedule_due',
+        commandId: `digest-scheduler:${Date.now()}`,
+        commandType: 'delivery.digests.schedule_due',
         schemaVersion: 1,
-        correlationId: `scan-scheduler:${trigger}:${Date.now()}`,
+        correlationId: `digest-scheduler:${trigger}:${Date.now()}`,
         payload: {
           limit: this.options.limit,
           ...(this.options.tenantId === undefined
@@ -84,18 +83,18 @@ export class ScanSchedulerLoop implements OnModuleInit, OnApplicationShutdown {
         },
       });
 
-      this.logger.info('scan scheduler tick completed', {
+      this.logger.info('digest scheduler tick completed', {
         trigger,
         evaluated: result.evaluated,
-        enqueued: result.enqueued,
+        assembled: result.assembled,
         skipped: result.skipped,
-        worker: 'ingestion-worker',
+        worker: 'delivery-service',
       });
     } catch (error) {
-      this.logger.error('scan scheduler tick failed', {
+      this.logger.error('digest scheduler tick failed', {
         trigger,
         error: error instanceof Error ? error.message : String(error),
-        worker: 'ingestion-worker',
+        worker: 'delivery-service',
       });
     }
   }
