@@ -27,8 +27,8 @@
         "InMemoryOutboxAdapter",
         "InMemoryIdempotencyAdapter"
       ],
-      "risk": "topics, source bindings, scan policies, scan jobs and queued scan commands are lost on restart and are not shared with workers",
-      "durableReplacementPlan": "Monitoring repositories and outbox events can opt into Prisma with MONITORING_PERSISTENCE=prisma; remaining blockers are durable idempotency and broker-backed scan queue"
+      "risk": "topics, source bindings, scan policies, scan jobs, outbox events and idempotency records can opt into Prisma, but queued scan commands are still process-local in default runtime",
+      "durableReplacementPlan": "Monitoring repositories, outbox events and idempotency records can opt into Prisma with MONITORING_PERSISTENCE=prisma; remaining blocker is broker-backed scan queue"
     },
     {
       "moduleFile": "libs/feed/interfaces/rest/feed-rest.module.ts",

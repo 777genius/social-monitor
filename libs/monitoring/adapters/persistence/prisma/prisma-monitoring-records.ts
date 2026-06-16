@@ -95,6 +95,19 @@ export type PrismaOutboxEventRecord = {
   readonly publishedAt: Date | null;
 };
 
+export type PrismaIdempotencyKeyRecord = {
+  readonly id: string;
+  readonly tenantId: string | null;
+  readonly workspaceId: string | null;
+  readonly scope: string;
+  readonly key: string;
+  readonly requestHash: string | null;
+  readonly responseStatus: number | null;
+  readonly responsePayload: unknown;
+  readonly expiresAt: Date | null;
+  readonly createdAt: Date;
+};
+
 export const topicFromPrisma = (record: PrismaTopicRecord): Topic =>
   Topic.rehydrate({
     id: record.id,

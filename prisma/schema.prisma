@@ -741,12 +741,13 @@ model IdempotencyKey {
   workspaceId    String?  @map("workspace_id") @db.Uuid
   scope          String
   key            String
-  requestHash    String   @map("request_hash")
+  requestHash    String?  @map("request_hash")
   responseStatus Int?     @map("response_status")
-  expiresAt      DateTime @map("expires_at") @db.Timestamptz(6)
+  responsePayload Json?   @map("response_payload")
+  expiresAt      DateTime? @map("expires_at") @db.Timestamptz(6)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  @@unique([tenantId, scope, key])
+  @@unique([tenantId, workspaceId, scope, key])
   @@index([expiresAt])
   @@map("idempotency_keys")
 }

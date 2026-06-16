@@ -8,6 +8,7 @@ import {
 } from '@social-monitor/shared-kernel';
 
 import { resolveIngestionScanReporterMode } from '../apps/ingestion-worker/src/ingestion-worker-provider-tokens';
+import { PrismaIdempotencyAdapter } from '../libs/monitoring/adapters/idempotency/prisma/prisma-idempotency.adapter';
 import { ScanJob, ScanPolicy, SourceBinding, Topic } from '../libs/monitoring/domain';
 import { PrismaScanJobRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-job.repository';
 import { PrismaScanPolicyRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-policy.repository';
@@ -18,6 +19,7 @@ import { resolveMonitoringPersistenceMode } from '../libs/monitoring/interfaces/
 import type { PrismaMonitoringClient } from '../libs/monitoring/adapters/persistence/prisma/prisma-monitoring-client';
 import type {
   PrismaScanJobRecord,
+  PrismaIdempotencyKeyRecord,
   PrismaOutboxEventRecord,
   PrismaScanAttemptRecord,
   PrismaScanPolicyRecord,
@@ -71,6 +73,7 @@ async function main(): Promise<void> {
   const policies = new PrismaScanPolicyRepository(prisma);
   const scanJobs = new PrismaScanJobRepository(prisma);
   const outbox = new PrismaMonitoringOutboxAdapter(prisma);
+  const idempotency = new PrismaIdempotencyAdapter(prisma);
 
   const topic = Topic.create({
     id: '00000000-0000-7000-8000-000000000020',
@@ -244,6 +247,44 @@ async function main(): Promise<void> {
   assert(outboxRecord.tenantId === tenant, 'outbox event must preserve tenant scope');
   assert(outboxRecord.workspaceId === workspace, 'outbox event must preserve workspace scope');
 
+  await idempotency.set({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scope: 'topic:create',
+    key: 'topic-create-idempotency-key',
+    value: {
+      topicId: topic.toSnapshot().id,
+      created: true,
+    },
+  });
+
+  const rehydratedIdempotency = new PrismaIdempotencyAdapter(prisma);
+  const idempotencyRecord = await rehydratedIdempotency.get<{
+    readonly topicId: string;
+    readonly created: boolean;
+  }>({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scope: 'topic:create',
+    key: 'topic-create-idempotency-key',
+  });
+  assert(idempotencyRecord !== null, 'idempotency record must be readable after write');
+  assert(
+    idempotencyRecord.value.topicId === topic.toSnapshot().id,
+    'idempotency response payload must persist across adapter instances',
+  );
+  assert(idempotencyRecord.value.created === true, 'idempotency response payload must preserve created flag');
+
+  const storedIdempotency = prisma.idempotencyKeys.get(idempotencyStorageKey({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scope: 'topic:create',
+    key: 'topic-create-idempotency-key',
+  }));
+  assert(storedIdempotency !== undefined, 'idempotency record must be stored in Prisma client');
+  assert(storedIdempotency.responseStatus === 200, 'idempotency records must persist response status');
+  assert(storedIdempotency.expiresAt === null, 'monitoring idempotency records must not expire implicitly');
+
   console.log('Monitoring Prisma persistence smoke OK');
 }
 
@@ -255,6 +296,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   private readonly scanPolicies = new Map<string, PrismaScanPolicyRecord>();
   private readonly scanJobs = new Map<string, PrismaScanJobRecord>();
   private readonly scanAttempts = new Map<string, PrismaScanAttemptRecord>();
+  readonly idempotencyKeys = new Map<string, PrismaIdempotencyKeyRecord>();
   readonly outboxEvents = new Map<string, PrismaOutboxEventRecord>();
 
   readonly topic: PrismaMonitoringClient['topic'] = {
@@ -450,6 +492,35 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
     },
   };
 
+  readonly idempotencyKey: PrismaMonitoringClient['idempotencyKey'] = {
+    findFirst: async (args) =>
+      this.idempotencyKeys.get(idempotencyStorageKey({
+        tenantId: args.where.tenantId,
+        workspaceId: args.where.workspaceId,
+        scope: args.where.scope,
+        key: args.where.key,
+      })) ?? null,
+    upsert: async (args) => {
+      const storageKey = idempotencyStorageKey(args.where.tenantId_workspaceId_scope_key);
+      const existing = this.idempotencyKeys.get(storageKey);
+      const record: PrismaIdempotencyKeyRecord = {
+        id: existing?.id ?? args.create.id,
+        tenantId: existing?.tenantId ?? args.create.tenantId,
+        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
+        scope: existing?.scope ?? args.create.scope,
+        key: existing?.key ?? args.create.key,
+        requestHash: existing?.requestHash ?? args.create.requestHash,
+        responseStatus: args.update.responseStatus,
+        responsePayload: args.update.responsePayload,
+        expiresAt: args.update.expiresAt,
+        createdAt: existing?.createdAt ?? clock.now(),
+      };
+      this.idempotencyKeys.set(storageKey, record);
+
+      return record;
+    },
+  };
+
   private reindexSourceCatalog(): void {
     this.sourceCatalogEntriesById.clear();
     for (const record of this.sourceCatalogEntries.values()) {
@@ -470,6 +541,13 @@ const compareRecordsByCreationDesc = (
 
   return right.id.localeCompare(left.id);
 };
+
+const idempotencyStorageKey = (params: {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly scope: string;
+  readonly key: string;
+}): string => `${params.tenantId}:${params.workspaceId}:${params.scope}:${params.key}`;
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {

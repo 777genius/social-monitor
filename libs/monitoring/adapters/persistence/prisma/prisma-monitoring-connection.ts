@@ -27,6 +27,7 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
   readonly scanJob: PrismaMonitoringClient['scanJob'];
   readonly scanAttempt: PrismaMonitoringClient['scanAttempt'];
   readonly outboxEvent: PrismaMonitoringClient['outboxEvent'];
+  readonly idempotencyKey: PrismaMonitoringClient['idempotencyKey'];
 
   private readonly pool: Pool;
   private readonly client: PrismaMonitoringRuntimeClient;
@@ -47,6 +48,7 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
     this.scanJob = this.client.scanJob;
     this.scanAttempt = this.client.scanAttempt;
     this.outboxEvent = this.client.outboxEvent;
+    this.idempotencyKey = this.client.idempotencyKey;
   }
 
   async close(): Promise<void> {

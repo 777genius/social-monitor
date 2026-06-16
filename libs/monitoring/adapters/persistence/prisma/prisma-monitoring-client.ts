@@ -1,4 +1,5 @@
 import type {
+  PrismaIdempotencyKeyRecord,
   PrismaScanJobRecord,
   PrismaOutboxEventRecord,
   PrismaScanAttemptRecord,
@@ -192,5 +193,41 @@ export type PrismaMonitoringClient = {
         readonly causationId?: string | null;
       };
     }): Promise<PrismaOutboxEventRecord>;
+  };
+  readonly idempotencyKey: {
+    findFirst(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly scope: string;
+        readonly key: string;
+      };
+    }): Promise<PrismaIdempotencyKeyRecord | null>;
+    upsert(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_scope_key: {
+          readonly tenantId: string;
+          readonly workspaceId: string;
+          readonly scope: string;
+          readonly key: string;
+        };
+      };
+      readonly update: {
+        readonly responsePayload: unknown;
+        readonly responseStatus: number | null;
+        readonly expiresAt: Date | null;
+      };
+      readonly create: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly scope: string;
+        readonly key: string;
+        readonly requestHash: string | null;
+        readonly responsePayload: unknown;
+        readonly responseStatus: number | null;
+        readonly expiresAt: Date | null;
+      };
+    }): Promise<PrismaIdempotencyKeyRecord>;
   };
 };

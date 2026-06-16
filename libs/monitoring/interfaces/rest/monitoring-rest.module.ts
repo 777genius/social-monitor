@@ -7,6 +7,7 @@ import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
 import { InMemoryIdempotencyAdapter } from '../../adapters/idempotency/in-memory-idempotency.adapter';
+import { PrismaIdempotencyAdapter } from '../../adapters/idempotency/prisma/prisma-idempotency.adapter';
 import { InMemoryOutboxAdapter } from '../../adapters/messaging/in-memory-outbox.adapter';
 import { InMemoryScanJobRepository } from '../../adapters/persistence/in-memory-scan-job.repository';
 import { InMemoryScanExecutionAttemptReadModel } from '../../adapters/persistence/in-memory-scan-execution-attempt-read-model';
@@ -173,7 +174,14 @@ import { TopicController } from './topic.controller';
     },
     {
       provide: MONITORING_IDEMPOTENCY,
-      useClass: InMemoryIdempotencyAdapter,
+      useFactory: (
+        mode: MonitoringPersistenceMode,
+        prisma: PrismaMonitoringClient | null,
+      ): IdempotencyPort =>
+        mode === 'prisma'
+          ? new PrismaIdempotencyAdapter(requirePrismaMonitoringClient(prisma))
+          : new InMemoryIdempotencyAdapter(),
+      inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
     },
     {
       provide: UsageScanRequestQuotaAdapter,
