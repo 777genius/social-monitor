@@ -5,6 +5,7 @@
   "supportedServices": [
     "api",
     "delivery",
+    "event-relay",
     "ingestion",
     "intelligence"
   ],

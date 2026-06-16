@@ -1,5 +1,25 @@
 name: social-monitor-local
 
+x-app-common: &app-common
+  build:
+    context: .
+  env_file:
+    - .env.example
+  environment: &app-env
+    NODE_ENV: development
+    DATABASE_URL: postgresql://social_monitor:social_monitor_local_password@postgres:5432/social_monitor
+    REDIS_URL: redis://redis:6379/0
+    RABBITMQ_URL: amqp://social_monitor:social_monitor_local_password@rabbitmq:5672
+    SOURCE_CONFIG_ENCRYPTION_KEY: ${SOURCE_CONFIG_ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA}
+    SOURCE_CONFIG_ENCRYPTION_KEY_ID: ${SOURCE_CONFIG_ENCRYPTION_KEY_ID:-local-dev}
+    DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY: ${DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA}
+  depends_on: &app-depends
+    postgres:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+  profiles: ["app"]
+
 services:
   postgres:
     image: postgres:18.4-alpine
@@ -75,6 +95,80 @@ services:
       timeout: 10s
       retries: 30
       start_period: 30s
+
+  api:
+    <<: *app-common
+    build:
+      context: .
+      args:
+        SERVICE: api
+    environment:
+      <<: *app-env
+      PORT: 3000
+      MONITORING_PERSISTENCE: prisma
+      MONITORING_SCAN_QUEUE: rabbitmq
+      FEED_PERSISTENCE: prisma
+      SUMMARY_PERSISTENCE: prisma
+      SUMMARY_JOB_QUEUE_MODE: rabbitmq
+      DELIVERY_PERSISTENCE: prisma
+      DELIVERY_WEBHOOK_PROVIDER: http
+      IDENTITY_PERSISTENCE: prisma
+      USAGE_PERSISTENCE: prisma
+      INGESTION_SUPPORT_PERSISTENCE: prisma
+    ports:
+      - "${API_PORT:-3000}:3000"
+
+  ingestion-worker:
+    <<: *app-common
+    build:
+      context: .
+      args:
+        SERVICE: ingestion
+    environment:
+      <<: *app-env
+      INGESTION_WORKER_PERSISTENCE: prisma
+      INGESTION_SCAN_QUEUE_READER: rabbitmq
+      INGESTION_SCAN_QUEUE_DRAIN_LOOP: enabled
+      INGESTION_SCAN_REPORTER: monitoring
+      MONITORING_PERSISTENCE: prisma
+
+  intelligence-worker:
+    <<: *app-common
+    build:
+      context: .
+      args:
+        SERVICE: intelligence
+    environment:
+      <<: *app-env
+      SUMMARY_PERSISTENCE: prisma
+      INTELLIGENCE_SUMMARY_QUEUE_READER: rabbitmq
+      INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP: enabled
+      INTELLIGENCE_SUMMARY_JOB_LOOP: disabled
+
+  delivery-service:
+    <<: *app-common
+    build:
+      context: .
+      args:
+        SERVICE: delivery
+    environment:
+      <<: *app-env
+      DELIVERY_PERSISTENCE: prisma
+      DELIVERY_ATTEMPT_DISPATCH_TARGET: queue
+      DELIVERY_ATTEMPT_DISPATCH_QUEUE: rabbitmq
+      DELIVERY_ATTEMPT_QUEUE_READER: rabbitmq
+      DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP: enabled
+      DELIVERY_WEBHOOK_PROVIDER: http
+
+  event-relay:
+    <<: *app-common
+    build:
+      context: .
+      args:
+        SERVICE: event-relay
+    environment:
+      <<: *app-env
+      EVENT_RELAY_LOOP: enabled
 
 volumes:
   postgres-data:

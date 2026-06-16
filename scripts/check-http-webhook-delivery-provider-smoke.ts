@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   const http = new FakeWebhookHttpClient({ status: 202, providerMessageId: 'provider-message-http-smoke' });
   const clock = new FixedClock(new Date('2026-06-16T04:20:00.000Z'));
 
-  await secrets.put({ secretKeyId: 'whsec_key_http_provider_smoke', secret: 'whsec_http_provider_smoke_secret' });
+  await secrets.put({ secretKeyId: 'whsec_key_', secret: 'whsec_secret' });
   await endpoints.save(WebhookEndpoint.create({
     id: endpointId,
     tenantId: tenant,
@@ -45,7 +45,7 @@ async function main(): Promise<void> {
     url: 'https://example.com/social-monitor/webhook',
     eventTypes: ['digest.ready.v1'],
     status: 'enabled',
-    secretKeyId: 'whsec_key_http_provider_smoke',
+    secretKeyId: 'whsec_key_',
     secretPreview: 'e_secret',
     createdAt: new Date('2026-06-16T04:19:00.000Z'),
   }));
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
     'HTTP webhook provider must include HMAC signature',
   );
   assert(
-    request.headers['x-social-monitor-key-id'] === 'whsec_key_http_provider_smoke',
+    request.headers['x-social-monitor-key-id'] === 'whsec_key_',
     'HTTP webhook provider must include signing key id',
   );
 

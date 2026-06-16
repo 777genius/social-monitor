@@ -1,0 +1,81 @@
+import { readFileSync } from 'node:fs';
+
+const compose = readFileSync('docker-compose.yml', 'utf8');
+const envExample = readFileSync('.env.example', 'utf8');
+const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+const violations = [];
+
+const runtimeServices = [
+  ['api', 'api'],
+  ['ingestion-worker', 'ingestion'],
+  ['intelligence-worker', 'intelligence'],
+  ['delivery-service', 'delivery'],
+  ['event-relay', 'event-relay'],
+];
+
+for (const [service, npmService] of runtimeServices) {
+  const block = serviceBlock(service);
+
+  if (block.length === 0) {
+    violations.push(`docker-compose.yml missing runtime service ${service}`);
+    continue;
+  }
+
+  if (!block.includes('profiles: ["app"]') && !block.includes('<<: *app-common')) {
+    violations.push(`${service} must run behind the app profile/common runtime anchor`);
+  }
+
+  if (!block.includes(`SERVICE: ${npmService}`)) {
+    violations.push(`${service} must pass Docker build arg SERVICE: ${npmService}`);
+  }
+
+  const startScript = `start:${npmService}`;
+  if (!packageJson.scripts?.[startScript]) {
+    violations.push(`package.json missing ${startScript} for runtime service ${service}`);
+  }
+}
+
+for (const marker of [
+  'MONITORING_PERSISTENCE: prisma',
+  'MONITORING_SCAN_QUEUE: rabbitmq',
+  'INGESTION_WORKER_PERSISTENCE: prisma',
+  'INGESTION_SCAN_QUEUE_READER: rabbitmq',
+  'SUMMARY_JOB_QUEUE_MODE: rabbitmq',
+  'INTELLIGENCE_SUMMARY_QUEUE_READER: rabbitmq',
+  'DELIVERY_ATTEMPT_DISPATCH_QUEUE: rabbitmq',
+  'DELIVERY_ATTEMPT_QUEUE_READER: rabbitmq',
+  'DELIVERY_WEBHOOK_PROVIDER: http',
+  'EVENT_RELAY_LOOP: enabled',
+]) {
+  if (!compose.includes(marker)) {
+    violations.push(`docker-compose.yml missing runtime marker "${marker}"`);
+  }
+}
+
+for (const marker of [
+  'DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY=',
+  'MONITORING_PERSISTENCE=',
+  'SUMMARY_JOB_QUEUE_MODE=',
+  'INGESTION_SCAN_QUEUE_READER=',
+  'INTELLIGENCE_SUMMARY_QUEUE_READER=',
+  'DELIVERY_ATTEMPT_QUEUE_READER=',
+]) {
+  if (!envExample.includes(marker)) {
+    violations.push(`.env.example missing runtime marker "${marker}"`);
+  }
+}
+
+if (!String(packageJson.scripts?.verify ?? '').includes('check:runtime-compose')) {
+  violations.push('package.json verify must include check:runtime-compose');
+}
+
+if (violations.length > 0) {
+  console.error(violations.join('\n'));
+  process.exit(1);
+}
+
+console.log('Runtime compose contract OK');
+
+function serviceBlock(service) {
+  return compose.split(`  ${service}:`)[1]?.split(/\n {2}[a-z0-9-]+:/)[0] ?? '';
+}

@@ -20,7 +20,7 @@ for (const service of missingServices) {
 }
 
 for (const service of ['postgres', 'redis', 'rabbitmq', 'kafka']) {
-  const serviceBlock = compose.split(`  ${service}:`)[1]?.split(/\n {2}[a-z0-9-]+:/)[0] ?? '';
+  const serviceBlock = getTopLevelServiceBlock(compose, service);
   if (!serviceBlock.includes('healthcheck:')) {
     violations.push(`${service} service must define a healthcheck`);
   }
@@ -32,3 +32,16 @@ if (violations.length > 0) {
 }
 
 console.log('Local infrastructure config OK');
+
+function getTopLevelServiceBlock(source, service) {
+  const match = new RegExp(`^  ${service}:\\n`, 'm').exec(source);
+
+  if (!match) {
+    return '';
+  }
+
+  const start = match.index + match[0].length;
+  const next = source.slice(start).search(/\n {2}[a-z0-9-]+:/);
+
+  return next === -1 ? source.slice(start) : source.slice(start, start + next);
+}
