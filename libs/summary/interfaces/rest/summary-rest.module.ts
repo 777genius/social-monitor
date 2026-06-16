@@ -81,11 +81,12 @@ import { SummaryController } from './summary.controller';
     InMemorySummaryArtifactRepository,
     InMemorySummaryFeedbackRepository,
     InMemorySummaryPolicyRepository,
+    InMemoryQueuePublisher,
     {
       provide: SUMMARY_JOB_QUEUE,
-      useFactory: (metrics: InMemoryMetricsRecorder): SummaryJobQueuePort =>
-        new InMemorySummaryJobQueueAdapter(new InMemoryQueuePublisher(), metrics),
-      inject: [InMemoryMetricsRecorder],
+      useFactory: (publisher: InMemoryQueuePublisher, metrics: InMemoryMetricsRecorder): SummaryJobQueuePort =>
+        new InMemorySummaryJobQueueAdapter(publisher, metrics),
+      inject: [InMemoryQueuePublisher, InMemoryMetricsRecorder],
     },
     {
       provide: SUMMARY_JOB_REPOSITORY,
@@ -288,6 +289,7 @@ import { SummaryController } from './summary.controller';
     ExecuteSummaryJobUseCase,
     GetSummaryJobStatusUseCase,
     InMemoryMetricsRecorder,
+    InMemoryQueuePublisher,
     InMemorySummaryEventPublisher,
     InMemorySummaryArtifactRepository,
     InMemorySummaryFeedbackRepository,
@@ -296,6 +298,7 @@ import { SummaryController } from './summary.controller';
     ListSummaryFeedbackUseCase,
     SUMMARY_ARTIFACT_REPOSITORY,
     SUMMARY_FEEDBACK_REPOSITORY,
+    SUMMARY_JOB_QUEUE,
     SUMMARY_JOB_REPOSITORY,
     SUMMARY_POLICY_REPOSITORY,
     GetSummaryPolicyUseCase,
