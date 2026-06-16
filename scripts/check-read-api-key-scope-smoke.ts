@@ -5,6 +5,7 @@ import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/pe
 import { FeedItem } from '@social-monitor/feed/domain';
 import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.module';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
+import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case';
 import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summary-rest.module';
@@ -19,8 +20,10 @@ const assert = (condition: unknown, message: string): void => {
 };
 
 async function main(): Promise<void> {
+  process.env.SOURCE_CONFIG_ENCRYPTION_KEY ??= Buffer.alloc(32, 1).toString('base64');
+
   const moduleRef = await Test.createTestingModule({
-    imports: [IdentityRestModule, FeedRestModule, SummaryRestModule],
+    imports: [IdentityRestModule, MonitoringRestModule, FeedRestModule, SummaryRestModule],
     providers: [
       {
         provide: APP_FILTER,
@@ -72,6 +75,13 @@ async function main(): Promise<void> {
       name: 'Smoke feed reader',
       scopes: ['read:feed'],
     });
+    const topicSecret = await createApiKey({
+      server: app.getHttpServer(),
+      tenant,
+      workspace,
+      name: 'Smoke topic reader',
+      scopes: ['read:topics'],
+    });
     const summarySecret = await createApiKey({
       server: app.getHttpServer(),
       tenant,
@@ -116,6 +126,69 @@ async function main(): Promise<void> {
       .get('/feed/items')
       .set(headers)
       .set('Authorization', `Bearer ${otherWorkspaceFeedSecret}`)
+      .expect(403);
+
+    const createdTopic = await request(app.getHttpServer())
+      .post('/topics')
+      .set(headers)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'read-api-key-smoke-topic-request')
+      .set('idempotency-key', 'read-api-key-smoke-topic-request')
+      .send({
+        name: 'Read API key smoke topic',
+        query: 'read api key smoke',
+      })
+      .expect(201);
+    const createdBinding = await request(app.getHttpServer())
+      .post(`/topics/${createdTopic.body.topicId}/source-bindings`)
+      .set(headers)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'read-api-key-smoke-source-binding-request')
+      .set('idempotency-key', 'read-api-key-smoke-source-binding-request')
+      .send({
+        providerKey: 'fake-source',
+        config: {
+          query: 'read api key smoke',
+        },
+      })
+      .expect(201);
+
+    const topics = await request(app.getHttpServer())
+      .get('/topics')
+      .query({ limit: 10 })
+      .set(headers)
+      .set('Authorization', `Bearer ${topicSecret}`)
+      .expect(200);
+
+    assert(
+      topics.body.topics.some((item: { readonly id?: string }) => item.id === createdTopic.body.topicId),
+      'read:topics API key must list topics',
+    );
+
+    const sourceBindings = await request(app.getHttpServer())
+      .get(`/topics/${createdTopic.body.topicId}/source-bindings`)
+      .query({ limit: 10 })
+      .set(headers)
+      .set('Authorization', `Bearer ${topicSecret}`)
+      .expect(200);
+
+    assert(
+      sourceBindings.body.sourceBindings.some((item: { readonly id?: string }) =>
+        item.id === createdBinding.body.sourceBindingId,
+      ),
+      'read:topics API key must list source bindings',
+    );
+
+    await request(app.getHttpServer())
+      .get(`/topics/${createdTopic.body.topicId}/source-bindings/${createdBinding.body.sourceBindingId}/health`)
+      .set(headers)
+      .set('Authorization', `Bearer ${topicSecret}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get('/topics')
+      .set(headers)
+      .set('Authorization', `Bearer ${feedSecret}`)
       .expect(403);
 
     const summaryRequest = await request(app.getHttpServer())

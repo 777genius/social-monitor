@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { IdentityAuthorizationModule } from '@social-monitor/identity/interfaces/authorization/identity-authorization.module';
+import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
@@ -71,7 +71,7 @@ import { SourceBindingController } from './source-binding.controller';
 import { TopicController } from './topic.controller';
 
 @Module({
-  imports: [UsageRestModule, IdentityAuthorizationModule],
+  imports: [UsageRestModule, IdentityRestModule],
   controllers: [
     TopicController,
     SourceBindingController,
