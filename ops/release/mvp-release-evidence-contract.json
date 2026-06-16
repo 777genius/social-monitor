@@ -150,6 +150,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "beta-feedback-report",
+      "command": "npm run check:beta-feedback-report",
+      "blocksRelease": true
+    },
+    {
       "gateId": "summary-evidence-citations",
       "command": "npm run check:summary-evidence-smoke",
       "blocksRelease": true

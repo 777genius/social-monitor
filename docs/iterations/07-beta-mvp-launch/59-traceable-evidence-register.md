@@ -44,6 +44,7 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 - `npm run check:beta-scope-policy` proves unsupported/deferred providers stay out of the beta binding catalog, binding attempts are rejected, and source demand is captured as `source_request` feedback routed to `source-owner`.
 - `npm run check:beta-ring-policy` proves ring expansion thresholds link capacity, cost, source health and degradation evidence before inviting more users.
 - `npm run check:beta-launch-support` proves the beta launch support REST API exposes scoped known limitations, supported/deferred source coverage and post-MVP backlog classification for users/support/operator clients.
+- `npm run check:beta-feedback-report` proves beta feedback classification has a release artifact: sanitized feedback examples map to supported categories, deterministic triage owners, blocker/gap/opportunity/deferred classifications, eval-fixture eligibility, source-request no-binding behavior, backlog items and ring expansion impact.
 - `npm run check:persistence-readiness` proves runtime in-memory/noop state adapters are not hidden: every API/worker module gap has owner, risk and durable replacement plan, and external beta remains blocked until durable adapters replace those gaps.
 - `npm run check:monitoring-persistence` proves the first monitoring Prisma adapter foundation and runtime selector: topics round-trip, source binding pause status persists through source catalog provider rehydration, scan policy `nextRunAt` is stored for durable scheduling, scan job status transitions persist across requested/enqueued/succeeded states, and `MONITORING_PERSISTENCE=prisma` is only valid with `DATABASE_URL`.
 - `npm run check:ingestion-feed-persistence` proves the first ingestion/feed Prisma adapter foundation plus feed API, ingestion-worker and ingestion-support runtime selectors: provider-level source item dedupe, scan cursor roundtrip, feed canonical URL dedupe, feed search/list, feed item rehydration, durable scan retry/dead-letter persistence, durable scan attempt terminal-state persistence, scan lease fencing/release behavior, `FEED_PERSISTENCE=prisma` validation, `INGESTION_WORKER_PERSISTENCE=prisma` validation and `INGESTION_SUPPORT_PERSISTENCE=prisma` validation.
@@ -53,9 +54,28 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 - Ingestion worker scan execution reporting now has an explicit runtime selector: default `noop` remains valid for isolated deterministic worker smoke, while `INGESTION_SCAN_REPORTER=monitoring` is accepted only together with `MONITORING_PERSISTENCE=prisma`.
 
 ## Missing Evidence Blocks
-- Real beta feedback classification report is not produced from user samples yet.
+- Real beta feedback classification report is not produced from user samples yet; deterministic pre-beta report exists at `ops/release/beta-feedback-classification-report.json` and must be replaced with redacted real samples before external ring expansion.
 - Real beta ring expansion decision record is not produced from live user samples yet.
 - Durable runtime persistence evidence is not complete yet; current runtime is approved only for single-process private MVP and deterministic smoke validation.
+
+## PR 14 Beta Feedback Classification Report Evidence
+
+- Implementation slice: `chore: add beta feedback classification gate`
+
+Verified commands:
+
+- `npm run check:beta-feedback-report`
+- `npm run check:release`
+- `npm run check:code-quality`
+- `npm run check:secrets`
+- `git diff --check`
+
+Evidence notes:
+
+- Added `ops/release/beta-feedback-classification-report.json` as a deterministic pre-beta release artifact for feedback triage.
+- The report models blocker, accepted MVP gap, evidence-based opportunity and deferred idea classifications without storing raw provider payloads or PII.
+- `source_request` feedback is explicitly routed to `source-owner`, excluded from summary eval fixtures and prevented from changing beta source binding state.
+- The gate verifies owner routing stays aligned with the summary feedback domain taxonomy and that blocker feedback holds ring expansion until a regression fixture or runbook action exists.
 
 ## PR 13 Beta Launch Support API Evidence
 

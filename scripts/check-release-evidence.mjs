@@ -36,6 +36,7 @@ const requiredGateIds = new Set([
   'beta-scope-policy',
   'beta-ring-policy',
   'beta-launch-support',
+  'beta-feedback-report',
   'summary-evidence-citations',
   'summary-eval-regression',
   'summary-cost-attribution',

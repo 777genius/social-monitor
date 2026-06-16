@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "reportId": "beta-feedback-classification-report-mvp-v1",
+  "evidenceMode": "deterministic_pre_beta_fixture",
+  "generatedAt": "2026-06-16T00:00:00.000Z",
+  "sourceOfTruth": {
+    "feedbackApiGate": "npm run check:summary-feedback-rest",
+    "coreLoopGate": "npm run check:mvp-core-loop",
+    "scopePolicyGate": "npm run check:beta-scope-policy",
+    "launchSupportGate": "npm run check:beta-launch-support"
+  },
+  "privacyGuardrails": {
+    "rawProviderPayloadsIncluded": false,
+    "piiIncluded": false,
+    "commentsAreSyntheticOrRedacted": true,
+    "retentionPolicy": "ops/privacy/retention-contract.json"
+  },
+  "classificationPolicy": {
+    "supportedClassifications": [
+      "blocker",
+      "accepted_mvp_gap",
+      "evidence_based_opportunity",
+      "deferred_idea"
+    ],
+    "sourceRequestPolicy": "capture_as_roadmap_evidence_without_enabling_beta_binding",
+    "evalFixturePolicy": "only_wrong_fact_missing_source_bad_citation_low_relevance_can_seed_summary_eval_fixtures",
+    "ringExpansionPolicy": "blockers_hold_expansion_until_regression_fixture_or_runbook_action_exists"
+  },
+  "ownerRouting": {
+    "wrong_fact": "summary-owner",
+    "missing_source": "summary-owner",
+    "bad_citation": "summary-owner",
+    "low_relevance": "summary-owner",
+    "too_verbose": "product-owner",
+    "too_terse": "product-owner",
+    "source_request": "source-owner",
+    "ux_confusing": "product-owner",
+    "other": "support-owner"
+  },
+  "findings": [
+    {
+      "feedbackId": "beta-feedback-wrong-fact-001",
+      "category": "wrong_fact",
+      "classification": "blocker",
+      "triageOwner": "summary-owner",
+      "severity": "blocker",
+      "eligibleForEvalFixture": true,
+      "summaryEvidence": {
+        "summaryId": "summary-beta-policy",
+        "topicId": "topic-beta-policy",
+        "citationId": "citation-source-001",
+        "feedItemId": "feed-item-source-001",
+        "sourceItemId": "source-item-source-001"
+      },
+      "sanitizedSignal": "Summary asserted a fact that was not supported by the cited item.",
+      "action": "Add eval fixture and block ring expansion until citation-grounding regression passes.",
+      "backlogItemId": "summary-grounding-regression-fixture",
+      "launchDecisionImpact": "hold_expansion"
+    },
+    {
+      "feedbackId": "beta-feedback-bad-citation-001",
+      "category": "bad_citation",
+      "classification": "blocker",
+      "triageOwner": "summary-owner",
+      "severity": "blocker",
+      "eligibleForEvalFixture": true,
+      "summaryEvidence": {
+        "summaryId": "summary-beta-policy",
+        "topicId": "topic-beta-policy",
+        "citationId": "citation-source-002",
+        "feedItemId": "feed-item-source-002",
+        "sourceItemId": "source-item-source-002"
+      },
+      "sanitizedSignal": "Citation pointed to the right topic but did not support the sentence it was attached to.",
+      "action": "Tighten citation validator and add regression case before promoting the beta ring.",
+      "backlogItemId": "summary-citation-validator-hardening",
+      "launchDecisionImpact": "hold_expansion"
+    },
+    {
+      "feedbackId": "beta-feedback-source-request-x-001",
+      "category": "source_request",
+      "classification": "evidence_based_opportunity",
+      "triageOwner": "source-owner",
+      "severity": "opportunity",
+      "eligibleForEvalFixture": false,
+      "requestedProvider": "x-twitter",
+      "summaryEvidence": {
+        "summaryId": "summary-beta-policy",
+        "topicId": "topic-beta-policy"
+      },
+      "sanitizedSignal": "User needs X/Twitter monitoring, but provider remains deferred for beta until approved access and cost controls exist.",
+      "action": "Keep X/Twitter disabled in beta and attach demand to source adapter evaluation.",
+      "backlogItemId": "x-twitter-source-adapter",
+      "launchDecisionImpact": "no_binding_change"
+    },
+    {
+      "feedbackId": "beta-feedback-source-request-telegram-001",
+      "category": "source_request",
+      "classification": "deferred_idea",
+      "triageOwner": "source-owner",
+      "severity": "opportunity",
+      "eligibleForEvalFixture": false,
+      "requestedProvider": "telegram",
+      "summaryEvidence": {
+        "summaryId": "summary-beta-policy",
+        "topicId": "topic-beta-policy"
+      },
+      "sanitizedSignal": "User wants Telegram channel monitoring, but explicit channel scope and credential lifecycle are not approved.",
+      "action": "Capture source demand and revisit only after channel scope model is approved.",
+      "backlogItemId": "telegram-source-adapter",
+      "launchDecisionImpact": "no_binding_change"
+    },
+    {
+      "feedbackId": "beta-feedback-ux-confusing-001",
+      "category": "ux_confusing",
+      "classification": "accepted_mvp_gap",
+      "triageOwner": "product-owner",
+      "severity": "accepted_gap",
+      "eligibleForEvalFixture": false,
+      "summaryEvidence": {
+        "summaryId": "summary-beta-policy",
+        "topicId": "topic-beta-policy"
+      },
+      "sanitizedSignal": "Operator-assisted beta requires API/OpenAPI walkthroughs because the Flutter frontend is intentionally deferred.",
+      "action": "Keep frontend out of MVP scope and document support walkthroughs until self-serve demand repeats.",
+      "backlogItemId": "frontend-fsd-client",
+      "launchDecisionImpact": "support_playbook"
+    },
+    {
+      "feedbackId": "beta-feedback-missing-source-001",
+      "category": "missing_source",
+      "classification": "evidence_based_opportunity",
+      "triageOwner": "summary-owner",
+      "severity": "opportunity",
+      "eligibleForEvalFixture": true,
+      "summaryEvidence": {
+        "summaryId": "summary-beta-policy",
+        "topicId": "topic-beta-policy",
+        "citationId": "citation-source-003",
+        "feedItemId": "feed-item-source-003",
+        "sourceItemId": "source-item-source-003"
+      },
+      "sanitizedSignal": "Summary missed an important supported-source item that was present in the evidence window.",
+      "action": "Add eval fixture and inspect source-window selection before changing scan frequency.",
+      "backlogItemId": "summary-source-window-selection-tuning",
+      "launchDecisionImpact": "watch_next_ring"
+    }
+  ],
+  "rollup": {
+    "totalFindings": 6,
+    "classificationCounts": {
+      "blocker": 2,
+      "accepted_mvp_gap": 1,
+      "evidence_based_opportunity": 2,
+      "deferred_idea": 1
+    },
+    "ownerCounts": {
+      "summary-owner": 3,
+      "source-owner": 2,
+      "product-owner": 1,
+      "support-owner": 0
+    },
+    "launchDecisionCounts": {
+      "hold_expansion": 2,
+      "no_binding_change": 2,
+      "support_playbook": 1,
+      "watch_next_ring": 1
+    }
+  },
+  "releaseDecision": {
+    "privateBetaMvpStatus": "operator_ready_with_known_limitations",
+    "externalRingExpansionStatus": "hold_until_real_feedback_report_replaces_fixture",
+    "requiredBeforeExpansion": [
+      "Replace deterministic fixture findings with redacted real beta samples.",
+      "No blocker findings remain without an owner, eval fixture or runbook action.",
+      "Source requests remain blocked from automatic binding until source readiness is enabled_beta."
+    ]
+  }
+}
