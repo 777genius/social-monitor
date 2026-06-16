@@ -35,7 +35,7 @@ export class InMemoryDeliveryAttemptRepository implements DeliveryAttemptReposit
         const snapshot = attempt.toSnapshot();
 
         return (
-          snapshot.state === 'queued' &&
+          isDispatchableState(snapshot.state) &&
           (params.tenantId === undefined || snapshot.tenantId === params.tenantId) &&
           (params.workspaceId === undefined || snapshot.workspaceId === params.workspaceId)
         );
@@ -86,6 +86,9 @@ const compareQueuedAttempts = (left: DeliveryAttempt, right: DeliveryAttempt): n
 
   return leftSnapshot.id.localeCompare(rightSnapshot.id);
 };
+
+const isDispatchableState = (state: ReturnType<DeliveryAttempt['toSnapshot']>['state']): boolean =>
+  state === 'queued' || state === 'failed_retryable';
 
 const encodeCursor = (offset: number): string => Buffer.from(JSON.stringify({ offset })).toString('base64url');
 

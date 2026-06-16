@@ -78,6 +78,8 @@ export class DeliveryAttempt {
       ...this.props,
       state: 'sending',
       sendingAt: params.sendingAt,
+      failedAt: undefined,
+      failureReason: undefined,
     });
   }
 

@@ -26,6 +26,10 @@ export interface DeliveryAttemptRepositoryPort {
     workspaceId: WorkspaceId;
     idempotencyKey: string;
   }): Promise<DeliveryAttempt | null>;
+  /**
+   * Returns attempts ready for dispatch. This includes freshly queued attempts
+   * and retryable failures that can re-enter provider send flow.
+   */
   findQueued(params: {
     tenantId?: TenantId;
     workspaceId?: WorkspaceId;

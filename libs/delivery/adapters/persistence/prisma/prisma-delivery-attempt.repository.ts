@@ -76,7 +76,7 @@ export class PrismaDeliveryAttemptRepository implements DeliveryAttemptRepositor
       where: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
-        state: 'QUEUED',
+        state: { in: ['QUEUED', 'FAILED_RETRYABLE'] },
       },
       orderBy: [{ queuedAt: 'asc' }, { id: 'asc' }],
       take: params.limit,

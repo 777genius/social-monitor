@@ -41,7 +41,7 @@ import type {
   PrismaWebhookReplayDeliveryRecord,
   PrismaWebhookSecretRecord,
 } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-records';
-import { Digest, DigestSchedule } from '../libs/delivery/domain';
+import { DeliveryAttempt, Digest, DigestSchedule } from '../libs/delivery/domain';
 import { AssembleDigestUseCase } from '../libs/delivery/features/assemble-digest/assemble-digest.use-case';
 import { CreateDigestScheduleUseCase } from '../libs/delivery/features/create-digest-schedule/create-digest-schedule.use-case';
 import { CreateWebhookEndpointUseCase } from '../libs/delivery/features/create-webhook-endpoint/create-webhook-endpoint.use-case';
@@ -171,6 +171,37 @@ async function main(): Promise<void> {
   const listed = await attempts.list({ tenantId: tenant, workspaceId: workspace, limit: 10 });
   assert(listed.attempts.length === 1, 'delivery attempt list must return persisted attempt');
   assert(listed.attempts[0]?.toSnapshot().state === 'failed_terminal', 'delivery attempt list must hydrate latest state');
+
+  const retryableAttemptId = '00000000-0000-7000-8000-000000000720';
+  await attempts.save(DeliveryAttempt.queue({
+    id: retryableAttemptId,
+    tenantId: tenant,
+    workspaceId: workspace,
+    idempotencyKey: 'digest:weekly:recipient-1:retryable',
+    channel: 'webhook',
+    recipientKey: 'endpoint-1',
+    resourceType: 'digest',
+    resourceId: 'digest-1',
+    queuedAt: clock.now(),
+    maxRetries: 3,
+  }).markSending({
+    sendingAt: clock.now(),
+  }).fail({
+    failedAt: clock.now(),
+    failureReason: 'provider returned retryable 503',
+    retryable: true,
+  }));
+
+  const dispatchableAttempts = await attempts.findQueued({ tenantId: tenant, workspaceId: workspace, limit: 10 });
+  const dispatchableIds = dispatchableAttempts.map((attempt) => attempt.toSnapshot().id);
+  assert(
+    dispatchableIds.includes(retryableAttemptId),
+    'delivery attempt dispatch query must include retryable failed attempts',
+  );
+  assert(
+    !dispatchableIds.includes(queued.value.deliveryAttemptId),
+    'delivery attempt dispatch query must exclude terminal failed attempts',
+  );
 
   prisma.seedDigestSourceSummary({
     id: 'summary-digest-source-1',
@@ -970,14 +1001,29 @@ const matchesDeliveryAttemptWhere = (
     readonly workspaceId?: string;
     readonly id?: string;
     readonly idempotencyKey?: string;
-    readonly state?: PrismaDeliveryAttemptRecord['state'];
+    readonly state?: PrismaDeliveryAttemptRecord['state'] | { readonly in: readonly PrismaDeliveryAttemptRecord['state'][] };
   },
 ): boolean =>
   (where.tenantId === undefined || record.tenantId === where.tenantId) &&
   (where.workspaceId === undefined || record.workspaceId === where.workspaceId) &&
   (where.id === undefined || record.id === where.id) &&
   (where.idempotencyKey === undefined || record.idempotencyKey === where.idempotencyKey) &&
-  (where.state === undefined || record.state === where.state);
+  matchesDeliveryAttemptState(record.state, where.state);
+
+const matchesDeliveryAttemptState = (
+  state: PrismaDeliveryAttemptRecord['state'],
+  filter: PrismaDeliveryAttemptRecord['state'] | { readonly in: readonly PrismaDeliveryAttemptRecord['state'][] } | undefined,
+): boolean => {
+  if (filter === undefined) {
+    return true;
+  }
+
+  if (typeof filter === 'string') {
+    return state === filter;
+  }
+
+  return filter.in.includes(state);
+};
 
 const isDeliveryAttemptAscendingOrder = (
   orderBy: Parameters<PrismaDeliveryClient['deliveryAttempt']['findMany']>[0]['orderBy'],

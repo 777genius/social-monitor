@@ -20,6 +20,7 @@ async function main(): Promise<void> {
   const tenant = tenantId('tenant-delivery-dispatch-loop-smoke');
   const workspace = workspaceId('workspace-delivery-dispatch-loop-smoke');
   const deliveryAttemptId = 'delivery-attempt-dispatch-loop-smoke';
+  const retryableDeliveryAttemptId = 'delivery-attempt-dispatch-loop-retryable-smoke';
   const attempts = new InMemoryDeliveryAttemptRepository();
   const provider = new InMemoryDeliveryProvider('in_app');
   const metrics = new InMemoryMetricsRecorder();
@@ -63,7 +64,6 @@ async function main(): Promise<void> {
 
   await loop.onModuleInit();
   await loop.onApplicationShutdown('delivery-attempt-dispatch-loop-smoke-complete');
-  await runtime.onApplicationShutdown('delivery-attempt-dispatch-loop-smoke-complete');
 
   const attempt = await attempts.findById({ tenantId: tenant, workspaceId: workspace, deliveryAttemptId });
   const snapshot = attempt?.toSnapshot();
@@ -90,6 +90,92 @@ async function main(): Promise<void> {
 
   const remaining = await attempts.findQueued({ tenantId: tenant, workspaceId: workspace, limit: 10 });
   assert(remaining.length === 0, `dispatch loop must drain queued attempts, got ${remaining.length}`);
+
+  await attempts.save(DeliveryAttempt.queue({
+    id: retryableDeliveryAttemptId,
+    tenantId: tenant,
+    workspaceId: workspace,
+    idempotencyKey: 'delivery-dispatch-loop-smoke:retryable-digest-1',
+    channel: 'in_app',
+    recipientKey: 'user-delivery-dispatch-loop-smoke',
+    resourceType: 'digest',
+    resourceId: 'digest-delivery-dispatch-loop-retryable-smoke',
+    queuedAt: new Date('2026-06-06T00:02:00.000Z'),
+    maxRetries: 2,
+  }).markSending({
+    sendingAt: new Date('2026-06-06T00:03:00.000Z'),
+  }).fail({
+    failedAt: new Date('2026-06-06T00:04:00.000Z'),
+    failureReason: 'Provider returned 503',
+    retryable: true,
+  }));
+
+  const retryableBeforeDispatch = await attempts.findQueued({ tenantId: tenant, workspaceId: workspace, limit: 10 });
+  assert(
+    retryableBeforeDispatch.map((queuedAttempt) => queuedAttempt.toSnapshot().id).includes(retryableDeliveryAttemptId),
+    'dispatch loop repository must expose retryable failed attempts for dispatch',
+  );
+
+  const retryLoop = new DeliveryAttemptDispatchLoop(
+    new SendDeliveryAttemptCommandHandler(
+      new SendDeliveryAttemptUseCase(
+        attempts,
+        [provider],
+        new InMemoryNotificationPreferenceReader(),
+        new FixedClock(new Date('2026-06-06T00:05:00.000Z')),
+      ),
+      metrics,
+      runtime,
+    ),
+    attempts,
+    {
+      enabled: true,
+      intervalMs: 60_000,
+      limit: 10,
+      runOnStart: true,
+      tenantId: tenant,
+      workspaceId: workspace,
+    },
+  );
+
+  await retryLoop.onModuleInit();
+  await retryLoop.onApplicationShutdown('delivery-attempt-dispatch-loop-retryable-smoke-complete');
+  await runtime.onApplicationShutdown('delivery-attempt-dispatch-loop-smoke-complete');
+
+  const retryableAttempt = await attempts.findById({
+    tenantId: tenant,
+    workspaceId: workspace,
+    deliveryAttemptId: retryableDeliveryAttemptId,
+  });
+  const retryableSnapshot = retryableAttempt?.toSnapshot();
+  assert(
+    retryableSnapshot?.state === 'delivered',
+    `expected delivered retryable attempt, got ${retryableSnapshot?.state}`,
+  );
+  assert(retryableSnapshot.retryCount === 1, 'delivered retryable attempt must preserve retry count evidence');
+  assert(retryableSnapshot.failedAt === undefined, 'delivered retryable attempt must clear stale failedAt');
+  assert(retryableSnapshot.failureReason === undefined, 'delivered retryable attempt must clear stale failure reason');
+  assert(provider.getSentRequests().length === 2, 'dispatch loop must send retryable attempt on the second tick');
+  assert(
+    metrics.counterValue('delivery_attempt_dispatch_total', {
+      status: 'started',
+      worker: 'delivery-service',
+    }) === 2,
+    'retryable dispatch loop must record second started metric',
+  );
+  assert(
+    metrics.counterValue('delivery_attempt_dispatch_total', {
+      status: 'succeeded',
+      worker: 'delivery-service',
+    }) === 2,
+    'retryable dispatch loop must record second succeeded metric',
+  );
+
+  const remainingAfterRetry = await attempts.findQueued({ tenantId: tenant, workspaceId: workspace, limit: 10 });
+  assert(
+    remainingAfterRetry.length === 0,
+    `dispatch loop must drain retryable failed attempts, got ${remainingAfterRetry.length}`,
+  );
 
   console.log('Delivery attempt dispatch loop smoke OK');
 }

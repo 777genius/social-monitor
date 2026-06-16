@@ -140,7 +140,7 @@ export type PrismaDeliveryClient = {
       readonly where: {
         readonly tenantId?: string;
         readonly workspaceId?: string;
-        readonly state?: PrismaDeliveryAttemptState;
+        readonly state?: PrismaDeliveryAttemptState | { readonly in: readonly PrismaDeliveryAttemptState[] };
       };
       readonly orderBy:
         | readonly [
