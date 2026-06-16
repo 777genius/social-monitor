@@ -2,7 +2,12 @@
 
 ## Status
 
-Locked for implementation blueprint.
+Locked for MVP implementation. The platform layer now contains executable ports/adapters for:
+
+- polling outbox dispatch through `OutboxDispatcher`;
+- durable Prisma outbox reads and published/failed state transitions through `PrismaOutboxStoreAdapter`;
+- durable Prisma inbox processed-event dedupe through `PrismaInboxStoreAdapter`;
+- deterministic smoke evidence through `npm run check:event-store`.
 
 ## Research Anchors
 
@@ -14,9 +19,29 @@ Locked for implementation blueprint.
 
 Every service/context that publishes durable domain events writes to an outbox table in the same database transaction as the business state change. Every event consumer records an inbox/processed marker before applying non-idempotent side effects.
 
-## Outbox Table
+## MVP Outbox Table
 
-Baseline columns:
+The current MVP Prisma table is intentionally smaller than the long-term relay table:
+
+```text
+id uuid primary key
+tenant_id uuid null
+workspace_id uuid null
+event_type text not null
+schema_version int not null
+payload json/jsonb not null
+status enum(PENDING, PUBLISHED, FAILED)
+correlation_id text not null
+causation_id text null
+created_at timestamptz not null
+published_at timestamptz null
+```
+
+`id` is the canonical domain event id. The relay reconstructs the event envelope with `created_at` as `occurredAt`. This is acceptable for the MVP because event producers write the row at event creation time; a later production hardening pass can add explicit `occurred_at`, attempts, `available_at`, `last_error` and row-lock leasing without changing domain code.
+
+## Long-Term Outbox Table
+
+Target columns:
 
 ```text
 id uuid primary key
@@ -39,7 +64,9 @@ last_error text null
 
 ## Relay
 
-Initial implementation can use a polling relay with `FOR UPDATE SKIP LOCKED`. Later, Debezium CDC can publish from the outbox table to Kafka without changing domain code.
+The MVP implementation uses `OutboxDispatcher` against `OutboxStorePort` and `EventPublisherPort`. The Prisma adapter reads pending events in deterministic `createdAt/id` order, publishes through an injected publisher, marks success as `PUBLISHED` with `publishedAt`, and marks publisher failures as `FAILED`.
+
+Later hardening should switch the Prisma query to a leasing query with `FOR UPDATE SKIP LOCKED` or move relay publication to Debezium CDC without changing domain use cases.
 
 Polling relay requirements:
 
@@ -49,9 +76,25 @@ Polling relay requirements:
 - metrics for age, attempts and publish failures;
 - safe concurrent relay workers.
 
-## Inbox
+## MVP Inbox
 
-Baseline columns:
+The current MVP table:
+
+```text
+id uuid primary key
+consumer_name text not null
+event_id uuid not null
+tenant_id uuid null
+processed_at timestamptz not null
+schema_version int not null
+unique (consumer_name, event_id)
+```
+
+`PrismaInboxStoreAdapter` persists processed markers and treats duplicate inserts as already processed. This provides restart-stable consumer dedupe for idempotent handlers. Full exactly-once side effects still require handler-level idempotency and, for high concurrency, a claim/processing state or transactional projection updates.
+
+## Long-Term Inbox
+
+Target columns:
 
 ```text
 consumer_name text not null
@@ -74,3 +117,10 @@ Consumer flow:
 
 Transactional outbox solves the database-vs-broker dual-write problem. It does not remove the need for idempotent consumers, replay jobs and reconciliation.
 
+## MVP Guardrail
+
+`npm run check:event-store` must stay in the release script. It proves:
+
+- pending outbox events are dispatched and marked `PUBLISHED`;
+- publisher failures are marked `FAILED`;
+- a new inbox adapter instance deduplicates a previously processed event.

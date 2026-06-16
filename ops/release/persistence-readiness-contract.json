@@ -28,7 +28,7 @@
         "InMemoryIdempotencyAdapter"
       ],
       "risk": "topics, source bindings, scan policies, scan jobs, outbox events and idempotency records can opt into Prisma, and scan command publishing can opt into RabbitMQ, but default local mode is still process-local",
-      "durableReplacementPlan": "Monitoring repositories, outbox events and idempotency records can opt into Prisma with MONITORING_PERSISTENCE=prisma; scan command publishing can opt into RabbitMQ with MONITORING_SCAN_QUEUE=rabbitmq; remaining blocker is broker-backed worker consumer/drain integration"
+      "durableReplacementPlan": "Monitoring repositories, outbox events and idempotency records can opt into Prisma with MONITORING_PERSISTENCE=prisma; scan command publishing can opt into RabbitMQ with MONITORING_SCAN_QUEUE=rabbitmq; platform outbox dispatch can use PrismaOutboxStoreAdapter when wired into a relay process; remaining blocker is runtime relay wiring and deployment evidence"
     },
     {
       "moduleFile": "libs/feed/interfaces/rest/feed-rest.module.ts",
@@ -52,7 +52,7 @@
         "InMemorySummaryEventPublisher"
       ],
       "risk": "summary jobs, artifacts, feedback, policies and events can opt into Prisma, but the summary job queue remains process-local in default runtime",
-      "durableReplacementPlan": "SummaryRestModule can opt into Prisma job/artifact/feedback/policy persistence and durable outbox events with SUMMARY_PERSISTENCE=prisma; remaining blockers are durable summary queue publisher and cross-worker summary execution wiring"
+      "durableReplacementPlan": "SummaryRestModule can opt into Prisma job/artifact/feedback/policy persistence and durable outbox events with SUMMARY_PERSISTENCE=prisma; platform outbox dispatch can use PrismaOutboxStoreAdapter when wired into a relay process; remaining blockers are durable summary queue publisher and cross-worker summary execution wiring"
     },
     {
       "moduleFile": "libs/delivery/interfaces/rest/delivery-rest.module.ts",
@@ -115,7 +115,7 @@
         "InMemoryScanCommandQueueReader"
       ],
       "risk": "worker scan attempts, source items, cursors, leases, failures, projected feed and default scan command reader are process-local",
-      "durableReplacementPlan": "IngestionWorkerModule can opt into Prisma source item, cursor, feed projection, scan failure queue, scan attempt and scan lease persistence with INGESTION_WORKER_PERSISTENCE=prisma; scan command reading can opt into RabbitMQ with INGESTION_SCAN_QUEUE_READER=rabbitmq; remaining blockers are outbox dispatcher/inbox rollout and cross-process scheduler rollout"
+      "durableReplacementPlan": "IngestionWorkerModule can opt into Prisma source item, cursor, feed projection, scan failure queue, scan attempt and scan lease persistence with INGESTION_WORKER_PERSISTENCE=prisma; scan command reading can opt into RabbitMQ with INGESTION_SCAN_QUEUE_READER=rabbitmq; platform inbox dedupe can use PrismaInboxStoreAdapter when event consumers are wired through it; remaining blocker is cross-process scheduler/runtime relay deployment evidence"
     }
   ],
   "runtimeNoopAdapters": [
