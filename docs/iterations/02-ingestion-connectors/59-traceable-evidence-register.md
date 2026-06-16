@@ -7,7 +7,7 @@ Prove that ingestion produces certified, normalized and provider-neutral feed da
 - Source adapters pass certification before production enablement.
 - Cursor commit is proven safe by crash/retry evidence.
 - Provider DTOs stop at adapters and do not leak into feed/summary/mobile contracts.
-- Source readiness profiles exist for deferred Reddit, X/Twitter, Telegram and other future sources.
+- Source readiness profiles exist for certified beta sources and deferred X/Twitter, Telegram and other future sources.
 - Raw payload, source item, feed item and citation-unavailable retention behavior is tested.
 - Queued/in-flight state change fixtures prove topic/source disable, credential revoke, policy change and quota exhaustion behavior.
 - Fake-clock and provider timestamp fixtures prove interval, cursor, future timestamp and backfill boundary behavior.
@@ -43,8 +43,8 @@ Prove that ingestion produces certified, normalized and provider-neutral feed da
 
 - Gate: `npm run check:source-certification`
 - Evidence artifact: `ops/ingestion/source-provider-certification.json`
-- Certified beta providers: `fake-source`, `hacker-news`, `rss`
-- Deferred providers: `reddit`, `x-twitter`, `telegram`
+- Certified beta providers: `fake-source`, `github`, `hacker-news`, `reddit`, `rss`
+- Deferred providers: `telegram`, `x-twitter`
 
 Verified guarantees:
 
@@ -54,6 +54,7 @@ Verified guarantees:
 - fixture scans return normalized items with stable external IDs, HTTP canonical URLs and valid timestamps;
 - cursor-based providers return non-empty cursors;
 - repeated fixture scans are deterministic and provider errors are classified.
+- beta launch support now cross-checks its supported/deferred source list against this certification artifact through `npm run check:beta-launch-support`, so user-visible launch metadata cannot drift from source certification evidence.
 
 ## PR 36 Hacker News Live-Capable Connector Evidence
 

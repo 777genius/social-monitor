@@ -2,6 +2,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { sourceReadinessProfiles } from '@social-monitor/ingestion/adapters/source/source-readiness-profiles';
 import { LaunchRestModule } from '@social-monitor/launch/interfaces/rest/launch-rest.module';
+import { readFileSync } from 'node:fs';
 import request from 'supertest';
 
 import { DomainErrorFilter } from '../apps/api-gateway/src/domain-error.filter';
@@ -15,6 +16,16 @@ const assert = (condition: unknown, message: string): void => {
   if (!condition) {
     throw new Error(message);
   }
+};
+
+type SourceProviderCertificationReport = {
+  blockingPassed: boolean;
+  certifiedProviders: Array<{
+    providerKey: string;
+  }>;
+  deferredProviders: Array<{
+    providerKey: string;
+  }>;
 };
 
 async function main(): Promise<void> {
@@ -60,6 +71,22 @@ async function main(): Promise<void> {
     assert(
       snapshot.deferredSources.join(',') === deferredSources.join(','),
       `deferred sources must match readiness profiles: ${snapshot.deferredSources.join(',')}`,
+    );
+
+    const certification = loadSourceProviderCertificationReport();
+    const certifiedSourceKeys = certification.certifiedProviders.map((provider) => provider.providerKey).sort();
+    const certifiedDeferredSourceKeys = certification.deferredProviders
+      .map((provider) => provider.providerKey)
+      .sort();
+
+    assert(certification.blockingPassed === true, 'source provider certification must be passing');
+    assert(
+      snapshot.supportedSources.join(',') === certifiedSourceKeys.join(','),
+      `supported sources must match source certification artifact: ${snapshot.supportedSources.join(',')}`,
+    );
+    assert(
+      snapshot.deferredSources.join(',') === certifiedDeferredSourceKeys.join(','),
+      `deferred sources must match source certification artifact: ${snapshot.deferredSources.join(',')}`,
     );
 
     const limitationIds = new Set(snapshot.knownLimitations.map((entry) => entry.limitationId));
@@ -122,6 +149,16 @@ const scopeHeaders = (): Record<string, string> => ({
   'x-tenant-id': 'tenant-beta-launch-support-smoke',
   'x-workspace-id': 'workspace-beta-launch-support-smoke',
 });
+
+const loadSourceProviderCertificationReport = (): SourceProviderCertificationReport => {
+  const rawReport = readFileSync('ops/ingestion/source-provider-certification.json', 'utf8');
+  const parsedReport = JSON.parse(rawReport) as SourceProviderCertificationReport;
+
+  assert(Array.isArray(parsedReport.certifiedProviders), 'source certification must list certified providers');
+  assert(Array.isArray(parsedReport.deferredProviders), 'source certification must list deferred providers');
+
+  return parsedReport;
+};
 
 void main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
