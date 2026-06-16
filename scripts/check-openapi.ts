@@ -10,6 +10,9 @@ import { AppModule } from '../apps/api-gateway/src/app.module';
 const snapshotPath = 'libs/contracts/rest/openapi.snapshot.json';
 const shouldUpdate = process.argv.includes('--update') || process.env.UPDATE_OPENAPI_SNAPSHOT === '1';
 
+process.env.SOURCE_CONFIG_ENCRYPTION_KEY ??= Buffer.alloc(32, 7).toString('base64url');
+process.env.DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY ??= Buffer.alloc(32, 8).toString('base64url');
+
 async function main(): Promise<void> {
   const current = await generateOpenApiSnapshot();
   const serialized = `${JSON.stringify(sortJson(current), null, 2)}\n`;

@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
-import { AppModule } from '../apps/api-gateway/src/app.module';
+import { HealthController } from '../apps/api-gateway/src/health.controller';
 
 const assertHealthResponse = (body: unknown, route: string): void => {
   const payload = body as {
@@ -9,6 +9,9 @@ const assertHealthResponse = (body: unknown, route: string): void => {
     readonly service?: unknown;
     readonly checkedAt?: unknown;
     readonly uptimeSeconds?: unknown;
+    readonly runtime?: unknown;
+    readonly capabilities?: unknown;
+    readonly checks?: unknown;
   };
 
   if (payload.status !== 'ok') {
@@ -26,11 +29,74 @@ const assertHealthResponse = (body: unknown, route: string): void => {
   if (typeof payload.uptimeSeconds !== 'number' || payload.uptimeSeconds < 0) {
     throw new Error(`${route} must return non-negative uptimeSeconds`);
   }
+
+  if (route.includes('ready')) {
+    assertReadinessResponse(payload, route);
+  }
+};
+
+const assertReadinessResponse = (
+  payload: {
+    readonly runtime?: unknown;
+    readonly capabilities?: unknown;
+    readonly checks?: unknown;
+  },
+  route: string,
+): void => {
+  const runtime = assertRecord(payload.runtime, `${route} runtime`);
+  const persistence = assertRecord(runtime.persistence, `${route} runtime.persistence`);
+  const workerLoops = assertRecord(runtime.workerLoops, `${route} runtime.workerLoops`);
+  const capabilities = assertRecord(payload.capabilities, `${route} capabilities`);
+  const enabledBetaSources = capabilities.enabledBetaSources;
+  const workerApps = capabilities.workerApps;
+  const checks = payload.checks;
+
+  for (const key of ['monitoring', 'feed', 'ingestionSupport', 'summary', 'delivery', 'identity', 'usage']) {
+    if (typeof persistence[key] !== 'string' || persistence[key].length === 0) {
+      throw new Error(`${route} must expose persistence mode for ${key}`);
+    }
+  }
+
+  for (const key of [
+    'ingestionScanScheduler',
+    'ingestionScanQueueDrain',
+    'intelligenceSummaryJob',
+    'deliveryDigestScheduler',
+    'deliveryAttemptDispatch',
+  ]) {
+    if (workerLoops[key] !== 'enabled' && workerLoops[key] !== 'disabled') {
+      throw new Error(`${route} must expose worker loop mode for ${key}`);
+    }
+  }
+
+  if (!Array.isArray(enabledBetaSources) || !enabledBetaSources.includes('reddit')) {
+    throw new Error(`${route} must expose enabled beta source readiness`);
+  }
+
+  if (!Array.isArray(workerApps) || !workerApps.includes('ingestion-worker')) {
+    throw new Error(`${route} must expose worker app readiness metadata`);
+  }
+
+  if (capabilities.rest !== 'enabled' || capabilities.websocket !== 'enabled' || capabilities.openapi !== 'enabled') {
+    throw new Error(`${route} must expose REST, WebSocket and OpenAPI capabilities`);
+  }
+
+  if (!Array.isArray(checks) || checks.some((check) => assertRecord(check, `${route} check`).status !== 'ok')) {
+    throw new Error(`${route} readiness checks must all be ok`);
+  }
+};
+
+const assertRecord = (value: unknown, label: string): Readonly<Record<string, unknown>> => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+
+  return value as Readonly<Record<string, unknown>>;
 };
 
 async function main(): Promise<void> {
   const moduleRef = await Test.createTestingModule({
-    imports: [AppModule],
+    controllers: [HealthController],
   }).compile();
   const app = moduleRef.createNestApplication();
 
@@ -48,4 +114,7 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+void main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+});
