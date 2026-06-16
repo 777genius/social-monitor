@@ -8,6 +8,7 @@ Approve movement from MVP beta into post-MVP roadmap execution.
 - Supported source list is unchanged or change-controlled.
 - Backend MVP core loop, digest delivery and feedback submission pass `npm run check:mvp-core-loop`.
 - Unsupported/deferred sources pass `npm run check:beta-scope-policy`.
+- Hacker News and RSS worker ingestion smokes pass `npm run check:hn-smoke` and `npm run check:rss-smoke`.
 - Ring expansion policy passes `npm run check:beta-ring-policy`.
 - Persistence readiness passes `npm run check:persistence-readiness`; external beta is blocked until durable adapter exit criteria are met.
 - Monitoring Prisma persistence smoke for topics, source bindings, scan policies and scan jobs passes `npm run check:monitoring-persistence`.
@@ -19,6 +20,7 @@ Approve movement from MVP beta into post-MVP roadmap execution.
 ## Promotion Checks
 - Beta validated the user-facing core loop and the backend core-loop/digest-delivery/feedback gate is green.
 - Unsupported source requests did not bypass policy and are captured as source-owner backlog evidence.
+- Enabled real-source paths have deterministic worker smoke evidence, not only provider fixture certification.
 - Ring expansion cites capacity, cost, source-health and degradation evidence.
 - Persistence readiness cites every runtime in-memory/noop state adapter with owner, risk and durable replacement plan.
 - Roadmap items cite evidence.

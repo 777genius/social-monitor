@@ -100,6 +100,16 @@
       "blocksRelease": true
     },
     {
+      "gateId": "hacker-news-ingestion-smoke",
+      "command": "npm run check:hn-smoke",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "rss-ingestion-smoke",
+      "command": "npm run check:rss-smoke",
+      "blocksRelease": true
+    },
+    {
       "gateId": "delivery-replay-idempotency",
       "command": "npm run check:delivery-replay",
       "blocksRelease": true

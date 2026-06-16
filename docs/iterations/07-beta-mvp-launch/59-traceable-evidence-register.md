@@ -40,6 +40,7 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 - Digest evidence in the same gate proves completed summaries and scanned feed items become digest provenance and a non-empty digest queues an in-app delivery attempt.
 - Summary feedback now records category, triage owner, immutable summary/citation evidence and eval-fixture eligibility.
 - The gate is now a blocking release evidence item in `ops/release/mvp-release-evidence-contract.json` and is included in `npm run verify`.
+- `npm run check:hn-smoke` and `npm run check:rss-smoke` prove the two enabled real-source worker paths with deterministic clients: queue handler, provider registry, normalized source item persistence, feed projection, cursor commit and scan success reporting.
 - `npm run check:beta-scope-policy` proves unsupported/deferred providers stay out of the beta binding catalog, binding attempts are rejected, and source demand is captured as `source_request` feedback routed to `source-owner`.
 - `npm run check:beta-ring-policy` proves ring expansion thresholds link capacity, cost, source health and degradation evidence before inviting more users.
 - `npm run check:persistence-readiness` proves runtime in-memory/noop state adapters are not hidden: every API/worker module gap has owner, risk and durable replacement plan, and external beta remains blocked until durable adapters replace those gaps.

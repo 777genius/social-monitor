@@ -10,12 +10,23 @@ const violations = [];
 
 const requiredRingIds = ['internal-dogfood', 'private-beta-1', 'private-beta-2'];
 const requiredGatesByRing = new Map([
-  ['internal-dogfood', ['check:mvp-core-loop', 'check:source-certification', 'check:beta-scope-policy']],
+  [
+    'internal-dogfood',
+    [
+      'check:mvp-core-loop',
+      'check:source-certification',
+      'check:hn-smoke',
+      'check:rss-smoke',
+      'check:beta-scope-policy',
+    ],
+  ],
   [
     'private-beta-1',
     [
       'check:mvp-core-loop',
       'check:source-certification',
+      'check:hn-smoke',
+      'check:rss-smoke',
       'check:beta-scope-policy',
       'check:load-cost',
       'check:observability',
@@ -28,6 +39,8 @@ const requiredGatesByRing = new Map([
     [
       'check:mvp-core-loop',
       'check:source-certification',
+      'check:hn-smoke',
+      'check:rss-smoke',
       'check:beta-scope-policy',
       'check:load-cost',
       'check:observability',

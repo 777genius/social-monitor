@@ -26,6 +26,8 @@ const requiredGateIds = new Set([
   'delivery-prisma-persistence',
   'load-cost-guardrail',
   'source-provider-certification',
+  'hacker-news-ingestion-smoke',
+  'rss-ingestion-smoke',
   'delivery-replay-idempotency',
   'mvp-core-loop',
   'beta-scope-policy',

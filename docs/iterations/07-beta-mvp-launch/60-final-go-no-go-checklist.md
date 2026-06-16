@@ -5,6 +5,7 @@ Decide whether beta can close and post-MVP roadmap execution can start.
 
 ## Go Conditions
 - Backend MVP core loop, digest delivery, feedback submission and source binding pause/resume pass `npm run check:mvp-core-loop`.
+- Hacker News and RSS worker ingestion paths pass `npm run check:hn-smoke` and `npm run check:rss-smoke`.
 - Unsupported/deferred source policy passes `npm run check:beta-scope-policy`.
 - Ring expansion policy passes `npm run check:beta-ring-policy`.
 - Persistence readiness passes `npm run check:persistence-readiness`.
@@ -76,7 +77,7 @@ Record decision as `go`, `hold` or `rework` with onboarding, launch, feedback an
 Required evidence links:
 
 1. fresh tenant E2E result or `npm run check:mvp-core-loop` result for backend MVP loop, digest delivery and pause/resume behavior
-2. supported source certification and beta scope source policy
+2. supported source certification, HN/RSS worker smokes and beta scope source policy
 3. summary eval/citation gate
 4. tenant isolation/redaction checks
 5. cost/usage dashboard

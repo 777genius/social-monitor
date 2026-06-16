@@ -13,6 +13,8 @@
       "requiredGates": [
         "check:mvp-core-loop",
         "check:source-certification",
+        "check:hn-smoke",
+        "check:rss-smoke",
         "check:beta-scope-policy",
         "check:delivery-replay"
       ]
@@ -27,6 +29,8 @@
       "requiredGates": [
         "check:mvp-core-loop",
         "check:source-certification",
+        "check:hn-smoke",
+        "check:rss-smoke",
         "check:beta-scope-policy",
         "check:load-cost",
         "check:observability",
@@ -44,6 +48,8 @@
       "requiredGates": [
         "check:mvp-core-loop",
         "check:source-certification",
+        "check:hn-smoke",
+        "check:rss-smoke",
         "check:beta-scope-policy",
         "check:load-cost",
         "check:observability",
@@ -62,6 +68,8 @@
   },
   "sourceHealthThresholds": {
     "certificationGate": "npm run check:source-certification",
+    "hackerNewsSmokeGate": "npm run check:hn-smoke",
+    "rssSmokeGate": "npm run check:rss-smoke",
     "scopePolicyGate": "npm run check:beta-scope-policy",
     "maxProviderFailureRatePercent": 5,
     "maxCursorResetRatePercent": 2,

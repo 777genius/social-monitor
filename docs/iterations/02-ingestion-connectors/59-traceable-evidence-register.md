@@ -62,6 +62,7 @@ Verified guarantees:
 Verified commands:
 
 - `npm run build`
+- `npm run check:hn-smoke`
 - `env NODE_OPTIONS=--max-old-space-size=1024 npx jest --config jest.config.ts --runInBand libs/monitoring/adapters/queue/in-memory-scan-queue.adapter.spec.ts libs/monitoring/features/request-scan/request-scan.use-case.spec.ts libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case.spec.ts libs/ingestion/features/execute-scan/execute-scan.use-case.spec.ts libs/ingestion/adapters/source/registry-source-fetcher.adapter.spec.ts libs/ingestion/adapters/source/in-memory-source-provider.registry.spec.ts libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider.spec.ts libs/contracts/events/event-catalog.spec.ts`
 - `timeout 120s node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` standalone AppModule/worker/supertest smoke verified REST HN source binding, queue `providerKey/sourceQuery` payload, worker provider-registry execution using deterministic HN fixture client, feed REST visibility and scan status success.
 - `timeout 45s node -r ts-node/register -r tsconfig-paths/register - <<'NODE' ...` live HTTP smoke verified `HttpHackerNewsClient.listStories('top', 2)` through public HN Firebase API and `HttpHackerNewsClient.searchStories('monitoring', 2)` through HN Algolia search without API keys.
@@ -73,6 +74,7 @@ Verified commands:
 
 Evidence notes:
 
+- `npm run check:hn-smoke` is now the deterministic worker-path gate for Hacker News: queue handler -> provider registry -> HN fixture client -> source item persistence -> feed projection -> cursor commit -> scan success report.
 - `EnqueueScanCommand` and `FetchSourceItemsCommand` now include safe `providerKey` and `sourceQuery` metadata.
 - `RequestScanUseCase` and `ScheduleDueScansUseCase` derive source query metadata from source binding config through a small presentation-safe helper, falling back to binding id when no safe query field exists.
 - `ExecuteScanCommandHandler` rejects malformed provider/query payloads at the queue adapter boundary before calling the use case.
@@ -101,6 +103,7 @@ Verified commands:
 
 Evidence notes:
 
+- `npm run check:rss-smoke` is the deterministic worker-path gate for RSS: queue handler -> provider registry -> RSS fixture client -> source item persistence -> feed projection -> ETag cursor commit -> scan success report.
 - RSS source bindings now derive safe queue metadata as `{ mode: 'url', query: feedUrl }` without exposing raw protected config fields.
 - `FetchSourceItemsCommand` accepts the last committed cursor, and `ExecuteScanUseCase` passes it to the provider before saving a new cursor after successful source item/feed projection.
 - `HttpRssClient` validates initial and final redirect URLs through the feed URL policy, rejects private/local network targets, sends conditional `If-None-Match` and `If-Modified-Since` headers and parses RSS 2.0 plus Atom entries through `fast-xml-parser`.
