@@ -27,6 +27,27 @@
       ]
     },
     {
+      "providerKey": "github",
+      "readinessState": "enabled_beta",
+      "productionSafe": true,
+      "cursorModel": "page_token",
+      "quotaModel": "per_app",
+      "itemCount": 1,
+      "warningCount": 0,
+      "firstExternalId": "github:I_github_fixture_9001",
+      "nextCursor": "1",
+      "repeatedScanItemCount": 1,
+      "failureKind": "unavailable",
+      "checks": [
+        "capability_profile_matches_readiness",
+        "unsupported_query_rejected_before_scan",
+        "normalized_items_have_stable_identity",
+        "cursor_contract_is_non_empty_for_cursor_models",
+        "fixture_repeated_scan_is_deterministic",
+        "provider_errors_are_classified"
+      ]
+    },
+    {
       "providerKey": "hacker-news",
       "readinessState": "enabled_beta",
       "productionSafe": true,

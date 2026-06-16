@@ -26,6 +26,13 @@ const rssProfile: SourceCapabilityProfile = {
   supportsCursor: true,
 };
 
+const githubProfile: SourceCapabilityProfile = {
+  providerKey: 'github',
+  version: 1,
+  productionSafe: true,
+  supportsCursor: true,
+};
+
 const redditProfile: SourceCapabilityProfile = {
   providerKey: 'reddit',
   version: 1,
@@ -37,6 +44,7 @@ const sourceProfiles = new Map([
   [fakeSourceProfile.providerKey, fakeSourceProfile],
   [hackerNewsProfile.providerKey, hackerNewsProfile],
   [rssProfile.providerKey, rssProfile],
+  [githubProfile.providerKey, githubProfile],
   [redditProfile.providerKey, redditProfile],
 ]);
 
@@ -110,6 +118,18 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
 
       return firstNonEmptyString(config.query, config.term) === undefined
         ? { ok: false, reason: 'Reddit search source requires query or term.' }
+        : { ok: true };
+    }
+
+    if (providerKey === 'github') {
+      const mode = firstNonEmptyString(config.mode) ?? 'search';
+
+      if (mode !== 'search') {
+        return { ok: false, reason: `Unsupported GitHub query mode: ${mode}` };
+      }
+
+      return firstNonEmptyString(config.query, config.term) === undefined
+        ? { ok: false, reason: 'GitHub search source requires query or term.' }
         : { ok: true };
     }
 

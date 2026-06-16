@@ -31,6 +31,8 @@ import { PrismaSourceItemRepository } from '../../../libs/ingestion/adapters/per
 import { InMemoryScanFailureQueueAdapter } from '../../../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
 import { CircuitBreakerSourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
 import { FakeSourceProvider } from '../../../libs/ingestion/adapters/source/fake-source.provider';
+import { GitHubSourceProvider } from '../../../libs/ingestion/adapters/source/github/github-source.provider';
+import { HttpGitHubClient } from '../../../libs/ingestion/adapters/source/github/http-github-client';
 import { HackerNewsSourceProvider } from '../../../libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
 import { HttpHackerNewsClient } from '../../../libs/ingestion/adapters/source/hacker-news/http-hacker-news-client';
 import { InMemorySourceProviderRegistry } from '../../../libs/ingestion/adapters/source/in-memory-source-provider.registry';
@@ -108,6 +110,15 @@ import { ScanSchedulerLoop } from './scan-scheduler-loop';
     },
     FakeSourceProvider,
     {
+      provide: HttpGitHubClient,
+      useFactory: () => new HttpGitHubClient(),
+    },
+    {
+      provide: GitHubSourceProvider,
+      useFactory: (client: HttpGitHubClient) => new GitHubSourceProvider(client),
+      inject: [HttpGitHubClient],
+    },
+    {
       provide: HttpHackerNewsClient,
       useFactory: () => new HttpHackerNewsClient(),
     },
@@ -138,15 +149,22 @@ import { ScanSchedulerLoop } from './scan-scheduler-loop';
       provide: InMemorySourceProviderRegistry,
       useFactory: (
         fakeProvider: FakeSourceProvider,
+        githubProvider: GitHubSourceProvider,
         hackerNewsProvider: HackerNewsSourceProvider,
         redditProvider: RedditSourceProvider,
         rssProvider: RssSourceProvider,
       ) =>
         new InMemorySourceProviderRegistry(
-          [fakeProvider, hackerNewsProvider, redditProvider, rssProvider],
+          [fakeProvider, githubProvider, hackerNewsProvider, redditProvider, rssProvider],
           sourceReadinessProfiles,
         ),
-      inject: [FakeSourceProvider, HackerNewsSourceProvider, RedditSourceProvider, RssSourceProvider],
+      inject: [
+        FakeSourceProvider,
+        GitHubSourceProvider,
+        HackerNewsSourceProvider,
+        RedditSourceProvider,
+        RssSourceProvider,
+      ],
     },
     {
       provide: RegistrySourceFetcherAdapter,

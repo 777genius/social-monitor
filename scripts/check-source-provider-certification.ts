@@ -4,6 +4,8 @@ import { dirname } from 'node:path';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { FakeSourceProvider } from '../libs/ingestion/adapters/source/fake-source.provider';
+import { FixtureGitHubClient } from '../libs/ingestion/adapters/source/github/fixture-github-client';
+import { GitHubSourceProvider } from '../libs/ingestion/adapters/source/github/github-source.provider';
 import { FixtureHackerNewsClient } from '../libs/ingestion/adapters/source/hacker-news/fixture-hacker-news-client';
 import { HackerNewsSourceProvider } from '../libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
 import { FixtureRedditClient } from '../libs/ingestion/adapters/source/reddit/fixture-reddit-client';
@@ -77,6 +79,16 @@ const cases: readonly ProviderCase[] = [
     unsupportedQueryMode: 'thread',
     expectedProviderKey: 'hacker-news',
     expectedFailureKind: 'unavailable',
+  },
+  {
+    providerFactory: () => new GitHubSourceProvider(new FixtureGitHubClient()),
+    validQuery: { mode: 'search', query: 'social monitoring repo:777genius/social-monitor' },
+    unsupportedQueryMode: 'thread',
+    expectedProviderKey: 'github',
+    expectedFailureKind: 'unavailable',
+    contextConfig: {
+      maxItems: 1,
+    },
   },
   {
     providerFactory: () => new RssSourceProvider(new FixtureRssClient()),

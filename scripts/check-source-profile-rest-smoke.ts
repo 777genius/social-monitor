@@ -62,7 +62,7 @@ async function main(): Promise<void> {
     const sources = response.body.sources as readonly SourceProfile[];
 
     assert(Array.isArray(sources), 'source profile REST response must return a sources array');
-    assert(sources.length >= 4, 'source profile REST response must expose enabled MVP sources');
+    assert(sources.length >= 5, 'source profile REST response must expose enabled MVP sources');
     assert(
       sources.map((source) => source.providerKey).join(',') ===
         [...sources].map((source) => source.providerKey).sort().join(','),
@@ -70,8 +70,16 @@ async function main(): Promise<void> {
     );
 
     requireSource(sources, 'fake-source');
+    const github = requireSource(sources, 'github');
     requireSource(sources, 'hacker-news');
     requireSource(sources, 'rss');
+
+    assert(github.displayName === 'GitHub', 'GitHub profile must expose display name');
+    assert(github.productionSafe === true, 'GitHub profile must be marked production safe');
+    assert(github.readinessState === 'enabled_beta', 'GitHub readiness must be enabled beta');
+    assert(github.acquisitionMode === 'official_or_open_api', 'GitHub profile must document official API acquisition');
+    assert(github.supportedQueryModes.includes('search'), 'GitHub profile must support search mode');
+    assert(github.cursorModel === 'page_token', 'GitHub profile must expose page-token cursor model');
 
     const reddit = requireSource(sources, 'reddit');
 

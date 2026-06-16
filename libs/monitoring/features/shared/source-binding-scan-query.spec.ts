@@ -64,4 +64,22 @@ describe('sourceBindingScanQuery', () => {
       },
     }))).toEqual({ mode: 'listing', query: 'observability' });
   });
+
+  it('maps GitHub search bindings without exposing optional credentials', () => {
+    expect(sourceBindingScanQuery(makeBinding({
+      providerKey: 'github',
+      config: {
+        mode: 'listing',
+        query: 'social monitoring repo:777genius/social-monitor',
+        accessToken: {
+          encrypted: true,
+          algorithm: 'aes-256-gcm',
+          keyId: 'local',
+          iv: 'iv',
+          ciphertext: 'ciphertext',
+          authTag: 'tag',
+        },
+      },
+    }))).toEqual({ mode: 'search', query: 'social monitoring repo:777genius/social-monitor' });
+  });
 });

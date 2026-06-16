@@ -8,6 +8,8 @@ import type { PrismaIngestionClient } from '../../adapters/persistence/prisma/pr
 import { PrismaScanFailureQueueAdapter } from '../../adapters/persistence/prisma/prisma-scan-failure-queue.adapter';
 import { InMemoryScanFailureQueueAdapter } from '../../adapters/queue/in-memory-scan-failure-queue.adapter';
 import { FakeSourceProvider } from '../../adapters/source/fake-source.provider';
+import { FixtureGitHubClient } from '../../adapters/source/github/fixture-github-client';
+import { GitHubSourceProvider } from '../../adapters/source/github/github-source.provider';
 import { FixtureHackerNewsClient } from '../../adapters/source/hacker-news/fixture-hacker-news-client';
 import { HackerNewsSourceProvider } from '../../adapters/source/hacker-news/hacker-news-source.provider';
 import { InMemorySourceProviderRegistry } from '../../adapters/source/in-memory-source-provider.registry';
@@ -65,6 +67,7 @@ import { SourceProfileController } from './source-profile.controller';
       ],
     },
     FakeSourceProvider,
+    FixtureGitHubClient,
     FixtureHackerNewsClient,
     FixtureRedditClient,
     FixtureRssClient,
@@ -72,6 +75,11 @@ import { SourceProfileController } from './source-profile.controller';
       provide: HackerNewsSourceProvider,
       useFactory: (client: FixtureHackerNewsClient) => new HackerNewsSourceProvider(client),
       inject: [FixtureHackerNewsClient],
+    },
+    {
+      provide: GitHubSourceProvider,
+      useFactory: (client: FixtureGitHubClient) => new GitHubSourceProvider(client),
+      inject: [FixtureGitHubClient],
     },
     {
       provide: RssSourceProvider,
@@ -87,15 +95,22 @@ import { SourceProfileController } from './source-profile.controller';
       provide: InMemorySourceProviderRegistry,
       useFactory: (
         fakeProvider: FakeSourceProvider,
+        githubProvider: GitHubSourceProvider,
         hackerNewsProvider: HackerNewsSourceProvider,
         redditProvider: RedditSourceProvider,
         rssProvider: RssSourceProvider,
       ) =>
         new InMemorySourceProviderRegistry(
-          [fakeProvider, hackerNewsProvider, redditProvider, rssProvider],
+          [fakeProvider, githubProvider, hackerNewsProvider, redditProvider, rssProvider],
           sourceReadinessProfiles,
         ),
-      inject: [FakeSourceProvider, HackerNewsSourceProvider, RedditSourceProvider, RssSourceProvider],
+      inject: [
+        FakeSourceProvider,
+        GitHubSourceProvider,
+        HackerNewsSourceProvider,
+        RedditSourceProvider,
+        RssSourceProvider,
+      ],
     },
     {
       provide: ListSourceProfilesUseCase,
