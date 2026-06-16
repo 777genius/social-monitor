@@ -1173,3 +1173,24 @@ Evidence notes:
 - Readiness metadata is intentionally self-describing and does not call databases or external providers, so it is safe for frequent probes.
 - `check:api-health` now validates the readiness contract through a focused `HealthController` Nest smoke instead of booting the full `AppModule`, avoiding slow provider initialization in constrained CI/container shells.
 - `scripts/check-openapi.ts` now supplies deterministic fallback smoke secrets for AppModule-based contract generation. In this container, `npm run check:openapi` was attempted and was killed by the runtime with `SIGKILL` before producing a drift result, so it is not recorded as passed evidence for this slice.
+
+## PR 42 Lightweight OpenAPI Contract Gate Evidence
+
+- `pending commit: chore: make openapi contract check lightweight`
+
+Verified commands:
+
+- `npm run check:openapi`
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run check:secrets`
+- `git diff --check`
+
+Evidence notes:
+
+- `check:openapi` now generates the snapshot from real REST controllers and DTO metadata through a dedicated contract-only Nest module.
+- The contract module provides no-op application services, `ApiKeyRequestAuthorizer`, `DeliveryReadAuthorizer` and workspace authorization policy only for dependency injection during Swagger document generation.
+- Production `AppModule`, persistence adapters, worker wiring and external-provider setup are no longer bootstrapped for OpenAPI snapshot checks.
+- The generated snapshot stayed byte-for-byte compatible with `libs/contracts/rest/openapi.snapshot.json`, proving the public REST surface did not change.
+- `check:openapi` is bounded with `run-with-timeout` and a memory cap so constrained CI/container runs fail deterministically instead of hanging or consuming unbounded memory.
