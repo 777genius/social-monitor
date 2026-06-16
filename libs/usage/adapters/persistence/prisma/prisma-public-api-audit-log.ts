@@ -1,4 +1,9 @@
-import type { PublicApiAuditLogPort, PublicApiAuditRecord } from '../../../ports';
+import type {
+  ListPublicApiAuditRecordsQuery,
+  ListPublicApiAuditRecordsResult,
+  PublicApiAuditLogPort,
+  PublicApiAuditRecord,
+} from '../../../ports';
 import type { PrismaUsageClient } from './prisma-usage-client';
 import { publicApiAuditRecordFromPrisma } from './prisma-usage-records';
 
@@ -24,15 +29,54 @@ export class PrismaPublicApiAuditLog implements PublicApiAuditLogPort {
     });
   }
 
-  async list(params: Parameters<PublicApiAuditLogPort['list']>[0]): Promise<readonly PublicApiAuditRecord[]> {
-    const records = await this.prisma.publicApiAuditEvent.findMany({
-      where: {
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-      },
-      orderBy: { occurredAt: 'desc' },
-    });
+  async list(query: ListPublicApiAuditRecordsQuery): Promise<ListPublicApiAuditRecordsResult> {
+    const offset = parseCursor(query.cursor);
+    const where = {
+      tenantId: query.tenantId,
+      workspaceId: query.workspaceId,
+      actorType: query.actorType,
+      actorId: query.actorId,
+      action: query.action,
+      outcome: query.outcome,
+      resourceType: query.resourceType,
+    };
+    const [records, total] = await Promise.all([
+      this.prisma.publicApiAuditEvent.findMany({
+        where,
+        orderBy: [
+          { occurredAt: 'desc' },
+          { id: 'desc' },
+        ],
+        skip: offset,
+        take: query.limit,
+      }),
+      this.prisma.publicApiAuditEvent.count({ where }),
+    ]);
+    const nextOffset = offset + records.length;
 
-    return records.map(publicApiAuditRecordFromPrisma);
+    return {
+      records: records.map(publicApiAuditRecordFromPrisma),
+      nextCursor: nextOffset < total ? encodeCursor(nextOffset) : undefined,
+    };
   }
 }
+
+const encodeCursor = (offset: number): string => Buffer.from(JSON.stringify({ offset })).toString('base64url');
+
+const parseCursor = (cursor: string | undefined): number => {
+  if (cursor === undefined) {
+    return 0;
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { offset?: unknown };
+
+    if (typeof parsed.offset === 'number' && Number.isInteger(parsed.offset) && parsed.offset >= 0) {
+      return parsed.offset;
+    }
+  } catch {
+    return 0;
+  }
+
+  return 0;
+};

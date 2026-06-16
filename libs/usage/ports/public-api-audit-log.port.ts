@@ -18,10 +18,24 @@ export type PublicApiAuditRecord = {
   readonly occurredAt: Date;
 };
 
+export type ListPublicApiAuditRecordsQuery = {
+  readonly tenantId: TenantId;
+  readonly workspaceId: WorkspaceId;
+  readonly actorType?: PublicApiAuditRecord['actorType'];
+  readonly actorId?: string;
+  readonly action?: string;
+  readonly outcome?: PublicApiAuditOutcome;
+  readonly resourceType?: string;
+  readonly limit: number;
+  readonly cursor?: string;
+};
+
+export type ListPublicApiAuditRecordsResult = {
+  readonly records: readonly PublicApiAuditRecord[];
+  readonly nextCursor?: string;
+};
+
 export interface PublicApiAuditLogPort {
   append(record: PublicApiAuditRecord): Promise<void>;
-  list(params: {
-    readonly tenantId: TenantId;
-    readonly workspaceId: WorkspaceId;
-  }): Promise<readonly PublicApiAuditRecord[]>;
+  list(query: ListPublicApiAuditRecordsQuery): Promise<ListPublicApiAuditRecordsResult>;
 }

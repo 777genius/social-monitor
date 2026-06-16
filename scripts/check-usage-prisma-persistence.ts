@@ -53,9 +53,12 @@ async function main(): Promise<void> {
   });
   assert(isOk(audit), 'public API audit event must be persisted');
 
-  const records = await auditLog.list({ tenantId: tenant, workspaceId: workspace });
-  assert(records.length === 1, 'public API audit log must list persisted event');
-  assert(records[0]?.metadata.authorization === '[REDACTED]', 'public API audit metadata must stay redacted');
+  const records = await auditLog.list({ tenantId: tenant, workspaceId: workspace, limit: 10 });
+  assert(records.records.length === 1, 'public API audit log must list persisted event');
+  assert(
+    records.records[0]?.metadata.authorization === '[REDACTED]',
+    'public API audit metadata must stay redacted',
+  );
 
   const rateLimitUseCase = new CheckPublicApiRateLimitUseCase(rateLimits, clock);
   assert(isOk(await rateLimitUseCase.execute({
@@ -142,9 +145,25 @@ class FakePrismaUsageClient implements PrismaUsageClient {
       this.auditEvents
         .filter((record) => (
           record.tenantId === args.where.tenantId &&
-          record.workspaceId === args.where.workspaceId
+          record.workspaceId === args.where.workspaceId &&
+          (args.where.actorType === undefined || record.actorType === args.where.actorType) &&
+          (args.where.actorId === undefined || record.actorId === args.where.actorId) &&
+          (args.where.action === undefined || record.action === args.where.action) &&
+          (args.where.outcome === undefined || record.outcome === args.where.outcome) &&
+          (args.where.resourceType === undefined || record.resourceType === args.where.resourceType)
         ))
-        .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime()),
+        .sort(compareAuditRecords)
+        .slice(args.skip, args.skip + args.take),
+    count: async (args) =>
+      this.auditEvents.filter((record) => (
+        record.tenantId === args.where.tenantId &&
+        record.workspaceId === args.where.workspaceId &&
+        (args.where.actorType === undefined || record.actorType === args.where.actorType) &&
+        (args.where.actorId === undefined || record.actorId === args.where.actorId) &&
+        (args.where.action === undefined || record.action === args.where.action) &&
+        (args.where.outcome === undefined || record.outcome === args.where.outcome) &&
+        (args.where.resourceType === undefined || record.resourceType === args.where.resourceType)
+      )).length,
   };
 
   readonly rateLimitBucket: PrismaUsageClient['rateLimitBucket'] = {
@@ -207,6 +226,19 @@ class FakePrismaUsageClient implements PrismaUsageClient {
     },
   };
 }
+
+const compareAuditRecords = (
+  left: PrismaPublicApiAuditEventRecord,
+  right: PrismaPublicApiAuditEventRecord,
+): number => {
+  const occurredAtDiff = right.occurredAt.getTime() - left.occurredAt.getTime();
+
+  if (occurredAtDiff !== 0) {
+    return occurredAtDiff;
+  }
+
+  return right.id.localeCompare(left.id);
+};
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {

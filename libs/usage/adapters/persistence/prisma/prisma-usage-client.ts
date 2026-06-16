@@ -26,9 +26,27 @@ export type PrismaUsageClient = {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
+        readonly actorType?: 'api_key' | 'system';
+        readonly actorId?: string;
+        readonly action?: string;
+        readonly outcome?: 'succeeded' | 'failed' | 'denied';
+        readonly resourceType?: string;
       };
-      readonly orderBy: { readonly occurredAt: 'desc' };
+      readonly orderBy: readonly [{ readonly occurredAt: 'desc' }, { readonly id: 'desc' }];
+      readonly skip: number;
+      readonly take: number;
     }): Promise<readonly PrismaPublicApiAuditEventRecord[]>;
+    count(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly actorType?: 'api_key' | 'system';
+        readonly actorId?: string;
+        readonly action?: string;
+        readonly outcome?: 'succeeded' | 'failed' | 'denied';
+        readonly resourceType?: string;
+      };
+    }): Promise<number>;
   };
   readonly rateLimitBucket: {
     deleteMany(args: {

@@ -128,6 +128,36 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     });
   });
 
+  it('allows owner and admin roles to read public API audit events', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'public_api_audit.read',
+      roles: ['admin'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  it('denies viewer role from reading public API audit events', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'public_api_audit.read',
+      roles: ['viewer'],
+    })).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'authorization.denied',
+      }),
+    });
+  });
+
   it('allows viewers to read notification preferences but not write them', () => {
     const policy = new StaticWorkspaceAuthorizationPolicy();
 

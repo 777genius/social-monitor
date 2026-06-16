@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { IdentityAuthorizationModule } from '@social-monitor/identity/interfaces/authorization/identity-authorization.module';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { InMemoryPublicApiAuditLog } from '../../adapters/audit/in-memory-public-api-audit-log';
@@ -10,6 +11,7 @@ import { PrismaUsageQuotaLedger } from '../../adapters/persistence/prisma/prisma
 import { InMemoryUsageQuotaLedger } from '../../adapters/quota/in-memory-usage-quota-ledger';
 import { InMemoryRateLimitCounter } from '../../adapters/rate-limit/in-memory-rate-limit-counter';
 import { CheckPublicApiRateLimitUseCase } from '../../features/check-public-api-rate-limit/check-public-api-rate-limit.use-case';
+import { ListPublicApiAuditEventsUseCase } from '../../features/list-public-api-audit-events/list-public-api-audit-events.use-case';
 import { RecordPublicApiAuditEventUseCase } from '../../features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import { ReserveUsageQuotaUseCase } from '../../features/reserve-usage-quota/reserve-usage-quota.use-case';
 import type { PublicApiAuditLogPort, RateLimitCounterPort, UsageQuotaLedgerPort } from '../../ports';
@@ -22,8 +24,11 @@ import {
   resolveUsagePersistenceMode,
   type UsagePersistenceMode,
 } from './usage-provider-tokens';
+import { PublicApiAuditEventsController } from './public-api-audit-events.controller';
 
 @Module({
+  imports: [IdentityAuthorizationModule],
+  controllers: [PublicApiAuditEventsController],
   providers: [
     {
       provide: USAGE_PERSISTENCE_MODE,
@@ -87,6 +92,11 @@ import {
       inject: [USAGE_PUBLIC_API_AUDIT_LOG],
     },
     {
+      provide: ListPublicApiAuditEventsUseCase,
+      useFactory: (auditLog: PublicApiAuditLogPort) => new ListPublicApiAuditEventsUseCase(auditLog),
+      inject: [USAGE_PUBLIC_API_AUDIT_LOG],
+    },
+    {
       provide: ReserveUsageQuotaUseCase,
       useFactory: (ledger: UsageQuotaLedgerPort) =>
         new ReserveUsageQuotaUseCase(ledger, new SystemClock()),
@@ -98,6 +108,7 @@ import {
     InMemoryPublicApiAuditLog,
     InMemoryRateLimitCounter,
     InMemoryUsageQuotaLedger,
+    ListPublicApiAuditEventsUseCase,
     RecordPublicApiAuditEventUseCase,
     ReserveUsageQuotaUseCase,
     USAGE_PUBLIC_API_AUDIT_LOG,

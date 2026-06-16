@@ -16,6 +16,7 @@ export type WorkspaceAction =
   | 'feed.read'
   | 'notification_preferences.read'
   | 'notification_preferences.write'
+  | 'public_api_audit.read'
   | 'realtime_events.read'
   | 'scan_dead_letters.read'
   | 'topics.create'
