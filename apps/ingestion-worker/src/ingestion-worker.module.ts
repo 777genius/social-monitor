@@ -230,27 +230,22 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
       inject: [INGESTION_SCAN_QUEUE_READER_MODE],
     },
     {
-      provide: InMemoryScanCommandQueueReader,
-      useFactory: (queue: InMemoryQueuePublisher) => new InMemoryScanCommandQueueReader(queue),
-      inject: [InMemoryQueuePublisher],
-    },
-    {
-      provide: RabbitMqScanCommandQueueReader,
-      useFactory: (
-        channel: AmqplibRabbitMqChannel | null,
-        options: ReturnType<typeof resolveIngestionRabbitMqScanQueueReaderOptions>,
-      ) => new RabbitMqScanCommandQueueReader(requireRabbitMqScanQueueChannel(channel), options),
-      inject: [INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL, INGESTION_RABBITMQ_SCAN_QUEUE_READER_OPTIONS],
-    },
-    {
       provide: INGESTION_SCAN_COMMAND_QUEUE_READER,
       useFactory: (
         mode: IngestionScanQueueReaderMode,
-        inMemoryReader: InMemoryScanCommandQueueReader,
-        rabbitMqReader: RabbitMqScanCommandQueueReader,
+        queue: InMemoryQueuePublisher,
+        channel: AmqplibRabbitMqChannel | null,
+        options: ReturnType<typeof resolveIngestionRabbitMqScanQueueReaderOptions>,
       ): ScanCommandQueueReaderPort =>
-        mode === 'rabbitmq' ? rabbitMqReader : inMemoryReader,
-      inject: [INGESTION_SCAN_QUEUE_READER_MODE, InMemoryScanCommandQueueReader, RabbitMqScanCommandQueueReader],
+        mode === 'rabbitmq'
+          ? new RabbitMqScanCommandQueueReader(requireRabbitMqScanQueueChannel(channel), options)
+          : new InMemoryScanCommandQueueReader(queue),
+      inject: [
+        INGESTION_SCAN_QUEUE_READER_MODE,
+        InMemoryQueuePublisher,
+        INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL,
+        INGESTION_RABBITMQ_SCAN_QUEUE_READER_OPTIONS,
+      ],
     },
     NoopScanExecutionReporterAdapter,
     {
