@@ -63,6 +63,29 @@ async function main(): Promise<void> {
     nextRunAt: new Date('2026-06-06T09:59:00.000Z'),
     createdAt: new Date('2026-06-06T09:00:00.000Z'),
   }));
+  await bindings.save(SourceBinding.create({
+    id: 'paused-source-binding-scheduler-loop-smoke',
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId: 'paused-topic-scheduler-loop-smoke',
+    providerKey: 'rss',
+    capabilityProfileVersion: 1,
+    config: {
+      feedUrl: 'https://example.test/paused-feed.xml',
+    },
+    createdAt: new Date('2026-06-06T09:00:00.000Z'),
+  }).pause());
+  await policies.save(ScanPolicy.create({
+    id: 'paused-scan-policy-scheduler-loop-smoke',
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: 'paused-source-binding-scheduler-loop-smoke',
+    intervalSeconds: 300,
+    freshnessSeconds: 900,
+    retryBudget: 2,
+    nextRunAt: new Date('2026-06-06T09:59:30.000Z'),
+    createdAt: new Date('2026-06-06T09:00:00.000Z'),
+  }));
 
   const loop = new ScanSchedulerLoop(
     new ScheduleDueScansCommandHandler(
@@ -96,6 +119,10 @@ async function main(): Promise<void> {
   assert(queued[0]?.commandType === 'ingestion.scan.execute', 'loop must enqueue scan execution command');
   assert(queued[0]?.payload.providerKey === 'rss', `expected RSS provider payload, got ${JSON.stringify(queued[0]?.payload)}`);
   assert(
+    queued[0]?.payload.sourceBindingId === 'source-binding-scheduler-loop-smoke',
+    `paused source binding must not enqueue scan commands, got ${JSON.stringify(queued[0]?.payload)}`,
+  );
+  assert(
     metrics.counterValue('monitoring_scan_scheduler_runs_total', {
       status: 'succeeded',
       worker: 'ingestion-worker',
@@ -111,6 +138,15 @@ async function main(): Promise<void> {
   assert(
     advancedPolicy?.toSnapshot().nextRunAt.toISOString() === '2026-06-06T10:04:00.000Z',
     `scheduled policy must advance next run, got ${advancedPolicy?.toSnapshot().nextRunAt.toISOString()}`,
+  );
+  const pausedPolicy = await policies.findBySourceBinding({
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: 'paused-source-binding-scheduler-loop-smoke',
+  });
+  assert(
+    pausedPolicy?.toSnapshot().nextRunAt.toISOString() === '2026-06-06T09:59:30.000Z',
+    `paused source binding policy must not advance next run, got ${pausedPolicy?.toSnapshot().nextRunAt.toISOString()}`,
   );
 
   console.log('Scan scheduler loop smoke OK');

@@ -200,4 +200,88 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
     });
     expect(queue.all()).toHaveLength(initialQueueLength + 1);
   });
+
+  it('skips due scheduled scan for a paused source binding without advancing cadence', async () => {
+    const tenant = 'tenant-scheduled-paused-e2e';
+    const workspace = 'workspace-scheduled-paused-e2e';
+    const initialQueueLength = queue.all().length;
+
+    const topic = await request(app.getHttpServer())
+      .post('/topics')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-scheduled-paused-topic')
+      .set('idempotency-key', 'create-scheduled-paused-topic')
+      .send({
+        name: 'Scheduled Paused Monitoring',
+        query: 'scheduled paused monitoring',
+      })
+      .expect(201);
+
+    const binding = await request(app.getHttpServer())
+      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-scheduled-paused-bind')
+      .set('idempotency-key', 'bind-scheduled-paused-source')
+      .send({
+        providerKey: 'fake-source',
+        config: { query: 'scheduled paused monitoring' },
+      })
+      .expect(201);
+
+    const policy = await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-scheduled-paused-policy')
+      .set('idempotency-key', 'set-scheduled-paused-policy')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/status`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'pause-scheduled-source-binding')
+      .set('idempotency-key', 'pause-scheduled-source-binding')
+      .send({ status: 'paused' })
+      .expect(200);
+
+    const result = await scheduler.execute({
+      tenantId: tenantId(tenant),
+      workspaceId: workspaceId(workspace),
+      limit: 10,
+      correlationId: 'scheduler-tick-paused-e2e',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value).toMatchObject({
+      evaluated: 1,
+      enqueued: 0,
+      skipped: 1,
+    });
+    expect(queue.all()).toHaveLength(initialQueueLength);
+
+    const unchangedPolicy = await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(unchangedPolicy.body).toMatchObject({
+      scanPolicyId: policy.body.scanPolicyId,
+      sourceBindingId: binding.body.sourceBindingId,
+      nextRunAt: policy.body.nextRunAt,
+    });
+  });
 });

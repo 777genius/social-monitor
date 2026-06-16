@@ -325,6 +325,53 @@ describe('ScheduleDueScansUseCase', () => {
     expect(queue.commands).toHaveLength(0);
   });
 
+  it('skips due policy without advancing next run when source binding is paused', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding().pause());
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-paused-binding',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 0,
+        skipped: 1,
+      },
+    });
+    await expect(scanJobs.findByIdempotencyKey({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      idempotencyKey: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
+    })).resolves.toBeNull();
+    expect(queue.commands).toHaveLength(0);
+    expect((await policies.findBySourceBinding({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+    }))?.toSnapshot()).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
+    });
+  });
+
   it('skips due policy without advancing next run when queue is backpressured', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding());
