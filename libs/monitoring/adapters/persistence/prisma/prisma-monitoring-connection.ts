@@ -25,6 +25,7 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
   readonly sourceBinding: PrismaMonitoringClient['sourceBinding'];
   readonly scanPolicy: PrismaMonitoringClient['scanPolicy'];
   readonly scanJob: PrismaMonitoringClient['scanJob'];
+  readonly scanAttempt: PrismaMonitoringClient['scanAttempt'];
 
   private readonly pool: Pool;
   private readonly client: PrismaMonitoringRuntimeClient;
@@ -43,6 +44,7 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
     this.sourceBinding = this.client.sourceBinding;
     this.scanPolicy = this.client.scanPolicy;
     this.scanJob = this.client.scanJob;
+    this.scanAttempt = this.client.scanAttempt;
   }
 
   async close(): Promise<void> {

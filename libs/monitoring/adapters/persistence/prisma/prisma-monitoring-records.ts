@@ -66,6 +66,21 @@ export type PrismaScanJobRecord = {
   readonly createdAt: Date;
 };
 
+export type PrismaScanAttemptRecord = {
+  readonly scanJobId: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly sourceBindingId: string;
+  readonly status: 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+  readonly startedAt: Date;
+  readonly finishedAt: Date | null;
+  readonly fetched: number;
+  readonly inserted: number;
+  readonly skippedDuplicates: number;
+  readonly projected: number;
+  readonly failureReason: string | null;
+};
+
 export const topicFromPrisma = (record: PrismaTopicRecord): Topic =>
   Topic.rehydrate({
     id: record.id,

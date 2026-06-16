@@ -1,6 +1,7 @@
 export * from './idempotency.port';
 export * from './outbox.port';
 export * from './scan-job-repository.port';
+export * from './scan-execution-attempt-read.port';
 export * from './scan-policy-repository.port';
 export * from './scan-request-quota.port';
 export * from './scan-queue.port';

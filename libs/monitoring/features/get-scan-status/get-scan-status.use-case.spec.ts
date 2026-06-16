@@ -1,7 +1,12 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { ScanJob, type ScanJob as ScanJobEntity } from '../../domain';
-import type { ScanJobRepositoryPort } from '../../ports';
+import type {
+  FindScanExecutionAttemptQuery,
+  ScanExecutionAttemptReadPort,
+  ScanExecutionAttemptSnapshot,
+  ScanJobRepositoryPort,
+} from '../../ports';
 import { GetScanStatusUseCase } from './get-scan-status.use-case';
 
 class FakeScanJobs implements ScanJobRepositoryPort {
@@ -42,6 +47,24 @@ class FakeScanJobs implements ScanJobRepositoryPort {
   }
 }
 
+class FakeScanExecutionAttempts implements ScanExecutionAttemptReadPort {
+  constructor(private readonly latestAttempt: ScanExecutionAttemptSnapshot | null = null) {}
+
+  async findLatestByScanJob(query: FindScanExecutionAttemptQuery): Promise<ScanExecutionAttemptSnapshot | null> {
+    if (this.latestAttempt === null) {
+      return null;
+    }
+
+    return (
+      this.latestAttempt.tenantId === query.tenantId &&
+      this.latestAttempt.workspaceId === query.workspaceId &&
+      this.latestAttempt.scanJobId === query.scanJobId
+    )
+      ? this.latestAttempt
+      : null;
+  }
+}
+
 const makeJob = () =>
   ScanJob.request({
     id: 'scan-job-1',
@@ -59,7 +82,7 @@ describe('GetScanStatusUseCase', () => {
   it('returns current scan job status', async () => {
     const jobs = new FakeScanJobs();
     await jobs.save(makeJob());
-    const useCase = new GetScanStatusUseCase(jobs);
+    const useCase = new GetScanStatusUseCase(jobs, new FakeScanExecutionAttempts());
 
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
@@ -78,12 +101,53 @@ describe('GetScanStatusUseCase', () => {
         enqueuedAt: new Date('2026-06-06T00:00:01.000Z'),
         completedAt: undefined,
         failureReason: undefined,
+        latestAttempt: undefined,
       },
     });
   });
 
+  it('includes latest execution attempt counters when available', async () => {
+    const jobs = new FakeScanJobs();
+    await jobs.save(makeJob());
+    const useCase = new GetScanStatusUseCase(
+      jobs,
+      new FakeScanExecutionAttempts({
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        scanJobId: 'scan-job-1',
+        sourceBindingId: 'binding-1',
+        status: 'succeeded',
+        startedAt: new Date('2026-06-06T00:00:02.000Z'),
+        finishedAt: new Date('2026-06-06T00:00:05.000Z'),
+        fetched: 10,
+        inserted: 7,
+        skippedDuplicates: 2,
+        projected: 7,
+      }),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-1',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.latestAttempt).toEqual({
+      sourceBindingId: 'binding-1',
+      status: 'succeeded',
+      startedAt: new Date('2026-06-06T00:00:02.000Z'),
+      finishedAt: new Date('2026-06-06T00:00:05.000Z'),
+      fetched: 10,
+      inserted: 7,
+      skippedDuplicates: 2,
+      projected: 7,
+      failureReason: undefined,
+    });
+  });
+
   it('returns not found for a missing scan job in tenant scope', async () => {
-    const useCase = new GetScanStatusUseCase(new FakeScanJobs());
+    const useCase = new GetScanStatusUseCase(new FakeScanJobs(), new FakeScanExecutionAttempts());
 
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),

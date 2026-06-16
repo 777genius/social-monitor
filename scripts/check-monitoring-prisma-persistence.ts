@@ -10,6 +10,7 @@ import { resolveMonitoringPersistenceMode } from '../libs/monitoring/interfaces/
 import type { PrismaMonitoringClient } from '../libs/monitoring/adapters/persistence/prisma/prisma-monitoring-client';
 import type {
   PrismaScanJobRecord,
+  PrismaScanAttemptRecord,
   PrismaScanPolicyRecord,
   PrismaSourceBindingRecord,
   PrismaSourceCatalogEntryRecord,
@@ -219,6 +220,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   private readonly sourceBindings = new Map<string, PrismaSourceBindingRecord>();
   private readonly scanPolicies = new Map<string, PrismaScanPolicyRecord>();
   private readonly scanJobs = new Map<string, PrismaScanJobRecord>();
+  private readonly scanAttempts = new Map<string, PrismaScanAttemptRecord>();
 
   readonly topic: PrismaMonitoringClient['topic'] = {
     upsert: async (args) => {
@@ -381,6 +383,15 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
 
       return records[0] ?? null;
     },
+  };
+
+  readonly scanAttempt: PrismaMonitoringClient['scanAttempt'] = {
+    findFirst: async (args) =>
+      [...this.scanAttempts.values()].find((record) => (
+        record.tenantId === args.where.tenantId &&
+        record.workspaceId === args.where.workspaceId &&
+        record.scanJobId === args.where.scanJobId
+      )) ?? null,
   };
 
   private reindexSourceCatalog(): void {

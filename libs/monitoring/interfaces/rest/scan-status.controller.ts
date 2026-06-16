@@ -78,6 +78,19 @@ export class ScanStatusController {
           enqueuedAt: result.value.enqueuedAt?.toISOString(),
           completedAt: result.value.completedAt?.toISOString(),
           failureReason: result.value.failureReason,
+          latestAttempt: result.value.latestAttempt === undefined
+            ? undefined
+            : {
+                sourceBindingId: result.value.latestAttempt.sourceBindingId,
+                status: result.value.latestAttempt.status,
+                startedAt: result.value.latestAttempt.startedAt.toISOString(),
+                finishedAt: result.value.latestAttempt.finishedAt?.toISOString(),
+                fetched: result.value.latestAttempt.fetched,
+                inserted: result.value.latestAttempt.inserted,
+                skippedDuplicates: result.value.latestAttempt.skippedDuplicates,
+                projected: result.value.latestAttempt.projected,
+                failureReason: result.value.latestAttempt.failureReason,
+              },
         };
       });
   }

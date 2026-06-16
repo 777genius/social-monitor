@@ -1,5 +1,6 @@
 import type {
   PrismaScanJobRecord,
+  PrismaScanAttemptRecord,
   PrismaScanPolicyRecord,
   PrismaSourceBindingRecord,
   PrismaSourceCatalogEntryRecord,
@@ -167,5 +168,14 @@ export type PrismaMonitoringClient = {
       };
       readonly orderBy?: { readonly requestedAt: 'asc' | 'desc' };
     }): Promise<PrismaScanJobRecord | null>;
+  };
+  readonly scanAttempt: {
+    findFirst(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly scanJobId: string;
+      };
+    }): Promise<PrismaScanAttemptRecord | null>;
   };
 };

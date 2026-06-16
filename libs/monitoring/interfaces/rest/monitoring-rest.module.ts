@@ -9,12 +9,14 @@ import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-res
 import { InMemoryIdempotencyAdapter } from '../../adapters/idempotency/in-memory-idempotency.adapter';
 import { InMemoryOutboxAdapter } from '../../adapters/messaging/in-memory-outbox.adapter';
 import { InMemoryScanJobRepository } from '../../adapters/persistence/in-memory-scan-job.repository';
+import { InMemoryScanExecutionAttemptReadModel } from '../../adapters/persistence/in-memory-scan-execution-attempt-read-model';
 import { InMemoryScanPolicyRepository } from '../../adapters/persistence/in-memory-scan-policy.repository';
 import { InMemorySourceBindingRepository } from '../../adapters/persistence/in-memory-source-binding.repository';
 import { InMemoryTopicRepository } from '../../adapters/persistence/in-memory-topic.repository';
 import { PrismaMonitoringConnection } from '../../adapters/persistence/prisma/prisma-monitoring-connection';
 import type { PrismaMonitoringClient } from '../../adapters/persistence/prisma/prisma-monitoring-client';
 import { PrismaScanJobRepository } from '../../adapters/persistence/prisma/prisma-scan-job.repository';
+import { PrismaScanExecutionAttemptReadModel } from '../../adapters/persistence/prisma/prisma-scan-execution-attempt-read-model';
 import { PrismaScanPolicyRepository } from '../../adapters/persistence/prisma/prisma-scan-policy.repository';
 import { PrismaSourceBindingRepository } from '../../adapters/persistence/prisma/prisma-source-binding.repository';
 import { PrismaTopicRepository } from '../../adapters/persistence/prisma/prisma-topic.repository';
@@ -36,6 +38,7 @@ import { SetScanPolicyUseCase } from '../../features/set-scan-policy/set-scan-po
 import type {
   IdempotencyPort,
   OutboxPort,
+  ScanExecutionAttemptReadPort,
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
   ScanQueuePort,
@@ -51,6 +54,7 @@ import {
   MONITORING_PERSISTENCE_MODE,
   MONITORING_PRISMA_CLIENT,
   MONITORING_SCAN_JOB_REPOSITORY,
+  MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
   MONITORING_SCAN_POLICY_REPOSITORY,
   MONITORING_SCAN_QUEUE,
   MONITORING_SOURCE_BINDING_REPOSITORY,
@@ -124,6 +128,17 @@ import { TopicController } from './topic.controller';
         mode === 'prisma'
           ? new PrismaScanJobRepository(requirePrismaMonitoringClient(prisma))
           : new InMemoryScanJobRepository(),
+      inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
+    },
+    {
+      provide: MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
+      useFactory: (
+        mode: MonitoringPersistenceMode,
+        prisma: PrismaMonitoringClient | null,
+      ): ScanExecutionAttemptReadPort =>
+        mode === 'prisma'
+          ? new PrismaScanExecutionAttemptReadModel(requirePrismaMonitoringClient(prisma))
+          : new InMemoryScanExecutionAttemptReadModel(),
       inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
     },
     InMemoryQueuePublisher,
@@ -319,8 +334,11 @@ import { TopicController } from './topic.controller';
     },
     {
       provide: GetScanStatusUseCase,
-      useFactory: (scanJobs: ScanJobRepositoryPort) => new GetScanStatusUseCase(scanJobs),
-      inject: [MONITORING_SCAN_JOB_REPOSITORY],
+      useFactory: (
+        scanJobs: ScanJobRepositoryPort,
+        scanExecutionAttempts: ScanExecutionAttemptReadPort,
+      ) => new GetScanStatusUseCase(scanJobs, scanExecutionAttempts),
+      inject: [MONITORING_SCAN_JOB_REPOSITORY, MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL],
     },
     {
       provide: RecordScanExecutionUseCase,

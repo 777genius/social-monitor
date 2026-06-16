@@ -237,12 +237,13 @@ async function main(): Promise<void> {
   assertQueuedScanPayload(queuedScan.payload);
 
   const sourceRegistry = new InMemorySourceProviderRegistry([new FakeSourceProvider()], sourceReadinessProfiles);
+  const scanAttempts = new InMemoryScanAttemptRepository();
   const executeScanResult = unwrap(
     await new ExecuteScanUseCase(
       new RegistrySourceFetcherAdapter(sourceRegistry),
       new InMemorySourceItemRepository(),
       new InMemoryFeedProjectionAdapter(feedItems),
-      new InMemoryScanAttemptRepository(),
+      scanAttempts,
       new InMemoryScanCursorRepository(),
       new MonitoringScanExecutionReporter(new RecordScanExecutionUseCase(scanJobs)),
       new InMemoryScanFailureQueueAdapter(new InMemoryMetricsRecorder()),
@@ -262,7 +263,13 @@ async function main(): Promise<void> {
   assert(executeScanResult.projected === 2, `expected 2 projected feed items, got ${executeScanResult.projected}`);
 
   const scanStatus = unwrap(
-    await new GetScanStatusUseCase(scanJobs).execute({
+    await new GetScanStatusUseCase(scanJobs, {
+      findLatestByScanJob: async (query) => {
+        const attempt = await scanAttempts.findByScanJob(query);
+
+        return attempt?.toSnapshot() ?? null;
+      },
+    }).execute({
       tenantId: tenant,
       workspaceId: workspace,
       scanJobId: requestedScan.scanJobId,
@@ -270,6 +277,10 @@ async function main(): Promise<void> {
     'get scan status',
   );
   assert(scanStatus.status === 'succeeded', `expected succeeded scan job, got ${scanStatus.status}`);
+  assert(
+    scanStatus.latestAttempt?.inserted === 2,
+    `expected latest scan attempt with 2 inserted items, got ${scanStatus.latestAttempt?.inserted ?? 'missing'}`,
+  );
 
   const feedPage = unwrap(
     await new ListFeedItemsUseCase(feedItems).execute({
