@@ -1,0 +1,56 @@
+import type { SummaryPolicy } from '../../../domain';
+import type { SummaryPolicyRepositoryPort } from '../../../ports';
+import type { PrismaSummaryClient } from './prisma-summary-client';
+import { summaryPolicyFromPrisma } from './prisma-summary-records';
+
+export class PrismaSummaryPolicyRepository implements SummaryPolicyRepositoryPort {
+  constructor(private readonly prisma: PrismaSummaryClient) {}
+
+  async save(policy: SummaryPolicy): Promise<void> {
+    const snapshot = policy.toSnapshot();
+    const mutation = {
+      language: snapshot.language,
+      format: snapshot.format,
+      tone: snapshot.tone,
+      maxKeyPoints: snapshot.maxKeyPoints,
+      includeRisks: snapshot.includeRisks,
+      includeSourceHighlights: snapshot.includeSourceHighlights,
+      customInstructions: snapshot.customInstructions ?? null,
+      rulesVersion: snapshot.rulesVersion,
+      updatedAt: snapshot.updatedAt,
+    };
+
+    await this.prisma.summaryPolicy.upsert({
+      where: {
+        tenantId_workspaceId_topicId: {
+          tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId,
+          topicId: snapshot.topicId,
+        },
+      },
+      update: mutation,
+      create: {
+        ...mutation,
+        id: snapshot.id,
+        tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId,
+        topicId: snapshot.topicId,
+        createdAt: snapshot.createdAt,
+      },
+    });
+  }
+
+  async findByTopic(
+    params: Parameters<SummaryPolicyRepositoryPort['findByTopic']>[0],
+  ): Promise<SummaryPolicy | null> {
+    const record = await this.prisma.summaryPolicy.findFirst({
+      where: {
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        topicId: params.topicId,
+      },
+    });
+
+    return record === null ? null : summaryPolicyFromPrisma(record);
+  }
+}

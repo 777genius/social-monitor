@@ -10,7 +10,12 @@ import {
   type Result,
 } from '@social-monitor/shared-kernel';
 
-import { SummaryArtifact, type SummaryJob, type SummaryReadyEvent } from '../../domain';
+import {
+  defaultSummaryGenerationPolicy,
+  SummaryArtifact,
+  type SummaryJob,
+  type SummaryReadyEvent,
+} from '../../domain';
 import type {
   SummaryArtifactRepositoryPort,
   SummaryEvidenceSelectorPort,
@@ -19,6 +24,7 @@ import type {
   SummaryModelBudget,
   SummaryModelPolicy,
   SummaryModelPort,
+  SummaryPolicyRepositoryPort,
 } from '../../ports';
 import type { ExecuteSummaryJobCommand } from './execute-summary-job.command';
 import type { ExecuteSummaryJobResult } from './execute-summary-job.result';
@@ -42,6 +48,7 @@ export class ExecuteSummaryJobUseCase {
   constructor(
     private readonly summaryJobs: SummaryJobRepositoryPort,
     private readonly summaryArtifacts: SummaryArtifactRepositoryPort,
+    private readonly summaryPolicies: SummaryPolicyRepositoryPort,
     private readonly evidenceSelector: SummaryEvidenceSelectorPort,
     private readonly summaryModel: SummaryModelPort,
     private readonly events: SummaryEventPublisherPort,
@@ -147,11 +154,17 @@ export class ExecuteSummaryJobUseCase {
       topicId: snapshot.topicId,
       maxItems: maxEvidenceItems,
     });
+    const summaryPolicy = await this.summaryPolicies.findByTopic({
+      tenantId: snapshot.tenantId,
+      workspaceId: snapshot.workspaceId,
+      topicId: snapshot.topicId,
+    });
     const input = {
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
       topicId: snapshot.topicId,
       evidence,
+      policy: summaryPolicy?.toGenerationPolicy() ?? defaultSummaryGenerationPolicy(),
       requestedAt: snapshot.requestedAt,
     };
     const route = this.summaryModel.route(input, defaultModelPolicy, defaultModelBudget);

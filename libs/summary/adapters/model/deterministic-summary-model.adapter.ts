@@ -59,7 +59,7 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
       schemaVersion: selectedRoute.schemaVersion,
       modelVersion: selectedRoute.model,
       providerVersion: selectedRoute.provider,
-      rulesVersion: 'summary.rules.mvp.v1',
+      rulesVersion: input.policy.rulesVersion,
       evalDatasetVersion: 'summary.eval.mvp.v1',
     } as const;
 
@@ -91,32 +91,34 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
       };
     }
 
-    const citationMap = input.evidence.items.map((item, index) => ({
+    const selectedItems = input.evidence.items.slice(0, input.policy.maxKeyPoints);
+    const citationMap = selectedItems.map((item, index) => ({
       citationId: `c${index + 1}`,
       feedItemId: item.feedItemId,
       sourceItemId: item.sourceItemId,
       field: 'title' as const,
+    }));
+    const keyPoints = selectedItems.map((item, index) => ({
+      claim: item.title,
+      citationIds: [`c${index + 1}`],
     }));
 
     return {
       route: selectedRoute,
       draft: {
         headline: firstItem.title,
-        executiveSummary: `Current signal is based on ${input.evidence.items.length} selected item(s).`,
-        keyPoints: [
-          {
-            claim: firstItem.title,
-            citationIds: ['c1'],
-          },
-        ],
-        risksAndUnknowns: [
-          {
-            description: 'This deterministic MVP summary only uses selected evidence titles.',
-            citationIds: ['c1'],
-            reason: 'source_limit',
-          },
-        ],
-        sourceHighlights: input.evidence.items.map((item) => item.title),
+        executiveSummary: buildExecutiveSummary(input),
+        keyPoints,
+        risksAndUnknowns: input.policy.includeRisks
+          ? [
+              {
+                description: 'This deterministic MVP summary only uses selected evidence titles.',
+                citationIds: ['c1'],
+                reason: 'source_limit',
+              },
+            ]
+          : [],
+        sourceHighlights: input.policy.includeSourceHighlights ? selectedItems.map((item) => item.title) : [],
         citationMap,
         qualityFlags: input.evidence.items.length < 3 ? ['limited_sources'] : [],
         confidence: {
@@ -171,3 +173,16 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
     };
   }
 }
+
+const buildExecutiveSummary = (input: SummaryModelInput): string => {
+  const formatLabel = input.policy.format.replace('_', ' ');
+  const toneLabel = input.policy.tone;
+  const languageLabel = input.policy.language === 'auto' ? 'source language' : input.policy.language;
+  const base = `Current ${formatLabel} uses ${input.evidence.items.length} selected item(s), ${toneLabel} tone, ${languageLabel}.`;
+
+  if (input.policy.customInstructions === undefined) {
+    return base;
+  }
+
+  return `${base} Custom focus: ${input.policy.customInstructions}`;
+};

@@ -35,6 +35,8 @@ const allowedRolesByAction: Record<WorkspaceAction, readonly WorkspaceRole[]> = 
   'summary_feedback.create': ['owner', 'admin', 'member', 'viewer'],
   'summary_feedback.read': ['owner', 'admin', 'member', 'viewer'],
   'summary_jobs.read': ['owner', 'admin', 'member', 'viewer'],
+  'summary_policies.read': ['owner', 'admin', 'member', 'viewer'],
+  'summary_policies.set': ['owner', 'admin'],
   'summary_requests.create': ['owner', 'admin', 'member'],
   'summary_regenerations.create': ['owner', 'admin', 'member'],
   'webhook_endpoints.read': ['owner', 'admin', 'member', 'viewer'],

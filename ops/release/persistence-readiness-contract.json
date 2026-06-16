@@ -46,10 +46,11 @@
         "InMemorySummaryJobRepository",
         "InMemorySummaryArtifactRepository",
         "InMemorySummaryFeedbackRepository",
+        "InMemorySummaryPolicyRepository",
         "InMemorySummaryEventPublisher"
       ],
-      "risk": "summary jobs, artifacts, feedback and events are process-local and disappear on restart",
-      "durableReplacementPlan": "SummaryRestModule can opt into Prisma job/artifact/feedback persistence with SUMMARY_PERSISTENCE=prisma; remaining blockers are durable summary event publisher/outbox and cross-worker summary execution wiring"
+      "risk": "summary jobs, artifacts, feedback, policies and events are process-local and disappear on restart",
+      "durableReplacementPlan": "SummaryRestModule can opt into Prisma job/artifact/feedback/policy persistence with SUMMARY_PERSISTENCE=prisma; remaining blockers are durable summary event publisher/outbox and cross-worker summary execution wiring"
     },
     {
       "moduleFile": "libs/delivery/interfaces/rest/delivery-rest.module.ts",

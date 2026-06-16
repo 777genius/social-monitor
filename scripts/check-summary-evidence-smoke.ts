@@ -7,7 +7,8 @@ import { DeterministicSummaryModelAdapter } from '../libs/summary/adapters/model
 import { InMemorySummaryEventPublisher } from '../libs/summary/adapters/messaging/in-memory-summary-event-publisher';
 import { InMemorySummaryArtifactRepository } from '../libs/summary/adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryJobRepository } from '../libs/summary/adapters/persistence/in-memory-summary-job.repository';
-import { SummaryJob } from '../libs/summary/domain';
+import { InMemorySummaryPolicyRepository } from '../libs/summary/adapters/persistence/in-memory-summary-policy.repository';
+import { SummaryJob, SummaryPolicy } from '../libs/summary/domain';
 import { ExecuteSummaryJobUseCase } from '../libs/summary/features/execute-summary-job/execute-summary-job.use-case';
 
 class SequenceIdGenerator implements IdGenerator {
@@ -38,8 +39,37 @@ const run = async (): Promise<void> => {
     publishedAt: new Date('2026-06-06T10:00:00.000Z'),
     observedAt: new Date('2026-06-06T10:01:00.000Z'),
   }));
+  feedItems.upsert(FeedItem.publish({
+    id: 'feed:summary-smoke:2',
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId,
+    sourceItemId: 'rss-binding-smoke:rss-guid-2',
+    sourceBindingId: 'rss-binding-smoke',
+    canonicalUrl: 'https://example.test/rss/item-2',
+    title: 'Second RSS summary smoke signal',
+    bodyPreview: 'A second body preview that should be clipped by summary policy.',
+    publishedAt: new Date('2026-06-06T09:59:30.000Z'),
+    observedAt: new Date('2026-06-06T10:01:30.000Z'),
+  }));
 
   const summaryJobs = new InMemorySummaryJobRepository();
+  const summaryPolicies = new InMemorySummaryPolicyRepository();
+  await summaryPolicies.save(SummaryPolicy.create({
+    id: 'summary-policy-smoke',
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId,
+    language: 'en',
+    format: 'bullet_digest',
+    tone: 'concise',
+    maxKeyPoints: 1,
+    includeRisks: true,
+    includeSourceHighlights: false,
+    customInstructions: 'Prioritize operational launch signals.',
+    createdAt: new Date('2026-06-06T10:01:45.000Z'),
+    updatedAt: new Date('2026-06-06T10:01:45.000Z'),
+  }));
   await summaryJobs.save(SummaryJob.request({
     id: 'summary-job-smoke',
     tenantId: tenant,
@@ -54,6 +84,7 @@ const run = async (): Promise<void> => {
   const useCase = new ExecuteSummaryJobUseCase(
     summaryJobs,
     artifacts,
+    summaryPolicies,
     new FeedSummaryEvidenceSelector(feedItems),
     new DeterministicSummaryModelAdapter(),
     events,
@@ -85,6 +116,18 @@ const run = async (): Promise<void> => {
 
   if (snapshot.qualityFlags.includes('no_signal')) {
     throw new Error('Expected evidence-backed summary without no_signal flag');
+  }
+
+  if (snapshot.keyPoints.length !== 1 || snapshot.citationMap.length !== 1) {
+    throw new Error(`Expected policy-clipped summary, got ${JSON.stringify(snapshot.keyPoints)}`);
+  }
+
+  if (snapshot.sourceHighlights.length !== 0) {
+    throw new Error(`Expected source highlights disabled by policy, got ${JSON.stringify(snapshot.sourceHighlights)}`);
+  }
+
+  if (snapshot.lineage.rulesVersion !== 'summary.rules.policy.v1') {
+    throw new Error(`Expected policy rules version lineage, got ${snapshot.lineage.rulesVersion}`);
   }
 
   if (firstKeyPoint.claim !== 'RSS summary smoke signal' || firstKeyPoint.citationIds[0] !== 'c1') {

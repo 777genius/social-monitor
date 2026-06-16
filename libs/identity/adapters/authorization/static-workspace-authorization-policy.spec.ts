@@ -400,6 +400,44 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     });
   });
 
+  it('allows every workspace role to read summary policies', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'summary_policies.read',
+      roles: ['viewer'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  it('allows only owner and admin roles to set summary policies', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'summary_policies.set',
+      roles: ['admin'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'summary_policies.set',
+      roles: ['member'],
+    })).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'authorization.denied' }),
+    });
+  });
+
   it('allows owner, admin and member roles to regenerate summaries', () => {
     const policy = new StaticWorkspaceAuthorizationPolicy();
 

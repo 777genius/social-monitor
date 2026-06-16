@@ -1,5 +1,6 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
+import { defaultSummaryGenerationPolicy } from '../../domain';
 import type { SummaryEvalFixture } from '../../features/evaluate-summary-quality/evaluate-summary-quality.command';
 
 const datasetVersion = 'summary.eval.mvp.v1';
@@ -16,6 +17,7 @@ export const staticSummaryEvalFixtures: readonly SummaryEvalFixture[] = [
       workspaceId: workspace,
       topicId: 'empty-topic',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
+      policy: defaultSummaryGenerationPolicy(),
       evidence: {
         sourceWindow: {
           windowId: 'eval-empty-window',
@@ -42,6 +44,7 @@ export const staticSummaryEvalFixtures: readonly SummaryEvalFixture[] = [
       workspaceId: workspace,
       topicId: 'developer-tools',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
+      policy: defaultSummaryGenerationPolicy(),
       evidence: {
         sourceWindow: {
           windowId: 'eval-hn-window',
@@ -87,6 +90,7 @@ export const staticSummaryEvalFixtures: readonly SummaryEvalFixture[] = [
       workspaceId: workspace,
       topicId: 'security-research',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
+      policy: defaultSummaryGenerationPolicy(),
       evidence: {
         sourceWindow: {
           windowId: 'eval-rss-injection-window',

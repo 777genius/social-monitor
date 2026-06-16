@@ -5,4 +5,5 @@ export * from './summary-feedback-repository.port';
 export * from './summary-freshness.port';
 export * from './summary-job-repository.port';
 export * from './summary-model.port';
+export * from './summary-policy-repository.port';
 export * from './summary-quota.port';

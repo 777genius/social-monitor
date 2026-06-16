@@ -3,6 +3,7 @@ import type {
   PrismaSummaryFeedbackRecord,
   PrismaSummaryStatus,
   PrismaSummaryJobRecord,
+  PrismaSummaryPolicyRecord,
 } from './prisma-summary-records';
 
 export type PrismaSummaryArtifactMutation = {
@@ -41,6 +42,26 @@ export type PrismaSummaryFeedbackCreate = PrismaSummaryFeedbackMutation & {
   readonly summaryArtifactId: string;
   readonly topicId: string;
   readonly idempotencyKey: string;
+  readonly createdAt: Date;
+};
+
+export type PrismaSummaryPolicyMutation = {
+  readonly language: string;
+  readonly format: string;
+  readonly tone: string;
+  readonly maxKeyPoints: number;
+  readonly includeRisks: boolean;
+  readonly includeSourceHighlights: boolean;
+  readonly customInstructions: string | null;
+  readonly rulesVersion: string;
+  readonly updatedAt: Date;
+};
+
+export type PrismaSummaryPolicyCreate = PrismaSummaryPolicyMutation & {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly topicId: string;
   readonly createdAt: Date;
 };
 
@@ -150,5 +171,25 @@ export type PrismaSummaryClient = {
         readonly summaryArtifactId: string;
       };
     }): Promise<number>;
+  };
+  readonly summaryPolicy: {
+    upsert(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_topicId: {
+          readonly tenantId: string;
+          readonly workspaceId: string;
+          readonly topicId: string;
+        };
+      };
+      readonly update: PrismaSummaryPolicyMutation;
+      readonly create: PrismaSummaryPolicyCreate;
+    }): Promise<PrismaSummaryPolicyRecord>;
+    findFirst(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly topicId: string;
+      };
+    }): Promise<PrismaSummaryPolicyRecord | null>;
   };
 };

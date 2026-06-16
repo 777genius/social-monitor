@@ -32,6 +32,8 @@ export type WorkspaceAction =
   | 'summary_feedback.create'
   | 'summary_feedback.read'
   | 'summary_jobs.read'
+  | 'summary_policies.read'
+  | 'summary_policies.set'
   | 'summary_requests.create'
   | 'summary_regenerations.create'
   | 'webhook_endpoints.read'

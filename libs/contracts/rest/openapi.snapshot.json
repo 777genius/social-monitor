@@ -71,6 +71,10 @@
       "SetScanPolicyRequestDto": {
         "properties": {},
         "type": "object"
+      },
+      "UpsertSummaryPolicyRequestDto": {
+        "properties": {},
+        "type": "object"
       }
     }
   },
@@ -2144,6 +2148,112 @@
         "summary": "Pause or resume a source binding.",
         "tags": [
           "source-bindings"
+        ]
+      }
+    },
+    "/topics/{topicId}/summary-policy": {
+      "get": {
+        "operationId": "SummaryPolicyController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topicId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary policy reads allow owner, admin, member or viewer.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get summary policy for a topic.",
+        "tags": [
+          "summary-policies"
+        ]
+      },
+      "put": {
+        "operationId": "SummaryPolicyController_upsert",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topicId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary policy writes require owner or admin.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertSummaryPolicyRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Create or update summary policy for a topic.",
+        "tags": [
+          "summary-policies"
         ]
       }
     },

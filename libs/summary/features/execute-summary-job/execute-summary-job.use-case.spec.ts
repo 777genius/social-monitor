@@ -1,6 +1,6 @@
 import { type EventEnvelope, FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { SummaryJob, type SummaryArtifact } from '../../domain';
+import { SummaryJob, type SummaryArtifact, type SummaryPolicy } from '../../domain';
 import type {
   ListSummaryArtifactsQuery,
   ListSummaryArtifactsResult,
@@ -18,6 +18,7 @@ import type {
   SummaryModelPort,
   SummaryModelRoute,
   SummaryModelValidationResult,
+  SummaryPolicyRepositoryPort,
 } from '../../ports';
 import { ExecuteSummaryJobUseCase } from './execute-summary-job.use-case';
 
@@ -71,6 +72,16 @@ class FakeSummaryArtifacts implements SummaryArtifactRepositoryPort {
     params: Parameters<SummaryArtifactRepositoryPort['findById']>[0],
   ): Promise<SummaryArtifact | null> {
     return this.artifacts.get(`${params.tenantId}:${params.workspaceId}:${params.summaryId}`) ?? null;
+  }
+}
+
+class FakeSummaryPolicies implements SummaryPolicyRepositoryPort {
+  async save(policy: SummaryPolicy): Promise<void> {
+    void policy;
+  }
+
+  async findByTopic(): Promise<SummaryPolicy | null> {
+    return null;
   }
 }
 
@@ -301,6 +312,7 @@ describe('ExecuteSummaryJobUseCase', () => {
     const useCase = new ExecuteSummaryJobUseCase(
       jobs,
       artifacts,
+      new FakeSummaryPolicies(),
       new EmptyEvidenceSelector(),
       new NoSignalSummaryModel(),
       events,
@@ -366,6 +378,7 @@ describe('ExecuteSummaryJobUseCase', () => {
     const useCase = new ExecuteSummaryJobUseCase(
       jobs,
       artifacts,
+      new FakeSummaryPolicies(),
       new SelectedEvidenceSelector(),
       new InvalidCitationSummaryModel(),
       events,
@@ -428,6 +441,7 @@ describe('ExecuteSummaryJobUseCase', () => {
     const useCase = new ExecuteSummaryJobUseCase(
       jobs,
       artifacts,
+      new FakeSummaryPolicies(),
       new EmptyEvidenceSelector(),
       new TransientFailureSummaryModel(),
       events,

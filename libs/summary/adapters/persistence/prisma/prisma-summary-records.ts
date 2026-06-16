@@ -16,6 +16,11 @@ import {
   type SummaryJobStatus,
   type SummaryKeyPoint,
   type SummaryLineage,
+  SummaryPolicy,
+  type SummaryPolicyFormat,
+  type SummaryPolicyLanguage,
+  type SummaryPolicyProps,
+  type SummaryPolicyTone,
   type SummaryQualityFlag,
   type SummaryRisk,
   type SummaryUsage,
@@ -75,6 +80,23 @@ export type PrismaSummaryFeedbackRecord = {
   readonly createdAt: Date;
 };
 
+export type PrismaSummaryPolicyRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly topicId: string;
+  readonly language: string;
+  readonly format: string;
+  readonly tone: string;
+  readonly maxKeyPoints: number;
+  readonly includeRisks: boolean;
+  readonly includeSourceHighlights: boolean;
+  readonly customInstructions: string | null;
+  readonly rulesVersion: string;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+};
+
 export const summaryJobFromPrisma = (record: PrismaSummaryJobRecord): SummaryJob =>
   SummaryJob.rehydrate({
     id: record.id,
@@ -111,6 +133,24 @@ export const summaryFeedbackFromPrisma = (record: PrismaSummaryFeedbackRecord): 
     eligibleForEvalFixture: record.eligibleForEvalFixture,
     createdAt: record.createdAt,
   } satisfies SummaryFeedbackProps);
+
+export const summaryPolicyFromPrisma = (record: PrismaSummaryPolicyRecord): SummaryPolicy =>
+  SummaryPolicy.rehydrate({
+    id: record.id,
+    tenantId: tenantId(record.tenantId),
+    workspaceId: workspaceId(record.workspaceId),
+    topicId: record.topicId,
+    language: normalizeSummaryPolicyLanguage(record.language),
+    format: normalizeSummaryPolicyFormat(record.format),
+    tone: normalizeSummaryPolicyTone(record.tone),
+    maxKeyPoints: record.maxKeyPoints,
+    includeRisks: record.includeRisks,
+    includeSourceHighlights: record.includeSourceHighlights,
+    customInstructions: record.customInstructions ?? undefined,
+    rulesVersion: record.rulesVersion,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  } satisfies SummaryPolicyProps);
 
 export const summaryJobStatusToPrisma = (status: SummaryJobStatus): PrismaSummaryStatus => {
   if (status === 'requested') {
@@ -259,6 +299,30 @@ const normalizeFeedbackCategory = (value: string): SummaryFeedbackCategory => {
   }
 
   return value;
+};
+
+const normalizeSummaryPolicyLanguage = (value: string): SummaryPolicyLanguage => {
+  if (value === 'auto' || value === 'en' || value === 'ru') {
+    return value;
+  }
+
+  throw new Error(`Unsupported summary policy language "${value}"`);
+};
+
+const normalizeSummaryPolicyFormat = (value: string): SummaryPolicyFormat => {
+  if (value === 'executive_brief' || value === 'bullet_digest' || value === 'risk_brief') {
+    return value;
+  }
+
+  throw new Error(`Unsupported summary policy format "${value}"`);
+};
+
+const normalizeSummaryPolicyTone = (value: string): SummaryPolicyTone => {
+  if (value === 'neutral' || value === 'concise' || value === 'analytical') {
+    return value;
+  }
+
+  throw new Error(`Unsupported summary policy tone "${value}"`);
 };
 
 const normalizeTriageOwner = (value: string): SummaryFeedbackTriageOwner => {

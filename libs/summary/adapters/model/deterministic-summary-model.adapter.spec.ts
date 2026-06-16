@@ -1,5 +1,6 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
+import { defaultSummaryGenerationPolicy } from '../../domain';
 import { DeterministicSummaryModelAdapter } from './deterministic-summary-model.adapter';
 
 describe('DeterministicSummaryModelAdapter', () => {
@@ -10,6 +11,7 @@ describe('DeterministicSummaryModelAdapter', () => {
       workspaceId: workspaceId('workspace-1'),
       topicId: 'topic-1',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
+      policy: defaultSummaryGenerationPolicy(),
       evidence: {
         sourceWindow: {
           windowId: 'window-1',

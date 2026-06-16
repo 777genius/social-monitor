@@ -1,5 +1,6 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
+import { defaultSummaryGenerationPolicy } from '../../domain';
 import type {
   ProviderSummaryAttempt,
   SummaryModelBudget,
@@ -43,6 +44,7 @@ const fixture: SummaryEvalFixture = {
     workspaceId: workspaceId('workspace-cost-1'),
     topicId: 'topic-cost-1',
     requestedAt: new Date('2026-06-06T00:00:00.000Z'),
+    policy: defaultSummaryGenerationPolicy(),
     evidence: {
       sourceWindow: {
         windowId: 'window-cost-1',

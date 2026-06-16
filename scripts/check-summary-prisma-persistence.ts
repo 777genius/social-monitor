@@ -1,15 +1,17 @@
 import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { SummaryArtifact, SummaryFeedback, SummaryJob } from '../libs/summary/domain';
+import { SummaryArtifact, SummaryFeedback, SummaryJob, SummaryPolicy } from '../libs/summary/domain';
 import { PrismaSummaryArtifactRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-artifact.repository';
 import type { PrismaSummaryClient } from '../libs/summary/adapters/persistence/prisma/prisma-summary-client';
 import { PrismaSummaryFeedbackRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-feedback.repository';
 import { PrismaSummaryJobRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-job.repository';
+import { PrismaSummaryPolicyRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-policy.repository';
 import { resolveSummaryPersistenceMode } from '../libs/summary/interfaces/rest/summary-provider-tokens';
 import type {
   PrismaSummaryArtifactRecord,
   PrismaSummaryFeedbackRecord,
   PrismaSummaryJobRecord,
+  PrismaSummaryPolicyRecord,
   PrismaSummaryStatus,
 } from '../libs/summary/adapters/persistence/prisma/prisma-summary-records';
 
@@ -36,6 +38,7 @@ async function main(): Promise<void> {
   const summaryJobs = new PrismaSummaryJobRepository(prisma);
   const summaryArtifacts = new PrismaSummaryArtifactRepository(prisma);
   const feedbackRepository = new PrismaSummaryFeedbackRepository(prisma);
+  const summaryPolicies = new PrismaSummaryPolicyRepository(prisma);
   const completedArtifact = makeCompletedArtifact('00000000-0000-7000-8000-000000000501');
   const noSignalArtifact = makeNoSignalArtifact('00000000-0000-7000-8000-000000000502');
 
@@ -155,6 +158,29 @@ async function main(): Promise<void> {
     'summary feedback repository list must preserve feedback identity',
   );
 
+  const policy = SummaryPolicy.create({
+    id: '00000000-0000-7000-8000-000000000801',
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId,
+    language: 'ru',
+    format: 'bullet_digest',
+    tone: 'analytical',
+    maxKeyPoints: 7,
+    includeRisks: true,
+    includeSourceHighlights: false,
+    customInstructions: 'Focus on launch and pricing signals.',
+    createdAt: clock.now(),
+    updatedAt: clock.now(),
+  });
+  await summaryPolicies.save(policy);
+  const foundPolicy = await summaryPolicies.findByTopic({ tenantId: tenant, workspaceId: workspace, topicId });
+  assert(foundPolicy?.toSnapshot().language === 'ru', 'summary policy language must round-trip');
+  assert(
+    foundPolicy.toSnapshot().customInstructions === 'Focus on launch and pricing signals.',
+    'summary policy custom instructions must round-trip',
+  );
+
   console.log('Summary Prisma persistence smoke OK');
 }
 
@@ -265,6 +291,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
   private readonly jobs = new Map<string, PrismaSummaryJobRecord>();
   private readonly artifacts = new Map<string, PrismaSummaryArtifactRecord>();
   private readonly feedback = new Map<string, PrismaSummaryFeedbackRecord>();
+  private readonly policies = new Map<string, PrismaSummaryPolicyRecord>();
 
   readonly summaryJob: PrismaSummaryClient['summaryJob'] = {
     upsert: async (args) => {
@@ -370,6 +397,42 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         .sort(compareFeedback)
         .slice(args.skip, args.skip + args.take),
     count: async (args) => this.filterFeedback(args.where).length,
+  };
+
+  readonly summaryPolicy: PrismaSummaryClient['summaryPolicy'] = {
+    upsert: async (args) => {
+      const key = [
+        args.where.tenantId_workspaceId_topicId.tenantId,
+        args.where.tenantId_workspaceId_topicId.workspaceId,
+        args.where.tenantId_workspaceId_topicId.topicId,
+      ].join(':');
+      const existing = this.policies.get(key);
+      const record: PrismaSummaryPolicyRecord = {
+        id: existing?.id ?? args.create.id,
+        tenantId: existing?.tenantId ?? args.create.tenantId,
+        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
+        topicId: existing?.topicId ?? args.create.topicId,
+        language: args.update.language,
+        format: args.update.format,
+        tone: args.update.tone,
+        maxKeyPoints: args.update.maxKeyPoints,
+        includeRisks: args.update.includeRisks,
+        includeSourceHighlights: args.update.includeSourceHighlights,
+        customInstructions: args.update.customInstructions,
+        rulesVersion: args.update.rulesVersion,
+        createdAt: existing?.createdAt ?? args.create.createdAt,
+        updatedAt: args.update.updatedAt,
+      };
+      this.policies.set(key, record);
+
+      return record;
+    },
+    findFirst: async (args) =>
+      [...this.policies.values()].find((record) => (
+        record.tenantId === args.where.tenantId &&
+        record.workspaceId === args.where.workspaceId &&
+        record.topicId === args.where.topicId
+      )) ?? null,
   };
 
   private filterArtifacts(where: {

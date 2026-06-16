@@ -16,13 +16,16 @@ import { MeteredSummaryModelAdapter } from '../../adapters/model/metered-summary
 import { InMemorySummaryArtifactRepository } from '../../adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryFeedbackRepository } from '../../adapters/persistence/in-memory-summary-feedback.repository';
 import { InMemorySummaryJobRepository } from '../../adapters/persistence/in-memory-summary-job.repository';
+import { InMemorySummaryPolicyRepository } from '../../adapters/persistence/in-memory-summary-policy.repository';
 import { PrismaSummaryConnection } from '../../adapters/persistence/prisma/prisma-summary-connection';
 import type { PrismaSummaryClient } from '../../adapters/persistence/prisma/prisma-summary-client';
 import { PrismaSummaryArtifactRepository } from '../../adapters/persistence/prisma/prisma-summary-artifact.repository';
 import { PrismaSummaryFeedbackRepository } from '../../adapters/persistence/prisma/prisma-summary-feedback.repository';
 import { PrismaSummaryJobRepository } from '../../adapters/persistence/prisma/prisma-summary-job.repository';
+import { PrismaSummaryPolicyRepository } from '../../adapters/persistence/prisma/prisma-summary-policy.repository';
 import { EvaluateSummaryQualityUseCase } from '../../features/evaluate-summary-quality/evaluate-summary-quality.use-case';
 import { ExecuteSummaryJobUseCase } from '../../features/execute-summary-job/execute-summary-job.use-case';
+import { GetSummaryPolicyUseCase } from '../../features/get-summary-policy/get-summary-policy.use-case';
 import { GetSummaryJobStatusUseCase } from '../../features/get-summary-job-status/get-summary-job-status.use-case';
 import { GetSummaryUseCase } from '../../features/get-summary/get-summary.use-case';
 import { ListSummaryFeedbackUseCase } from '../../features/list-summary-feedback/list-summary-feedback.use-case';
@@ -30,18 +33,22 @@ import { ListSummariesUseCase } from '../../features/list-summaries/list-summari
 import { RecordSummaryFeedbackUseCase } from '../../features/record-summary-feedback/record-summary-feedback.use-case';
 import { RegenerateSummaryUseCase } from '../../features/regenerate-summary/regenerate-summary.use-case';
 import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
+import { UpsertSummaryPolicyUseCase } from '../../features/upsert-summary-policy/upsert-summary-policy.use-case';
 import type {
   SummaryArtifactRepositoryPort,
   SummaryFeedbackRepositoryPort,
   SummaryJobRepositoryPort,
+  SummaryPolicyRepositoryPort,
 } from '../../ports';
 import { SummaryFeedbackController } from './summary-feedback.controller';
 import { SummaryJobController } from './summary-job.controller';
+import { SummaryPolicyController } from './summary-policy.controller';
 import {
   SUMMARY_ARTIFACT_REPOSITORY,
   SUMMARY_FEEDBACK_REPOSITORY,
   SUMMARY_JOB_REPOSITORY,
   SUMMARY_PERSISTENCE_MODE,
+  SUMMARY_POLICY_REPOSITORY,
   SUMMARY_PRISMA_CLIENT,
   type SummaryPersistenceMode,
   summaryPersistenceModeProvider,
@@ -51,7 +58,13 @@ import { SummaryController } from './summary.controller';
 
 @Module({
   imports: [UsageRestModule, IdentityAuthorizationModule, FeedRestModule],
-  controllers: [SummaryController, SummaryFeedbackController, SummaryJobController, SummaryRequestController],
+  controllers: [
+    SummaryController,
+    SummaryFeedbackController,
+    SummaryJobController,
+    SummaryPolicyController,
+    SummaryRequestController,
+  ],
   providers: [
     summaryPersistenceModeProvider,
     {
@@ -63,6 +76,7 @@ import { SummaryController } from './summary.controller';
     InMemorySummaryJobRepository,
     InMemorySummaryArtifactRepository,
     InMemorySummaryFeedbackRepository,
+    InMemorySummaryPolicyRepository,
     {
       provide: SUMMARY_JOB_REPOSITORY,
       useFactory: (
@@ -98,6 +112,18 @@ import { SummaryController } from './summary.controller';
           ? new PrismaSummaryFeedbackRepository(requirePrismaSummaryClient(prisma))
           : inMemorySummaryFeedback,
       inject: [SUMMARY_PERSISTENCE_MODE, SUMMARY_PRISMA_CLIENT, InMemorySummaryFeedbackRepository],
+    },
+    {
+      provide: SUMMARY_POLICY_REPOSITORY,
+      useFactory: (
+        mode: SummaryPersistenceMode,
+        prisma: PrismaSummaryClient | null,
+        inMemorySummaryPolicies: InMemorySummaryPolicyRepository,
+      ): SummaryPolicyRepositoryPort =>
+        mode === 'prisma'
+          ? new PrismaSummaryPolicyRepository(requirePrismaSummaryClient(prisma))
+          : inMemorySummaryPolicies,
+      inject: [SUMMARY_PERSISTENCE_MODE, SUMMARY_PRISMA_CLIENT, InMemorySummaryPolicyRepository],
     },
     InMemorySummaryEventPublisher,
     {
@@ -139,6 +165,7 @@ import { SummaryController } from './summary.controller';
       useFactory: (
         summaryJobs: SummaryJobRepositoryPort,
         summaryArtifacts: SummaryArtifactRepositoryPort,
+        summaryPolicies: SummaryPolicyRepositoryPort,
         evidenceSelector: FeedSummaryEvidenceSelector,
         summaryModel: MeteredSummaryModelAdapter,
         events: InMemorySummaryEventPublisher,
@@ -146,6 +173,7 @@ import { SummaryController } from './summary.controller';
         new ExecuteSummaryJobUseCase(
           summaryJobs,
           summaryArtifacts,
+          summaryPolicies,
           evidenceSelector,
           summaryModel,
           events,
@@ -155,6 +183,7 @@ import { SummaryController } from './summary.controller';
       inject: [
         SUMMARY_JOB_REPOSITORY,
         SUMMARY_ARTIFACT_REPOSITORY,
+        SUMMARY_POLICY_REPOSITORY,
         FeedSummaryEvidenceSelector,
         MeteredSummaryModelAdapter,
         InMemorySummaryEventPublisher,
@@ -164,6 +193,18 @@ import { SummaryController } from './summary.controller';
       provide: EvaluateSummaryQualityUseCase,
       useFactory: (summaryModel: MeteredSummaryModelAdapter) => new EvaluateSummaryQualityUseCase(summaryModel),
       inject: [MeteredSummaryModelAdapter],
+    },
+    {
+      provide: GetSummaryPolicyUseCase,
+      useFactory: (summaryPolicies: SummaryPolicyRepositoryPort) =>
+        new GetSummaryPolicyUseCase(summaryPolicies, new CryptoIdGenerator(), new SystemClock()),
+      inject: [SUMMARY_POLICY_REPOSITORY],
+    },
+    {
+      provide: UpsertSummaryPolicyUseCase,
+      useFactory: (summaryPolicies: SummaryPolicyRepositoryPort) =>
+        new UpsertSummaryPolicyUseCase(summaryPolicies, new CryptoIdGenerator(), new SystemClock()),
+      inject: [SUMMARY_POLICY_REPOSITORY],
     },
     {
       provide: GetSummaryUseCase,
@@ -234,12 +275,16 @@ import { SummaryController } from './summary.controller';
     InMemorySummaryArtifactRepository,
     InMemorySummaryFeedbackRepository,
     InMemorySummaryJobRepository,
+    InMemorySummaryPolicyRepository,
     ListSummaryFeedbackUseCase,
     SUMMARY_ARTIFACT_REPOSITORY,
     SUMMARY_FEEDBACK_REPOSITORY,
     SUMMARY_JOB_REPOSITORY,
+    SUMMARY_POLICY_REPOSITORY,
+    GetSummaryPolicyUseCase,
     RecordSummaryFeedbackUseCase,
     RegenerateSummaryUseCase,
+    UpsertSummaryPolicyUseCase,
   ],
 })
 export class SummaryRestModule {}

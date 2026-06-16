@@ -73,6 +73,7 @@ import { DeterministicSummaryModelAdapter } from '../libs/summary/adapters/model
 import { InMemorySummaryArtifactRepository } from '../libs/summary/adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryFeedbackRepository } from '../libs/summary/adapters/persistence/in-memory-summary-feedback.repository';
 import { InMemorySummaryJobRepository } from '../libs/summary/adapters/persistence/in-memory-summary-job.repository';
+import { InMemorySummaryPolicyRepository } from '../libs/summary/adapters/persistence/in-memory-summary-policy.repository';
 import { ExecuteSummaryJobUseCase } from '../libs/summary/features/execute-summary-job/execute-summary-job.use-case';
 import { GetSummaryUseCase } from '../libs/summary/features/get-summary/get-summary.use-case';
 import { RecordSummaryFeedbackUseCase } from '../libs/summary/features/record-summary-feedback/record-summary-feedback.use-case';
@@ -100,6 +101,7 @@ async function main(): Promise<void> {
   const feedItems = new InMemoryFeedItemReadRepository();
   const summaryJobs = new InMemorySummaryJobRepository();
   const summaryArtifacts = new InMemorySummaryArtifactRepository();
+  const summaryPolicies = new InMemorySummaryPolicyRepository();
   const summaryFeedback = new InMemorySummaryFeedbackRepository();
   const summaryEvents = new InMemorySummaryEventPublisher();
   const deliveryAttempts = new InMemoryDeliveryAttemptRepository();
@@ -317,6 +319,7 @@ async function main(): Promise<void> {
     await new ExecuteSummaryJobUseCase(
       summaryJobs,
       summaryArtifacts,
+      summaryPolicies,
       new FeedSummaryEvidenceSelector(feedItems),
       new DeterministicSummaryModelAdapter(),
       summaryEvents,

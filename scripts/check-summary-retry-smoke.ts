@@ -5,6 +5,7 @@ import { DeterministicSummaryModelAdapter } from '../libs/summary/adapters/model
 import { InMemorySummaryEventPublisher } from '../libs/summary/adapters/messaging/in-memory-summary-event-publisher';
 import { InMemorySummaryArtifactRepository } from '../libs/summary/adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryJobRepository } from '../libs/summary/adapters/persistence/in-memory-summary-job.repository';
+import { InMemorySummaryPolicyRepository } from '../libs/summary/adapters/persistence/in-memory-summary-policy.repository';
 import { SummaryJob } from '../libs/summary/domain';
 import { ExecuteSummaryJobUseCase } from '../libs/summary/features/execute-summary-job/execute-summary-job.use-case';
 import type {
@@ -96,6 +97,7 @@ async function main(): Promise<void> {
   const useCase = new ExecuteSummaryJobUseCase(
     summaryJobs,
     artifacts,
+    new InMemorySummaryPolicyRepository(),
     new EmptySummaryEvidenceSelector(),
     new FailOnceSummaryModel(new DeterministicSummaryModelAdapter()),
     events,

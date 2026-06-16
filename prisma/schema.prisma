@@ -449,6 +449,27 @@ model SummaryJob {
   @@map("summary_jobs")
 }
 
+model SummaryPolicy {
+  id                      String   @id @db.Uuid
+  tenantId                String   @map("tenant_id") @db.Uuid
+  workspaceId             String   @map("workspace_id") @db.Uuid
+  topicId                 String   @map("topic_id") @db.Uuid
+  language                String
+  format                  String
+  tone                    String
+  maxKeyPoints            Int      @map("max_key_points")
+  includeRisks            Boolean  @map("include_risks")
+  includeSourceHighlights Boolean  @map("include_source_highlights")
+  customInstructions      String?  @map("custom_instructions")
+  rulesVersion            String   @map("rules_version")
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, topicId])
+  @@index([tenantId, workspaceId, updatedAt])
+  @@map("summary_policies")
+}
+
 model SummaryFeedback {
   id                     String   @id @db.Uuid
   tenantId               String   @map("tenant_id") @db.Uuid

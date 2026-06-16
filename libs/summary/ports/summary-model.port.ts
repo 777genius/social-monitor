@@ -1,6 +1,6 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
-import type { SummaryArtifactProps, SummaryLineage, SummaryUsage } from '../domain';
+import type { SummaryArtifactProps, SummaryGenerationPolicy, SummaryLineage, SummaryUsage } from '../domain';
 import type { SummaryEvidenceSelection } from './summary-evidence-selector.port';
 
 export type SummaryModelRoute = {
@@ -27,6 +27,7 @@ export type SummaryModelInput = {
   readonly workspaceId: WorkspaceId;
   readonly topicId: string;
   readonly evidence: SummaryEvidenceSelection;
+  readonly policy: SummaryGenerationPolicy;
   readonly requestedAt: Date;
 };
 
