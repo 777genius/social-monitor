@@ -1110,3 +1110,23 @@ Evidence notes:
 - Retrying a failed delivery clears stale `failedAt` and `failureReason` when the attempt re-enters `sending`, while preserving retry-count evidence for audit/debugging.
 - `check:delivery-attempt-dispatch-loop` proves a normal queued attempt and a retryable failed attempt both flow through the same command handler/provider path and drain from the dispatch set.
 - `check:delivery-persistence` proves the Prisma adapter query includes retryable failed attempts and excludes terminal failures from dispatch selection.
+
+## PR 39 MVP Core Loop Delivery Completion Evidence
+
+- `5d0106d test: prove delivered digest in mvp core loop`
+
+Verified commands:
+
+- `npm run check:mvp-core-loop`
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run check:secrets`
+- `git diff --check`
+
+Evidence notes:
+
+- The MVP core-loop smoke now proves the full backend chain reaches delivered digest status, not only queued delivery status.
+- The scenario executes topic creation, source binding, scan request, fake provider ingestion, feed projection, summary generation, digest assembly, delivery dispatch, realtime projection and summary feedback in one deterministic path.
+- Digest delivery goes through the real `DeliveryAttemptDispatchLoop`, `SendDeliveryAttemptCommandHandler` and `SendDeliveryAttemptUseCase` instead of directly mutating repository state.
+- The smoke asserts deterministic in-app delivery content, dispatch start/success metrics and an empty dispatchable delivery set after the worker tick.
