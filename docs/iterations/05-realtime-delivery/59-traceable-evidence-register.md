@@ -58,3 +58,5 @@ Verified guarantees:
 - delivery Prisma smoke covers webhook create, sign, verify, replay rejection, disable and list behavior;
 - `DELIVERY_PERSISTENCE=prisma` can persist recipient/channel notification preference suppression decisions used by the final send-time recheck;
 - notification preference recheck happens immediately before provider send and suppresses delivery without calling provider.
+- `DELIVERY_PERSISTENCE=prisma` digest assembly reads persisted summary artifacts/feed items through `PrismaDigestSourceReader` instead of process-local digest source state;
+- delivery Prisma smoke covers persisted digest source filtering for visible feed items, non-empty in-window summaries, no-signal exclusion and queued digest delivery attempts.

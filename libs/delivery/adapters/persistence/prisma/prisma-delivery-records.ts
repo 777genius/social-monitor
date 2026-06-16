@@ -144,6 +144,29 @@ export type PrismaNotificationPreferenceRecord = {
   readonly reason: string | null;
 };
 
+export type PrismaDigestSourceSummaryRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly topicId: string;
+  readonly status: PrismaSummaryArtifactStatus;
+  readonly artifactPayload: unknown;
+  readonly qualitySignals: unknown;
+  readonly createdAt: Date;
+};
+
+export type PrismaDigestSourceFeedItemRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly topicId: string;
+  readonly observedAt: Date;
+  readonly status: PrismaFeedItemStatus;
+};
+
+export type PrismaSummaryArtifactStatus = 'COMPLETED' | 'NO_SIGNAL';
+export type PrismaFeedItemStatus = 'VISIBLE' | 'HIDDEN' | 'TOMBSTONED';
+
 const deliveryChannels = ['in_app', 'email', 'webhook'] as const satisfies readonly DeliveryChannel[];
 const resourceTypes = ['summary', 'digest', 'scan', 'feed'] as const satisfies readonly DeliveryAttemptProps['resourceType'][];
 const realtimeResourceTypes = [

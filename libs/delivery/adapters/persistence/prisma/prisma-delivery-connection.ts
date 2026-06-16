@@ -28,6 +28,8 @@ export class PrismaDeliveryConnection implements PrismaDeliveryClient {
   readonly webhookSecret: PrismaDeliveryClient['webhookSecret'];
   readonly webhookReplayDelivery: PrismaDeliveryClient['webhookReplayDelivery'];
   readonly notificationPreference: PrismaDeliveryClient['notificationPreference'];
+  readonly summaryArtifact: PrismaDeliveryClient['summaryArtifact'];
+  readonly feedItem: PrismaDeliveryClient['feedItem'];
 
   private readonly pool: Pool;
   private readonly client: PrismaDeliveryRuntimeClient;
@@ -49,6 +51,8 @@ export class PrismaDeliveryConnection implements PrismaDeliveryClient {
     this.webhookSecret = this.client.webhookSecret;
     this.webhookReplayDelivery = this.client.webhookReplayDelivery;
     this.notificationPreference = this.client.notificationPreference;
+    this.summaryArtifact = this.client.summaryArtifact;
+    this.feedItem = this.client.feedItem;
   }
 
   async close(): Promise<void> {

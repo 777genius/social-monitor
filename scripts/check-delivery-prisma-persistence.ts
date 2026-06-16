@@ -20,6 +20,7 @@ import type {
 } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-client';
 import { PrismaDigestScheduleRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-digest-schedule.repository';
 import { PrismaDigestRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-digest.repository';
+import { PrismaDigestSourceReader } from '../libs/delivery/adapters/source/prisma/prisma-digest-source.reader';
 import { PrismaNotificationPreferenceReader } from '../libs/delivery/adapters/preferences/prisma/prisma-notification-preference.reader';
 import { PrismaRealtimeEventRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-realtime-event.repository';
 import { PrismaWebhookEndpointRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-webhook-endpoint.repository';
@@ -30,6 +31,8 @@ import {
 } from '../libs/delivery/adapters/secrets/prisma/prisma-webhook-secret.vault';
 import type {
   PrismaDeliveryAttemptRecord,
+  PrismaDigestSourceFeedItemRecord,
+  PrismaDigestSourceSummaryRecord,
   PrismaDigestRecord,
   PrismaDigestScheduleRecord,
   PrismaNotificationPreferenceRecord,
@@ -39,6 +42,7 @@ import type {
   PrismaWebhookSecretRecord,
 } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-records';
 import { Digest, DigestSchedule } from '../libs/delivery/domain';
+import { AssembleDigestUseCase } from '../libs/delivery/features/assemble-digest/assemble-digest.use-case';
 import { CreateWebhookEndpointUseCase } from '../libs/delivery/features/create-webhook-endpoint/create-webhook-endpoint.use-case';
 import { DisableWebhookEndpointUseCase } from '../libs/delivery/features/disable-webhook-endpoint/disable-webhook-endpoint.use-case';
 import { GetDeliveryAttemptUseCase } from '../libs/delivery/features/get-delivery-attempt/get-delivery-attempt.use-case';
@@ -83,6 +87,7 @@ async function main(): Promise<void> {
   const prisma = new FakePrismaDeliveryClient();
   const attempts = new PrismaDeliveryAttemptRepository(prisma);
   const digests = new PrismaDigestRepository(prisma);
+  const digestSources = new PrismaDigestSourceReader(prisma);
   const realtimeEvents = new PrismaRealtimeEventRepository(prisma);
   const schedules = new PrismaDigestScheduleRepository(prisma);
   const preferences = new PrismaNotificationPreferenceReader(prisma);
@@ -162,6 +167,115 @@ async function main(): Promise<void> {
   const listed = await attempts.list({ tenantId: tenant, workspaceId: workspace, limit: 10 });
   assert(listed.attempts.length === 1, 'delivery attempt list must return persisted attempt');
   assert(listed.attempts[0]?.toSnapshot().state === 'failed_terminal', 'delivery attempt list must hydrate latest state');
+
+  prisma.seedDigestSourceSummary({
+    id: 'summary-digest-source-1',
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId: 'topic-1',
+    status: 'COMPLETED',
+    artifactPayload: {
+      sourceWindow: {
+        startedAt: '2026-06-07T00:00:00.000Z',
+        endedAt: '2026-06-07T00:30:00.000Z',
+      },
+    },
+    qualitySignals: {
+      confidence: { level: 'high' },
+      qualityFlags: [],
+    },
+    createdAt: new Date('2026-06-07T00:30:05.000Z'),
+  });
+  prisma.seedDigestSourceSummary({
+    id: 'summary-digest-source-nosignal',
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId: 'topic-1',
+    status: 'NO_SIGNAL',
+    artifactPayload: {
+      sourceWindow: {
+        startedAt: '2026-06-07T00:30:00.000Z',
+        endedAt: '2026-06-07T00:40:00.000Z',
+      },
+    },
+    qualitySignals: {
+      confidence: { level: 'low' },
+      qualityFlags: ['no_signal'],
+    },
+    createdAt: new Date('2026-06-07T00:40:05.000Z'),
+  });
+  prisma.seedDigestSourceSummary({
+    id: 'summary-digest-source-outside-window',
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId: 'topic-1',
+    status: 'COMPLETED',
+    artifactPayload: {
+      sourceWindow: {
+        startedAt: '2026-06-07T02:00:00.000Z',
+        endedAt: '2026-06-07T02:30:00.000Z',
+      },
+    },
+    qualitySignals: {
+      confidence: { level: 'high' },
+      qualityFlags: [],
+    },
+    createdAt: new Date('2026-06-07T02:30:05.000Z'),
+  });
+  prisma.seedDigestSourceFeedItem({
+    id: 'feed-digest-source-1',
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId: 'topic-1',
+    observedAt: new Date('2026-06-07T00:15:00.000Z'),
+    status: 'VISIBLE',
+  });
+  prisma.seedDigestSourceFeedItem({
+    id: 'feed-digest-source-hidden',
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId: 'topic-1',
+    observedAt: new Date('2026-06-07T00:20:00.000Z'),
+    status: 'HIDDEN',
+  });
+
+  const assembledFromPersistedSources = await new AssembleDigestUseCase(
+    digests,
+    digestSources,
+    queue,
+    ids,
+    clock,
+  ).execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    recipientKey: 'endpoint-digest-source',
+    channel: 'webhook',
+    topicIds: ['topic-1', 'topic-1'],
+    windowStartedAt: new Date('2026-06-07T00:00:00.000Z'),
+    windowEndedAt: new Date('2026-06-07T01:00:00.000Z'),
+    includeNoSignal: false,
+    maxRetries: 3,
+  });
+  assert(isOk(assembledFromPersistedSources), 'digest assembly must read persisted summaries/feed items');
+  assert(assembledFromPersistedSources.value.created, 'persisted source window must create a digest');
+  assert(
+    assembledFromPersistedSources.value.digest.summaryIds.join(',') === 'summary-digest-source-1',
+    'digest assembly must include only in-window non-empty persisted summaries',
+  );
+  assert(
+    assembledFromPersistedSources.value.digest.feedItemIds.join(',') === 'feed-digest-source-1',
+    'digest assembly must include only visible persisted feed items in the window',
+  );
+  assert(
+    assembledFromPersistedSources.value.digest.provenance.some(
+      (item) => item.resourceId === 'summary-digest-source-1' && item.includedReason === 'high_signal',
+    ),
+    'digest assembly must preserve persisted summary signal provenance',
+  );
+  assert(
+    assembledFromPersistedSources.value.deliveryAttemptId !== undefined,
+    'non-empty digest assembly must queue a persisted delivery attempt',
+  );
 
   const digest = Digest.assemble({
     id: '00000000-0000-7000-8000-000000000705',
@@ -446,12 +560,22 @@ class SequenceIdGenerator implements IdGenerator {
 class FakePrismaDeliveryClient implements PrismaDeliveryClient {
   private readonly attempts = new Map<string, PrismaDeliveryAttemptRecord>();
   private readonly digests = new Map<string, PrismaDigestRecord>();
+  private readonly feedItems = new Map<string, PrismaDigestSourceFeedItemRecord>();
   private readonly notificationPreferences = new Map<string, PrismaNotificationPreferenceRecord>();
   private readonly realtimeEvents = new Map<string, PrismaRealtimeEventRecord>();
   private readonly schedules = new Map<string, PrismaDigestScheduleRecord>();
+  private readonly summaryArtifacts = new Map<string, PrismaDigestSourceSummaryRecord>();
   private readonly webhookEndpoints = new Map<string, PrismaWebhookEndpointRecord>();
   private readonly webhookReplayDeliveries = new Map<string, PrismaWebhookReplayDeliveryRecord>();
   private readonly webhookSecrets = new Map<string, PrismaWebhookSecretRecord>();
+
+  seedDigestSourceSummary(record: PrismaDigestSourceSummaryRecord): void {
+    this.summaryArtifacts.set(record.id, record);
+  }
+
+  seedDigestSourceFeedItem(record: PrismaDigestSourceFeedItemRecord): void {
+    this.feedItems.set(record.id, record);
+  }
 
   readonly deliveryAttempt: PrismaDeliveryClient['deliveryAttempt'] = {
     upsert: async (args) => {
@@ -488,6 +612,22 @@ class FakePrismaDeliveryClient implements PrismaDeliveryClient {
     },
     findFirst: async (args) =>
       [...this.digests.values()].find((record) => matchesDigestWhere(record, args.where)) ?? null,
+  };
+
+  readonly summaryArtifact: PrismaDeliveryClient['summaryArtifact'] = {
+    findMany: async (args) =>
+      [...this.summaryArtifacts.values()]
+        .filter((record) => matchesDigestSourceSummaryWhere(record, args.where))
+        .sort(compareDigestSourceSummaryRecords)
+        .slice(0, args.take),
+  };
+
+  readonly feedItem: PrismaDeliveryClient['feedItem'] = {
+    findMany: async (args) =>
+      [...this.feedItems.values()]
+        .filter((record) => matchesDigestSourceFeedItemWhere(record, args.where))
+        .sort(compareDigestSourceFeedItemRecords)
+        .slice(0, args.take),
   };
 
   readonly digestSchedule: PrismaDeliveryClient['digestSchedule'] = {
@@ -787,6 +927,66 @@ const matchesDigestWhere = (
   (where.recipientKey === undefined || record.recipientKey === where.recipientKey) &&
   (where.channel === undefined || record.channel === where.channel) &&
   (where.windowId === undefined || record.windowId === where.windowId);
+
+const matchesDigestSourceSummaryWhere = (
+  record: PrismaDigestSourceSummaryRecord,
+  where: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly topicId: { readonly in: readonly string[] };
+    readonly status: { readonly in: readonly PrismaDigestSourceSummaryRecord['status'][] };
+  },
+): boolean =>
+  record.tenantId === where.tenantId &&
+  record.workspaceId === where.workspaceId &&
+  where.topicId.in.includes(record.topicId) &&
+  where.status.in.includes(record.status);
+
+const compareDigestSourceSummaryRecords = (
+  left: PrismaDigestSourceSummaryRecord,
+  right: PrismaDigestSourceSummaryRecord,
+): number => {
+  const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
+
+  if (createdDiff !== 0) {
+    return createdDiff;
+  }
+
+  return right.id.localeCompare(left.id);
+};
+
+const matchesDigestSourceFeedItemWhere = (
+  record: PrismaDigestSourceFeedItemRecord,
+  where: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly topicId: { readonly in: readonly string[] };
+    readonly status: PrismaDigestSourceFeedItemRecord['status'];
+    readonly observedAt: {
+      readonly gte: Date;
+      readonly lt: Date;
+    };
+  },
+): boolean =>
+  record.tenantId === where.tenantId &&
+  record.workspaceId === where.workspaceId &&
+  where.topicId.in.includes(record.topicId) &&
+  record.status === where.status &&
+  record.observedAt.getTime() >= where.observedAt.gte.getTime() &&
+  record.observedAt.getTime() < where.observedAt.lt.getTime();
+
+const compareDigestSourceFeedItemRecords = (
+  left: PrismaDigestSourceFeedItemRecord,
+  right: PrismaDigestSourceFeedItemRecord,
+): number => {
+  const observedDiff = left.observedAt.getTime() - right.observedAt.getTime();
+
+  if (observedDiff !== 0) {
+    return observedDiff;
+  }
+
+  return left.id.localeCompare(right.id);
+};
 
 const matchesDigestScheduleWhere = (
   record: PrismaDigestScheduleRecord,

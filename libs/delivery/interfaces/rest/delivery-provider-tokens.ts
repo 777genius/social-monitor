@@ -2,6 +2,7 @@ import type {
   DeliveryAttemptRepositoryPort,
   DigestRepositoryPort,
   DigestScheduleRepositoryPort,
+  DigestSourceReaderPort,
   NotificationPreferenceReaderPort,
   RealtimeEventRepositoryPort,
   WebhookEndpointRepositoryPort,
@@ -16,6 +17,7 @@ export const DELIVERY_PRISMA_CLIENT = Symbol('DELIVERY_PRISMA_CLIENT');
 export const DELIVERY_ATTEMPT_REPOSITORY = Symbol('DELIVERY_ATTEMPT_REPOSITORY');
 export const DELIVERY_DIGEST_REPOSITORY = Symbol('DELIVERY_DIGEST_REPOSITORY');
 export const DELIVERY_DIGEST_SCHEDULE_REPOSITORY = Symbol('DELIVERY_DIGEST_SCHEDULE_REPOSITORY');
+export const DELIVERY_DIGEST_SOURCE_READER = Symbol('DELIVERY_DIGEST_SOURCE_READER');
 export const DELIVERY_REALTIME_EVENT_REPOSITORY = Symbol('DELIVERY_REALTIME_EVENT_REPOSITORY');
 export const DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY = Symbol('DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY');
 export const DELIVERY_WEBHOOK_SECRET_VAULT = Symbol('DELIVERY_WEBHOOK_SECRET_VAULT');
@@ -28,6 +30,7 @@ export type DeliveryProviderTokenMap = {
   readonly [DELIVERY_ATTEMPT_REPOSITORY]: DeliveryAttemptRepositoryPort;
   readonly [DELIVERY_DIGEST_REPOSITORY]: DigestRepositoryPort;
   readonly [DELIVERY_DIGEST_SCHEDULE_REPOSITORY]: DigestScheduleRepositoryPort;
+  readonly [DELIVERY_DIGEST_SOURCE_READER]: DigestSourceReaderPort;
   readonly [DELIVERY_REALTIME_EVENT_REPOSITORY]: RealtimeEventRepositoryPort;
   readonly [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY]: WebhookEndpointRepositoryPort;
   readonly [DELIVERY_WEBHOOK_SECRET_VAULT]: WebhookSecretVaultPort;

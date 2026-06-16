@@ -103,6 +103,8 @@ Replay protection uses `(webhookEndpointId, deliveryId)` uniqueness. Duplicate a
 
 Notification preference reads are also behind `NotificationPreferenceReaderPort`. `PrismaNotificationPreferenceReader` persists recipient/channel suppression decisions so the last preference recheck before provider send survives process restarts.
 
+Digest assembly source reads are behind `DigestSourceReaderPort`. In Prisma delivery mode, `PrismaDigestSourceReader` reads persisted summary artifacts and feed items for the requested tenant/workspace/topic window, filters no-signal summaries according to the application command, and keeps digest assembly independent from summary/feed repository implementations.
+
 ## WebSub
 
 Do not expose raw internal Kafka streams to customers.

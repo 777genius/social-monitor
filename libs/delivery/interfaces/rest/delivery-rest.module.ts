@@ -29,6 +29,7 @@ import {
   resolveWebhookSecretEncryptionKey,
 } from '../../adapters/secrets/prisma/prisma-webhook-secret.vault';
 import { InMemoryDigestSourceReader } from '../../adapters/source/in-memory-digest-source.reader';
+import { PrismaDigestSourceReader } from '../../adapters/source/prisma/prisma-digest-source.reader';
 import { ApplyDeliverySuppressionUseCase } from '../../features/apply-delivery-suppression/apply-delivery-suppression.use-case';
 import { AssembleDigestUseCase } from '../../features/assemble-digest/assemble-digest.use-case';
 import { CreateWebhookEndpointUseCase } from '../../features/create-webhook-endpoint/create-webhook-endpoint.use-case';
@@ -53,6 +54,7 @@ import {
   DELIVERY_ATTEMPT_REPOSITORY,
   DELIVERY_DIGEST_REPOSITORY,
   DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
+  DELIVERY_DIGEST_SOURCE_READER,
   DELIVERY_NOTIFICATION_PREFERENCE_READER,
   DELIVERY_PERSISTENCE_MODE,
   DELIVERY_PRISMA_CLIENT,
@@ -71,6 +73,7 @@ import type {
   DeliveryProviderPort,
   DigestRepositoryPort,
   DigestScheduleRepositoryPort,
+  DigestSourceReaderPort,
   NotificationPreferenceReaderPort,
   RealtimeEventRepositoryPort,
   WebhookEndpointRepositoryPort,
@@ -150,6 +153,18 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryDigestScheduleRepository],
     },
     {
+      provide: DELIVERY_DIGEST_SOURCE_READER,
+      useFactory: (
+        mode: DeliveryPersistenceMode,
+        prisma: PrismaDeliveryClient | null,
+        inMemorySources: InMemoryDigestSourceReader,
+      ): DigestSourceReaderPort =>
+        mode === 'prisma'
+          ? new PrismaDigestSourceReader(requirePrismaDeliveryClient(prisma))
+          : inMemorySources,
+      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryDigestSourceReader],
+    },
+    {
       provide: DELIVERY_REALTIME_EVENT_REPOSITORY,
       useFactory: (
         mode: DeliveryPersistenceMode,
@@ -227,7 +242,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       provide: AssembleDigestUseCase,
       useFactory: (
         digests: DigestRepositoryPort,
-        sources: InMemoryDigestSourceReader,
+        sources: DigestSourceReaderPort,
         queueDeliveryAttempt: QueueDeliveryAttemptUseCase,
       ) =>
         new AssembleDigestUseCase(
@@ -237,7 +252,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
           new CryptoIdGenerator(),
           new SystemClock(),
         ),
-      inject: [DELIVERY_DIGEST_REPOSITORY, InMemoryDigestSourceReader, QueueDeliveryAttemptUseCase],
+      inject: [DELIVERY_DIGEST_REPOSITORY, DELIVERY_DIGEST_SOURCE_READER, QueueDeliveryAttemptUseCase],
     },
     {
       provide: GetDigestUseCase,
@@ -379,6 +394,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     DELIVERY_ATTEMPT_REPOSITORY,
     DELIVERY_DIGEST_REPOSITORY,
     DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
+    DELIVERY_DIGEST_SOURCE_READER,
     DELIVERY_REALTIME_EVENT_REPOSITORY,
     DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
     DELIVERY_WEBHOOK_SECRET_VAULT,

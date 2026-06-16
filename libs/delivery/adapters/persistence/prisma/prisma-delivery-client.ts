@@ -1,5 +1,7 @@
 import type {
   PrismaDeliveryAttemptRecord,
+  PrismaDigestSourceFeedItemRecord,
+  PrismaDigestSourceSummaryRecord,
   PrismaDeliveryAttemptState,
   PrismaDeliveryDigestStatus,
   PrismaDigestRecord,
@@ -116,6 +118,8 @@ export type PrismaNotificationPreferenceWriteData = {
   readonly allowed: boolean;
   readonly reason?: string | null;
 };
+
+export type PrismaDigestSourceSummaryStatus = 'COMPLETED' | 'NO_SIGNAL';
 
 export type PrismaDeliveryClient = {
   readonly deliveryAttempt: {
@@ -314,5 +318,39 @@ export type PrismaDeliveryClient = {
         };
       };
     }): Promise<PrismaNotificationPreferenceRecord | null>;
+  };
+  readonly summaryArtifact: {
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly topicId: { readonly in: readonly string[] };
+        readonly status: { readonly in: readonly PrismaDigestSourceSummaryStatus[] };
+      };
+      readonly orderBy: readonly [
+        { readonly createdAt: 'desc' },
+        { readonly id: 'desc' },
+      ];
+      readonly take: number;
+    }): Promise<readonly PrismaDigestSourceSummaryRecord[]>;
+  };
+  readonly feedItem: {
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly topicId: { readonly in: readonly string[] };
+        readonly status: 'VISIBLE';
+        readonly observedAt: {
+          readonly gte: Date;
+          readonly lt: Date;
+        };
+      };
+      readonly orderBy: readonly [
+        { readonly observedAt: 'asc' },
+        { readonly id: 'asc' },
+      ];
+      readonly take: number;
+    }): Promise<readonly PrismaDigestSourceFeedItemRecord[]>;
   };
 };
