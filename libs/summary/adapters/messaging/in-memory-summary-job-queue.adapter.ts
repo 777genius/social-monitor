@@ -7,7 +7,7 @@ type QueueBacklogReader = {
   all(): readonly QueueCommandEnvelope<Readonly<Record<string, unknown>>>[];
 };
 
-export class InMemorySummaryJobQueueAdapter implements SummaryJobQueuePort {
+export class SummaryJobQueuePublisherAdapter implements SummaryJobQueuePort {
   private readonly backlogReader: QueueBacklogReader | undefined;
 
   constructor(
@@ -80,6 +80,8 @@ export class InMemorySummaryJobQueueAdapter implements SummaryJobQueuePort {
     });
   }
 }
+
+export class InMemorySummaryJobQueueAdapter extends SummaryJobQueuePublisherAdapter {}
 
 const isQueueBacklogReader = (value: unknown): value is QueueBacklogReader =>
   typeof value === 'object' &&

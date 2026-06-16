@@ -3,7 +3,13 @@ import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.m
 import { FEED_ITEM_READ_REPOSITORY, type FeedItemReadRepositoryPort } from '@social-monitor/feed/ports';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
-import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
+import {
+  AmqplibRabbitMqChannel,
+  InMemoryQueuePublisher,
+  RabbitMqQueuePublisher,
+  type RabbitMqQueueChannelPort,
+  type RabbitMqQueuePublisherOptions,
+} from '@social-monitor/platform-queue';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
@@ -12,7 +18,10 @@ import { UsageSummaryQuotaAdapter } from '../../adapters/quota/usage-summary-quo
 import { FeedSummaryEvidenceSelector } from '../../adapters/evidence/feed-summary-evidence.selector';
 import { FeedSummaryFreshnessProbe } from '../../adapters/evidence/feed-summary-freshness.probe';
 import { InMemorySummaryEventPublisher } from '../../adapters/messaging/in-memory-summary-event-publisher';
-import { InMemorySummaryJobQueueAdapter } from '../../adapters/messaging/in-memory-summary-job-queue.adapter';
+import {
+  InMemorySummaryJobQueueAdapter,
+  SummaryJobQueuePublisherAdapter,
+} from '../../adapters/messaging/in-memory-summary-job-queue.adapter';
 import { DeterministicSummaryModelAdapter } from '../../adapters/model/deterministic-summary-model.adapter';
 import { MeteredSummaryModelAdapter } from '../../adapters/model/metered-summary-model.adapter';
 import { InMemorySummaryArtifactRepository } from '../../adapters/persistence/in-memory-summary-artifact.repository';
@@ -51,14 +60,20 @@ import { SummaryPolicyController } from './summary-policy.controller';
 import {
   SUMMARY_ARTIFACT_REPOSITORY,
   SUMMARY_EVENT_PUBLISHER,
+  SUMMARY_JOB_QUEUE_MODE,
   SUMMARY_FEEDBACK_REPOSITORY,
   SUMMARY_JOB_QUEUE,
   SUMMARY_JOB_REPOSITORY,
   SUMMARY_PERSISTENCE_MODE,
   SUMMARY_POLICY_REPOSITORY,
   SUMMARY_PRISMA_CLIENT,
+  SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS,
+  SUMMARY_RABBITMQ_QUEUE_CHANNEL,
+  type SummaryJobQueueMode,
   type SummaryPersistenceMode,
+  summaryJobQueueModeProvider,
   summaryPersistenceModeProvider,
+  summaryRabbitMqJobQueueOptionsProvider,
 } from './summary-provider-tokens';
 import { SummaryRequestController } from './summary-request.controller';
 import { SummaryController } from './summary.controller';
@@ -74,6 +89,8 @@ import { SummaryController } from './summary.controller';
   ],
   providers: [
     summaryPersistenceModeProvider,
+    summaryJobQueueModeProvider,
+    summaryRabbitMqJobQueueOptionsProvider,
     {
       provide: SUMMARY_PRISMA_CLIENT,
       useFactory: (mode: SummaryPersistenceMode): PrismaSummaryClient | null =>
@@ -86,10 +103,35 @@ import { SummaryController } from './summary.controller';
     InMemorySummaryPolicyRepository,
     InMemoryQueuePublisher,
     {
+      provide: SUMMARY_RABBITMQ_QUEUE_CHANNEL,
+      useFactory: (mode: SummaryJobQueueMode): RabbitMqQueueChannelPort | null =>
+        mode === 'rabbitmq'
+          ? new AmqplibRabbitMqChannel({ url: process.env.RABBITMQ_URL ?? '' })
+          : null,
+      inject: [SUMMARY_JOB_QUEUE_MODE],
+    },
+    {
       provide: SUMMARY_JOB_QUEUE,
-      useFactory: (publisher: InMemoryQueuePublisher, metrics: InMemoryMetricsRecorder): SummaryJobQueuePort =>
-        new InMemorySummaryJobQueueAdapter(publisher, metrics),
-      inject: [InMemoryQueuePublisher, InMemoryMetricsRecorder],
+      useFactory: (
+        mode: SummaryJobQueueMode,
+        publisher: InMemoryQueuePublisher,
+        metrics: InMemoryMetricsRecorder,
+        rabbitChannel: RabbitMqQueueChannelPort | null,
+        rabbitOptions: RabbitMqQueuePublisherOptions,
+      ): SummaryJobQueuePort =>
+        mode === 'rabbitmq'
+          ? new SummaryJobQueuePublisherAdapter(
+              new RabbitMqQueuePublisher(requireRabbitMqQueueChannel(rabbitChannel), rabbitOptions),
+              metrics,
+            )
+          : new InMemorySummaryJobQueueAdapter(publisher, metrics),
+      inject: [
+        SUMMARY_JOB_QUEUE_MODE,
+        InMemoryQueuePublisher,
+        InMemoryMetricsRecorder,
+        SUMMARY_RABBITMQ_QUEUE_CHANNEL,
+        SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS,
+      ],
     },
     {
       provide: SUMMARY_JOB_REPOSITORY,
@@ -331,4 +373,14 @@ const requirePrismaSummaryClient = (client: PrismaSummaryClient | null): PrismaS
   }
 
   return client;
+};
+
+const requireRabbitMqQueueChannel = (
+  channel: RabbitMqQueueChannelPort | null,
+): RabbitMqQueueChannelPort => {
+  if (channel === null) {
+    throw new Error('RabbitMQ queue channel is required when SUMMARY_JOB_QUEUE_MODE=rabbitmq');
+  }
+
+  return channel;
 };

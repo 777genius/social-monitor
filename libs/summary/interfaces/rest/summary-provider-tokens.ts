@@ -1,4 +1,5 @@
 import type { Provider } from '@nestjs/common';
+import type { RabbitMqQueuePublisherOptions } from '@social-monitor/platform-queue';
 
 import type {
   SummaryArtifactRepositoryPort,
@@ -10,8 +11,12 @@ import type {
 } from '../../ports';
 
 export type SummaryPersistenceMode = 'in-memory' | 'prisma';
+export type SummaryJobQueueMode = 'in-memory' | 'rabbitmq';
 
 export const SUMMARY_PERSISTENCE_MODE = Symbol('SUMMARY_PERSISTENCE_MODE');
+export const SUMMARY_JOB_QUEUE_MODE = Symbol('SUMMARY_JOB_QUEUE_MODE');
+export const SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS = Symbol('SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS');
+export const SUMMARY_RABBITMQ_QUEUE_CHANNEL = Symbol('SUMMARY_RABBITMQ_QUEUE_CHANNEL');
 export const SUMMARY_PRISMA_CLIENT = Symbol('SUMMARY_PRISMA_CLIENT');
 export const SUMMARY_JOB_REPOSITORY = Symbol('SUMMARY_JOB_REPOSITORY');
 export const SUMMARY_JOB_QUEUE = Symbol('SUMMARY_JOB_QUEUE');
@@ -22,6 +27,9 @@ export const SUMMARY_EVENT_PUBLISHER = Symbol('SUMMARY_EVENT_PUBLISHER');
 
 export type SummaryProviderTokenMap = {
   readonly [SUMMARY_PERSISTENCE_MODE]: SummaryPersistenceMode;
+  readonly [SUMMARY_JOB_QUEUE_MODE]: SummaryJobQueueMode;
+  readonly [SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS]: RabbitMqQueuePublisherOptions;
+  readonly [SUMMARY_RABBITMQ_QUEUE_CHANNEL]: unknown;
   readonly [SUMMARY_PRISMA_CLIENT]: unknown;
   readonly [SUMMARY_JOB_REPOSITORY]: SummaryJobRepositoryPort;
   readonly [SUMMARY_JOB_QUEUE]: SummaryJobQueuePort;
@@ -34,6 +42,16 @@ export type SummaryProviderTokenMap = {
 export const summaryPersistenceModeProvider: Provider<SummaryPersistenceMode> = {
   provide: SUMMARY_PERSISTENCE_MODE,
   useFactory: () => resolveSummaryPersistenceMode(process.env),
+};
+
+export const summaryJobQueueModeProvider: Provider<SummaryJobQueueMode> = {
+  provide: SUMMARY_JOB_QUEUE_MODE,
+  useFactory: () => resolveSummaryJobQueueMode(process.env),
+};
+
+export const summaryRabbitMqJobQueueOptionsProvider: Provider<RabbitMqQueuePublisherOptions> = {
+  provide: SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS,
+  useFactory: () => resolveSummaryRabbitMqJobQueueOptions(process.env),
 };
 
 export const resolveSummaryPersistenceMode = (env: NodeJS.ProcessEnv): SummaryPersistenceMode => {
@@ -52,4 +70,52 @@ export const resolveSummaryPersistenceMode = (env: NodeJS.ProcessEnv): SummaryPe
   }
 
   throw new Error('SUMMARY_PERSISTENCE must be "in-memory" or "prisma"');
+};
+
+export const resolveSummaryJobQueueMode = (env: NodeJS.ProcessEnv): SummaryJobQueueMode => {
+  const value = env.SUMMARY_JOB_QUEUE_MODE ?? 'in-memory';
+
+  if (value === 'in-memory') {
+    return 'in-memory';
+  }
+
+  if (value === 'rabbitmq') {
+    if ((env.RABBITMQ_URL ?? '').trim().length === 0) {
+      throw new Error('SUMMARY_JOB_QUEUE_MODE=rabbitmq requires RABBITMQ_URL');
+    }
+
+    return 'rabbitmq';
+  }
+
+  throw new Error('SUMMARY_JOB_QUEUE_MODE must be "in-memory" or "rabbitmq"');
+};
+
+export const resolveSummaryRabbitMqJobQueueOptions = (
+  env: NodeJS.ProcessEnv,
+): RabbitMqQueuePublisherOptions => ({
+  exchange: nonEmptyOrFallback(env.RABBITMQ_COMMAND_EXCHANGE, 'social-monitor.commands'),
+  exchangeType: 'direct',
+  durable: true,
+  persistent: true,
+  defaultQueuePrefix: 'jobs',
+  routes: {
+    'summary.job.execute': {
+      queue: nonEmptyOrFallback(env.RABBITMQ_SUMMARY_QUEUE, 'jobs.summary.execute'),
+      routingKey: 'summary.job.execute',
+      durable: true,
+      deadLetterExchange: emptyToUndefined(env.RABBITMQ_DEAD_LETTER_EXCHANGE),
+    },
+  },
+});
+
+const emptyToUndefined = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim();
+
+  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
+};
+
+const nonEmptyOrFallback = (value: string | undefined, fallback: string): string => {
+  const trimmed = value?.trim();
+
+  return trimmed === undefined || trimmed.length === 0 ? fallback : trimmed;
 };

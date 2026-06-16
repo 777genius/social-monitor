@@ -6,13 +6,32 @@ export type IntelligenceSummaryJobLoopOptions = {
   readonly tenantId?: string;
   readonly workspaceId?: string;
 };
+export type IntelligenceSummaryQueueReaderMode = 'in-memory' | 'rabbitmq';
+export type IntelligenceRabbitMqSummaryQueueReaderOptions = {
+  readonly queue: string;
+  readonly deadLetterExchange?: string;
+};
+export type IntelligenceSummaryQueueDrainLoopOptions = {
+  readonly enabled: boolean;
+  readonly intervalMs: number;
+  readonly limit: number;
+  readonly runOnStart: boolean;
+};
 
 export const INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS = Symbol('INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS');
+export const INTELLIGENCE_SUMMARY_QUEUE_READER_MODE = Symbol('INTELLIGENCE_SUMMARY_QUEUE_READER_MODE');
+export const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_READER_OPTIONS =
+  Symbol('INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_READER_OPTIONS');
+export const INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS =
+  Symbol('INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS');
 
 export const resolveIntelligenceSummaryJobLoopOptions = (
   env: NodeJS.ProcessEnv,
 ): IntelligenceSummaryJobLoopOptions => {
-  const loopMode = env.INTELLIGENCE_SUMMARY_JOB_LOOP ?? (env.NODE_ENV === 'test' ? 'disabled' : 'enabled');
+  const defaultMode = env.NODE_ENV === 'test' || env.INTELLIGENCE_SUMMARY_QUEUE_READER === 'rabbitmq'
+    ? 'disabled'
+    : 'enabled';
+  const loopMode = env.INTELLIGENCE_SUMMARY_JOB_LOOP ?? defaultMode;
 
   if (loopMode !== 'enabled' && loopMode !== 'disabled') {
     throw new Error('INTELLIGENCE_SUMMARY_JOB_LOOP must be "enabled" or "disabled"');
@@ -37,10 +56,61 @@ export const resolveIntelligenceSummaryJobLoopOptions = (
   };
 };
 
+export const resolveIntelligenceSummaryQueueReaderMode = (
+  env: NodeJS.ProcessEnv,
+): IntelligenceSummaryQueueReaderMode => {
+  const value = env.INTELLIGENCE_SUMMARY_QUEUE_READER ?? 'in-memory';
+
+  if (value === 'in-memory') {
+    return 'in-memory';
+  }
+
+  if (value === 'rabbitmq') {
+    if ((env.RABBITMQ_URL ?? '').trim().length === 0) {
+      throw new Error('INTELLIGENCE_SUMMARY_QUEUE_READER=rabbitmq requires RABBITMQ_URL');
+    }
+
+    return 'rabbitmq';
+  }
+
+  throw new Error('INTELLIGENCE_SUMMARY_QUEUE_READER must be "in-memory" or "rabbitmq"');
+};
+
+export const resolveIntelligenceRabbitMqSummaryQueueReaderOptions = (
+  env: NodeJS.ProcessEnv,
+): IntelligenceRabbitMqSummaryQueueReaderOptions => ({
+  queue: nonEmptyOrFallback(env.RABBITMQ_SUMMARY_QUEUE, 'jobs.summary.execute'),
+  deadLetterExchange: emptyToUndefined(env.RABBITMQ_DEAD_LETTER_EXCHANGE),
+});
+
+export const resolveIntelligenceSummaryQueueDrainLoopOptions = (
+  env: NodeJS.ProcessEnv,
+): IntelligenceSummaryQueueDrainLoopOptions => {
+  const defaultMode = env.INTELLIGENCE_SUMMARY_QUEUE_READER === 'rabbitmq' ? 'enabled' : 'disabled';
+  const loopMode = env.INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP ?? (env.NODE_ENV === 'test' ? 'disabled' : defaultMode);
+
+  if (loopMode !== 'enabled' && loopMode !== 'disabled') {
+    throw new Error('INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP must be "enabled" or "disabled"');
+  }
+
+  return {
+    enabled: loopMode === 'enabled',
+    intervalMs: parseBoundedInteger(env.INTELLIGENCE_SUMMARY_QUEUE_DRAIN_INTERVAL_MS, 5_000, 500, 3_600_000),
+    limit: parseBoundedInteger(env.INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LIMIT, 20, 1, 100),
+    runOnStart: parseBoolean(env.INTELLIGENCE_SUMMARY_QUEUE_DRAIN_RUN_ON_START, true),
+  };
+};
+
 const emptyToUndefined = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim();
 
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
+};
+
+const nonEmptyOrFallback = (value: string | undefined, fallback: string): string => {
+  const trimmed = value?.trim();
+
+  return trimmed === undefined || trimmed.length === 0 ? fallback : trimmed;
 };
 
 const parseBoolean = (value: string | undefined, fallback: boolean): boolean => {

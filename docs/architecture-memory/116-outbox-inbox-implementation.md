@@ -124,3 +124,9 @@ Transactional outbox solves the database-vs-broker dual-write problem. It does n
 - pending outbox events are dispatched and marked `PUBLISHED`;
 - publisher failures are marked `FAILED`;
 - a new inbox adapter instance deduplicates a previously processed event.
+
+Related queue transport guardrails:
+
+- `npm run check:rabbitmq-queue-publisher` proves command publisher route assertion and RabbitMQ publish metadata;
+- `npm run check:scan-queue-drain-loop` proves scan command reader ack/nack semantics;
+- `npm run check:summary-queue-drain-loop` proves summary command reader ack/nack semantics and worker command execution.
