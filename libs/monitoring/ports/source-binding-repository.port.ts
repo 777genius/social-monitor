@@ -2,6 +2,19 @@ import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { SourceBinding } from '../domain';
 
+export type ListSourceBindingsQuery = {
+  readonly tenantId: TenantId;
+  readonly workspaceId: WorkspaceId;
+  readonly topicId: string;
+  readonly limit: number;
+  readonly cursor?: string;
+};
+
+export type ListSourceBindingsResult = {
+  readonly sourceBindings: readonly SourceBinding[];
+  readonly nextCursor?: string;
+};
+
 export interface SourceBindingRepositoryPort {
   save(binding: SourceBinding): Promise<void>;
   findByTopicAndProvider(params: {
@@ -15,4 +28,5 @@ export interface SourceBindingRepositoryPort {
     workspaceId: WorkspaceId;
     sourceBindingId: string;
   }): Promise<SourceBinding | null>;
+  listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult>;
 }

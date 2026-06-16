@@ -26,6 +26,8 @@ import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-ca
 import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
 import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
+import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
+import { ListTopicsUseCase } from '../../features/list-topics/list-topics.use-case';
 import { RecordScanExecutionUseCase } from '../../features/record-scan-execution/record-scan-execution.use-case';
 import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
 import { ScheduleDueScansUseCase } from '../../features/schedule-due-scans/schedule-due-scans.use-case';
@@ -167,8 +169,13 @@ import { TopicController } from './topic.controller';
           idempotency,
           new CryptoIdGenerator(),
           new SystemClock(),
-        ),
+      ),
       inject: [MONITORING_TOPIC_REPOSITORY, MONITORING_OUTBOX, MONITORING_IDEMPOTENCY],
+    },
+    {
+      provide: ListTopicsUseCase,
+      useFactory: (topics: TopicRepositoryPort) => new ListTopicsUseCase(topics),
+      inject: [MONITORING_TOPIC_REPOSITORY],
     },
     {
       provide: BindSourceUseCase,
@@ -198,6 +205,14 @@ import { TopicController } from './topic.controller';
         MONITORING_IDEMPOTENCY,
         MONITORING_CONFIG_PROTECTOR,
       ],
+    },
+    {
+      provide: ListSourceBindingsUseCase,
+      useFactory: (
+        topics: TopicRepositoryPort,
+        bindings: SourceBindingRepositoryPort,
+      ) => new ListSourceBindingsUseCase(topics, bindings),
+      inject: [MONITORING_TOPIC_REPOSITORY, MONITORING_SOURCE_BINDING_REPOSITORY],
     },
     {
       provide: SetScanPolicyUseCase,

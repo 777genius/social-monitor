@@ -85,6 +85,19 @@ Flutter features:
 - summary detail
 - settings for scan interval
 
+## Backend Management Slice
+
+REST-backed MVP management surfaces:
+
+- `POST /topics` creates a workspace-scoped monitoring topic.
+- `GET /topics` lists workspace topics with opaque cursor pagination.
+- `POST /topics/:topicId/source-bindings` binds a production-safe source provider to a topic.
+- `GET /topics/:topicId/source-bindings` lists source bindings with opaque cursor pagination and safe config previews; encrypted credential fields must expose only metadata, never ciphertext.
+- `PATCH /topics/:topicId/source-bindings/:sourceBindingId/status` pauses or resumes scanning.
+- `POST /topics/:topicId/source-bindings/:sourceBindingId/scan-policy` sets scan cadence.
+- `POST /scan-requests` requests a manual scan within quota.
+- `GET /scan-jobs/:scanJobId` returns scan status for resync.
+
 Architecture:
 
 - feature-scoped Clean Architecture

@@ -1,7 +1,8 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { Topic } from '../../domain';
-import type { TopicRepositoryPort } from '../../ports';
+import type { ListTopicsQuery, ListTopicsResult, TopicRepositoryPort } from '../../ports';
+import { encodeOffsetCursor, parseOffsetCursor } from './offset-pagination';
 
 export class InMemoryTopicRepository implements TopicRepositoryPort {
   private readonly topics = new Map<string, Topic>();
@@ -40,7 +41,37 @@ export class InMemoryTopicRepository implements TopicRepositoryPort {
     return this.topics.get(this.key(params.tenantId, params.workspaceId, params.topicId)) ?? null;
   }
 
+  async list(query: ListTopicsQuery): Promise<ListTopicsResult> {
+    const offset = parseOffsetCursor(query.cursor);
+    const allTopics = [...this.topics.values()]
+      .filter((topic) => {
+        const snapshot = topic.toSnapshot();
+
+        return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId;
+      })
+      .sort(compareTopicsByCreation);
+    const topics = allTopics.slice(offset, offset + query.limit);
+    const nextOffset = offset + topics.length;
+
+    return {
+      topics,
+      nextCursor: nextOffset < allTopics.length ? encodeOffsetCursor(nextOffset) : undefined,
+    };
+  }
+
   private key(tenantId: TenantId, workspaceId: WorkspaceId, topicId: string): string {
     return `${tenantId}:${workspaceId}:${topicId}`;
   }
 }
+
+const compareTopicsByCreation = (left: Topic, right: Topic): number => {
+  const leftSnapshot = left.toSnapshot();
+  const rightSnapshot = right.toSnapshot();
+  const createdDiff = rightSnapshot.createdAt.getTime() - leftSnapshot.createdAt.getTime();
+
+  if (createdDiff !== 0) {
+    return createdDiff;
+  }
+
+  return rightSnapshot.id.localeCompare(leftSnapshot.id);
+};

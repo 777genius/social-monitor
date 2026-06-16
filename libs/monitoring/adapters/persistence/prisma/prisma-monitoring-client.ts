@@ -31,6 +31,19 @@ export type PrismaMonitoringClient = {
         readonly deletedAt: null;
       };
     }): Promise<PrismaTopicRecord | null>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly deletedAt: null;
+      };
+      readonly orderBy: readonly [
+        { readonly createdAt: 'desc' },
+        { readonly id: 'desc' },
+      ];
+      readonly skip: number;
+      readonly take: number;
+    }): Promise<readonly PrismaTopicRecord[]>;
   };
   readonly sourceCatalogEntry: {
     findUnique(args: {
@@ -66,6 +79,20 @@ export type PrismaMonitoringClient = {
         readonly deletedAt: null;
       };
     }): Promise<PrismaSourceBindingRecord | null>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly topicId: string;
+        readonly deletedAt: null;
+      };
+      readonly orderBy: readonly [
+        { readonly createdAt: 'desc' },
+        { readonly id: 'desc' },
+      ];
+      readonly skip: number;
+      readonly take: number;
+    }): Promise<readonly PrismaSourceBindingRecord[]>;
   };
   readonly scanPolicy: {
     upsert(args: {

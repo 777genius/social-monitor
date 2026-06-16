@@ -1,7 +1,8 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { Topic } from '../../../domain';
-import type { TopicRepositoryPort } from '../../../ports';
+import type { ListTopicsQuery, ListTopicsResult, TopicRepositoryPort } from '../../../ports';
+import { encodeOffsetCursor, parseOffsetCursor } from '../offset-pagination';
 import type { PrismaMonitoringClient } from './prisma-monitoring-client';
 import { topicFromPrisma } from './prisma-monitoring-records';
 
@@ -59,5 +60,27 @@ export class PrismaTopicRepository implements TopicRepositoryPort {
     });
 
     return record === null ? null : topicFromPrisma(record);
+  }
+
+  async list(query: ListTopicsQuery): Promise<ListTopicsResult> {
+    const offset = parseOffsetCursor(query.cursor);
+    const limit = Math.max(1, Math.min(query.limit, 100));
+    const records = await this.prisma.topic.findMany({
+      where: {
+        tenantId: query.tenantId,
+        workspaceId: query.workspaceId,
+        deletedAt: null,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: offset,
+      take: limit + 1,
+    });
+    const topics = records.slice(0, limit).map(topicFromPrisma);
+    const nextOffset = offset + topics.length;
+
+    return {
+      topics,
+      nextCursor: records.length > limit ? encodeOffsetCursor(nextOffset) : undefined,
+    };
   }
 }

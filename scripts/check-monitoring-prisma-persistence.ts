@@ -78,6 +78,17 @@ async function main(): Promise<void> {
   });
   assert(foundTopic?.toSnapshot().id === topic.toSnapshot().id, 'topic must round-trip through Prisma repository');
 
+  const listedTopics = await topics.list({
+    tenantId: tenant,
+    workspaceId: workspace,
+    limit: 10,
+  });
+  assert(listedTopics.topics.length === 1, 'topic list must include tenant-scoped persisted topics');
+  assert(
+    listedTopics.topics[0]?.toSnapshot().id === topic.toSnapshot().id,
+    'topic list must rehydrate persisted topic snapshots',
+  );
+
   const sourceBinding = SourceBinding.create({
     id: '00000000-0000-7000-8000-000000000030',
     tenantId: tenant,
@@ -99,6 +110,18 @@ async function main(): Promise<void> {
   });
   assert(foundBinding?.toSnapshot().status === 'paused', 'source binding pause state must persist');
   assert(foundBinding.toSnapshot().providerKey === 'fake-source', 'source binding provider key must rehydrate from catalog');
+
+  const listedBindings = await bindings.listByTopic({
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId: topic.toSnapshot().id,
+    limit: 10,
+  });
+  assert(listedBindings.sourceBindings.length === 1, 'source binding list must include topic-scoped bindings');
+  assert(
+    listedBindings.sourceBindings[0]?.toSnapshot().providerKey === 'fake-source',
+    'source binding list must rehydrate provider keys from catalog entries',
+  );
 
   const scanPolicy = ScanPolicy.create({
     id: '00000000-0000-7000-8000-000000000040',
@@ -219,6 +242,11 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         (args.where.id === undefined || record.id === args.where.id) &&
         (args.where.name === undefined || record.name === args.where.name)
       )) ?? null,
+    findMany: async (args) =>
+      [...this.topics.values()]
+        .filter((record) => record.tenantId === args.where.tenantId && record.workspaceId === args.where.workspaceId)
+        .sort(compareRecordsByCreationDesc)
+        .slice(args.skip, args.skip + args.take),
   };
 
   readonly sourceCatalogEntry: PrismaMonitoringClient['sourceCatalogEntry'] = {
@@ -265,6 +293,15 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
           record.sourceCatalogEntryId === args.where.sourceCatalogEntryId
         )
       )) ?? null,
+    findMany: async (args) =>
+      [...this.sourceBindings.values()]
+        .filter((record) => (
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          record.topicId === args.where.topicId
+        ))
+        .sort(compareRecordsByCreationDesc)
+        .slice(args.skip, args.skip + args.take),
   };
 
   readonly scanPolicy: PrismaMonitoringClient['scanPolicy'] = {
@@ -353,6 +390,19 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
     }
   }
 }
+
+const compareRecordsByCreationDesc = (
+  left: { readonly id: string; readonly createdAt: Date },
+  right: { readonly id: string; readonly createdAt: Date },
+): number => {
+  const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
+
+  if (createdDiff !== 0) {
+    return createdDiff;
+  }
+
+  return right.id.localeCompare(left.id);
+};
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {

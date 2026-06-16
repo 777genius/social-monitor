@@ -1,7 +1,12 @@
 import { DomainError, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { SourceBinding } from '../../../domain';
-import type { SourceBindingRepositoryPort } from '../../../ports';
+import type {
+  ListSourceBindingsQuery,
+  ListSourceBindingsResult,
+  SourceBindingRepositoryPort,
+} from '../../../ports';
+import { encodeOffsetCursor, parseOffsetCursor } from '../offset-pagination';
 import type { PrismaMonitoringClient } from './prisma-monitoring-client';
 import {
   sourceBindingFromPrisma,
@@ -97,5 +102,42 @@ export class PrismaSourceBindingRepository implements SourceBindingRepositoryPor
     }
 
     return sourceBindingFromPrisma(record, sourceCatalogEntry);
+  }
+
+  async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
+    const offset = parseOffsetCursor(query.cursor);
+    const limit = Math.max(1, Math.min(query.limit, 100));
+    const records = await this.prisma.sourceBinding.findMany({
+      where: {
+        tenantId: query.tenantId,
+        workspaceId: query.workspaceId,
+        topicId: query.topicId,
+        deletedAt: null,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: offset,
+      take: limit + 1,
+    });
+    const sourceBindings = await Promise.all(
+      records.slice(0, limit).map(async (record) => {
+        const sourceCatalogEntry = await this.prisma.sourceCatalogEntry.findUnique({
+          where: { id: record.sourceCatalogEntryId },
+        });
+        if (sourceCatalogEntry === null) {
+          throw new DomainError('validation.failed', 'Source catalog entry is missing for persisted source binding', {
+            sourceBindingId: record.id,
+            sourceCatalogEntryId: record.sourceCatalogEntryId,
+          });
+        }
+
+        return sourceBindingFromPrisma(record, sourceCatalogEntry);
+      }),
+    );
+    const nextOffset = offset + sourceBindings.length;
+
+    return {
+      sourceBindings,
+      nextCursor: records.length > limit ? encodeOffsetCursor(nextOffset) : undefined,
+    };
   }
 }

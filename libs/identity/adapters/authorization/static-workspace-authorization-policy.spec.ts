@@ -32,6 +32,20 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     });
   });
 
+  it('allows every workspace role to read monitoring topics', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'topics.read',
+      roles: ['viewer'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
   it('allows every workspace role to read feed items', () => {
     const policy = new StaticWorkspaceAuthorizationPolicy();
 
@@ -158,6 +172,20 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
       workspaceId: workspaceId('workspace-1'),
       action: 'source_bindings.create',
       roles: ['admin'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  it('allows every workspace role to read source bindings', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'source_bindings.read',
+      roles: ['viewer'],
     })).toEqual({
       ok: true,
       value: undefined,

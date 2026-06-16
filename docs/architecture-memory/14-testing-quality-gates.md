@@ -82,6 +82,7 @@ Implementation should not stall on broad test suites. For MVP work, write code i
 - keep beta ring expansion policy as an executable contract through `npm run check:beta-ring-policy`.
 - keep runtime persistence readiness as an executable contract through `npm run check:persistence-readiness`; in-memory/noop runtime adapters must be declared with owner, risk and durable replacement plan.
 - keep monitoring Prisma persistence adapters covered by `npm run check:monitoring-persistence`, including persisted source binding pause state, scan policy `nextRunAt` and scan job status transitions.
+- keep monitoring read REST management covered by `npm run check:monitoring-read-rest`, including topic pagination, source binding pagination, workspace role authorization and safe protected config previews.
 - keep ingestion/feed Prisma persistence adapters covered by `npm run check:ingestion-feed-persistence`, including source item dedupe, scan cursor roundtrip, feed canonical dedupe, feed item rehydration, scan failure queue persistence, scan attempt persistence, scan lease fencing/release behavior, feed persistence mode validation, ingestion-worker persistence mode validation and ingestion-support persistence mode validation.
 - keep summary Prisma persistence adapters covered by `npm run check:summary-persistence`, including summary job transitions, artifact payload rehydration, pagination, feedback evidence and summary persistence mode validation.
 - keep identity Prisma persistence adapters covered by `npm run check:identity-persistence`, including API key create/list/verify/revoke, scope enforcement, revoked-key rejection, no secret-hash exposure and identity persistence mode validation.
@@ -107,6 +108,7 @@ CI must block:
 - migrations without tests/review;
 - runtime modules adding in-memory or noop state adapters without persistence-readiness evidence;
 - monitoring persistence changes that lose `nextRunAt`, source binding status or source catalog provider rehydration;
+- monitoring management API changes that expose encrypted source binding config ciphertext or remove cursor pagination from topic/source binding lists;
 - summary persistence changes that lose job idempotency/status transitions, artifact payload rehydration or feedback evidence;
 - identity persistence changes that expose API key hashes, lose scope enforcement or accept revoked keys;
 - usage persistence changes that lose audit redaction, rate-limit windows or quota rejection behavior;
@@ -140,3 +142,4 @@ CI must block:
 14. `npm run check:identity-persistence` is mandatory before beta MVP release evidence can pass.
 15. `npm run check:usage-persistence` is mandatory before beta MVP release evidence can pass.
 16. `npm run check:delivery-persistence` is mandatory before beta MVP release evidence can pass.
+17. `npm run check:monitoring-read-rest` is mandatory before beta MVP release evidence can pass.
