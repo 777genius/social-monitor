@@ -10,6 +10,7 @@ import {
   hasBearerAuthorizationHeader,
   type ApiKeyRequestAuthorization,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { ListSummaryFeedbackUseCase } from '../../features/list-summary-feedback/list-summary-feedback.use-case';
@@ -35,10 +36,9 @@ export class SummaryFeedbackController {
   @ApiOperation({ summary: 'List classified feedback for one summary with cursor pagination.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Summary feedback reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:summaries',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Summary feedback reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
@@ -81,12 +81,15 @@ export class SummaryFeedbackController {
   @ApiOperation({ summary: 'Record classified feedback for a summary without mutating the artifact.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Summary feedback allows owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:summaries',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Summary feedback allows owner, admin, member or viewer.',
   })
-  @ApiHeader({ name: 'x-actor-id', required: true })
+  @ApiHeader({
+    name: 'x-actor-id',
+    required: false,
+    description: 'Optional actor id. API-key requests fall back to the API key id when omitted.',
+  })
   @ApiHeader({ name: 'idempotency-key', required: true })
   async create(
     @Param('summaryId') summaryId: string,

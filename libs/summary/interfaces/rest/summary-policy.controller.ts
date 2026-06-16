@@ -9,6 +9,7 @@ import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { GetSummaryPolicyUseCase } from '../../features/get-summary-policy/get-summary-policy.use-case';
@@ -34,10 +35,9 @@ export class SummaryPolicyController {
   @ApiOperation({ summary: 'Get summary policy for a topic.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Summary policy reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:summaries',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Summary policy reads allow owner, admin, member or viewer.',
   })
   async get(
     @Param('topicId') topicId: string,
@@ -74,10 +74,9 @@ export class SummaryPolicyController {
   @ApiOperation({ summary: 'Create or update summary policy for a topic.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Summary policy writes require owner or admin.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:summaries',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Summary policy writes require owner or admin.',
   })
   async upsert(
     @Param('topicId') topicId: string,

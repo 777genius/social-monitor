@@ -4,6 +4,7 @@ import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
   parseWorkspaceRolesHeader,
@@ -31,7 +32,10 @@ export class TopicController {
   @ApiOperation({ summary: 'Create a topic inside the current tenant/workspace.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Topic creation requires owner or admin.' })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:topics',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Topic creation requires owner or admin.',
+  })
   @ApiHeader({ name: 'idempotency-key', required: true })
   create(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -74,10 +78,9 @@ export class TopicController {
   @ApiOperation({ summary: 'List topics inside the current tenant/workspace.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Topic reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:topics',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Topic reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })

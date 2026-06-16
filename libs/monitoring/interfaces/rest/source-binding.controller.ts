@@ -4,6 +4,7 @@ import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
   parseWorkspaceRolesHeader,
@@ -43,7 +44,10 @@ export class SourceBindingController {
   @ApiOperation({ summary: 'Bind a production-safe source provider to a topic.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Source binding creation requires owner or admin.' })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:source_bindings',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Source binding creation requires owner or admin.',
+  })
   @ApiHeader({ name: 'idempotency-key', required: true })
   async create(
     @Param('topicId') topicId: string,
@@ -102,10 +106,9 @@ export class SourceBindingController {
   @ApiOperation({ summary: 'List source bindings for a topic.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Source binding reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:topics',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Source binding reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
@@ -148,10 +151,9 @@ export class SourceBindingController {
   @ApiOperation({ summary: 'Get source binding operational health.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Source binding health reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:topics',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Source binding health reads allow owner, admin, member or viewer.',
   })
   async health(
     @Param('topicId') topicId: string,
@@ -219,7 +221,10 @@ export class SourceBindingController {
   @ApiOperation({ summary: 'Pause or resume a source binding.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Source binding status updates require owner or admin.' })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:source_bindings',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Source binding status updates require owner or admin.',
+  })
   @ApiHeader({ name: 'idempotency-key', required: true })
   async updateStatus(
     @Param('topicId') topicId: string,

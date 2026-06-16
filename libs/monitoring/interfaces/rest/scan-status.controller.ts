@@ -9,6 +9,7 @@ import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
@@ -29,10 +30,9 @@ export class ScanStatusController {
   @ApiOperation({ summary: 'Get current scan job status.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Scan job reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:topics',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Scan job reads allow owner, admin, member or viewer.',
   })
   async get(
     @Param('scanJobId') scanJobId: string,

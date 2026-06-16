@@ -9,6 +9,7 @@ import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
@@ -34,7 +35,10 @@ export class ScanPolicyController {
   @ApiOperation({ summary: 'Set scan policy for a source binding.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Scan policy changes require owner or admin.' })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:source_bindings',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Scan policy changes require owner or admin.',
+  })
   @ApiHeader({ name: 'idempotency-key', required: true })
   async create(
     @Param('sourceBindingId') sourceBindingId: string,
@@ -94,10 +98,9 @@ export class ScanPolicyController {
   @ApiOperation({ summary: 'Get scan policy for a source binding.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Scan policy reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:topics',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Scan policy reads allow owner, admin, member or viewer.',
   })
   async get(
     @Param('sourceBindingId') sourceBindingId: string,

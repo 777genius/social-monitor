@@ -203,10 +203,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Delivery attempt reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:delivery_status. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Delivery attempt reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -252,10 +261,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Delivery attempt reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:delivery_status. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Delivery attempt reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -880,10 +898,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Feed reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Feed reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -929,10 +956,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Feed reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Feed reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1283,10 +1319,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Scan job reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Scan job reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1332,10 +1377,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Scan policy reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Scan policy reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1387,10 +1441,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Scan policy changes require owner or admin.",
+            "description": "Optional Bearer API key. Requires write:source_bindings. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Scan policy changes require owner or admin. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1462,10 +1525,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Manual scan requests require owner, admin or member.",
+            "description": "Optional Bearer API key. Requires write:scan_requests. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Manual scan requests require owner, admin or member. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1542,10 +1614,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Summary reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1591,10 +1672,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Summary reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1656,10 +1746,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Summary feedback reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary feedback reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1711,18 +1810,28 @@
             }
           },
           {
+            "description": "Optional actor id. API-key requests fall back to the API key id when omitted.",
             "in": "header",
             "name": "x-actor-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
           },
           {
-            "description": "Comma-separated workspace roles. Summary feedback allows owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary feedback allows owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1786,10 +1895,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Summary regenerations require owner, admin or member.",
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary regenerations require owner, admin or member. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1835,10 +1953,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Summary job reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary job reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1892,10 +2019,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Topic reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Topic reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1939,10 +2075,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Topic creation requires owner or admin.",
+            "description": "Optional Bearer API key. Requires write:topics. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Topic creation requires owner or admin. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2014,10 +2159,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Source binding reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source binding reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2069,10 +2223,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Source binding creation requires owner or admin.",
+            "description": "Optional Bearer API key. Requires write:source_bindings. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source binding creation requires owner or admin. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2136,10 +2299,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Source binding health reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source binding health reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2201,10 +2373,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Source binding status updates require owner or admin.",
+            "description": "Optional Bearer API key. Requires write:source_bindings. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source binding status updates require owner or admin. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2260,10 +2441,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Summary policy reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary policy reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2307,10 +2497,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Summary policy writes require owner or admin.",
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary policy writes require owner or admin. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2374,10 +2573,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Summary requests require owner, admin or member.",
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary requests require owner, admin or member. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }

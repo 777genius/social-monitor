@@ -9,6 +9,7 @@ import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { GetFeedItemUseCase } from '../../features/get-feed-item/get-feed-item.use-case';
@@ -30,10 +31,9 @@ export class FeedController {
   @ApiOperation({ summary: 'List tenant/workspace feed items with cursor pagination.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Feed reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:feed',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Feed reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
@@ -74,10 +74,9 @@ export class FeedController {
   @ApiOperation({ summary: 'Get one tenant/workspace feed item by id.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Feed reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:feed',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Feed reads allow owner, admin, member or viewer.',
   })
   async get(
     @Param('feedItemId') feedItemId: string,

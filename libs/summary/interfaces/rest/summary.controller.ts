@@ -9,6 +9,7 @@ import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { GetSummaryUseCase } from '../../features/get-summary/get-summary.use-case';
@@ -33,10 +34,9 @@ export class SummaryController {
   @ApiOperation({ summary: 'List tenant/workspace summaries with cursor pagination.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Summary reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:summaries',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Summary reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'topicId', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -75,10 +75,9 @@ export class SummaryController {
   @ApiOperation({ summary: 'Get one tenant/workspace summary by id.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Summary reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:summaries',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Summary reads allow owner, admin, member or viewer.',
   })
   async get(
     @Param('summaryId') summaryId: string,
@@ -110,7 +109,10 @@ export class SummaryController {
   @ApiOperation({ summary: 'Request regeneration for an existing summary.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Summary regenerations require owner, admin or member.' })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:summaries',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Summary regenerations require owner, admin or member.',
+  })
   @ApiHeader({ name: 'idempotency-key', required: true })
   async regenerate(
     @Param('summaryId') summaryId: string,

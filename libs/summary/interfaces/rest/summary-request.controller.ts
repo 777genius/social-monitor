@@ -9,6 +9,7 @@ import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
@@ -28,7 +29,10 @@ export class SummaryRequestController {
   @ApiOperation({ summary: 'Request a summary for a topic.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Summary requests require owner, admin or member.' })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:summaries',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Summary requests require owner, admin or member.',
+  })
   @ApiHeader({ name: 'idempotency-key', required: true })
   async create(
     @Param('topicId') topicId: string,

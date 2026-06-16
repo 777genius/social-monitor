@@ -9,6 +9,7 @@ import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import { buildRequestContext } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
@@ -32,7 +33,10 @@ export class ScanRequestController {
   @ApiOperation({ summary: 'Request a scan for a source binding.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. Manual scan requests require owner, admin or member.' })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:scan_requests',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Manual scan requests require owner, admin or member.',
+  })
   @ApiHeader({ name: 'x-correlation-id', required: false })
   @ApiHeader({ name: 'idempotency-key', required: true })
   async create(

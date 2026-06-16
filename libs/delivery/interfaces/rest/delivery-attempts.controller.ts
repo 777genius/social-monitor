@@ -6,6 +6,7 @@ import {
   parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { GetDeliveryAttemptUseCase } from '../../features/get-delivery-attempt/get-delivery-attempt.use-case';
@@ -35,10 +36,9 @@ export class DeliveryAttemptsController {
   @ApiOperation({ summary: 'List tenant/workspace delivery attempts for operator monitoring.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Delivery attempt reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:delivery_status',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Delivery attempt reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
@@ -81,10 +81,9 @@ export class DeliveryAttemptsController {
   @ApiOperation({ summary: 'Get one tenant/workspace delivery attempt status.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Delivery attempt reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:delivery_status',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Delivery attempt reads allow owner, admin, member or viewer.',
   })
   async get(
     @Param('deliveryAttemptId') deliveryAttemptId: string,
