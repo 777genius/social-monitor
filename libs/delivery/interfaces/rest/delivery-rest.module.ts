@@ -40,6 +40,7 @@ import { GetDigestUseCase } from '../../features/get-digest/get-digest.use-case'
 import { GetDigestScheduleUseCase } from '../../features/get-digest-schedule/get-digest-schedule.use-case';
 import { GetNotificationPreferenceUseCase } from '../../features/get-notification-preference/get-notification-preference.use-case';
 import { GetWebhookEndpointUseCase } from '../../features/get-webhook-endpoint/get-webhook-endpoint.use-case';
+import { ListDeliveryAttemptsUseCase } from '../../features/list-delivery-attempts/list-delivery-attempts.use-case';
 import { ListDigestSchedulesUseCase } from '../../features/list-digest-schedules/list-digest-schedules.use-case';
 import { ListWebhookEndpointsUseCase } from '../../features/list-webhook-endpoints/list-webhook-endpoints.use-case';
 import { ListRealtimeEventsUseCase } from '../../features/list-realtime-events/list-realtime-events.use-case';
@@ -259,6 +260,11 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       inject: [DELIVERY_ATTEMPT_REPOSITORY],
     },
     {
+      provide: ListDeliveryAttemptsUseCase,
+      useFactory: (attempts: DeliveryAttemptRepositoryPort) => new ListDeliveryAttemptsUseCase(attempts),
+      inject: [DELIVERY_ATTEMPT_REPOSITORY],
+    },
+    {
       provide: AssembleDigestUseCase,
       useFactory: (
         digests: DigestRepositoryPort,
@@ -413,6 +419,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     ApplyDeliverySuppressionUseCase,
     AssembleDigestUseCase,
     GetDeliveryAttemptUseCase,
+    ListDeliveryAttemptsUseCase,
     GetDigestUseCase,
     CreateWebhookEndpointUseCase,
     CreateDigestScheduleUseCase,

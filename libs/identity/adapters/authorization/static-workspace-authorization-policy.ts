@@ -12,6 +12,7 @@ const allowedRolesByAction: Record<WorkspaceAction, readonly WorkspaceRole[]> = 
   'api_keys.list': ['owner', 'admin'],
   'api_keys.revoke': ['owner', 'admin'],
   'delivery_attempts.read': ['owner', 'admin', 'member', 'viewer'],
+  'delivery_attempts.retry': ['owner', 'admin', 'member'],
   'digest_schedules.create': ['owner', 'admin', 'member'],
   'digest_schedules.read': ['owner', 'admin', 'member', 'viewer'],
   'digests.read': ['owner', 'admin', 'member', 'viewer'],

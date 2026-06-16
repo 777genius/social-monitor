@@ -74,6 +74,32 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     });
   });
 
+  it('allows members to retry delivery attempts but blocks viewers', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'delivery_attempts.retry',
+      roles: ['member'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'delivery_attempts.retry',
+      roles: ['viewer'],
+    })).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'authorization.denied',
+      }),
+    });
+  });
+
   it('allows every workspace role to read digests', () => {
     const policy = new StaticWorkspaceAuthorizationPolicy();
 
