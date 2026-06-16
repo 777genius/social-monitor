@@ -65,6 +65,16 @@ export class BindSourceUseCase {
       );
     }
 
+    const configValidation = await this.sourceCatalog.validateBindingConfig(command.providerKey, command.config);
+    if (!configValidation.ok) {
+      return err(
+        new DomainError('validation.failed', 'Source binding config is invalid for provider', {
+          providerKey: command.providerKey,
+          reason: configValidation.reason,
+        }),
+      );
+    }
+
     const existing = await this.bindings.findByTopicAndProvider({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,

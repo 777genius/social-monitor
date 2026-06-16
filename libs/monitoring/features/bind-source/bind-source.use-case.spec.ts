@@ -9,6 +9,7 @@ import type {
   ListTopicsResult,
   OutboxPort,
   SourceBindingConfig,
+  SourceBindingConfigValidationResult,
   SourceBindingConfigProtectorPort,
   SourceBindingRepositoryPort,
   SourceCatalogPort,
@@ -103,10 +104,17 @@ class FakeBindings implements SourceBindingRepositoryPort {
 }
 
 class FakeCatalog implements SourceCatalogPort {
-  constructor(private readonly profile: SourceCapabilityProfile | null) {}
+  constructor(
+    private readonly profile: SourceCapabilityProfile | null,
+    private readonly validation: SourceBindingConfigValidationResult = { ok: true },
+  ) {}
 
   async getCapability(): Promise<SourceCapabilityProfile | null> {
     return this.profile;
+  }
+
+  async validateBindingConfig(): Promise<SourceBindingConfigValidationResult> {
+    return this.validation;
   }
 }
 
@@ -241,5 +249,54 @@ describe('BindSourceUseCase', () => {
     });
 
     expect(result.ok).toBe(false);
+  });
+
+  it('rejects invalid provider config before protecting and saving it', async () => {
+    const topics = new FakeTopics();
+    topics.add(makeTopic());
+    const bindings = new FakeBindings();
+    const protector = new FakeConfigProtector();
+    const useCase = new BindSourceUseCase(
+      topics,
+      bindings,
+      new FakeCatalog(
+        {
+          providerKey: 'rss',
+          version: 1,
+          productionSafe: true,
+          supportsCursor: true,
+        },
+        { ok: false, reason: 'Feed URL must not target private or local networks.' },
+      ),
+      new FakeOutbox(),
+      new FakeIdempotency(),
+      protector,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      providerKey: 'rss',
+      config: { feedUrl: 'http://127.0.0.1/feed.xml' },
+      idempotencyKey: 'bind-rss-invalid',
+      correlationId: 'correlation-1',
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'validation.failed',
+      }),
+    }));
+    expect(protector.configs).toEqual([]);
+    await expect(bindings.findByTopicAndProvider({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      providerKey: 'rss',
+    })).resolves.toBeNull();
   });
 });

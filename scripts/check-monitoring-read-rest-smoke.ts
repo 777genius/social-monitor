@@ -113,6 +113,17 @@ async function main(): Promise<void> {
       })
       .expect(403);
 
+    await request(app.getHttpServer())
+      .post(`/topics/${newTopic.body.topicId}/source-bindings`)
+      .set(headers)
+      .set('x-workspace-role', 'admin')
+      .set('idempotency-key', 'binding-rss-localhost-rejected')
+      .send({
+        providerKey: 'rss',
+        config: { feedUrl: 'http://127.0.0.1/feed.xml' },
+      })
+      .expect(400);
+
     const binding = await request(app.getHttpServer())
       .post(`/topics/${newTopic.body.topicId}/source-bindings`)
       .set(headers)
