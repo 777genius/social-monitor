@@ -6,6 +6,7 @@ import type {
   SourceProviderScanContext,
   SourceProviderRegistryPort,
 } from '../../ports';
+import { SourceFetchError } from '../../ports';
 
 export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
   constructor(
@@ -22,20 +23,37 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
 
     const validation = provider.validateBinding(command.sourceQuery);
     if (!validation.ok) {
-      throw new Error(validation.reason);
+      throw new SourceFetchError({
+        providerKey: command.providerKey,
+        kind: 'invalid_query',
+        retryable: false,
+        message: validation.reason,
+      });
     }
 
     const context = await this.buildContext(command);
-    const plan = {
-      ...provider.planScan(command.sourceQuery, context),
-      cursor: command.cursor,
-    };
-    const result = await provider.scan(plan, context);
 
-    return {
-      items: result.items,
-      nextCursor: result.nextCursor,
-    };
+    try {
+      const plan = {
+        ...provider.planScan(command.sourceQuery, context),
+        cursor: command.cursor,
+      };
+      const result = await provider.scan(plan, context);
+
+      return {
+        items: result.items,
+        nextCursor: result.nextCursor,
+      };
+    } catch (error) {
+      const failure = provider.classifyError(error, context);
+
+      throw new SourceFetchError({
+        providerKey: provider.key(),
+        kind: failure.kind,
+        retryable: failure.retryable,
+        message: failure.message,
+      });
+    }
   }
 
   private async buildContext(command: FetchSourceItemsCommand): Promise<SourceProviderScanContext> {

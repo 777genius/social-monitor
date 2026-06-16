@@ -18,6 +18,7 @@ import type {
   SourceFetcherPort,
   SourceItemRepositoryPort,
 } from '../../ports';
+import { SourceFetchError } from '../../ports';
 import type { ExecuteScanCommand } from './execute-scan.command';
 import type { ExecuteScanResult } from './execute-scan.result';
 
@@ -179,7 +180,7 @@ export class ExecuteScanUseCase {
         failureReason,
       };
 
-      if (attemptNumber < retryBudget) {
+      if (isRetryableScanFailure(error) && attemptNumber < retryBudget) {
         await this.scanFailures.enqueueRetry({
           ...failedCommand,
           nextAttemptNumber: attemptNumber + 1,
@@ -194,3 +195,6 @@ export class ExecuteScanUseCase {
     }
   }
 }
+
+const isRetryableScanFailure = (error: unknown): boolean =>
+  error instanceof SourceFetchError ? error.retryable : true;

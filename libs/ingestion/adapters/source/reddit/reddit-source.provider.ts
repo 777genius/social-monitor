@@ -53,7 +53,7 @@ export class RedditSourceProvider implements SourceProviderPort {
     const maxItems = readPositiveInteger(context.config?.maxItems, 25, 1, 100);
 
     if (query.mode === 'listing') {
-      const subreddit = readRequiredString(context.config?.subreddit, query.query);
+      const subreddit = readRequiredString(context.config?.subreddit, 'subreddit', query.query);
       const listing = readListing(context.config?.listing);
 
       return {
@@ -75,7 +75,7 @@ export class RedditSourceProvider implements SourceProviderPort {
     plan: SourceProviderScanPlan,
     context: SourceProviderScanContext,
   ): Promise<SourceProviderScanResult> {
-    const accessToken = readRequiredString(context.config?.accessToken);
+    const accessToken = readRequiredString(context.config?.accessToken, 'accessToken');
     const userAgent = readOptionalString(context.config?.userAgent);
     const page = plan.query.mode === 'listing'
       ? await this.client.listSubredditPosts({
@@ -169,7 +169,7 @@ const parseListingQuery = (
   const [subreddit, listing] = value.split(':');
 
   return {
-    subreddit: readRequiredString(subreddit),
+    subreddit: readRequiredString(subreddit, 'subreddit'),
     listing: readListing(listing),
   };
 };
@@ -184,11 +184,11 @@ const readListing = (value: unknown): RedditPostListing => {
   return listing as RedditPostListing;
 };
 
-const readRequiredString = (value: unknown, fallback?: string): string => {
+const readRequiredString = (value: unknown, field: string, fallback?: string): string => {
   const resolved = readOptionalString(value) ?? fallback?.trim();
 
   if (resolved === undefined || resolved.length === 0) {
-    throw new Error('Reddit source config field is required');
+    throw new Error(`Reddit source config field is required: ${field}`);
   }
 
   return resolved;
