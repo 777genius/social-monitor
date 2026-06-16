@@ -49,6 +49,37 @@
       "safeDiagnosticQuestion": "Are scan jobs failing after workers start them?"
     },
     {
+      "panelId": "summary-queue-backlog",
+      "title": "Summary Queue Backlog",
+      "metric": "queue_commands_backlog",
+      "labels": {
+        "command_type": "summary.job.execute",
+        "queue": "summary"
+      },
+      "safeDiagnosticQuestion": "Is summary work waiting for intelligence workers?"
+    },
+    {
+      "panelId": "delivery-queue-backlog",
+      "title": "Delivery Queue Backlog",
+      "metric": "queue_commands_backlog",
+      "labels": {
+        "command_type": "delivery.attempt.send",
+        "queue": "delivery"
+      },
+      "safeDiagnosticQuestion": "Is delivery work waiting for delivery workers?"
+    },
+    {
+      "panelId": "delivery-attempts-failed",
+      "title": "Delivery Attempts Failed",
+      "metric": "delivery_attempts_total",
+      "labels": {
+        "channel": "webhook",
+        "resource_type": "digest",
+        "status": "failed"
+      },
+      "safeDiagnosticQuestion": "Are webhook delivery attempts failing?"
+    },
+    {
       "panelId": "provider-unavailable-failures",
       "title": "Provider Unavailable Failures",
       "metric": "scan_failures_total",

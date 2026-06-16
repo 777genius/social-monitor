@@ -25,8 +25,22 @@ type ReadinessResponse = HealthResponse & {
       readonly ingestionScanScheduler: string;
       readonly ingestionScanQueueDrain: string;
       readonly intelligenceSummaryJob: string;
+      readonly intelligenceSummaryQueueDrain: string;
       readonly deliveryDigestScheduler: string;
       readonly deliveryAttemptDispatch: string;
+      readonly deliveryAttemptQueueDrain: string;
+      readonly eventRelay: string;
+    };
+    readonly queues: {
+      readonly monitoringScanPublisher: string;
+      readonly ingestionScanReader: string;
+      readonly summaryJobPublisher: string;
+      readonly intelligenceSummaryReader: string;
+      readonly deliveryAttemptPublisher: string;
+      readonly deliveryAttemptReader: string;
+    };
+    readonly providers: {
+      readonly deliveryWebhook: string;
     };
   };
   readonly capabilities: {
@@ -72,16 +86,30 @@ export class HealthController {
         workerLoops: {
           ingestionScanScheduler: loopMode('INGESTION_SCAN_SCHEDULER_LOOP'),
           ingestionScanQueueDrain: loopMode('INGESTION_SCAN_QUEUE_DRAIN_LOOP'),
-          intelligenceSummaryJob: loopMode('INTELLIGENCE_SUMMARY_JOB_LOOP'),
+          intelligenceSummaryJob: summaryJobLoopMode(),
+          intelligenceSummaryQueueDrain: summaryQueueDrainLoopMode(),
           deliveryDigestScheduler: loopMode('DELIVERY_DIGEST_SCHEDULER_LOOP'),
           deliveryAttemptDispatch: loopMode('DELIVERY_ATTEMPT_DISPATCH_LOOP'),
+          deliveryAttemptQueueDrain: deliveryAttemptQueueDrainLoopMode(),
+          eventRelay: loopMode('EVENT_RELAY_LOOP'),
+        },
+        queues: {
+          monitoringScanPublisher: envMode('MONITORING_SCAN_QUEUE', 'in-memory'),
+          ingestionScanReader: envMode('INGESTION_SCAN_QUEUE_READER', 'in-memory'),
+          summaryJobPublisher: envMode('SUMMARY_JOB_QUEUE_MODE', 'in-memory'),
+          intelligenceSummaryReader: envMode('INTELLIGENCE_SUMMARY_QUEUE_READER', 'in-memory'),
+          deliveryAttemptPublisher: envMode('DELIVERY_ATTEMPT_DISPATCH_QUEUE', 'in-memory'),
+          deliveryAttemptReader: envMode('DELIVERY_ATTEMPT_QUEUE_READER', 'in-memory'),
+        },
+        providers: {
+          deliveryWebhook: envMode('DELIVERY_WEBHOOK_PROVIDER', 'in-memory'),
         },
       },
       capabilities: {
         rest: 'enabled',
         websocket: 'enabled',
         openapi: 'enabled',
-        workerApps: ['ingestion-worker', 'intelligence-worker', 'delivery-service'],
+        workerApps: ['ingestion-worker', 'intelligence-worker', 'delivery-service', 'event-relay'],
         enabledBetaSources: sourceReadinessProfiles
           .filter((profile) => profile.state === 'enabled_beta')
           .map((profile) => profile.providerKey)
@@ -125,3 +153,21 @@ const envMode = (key: string, fallback: string): string => process.env[key] ?? f
 
 const loopMode = (key: string): string =>
   process.env[key] ?? (process.env.NODE_ENV === 'test' ? 'disabled' : 'enabled');
+
+const summaryJobLoopMode = (): string =>
+  process.env.INTELLIGENCE_SUMMARY_JOB_LOOP ??
+  (process.env.NODE_ENV === 'test' || process.env.INTELLIGENCE_SUMMARY_QUEUE_READER === 'rabbitmq'
+    ? 'disabled'
+    : 'enabled');
+
+const summaryQueueDrainLoopMode = (): string =>
+  process.env.INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP ??
+  (process.env.NODE_ENV !== 'test' && process.env.INTELLIGENCE_SUMMARY_QUEUE_READER === 'rabbitmq'
+    ? 'enabled'
+    : 'disabled');
+
+const deliveryAttemptQueueDrainLoopMode = (): string =>
+  process.env.DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP ??
+  (process.env.NODE_ENV !== 'test' && process.env.DELIVERY_ATTEMPT_QUEUE_READER === 'rabbitmq'
+    ? 'enabled'
+    : 'disabled');

@@ -52,6 +52,38 @@
       "page": false
     },
     {
+      "alertId": "summary-queue-backlog-growing",
+      "severity": "warning",
+      "metric": "queue_commands_backlog",
+      "labels": {
+        "command_type": "summary.job.execute",
+        "queue": "summary"
+      },
+      "condition": "latest_value >= 10 for 10m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "summary-queue-backlog",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#queue-backlog-triage",
+      "userVisibleState": "summary_degraded",
+      "firstMitigation": "inspect_intelligence_worker_availability_before_replaying_summary_jobs",
+      "page": false
+    },
+    {
+      "alertId": "delivery-queue-backlog-growing",
+      "severity": "warning",
+      "metric": "queue_commands_backlog",
+      "labels": {
+        "command_type": "delivery.attempt.send",
+        "queue": "delivery"
+      },
+      "condition": "latest_value >= 10 for 10m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "delivery-queue-backlog",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#queue-backlog-triage",
+      "userVisibleState": "delivery_degraded",
+      "firstMitigation": "inspect_delivery_worker_availability_before_replaying_delivery_attempts",
+      "page": false
+    },
+    {
       "alertId": "provider-unavailable-scan-failures",
       "severity": "warning",
       "metric": "scan_failures_total",

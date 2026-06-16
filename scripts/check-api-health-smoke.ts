@@ -46,6 +46,8 @@ const assertReadinessResponse = (
   const runtime = assertRecord(payload.runtime, `${route} runtime`);
   const persistence = assertRecord(runtime.persistence, `${route} runtime.persistence`);
   const workerLoops = assertRecord(runtime.workerLoops, `${route} runtime.workerLoops`);
+  const queues = assertRecord(runtime.queues, `${route} runtime.queues`);
+  const providers = assertRecord(runtime.providers, `${route} runtime.providers`);
   const capabilities = assertRecord(payload.capabilities, `${route} capabilities`);
   const enabledBetaSources = capabilities.enabledBetaSources;
   const workerApps = capabilities.workerApps;
@@ -61,19 +63,39 @@ const assertReadinessResponse = (
     'ingestionScanScheduler',
     'ingestionScanQueueDrain',
     'intelligenceSummaryJob',
+    'intelligenceSummaryQueueDrain',
     'deliveryDigestScheduler',
     'deliveryAttemptDispatch',
+    'deliveryAttemptQueueDrain',
+    'eventRelay',
   ]) {
     if (workerLoops[key] !== 'enabled' && workerLoops[key] !== 'disabled') {
       throw new Error(`${route} must expose worker loop mode for ${key}`);
     }
   }
 
+  for (const key of [
+    'monitoringScanPublisher',
+    'ingestionScanReader',
+    'summaryJobPublisher',
+    'intelligenceSummaryReader',
+    'deliveryAttemptPublisher',
+    'deliveryAttemptReader',
+  ]) {
+    if (typeof queues[key] !== 'string' || queues[key].length === 0) {
+      throw new Error(`${route} must expose queue transport mode for ${key}`);
+    }
+  }
+
+  if (typeof providers.deliveryWebhook !== 'string' || providers.deliveryWebhook.length === 0) {
+    throw new Error(`${route} must expose delivery webhook provider mode`);
+  }
+
   if (!Array.isArray(enabledBetaSources) || !enabledBetaSources.includes('reddit')) {
     throw new Error(`${route} must expose enabled beta source readiness`);
   }
 
-  if (!Array.isArray(workerApps) || !workerApps.includes('ingestion-worker')) {
+  if (!Array.isArray(workerApps) || !workerApps.includes('ingestion-worker') || !workerApps.includes('event-relay')) {
     throw new Error(`${route} must expose worker app readiness metadata`);
   }
 
