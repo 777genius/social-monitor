@@ -1065,3 +1065,26 @@ Evidence notes:
 - API-key request audit metadata records `requiredScope` and key prefix only; raw `smk_...` secrets and bearer headers are not persisted.
 - `check:read-api-key-scope` now proves feed/topic/source-binding/summary read scopes and confirms API-key read requests create audit events.
 - Delivery REST/WS smoke checks prove `read:delivery_status` works without `x-workspace-role` and wrong scopes are rejected with `403`.
+
+## PR 37 Ingestion Retry Drain Evidence
+
+- `da5eb2b feat: drain ingestion retry scans`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:scan-queue-drain-loop`
+- `npm run check:ingestion-feed-persistence`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run check:secrets`
+- `git diff --check`
+
+Evidence notes:
+
+- Failed scan retry commands are now self-contained with topic, provider and source query context, so retry replay does not depend on mutable source-binding reads.
+- `ScanRetryQueuePort` separates retry draining from failure enqueue/dead-letter inspection, keeping the worker dependent on a focused port.
+- In-memory and Prisma scan failure queue adapters both expose bounded retry draining and update retry backlog metrics after drain.
+- `ScanQueueDrainLoop` fairly drains primary scan commands and retry commands in one bounded tick, then converts retries through the same `ExecuteScanCommandHandler` path as normal scans.
+- `check:scan-queue-drain-loop` proves one primary command and one retry command are executed successfully by the worker loop.
+- Prisma ingestion persistence smoke covers the updated durable retry schema, optional global retry selection and retry deletion contract.
