@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.module';
 import { FEED_ITEM_READ_REPOSITORY, type FeedItemReadRepositoryPort } from '@social-monitor/feed/ports';
-import { IdentityAuthorizationModule } from '@social-monitor/identity/interfaces/authorization/identity-authorization.module';
+import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
@@ -61,7 +61,7 @@ import { SummaryRequestController } from './summary-request.controller';
 import { SummaryController } from './summary.controller';
 
 @Module({
-  imports: [UsageRestModule, IdentityAuthorizationModule, FeedRestModule],
+  imports: [UsageRestModule, IdentityRestModule, FeedRestModule],
   controllers: [
     SummaryController,
     SummaryFeedbackController,

@@ -13,6 +13,7 @@ import { RevokeApiKeyUseCase } from '../../features/revoke-api-key/revoke-api-ke
 import { VerifyApiKeyUseCase } from '../../features/verify-api-key/verify-api-key.use-case';
 import type { ApiKeyRepositoryPort } from '../../ports';
 import { IdentityAuthorizationModule } from '../authorization/identity-authorization.module';
+import { ApiKeyRequestAuthorizer } from './api-key-request-authorizer';
 import { ApiKeysController } from './api-keys.controller';
 import {
   IDENTITY_API_KEY_REPOSITORY,
@@ -73,8 +74,10 @@ import {
         new RevokeApiKeyUseCase(apiKeys, new SystemClock()),
       inject: [IDENTITY_API_KEY_REPOSITORY],
     },
+    ApiKeyRequestAuthorizer,
   ],
   exports: [
+    ApiKeyRequestAuthorizer,
     CreateApiKeyUseCase,
     IDENTITY_API_KEY_REPOSITORY,
     InMemoryApiKeyRepository,

@@ -1,14 +1,13 @@
 import { Body, Controller, Delete, Get, Headers, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { VerifyApiKeyUseCase } from '@social-monitor/identity/features/verify-api-key/verify-api-key.use-case';
+import { ApiKeyRequestAuthorizer } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
   parseWorkspaceRolesHeader,
   type WorkspaceAction,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
-import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
-import { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/check-public-api-rate-limit/check-public-api-rate-limit.use-case';
+import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 
 import { CreateWebhookEndpointUseCase } from '../../features/create-webhook-endpoint/create-webhook-endpoint.use-case';
@@ -31,8 +30,7 @@ export class WebhookEndpointsController {
     private readonly getWebhookEndpoint: GetWebhookEndpointUseCase,
     private readonly listWebhookEndpoints: ListWebhookEndpointsUseCase,
     private readonly disableWebhookEndpoint: DisableWebhookEndpointUseCase,
-    private readonly verifyApiKey: VerifyApiKeyUseCase,
-    private readonly checkPublicApiRateLimit: CheckPublicApiRateLimitUseCase,
+    private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
@@ -290,35 +288,16 @@ export class WebhookEndpointsController {
     readonly requiredScope: 'read:webhook_endpoints' | 'write:webhook_endpoints';
     readonly operation: 'webhook_endpoints.read' | 'webhook_endpoints.manage';
   }): Promise<{ readonly apiKeyId: string }> {
-    const verifiedApiKey = await this.verifyApiKey.execute({
-      secret: parseBearerSecret(params.authorizationHeader),
+    const authorization = await this.apiKeyRequestAuthorizer.authorize({
+      authorizationHeader: params.authorizationHeader,
+      tenantId: params.tenant,
+      workspaceId: params.workspace,
       requiredScope: params.requiredScope,
-    });
-
-    if (!verifiedApiKey.ok) {
-      throw verifiedApiKey.error;
-    }
-
-    if (
-      verifiedApiKey.value.apiKey.tenantId !== params.tenant ||
-      verifiedApiKey.value.apiKey.workspaceId !== params.workspace
-    ) {
-      throw new DomainError('authorization.denied', 'API key tenant or workspace does not match request scope');
-    }
-
-    const rateLimit = await this.checkPublicApiRateLimit.execute({
-      subjectKey: `api-key:${verifiedApiKey.value.apiKey.id}`,
       operation: params.operation,
-      limit: publicApiRateLimitPerMinute(),
-      windowSeconds: 60,
     });
-
-    if (!rateLimit.ok) {
-      throw rateLimit.error;
-    }
 
     return {
-      apiKeyId: verifiedApiKey.value.apiKey.id,
+      apiKeyId: authorization.apiKeyId,
     };
   }
 
@@ -366,23 +345,3 @@ export class WebhookEndpointsController {
     }
   }
 }
-
-const parseBearerSecret = (authorizationHeader: string | undefined): string => {
-  const [scheme, secret, extra] = authorizationHeader?.trim().split(/\s+/) ?? [];
-
-  if (scheme?.toLowerCase() !== 'bearer' || secret === undefined || extra !== undefined) {
-    throw new DomainError('authorization.denied', 'Bearer API key is required');
-  }
-
-  return secret;
-};
-
-const publicApiRateLimitPerMinute = (): number => {
-  const configured = Number(process.env.PUBLIC_API_RATE_LIMIT_PER_MINUTE);
-
-  if (Number.isInteger(configured) && configured > 0) {
-    return configured;
-  }
-
-  return 60;
-};

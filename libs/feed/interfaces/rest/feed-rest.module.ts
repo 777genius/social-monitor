@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { IdentityAuthorizationModule } from '@social-monitor/identity/interfaces/authorization/identity-authorization.module';
+import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 
 import { InMemoryFeedItemReadRepository } from '../../adapters/persistence/in-memory-feed-item-read.repository';
 import { PrismaFeedConnection } from '../../adapters/persistence/prisma/prisma-feed-connection';
@@ -17,7 +17,7 @@ import {
 import { FeedController } from './feed.controller';
 
 @Module({
-  imports: [IdentityAuthorizationModule],
+  imports: [IdentityRestModule],
   controllers: [FeedController],
   providers: [
     feedPersistenceModeProvider,

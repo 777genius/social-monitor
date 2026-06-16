@@ -5,6 +5,10 @@ import {
   parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import {
+  ApiKeyRequestAuthorizer,
+  hasBearerAuthorizationHeader,
+} from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { GetFeedItemUseCase } from '../../features/get-feed-item/get-feed-item.use-case';
@@ -17,6 +21,7 @@ export class FeedController {
   constructor(
     private readonly listFeedItems: ListFeedItemsUseCase,
     private readonly getFeedItem: GetFeedItemUseCase,
+    private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
@@ -38,6 +43,7 @@ export class FeedController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
     @Query('topicId') topicId: string | undefined,
@@ -47,7 +53,7 @@ export class FeedController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    this.authorizeFeedRead(scope.tenantId, scope.workspaceId, workspaceRoleHeader);
+    await this.authorizeFeedRead(scope.tenantId, scope.workspaceId, workspaceRoleHeader, authorizationHeader);
     const result = await this.listFeedItems.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
@@ -78,12 +84,13 @@ export class FeedController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
   ): Promise<GetFeedItemResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    this.authorizeFeedRead(scope.tenantId, scope.workspaceId, workspaceRoleHeader);
+    await this.authorizeFeedRead(scope.tenantId, scope.workspaceId, workspaceRoleHeader, authorizationHeader);
     const result = await this.getFeedItem.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
@@ -97,7 +104,23 @@ export class FeedController {
     return result.value;
   }
 
-  private authorizeFeedRead(tenantId: TenantId, workspaceId: WorkspaceId, workspaceRoleHeader: string | undefined): void {
+  private async authorizeFeedRead(
+    tenantId: TenantId,
+    workspaceId: WorkspaceId,
+    workspaceRoleHeader: string | undefined,
+    authorizationHeader: string | undefined,
+  ): Promise<void> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      await this.apiKeyRequestAuthorizer.authorize({
+        authorizationHeader,
+        tenantId,
+        workspaceId,
+        requiredScope: 'read:feed',
+        operation: 'feed.read',
+      });
+      return;
+    }
+
     const authorization = this.workspaceAuthorization.authorize({
       tenantId,
       workspaceId,
