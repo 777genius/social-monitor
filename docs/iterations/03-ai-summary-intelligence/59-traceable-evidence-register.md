@@ -173,7 +173,7 @@ Evidence notes:
 
 ## PR 45 Summary Evidence Citation Release Gate
 
-- `pending commit: chore: require summary evidence smoke in release gate`
+- `2ead80e chore: require summary evidence smoke in release gate`
 
 Verified commands:
 
