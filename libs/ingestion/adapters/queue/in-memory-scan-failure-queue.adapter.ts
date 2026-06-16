@@ -5,9 +5,12 @@ import type {
   RetryScanCommand,
   ScanFailureInspectionPort,
   ScanFailureQueuePort,
+  ScanRetryQueuePort,
 } from '../../ports';
 
-export class InMemoryScanFailureQueueAdapter implements ScanFailureQueuePort, ScanFailureInspectionPort {
+export class InMemoryScanFailureQueueAdapter
+  implements ScanFailureQueuePort, ScanFailureInspectionPort, ScanRetryQueuePort
+{
   private readonly retryCommands: RetryScanCommand[] = [];
   private readonly deadLetters: FailedScanCommand[] = [];
 
@@ -53,11 +56,32 @@ export class InMemoryScanFailureQueueAdapter implements ScanFailureQueuePort, Sc
     return [...this.retryCommands];
   }
 
+  async drainRetries(
+    params: Parameters<ScanRetryQueuePort['drainRetries']>[0],
+  ): Promise<readonly RetryScanCommand[]> {
+    if (!Number.isInteger(params.limit) || params.limit < 1) {
+      throw new Error('Scan retry drain limit must be a positive integer');
+    }
+
+    const drained = this.retryCommands.splice(0, params.limit);
+    this.metrics.recordGauge({
+      name: 'scan_failure_queue_backlog',
+      value: this.retryCommands.length,
+      labels: {
+        queue: 'scan-retry',
+      },
+    });
+
+    return drained;
+  }
+
   deadLettered(): readonly FailedScanCommand[] {
     return [...this.deadLetters];
   }
 
-  async listDeadLetters(params: Parameters<ScanFailureInspectionPort['listDeadLetters']>[0]): Promise<readonly FailedScanCommand[]> {
+  async listDeadLetters(
+    params: Parameters<ScanFailureInspectionPort['listDeadLetters']>[0],
+  ): Promise<readonly FailedScanCommand[]> {
     return this.deadLetters
       .filter((command) => command.tenantId === params.tenantId && command.workspaceId === params.workspaceId)
       .slice(0, params.limit);

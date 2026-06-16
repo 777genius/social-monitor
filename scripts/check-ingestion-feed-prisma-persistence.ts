@@ -158,8 +158,14 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     scanJobId: '00000000-0000-7000-8000-000000000401',
+    topicId,
     sourceBindingId,
     scanPolicyId: '00000000-0000-7000-8000-000000000402',
+    providerKey: 'fake-source',
+    sourceQuery: {
+      mode: 'search',
+      query: 'durable feed',
+    },
     correlationId: 'corr-1',
     causationId: 'cause-1',
     attemptNumber: 1,
@@ -171,8 +177,14 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     scanJobId: '00000000-0000-7000-8000-000000000403',
+    topicId,
     sourceBindingId,
     scanPolicyId: '00000000-0000-7000-8000-000000000404',
+    providerKey: 'fake-source',
+    sourceQuery: {
+      mode: 'search',
+      query: 'durable feed',
+    },
     correlationId: 'corr-2',
     causationId: 'cause-2',
     attemptNumber: 2,
@@ -359,12 +371,28 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
     findMany: async (args) =>
       this.failureEntries
         .filter((record) => (
-          record.tenantId === args.where.tenantId &&
-          record.workspaceId === args.where.workspaceId &&
+          (args.where.tenantId === undefined || record.tenantId === args.where.tenantId) &&
+          (args.where.workspaceId === undefined || record.workspaceId === args.where.workspaceId) &&
           record.status === args.where.status
         ))
-        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+        .sort((left, right) => (
+          args.orderBy.createdAt === 'asc'
+            ? left.createdAt.getTime() - right.createdAt.getTime()
+            : right.createdAt.getTime() - left.createdAt.getTime()
+        ))
         .slice(0, args.take),
+    deleteMany: async (args) => {
+      const ids = new Set(args.where.id.in);
+      const before = this.failureEntries.length;
+
+      for (let index = this.failureEntries.length - 1; index >= 0; index -= 1) {
+        if (ids.has(this.failureEntries[index]?.id ?? '')) {
+          this.failureEntries.splice(index, 1);
+        }
+      }
+
+      return { count: before - this.failureEntries.length };
+    },
     count: async (args) =>
       this.failureEntries.filter((record) => (
         record.tenantId === args.where.tenantId &&

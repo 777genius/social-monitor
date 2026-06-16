@@ -11,8 +11,14 @@ describe('InMemoryScanFailureQueueAdapter', () => {
       tenantId: tenantId('tenant-failure-queue'),
       workspaceId: workspaceId('workspace-failure-queue'),
       scanJobId: 'scan-job-failure',
+      topicId: 'topic-failure',
       sourceBindingId: 'source-binding-failure',
       scanPolicyId: 'scan-policy-failure',
+      providerKey: 'fake-source',
+      sourceQuery: {
+        mode: 'search' as const,
+        query: 'failure queue',
+      },
       correlationId: 'correlation-failure',
       causationId: 'causation-failure',
       attemptNumber: 1,
@@ -24,6 +30,8 @@ describe('InMemoryScanFailureQueueAdapter', () => {
     await queue.deadLetter(command);
 
     expect(queue.retries()).toHaveLength(1);
+    await expect(queue.drainRetries({ limit: 1 })).resolves.toEqual([{ ...command, nextAttemptNumber: 2 }]);
+    expect(queue.retries()).toHaveLength(0);
     expect(queue.deadLettered()).toHaveLength(1);
     expect(metrics.counterValue('scan_failure_queue_events_total', {
       queue: 'scan-retry',
@@ -31,7 +39,7 @@ describe('InMemoryScanFailureQueueAdapter', () => {
     })).toBe(1);
     expect(metrics.latestGaugeValue('scan_failure_queue_backlog', {
       queue: 'scan-retry',
-    })).toBe(1);
+    })).toBe(0);
     expect(metrics.counterValue('scan_failure_queue_events_total', {
       queue: 'scan-dlq',
       status: 'dead_lettered',
@@ -48,8 +56,14 @@ describe('InMemoryScanFailureQueueAdapter', () => {
       tenantId: tenantId('tenant-failure-queue'),
       workspaceId: workspaceId('workspace-failure-queue'),
       scanJobId: 'scan-job-failure',
+      topicId: 'topic-failure',
       sourceBindingId: 'source-binding-failure',
       scanPolicyId: 'scan-policy-failure',
+      providerKey: 'fake-source',
+      sourceQuery: {
+        mode: 'search' as const,
+        query: 'failure queue',
+      },
       correlationId: 'correlation-failure',
       causationId: 'causation-failure',
       attemptNumber: 1,

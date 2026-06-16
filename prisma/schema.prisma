@@ -334,8 +334,11 @@ model ScanFailureQueueEntry {
   tenantId          String                 @map("tenant_id") @db.Uuid
   workspaceId       String                 @map("workspace_id") @db.Uuid
   scanJobId         String                 @map("scan_job_id") @db.Uuid
+  topicId           String                 @map("topic_id") @db.Uuid
   sourceBindingId   String                 @map("source_binding_id") @db.Uuid
   scanPolicyId      String                 @map("scan_policy_id") @db.Uuid
+  providerKey       String                 @map("provider_key")
+  sourceQuery       Json                   @map("source_query")
   correlationId     String                 @map("correlation_id")
   causationId       String                 @map("causation_id")
   attemptNumber     Int                    @map("attempt_number")

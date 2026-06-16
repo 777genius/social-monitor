@@ -1,16 +1,17 @@
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
-import type { IdGenerator, TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import { tenantId, workspaceId, type IdGenerator, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type {
   FailedScanCommand,
   RetryScanCommand,
   ScanFailureInspectionPort,
   ScanFailureQueuePort,
+  ScanRetryQueuePort,
 } from '../../../ports';
 import type { PrismaIngestionClient } from './prisma-ingestion-client';
 import { failedScanCommandFromPrisma } from './prisma-ingestion-records';
 
-export class PrismaScanFailureQueueAdapter implements ScanFailureQueuePort, ScanFailureInspectionPort {
+export class PrismaScanFailureQueueAdapter implements ScanFailureQueuePort, ScanFailureInspectionPort, ScanRetryQueuePort {
   constructor(
     private readonly prisma: PrismaIngestionClient,
     private readonly metrics: MetricsRecorderPort,
@@ -43,6 +44,43 @@ export class PrismaScanFailureQueueAdapter implements ScanFailureQueuePort, Scan
     return records.map((record) => failedScanCommandFromPrisma(record));
   }
 
+  async drainRetries(params: Parameters<ScanRetryQueuePort['drainRetries']>[0]): Promise<readonly RetryScanCommand[]> {
+    if (!Number.isInteger(params.limit) || params.limit < 1) {
+      throw new Error('Scan retry drain limit must be a positive integer');
+    }
+
+    const records = await this.prisma.scanFailureQueueEntry.findMany({
+      where: {
+        status: 'RETRY_ENQUEUED',
+      },
+      orderBy: { createdAt: 'asc' },
+      take: params.limit,
+    });
+    const ids = records.map((record) => record.id);
+
+    if (ids.length > 0) {
+      await this.prisma.scanFailureQueueEntry.deleteMany({
+        where: {
+          id: { in: ids },
+        },
+      });
+    }
+
+    for (const scope of uniqueScopes(records)) {
+      await this.recordBacklogMetric(
+        tenantId(scope.tenantId),
+        workspaceId(scope.workspaceId),
+        'scan-retry',
+        'RETRY_ENQUEUED',
+      );
+    }
+
+    return records.map((record) => ({
+      ...failedScanCommandFromPrisma(record),
+      nextAttemptNumber: record.nextAttemptNumber ?? record.attemptNumber + 1,
+    }));
+  }
+
   private async persist(
     command: FailedScanCommand,
     status: 'RETRY_ENQUEUED' | 'DEAD_LETTERED',
@@ -54,8 +92,11 @@ export class PrismaScanFailureQueueAdapter implements ScanFailureQueuePort, Scan
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         scanJobId: command.scanJobId,
+        topicId: command.topicId,
         sourceBindingId: command.sourceBindingId,
         scanPolicyId: command.scanPolicyId,
+        providerKey: command.providerKey,
+        sourceQuery: command.sourceQuery,
         correlationId: command.correlationId,
         causationId: command.causationId,
         attemptNumber: command.attemptNumber,
@@ -99,3 +140,21 @@ export class PrismaScanFailureQueueAdapter implements ScanFailureQueuePort, Scan
 
 const queueNameForStatus = (status: 'RETRY_ENQUEUED' | 'DEAD_LETTERED'): 'scan-retry' | 'scan-dlq' =>
   status === 'DEAD_LETTERED' ? 'scan-dlq' : 'scan-retry';
+
+const uniqueScopes = (
+  records: readonly {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+  }[],
+): readonly { readonly tenantId: string; readonly workspaceId: string }[] => {
+  const scopes = new Map<string, { readonly tenantId: string; readonly workspaceId: string }>();
+
+  for (const record of records) {
+    scopes.set(`${record.tenantId}:${record.workspaceId}`, {
+      tenantId: record.tenantId,
+      workspaceId: record.workspaceId,
+    });
+  }
+
+  return [...scopes.values()];
+};

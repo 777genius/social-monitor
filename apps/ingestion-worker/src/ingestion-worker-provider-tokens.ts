@@ -4,6 +4,7 @@ import type {
   ScanCursorRepositoryPort,
   ScanExecutionReporterPort,
   ScanFailureQueuePort,
+  ScanRetryQueuePort,
   ScanLeasePort,
   SourceItemRepositoryPort,
 } from '@social-monitor/ingestion/ports';
@@ -49,7 +50,7 @@ export type IngestionWorkerProviderTokenMap = {
   readonly [INGESTION_SCAN_ATTEMPT_REPOSITORY]: ScanAttemptRepositoryPort;
   readonly [INGESTION_SCAN_CURSOR_REPOSITORY]: ScanCursorRepositoryPort;
   readonly [INGESTION_FEED_PROJECTION]: FeedProjectionPort;
-  readonly [INGESTION_SCAN_FAILURE_QUEUE]: ScanFailureQueuePort;
+  readonly [INGESTION_SCAN_FAILURE_QUEUE]: ScanFailureQueuePort & ScanRetryQueuePort;
   readonly [INGESTION_SCAN_LEASE]: ScanLeasePort;
 };
 

@@ -111,26 +111,29 @@ async function main(): Promise<void> {
     'expected queued scan command payload to include scanJobId',
   );
 
+  const handler = new ExecuteScanCommandHandler(
+    new ExecuteScanUseCase(
+      new RegistrySourceFetcherAdapter(
+        new InMemorySourceProviderRegistry([new FakeSourceProvider()], sourceReadinessProfiles),
+      ),
+      sourceItems,
+      new InMemoryFeedProjectionAdapter(feedItems),
+      scanAttempts,
+      scanCursors,
+      new NoopScanExecutionReporterAdapter(),
+      scanFailures,
+      scanLeases,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-06T10:00:01.000Z')),
+    ),
+    metrics,
+    runtime,
+  );
+
   const loop = new ScanQueueDrainLoop(
     queuePublisher,
-    new ExecuteScanCommandHandler(
-      new ExecuteScanUseCase(
-        new RegistrySourceFetcherAdapter(
-          new InMemorySourceProviderRegistry([new FakeSourceProvider()], sourceReadinessProfiles),
-        ),
-        sourceItems,
-        new InMemoryFeedProjectionAdapter(feedItems),
-        scanAttempts,
-        scanCursors,
-        new NoopScanExecutionReporterAdapter(),
-        scanFailures,
-        scanLeases,
-        new SequenceIdGenerator(),
-        new FixedClock(new Date('2026-06-06T10:00:01.000Z')),
-      ),
-      metrics,
-      runtime,
-    ),
+    handler,
+    scanFailures,
     {
       enabled: true,
       intervalMs: 60_000,
@@ -141,7 +144,6 @@ async function main(): Promise<void> {
 
   await loop.onModuleInit();
   await loop.onApplicationShutdown('scan-queue-drain-loop-smoke-complete');
-  await runtime.onApplicationShutdown('scan-queue-drain-loop-smoke-complete');
 
   assert(queuePublisher.all().length === 0, `drain loop must empty scan queue, got ${queuePublisher.all().length}`);
   assert(sourceItems.all().length === 2, `drain loop must persist two source items, got ${sourceItems.all().length}`);
@@ -170,6 +172,71 @@ async function main(): Promise<void> {
       worker: 'ingestion-worker',
     }) === 1,
     'drain loop must record succeeded scan metric',
+  );
+
+  await scanFailures.enqueueRetry({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scanJobId: 'scan-job-retry-drain-loop-smoke',
+    topicId: 'topic-drain-loop-smoke',
+    sourceBindingId: 'source-binding-drain-loop-smoke',
+    scanPolicyId: 'scan-policy-drain-loop-smoke',
+    providerKey: 'fake-source',
+    sourceQuery: {
+      mode: 'search',
+      query: 'drain loop monitoring',
+    },
+    correlationId: 'scan-queue-drain-loop-smoke-retry',
+    causationId: 'scan-queue-drain-loop-smoke-primary-failure',
+    attemptNumber: 1,
+    retryBudget: 2,
+    nextAttemptNumber: 2,
+    failureReason: 'Provider unavailable',
+  });
+
+  assert(scanFailures.retries().length === 1, 'retry queue must contain one retry before retry drain');
+
+  const retryLoop = new ScanQueueDrainLoop(
+    queuePublisher,
+    handler,
+    scanFailures,
+    {
+      enabled: true,
+      intervalMs: 60_000,
+      limit: 10,
+      runOnStart: true,
+    },
+  );
+
+  await retryLoop.onModuleInit();
+  await retryLoop.onApplicationShutdown('scan-queue-drain-loop-retry-smoke-complete');
+  await runtime.onApplicationShutdown('scan-queue-drain-loop-smoke-complete');
+
+  assert(scanFailures.retries().length === 0, 'retry drain loop must empty scan retry queue');
+  const retryAttempt = await scanAttempts.findByScanJob({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scanJobId: 'scan-job-retry-drain-loop-smoke',
+  });
+  assert(
+    retryAttempt?.toSnapshot().status === 'succeeded',
+    `expected succeeded retry scan attempt, got ${retryAttempt?.toSnapshot().status}`,
+  );
+  assert(
+    metrics.counterValue('scan_jobs_total', {
+      job_type: 'scan',
+      status: 'started',
+      worker: 'ingestion-worker',
+    }) === 2,
+    'retry drain loop must record second started scan metric',
+  );
+  assert(
+    metrics.counterValue('scan_jobs_total', {
+      job_type: 'scan',
+      status: 'succeeded',
+      worker: 'ingestion-worker',
+    }) === 2,
+    'retry drain loop must record second succeeded scan metric',
   );
 
   console.log('Scan queue drain loop smoke OK');

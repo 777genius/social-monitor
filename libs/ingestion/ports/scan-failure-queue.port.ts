@@ -1,11 +1,16 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
+import type { SourceQuery } from './source-provider.port';
+
 export type FailedScanCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly scanJobId: string;
+  readonly topicId: string;
   readonly sourceBindingId: string;
   readonly scanPolicyId: string;
+  readonly providerKey: string;
+  readonly sourceQuery: SourceQuery;
   readonly correlationId: string;
   readonly causationId: string;
   readonly attemptNumber: number;
@@ -20,6 +25,12 @@ export type RetryScanCommand = FailedScanCommand & {
 export interface ScanFailureQueuePort {
   enqueueRetry(command: RetryScanCommand): Promise<void>;
   deadLetter(command: FailedScanCommand): Promise<void>;
+}
+
+export interface ScanRetryQueuePort {
+  drainRetries(params: {
+    readonly limit: number;
+  }): Promise<readonly RetryScanCommand[]>;
 }
 
 export interface ScanFailureInspectionPort {

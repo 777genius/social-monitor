@@ -63,8 +63,11 @@ export type PrismaIngestionClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly scanJobId: string;
+        readonly topicId: string;
         readonly sourceBindingId: string;
         readonly scanPolicyId: string;
+        readonly providerKey: string;
+        readonly sourceQuery: Readonly<Record<string, unknown>>;
         readonly correlationId: string;
         readonly causationId: string;
         readonly attemptNumber: number;
@@ -76,13 +79,18 @@ export type PrismaIngestionClient = {
     }): Promise<PrismaScanFailureQueueEntryRecord>;
     findMany(args: {
       readonly where: {
-        readonly tenantId: string;
-        readonly workspaceId: string;
-        readonly status: 'DEAD_LETTERED';
+        readonly tenantId?: string;
+        readonly workspaceId?: string;
+        readonly status: 'RETRY_ENQUEUED' | 'DEAD_LETTERED';
       };
-      readonly orderBy: { readonly createdAt: 'desc' };
+      readonly orderBy: { readonly createdAt: 'asc' | 'desc' };
       readonly take: number;
     }): Promise<readonly PrismaScanFailureQueueEntryRecord[]>;
+    deleteMany(args: {
+      readonly where: {
+        readonly id: { readonly in: readonly string[] };
+      };
+    }): Promise<{ readonly count: number }>;
     count(args: {
       readonly where: {
         readonly tenantId: string;

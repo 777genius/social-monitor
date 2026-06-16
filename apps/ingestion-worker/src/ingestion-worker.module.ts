@@ -51,6 +51,7 @@ import type {
   ScanCursorRepositoryPort,
   SourceConfigReaderPort,
   ScanFailureQueuePort,
+  ScanRetryQueuePort,
   ScanLeasePort,
   SourceItemRepositoryPort,
 } from '../../../libs/ingestion/ports';
@@ -287,7 +288,7 @@ import { ScanSchedulerLoop } from './scan-scheduler-loop';
         prisma: PrismaIngestionWorkerClient | null,
         inMemoryScanFailures: InMemoryScanFailureQueueAdapter,
         metrics: InMemoryMetricsRecorder,
-      ): ScanFailureQueuePort =>
+      ): ScanFailureQueuePort & ScanRetryQueuePort =>
         mode === 'prisma'
           ? new PrismaScanFailureQueueAdapter(
               requirePrismaIngestionWorkerClient(prisma),

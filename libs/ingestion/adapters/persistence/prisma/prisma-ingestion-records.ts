@@ -9,7 +9,7 @@ import {
   SourceItem,
   type SourceItemProps,
 } from '../../../domain';
-import type { FailedScanCommand, ScanCursorRecord, ScanLease } from '../../../ports';
+import type { FailedScanCommand, ScanCursorRecord, ScanLease, SourceQuery, SourceQueryMode } from '../../../ports';
 
 export type PrismaSourceItemRecord = {
   readonly id: string;
@@ -43,8 +43,11 @@ export type PrismaScanFailureQueueEntryRecord = {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly scanJobId: string;
+  readonly topicId: string;
   readonly sourceBindingId: string;
   readonly scanPolicyId: string;
+  readonly providerKey: string;
+  readonly sourceQuery: unknown;
   readonly correlationId: string;
   readonly causationId: string;
   readonly attemptNumber: number;
@@ -133,14 +136,40 @@ export const failedScanCommandFromPrisma = (
   tenantId: tenantId(record.tenantId),
   workspaceId: workspaceId(record.workspaceId),
   scanJobId: record.scanJobId,
+  topicId: record.topicId,
   sourceBindingId: record.sourceBindingId,
   scanPolicyId: record.scanPolicyId,
+  providerKey: record.providerKey,
+  sourceQuery: sourceQueryFromPrisma(record.sourceQuery),
   correlationId: record.correlationId,
   causationId: record.causationId,
   attemptNumber: record.attemptNumber,
   retryBudget: record.retryBudget,
   failureReason: record.failureReason,
 });
+
+const sourceQueryModes: readonly SourceQueryMode[] = ['search', 'listing', 'account_feed', 'thread', 'url'];
+
+const sourceQueryFromPrisma = (value: unknown): SourceQuery => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Scan failure source query must be an object');
+  }
+
+  const payload = value as Readonly<Record<string, unknown>>;
+
+  if (typeof payload.mode !== 'string' || !sourceQueryModes.includes(payload.mode as SourceQueryMode)) {
+    throw new Error('Scan failure source query mode is unsupported');
+  }
+
+  if (typeof payload.query !== 'string' || payload.query.trim().length === 0) {
+    throw new Error('Scan failure source query must be non-empty');
+  }
+
+  return {
+    mode: payload.mode as SourceQueryMode,
+    query: payload.query.trim(),
+  };
+};
 
 export const scanAttemptFromPrisma = (record: PrismaScanAttemptRecord): ScanAttempt =>
   ScanAttempt.rehydrate({
