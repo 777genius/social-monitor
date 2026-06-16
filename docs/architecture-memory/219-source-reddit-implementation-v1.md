@@ -139,6 +139,21 @@ Required:
 - policy-disabled tests
 - deletion/retention tests for raw payloads
 
+## MVP Implementation Status
+
+Implemented MVP path:
+
+- `RedditSourceProvider` sits behind `SourceProviderPort`.
+- `HttpRedditClient` uses `https://oauth.reddit.com` with a bearer token and explicit `user-agent`.
+- `FixtureRedditClient` powers deterministic certification and does not use network.
+- `npm run check:source-certification` is the blocking release gate for fixture behavior, cursor contract, item identity, unsupported query rejection and error classification.
+- `npm run check:live-reddit-oauth` is an optional operator smoke. It skips cleanly when `REDDIT_ACCESS_TOKEN` is absent and verifies real OAuth scanning when a tenant-owned token is supplied.
+
+Operational rule:
+
+- HN/RSS/GitHub can be live-smoked without credentials through `npm run check:live-open-connectors`.
+- Reddit cannot be honestly live-smoked through official access without an OAuth token. Do not add anonymous scraping or anti-bot bypass as a fallback.
+
 ## Architecture Rule
 
 If Reddit access terms or economics change, replace or disable the adapter. Do not change domain concepts to match Reddit-specific constraints.
