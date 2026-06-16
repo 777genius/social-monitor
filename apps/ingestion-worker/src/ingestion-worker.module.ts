@@ -54,6 +54,7 @@ import {
   INGESTION_SCAN_FAILURE_QUEUE,
   INGESTION_SCAN_LEASE,
   INGESTION_SCAN_REPORTER_MODE,
+  INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS,
   INGESTION_SOURCE_ITEM_REPOSITORY,
   INGESTION_WORKER_PERSISTENCE_MODE,
   INGESTION_WORKER_PRISMA_CLIENT,
@@ -61,7 +62,9 @@ import {
   type IngestionScanReporterMode,
   resolveIngestionWorkerPersistenceMode,
   resolveIngestionScanReporterMode,
+  resolveIngestionScanSchedulerLoopOptions,
 } from './ingestion-worker-provider-tokens';
+import { ScanSchedulerLoop } from './scan-scheduler-loop';
 
 @Module({
   imports: [WorkerRuntimeModule.register({ serviceName: 'ingestion-worker' }), MonitoringRestModule],
@@ -79,6 +82,10 @@ import {
     {
       provide: INGESTION_SCAN_REPORTER_MODE,
       useFactory: () => resolveIngestionScanReporterMode(process.env),
+    },
+    {
+      provide: INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS,
+      useFactory: () => resolveIngestionScanSchedulerLoopOptions(process.env),
     },
     FakeSourceProvider,
     {
@@ -278,6 +285,7 @@ import {
       ) => new ScheduleDueScansCommandHandler(scheduleDueScans, metrics, runtime),
       inject: [ScheduleDueScansUseCase, InMemoryMetricsRecorder, WorkerRuntime],
     },
+    ScanSchedulerLoop,
     {
       provide: ExecuteScanCommandHandler,
       useFactory: (executeScan: ExecuteScanUseCase, metrics: InMemoryMetricsRecorder, runtime: WorkerRuntime) =>
