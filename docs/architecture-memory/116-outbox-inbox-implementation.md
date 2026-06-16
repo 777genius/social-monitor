@@ -6,6 +6,8 @@ Locked for MVP implementation. The platform layer now contains executable ports/
 
 - polling outbox dispatch through `OutboxDispatcher`;
 - durable Prisma outbox reads and published/failed state transitions through `PrismaOutboxStoreAdapter`;
+- RabbitMQ event publication through `RabbitMqEventPublisher`;
+- a dedicated `event-relay` worker app started with `npm run start:event-relay`;
 - durable Prisma inbox processed-event dedupe through `PrismaInboxStoreAdapter`;
 - deterministic smoke evidence through `npm run check:event-store`.
 
@@ -66,6 +68,8 @@ last_error text null
 
 The MVP implementation uses `OutboxDispatcher` against `OutboxStorePort` and `EventPublisherPort`. The Prisma adapter reads pending events in deterministic `createdAt/id` order, publishes through an injected publisher, marks success as `PUBLISHED` with `publishedAt`, and marks publisher failures as `FAILED`.
 
+The executable relay process is `apps/event-relay`. It requires `DATABASE_URL` and `RABBITMQ_URL`, reads from the Prisma outbox, publishes event envelopes to `RABBITMQ_EVENT_EXCHANGE` (default `social-monitor.events`), and can tune `EVENT_RELAY_BATCH_SIZE`, `EVENT_RELAY_INTERVAL_MS` and `EVENT_RELAY_RUN_ON_START`.
+
 Later hardening should switch the Prisma query to a leasing query with `FOR UPDATE SKIP LOCKED` or move relay publication to Debezium CDC without changing domain use cases.
 
 Polling relay requirements:
@@ -124,6 +128,8 @@ Transactional outbox solves the database-vs-broker dual-write problem. It does n
 - pending outbox events are dispatched and marked `PUBLISHED`;
 - publisher failures are marked `FAILED`;
 - a new inbox adapter instance deduplicates a previously processed event.
+
+`npm run check:event-relay` must stay in the release script. It proves the dedicated relay loop publishes outbox events through the RabbitMQ event publisher and removes them from the pending outbox.
 
 Related queue transport guardrails:
 
