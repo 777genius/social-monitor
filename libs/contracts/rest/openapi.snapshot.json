@@ -86,6 +86,102 @@
   },
   "openapi": "3.0.0",
   "paths": {
+    "/beta/launch-support": {
+      "get": {
+        "operationId": "BetaLaunchSupportController_getSnapshot",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get beta launch support snapshot with limitations and post-MVP backlog.",
+        "tags": [
+          "beta"
+        ]
+      }
+    },
+    "/beta/launch-support/known-limitations": {
+      "get": {
+        "operationId": "BetaLaunchSupportController_listKnownLimitations",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List known beta limitations visible to users and support.",
+        "tags": [
+          "beta"
+        ]
+      }
+    },
+    "/beta/launch-support/post-mvp-backlog": {
+      "get": {
+        "operationId": "BetaLaunchSupportController_listPostMvpBacklog",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List post-MVP backlog classification with architecture guardrails.",
+        "tags": [
+          "beta"
+        ]
+      }
+    },
     "/delivery/attempts": {
       "get": {
         "operationId": "DeliveryAttemptsController_list",

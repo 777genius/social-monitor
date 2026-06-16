@@ -43,6 +43,7 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 - `npm run check:hn-smoke` and `npm run check:rss-smoke` prove the two enabled real-source worker paths with deterministic clients: queue handler, provider registry, normalized source item persistence, feed projection, cursor commit and scan success reporting.
 - `npm run check:beta-scope-policy` proves unsupported/deferred providers stay out of the beta binding catalog, binding attempts are rejected, and source demand is captured as `source_request` feedback routed to `source-owner`.
 - `npm run check:beta-ring-policy` proves ring expansion thresholds link capacity, cost, source health and degradation evidence before inviting more users.
+- `npm run check:beta-launch-support` proves the beta launch support REST API exposes scoped known limitations, supported/deferred source coverage and post-MVP backlog classification for users/support/operator clients.
 - `npm run check:persistence-readiness` proves runtime in-memory/noop state adapters are not hidden: every API/worker module gap has owner, risk and durable replacement plan, and external beta remains blocked until durable adapters replace those gaps.
 - `npm run check:monitoring-persistence` proves the first monitoring Prisma adapter foundation and runtime selector: topics round-trip, source binding pause status persists through source catalog provider rehydration, scan policy `nextRunAt` is stored for durable scheduling, scan job status transitions persist across requested/enqueued/succeeded states, and `MONITORING_PERSISTENCE=prisma` is only valid with `DATABASE_URL`.
 - `npm run check:ingestion-feed-persistence` proves the first ingestion/feed Prisma adapter foundation plus feed API, ingestion-worker and ingestion-support runtime selectors: provider-level source item dedupe, scan cursor roundtrip, feed canonical URL dedupe, feed search/list, feed item rehydration, durable scan retry/dead-letter persistence, durable scan attempt terminal-state persistence, scan lease fencing/release behavior, `FEED_PERSISTENCE=prisma` validation, `INGESTION_WORKER_PERSISTENCE=prisma` validation and `INGESTION_SUPPORT_PERSISTENCE=prisma` validation.
@@ -55,3 +56,27 @@ Prove that beta validated the MVP loop and produced actionable post-MVP decision
 - Real beta feedback classification report is not produced from user samples yet.
 - Real beta ring expansion decision record is not produced from live user samples yet.
 - Durable runtime persistence evidence is not complete yet; current runtime is approved only for single-process private MVP and deterministic smoke validation.
+
+## PR 13 Beta Launch Support API Evidence
+
+- Implementation slice: `feat: expose beta launch support API`
+
+Verified commands:
+
+- `npm run check:beta-launch-support`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run check:secrets`
+- `git diff --check`
+
+Evidence notes:
+
+- Added a `launch` bounded context with domain snapshot types, a read-model port, static MVP adapter, `GetBetaLaunchSupportUseCase` and REST adapter.
+- `GET /beta/launch-support`, `GET /beta/launch-support/known-limitations` and `GET /beta/launch-support/post-mvp-backlog` expose user/support-visible launch limitations and post-MVP backlog classifications.
+- The endpoints require tenant/workspace headers through `requireTenantScope`, preserving the repo-wide REST scoping rule even for read-only launch metadata.
+- The smoke proves unsupported/deferred source visibility matches source readiness profiles and that backlog items keep architecture guardrails.
+- The beta MVP release contract now includes `beta-launch-support` as a blocking gate, and `npm run verify` includes `check:beta-launch-support`.

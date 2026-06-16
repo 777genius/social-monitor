@@ -38,6 +38,8 @@ import { ScanDeadLetterController } from '@social-monitor/ingestion/interfaces/r
 import { SourceProfileController } from '@social-monitor/ingestion/interfaces/rest/source-profile.controller';
 import { ListScanDeadLettersUseCase } from '@social-monitor/ingestion/features/list-scan-dead-letters/list-scan-dead-letters.use-case';
 import { ListSourceProfilesUseCase } from '@social-monitor/ingestion/features/list-source-profiles/list-source-profiles.use-case';
+import { GetBetaLaunchSupportUseCase } from '@social-monitor/launch/features/get-beta-launch-support/get-beta-launch-support.use-case';
+import { BetaLaunchSupportController } from '@social-monitor/launch/interfaces/rest/beta-launch-support.controller';
 import { BindSourceUseCase } from '@social-monitor/monitoring/features/bind-source/bind-source.use-case';
 import { ChangeSourceBindingStatusUseCase } from '@social-monitor/monitoring/features/change-source-binding-status/change-source-binding-status.use-case';
 import { CreateTopicUseCase } from '@social-monitor/monitoring/features/create-topic/create-topic.use-case';
@@ -116,6 +118,7 @@ const useCaseProviders = [
   GetSummaryPolicyUseCase,
   GetSummaryUseCase,
   GetWebhookEndpointUseCase,
+  GetBetaLaunchSupportUseCase,
   ListApiKeysUseCase,
   ListDeliveryAttemptsUseCase,
   ListDigestSchedulesUseCase,
@@ -155,6 +158,7 @@ const useCaseProviders = [
     FeedController,
     SourceProfileController,
     ScanDeadLetterController,
+    BetaLaunchSupportController,
     SummaryController,
     SummaryFeedbackController,
     SummaryJobController,
