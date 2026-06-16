@@ -1528,6 +1528,69 @@
       }
     },
     "/summaries/{summaryId}/feedback": {
+      "get": {
+        "operationId": "SummaryFeedbackController_list",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "summaryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary feedback reads allow owner, admin, member or viewer.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List classified feedback for one summary with cursor pagination.",
+        "tags": [
+          "summaries"
+        ]
+      },
       "post": {
         "operationId": "SummaryFeedbackController_create",
         "parameters": [

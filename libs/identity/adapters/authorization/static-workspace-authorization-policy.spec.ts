@@ -342,6 +342,20 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     });
   });
 
+  it('allows every workspace role to read summary feedback', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'summary_feedback.read',
+      roles: ['viewer'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
   it('allows every workspace role to read summary job status', () => {
     const policy = new StaticWorkspaceAuthorizationPolicy();
 

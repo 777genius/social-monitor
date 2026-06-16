@@ -25,6 +25,7 @@ import { EvaluateSummaryQualityUseCase } from '../../features/evaluate-summary-q
 import { ExecuteSummaryJobUseCase } from '../../features/execute-summary-job/execute-summary-job.use-case';
 import { GetSummaryJobStatusUseCase } from '../../features/get-summary-job-status/get-summary-job-status.use-case';
 import { GetSummaryUseCase } from '../../features/get-summary/get-summary.use-case';
+import { ListSummaryFeedbackUseCase } from '../../features/list-summary-feedback/list-summary-feedback.use-case';
 import { ListSummariesUseCase } from '../../features/list-summaries/list-summaries.use-case';
 import { RecordSummaryFeedbackUseCase } from '../../features/record-summary-feedback/record-summary-feedback.use-case';
 import { RegenerateSummaryUseCase } from '../../features/regenerate-summary/regenerate-summary.use-case';
@@ -186,6 +187,14 @@ import { SummaryController } from './summary.controller';
       inject: [SUMMARY_JOB_REPOSITORY],
     },
     {
+      provide: ListSummaryFeedbackUseCase,
+      useFactory: (
+        summaryArtifacts: SummaryArtifactRepositoryPort,
+        feedback: SummaryFeedbackRepositoryPort,
+      ) => new ListSummaryFeedbackUseCase(summaryArtifacts, feedback),
+      inject: [SUMMARY_ARTIFACT_REPOSITORY, SUMMARY_FEEDBACK_REPOSITORY],
+    },
+    {
       provide: RecordSummaryFeedbackUseCase,
       useFactory: (
         summaryArtifacts: SummaryArtifactRepositoryPort,
@@ -225,6 +234,7 @@ import { SummaryController } from './summary.controller';
     InMemorySummaryArtifactRepository,
     InMemorySummaryFeedbackRepository,
     InMemorySummaryJobRepository,
+    ListSummaryFeedbackUseCase,
     SUMMARY_ARTIFACT_REPOSITORY,
     SUMMARY_FEEDBACK_REPOSITORY,
     SUMMARY_JOB_REPOSITORY,

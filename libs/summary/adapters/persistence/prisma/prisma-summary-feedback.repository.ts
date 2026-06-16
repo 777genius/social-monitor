@@ -1,6 +1,8 @@
 import type { SummaryFeedback } from '../../../domain';
 import type {
   FindSummaryFeedbackByIdempotencyKeyQuery,
+  ListSummaryFeedbackQuery,
+  ListSummaryFeedbackResult,
   SummaryFeedbackRepositoryPort,
 } from '../../../ports';
 import type { PrismaSummaryClient } from './prisma-summary-client';
@@ -55,4 +57,56 @@ export class PrismaSummaryFeedbackRepository implements SummaryFeedbackRepositor
 
     return record === null ? null : summaryFeedbackFromPrisma(record);
   }
+
+  async list(query: ListSummaryFeedbackQuery): Promise<ListSummaryFeedbackResult> {
+    const offset = parseCursor(query.cursor);
+    const [items, total] = await Promise.all([
+      this.prisma.summaryFeedback.findMany({
+        where: {
+          tenantId: query.tenantId,
+          workspaceId: query.workspaceId,
+          summaryArtifactId: query.summaryId,
+        },
+        orderBy: [
+          { createdAt: 'desc' },
+          { id: 'desc' },
+        ],
+        skip: offset,
+        take: query.limit,
+      }),
+      this.prisma.summaryFeedback.count({
+        where: {
+          tenantId: query.tenantId,
+          workspaceId: query.workspaceId,
+          summaryArtifactId: query.summaryId,
+        },
+      }),
+    ]);
+    const nextOffset = offset + items.length;
+
+    return {
+      items: items.map(summaryFeedbackFromPrisma),
+      nextCursor: nextOffset < total ? encodeCursor(nextOffset) : undefined,
+    };
+  }
 }
+
+const encodeCursor = (offset: number): string => Buffer.from(JSON.stringify({ offset })).toString('base64url');
+
+const parseCursor = (cursor: string | undefined): number => {
+  if (cursor === undefined) {
+    return 0;
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { offset?: unknown };
+
+    if (typeof parsed.offset === 'number' && Number.isInteger(parsed.offset) && parsed.offset >= 0) {
+      return parsed.offset;
+    }
+  } catch {
+    return 0;
+  }
+
+  return 0;
+};

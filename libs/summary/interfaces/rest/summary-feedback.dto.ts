@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import { summaryFeedbackCategories, type SummaryFeedbackCategory } from '../../domain';
+import type { ListSummaryFeedbackResult } from '../../features/list-summary-feedback/list-summary-feedback.result';
 import type { RecordSummaryFeedbackResult } from '../../features/record-summary-feedback/record-summary-feedback.result';
 
 export class RecordSummaryFeedbackRequestDto {
@@ -18,3 +19,5 @@ export class RecordSummaryFeedbackRequestDto {
 }
 
 export type RecordSummaryFeedbackResponseDto = RecordSummaryFeedbackResult;
+
+export type ListSummaryFeedbackResponseDto = ListSummaryFeedbackResult;

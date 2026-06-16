@@ -133,5 +133,22 @@ export type PrismaSummaryClient = {
         readonly idempotencyKey: string;
       };
     }): Promise<PrismaSummaryFeedbackRecord | null>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly summaryArtifactId: string;
+      };
+      readonly orderBy: readonly [{ readonly createdAt: 'desc' }, { readonly id: 'desc' }];
+      readonly skip: number;
+      readonly take: number;
+    }): Promise<readonly PrismaSummaryFeedbackRecord[]>;
+    count(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly summaryArtifactId: string;
+      };
+    }): Promise<number>;
   };
 };

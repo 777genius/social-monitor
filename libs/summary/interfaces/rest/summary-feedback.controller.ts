@@ -1,5 +1,5 @@
-import { Body, Controller, Headers, Inject, Param, Post } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from '@nestjs/common';
+import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
   parseWorkspaceRolesHeader,
@@ -7,18 +7,72 @@ import {
 } from '@social-monitor/identity/ports';
 import { requireTenantScope } from '@social-monitor/shared-kernel';
 
+import { ListSummaryFeedbackUseCase } from '../../features/list-summary-feedback/list-summary-feedback.use-case';
 import { RecordSummaryFeedbackUseCase } from '../../features/record-summary-feedback/record-summary-feedback.use-case';
-import type { RecordSummaryFeedbackResponseDto } from './summary-feedback.dto';
+import type {
+  ListSummaryFeedbackResponseDto,
+  RecordSummaryFeedbackResponseDto,
+} from './summary-feedback.dto';
 import { RecordSummaryFeedbackRequestDto } from './summary-feedback.dto';
 
 @ApiTags('summaries')
 @Controller('summaries/:summaryId/feedback')
 export class SummaryFeedbackController {
   constructor(
+    private readonly listSummaryFeedback: ListSummaryFeedbackUseCase,
     private readonly recordSummaryFeedback: RecordSummaryFeedbackUseCase,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
+
+  @Get()
+  @ApiOperation({ summary: 'List classified feedback for one summary with cursor pagination.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiHeader({
+    name: 'x-workspace-role',
+    required: true,
+    description: 'Comma-separated workspace roles. Summary feedback reads allow owner, admin, member or viewer.',
+  })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'cursor', required: false, type: String })
+  async list(
+    @Param('summaryId') summaryId: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Query('limit') limitQuery: string | undefined,
+    @Query('cursor') cursor: string | undefined,
+  ): Promise<ListSummaryFeedbackResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      action: 'summary_feedback.read',
+      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+
+    const result = await this.listSummaryFeedback.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      summaryId,
+      limit: parseLimit(limitQuery),
+      cursor,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
 
   @Post()
   @ApiOperation({ summary: 'Record classified feedback for a summary without mutating the artifact.' })
@@ -76,3 +130,13 @@ export class SummaryFeedbackController {
     return result.value;
   }
 }
+
+const parseLimit = (value: string | undefined): number => {
+  if (value === undefined) {
+    return 20;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) ? parsed : Number.NaN;
+};

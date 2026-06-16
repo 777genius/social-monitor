@@ -143,6 +143,18 @@ async function main(): Promise<void> {
     'summary feedback evidence must round-trip',
   );
 
+  const listedFeedback = await feedbackRepository.list({
+    tenantId: tenant,
+    workspaceId: workspace,
+    summaryId: completedArtifact.toSnapshot().summaryId,
+    limit: 1,
+  });
+  assert(listedFeedback.items.length === 1, 'summary feedback repository must list saved feedback');
+  assert(
+    listedFeedback.items[0]?.toSnapshot().id === feedback.toSnapshot().id,
+    'summary feedback repository list must preserve feedback identity',
+  );
+
   console.log('Summary Prisma persistence smoke OK');
 }
 
@@ -353,6 +365,11 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         record.workspaceId === args.where.workspaceId &&
         record.idempotencyKey === args.where.idempotencyKey
       )) ?? null,
+    findMany: async (args) =>
+      this.filterFeedback(args.where)
+        .sort(compareFeedback)
+        .slice(args.skip, args.skip + args.take),
+    count: async (args) => this.filterFeedback(args.where).length,
   };
 
   private filterArtifacts(where: {
@@ -368,9 +385,31 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
       (where.status === undefined || where.status.in.includes(record.status))
     ));
   }
+
+  private filterFeedback(where: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly summaryArtifactId: string;
+  }): PrismaSummaryFeedbackRecord[] {
+    return [...this.feedback.values()].filter((record) => (
+      record.tenantId === where.tenantId &&
+      record.workspaceId === where.workspaceId &&
+      record.summaryArtifactId === where.summaryArtifactId
+    ));
+  }
 }
 
 const compareArtifacts = (left: PrismaSummaryArtifactRecord, right: PrismaSummaryArtifactRecord): number => {
+  const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
+
+  if (createdDiff !== 0) {
+    return createdDiff;
+  }
+
+  return right.id.localeCompare(left.id);
+};
+
+const compareFeedback = (left: PrismaSummaryFeedbackRecord, right: PrismaSummaryFeedbackRecord): number => {
   const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
 
   if (createdDiff !== 0) {
