@@ -1,11 +1,19 @@
+import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+
 import type {
   DeliveryPreferenceDecision,
   DeliveryPreferenceQuery,
+  GetRecipientChannelNotificationPreferenceQuery,
+  NotificationPreferenceManagementPort,
   NotificationPreferenceReaderPort,
+  RecipientChannelNotificationPreference,
+  SetRecipientChannelNotificationPreferenceCommand,
 } from '../../../ports';
+import type { PrismaNotificationPreferenceRecord } from '../../persistence/prisma/prisma-delivery-records';
 import type { PrismaDeliveryClient } from '../../persistence/prisma/prisma-delivery-client';
 
-export class PrismaNotificationPreferenceReader implements NotificationPreferenceReaderPort {
+export class PrismaNotificationPreferenceReader
+  implements NotificationPreferenceReaderPort, NotificationPreferenceManagementPort {
   constructor(private readonly prisma: PrismaDeliveryClient) {}
 
   async suppressRecipientChannel(params: {
@@ -57,6 +65,49 @@ export class PrismaNotificationPreferenceReader implements NotificationPreferenc
     });
   }
 
+  async setRecipientChannelPreference(
+    command: SetRecipientChannelNotificationPreferenceCommand,
+  ): Promise<RecipientChannelNotificationPreference> {
+    if (command.allowed) {
+      await this.allowRecipientChannel(command);
+
+      return {
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        recipientKey: command.recipientKey,
+        channel: command.channel,
+        allowed: true,
+      };
+    }
+
+    const reason = command.reason ?? 'Delivery suppressed by notification preference';
+    await this.suppressRecipientChannel({
+      ...command,
+      reason,
+    });
+
+    return {
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      recipientKey: command.recipientKey,
+      channel: command.channel,
+      allowed: false,
+      reason,
+    };
+  }
+
+  async getRecipientChannelPreference(
+    query: GetRecipientChannelNotificationPreferenceQuery,
+  ): Promise<RecipientChannelNotificationPreference | null> {
+    const record = await this.prisma.notificationPreference.findUnique({
+      where: {
+        tenantId_workspaceId_recipientKey_channel: preferenceKey(query),
+      },
+    });
+
+    return record === null ? null : notificationPreferenceFromPrisma(record);
+  }
+
   async getDeliveryPreference(query: DeliveryPreferenceQuery): Promise<DeliveryPreferenceDecision> {
     const record = await this.prisma.notificationPreference.findUnique({
       where: {
@@ -92,4 +143,15 @@ const preferenceKey = (params: {
   workspaceId: params.workspaceId,
   recipientKey: params.recipientKey,
   channel: params.channel,
+});
+
+const notificationPreferenceFromPrisma = (
+  record: PrismaNotificationPreferenceRecord,
+): RecipientChannelNotificationPreference => ({
+  tenantId: tenantId(record.tenantId),
+  workspaceId: workspaceId(record.workspaceId),
+  recipientKey: record.recipientKey,
+  channel: record.channel as RecipientChannelNotificationPreference['channel'],
+  allowed: record.allowed,
+  reason: record.reason ?? undefined,
 });

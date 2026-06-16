@@ -13,6 +13,8 @@ export type WorkspaceAction =
   | 'digest_schedules.read'
   | 'digests.read'
   | 'feed.read'
+  | 'notification_preferences.read'
+  | 'notification_preferences.write'
   | 'realtime_events.read'
   | 'scan_dead_letters.read'
   | 'topics.create'

@@ -3,6 +3,7 @@ import type {
   DigestRepositoryPort,
   DigestScheduleRepositoryPort,
   DigestSourceReaderPort,
+  NotificationPreferenceManagementPort,
   NotificationPreferenceReaderPort,
   RealtimeEventRepositoryPort,
   WebhookEndpointRepositoryPort,
@@ -23,6 +24,7 @@ export const DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY = Symbol('DELIVERY_WEBHOOK_END
 export const DELIVERY_WEBHOOK_SECRET_VAULT = Symbol('DELIVERY_WEBHOOK_SECRET_VAULT');
 export const DELIVERY_WEBHOOK_REPLAY_STORE = Symbol('DELIVERY_WEBHOOK_REPLAY_STORE');
 export const DELIVERY_NOTIFICATION_PREFERENCE_READER = Symbol('DELIVERY_NOTIFICATION_PREFERENCE_READER');
+export const DELIVERY_NOTIFICATION_PREFERENCE_MANAGER = Symbol('DELIVERY_NOTIFICATION_PREFERENCE_MANAGER');
 
 export type DeliveryProviderTokenMap = {
   readonly [DELIVERY_PERSISTENCE_MODE]: DeliveryPersistenceMode;
@@ -36,6 +38,7 @@ export type DeliveryProviderTokenMap = {
   readonly [DELIVERY_WEBHOOK_SECRET_VAULT]: WebhookSecretVaultPort;
   readonly [DELIVERY_WEBHOOK_REPLAY_STORE]: WebhookReplayStorePort;
   readonly [DELIVERY_NOTIFICATION_PREFERENCE_READER]: NotificationPreferenceReaderPort;
+  readonly [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER]: NotificationPreferenceManagementPort;
 };
 
 export const resolveDeliveryPersistenceMode = (env: NodeJS.ProcessEnv): DeliveryPersistenceMode => {

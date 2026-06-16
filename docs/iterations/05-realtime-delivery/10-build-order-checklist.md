@@ -11,13 +11,14 @@
 7. Publish summary status.
 8. Add reconnect/resync.
 9. Define notification preferences.
-10. Build notification read model.
-11. Add in-app notifications.
-12. Add digest foundation.
-13. Add digest schedule management REST API.
-14. Define webhook/API-key future ports.
-15. Add delivery logs.
-16. Add idempotency checks.
+10. Add notification preference management REST API.
+11. Build notification read model.
+12. Add in-app notifications.
+13. Add digest foundation.
+14. Add digest schedule management REST API.
+15. Define webhook/API-key future ports.
+16. Add delivery logs.
+17. Add idempotency checks.
 
 ## First PR Sequence
 
@@ -36,6 +37,7 @@
 
 - WebSocket event versions.
 - Realtime channel naming.
+- Notification preference set/get REST contract.
 - Notification read model API.
 - Delivery log schema.
 - Resync REST endpoint.
@@ -53,6 +55,7 @@
 - Delivery retry test.
 - Out-of-order/duplicate event tests.
 - Authorization revocation during live connection.
+- Notification preference set/get authorization tests.
 - Digest idempotency and suppression tests.
 - Digest schedule create/list/get authorization tests.
 - Webhook replay/signature/secret-rotation tests.

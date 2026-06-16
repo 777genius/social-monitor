@@ -38,6 +38,7 @@ import { DisableWebhookEndpointUseCase } from '../../features/disable-webhook-en
 import { GetDeliveryAttemptUseCase } from '../../features/get-delivery-attempt/get-delivery-attempt.use-case';
 import { GetDigestUseCase } from '../../features/get-digest/get-digest.use-case';
 import { GetDigestScheduleUseCase } from '../../features/get-digest-schedule/get-digest-schedule.use-case';
+import { GetNotificationPreferenceUseCase } from '../../features/get-notification-preference/get-notification-preference.use-case';
 import { GetWebhookEndpointUseCase } from '../../features/get-webhook-endpoint/get-webhook-endpoint.use-case';
 import { ListDigestSchedulesUseCase } from '../../features/list-digest-schedules/list-digest-schedules.use-case';
 import { ListWebhookEndpointsUseCase } from '../../features/list-webhook-endpoints/list-webhook-endpoints.use-case';
@@ -50,6 +51,7 @@ import { RecordRealtimeEventUseCase } from '../../features/record-realtime-event
 import { RetryDeliveryAttemptUseCase } from '../../features/retry-delivery-attempt/retry-delivery-attempt.use-case';
 import { ScheduleDueDigestsUseCase } from '../../features/schedule-due-digests/schedule-due-digests.use-case';
 import { SendDeliveryAttemptUseCase } from '../../features/send-delivery-attempt/send-delivery-attempt.use-case';
+import { SetNotificationPreferenceUseCase } from '../../features/set-notification-preference/set-notification-preference.use-case';
 import { SignWebhookPayloadUseCase } from '../../features/sign-webhook-payload/sign-webhook-payload.use-case';
 import { VerifyWebhookSignatureUseCase } from '../../features/verify-webhook-signature/verify-webhook-signature.use-case';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
@@ -59,6 +61,7 @@ import {
   DELIVERY_DIGEST_REPOSITORY,
   DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
   DELIVERY_DIGEST_SOURCE_READER,
+  DELIVERY_NOTIFICATION_PREFERENCE_MANAGER,
   DELIVERY_NOTIFICATION_PREFERENCE_READER,
   DELIVERY_PERSISTENCE_MODE,
   DELIVERY_PRISMA_CLIENT,
@@ -70,6 +73,7 @@ import {
   type DeliveryPersistenceMode,
 } from './delivery-provider-tokens';
 import { DigestsController } from './digests.controller';
+import { NotificationPreferencesController } from './notification-preferences.controller';
 import { RealtimeEventsController } from './realtime-events.controller';
 import { WebhookEndpointsController } from './webhook-endpoints.controller';
 import type {
@@ -78,6 +82,7 @@ import type {
   DigestRepositoryPort,
   DigestScheduleRepositoryPort,
   DigestSourceReaderPort,
+  NotificationPreferenceManagementPort,
   NotificationPreferenceReaderPort,
   RealtimeEventRepositoryPort,
   WebhookEndpointRepositoryPort,
@@ -93,6 +98,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     DeliveryAttemptsController,
     DigestSchedulesController,
     DigestsController,
+    NotificationPreferencesController,
     RealtimeEventsController,
     WebhookEndpointsController,
   ],
@@ -231,11 +237,15 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
         mode: DeliveryPersistenceMode,
         prisma: PrismaDeliveryClient | null,
         inMemoryPreferences: InMemoryNotificationPreferenceReader,
-      ): NotificationPreferenceReaderPort =>
+      ): NotificationPreferenceReaderPort & NotificationPreferenceManagementPort =>
         mode === 'prisma'
           ? new PrismaNotificationPreferenceReader(requirePrismaDeliveryClient(prisma))
           : inMemoryPreferences,
       inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, InMemoryNotificationPreferenceReader],
+    },
+    {
+      provide: DELIVERY_NOTIFICATION_PREFERENCE_MANAGER,
+      useExisting: DELIVERY_NOTIFICATION_PREFERENCE_READER,
     },
     {
       provide: QueueDeliveryAttemptUseCase,
@@ -284,6 +294,18 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       provide: ListDigestSchedulesUseCase,
       useFactory: (schedules: DigestScheduleRepositoryPort) => new ListDigestSchedulesUseCase(schedules),
       inject: [DELIVERY_DIGEST_SCHEDULE_REPOSITORY],
+    },
+    {
+      provide: SetNotificationPreferenceUseCase,
+      useFactory: (preferences: NotificationPreferenceManagementPort) =>
+        new SetNotificationPreferenceUseCase(preferences),
+      inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER],
+    },
+    {
+      provide: GetNotificationPreferenceUseCase,
+      useFactory: (preferences: NotificationPreferenceManagementPort) =>
+        new GetNotificationPreferenceUseCase(preferences),
+      inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER],
     },
     {
       provide: CreateWebhookEndpointUseCase,
@@ -397,6 +419,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     DisableWebhookEndpointUseCase,
     GetWebhookEndpointUseCase,
     GetDigestScheduleUseCase,
+    GetNotificationPreferenceUseCase,
     ListDigestSchedulesUseCase,
     ListWebhookEndpointsUseCase,
     InMemoryDeliveryAttemptRepository,
@@ -418,6 +441,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     RetryDeliveryAttemptUseCase,
     ScheduleDueDigestsUseCase,
     SendDeliveryAttemptUseCase,
+    SetNotificationPreferenceUseCase,
     SignWebhookPayloadUseCase,
     VerifyWebhookSignatureUseCase,
     DELIVERY_ATTEMPT_REPOSITORY,
@@ -428,6 +452,7 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
     DELIVERY_WEBHOOK_SECRET_VAULT,
     DELIVERY_WEBHOOK_REPLAY_STORE,
+    DELIVERY_NOTIFICATION_PREFERENCE_MANAGER,
     DELIVERY_NOTIFICATION_PREFERENCE_READER,
     DELIVERY_PROVIDERS,
   ],

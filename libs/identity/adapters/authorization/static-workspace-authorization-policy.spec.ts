@@ -88,6 +88,42 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     });
   });
 
+  it('allows viewers to read notification preferences but not write them', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'notification_preferences.read',
+      roles: ['viewer'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'notification_preferences.write',
+      roles: ['viewer'],
+    })).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'authorization.denied',
+      }),
+    });
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'notification_preferences.write',
+      roles: ['member'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
   it('allows only owner and admin roles to inspect scan dead letters', () => {
     const policy = new StaticWorkspaceAuthorizationPolicy();
 

@@ -60,6 +60,10 @@
         ],
         "type": "object"
       },
+      "SetNotificationPreferenceRequestDto": {
+        "properties": {},
+        "type": "object"
+      },
       "SetScanPolicyRequestDto": {
         "properties": {},
         "type": "object"
@@ -306,6 +310,96 @@
           }
         },
         "summary": "Get one tenant/workspace digest with provenance.",
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/delivery/notification-preferences": {
+      "get": {
+        "operationId": "NotificationPreferencesController_get",
+        "parameters": [
+          {
+            "description": "Comma-separated workspace roles. Preference reads allow owner, admin, member or viewer.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get recipient/channel notification delivery preference.",
+        "tags": [
+          "delivery"
+        ]
+      },
+      "put": {
+        "operationId": "NotificationPreferencesController_set",
+        "parameters": [
+          {
+            "description": "Comma-separated workspace roles. Preference writes allow owner, admin or member.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetNotificationPreferenceRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Set recipient/channel notification delivery preference.",
         "tags": [
           "delivery"
         ]

@@ -557,6 +557,45 @@ async function main(): Promise<void> {
     'Prisma notification preference must preserve suppression reason',
   );
 
+  const managedSuppression = await preferences.setRecipientChannelPreference({
+    tenantId: tenant,
+    workspaceId: workspace,
+    recipientKey: 'endpoint-2',
+    channel: 'email',
+    allowed: false,
+    reason: 'User disabled email notifications',
+  });
+  assert(!managedSuppression.allowed, 'Prisma notification preference manager must suppress delivery');
+  const managedSuppressionView = await preferences.getRecipientChannelPreference({
+    tenantId: tenant,
+    workspaceId: workspace,
+    recipientKey: 'endpoint-2',
+    channel: 'email',
+  });
+  assert(
+    managedSuppressionView?.reason === 'User disabled email notifications',
+    'Prisma notification preference manager must preserve suppression reason',
+  );
+
+  const managedAllow = await preferences.setRecipientChannelPreference({
+    tenantId: tenant,
+    workspaceId: workspace,
+    recipientKey: 'endpoint-2',
+    channel: 'email',
+    allowed: true,
+  });
+  assert(managedAllow.allowed, 'Prisma notification preference manager must allow delivery');
+  const managedAllowView = await preferences.getRecipientChannelPreference({
+    tenantId: tenant,
+    workspaceId: workspace,
+    recipientKey: 'endpoint-2',
+    channel: 'email',
+  });
+  assert(
+    managedAllowView?.allowed === true && managedAllowView.reason === undefined,
+    'Prisma notification preference manager must clear stale suppression reason',
+  );
+
   await preferences.allowRecipientChannel({
     tenantId: tenant,
     workspaceId: workspace,
