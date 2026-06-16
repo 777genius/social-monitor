@@ -1152,3 +1152,24 @@ Evidence notes:
 - `ExecuteScanUseCase` now retries only retryable source-fetch failures and immediately dead-letters non-retryable provider failures.
 - Reddit missing `accessToken` is classified as `auth_failed`, `retryable=false`, matching the official OAuth-only source policy.
 - `check:reddit-smoke` proves encrypted credential success, missing-token `SourceFetchError`, no retry enqueue and immediate DLQ for the non-retryable auth/config failure.
+
+## PR 41 API Readiness Metadata Evidence
+
+- `385086e feat: expose api readiness metadata`
+
+Verified commands:
+
+- `npm run check:api-health`
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run check:secrets`
+- `git diff --check`
+
+Evidence notes:
+
+- `/health` and `/healthz` remain lightweight liveness probes with the existing `ok/service/checkedAt/uptimeSeconds` contract.
+- `/ready` and `/health/ready` now expose operator-safe runtime metadata: persistence modes, worker loop modes, API surfaces, worker app names and source readiness groups.
+- Readiness metadata is intentionally self-describing and does not call databases or external providers, so it is safe for frequent probes.
+- `check:api-health` now validates the readiness contract through a focused `HealthController` Nest smoke instead of booting the full `AppModule`, avoiding slow provider initialization in constrained CI/container shells.
+- `scripts/check-openapi.ts` now supplies deterministic fallback smoke secrets for AppModule-based contract generation. In this container, `npm run check:openapi` was attempted and was killed by the runtime with `SIGKILL` before producing a drift result, so it is not recorded as passed evidence for this slice.
