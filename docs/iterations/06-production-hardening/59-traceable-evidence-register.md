@@ -1088,3 +1088,25 @@ Evidence notes:
 - `ScanQueueDrainLoop` fairly drains primary scan commands and retry commands in one bounded tick, then converts retries through the same `ExecuteScanCommandHandler` path as normal scans.
 - `check:scan-queue-drain-loop` proves one primary command and one retry command are executed successfully by the worker loop.
 - Prisma ingestion persistence smoke covers the updated durable retry schema, optional global retry selection and retry deletion contract.
+
+## PR 38 Delivery Retry Dispatch Evidence
+
+- `03a43af feat: dispatch retryable delivery attempts`
+
+Verified commands:
+
+- `npm run build`
+- `npm run check:delivery-attempt-dispatch-loop`
+- `npm run check:delivery-persistence`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run check:secrets`
+- `git diff --check`
+
+Evidence notes:
+
+- Delivery dispatch repositories now expose `queued` and `failed_retryable` attempts while keeping terminal failed, dead-lettered, delivered and cancelled attempts out of automatic dispatch.
+- In-memory and Prisma delivery attempt repositories share the same dispatchable-state contract through the `DeliveryAttemptRepositoryPort.findQueued` behavior.
+- Retrying a failed delivery clears stale `failedAt` and `failureReason` when the attempt re-enters `sending`, while preserving retry-count evidence for audit/debugging.
+- `check:delivery-attempt-dispatch-loop` proves a normal queued attempt and a retryable failed attempt both flow through the same command handler/provider path and drain from the dispatch set.
+- `check:delivery-persistence` proves the Prisma adapter query includes retryable failed attempts and excludes terminal failures from dispatch selection.
