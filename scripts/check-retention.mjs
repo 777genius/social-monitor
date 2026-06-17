@@ -72,7 +72,20 @@ for (const exportableTable of ['users', 'memberships', 'topics', 'source_binding
   }
 }
 
-for (const operationalTable of ['outbox_events', 'inbox_records', 'idempotency_keys', 'cursor_checkpoints']) {
+for (const operationalTable of [
+  'outbox_events',
+  'inbox_records',
+  'idempotency_keys',
+  'cursor_checkpoints',
+  'scan_failure_queue_entries',
+  'scan_attempts',
+  'scan_leases',
+  'summary_jobs',
+  'realtime_events',
+  'webhook_replay_deliveries',
+  'rate_limit_buckets',
+  'usage_quota_buckets',
+]) {
   const policy = policyByTable.get(operationalTable);
   if (policy?.exportable !== false) {
     violations.push(`${contractPath}: operational table "${operationalTable}" must not be user-exportable`);

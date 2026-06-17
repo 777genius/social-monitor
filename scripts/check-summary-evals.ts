@@ -77,7 +77,7 @@ async function main(): Promise<void> {
     throw new Error(`${outputPath} is missing. Run npm run check:summary-evals -- --update`);
   }
 
-  const expected = readFileSync(outputPath, 'utf8');
+  const expected = normalizeLineEndings(readFileSync(outputPath, 'utf8'));
 
   if (expected !== serialized) {
     throw new Error(`${outputPath} is stale. Run npm run check:summary-evals -- --update`);
@@ -93,4 +93,8 @@ function readGitSha(): string {
   } catch {
     return 'unknown';
   }
+}
+
+function normalizeLineEndings(value: string): string {
+  return value.replaceAll('\r\n', '\n');
 }

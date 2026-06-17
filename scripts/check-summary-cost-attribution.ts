@@ -56,7 +56,7 @@ async function main(): Promise<void> {
     throw new Error(`${outputPath} is missing. Run npm run check:summary-cost -- --update`);
   }
 
-  const expected = readFileSync(outputPath, 'utf8');
+  const expected = normalizeLineEndings(readFileSync(outputPath, 'utf8'));
 
   if (expected !== serialized) {
     throw new Error(`${outputPath} is stale. Run npm run check:summary-cost -- --update`);
@@ -65,4 +65,8 @@ async function main(): Promise<void> {
   console.log(
     `Summary cost attribution OK (${attribution.report.totals.attributedFixtureCount} fixtures, cost $${attribution.report.totals.estimatedCostUsd.toFixed(6)})`,
   );
+}
+
+function normalizeLineEndings(value: string): string {
+  return value.replaceAll('\r\n', '\n');
 }
