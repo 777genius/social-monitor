@@ -1,6 +1,6 @@
 import type { ScanExecutionReporterPort } from '@social-monitor/ingestion/ports';
 
-import { RecordScanExecutionUseCase } from '../../features/record-scan-execution/record-scan-execution.use-case';
+import type { RecordScanExecutionUseCase } from '../../features/record-scan-execution/record-scan-execution.use-case';
 
 export class MonitoringScanExecutionReporterAdapter implements ScanExecutionReporterPort {
   constructor(private readonly recordScanExecution: RecordScanExecutionUseCase) {}

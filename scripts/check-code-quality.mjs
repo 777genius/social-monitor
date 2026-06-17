@@ -8,6 +8,10 @@ const publicRestControllers = new Set([
   'libs/ingestion/interfaces/rest/source-profile.controller.ts',
 ]);
 
+function normalizedPath(file) {
+  return file.replaceAll('\\', '/');
+}
+
 function addViolation(file, reason) {
   violations.push(`${relative(process.cwd(), file)}: ${reason}`);
 }
@@ -61,7 +65,7 @@ for (const useCaseFile of globSync('libs/**/features/**/*.use-case.ts')) {
 }
 
 for (const controllerFile of globSync('libs/**/interfaces/rest/*.controller.ts')) {
-  if (publicRestControllers.has(controllerFile)) {
+  if (publicRestControllers.has(normalizedPath(controllerFile))) {
     continue;
   }
 

@@ -1,7 +1,7 @@
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { ApiKey } from '../../domain';
-import type { ApiKeyHasherPort, ApiKeyRepositoryPort, ListApiKeysQuery, ListApiKeysResult } from '../../ports';
+import type { ApiKeyHasherPort, ApiKeyRepositoryPort, ListApiKeysResult } from '../../ports';
 import { CreateApiKeyUseCase } from './create-api-key.use-case';
 
 class SequenceIdGenerator implements IdGenerator {
@@ -29,7 +29,7 @@ class FakeApiKeys implements ApiKeyRepositoryPort {
     return null;
   }
 
-  async list(_query: ListApiKeysQuery): Promise<ListApiKeysResult> {
+  async list(): Promise<ListApiKeysResult> {
     return {
       apiKeys: this.saved,
       nextCursor: undefined,

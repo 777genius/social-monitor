@@ -9,7 +9,6 @@ import {
 import type { RealtimeEvent } from '../../domain';
 import {
   RealtimeEventSequenceConflictError,
-  type ListRealtimeEventsQuery,
   type ListRealtimeEventsResult,
   type RealtimeEventRepositoryPort,
 } from '../../ports';
@@ -32,7 +31,7 @@ class FakeRealtimeEvents implements RealtimeEventRepositoryPort {
     this.events.push(event);
   }
 
-  async list(_query: ListRealtimeEventsQuery): Promise<ListRealtimeEventsResult> {
+  async list(): Promise<ListRealtimeEventsResult> {
     return {
       events: this.events,
       nextCursor: undefined,
@@ -61,7 +60,7 @@ class SequenceConflictOnceRealtimeEvents implements RealtimeEventRepositoryPort 
     this.events.push(event);
   }
 
-  async list(_query: ListRealtimeEventsQuery): Promise<ListRealtimeEventsResult> {
+  async list(): Promise<ListRealtimeEventsResult> {
     return {
       events: this.events,
       nextCursor: undefined,

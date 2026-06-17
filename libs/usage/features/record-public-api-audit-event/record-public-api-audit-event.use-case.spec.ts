@@ -1,6 +1,11 @@
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import type { PublicApiAuditLogPort, PublicApiAuditRecord } from '../../ports';
+import type {
+  ListPublicApiAuditRecordsQuery,
+  ListPublicApiAuditRecordsResult,
+  PublicApiAuditLogPort,
+  PublicApiAuditRecord,
+} from '../../ports';
 import { RecordPublicApiAuditEventUseCase } from './record-public-api-audit-event.use-case';
 
 class FixedIdGenerator implements IdGenerator {
@@ -16,8 +21,13 @@ class FakeAuditLog implements PublicApiAuditLogPort {
     this.records.push(record);
   }
 
-  async list(): Promise<readonly PublicApiAuditRecord[]> {
-    return this.records;
+  async list(query: ListPublicApiAuditRecordsQuery): Promise<ListPublicApiAuditRecordsResult> {
+    return {
+      records: this.records.filter(
+        (record) => record.tenantId === query.tenantId && record.workspaceId === query.workspaceId,
+      ),
+      nextCursor: undefined,
+    };
   }
 }
 

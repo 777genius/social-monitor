@@ -3,7 +3,7 @@ import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
-import type { GetMessage, Message } from 'amqplib';
+import type { GetMessage } from 'amqplib';
 
 import { InMemoryFeedProjectionAdapter } from '../apps/ingestion-worker/src/adapters/feed/in-memory-feed-projection.adapter';
 import {
@@ -57,11 +57,11 @@ class FakeRabbitMqReaderChannel implements RabbitMqScanQueueReaderChannelPort {
     return this.messages.shift() ?? false;
   }
 
-  async ack(_message: Message): Promise<void> {
+  async ack(): Promise<void> {
     this.acked += 1;
   }
 
-  async nack(_message: Message, _allUpTo: boolean, _requeue: boolean): Promise<void> {
+  async nack(): Promise<void> {
     this.nacked += 1;
   }
 

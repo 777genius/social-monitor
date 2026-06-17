@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 
-const compose = readFileSync('docker-compose.yml', 'utf8');
-const envExample = readFileSync('.env.example', 'utf8');
+const compose = readFileSync('docker-compose.yml', 'utf8').replaceAll('\r\n', '\n');
+const envExample = readFileSync('.env.example', 'utf8').replaceAll('\r\n', '\n');
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
 const violations = [];
 

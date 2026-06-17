@@ -5,7 +5,6 @@ import type {
   DeliveryAttemptDispatchQueuePort,
   DeliveryAttemptRepositoryPort,
   EnqueueDeliveryAttemptDispatchQueueCommand,
-  ListDeliveryAttemptsQuery,
   ListDeliveryAttemptsResult,
 } from '../../ports';
 import { EnqueueDeliveryAttemptDispatchUseCase } from './enqueue-delivery-attempt-dispatch.use-case';
@@ -96,7 +95,7 @@ class FakeDeliveryAttemptRepository implements DeliveryAttemptRepositoryPort {
     throw new Error('findQueued is not used by this spec');
   }
 
-  async list(_query: ListDeliveryAttemptsQuery): Promise<ListDeliveryAttemptsResult> {
+  async list(): Promise<ListDeliveryAttemptsResult> {
     throw new Error('list is not used by this spec');
   }
 

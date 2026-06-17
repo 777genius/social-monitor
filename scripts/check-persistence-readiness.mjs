@@ -1,5 +1,7 @@
 import { existsSync, globSync, readFileSync } from 'node:fs';
 
+const normalizePath = (value) => value.replaceAll('\\', '/');
+
 const contractPath = 'ops/release/persistence-readiness-contract.json';
 const packagePath = 'package.json';
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
@@ -39,10 +41,14 @@ if (!Array.isArray(contract.mvpRuntimeDecision?.exitCriteria) || contract.mvpRun
 
 const moduleContracts = new Map();
 for (const moduleContract of contract.runtimeModules ?? []) {
-  if (moduleContracts.has(moduleContract.moduleFile)) {
+  const moduleFile = normalizePath(moduleContract.moduleFile);
+  if (moduleContracts.has(moduleFile)) {
     violations.push(`${contractPath}: duplicate runtime module "${moduleContract.moduleFile}"`);
   }
-  moduleContracts.set(moduleContract.moduleFile, moduleContract);
+  moduleContracts.set(moduleFile, {
+    ...moduleContract,
+    moduleFile,
+  });
 
   if (!existsSync(moduleContract.moduleFile)) {
     violations.push(`${contractPath}: runtime module "${moduleContract.moduleFile}" does not exist`);
@@ -60,16 +66,19 @@ for (const moduleContract of contract.runtimeModules ?? []) {
 }
 
 for (const moduleFile of runtimeModuleFiles) {
+  const normalizedModuleFile = normalizePath(moduleFile);
   const source = readFileSync(moduleFile, 'utf8');
   const discovered = uniqueMatches(source, statefulInMemoryPattern);
-  const moduleContract = moduleContracts.get(moduleFile);
+  const moduleContract = moduleContracts.get(normalizedModuleFile);
 
   if (discovered.length === 0) {
     continue;
   }
 
   if (!moduleContract) {
-    violations.push(`${moduleFile}: stateful in-memory runtime adapters are not declared in ${contractPath}: ${discovered.join(', ')}`);
+    violations.push(
+      `${normalizedModuleFile}: stateful in-memory runtime adapters are not declared in ${contractPath}: ${discovered.join(', ')}`,
+    );
     continue;
   }
 
@@ -78,7 +87,7 @@ for (const moduleFile of runtimeModuleFiles) {
   const stale = declared.filter((adapter) => !discovered.includes(adapter));
 
   if (missing.length > 0) {
-    violations.push(`${moduleFile}: missing persistence readiness declarations for ${missing.join(', ')}`);
+    violations.push(`${normalizedModuleFile}: missing persistence readiness declarations for ${missing.join(', ')}`);
   }
 
   if (stale.length > 0) {
@@ -88,11 +97,15 @@ for (const moduleFile of runtimeModuleFiles) {
 
 const noopContracts = new Map();
 for (const noopContract of contract.runtimeNoopAdapters ?? []) {
-  const key = `${noopContract.moduleFile}:${noopContract.adapter}`;
+  const moduleFile = normalizePath(noopContract.moduleFile);
+  const key = `${moduleFile}:${noopContract.adapter}`;
   if (noopContracts.has(key)) {
     violations.push(`${contractPath}: duplicate noop adapter declaration "${key}"`);
   }
-  noopContracts.set(key, noopContract);
+  noopContracts.set(key, {
+    ...noopContract,
+    moduleFile,
+  });
 
   for (const field of ['moduleFile', 'adapter', 'owner', 'risk', 'durableReplacementPlan']) {
     if (typeof noopContract[field] !== 'string' || noopContract[field].trim().length === 0) {
@@ -102,11 +115,12 @@ for (const noopContract of contract.runtimeNoopAdapters ?? []) {
 }
 
 for (const moduleFile of runtimeModuleFiles) {
+  const normalizedModuleFile = normalizePath(moduleFile);
   const source = readFileSync(moduleFile, 'utf8');
   for (const noopAdapter of uniqueMatches(source, noopAdapterPattern)) {
-    const key = `${moduleFile}:${noopAdapter}`;
+    const key = `${normalizedModuleFile}:${noopAdapter}`;
     if (!noopContracts.has(key)) {
-      violations.push(`${moduleFile}: runtime noop adapter "${noopAdapter}" must be declared in ${contractPath}`);
+      violations.push(`${normalizedModuleFile}: runtime noop adapter "${noopAdapter}" must be declared in ${contractPath}`);
     }
   }
 }

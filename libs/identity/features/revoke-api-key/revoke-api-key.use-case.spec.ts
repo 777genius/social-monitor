@@ -1,7 +1,7 @@
 import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { ApiKey, type ApiKeyProps } from '../../domain';
-import type { ApiKeyRepositoryPort, ListApiKeysQuery, ListApiKeysResult } from '../../ports';
+import type { ApiKeyRepositoryPort, ListApiKeysResult } from '../../ports';
 import { RevokeApiKeyUseCase } from './revoke-api-key.use-case';
 
 class FakeApiKeys implements ApiKeyRepositoryPort {
@@ -20,7 +20,7 @@ class FakeApiKeys implements ApiKeyRepositoryPort {
     return null;
   }
 
-  async list(_query: ListApiKeysQuery): Promise<ListApiKeysResult> {
+  async list(): Promise<ListApiKeysResult> {
     return {
       apiKeys: [...this.keys.values()],
       nextCursor: undefined,

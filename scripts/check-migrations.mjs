@@ -27,10 +27,17 @@ const commands = [
 let migrationSql = '';
 
 for (const command of commands) {
-  const result = spawnSync('npx', command.args, {
-    encoding: 'utf8',
-    stdio: command.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
-  });
+  const result =
+    process.platform === 'win32'
+      ? spawnSync(`npx ${command.args.join(' ')}`, {
+          encoding: 'utf8',
+          shell: true,
+          stdio: command.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+        })
+      : spawnSync('npx', command.args, {
+          encoding: 'utf8',
+          stdio: command.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+        });
 
   if (result.status !== 0) {
     if (command.capture) {

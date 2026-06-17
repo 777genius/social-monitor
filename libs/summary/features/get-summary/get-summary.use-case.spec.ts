@@ -2,7 +2,6 @@ import { tenantId, type TenantId, workspaceId, type WorkspaceId } from '@social-
 
 import { SummaryArtifact } from '../../domain';
 import type {
-  ListSummaryArtifactsQuery,
   ListSummaryArtifactsResult,
   SummaryArtifactRepositoryPort,
   SummaryFreshness,
@@ -18,7 +17,7 @@ class FakeSummaryArtifacts implements SummaryArtifactRepositoryPort {
     this.artifacts.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.summaryId}`, artifact);
   }
 
-  async list(_query: ListSummaryArtifactsQuery): Promise<ListSummaryArtifactsResult> {
+  async list(): Promise<ListSummaryArtifactsResult> {
     return {
       items: [...this.artifacts.values()],
       nextCursor: undefined,

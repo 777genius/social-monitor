@@ -1,7 +1,7 @@
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { ApiKey } from '../../domain';
-import type { ApiKeyHasherPort, ApiKeyRepositoryPort } from '../../ports';
+import type { ApiKeyHasherPort, ApiKeyRepositoryPort, ListApiKeysQuery, ListApiKeysResult } from '../../ports';
 import { CreateApiKeyUseCase } from '../create-api-key/create-api-key.use-case';
 import { RevokeApiKeyUseCase } from '../revoke-api-key/revoke-api-key.use-case';
 import { VerifyApiKeyUseCase } from './verify-api-key.use-case';
@@ -33,6 +33,17 @@ class FakeApiKeys implements ApiKeyRepositoryPort {
 
   async findByKeyPrefix(params: { readonly keyPrefix: string }): Promise<ApiKey | null> {
     return this.keysByPrefix.get(params.keyPrefix) ?? null;
+  }
+
+  async list(query: ListApiKeysQuery): Promise<ListApiKeysResult> {
+    return {
+      apiKeys: [...this.keysById.values()].filter((apiKey) => {
+        const snapshot = apiKey.toSnapshot();
+
+        return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId;
+      }),
+      nextCursor: undefined,
+    };
   }
 }
 
