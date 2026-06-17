@@ -1,7 +1,7 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { tenantId, type TenantId, workspaceId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
@@ -87,8 +87,8 @@ describe('Summary regeneration workspace authorization (e2e)', () => {
 
 const createSummaryArtifact = async (params: {
   readonly app: INestApplication;
-  readonly tenant: string;
-  readonly workspace: string;
+  readonly tenant: TenantId;
+  readonly workspace: WorkspaceId;
 }): Promise<string> => {
   const requested = await request(params.app.getHttpServer())
     .post('/topics/topic-summary-regeneration-authorization-e2e/summary-requests')

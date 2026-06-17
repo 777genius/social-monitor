@@ -103,7 +103,7 @@ describe('ingestion worker execute scan command (e2e)', () => {
     await expect(providerRegistry.getReadinessProfile('reddit')).resolves.toEqual(
       expect.objectContaining({
         providerKey: 'reddit',
-        state: 'profiled',
+        state: 'enabled_beta',
       }),
     );
 
@@ -175,7 +175,7 @@ describe('ingestion worker execute scan command (e2e)', () => {
     const attemptRepository = moduleRef.get(InMemoryScanAttemptRepository);
     const cursorRepository = moduleRef.get(InMemoryScanCursorRepository);
     const failureQueue = moduleRef.get(InMemoryScanFailureQueueAdapter);
-    const metrics = moduleRef.get(InMemoryMetricsRecorder);
+    const metrics = moduleRef.select(IngestionWorkerModule).get(InMemoryMetricsRecorder, { strict: true });
     const command = {
       commandId: 'scan-job-failure',
       commandType: 'ingestion.scan.execute',

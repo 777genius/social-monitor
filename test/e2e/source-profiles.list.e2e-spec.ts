@@ -44,9 +44,9 @@ describe('Source profiles list (e2e)', () => {
         }),
         expect.objectContaining({
           providerKey: 'reddit',
-          productionSafe: false,
-          readinessState: 'profiled',
-          supportedQueryModes: [],
+          productionSafe: true,
+          readinessState: 'enabled_beta',
+          supportedQueryModes: expect.arrayContaining(['search', 'listing']),
         }),
         expect.objectContaining({
           providerKey: 'hacker-news',

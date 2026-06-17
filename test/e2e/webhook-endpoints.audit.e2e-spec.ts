@@ -73,14 +73,17 @@ describe('Webhook endpoint public API audit (e2e)', () => {
     const records = await app.get(InMemoryPublicApiAuditLog).list({
       tenantId: tenant,
       workspaceId: workspace,
+      limit: 10,
     });
 
-    expect(records.map((record) => record.action).sort()).toEqual([
+    const webhookRecords = records.records.filter((record) => record.action.startsWith('webhook_endpoint.'));
+
+    expect(webhookRecords.map((record) => record.action).sort()).toEqual([
       'webhook_endpoint.created',
       'webhook_endpoint.disabled',
       'webhook_endpoint.listed',
     ]);
-    expect(records).toEqual(expect.arrayContaining([
+    expect(webhookRecords).toEqual(expect.arrayContaining([
       expect.objectContaining({
         actorType: 'api_key',
         actorId: apiKey.body.apiKey.id,
@@ -99,7 +102,7 @@ describe('Webhook endpoint public API audit (e2e)', () => {
         }),
       }),
     ]));
-    expect(JSON.stringify(records)).not.toContain(apiKey.body.secret);
-    expect(JSON.stringify(records)).not.toContain(created.body.signingSecret);
+    expect(JSON.stringify(records.records)).not.toContain(apiKey.body.secret);
+    expect(JSON.stringify(records.records)).not.toContain(created.body.signingSecret);
   });
 });

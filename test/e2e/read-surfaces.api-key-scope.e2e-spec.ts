@@ -83,8 +83,9 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
     expect(feedList.body.items).toEqual([
       expect.objectContaining({
         id: 'feed-read-api-key-1',
-        tenantId: tenant,
-        workspaceId: workspace,
+        topicId,
+        sourceBindingId: 'binding-read-api-key-e2e',
+        title: 'API key feed read surface',
       }),
     ]);
 

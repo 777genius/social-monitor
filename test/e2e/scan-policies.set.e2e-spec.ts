@@ -99,9 +99,10 @@ describe('Set scan policy flow (e2e)', () => {
     const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
       tenantId: tenant,
       workspaceId: workspace,
+      limit: 10,
     });
 
-    expect(auditRecords.filter((record) => record.action === 'scan_policy.created')).toEqual([
+    expect(auditRecords.records.filter((record) => record.action === 'scan_policy.created')).toEqual([
       expect.objectContaining({
         actorType: 'system',
         actorId: 'monitoring.scan-policies',
