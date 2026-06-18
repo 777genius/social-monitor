@@ -1,0 +1,1408 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "npm run check:mobile-client-contract",
+  "generatedFrom": "libs/contracts/rest/openapi.snapshot.json",
+  "apiTitle": "Social Monitor API",
+  "apiVersion": "0.1.0",
+  "consumerTargets": [
+    "flutter-dart"
+  ],
+  "generationMode": "deterministic_openapi_operation_manifest",
+  "errorModel": {
+    "contentType": "application/problem+json compatible JSON body",
+    "fields": {
+      "type": "string",
+      "title": "string",
+      "status": "number",
+      "detail": "string",
+      "code": "DomainErrorCode",
+      "details": "object"
+    },
+    "problemCodes": [
+      {
+        "code": "validation.failed",
+        "status": 400
+      },
+      {
+        "code": "tenant.scope_missing",
+        "status": 400
+      },
+      {
+        "code": "authorization.denied",
+        "status": 403
+      },
+      {
+        "code": "resource.not_found",
+        "status": 404
+      },
+      {
+        "code": "operation.conflict",
+        "status": 409
+      },
+      {
+        "code": "operation.backpressure",
+        "status": 429
+      },
+      {
+        "code": "operation.quota_exceeded",
+        "status": 429
+      },
+      {
+        "code": "operation.rate_limited",
+        "status": 429
+      },
+      {
+        "code": "external.dependency_unavailable",
+        "status": 503
+      }
+    ]
+  },
+  "unknownValuePolicy": {
+    "enumStrings": "preserve_raw_value_and_map_to_unknown_in_ui_layer",
+    "additionalJsonProperties": "ignore_for_strong_models_preserve_in_raw_payload_when_available"
+  },
+  "operationCount": 48,
+  "mobileReadyOperationCount": 43,
+  "devOnlyWorkspaceRoleOperations": [
+    "ApiKeysController_create",
+    "ApiKeysController_list",
+    "ApiKeysController_revoke",
+    "PublicApiAuditEventsController_list",
+    "ScanDeadLetterController_list"
+  ],
+  "mobileReadyOperations": [
+    "BetaLaunchSupportController_getSnapshot",
+    "BetaLaunchSupportController_listKnownLimitations",
+    "BetaLaunchSupportController_listPostMvpBacklog",
+    "DeliveryAttemptsController_get",
+    "DeliveryAttemptsController_list",
+    "DeliveryAttemptsController_retry",
+    "DigestSchedulesController_create",
+    "DigestSchedulesController_get",
+    "DigestSchedulesController_list",
+    "DigestsController_get",
+    "FeedController_get",
+    "FeedController_list",
+    "HealthController_health[0]",
+    "HealthController_health[1]",
+    "HealthController_ready[0]",
+    "HealthController_ready[1]",
+    "NotificationPreferencesController_get",
+    "NotificationPreferencesController_set",
+    "RealtimeEventsController_list",
+    "ScanPolicyController_create",
+    "ScanPolicyController_get",
+    "ScanRequestController_create",
+    "ScanStatusController_get",
+    "SourceBindingController_create",
+    "SourceBindingController_health",
+    "SourceBindingController_list",
+    "SourceBindingController_updateStatus",
+    "SourceProfileController_list",
+    "SummaryController_get",
+    "SummaryController_list",
+    "SummaryController_regenerate",
+    "SummaryFeedbackController_create",
+    "SummaryFeedbackController_list",
+    "SummaryJobController_getStatus",
+    "SummaryPolicyController_get",
+    "SummaryPolicyController_upsert",
+    "SummaryRequestController_create",
+    "TopicController_create",
+    "TopicController_list",
+    "WebhookEndpointsController_create",
+    "WebhookEndpointsController_disable",
+    "WebhookEndpointsController_get",
+    "WebhookEndpointsController_list"
+  ],
+  "operations": [
+    {
+      "operationId": "BetaLaunchSupportController_getSnapshot",
+      "clientName": "BetaLaunchSupportController_getSnapshot",
+      "method": "GET",
+      "path": "/beta/launch-support",
+      "tags": [
+        "beta"
+      ],
+      "summary": "Get beta launch support snapshot with limitations and post-MVP backlog.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": false,
+      "usesDevOnlyWorkspaceRoleHeader": false,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "BetaLaunchSupportController_listKnownLimitations",
+      "clientName": "BetaLaunchSupportController_listKnownLimitations",
+      "method": "GET",
+      "path": "/beta/launch-support/known-limitations",
+      "tags": [
+        "beta"
+      ],
+      "summary": "List known beta limitations visible to users and support.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": false,
+      "usesDevOnlyWorkspaceRoleHeader": false,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "BetaLaunchSupportController_listPostMvpBacklog",
+      "clientName": "BetaLaunchSupportController_listPostMvpBacklog",
+      "method": "GET",
+      "path": "/beta/launch-support/post-mvp-backlog",
+      "tags": [
+        "beta"
+      ],
+      "summary": "List post-MVP backlog classification with architecture guardrails.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": false,
+      "usesDevOnlyWorkspaceRoleHeader": false,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "DeliveryAttemptsController_list",
+      "clientName": "DeliveryAttemptsController_list",
+      "method": "GET",
+      "path": "/delivery/attempts",
+      "tags": [
+        "delivery"
+      ],
+      "summary": "List tenant/workspace delivery attempts for operator monitoring.",
+      "pathParameters": [],
+      "queryParameters": [
+        "cursor",
+        "limit"
+      ],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "DeliveryAttemptsController_get",
+      "clientName": "DeliveryAttemptsController_get",
+      "method": "GET",
+      "path": "/delivery/attempts/{deliveryAttemptId}",
+      "tags": [
+        "delivery"
+      ],
+      "summary": "Get one tenant/workspace delivery attempt status.",
+      "pathParameters": [
+        "deliveryAttemptId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "DeliveryAttemptsController_retry",
+      "clientName": "DeliveryAttemptsController_retry",
+      "method": "POST",
+      "path": "/delivery/attempts/{deliveryAttemptId}/retry",
+      "tags": [
+        "delivery"
+      ],
+      "summary": "Retry a retryable failed delivery attempt with caller-supplied content.",
+      "pathParameters": [
+        "deliveryAttemptId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": "#/components/schemas/RetryDeliveryAttemptRequestDto",
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "DigestSchedulesController_list",
+      "clientName": "DigestSchedulesController_list",
+      "method": "GET",
+      "path": "/delivery/digest-schedules",
+      "tags": [
+        "delivery"
+      ],
+      "summary": "List digest schedules for the current tenant/workspace.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "DigestSchedulesController_create",
+      "clientName": "DigestSchedulesController_create",
+      "method": "POST",
+      "path": "/delivery/digest-schedules",
+      "tags": [
+        "delivery"
+      ],
+      "summary": "Create a periodic digest schedule for one recipient and topic set.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": "#/components/schemas/CreateDigestScheduleRequestDto",
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "DigestSchedulesController_get",
+      "clientName": "DigestSchedulesController_get",
+      "method": "GET",
+      "path": "/delivery/digest-schedules/{digestScheduleId}",
+      "tags": [
+        "delivery"
+      ],
+      "summary": "Get one digest schedule for the current tenant/workspace.",
+      "pathParameters": [
+        "digestScheduleId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "DigestsController_get",
+      "clientName": "DigestsController_get",
+      "method": "GET",
+      "path": "/delivery/digests/{digestId}",
+      "tags": [
+        "delivery"
+      ],
+      "summary": "Get one tenant/workspace digest with provenance.",
+      "pathParameters": [
+        "digestId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "NotificationPreferencesController_get",
+      "clientName": "NotificationPreferencesController_get",
+      "method": "GET",
+      "path": "/delivery/notification-preferences",
+      "tags": [
+        "delivery"
+      ],
+      "summary": "Get recipient/channel notification delivery preference.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "NotificationPreferencesController_set",
+      "clientName": "NotificationPreferencesController_set",
+      "method": "PUT",
+      "path": "/delivery/notification-preferences",
+      "tags": [
+        "delivery"
+      ],
+      "summary": "Set recipient/channel notification delivery preference.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": "#/components/schemas/SetNotificationPreferenceRequestDto",
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "WebhookEndpointsController_list",
+      "clientName": "WebhookEndpointsController_list",
+      "method": "GET",
+      "path": "/delivery/webhook-endpoints",
+      "tags": [
+        "webhook-endpoints"
+      ],
+      "summary": "List outbound webhook endpoints without exposing signing secrets.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "authorization",
+        "x-tenant-id",
+        "x-workspace-id",
+        "x-workspace-role"
+      ],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "WebhookEndpointsController_create",
+      "clientName": "WebhookEndpointsController_create",
+      "method": "POST",
+      "path": "/delivery/webhook-endpoints",
+      "tags": [
+        "webhook-endpoints"
+      ],
+      "summary": "Create an outbound webhook endpoint and return its signing secret once.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "authorization",
+        "x-tenant-id",
+        "x-workspace-id",
+        "x-workspace-role"
+      ],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": "#/components/schemas/CreateWebhookEndpointRequestDto",
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "WebhookEndpointsController_disable",
+      "clientName": "WebhookEndpointsController_disable",
+      "method": "DELETE",
+      "path": "/delivery/webhook-endpoints/{webhookEndpointId}",
+      "tags": [
+        "webhook-endpoints"
+      ],
+      "summary": "Disable an outbound webhook endpoint without deleting audit history or secrets.",
+      "pathParameters": [
+        "webhookEndpointId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "authorization",
+        "x-tenant-id",
+        "x-workspace-id",
+        "x-workspace-role"
+      ],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "WebhookEndpointsController_get",
+      "clientName": "WebhookEndpointsController_get",
+      "method": "GET",
+      "path": "/delivery/webhook-endpoints/{webhookEndpointId}",
+      "tags": [
+        "webhook-endpoints"
+      ],
+      "summary": "Get an outbound webhook endpoint without exposing its signing secret.",
+      "pathParameters": [
+        "webhookEndpointId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "authorization",
+        "x-tenant-id",
+        "x-workspace-id",
+        "x-workspace-role"
+      ],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "FeedController_list",
+      "clientName": "FeedController_list",
+      "method": "GET",
+      "path": "/feed/items",
+      "tags": [
+        "feed"
+      ],
+      "summary": "List tenant/workspace feed items with cursor pagination.",
+      "pathParameters": [],
+      "queryParameters": [
+        "cursor",
+        "limit",
+        "q",
+        "topicId"
+      ],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "FeedController_get",
+      "clientName": "FeedController_get",
+      "method": "GET",
+      "path": "/feed/items/{feedItemId}",
+      "tags": [
+        "feed"
+      ],
+      "summary": "Get one tenant/workspace feed item by id.",
+      "pathParameters": [
+        "feedItemId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "HealthController_health[0]",
+      "clientName": "HealthController_health_0",
+      "method": "GET",
+      "path": "/health",
+      "tags": [
+        "health"
+      ],
+      "summary": "Liveness probe for the API gateway.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": false,
+      "supportsBearerApiKey": false,
+      "usesDevOnlyWorkspaceRoleHeader": false,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "HealthController_ready[1]",
+      "clientName": "HealthController_ready_1",
+      "method": "GET",
+      "path": "/health/ready",
+      "tags": [
+        "health"
+      ],
+      "summary": "Readiness probe for the API gateway.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": false,
+      "supportsBearerApiKey": false,
+      "usesDevOnlyWorkspaceRoleHeader": false,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "HealthController_health[1]",
+      "clientName": "HealthController_health_1",
+      "method": "GET",
+      "path": "/healthz",
+      "tags": [
+        "health"
+      ],
+      "summary": "Liveness probe for the API gateway.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": false,
+      "supportsBearerApiKey": false,
+      "usesDevOnlyWorkspaceRoleHeader": false,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "ApiKeysController_list",
+      "clientName": "ApiKeysController_list",
+      "method": "GET",
+      "path": "/identity/api-keys",
+      "tags": [
+        "api-keys"
+      ],
+      "summary": "List tenant/workspace API keys without exposing raw secrets or hashes.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id",
+        "x-workspace-role"
+      ],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": false,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": true,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "ApiKeysController_create",
+      "clientName": "ApiKeysController_create",
+      "method": "POST",
+      "path": "/identity/api-keys",
+      "tags": [
+        "api-keys"
+      ],
+      "summary": "Create tenant/workspace API key and return the raw secret once.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id",
+        "x-workspace-role"
+      ],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": false,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": true,
+      "requestBodySchemaRef": "#/components/schemas/CreateApiKeyRequestDto",
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "ApiKeysController_revoke",
+      "clientName": "ApiKeysController_revoke",
+      "method": "DELETE",
+      "path": "/identity/api-keys/{apiKeyId}",
+      "tags": [
+        "api-keys"
+      ],
+      "summary": "Revoke a tenant/workspace API key.",
+      "pathParameters": [
+        "apiKeyId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id",
+        "x-workspace-role"
+      ],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": false,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": true,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "ScanDeadLetterController_list",
+      "clientName": "ScanDeadLetterController_list",
+      "method": "GET",
+      "path": "/ingestion/scan-dead-letters",
+      "tags": [
+        "ingestion"
+      ],
+      "summary": "List support-safe scan dead letters for the tenant/workspace.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id",
+        "x-workspace-role"
+      ],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": false,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": true,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "HealthController_ready[0]",
+      "clientName": "HealthController_ready_0",
+      "method": "GET",
+      "path": "/ready",
+      "tags": [
+        "health"
+      ],
+      "summary": "Readiness probe for the API gateway.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": false,
+      "supportsBearerApiKey": false,
+      "usesDevOnlyWorkspaceRoleHeader": false,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "RealtimeEventsController_list",
+      "clientName": "RealtimeEventsController_list",
+      "method": "GET",
+      "path": "/realtime/events",
+      "tags": [
+        "realtime"
+      ],
+      "summary": "Replay tenant/workspace realtime events for REST resync.",
+      "pathParameters": [],
+      "queryParameters": [
+        "channel",
+        "cursor",
+        "limit"
+      ],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "ScanStatusController_get",
+      "clientName": "ScanStatusController_get",
+      "method": "GET",
+      "path": "/scan-requests/{scanJobId}/status",
+      "tags": [
+        "scan-requests"
+      ],
+      "summary": "Get current scan job status.",
+      "pathParameters": [
+        "scanJobId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "ScanPolicyController_get",
+      "clientName": "ScanPolicyController_get",
+      "method": "GET",
+      "path": "/source-bindings/{sourceBindingId}/scan-policy",
+      "tags": [
+        "scan-policies"
+      ],
+      "summary": "Get scan policy for a source binding.",
+      "pathParameters": [
+        "sourceBindingId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "ScanPolicyController_create",
+      "clientName": "ScanPolicyController_create",
+      "method": "POST",
+      "path": "/source-bindings/{sourceBindingId}/scan-policy",
+      "tags": [
+        "scan-policies"
+      ],
+      "summary": "Set scan policy for a source binding.",
+      "pathParameters": [
+        "sourceBindingId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "idempotency-key",
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": "#/components/schemas/SetScanPolicyRequestDto",
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "ScanRequestController_create",
+      "clientName": "ScanRequestController_create",
+      "method": "POST",
+      "path": "/source-bindings/{sourceBindingId}/scan-requests",
+      "tags": [
+        "scan-requests"
+      ],
+      "summary": "Request a scan for a source binding.",
+      "pathParameters": [
+        "sourceBindingId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "idempotency-key",
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-correlation-id",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SourceProfileController_list",
+      "clientName": "SourceProfileController_list",
+      "method": "GET",
+      "path": "/sources/profiles",
+      "tags": [
+        "sources"
+      ],
+      "summary": "List source capability and readiness profiles.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": false,
+      "supportsBearerApiKey": false,
+      "usesDevOnlyWorkspaceRoleHeader": false,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SummaryController_list",
+      "clientName": "SummaryController_list",
+      "method": "GET",
+      "path": "/summaries",
+      "tags": [
+        "summaries"
+      ],
+      "summary": "List tenant/workspace summaries with cursor pagination.",
+      "pathParameters": [],
+      "queryParameters": [
+        "cursor",
+        "limit",
+        "topicId"
+      ],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SummaryController_get",
+      "clientName": "SummaryController_get",
+      "method": "GET",
+      "path": "/summaries/{summaryId}",
+      "tags": [
+        "summaries"
+      ],
+      "summary": "Get one tenant/workspace summary by id.",
+      "pathParameters": [
+        "summaryId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SummaryFeedbackController_list",
+      "clientName": "SummaryFeedbackController_list",
+      "method": "GET",
+      "path": "/summaries/{summaryId}/feedback",
+      "tags": [
+        "summaries"
+      ],
+      "summary": "List classified feedback for one summary with cursor pagination.",
+      "pathParameters": [
+        "summaryId"
+      ],
+      "queryParameters": [
+        "cursor",
+        "limit"
+      ],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SummaryFeedbackController_create",
+      "clientName": "SummaryFeedbackController_create",
+      "method": "POST",
+      "path": "/summaries/{summaryId}/feedback",
+      "tags": [
+        "summaries"
+      ],
+      "summary": "Record classified feedback for a summary without mutating the artifact.",
+      "pathParameters": [
+        "summaryId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "idempotency-key",
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-actor-id",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": "#/components/schemas/RecordSummaryFeedbackRequestDto",
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SummaryController_regenerate",
+      "clientName": "SummaryController_regenerate",
+      "method": "POST",
+      "path": "/summaries/{summaryId}/regenerations",
+      "tags": [
+        "summaries"
+      ],
+      "summary": "Request regeneration for an existing summary.",
+      "pathParameters": [
+        "summaryId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "idempotency-key",
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SummaryJobController_getStatus",
+      "clientName": "SummaryJobController_getStatus",
+      "method": "GET",
+      "path": "/summary-jobs/{summaryJobId}/status",
+      "tags": [
+        "summaries"
+      ],
+      "summary": "Get summary job status and safe timeline.",
+      "pathParameters": [
+        "summaryJobId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "TopicController_list",
+      "clientName": "TopicController_list",
+      "method": "GET",
+      "path": "/topics",
+      "tags": [
+        "topics"
+      ],
+      "summary": "List topics inside the current tenant/workspace.",
+      "pathParameters": [],
+      "queryParameters": [
+        "cursor",
+        "limit"
+      ],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "TopicController_create",
+      "clientName": "TopicController_create",
+      "method": "POST",
+      "path": "/topics",
+      "tags": [
+        "topics"
+      ],
+      "summary": "Create a topic inside the current tenant/workspace.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "idempotency-key",
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": "#/components/schemas/CreateTopicRequestDto",
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SourceBindingController_list",
+      "clientName": "SourceBindingController_list",
+      "method": "GET",
+      "path": "/topics/{topicId}/source-bindings",
+      "tags": [
+        "source-bindings"
+      ],
+      "summary": "List source bindings for a topic.",
+      "pathParameters": [
+        "topicId"
+      ],
+      "queryParameters": [
+        "cursor",
+        "limit"
+      ],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SourceBindingController_create",
+      "clientName": "SourceBindingController_create",
+      "method": "POST",
+      "path": "/topics/{topicId}/source-bindings",
+      "tags": [
+        "source-bindings"
+      ],
+      "summary": "Bind a production-safe source provider to a topic.",
+      "pathParameters": [
+        "topicId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "idempotency-key",
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": "#/components/schemas/BindSourceRequestDto",
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SourceBindingController_health",
+      "clientName": "SourceBindingController_health",
+      "method": "GET",
+      "path": "/topics/{topicId}/source-bindings/{sourceBindingId}/health",
+      "tags": [
+        "source-bindings"
+      ],
+      "summary": "Get source binding operational health.",
+      "pathParameters": [
+        "sourceBindingId",
+        "topicId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SourceBindingController_updateStatus",
+      "clientName": "SourceBindingController_updateStatus",
+      "method": "PATCH",
+      "path": "/topics/{topicId}/source-bindings/{sourceBindingId}/status",
+      "tags": [
+        "source-bindings"
+      ],
+      "summary": "Pause or resume a source binding.",
+      "pathParameters": [
+        "sourceBindingId",
+        "topicId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "idempotency-key",
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": "#/components/schemas/ChangeSourceBindingStatusRequestDto",
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SummaryPolicyController_get",
+      "clientName": "SummaryPolicyController_get",
+      "method": "GET",
+      "path": "/topics/{topicId}/summary-policy",
+      "tags": [
+        "summary-policies"
+      ],
+      "summary": "Get summary policy for a topic.",
+      "pathParameters": [
+        "topicId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SummaryPolicyController_upsert",
+      "clientName": "SummaryPolicyController_upsert",
+      "method": "PUT",
+      "path": "/topics/{topicId}/summary-policy",
+      "tags": [
+        "summary-policies"
+      ],
+      "summary": "Create or update summary policy for a topic.",
+      "pathParameters": [
+        "topicId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": "#/components/schemas/UpsertSummaryPolicyRequestDto",
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "SummaryRequestController_create",
+      "clientName": "SummaryRequestController_create",
+      "method": "POST",
+      "path": "/topics/{topicId}/summary-requests",
+      "tags": [
+        "summaries"
+      ],
+      "summary": "Request a summary for a topic.",
+      "pathParameters": [
+        "topicId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "idempotency-key",
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "PublicApiAuditEventsController_list",
+      "clientName": "PublicApiAuditEventsController_list",
+      "method": "GET",
+      "path": "/usage/audit-events",
+      "tags": [
+        "usage"
+      ],
+      "summary": "List tenant/workspace public API audit events for beta support and investigations.",
+      "pathParameters": [],
+      "queryParameters": [
+        "action",
+        "actorId",
+        "actorType",
+        "cursor",
+        "limit",
+        "outcome",
+        "resourceType"
+      ],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id",
+        "x-workspace-role"
+      ],
+      "optionalHeaders": [],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": false,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": true,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": []
+    }
+  ]
+}

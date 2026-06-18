@@ -29,6 +29,7 @@ import { FeedController } from '@social-monitor/feed/interfaces/rest/feed.contro
 import { GetFeedItemUseCase } from '@social-monitor/feed/features/get-feed-item/get-feed-item.use-case';
 import { ListFeedItemsUseCase } from '@social-monitor/feed/features/list-feed-items/list-feed-items.use-case';
 import { ApiKeyRequestAuthorizer } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import { ApiKeysController } from '@social-monitor/identity/interfaces/rest/api-keys.controller';
 import { CreateApiKeyUseCase } from '@social-monitor/identity/features/create-api-key/create-api-key.use-case';
 import { ListApiKeysUseCase } from '@social-monitor/identity/features/list-api-keys/list-api-keys.use-case';
@@ -72,9 +73,11 @@ import { SummaryController } from '@social-monitor/summary/interfaces/rest/summa
 import { ListPublicApiAuditEventsUseCase } from '@social-monitor/usage/features/list-public-api-audit-events/list-public-api-audit-events.use-case';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import { PublicApiAuditEventsController } from '@social-monitor/usage/interfaces/rest/public-api-audit-events.controller';
+import { RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
 import 'reflect-metadata';
 
 import { HealthController } from '../apps/api-gateway/src/health.controller';
+import { ApiGatewayHealthReporter } from '../apps/api-gateway/src/health-reporter';
 
 const snapshotPath = 'libs/contracts/rest/openapi.snapshot.json';
 const shouldUpdate = process.argv.includes('--update') || process.env.UPDATE_OPENAPI_SNAPSHOT === '1';
@@ -92,6 +95,32 @@ const noopApiKeyAuthorizer = {
 
 const noopWorkspaceAuthorization = {
   authorize: () => ({ ok: true, value: undefined }),
+};
+
+const noopWorkspaceRoleHeaderParser = {
+  parse: () => [],
+};
+
+const noopRequestCorrelationIds = {
+  fromRequestId: (requestId: string | undefined) => requestId ?? 'contract-check-correlation-id',
+};
+
+const noopHealthReporter = {
+  health: () => ({
+    status: 'ok',
+    service: 'api-gateway',
+    checkedAt: '2026-01-02T03:04:05.000Z',
+    uptimeSeconds: 1,
+  }),
+  ready: () => ({
+    status: 'ok',
+    service: 'api-gateway',
+    checkedAt: '2026-01-02T03:04:05.000Z',
+    uptimeSeconds: 1,
+    runtime: {},
+    capabilities: {},
+    checks: [],
+  }),
 };
 
 const noopDeliveryReadAuthorizer = {
@@ -186,6 +215,18 @@ const useCaseProviders = [
     {
       provide: WORKSPACE_AUTHORIZATION_POLICY,
       useValue: noopWorkspaceAuthorization,
+    },
+    {
+      provide: WorkspaceRoleHeaderParser,
+      useValue: noopWorkspaceRoleHeaderParser,
+    },
+    {
+      provide: RequestCorrelationIdFactory,
+      useValue: noopRequestCorrelationIds,
+    },
+    {
+      provide: ApiGatewayHealthReporter,
+      useValue: noopHealthReporter,
     },
   ],
 })

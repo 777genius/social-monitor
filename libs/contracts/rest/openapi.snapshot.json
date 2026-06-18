@@ -319,10 +319,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Delivery retries allow owner, admin or member.",
+            "description": "Optional Bearer API key. Requires write:delivery_status. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Delivery retries allow owner, admin or member. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -370,10 +379,19 @@
         "operationId": "DigestSchedulesController_list",
         "parameters": [
           {
-            "description": "Comma-separated workspace roles. Digest schedule reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:delivery_status. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Digest schedule reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -409,10 +427,19 @@
         "operationId": "DigestSchedulesController_create",
         "parameters": [
           {
-            "description": "Comma-separated workspace roles. Digest schedule creation allows owner, admin or member.",
+            "description": "Optional Bearer API key. Requires write:delivery_status. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Digest schedule creation allows owner, admin or member. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -468,10 +495,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Digest schedule reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:delivery_status. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Digest schedule reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -517,10 +553,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Digest reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:delivery_status. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Digest reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -558,10 +603,19 @@
         "operationId": "NotificationPreferencesController_get",
         "parameters": [
           {
-            "description": "Comma-separated workspace roles. Preference reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:delivery_status. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Preference reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -597,10 +651,19 @@
         "operationId": "NotificationPreferencesController_set",
         "parameters": [
           {
-            "description": "Comma-separated workspace roles. Preference writes allow owner, admin or member.",
+            "description": "Optional Bearer API key. Requires write:delivery_status. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Preference writes allow owner, admin or member. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1270,10 +1333,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. Realtime event reads allow owner, admin, member or viewer.",
+            "description": "Optional Bearer API key. Requires read:delivery_status. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Realtime event reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
