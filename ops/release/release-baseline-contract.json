@@ -100,6 +100,10 @@
       "path": "ops/release/summary-feedback-hardening-evidence.json"
     },
     {
+      "artifactId": "redacted-summary-feedback-samples-example",
+      "path": "ops/release/fixtures/redacted-summary-feedback-samples-examples.json"
+    },
+    {
       "artifactId": "operational-support-package",
       "path": "ops/release/operational-support-package.json"
     },

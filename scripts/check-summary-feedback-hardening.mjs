@@ -23,12 +23,32 @@ const externalReadiness = readJson(externalReadinessPath);
 const baseline = readJson(baselinePath);
 const scripts = packageJson.scripts ?? {};
 const violations = [];
+const summaryRealFeedbackSamplesPath = process.env.SUMMARY_REAL_FEEDBACK_SAMPLES_PATH;
 
 const gateScript = 'check:summary-feedback-hardening';
 const gateCommand = `npm run ${gateScript}`;
 const gateId = 'summary-feedback-hardening';
+const redactedSampleFormat = 'redacted-summary-feedback-samples-v1';
 const allowedActionTypes = new Set(['eval_fixture', 'validator_change', 'runbook_action']);
 const allowedActionStatuses = new Set(['fixture_covered_pending_real_sample', 'passed']);
+const allowedSampleCategories = new Set([
+  'wrong_fact',
+  'missing_source',
+  'bad_citation',
+  'low_relevance',
+  'too_verbose',
+  'too_terse',
+  'source_request',
+  'ux_confusing',
+  'other',
+]);
+const allowedSampleClassifications = new Set([
+  'blocker',
+  'accepted_mvp_gap',
+  'evidence_based_opportunity',
+  'deferred_idea',
+]);
+const allowedSampleSeverities = new Set(['blocker', 'accepted_gap', 'opportunity', 'watch']);
 const requiredInvariantIds = new Set([
   'claims-and-citations-grounded',
   'summary-evidence-citations-valid',
@@ -42,11 +62,47 @@ const requiredFeedbackFixtureIds = new Set([
 ]);
 const forbiddenSerializedFragments = [
   'access_token',
+  'refresh_token',
+  'client_secret',
   'authorization',
   'cookie',
   'raw_payload',
   'bearer ',
 ];
+const forbiddenSampleKeys = new Set([
+  'access_token',
+  'accesstoken',
+  'refresh_token',
+  'refreshtoken',
+  'authorization',
+  'authorizationheader',
+  'cookie',
+  'cookies',
+  'raw_payload',
+  'rawpayload',
+  'rawproviderpayload',
+  'prompt',
+  'prompttext',
+  'source_text',
+  'sourcetext',
+  'rawprompt',
+  'rawsource',
+]);
+const requiredSampleRedactionFlags = {
+  rawProviderPayloadsIncluded: false,
+  piiIncluded: false,
+  rawPromptTextIncluded: false,
+  rawSourceTextIncluded: false,
+  tokenValuesIncluded: false,
+  secretUrlsIncluded: false,
+  commentsAreSyntheticOrRedacted: true,
+};
+const requiredSampleSignals = new Set([
+  'claimsChecked',
+  'citationsChecked',
+  'costChecked',
+  'staleMarkerChecked',
+]);
 
 if (evidence.schemaVersion !== 1) {
   violations.push(`${evidencePath}: schemaVersion must be 1`);
@@ -104,6 +160,8 @@ if (feedback.evidenceMode === 'redacted_beta_samples' && redactedSampleEvidence.
   violations.push(`${evidencePath}: redacted feedback report requires passed redacted sample evidence`);
 }
 
+const redactedSampleSchema = evidence.redactedSampleContentSchema ?? {};
+
 const findingsById = new Map((feedback.findings ?? []).map((finding) => [finding.feedbackId, finding]));
 const blockerIds = new Set((feedback.findings ?? [])
   .filter((finding) => finding.classification === 'blocker')
@@ -111,6 +169,27 @@ const blockerIds = new Set((feedback.findings ?? [])
 const evalFixtureIds = new Set((evalOutput.fixtureResults ?? []).map((fixture) => fixture.fixtureId));
 const costFixtureIds = new Set((cost.rows ?? []).map((row) => row.fixtureId));
 const coveredBlockerIds = new Set();
+
+validateRedactedSampleContentSchema(redactedSampleSchema);
+validateRedactedSampleArtifactPath(
+  redactedSampleSchema.exampleArtifact,
+  'redactedSampleContentSchema.exampleArtifact',
+  { allowExample: true },
+);
+if (redactedSampleEvidence.status === 'passed') {
+  validateRedactedSampleArtifactPath(
+    redactedSampleEvidence.artifactPath,
+    'redactedSampleEvidence.artifactPath',
+    { allowExample: false },
+  );
+}
+if (summaryRealFeedbackSamplesPath !== undefined && summaryRealFeedbackSamplesPath.trim().length > 0) {
+  validateRedactedSampleArtifactPath(
+    summaryRealFeedbackSamplesPath,
+    'SUMMARY_REAL_FEEDBACK_SAMPLES_PATH',
+    { allowExample: false },
+  );
+}
 
 for (const action of evidence.blockerActions ?? []) {
   validateAction(action, coveredBlockerIds, 'blockerActions');
@@ -191,6 +270,324 @@ console.log('Summary feedback hardening evidence OK');
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function validateRedactedSampleContentSchema(schema) {
+  if (schema.artifactFormat !== redactedSampleFormat) {
+    violations.push(`${evidencePath}: redactedSampleContentSchema.artifactFormat must be ${redactedSampleFormat}`);
+  }
+  requireExistingPath(schema.exampleArtifact, 'redactedSampleContentSchema.exampleArtifact');
+  if (!Number.isInteger(schema.minimumSamples) || schema.minimumSamples < 2) {
+    violations.push(`${evidencePath}: redactedSampleContentSchema.minimumSamples must be an integer >= 2`);
+  }
+  if (schema.requiredEvidenceMode !== 'redacted_beta_samples') {
+    violations.push(`${evidencePath}: redactedSampleContentSchema.requiredEvidenceMode must be redacted_beta_samples`);
+  }
+
+  requireSetCoverage(
+    new Set(schema.allowedCategories ?? []),
+    allowedSampleCategories,
+    'redactedSampleContentSchema.allowedCategories',
+  );
+  requireSetCoverage(
+    new Set(schema.allowedClassifications ?? []),
+    allowedSampleClassifications,
+    'redactedSampleContentSchema.allowedClassifications',
+  );
+  requireSetCoverage(
+    new Set(schema.blockingActionTypes ?? []),
+    allowedActionTypes,
+    'redactedSampleContentSchema.blockingActionTypes',
+  );
+
+  for (const [field, expected] of Object.entries(requiredSampleRedactionFlags)) {
+    if (schema.requiredRedactionFlags?.[field] !== expected) {
+      violations.push(`${evidencePath}: redactedSampleContentSchema.requiredRedactionFlags.${field} must be ${expected}`);
+    }
+  }
+
+  const schemaSignals = new Set(schema.requiredSampleSignals ?? []);
+  for (const signal of requiredSampleSignals) {
+    if (!schemaSignals.has(signal)) {
+      violations.push(`${evidencePath}: redactedSampleContentSchema.requiredSampleSignals must include ${signal}`);
+    }
+  }
+
+  if (typeof schema.exitCondition !== 'string' || !schema.exitCondition.includes(redactedSampleFormat)) {
+    violations.push(`${evidencePath}: redactedSampleContentSchema.exitCondition must mention ${redactedSampleFormat}`);
+  }
+}
+
+function requireSetCoverage(actual, expected, label) {
+  for (const expectedValue of expected) {
+    if (!actual.has(expectedValue)) {
+      violations.push(`${evidencePath}: ${label} must include "${expectedValue}"`);
+    }
+  }
+}
+
+function validateRedactedSampleArtifactPath(path, label, options) {
+  requireExistingPath(path, label);
+  if (typeof path !== 'string' || path.trim().length === 0 || !existsSync(path)) {
+    return;
+  }
+
+  const artifact = readJson(path);
+  validateRedactedSampleArtifact(artifact, path, options);
+}
+
+function validateRedactedSampleArtifact(artifact, path, options) {
+  if (artifact.schemaVersion !== 1) {
+    violations.push(`${path}: schemaVersion must be 1`);
+  }
+  if (artifact.artifactFormat !== redactedSampleFormat) {
+    violations.push(`${path}: artifactFormat must be ${redactedSampleFormat}`);
+  }
+  if (artifact.scope !== 'backend-only') {
+    violations.push(`${path}: scope must be backend-only`);
+  }
+  if (artifact.frontendPolicy !== 'deferred_contract_only') {
+    violations.push(`${path}: frontendPolicy must be deferred_contract_only`);
+  }
+  if (artifact.evidenceMode !== 'redacted_beta_samples') {
+    violations.push(`${path}: evidenceMode must be redacted_beta_samples`);
+  }
+
+  if (!isIsoDateString(artifact.generatedAt)) {
+    violations.push(`${path}: generatedAt must be an ISO timestamp`);
+  }
+  validateSampleSource(artifact.source, path, options);
+  validateSampleRedaction(artifact.redaction, path);
+
+  if (!Array.isArray(artifact.samples)) {
+    violations.push(`${path}: samples must be an array`);
+    return;
+  }
+  if (artifact.samples.length < redactedSampleSchema.minimumSamples) {
+    violations.push(`${path}: samples must include at least ${redactedSampleSchema.minimumSamples} samples`);
+  }
+  if (artifact.source?.sampleCount !== artifact.samples.length) {
+    violations.push(`${path}: source.sampleCount must match samples.length`);
+  }
+
+  const sampleIds = new Set();
+  const blockerIdsFromSamples = new Set();
+  for (const [index, sample] of artifact.samples.entries()) {
+    const sampleLabel = `${path}: samples[${index}]`;
+    validateRedactedSample(sample, sampleLabel, sampleIds);
+    if (sample.classification === 'blocker') {
+      blockerIdsFromSamples.add(sample.feedbackId);
+    }
+  }
+
+  if (options.allowExample === true && blockerIdsFromSamples.size === 0) {
+    violations.push(`${path}: example artifact must include at least one blocker sample`);
+  }
+
+  validateSerializedArtifact(artifact, path);
+}
+
+function validateSampleSource(source, path, options) {
+  if (source === null || typeof source !== 'object' || Array.isArray(source)) {
+    violations.push(`${path}: source must be an object`);
+    return;
+  }
+  for (const field of ['environmentId', 'operator']) {
+    if (typeof source[field] !== 'string' || source[field].trim().length === 0) {
+      violations.push(`${path}: source.${field} must be a non-empty string`);
+    }
+  }
+  if (options.allowExample !== true && source.environmentId?.includes('example')) {
+    violations.push(`${path}: real sample source.environmentId must not be an example environment`);
+  }
+  if (!Number.isInteger(source.sampleCount) || source.sampleCount <= 0) {
+    violations.push(`${path}: source.sampleCount must be a positive integer`);
+  }
+  if (!isIsoDateString(source.sampleWindow?.startedAt) || !isIsoDateString(source.sampleWindow?.endedAt)) {
+    violations.push(`${path}: source.sampleWindow must include ISO startedAt and endedAt`);
+  }
+}
+
+function validateSampleRedaction(redaction, path) {
+  if (redaction === null || typeof redaction !== 'object' || Array.isArray(redaction)) {
+    violations.push(`${path}: redaction must be an object`);
+    return;
+  }
+
+  for (const [field, expected] of Object.entries(requiredSampleRedactionFlags)) {
+    if (redaction[field] !== expected) {
+      violations.push(`${path}: redaction.${field} must be ${expected}`);
+    }
+  }
+
+  if (typeof redaction.method !== 'string' || redaction.method.trim().length < 20) {
+    violations.push(`${path}: redaction.method must describe how comments and identifiers were redacted`);
+  }
+}
+
+function validateRedactedSample(sample, sampleLabel, sampleIds) {
+  if (sample === null || typeof sample !== 'object' || Array.isArray(sample)) {
+    violations.push(`${sampleLabel}: sample must be an object`);
+    return;
+  }
+
+  scanForbiddenSampleKeys(sample, sampleLabel);
+
+  if (typeof sample.feedbackId !== 'string' || sample.feedbackId.trim().length === 0) {
+    violations.push(`${sampleLabel}: feedbackId must be a non-empty string`);
+  } else if (sampleIds.has(sample.feedbackId)) {
+    violations.push(`${sampleLabel}: duplicate feedbackId "${sample.feedbackId}"`);
+  } else {
+    sampleIds.add(sample.feedbackId);
+  }
+
+  if (!allowedSampleCategories.has(sample.category)) {
+    violations.push(`${sampleLabel}: unsupported category "${sample.category}"`);
+  }
+  if (!allowedSampleClassifications.has(sample.classification)) {
+    violations.push(`${sampleLabel}: unsupported classification "${sample.classification}"`);
+  }
+  if (!allowedSampleSeverities.has(sample.severity)) {
+    violations.push(`${sampleLabel}: unsupported severity "${sample.severity}"`);
+  }
+  if (typeof sample.triageOwner !== 'string' || sample.triageOwner.trim().length === 0) {
+    violations.push(`${sampleLabel}: triageOwner must be a non-empty string`);
+  }
+  if (typeof sample.eligibleForEvalFixture !== 'boolean') {
+    violations.push(`${sampleLabel}: eligibleForEvalFixture must be boolean`);
+  }
+  if (sample.releaseBlocking !== true) {
+    violations.push(`${sampleLabel}: releaseBlocking must be true`);
+  }
+
+  validateSummaryEvidence(sample.summaryEvidence, sample.category, sampleLabel);
+  validateSanitizedText(sample.sanitizedSignal, `${sampleLabel}.sanitizedSignal`, 20);
+  validateSanitizedText(sample.redactedComment, `${sampleLabel}.redactedComment`, 20);
+  validateQualitySignals(sample.qualitySignals, sampleLabel);
+  validateSampleHardeningAction(sample, sampleLabel);
+}
+
+function validateSummaryEvidence(summaryEvidence, category, sampleLabel) {
+  if (summaryEvidence === null || typeof summaryEvidence !== 'object' || Array.isArray(summaryEvidence)) {
+    violations.push(`${sampleLabel}: summaryEvidence must be an object`);
+    return;
+  }
+
+  for (const field of ['summaryId', 'topicId']) {
+    if (typeof summaryEvidence[field] !== 'string' || summaryEvidence[field].trim().length === 0) {
+      violations.push(`${sampleLabel}: summaryEvidence.${field} must be a non-empty string`);
+    }
+  }
+
+  if (['wrong_fact', 'missing_source', 'bad_citation'].includes(category)) {
+    for (const field of ['citationId', 'feedItemId', 'sourceItemId']) {
+      if (typeof summaryEvidence[field] !== 'string' || summaryEvidence[field].trim().length === 0) {
+        violations.push(`${sampleLabel}: summaryEvidence.${field} is required for ${category}`);
+      }
+    }
+  }
+}
+
+function validateSanitizedText(value, label, minimumLength) {
+  if (typeof value !== 'string' || value.trim().length < minimumLength) {
+    violations.push(`${label} must be a redacted string with at least ${minimumLength} characters`);
+    return;
+  }
+
+  const normalized = value.toLowerCase();
+  for (const fragment of forbiddenSerializedFragments) {
+    if (normalized.includes(fragment)) {
+      violations.push(`${label} must not contain "${fragment}"`);
+    }
+  }
+}
+
+function validateQualitySignals(qualitySignals, sampleLabel) {
+  if (qualitySignals === null || typeof qualitySignals !== 'object' || Array.isArray(qualitySignals)) {
+    violations.push(`${sampleLabel}: qualitySignals must be an object`);
+    return;
+  }
+
+  for (const signal of requiredSampleSignals) {
+    if (qualitySignals[signal] !== true) {
+      violations.push(`${sampleLabel}: qualitySignals.${signal} must be true`);
+    }
+  }
+}
+
+function validateSampleHardeningAction(sample, sampleLabel) {
+  const action = sample.hardeningAction;
+  if (action === null || typeof action !== 'object' || Array.isArray(action)) {
+    violations.push(`${sampleLabel}: hardeningAction must be an object`);
+    return;
+  }
+
+  if (!allowedActionTypes.has(action.actionType)) {
+    violations.push(`${sampleLabel}: hardeningAction has unsupported actionType "${action.actionType}"`);
+  }
+  if (action.status !== 'passed') {
+    violations.push(`${sampleLabel}: hardeningAction.status must be passed for redacted samples`);
+  }
+  validateCommand(action.command, `${sampleLabel} hardeningAction`);
+  requireExistingPath(action.artifact, `${sampleLabel} hardeningAction artifact`);
+  if (typeof action.exitCondition !== 'string' || action.exitCondition.trim().length === 0) {
+    violations.push(`${sampleLabel}: hardeningAction.exitCondition must be a non-empty string`);
+  }
+
+  const fixtureIds = action.fixtureIds ?? [];
+  if (!Array.isArray(fixtureIds)) {
+    violations.push(`${sampleLabel}: hardeningAction.fixtureIds must be an array`);
+    return;
+  }
+  if (action.actionType === 'eval_fixture' && fixtureIds.length === 0) {
+    violations.push(`${sampleLabel}: eval_fixture hardeningAction must reference at least one fixture`);
+  }
+
+  for (const fixtureId of fixtureIds) {
+    if (!evalFixtureIds.has(fixtureId)) {
+      violations.push(`${evalOutputPath}: ${sampleLabel} references missing fixture "${fixtureId}"`);
+    }
+    if (!costFixtureIds.has(fixtureId)) {
+      violations.push(`${costPath}: ${sampleLabel} references fixture without cost row "${fixtureId}"`);
+    }
+  }
+
+  if (sample.classification === 'blocker' && !allowedActionTypes.has(action.actionType)) {
+    violations.push(`${sampleLabel}: blocker sample must map to eval, validator or runbook action`);
+  }
+}
+
+function scanForbiddenSampleKeys(value, label) {
+  if (value === null || typeof value !== 'object') {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      scanForbiddenSampleKeys(item, `${label}[${index}]`);
+    }
+    return;
+  }
+
+  for (const [key, nested] of Object.entries(value)) {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (forbiddenSampleKeys.has(normalizedKey)) {
+      violations.push(`${label}: forbidden sensitive field "${key}"`);
+    }
+    scanForbiddenSampleKeys(nested, `${label}.${key}`);
+  }
+}
+
+function validateSerializedArtifact(artifact, path) {
+  const serializedArtifact = JSON.stringify(artifact).toLowerCase();
+  for (const fragment of forbiddenSerializedFragments) {
+    if (serializedArtifact.includes(fragment)) {
+      violations.push(`${path}: redacted sample artifact must not contain "${fragment}"`);
+    }
+  }
+}
+
+function isIsoDateString(value) {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value)) && value.includes('T');
 }
 
 function validateAction(action, coveredIds, field) {

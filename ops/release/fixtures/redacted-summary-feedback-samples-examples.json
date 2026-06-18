@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "redacted-summary-feedback-samples-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "evidenceMode": "redacted_beta_samples",
+  "generatedAt": "2026-06-18T00:00:00.000Z",
+  "source": {
+    "environmentId": "internal-dogfood-redacted-example",
+    "sampleWindow": {
+      "startedAt": "2026-06-17T00:00:00.000Z",
+      "endedAt": "2026-06-18T00:00:00.000Z"
+    },
+    "operator": "summary-owner",
+    "sampleCount": 3
+  },
+  "redaction": {
+    "rawProviderPayloadsIncluded": false,
+    "piiIncluded": false,
+    "rawPromptTextIncluded": false,
+    "rawSourceTextIncluded": false,
+    "tokenValuesIncluded": false,
+    "secretUrlsIncluded": false,
+    "commentsAreSyntheticOrRedacted": true,
+    "method": "Identifiers and comments are synthetic or irreversibly redacted before this artifact is committed."
+  },
+  "samples": [
+    {
+      "feedbackId": "redacted-feedback-wrong-fact-001",
+      "category": "wrong_fact",
+      "classification": "blocker",
+      "severity": "blocker",
+      "triageOwner": "summary-owner",
+      "eligibleForEvalFixture": true,
+      "releaseBlocking": true,
+      "summaryEvidence": {
+        "summaryId": "summary-redacted-sample-001",
+        "topicId": "topic-redacted-sample-001",
+        "citationId": "citation-redacted-sample-001",
+        "feedItemId": "feed-item-redacted-sample-001",
+        "sourceItemId": "source-item-redacted-sample-001"
+      },
+      "sanitizedSignal": "Summary asserted a decision that was not supported by the cited redacted item.",
+      "redactedComment": "The cited source only says review is pending, but the summary says it was approved.",
+      "qualitySignals": {
+        "claimsChecked": true,
+        "citationsChecked": true,
+        "costChecked": true,
+        "staleMarkerChecked": true
+      },
+      "hardeningAction": {
+        "actionType": "eval_fixture",
+        "status": "passed",
+        "command": "npm run check:summary-evals",
+        "artifact": "ops/evals/summary-eval-output.json",
+        "fixtureIds": [
+          "feedback-wrong-fact-grounding"
+        ],
+        "exitCondition": "Wrong-fact sample remains covered by a blocking grounding eval before beta promotion."
+      }
+    },
+    {
+      "feedbackId": "redacted-feedback-bad-citation-001",
+      "category": "bad_citation",
+      "classification": "blocker",
+      "severity": "blocker",
+      "triageOwner": "summary-owner",
+      "eligibleForEvalFixture": true,
+      "releaseBlocking": true,
+      "summaryEvidence": {
+        "summaryId": "summary-redacted-sample-002",
+        "topicId": "topic-redacted-sample-001",
+        "citationId": "citation-redacted-sample-002",
+        "feedItemId": "feed-item-redacted-sample-002",
+        "sourceItemId": "source-item-redacted-sample-002"
+      },
+      "sanitizedSignal": "Citation was on-topic but did not support the attached sentence.",
+      "redactedComment": "The summary linked to a related update, not the item that proves the stated metric.",
+      "qualitySignals": {
+        "claimsChecked": true,
+        "citationsChecked": true,
+        "costChecked": true,
+        "staleMarkerChecked": true
+      },
+      "hardeningAction": {
+        "actionType": "validator_change",
+        "status": "passed",
+        "command": "npm run test",
+        "artifact": "libs/summary/features/shared/summary-citation-validator.spec.ts",
+        "fixtureIds": [
+          "feedback-bad-citation-grounding"
+        ],
+        "exitCondition": "Bad-citation sample remains covered by citation validator regression before beta promotion."
+      }
+    },
+    {
+      "feedbackId": "redacted-feedback-missing-source-001",
+      "category": "missing_source",
+      "classification": "evidence_based_opportunity",
+      "severity": "opportunity",
+      "triageOwner": "summary-owner",
+      "eligibleForEvalFixture": true,
+      "releaseBlocking": true,
+      "summaryEvidence": {
+        "summaryId": "summary-redacted-sample-003",
+        "topicId": "topic-redacted-sample-001",
+        "citationId": "citation-redacted-sample-003",
+        "feedItemId": "feed-item-redacted-sample-003",
+        "sourceItemId": "source-item-redacted-sample-003"
+      },
+      "sanitizedSignal": "Summary missed a supported item inside the selected evidence window.",
+      "redactedComment": "A newer relevant item was in the window but did not appear in the summary.",
+      "qualitySignals": {
+        "claimsChecked": true,
+        "citationsChecked": true,
+        "costChecked": true,
+        "staleMarkerChecked": true
+      },
+      "hardeningAction": {
+        "actionType": "runbook_action",
+        "status": "passed",
+        "command": "npm run check:summary-window",
+        "artifact": "scripts/check-summary-window-freshness-smoke.ts",
+        "fixtureIds": [],
+        "exitCondition": "Summary window freshness gate stays release-blocking when newer feed evidence exists."
+      }
+    }
+  ]
+}
