@@ -1,6 +1,9 @@
 import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
+import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
+import { queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
 import { ExecuteSummaryJobCommandHandler } from '@social-monitor/summary/interfaces/queue/execute-summary-job-command.handler';
+import type { Clock } from '@social-monitor/shared-kernel';
 
 import {
   INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
@@ -24,6 +27,8 @@ export class SummaryJobQueueDrainLoop implements OnModuleInit, OnApplicationShut
     private readonly handler: ExecuteSummaryJobCommandHandler,
     @Inject(INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS)
     private readonly options: IntelligenceSummaryQueueDrainLoopOptions,
+    private readonly metrics: MetricsRecorderPort,
+    private readonly clock: Clock,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -80,6 +85,7 @@ export class SummaryJobQueueDrainLoop implements OnModuleInit, OnApplicationShut
 
     for (const delivery of deliveries) {
       const { command } = delivery;
+      this.recordDeliveryLag(delivery);
       try {
         await this.handler.handle(command);
         await delivery.ack();
@@ -106,6 +112,24 @@ export class SummaryJobQueueDrainLoop implements OnModuleInit, OnApplicationShut
       completed,
       failed,
       worker: 'intelligence-worker',
+    });
+  }
+
+  private recordDeliveryLag(delivery: Awaited<ReturnType<SummaryJobQueueReaderPort['drain']>>[number]): void {
+    const lagSeconds = queueCommandDeliveryLagSeconds(delivery.diagnostics, this.clock.now());
+
+    if (lagSeconds === undefined) {
+      return;
+    }
+
+    this.metrics.recordGauge({
+      name: 'queue_command_delivery_lag_seconds',
+      value: lagSeconds,
+      labels: {
+        command_type: delivery.command.commandType,
+        queue: 'summary',
+        worker: 'intelligence-worker',
+      },
     });
   }
 }

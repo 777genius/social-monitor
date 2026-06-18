@@ -3,6 +3,7 @@ export type QueueCommandDeliveryDiagnostics = {
   readonly deadLetterCount: number;
   readonly deadLetterReason?: string;
   readonly deadLetterQueue?: string;
+  readonly publishedAtEpochMs?: number;
 };
 
 export const emptyQueueCommandDeliveryDiagnostics: QueueCommandDeliveryDiagnostics = {
@@ -16,6 +17,7 @@ type RabbitMqMessageLike = {
   };
   readonly properties?: {
     readonly headers?: unknown;
+    readonly timestamp?: unknown;
   };
 };
 
@@ -35,6 +37,7 @@ export const queueCommandDeliveryDiagnosticsFromRabbitMq = (
     return {
       redelivered: message.fields?.redelivered === true,
       deadLetterCount: 0,
+      publishedAtEpochMs: normalizeRabbitMqTimestamp(message.properties?.timestamp),
     };
   }
 
@@ -43,7 +46,19 @@ export const queueCommandDeliveryDiagnosticsFromRabbitMq = (
     deadLetterCount: normalizeDeathCount(death.count),
     deadLetterReason: typeof death.reason === 'string' ? death.reason : undefined,
     deadLetterQueue: typeof death.queue === 'string' ? death.queue : undefined,
+    publishedAtEpochMs: normalizeRabbitMqTimestamp(message.properties?.timestamp),
   };
+};
+
+export const queueCommandDeliveryLagSeconds = (
+  diagnostics: QueueCommandDeliveryDiagnostics,
+  now: Date,
+): number | undefined => {
+  if (diagnostics.publishedAtEpochMs === undefined) {
+    return undefined;
+  }
+
+  return Math.max(0, (now.getTime() - diagnostics.publishedAtEpochMs) / 1000);
 };
 
 const firstDeathHeaderForQueue = (
@@ -74,4 +89,12 @@ const normalizeDeathCount = (count: unknown): number => {
   }
 
   return 0;
+};
+
+const normalizeRabbitMqTimestamp = (timestamp: unknown): number | undefined => {
+  if (typeof timestamp !== 'number' || !Number.isInteger(timestamp) || timestamp <= 0) {
+    return undefined;
+  }
+
+  return timestamp * 1000;
 };

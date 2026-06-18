@@ -72,10 +72,11 @@ Scan status API responses expose support-safe fields for beta triage:
 
 - `queue_commands_enqueued_total{command_type=ingestion.scan.execute,job_type=scan,status=enqueued}` shows accepted scan queue work.
 - `queue_commands_backlog{command_type=ingestion.scan.execute,queue=scan}` shows current in-memory scan queue depth after enqueue.
+- `queue_command_delivery_lag_seconds{command_type=ingestion.scan.execute,queue=scan,worker=ingestion-worker}` shows how old RabbitMQ work is when a worker receives it. Equivalent labels exist for `summary` and `delivery`.
 - If backlog grows while `scan_jobs_total{status=started}` is flat, inspect worker availability before increasing scan frequency.
 - If backlog grows together with provider rate-limit failures, reduce scan frequency or pause affected sources before adding workers.
 - Quorum queues dead-letter messages after the configured delivery limit when a DLX is present. Use RabbitMQ policy for at-least-once dead-lettering in shared/staging brokers before replaying production-like queues.
-- Queue lag seconds is intentionally not emitted yet because the MVP in-memory queue has no ack/dequeue timestamp model; add it when the broker adapter exposes consumed/acked timestamps.
+- Queue lag depends on broker message timestamps, so in-memory fixture queues do not emit it. If lag is high while backlog is low, inspect worker pauses, long-running handlers and broker redelivery patterns.
 
 ## DLQ Triage
 

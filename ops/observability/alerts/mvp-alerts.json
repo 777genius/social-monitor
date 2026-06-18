@@ -37,6 +37,23 @@
       "page": false
     },
     {
+      "alertId": "scan-queue-lag-high",
+      "severity": "warning",
+      "metric": "queue_command_delivery_lag_seconds",
+      "labels": {
+        "command_type": "ingestion.scan.execute",
+        "queue": "scan",
+        "worker": "ingestion-worker"
+      },
+      "condition": "latest_value >= 300 for 10m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "scan-queue-lag",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#queue-backlog-triage",
+      "userVisibleState": "scan_in_progress_or_scan_degraded",
+      "firstMitigation": "inspect_worker_availability_and_provider_pressure_before_scaling",
+      "page": false
+    },
+    {
       "alertId": "scan-dlq-growth",
       "severity": "warning",
       "metric": "scan_failure_queue_backlog",
@@ -68,6 +85,23 @@
       "page": false
     },
     {
+      "alertId": "summary-queue-lag-high",
+      "severity": "warning",
+      "metric": "queue_command_delivery_lag_seconds",
+      "labels": {
+        "command_type": "summary.job.execute",
+        "queue": "summary",
+        "worker": "intelligence-worker"
+      },
+      "condition": "latest_value >= 300 for 10m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "summary-queue-lag",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#queue-backlog-triage",
+      "userVisibleState": "summary_degraded",
+      "firstMitigation": "inspect_intelligence_worker_availability_and_model_pressure_before_replaying",
+      "page": false
+    },
+    {
       "alertId": "delivery-queue-backlog-growing",
       "severity": "warning",
       "metric": "queue_commands_backlog",
@@ -81,6 +115,23 @@
       "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#queue-backlog-triage",
       "userVisibleState": "delivery_degraded",
       "firstMitigation": "inspect_delivery_worker_availability_before_replaying_delivery_attempts",
+      "page": false
+    },
+    {
+      "alertId": "delivery-queue-lag-high",
+      "severity": "warning",
+      "metric": "queue_command_delivery_lag_seconds",
+      "labels": {
+        "command_type": "delivery.attempt.send",
+        "queue": "delivery",
+        "worker": "delivery-service"
+      },
+      "condition": "latest_value >= 300 for 10m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "delivery-queue-lag",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#queue-backlog-triage",
+      "userVisibleState": "delivery_degraded",
+      "firstMitigation": "inspect_delivery_worker_availability_and_endpoint_failures_before_replaying",
       "page": false
     },
     {

@@ -27,6 +27,17 @@
       "safeDiagnosticQuestion": "How much scan work did the API accept?"
     },
     {
+      "panelId": "scan-queue-lag",
+      "title": "Scan Queue Lag",
+      "metric": "queue_command_delivery_lag_seconds",
+      "labels": {
+        "command_type": "ingestion.scan.execute",
+        "queue": "scan",
+        "worker": "ingestion-worker"
+      },
+      "safeDiagnosticQuestion": "How old is accepted scan work when workers receive it?"
+    },
+    {
       "panelId": "scan-worker-started",
       "title": "Scan Jobs Started",
       "metric": "scan_jobs_total",
@@ -59,6 +70,17 @@
       "safeDiagnosticQuestion": "Is summary work waiting for intelligence workers?"
     },
     {
+      "panelId": "summary-queue-lag",
+      "title": "Summary Queue Lag",
+      "metric": "queue_command_delivery_lag_seconds",
+      "labels": {
+        "command_type": "summary.job.execute",
+        "queue": "summary",
+        "worker": "intelligence-worker"
+      },
+      "safeDiagnosticQuestion": "How old is accepted summary work when workers receive it?"
+    },
+    {
       "panelId": "delivery-queue-backlog",
       "title": "Delivery Queue Backlog",
       "metric": "queue_commands_backlog",
@@ -67,6 +89,17 @@
         "queue": "delivery"
       },
       "safeDiagnosticQuestion": "Is delivery work waiting for delivery workers?"
+    },
+    {
+      "panelId": "delivery-queue-lag",
+      "title": "Delivery Queue Lag",
+      "metric": "queue_command_delivery_lag_seconds",
+      "labels": {
+        "command_type": "delivery.attempt.send",
+        "queue": "delivery",
+        "worker": "delivery-service"
+      },
+      "safeDiagnosticQuestion": "How old is accepted delivery work when workers receive it?"
     },
     {
       "panelId": "delivery-attempts-failed",

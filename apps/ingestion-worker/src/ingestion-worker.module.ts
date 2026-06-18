@@ -401,7 +401,23 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         new ExecuteScanCommandHandler(executeScan, metrics, runtime),
       inject: [ExecuteScanUseCase, InMemoryMetricsRecorder, WorkerRuntime],
     },
-    ScanQueueDrainLoop,
+    {
+      provide: ScanQueueDrainLoop,
+      useFactory: (
+        queue: ScanCommandQueueReaderPort,
+        handler: ExecuteScanCommandHandler,
+        retryQueue: ScanRetryQueuePort,
+        options: ReturnType<typeof resolveIngestionScanQueueDrainLoopOptions>,
+        metrics: InMemoryMetricsRecorder,
+      ) => new ScanQueueDrainLoop(queue, handler, retryQueue, options, metrics, new SystemClock()),
+      inject: [
+        INGESTION_SCAN_COMMAND_QUEUE_READER,
+        ExecuteScanCommandHandler,
+        INGESTION_SCAN_FAILURE_QUEUE,
+        INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS,
+        InMemoryMetricsRecorder,
+      ],
+    },
   ],
   exports: [
     ExecuteScanCommandHandler,

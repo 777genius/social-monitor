@@ -7,6 +7,7 @@ const alertsDir = join(root, 'ops/observability/alerts');
 const safeLabelPattern = /^[A-Za-z0-9._:-]+$/;
 const allowedMetrics = new Set([
   'queue_commands_backlog',
+  'queue_command_delivery_lag_seconds',
   'queue_commands_enqueued_total',
   'delivery_digest_scheduler_failures_total',
   'delivery_digest_scheduler_last_assembled',

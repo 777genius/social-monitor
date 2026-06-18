@@ -1,5 +1,6 @@
 import {
   emptyQueueCommandDeliveryDiagnostics,
+  queueCommandDeliveryLagSeconds,
   queueCommandDeliveryDiagnosticsFromRabbitMq,
 } from './queue-delivery-diagnostics';
 
@@ -10,6 +11,7 @@ describe('queueCommandDeliveryDiagnosticsFromRabbitMq', () => {
         redelivered: true,
       },
       properties: {
+        timestamp: 1781777730,
         headers: {
           'x-death': [
             {
@@ -32,6 +34,7 @@ describe('queueCommandDeliveryDiagnosticsFromRabbitMq', () => {
       deadLetterCount: 2,
       deadLetterReason: 'rejected',
       deadLetterQueue: 'jobs.summary.execute',
+      publishedAtEpochMs: 1781777730000,
     });
   });
 
@@ -44,5 +47,22 @@ describe('queueCommandDeliveryDiagnosticsFromRabbitMq', () => {
         headers: {},
       },
     }, 'jobs.summary.execute')).toEqual(emptyQueueCommandDeliveryDiagnostics);
+  });
+
+  it('calculates non-negative lag from RabbitMQ publish timestamp', () => {
+    const diagnostics = queueCommandDeliveryDiagnosticsFromRabbitMq({
+      properties: {
+        timestamp: 1781777730,
+      },
+    }, 'jobs.summary.execute');
+
+    expect(queueCommandDeliveryLagSeconds(
+      diagnostics,
+      new Date('2026-06-18T10:16:00.000Z'),
+    )).toBe(30);
+    expect(queueCommandDeliveryLagSeconds(
+      diagnostics,
+      new Date('2026-06-18T10:15:00.000Z'),
+    )).toBe(0);
   });
 });

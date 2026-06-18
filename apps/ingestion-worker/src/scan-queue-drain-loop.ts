@@ -1,7 +1,10 @@
 import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
+import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
+import { queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
 import { ExecuteScanCommandHandler } from '@social-monitor/ingestion/interfaces/queue/execute-scan-command.handler';
 import type { RetryScanCommand, ScanRetryQueuePort } from '@social-monitor/ingestion/ports';
+import type { Clock } from '@social-monitor/shared-kernel';
 
 import {
   INGESTION_SCAN_FAILURE_QUEUE,
@@ -29,6 +32,8 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
     private readonly retryQueue: ScanRetryQueuePort,
     @Inject(INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS)
     private readonly options: IngestionScanQueueDrainLoopOptions,
+    private readonly metrics: MetricsRecorderPort,
+    private readonly clock: Clock,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -82,6 +87,7 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
 
     for (const delivery of deliveries) {
       const { command } = delivery;
+      this.recordDeliveryLag(delivery);
       try {
         await this.handler.handle(command);
         await delivery.ack();
@@ -110,6 +116,24 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
       completed,
       failed,
       worker: 'ingestion-worker',
+    });
+  }
+
+  private recordDeliveryLag(delivery: QueueCommandDelivery): void {
+    const lagSeconds = queueCommandDeliveryLagSeconds(delivery.diagnostics, this.clock.now());
+
+    if (lagSeconds === undefined) {
+      return;
+    }
+
+    this.metrics.recordGauge({
+      name: 'queue_command_delivery_lag_seconds',
+      value: lagSeconds,
+      labels: {
+        command_type: delivery.command.commandType,
+        queue: 'scan',
+        worker: 'ingestion-worker',
+      },
     });
   }
 

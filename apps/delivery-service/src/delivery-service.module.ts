@@ -194,7 +194,21 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
         EnqueueDeliveryAttemptDispatchUseCase,
       ],
     },
-    DeliveryAttemptQueueDrainLoop,
+    {
+      provide: DeliveryAttemptQueueDrainLoop,
+      useFactory: (
+        queue: DeliveryAttemptQueueReaderPort,
+        handler: SendDeliveryAttemptCommandHandler,
+        options: ReturnType<typeof resolveDeliveryAttemptQueueDrainLoopOptions>,
+        metrics: InMemoryMetricsRecorder,
+      ) => new DeliveryAttemptQueueDrainLoop(queue, handler, options, metrics, new SystemClock()),
+      inject: [
+        DELIVERY_ATTEMPT_COMMAND_QUEUE_READER,
+        SendDeliveryAttemptCommandHandler,
+        DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP_OPTIONS,
+        InMemoryMetricsRecorder,
+      ],
+    },
     DigestSchedulerLoop,
   ],
   exports: [

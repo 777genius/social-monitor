@@ -16,6 +16,8 @@ import { DeliveryAttemptQueueDrainLoop } from '../apps/delivery-service/src/deli
 import {
   InMemoryDeliveryAttemptQueueReader,
   RabbitMqDeliveryAttemptQueueReader,
+  type DeliveryAttemptCommandDelivery,
+  type DeliveryAttemptQueueReaderPort,
   type RabbitMqDeliveryAttemptQueueReaderChannelPort,
 } from '../apps/delivery-service/src/delivery-attempt-queue-reader';
 
@@ -96,6 +98,8 @@ async function main(): Promise<void> {
       limit: 10,
       runOnStart: true,
     },
+    metrics,
+    new FixedClock(new Date('2026-06-16T04:12:30.000Z')),
   );
 
   await loop.onModuleInit();
@@ -128,6 +132,7 @@ async function main(): Promise<void> {
   );
 
   await verifyRabbitMqReaderDelivery();
+  await verifyDeliveryQueueDeliveryLagMetric();
 
   console.log('Delivery attempt queue drain loop smoke OK');
 }
@@ -203,6 +208,59 @@ async function verifyRabbitMqReaderDelivery(): Promise<void> {
   );
   await deliveries[0]?.ack();
   assert(channel.acked === 1, `expected one Rabbit ack, got ${channel.acked}`);
+}
+
+async function verifyDeliveryQueueDeliveryLagMetric(): Promise<void> {
+  const metrics = new InMemoryMetricsRecorder();
+  const delivery: DeliveryAttemptCommandDelivery = {
+    command: {
+      commandId: 'delivery-lag-metric-smoke',
+      commandType: 'delivery.attempt.send',
+      schemaVersion: 1,
+      correlationId: 'delivery-lag-metric-smoke',
+      payload: {
+        tenantId: 'tenant-delivery-lag-metric-smoke',
+        workspaceId: 'workspace-delivery-lag-metric-smoke',
+        deliveryAttemptId: 'delivery-lag-metric-smoke',
+      },
+    },
+    diagnostics: {
+      redelivered: false,
+      deadLetterCount: 0,
+      publishedAtEpochMs: Date.parse('2026-06-16T04:00:00.000Z'),
+    },
+    ack: async () => undefined,
+    nack: async () => undefined,
+  };
+  const reader: DeliveryAttemptQueueReaderPort = {
+    drain: async () => [delivery],
+  };
+  const handler = {
+    handle: async () => undefined,
+  } as unknown as SendDeliveryAttemptCommandHandler;
+  const loop = new DeliveryAttemptQueueDrainLoop(
+    reader,
+    handler,
+    {
+      enabled: true,
+      intervalMs: 60_000,
+      limit: 1,
+      runOnStart: true,
+    },
+    metrics,
+    new FixedClock(new Date('2026-06-16T04:00:33.000Z')),
+  );
+
+  await loop.onModuleInit();
+  await loop.onApplicationShutdown('delivery-lag-metric-smoke-complete');
+  assert(
+    metrics.latestGaugeValue('queue_command_delivery_lag_seconds', {
+      command_type: 'delivery.attempt.send',
+      queue: 'delivery',
+      worker: 'delivery-service',
+    }) === 33,
+    'delivery queue drain loop must record RabbitMQ delivery lag seconds',
+  );
 }
 
 class FakeRabbitMqDeliveryAttemptQueueReaderChannel implements RabbitMqDeliveryAttemptQueueReaderChannelPort {

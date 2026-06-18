@@ -7,6 +7,7 @@ import { ExecuteSummaryJobCommandHandler } from '@social-monitor/summary/interfa
 import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summary-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { WorkerRuntime, WorkerRuntimeModule } from '@social-monitor/platform-worker';
+import { SystemClock } from '@social-monitor/shared-kernel';
 
 import {
   INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS,
@@ -23,6 +24,7 @@ import {
   InMemorySummaryJobQueueReader,
   INTELLIGENCE_SUMMARY_JOB_QUEUE_READER,
   RabbitMqSummaryJobQueueReader,
+  type SummaryJobQueueReaderPort,
   type RabbitMqSummaryQueueReaderChannelPort,
 } from './summary-job-queue-reader';
 import { SummaryJobQueueDrainLoop } from './summary-job-queue-drain-loop';
@@ -85,7 +87,21 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol('INTELLIGENCE_RABBITM
       inject: [ExecuteSummaryJobUseCase, InMemoryMetricsRecorder, WorkerRuntime],
     },
     SummaryJobPollingLoop,
-    SummaryJobQueueDrainLoop,
+    {
+      provide: SummaryJobQueueDrainLoop,
+      useFactory: (
+        queue: SummaryJobQueueReaderPort,
+        handler: ExecuteSummaryJobCommandHandler,
+        options: ReturnType<typeof resolveIntelligenceSummaryQueueDrainLoopOptions>,
+        metrics: InMemoryMetricsRecorder,
+      ) => new SummaryJobQueueDrainLoop(queue, handler, options, metrics, new SystemClock()),
+      inject: [
+        INTELLIGENCE_SUMMARY_JOB_QUEUE_READER,
+        ExecuteSummaryJobCommandHandler,
+        INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
+        InMemoryMetricsRecorder,
+      ],
+    },
   ],
   exports: [ExecuteSummaryJobCommandHandler, SummaryJobPollingLoop, SummaryJobQueueDrainLoop],
 })

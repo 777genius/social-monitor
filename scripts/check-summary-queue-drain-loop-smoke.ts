@@ -18,6 +18,8 @@ import { SummaryJobQueueDrainLoop } from '../apps/intelligence-worker/src/summar
 import {
   InMemorySummaryJobQueueReader,
   RabbitMqSummaryJobQueueReader,
+  type SummaryJobCommandDelivery,
+  type SummaryJobQueueReaderPort,
   type RabbitMqSummaryQueueReaderChannelPort,
 } from '../apps/intelligence-worker/src/summary-job-queue-reader';
 
@@ -40,6 +42,7 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
 async function main(): Promise<void> {
   await verifyInMemoryDrainLoop();
   await verifyRabbitMqReaderDelivery();
+  await verifySummaryQueueDeliveryLagMetric();
 
   console.log('Summary queue drain loop smoke OK');
 }
@@ -101,6 +104,8 @@ async function verifyInMemoryDrainLoop(): Promise<void> {
       limit: 10,
       runOnStart: true,
     },
+    metrics,
+    new FixedClock(new Date('2026-06-16T01:01:30.000Z')),
   );
 
   await loop.onModuleInit();
@@ -194,6 +199,59 @@ async function verifyRabbitMqReaderDelivery(): Promise<void> {
   );
   await deliveries[0]?.ack();
   assert(channel.acked === 1, `expected one Rabbit ack, got ${channel.acked}`);
+}
+
+async function verifySummaryQueueDeliveryLagMetric(): Promise<void> {
+  const metrics = new InMemoryMetricsRecorder();
+  const delivery: SummaryJobCommandDelivery = {
+    command: {
+      commandId: 'summary-lag-metric-smoke',
+      commandType: 'summary.job.execute',
+      schemaVersion: 1,
+      correlationId: 'summary-lag-metric-smoke',
+      payload: {
+        tenantId: 'tenant-summary-lag-metric-smoke',
+        workspaceId: 'workspace-summary-lag-metric-smoke',
+        summaryJobId: 'summary-lag-metric-smoke',
+      },
+    },
+    diagnostics: {
+      redelivered: false,
+      deadLetterCount: 0,
+      publishedAtEpochMs: Date.parse('2026-06-16T01:00:00.000Z'),
+    },
+    ack: async () => undefined,
+    nack: async () => undefined,
+  };
+  const reader: SummaryJobQueueReaderPort = {
+    drain: async () => [delivery],
+  };
+  const handler = {
+    handle: async () => undefined,
+  } as unknown as ExecuteSummaryJobCommandHandler;
+  const loop = new SummaryJobQueueDrainLoop(
+    reader,
+    handler,
+    {
+      enabled: true,
+      intervalMs: 60_000,
+      limit: 1,
+      runOnStart: true,
+    },
+    metrics,
+    new FixedClock(new Date('2026-06-16T01:00:42.000Z')),
+  );
+
+  await loop.onModuleInit();
+  await loop.onApplicationShutdown('summary-lag-metric-smoke-complete');
+  assert(
+    metrics.latestGaugeValue('queue_command_delivery_lag_seconds', {
+      command_type: 'summary.job.execute',
+      queue: 'summary',
+      worker: 'intelligence-worker',
+    }) === 42,
+    'summary queue drain loop must record RabbitMQ delivery lag seconds',
+  );
 }
 
 class FakeRabbitMqSummaryQueueReaderChannel implements RabbitMqSummaryQueueReaderChannelPort {

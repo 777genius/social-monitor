@@ -9,7 +9,9 @@ import { InMemoryFeedProjectionAdapter } from '../apps/ingestion-worker/src/adap
 import {
   InMemoryScanCommandQueueReader,
   RabbitMqScanCommandQueueReader,
+  type QueueCommandDelivery,
   type RabbitMqScanQueueReaderChannelPort,
+  type ScanCommandQueueReaderPort,
 } from '../apps/ingestion-worker/src/scan-command-queue-reader';
 import { ScanQueueDrainLoop } from '../apps/ingestion-worker/src/scan-queue-drain-loop';
 import { NoopScanExecutionReporterAdapter } from '../libs/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter';
@@ -24,6 +26,7 @@ import { RegistrySourceFetcherAdapter } from '../libs/ingestion/adapters/source/
 import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
 import { ExecuteScanUseCase } from '../libs/ingestion/features/execute-scan/execute-scan.use-case';
 import { ExecuteScanCommandHandler } from '../libs/ingestion/interfaces/queue/execute-scan-command.handler';
+import type { ScanRetryQueuePort } from '../libs/ingestion/ports';
 import { InMemoryScanJobRepository } from '../libs/monitoring/adapters/persistence/in-memory-scan-job.repository';
 import { InMemoryScanPolicyRepository } from '../libs/monitoring/adapters/persistence/in-memory-scan-policy.repository';
 import { InMemorySourceBindingRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-binding.repository';
@@ -191,6 +194,8 @@ async function main(): Promise<void> {
       limit: 10,
       runOnStart: true,
     },
+    metrics,
+    new FixedClock(new Date('2026-06-06T10:00:02.000Z')),
   );
 
   await loop.onModuleInit();
@@ -257,6 +262,8 @@ async function main(): Promise<void> {
       limit: 10,
       runOnStart: true,
     },
+    metrics,
+    new FixedClock(new Date('2026-06-06T10:00:03.000Z')),
   );
 
   await retryLoop.onModuleInit();
@@ -375,8 +382,66 @@ async function main(): Promise<void> {
   await rabbitDelivery.ack();
   assert(rabbitChannel.acked === 1, 'RabbitMQ reader delivery ack must ack broker message');
   assert(rabbitChannel.nacked === 1, 'RabbitMQ reader must not nack successful broker message');
+  await verifyScanQueueDeliveryLagMetric();
 
   console.log('Scan queue drain loop smoke OK');
+}
+
+async function verifyScanQueueDeliveryLagMetric(): Promise<void> {
+  const metrics = new InMemoryMetricsRecorder();
+  const delivery: QueueCommandDelivery = {
+    command: {
+      commandId: 'scan-lag-metric-smoke',
+      commandType: 'ingestion.scan.execute',
+      schemaVersion: 1,
+      correlationId: 'scan-lag-metric-smoke',
+      payload: {
+        tenantId: 'tenant-scan-lag-metric-smoke',
+        workspaceId: 'workspace-scan-lag-metric-smoke',
+        scanJobId: 'scan-lag-metric-smoke',
+      },
+    },
+    diagnostics: {
+      redelivered: false,
+      deadLetterCount: 0,
+      publishedAtEpochMs: Date.parse('2026-06-06T10:00:00.000Z'),
+    },
+    ack: async () => undefined,
+    nack: async () => undefined,
+  };
+  const reader: ScanCommandQueueReaderPort = {
+    drain: async () => [delivery],
+  };
+  const retryQueue: ScanRetryQueuePort = {
+    drainRetries: async () => [],
+  };
+  const handler = {
+    handle: async () => undefined,
+  } as unknown as ExecuteScanCommandHandler;
+  const loop = new ScanQueueDrainLoop(
+    reader,
+    handler,
+    retryQueue,
+    {
+      enabled: true,
+      intervalMs: 60_000,
+      limit: 1,
+      runOnStart: true,
+    },
+    metrics,
+    new FixedClock(new Date('2026-06-06T10:00:45.000Z')),
+  );
+
+  await loop.onModuleInit();
+  await loop.onApplicationShutdown('scan-lag-metric-smoke-complete');
+  assert(
+    metrics.latestGaugeValue('queue_command_delivery_lag_seconds', {
+      command_type: 'ingestion.scan.execute',
+      queue: 'scan',
+      worker: 'ingestion-worker',
+    }) === 45,
+    'scan queue drain loop must record RabbitMQ delivery lag seconds',
+  );
 }
 
 void main().catch((error) => {
