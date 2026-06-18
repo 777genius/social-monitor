@@ -17,10 +17,12 @@ const externalReadiness = readJson(externalReadinessPath);
 const baseline = readJson(baselinePath);
 const scripts = packageJson.scripts ?? {};
 const violations = [];
+const securityFinalSweepArtifactPath = process.env.SECURITY_FINAL_SWEEP_ARTIFACT_PATH;
 
 const gateScript = 'check:security-final-sweep';
 const gateCommand = `npm run ${gateScript}`;
 const gateId = 'security-final-sweep';
+const securityFinalSweepArtifactFormat = 'security-final-sweep-staging-artifact-v1';
 const requiredCheckIds = new Set([
   'secret-scan',
   'dependency-audit',
@@ -46,6 +48,40 @@ const forbiddenEvidenceFragments = [
   'private_key',
   'raw_payload',
 ];
+const forbiddenArtifactFragments = [
+  ...forbiddenEvidenceFragments,
+  'client_secret',
+  'secret_key',
+];
+const forbiddenArtifactKeys = new Set([
+  'accesstoken',
+  'access_token',
+  'refreshtoken',
+  'refresh_token',
+  'privatekey',
+  'private_key',
+  'clientsecret',
+  'client_secret',
+  'secretkey',
+  'secret_key',
+  'rawpayload',
+  'raw_payload',
+  'rawproviderpayload',
+  'rawprompt',
+  'rawprompttext',
+  'rawsource',
+  'rawsourcetext',
+  'credentialurl',
+  'credentialurls',
+]);
+const requiredArtifactRedactionFlags = {
+  secretValuesIncluded: false,
+  credentialUrlsIncluded: false,
+  rawProviderPayloadsIncluded: false,
+  rawPromptTextIncluded: false,
+  rawSourceTextIncluded: false,
+  piiIncluded: false,
+};
 
 if (evidence.schemaVersion !== 1) {
   violations.push(`${evidencePath}: schemaVersion must be 1`);
@@ -64,6 +100,27 @@ if (!['hold_until_deploy_log_metric_public_error_samples', 'passed'].includes(ev
 }
 
 validateDeploySampleEvidence();
+const deploySampleSchema = evidence.deploySampleContentSchema ?? {};
+validateDeploySampleContentSchema(deploySampleSchema);
+validateSecurityFinalSweepArtifactPath(
+  deploySampleSchema.exampleArtifact,
+  'deploySampleContentSchema.exampleArtifact',
+  { allowExample: true },
+);
+if (evidence.deploySampleEvidence?.status === 'passed') {
+  validateSecurityFinalSweepArtifactPath(
+    evidence.deploySampleEvidence.artifactPath,
+    'deploySampleEvidence.artifactPath',
+    { allowExample: false, expectedDeploy: evidence.deploySampleEvidence },
+  );
+}
+if (securityFinalSweepArtifactPath !== undefined && securityFinalSweepArtifactPath.trim().length > 0) {
+  validateSecurityFinalSweepArtifactPath(
+    securityFinalSweepArtifactPath,
+    'SECURITY_FINAL_SWEEP_ARTIFACT_PATH',
+    { allowExample: false },
+  );
+}
 validateRequiredChecks();
 validateLeakClasses();
 validateNoSensitiveEvidenceLiterals();
@@ -78,6 +135,270 @@ console.log('Security final sweep evidence OK');
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function validateDeploySampleContentSchema(schema) {
+  if (schema.artifactFormat !== securityFinalSweepArtifactFormat) {
+    violations.push(`${evidencePath}: deploySampleContentSchema.artifactFormat must be ${securityFinalSweepArtifactFormat}`);
+  }
+  requireExistingPath(schema.exampleArtifact, 'deploySampleContentSchema.exampleArtifact');
+  requireSetCoverage(
+    new Set(schema.requiredSurfaces ?? []),
+    requiredSurfaceIds,
+    'deploySampleContentSchema.requiredSurfaces',
+  );
+  requireSetCoverage(
+    new Set(schema.requiredLeakClasses ?? []),
+    requiredLeakClasses,
+    'deploySampleContentSchema.requiredLeakClasses',
+  );
+
+  for (const [field, expected] of Object.entries(requiredArtifactRedactionFlags)) {
+    if (schema.requiredRedactionFlags?.[field] !== expected) {
+      violations.push(`${evidencePath}: deploySampleContentSchema.requiredRedactionFlags.${field} must be ${expected}`);
+    }
+  }
+
+  if (
+    typeof schema.exitCondition !== 'string'
+    || !schema.exitCondition.includes(securityFinalSweepArtifactFormat)
+  ) {
+    violations.push(`${evidencePath}: deploySampleContentSchema.exitCondition must mention ${securityFinalSweepArtifactFormat}`);
+  }
+}
+
+function requireSetCoverage(actual, expected, label) {
+  for (const expectedValue of expected) {
+    if (!actual.has(expectedValue)) {
+      violations.push(`${evidencePath}: ${label} must include "${expectedValue}"`);
+    }
+  }
+}
+
+function validateSecurityFinalSweepArtifactPath(path, label, options) {
+  requireExistingPath(path, label);
+  if (typeof path !== 'string' || path.trim().length === 0 || !existsSync(path)) {
+    return;
+  }
+
+  const artifact = readJson(path);
+  validateSecurityFinalSweepArtifact(artifact, path, options);
+}
+
+function validateSecurityFinalSweepArtifact(artifact, path, options) {
+  if (artifact.schemaVersion !== 1) {
+    violations.push(`${path}: schemaVersion must be 1`);
+  }
+  if (artifact.artifactFormat !== securityFinalSweepArtifactFormat) {
+    violations.push(`${path}: artifactFormat must be ${securityFinalSweepArtifactFormat}`);
+  }
+  if (artifact.scope !== 'backend-only') {
+    violations.push(`${path}: scope must be backend-only`);
+  }
+  if (artifact.frontendPolicy !== 'deferred_contract_only') {
+    violations.push(`${path}: frontendPolicy must be deferred_contract_only`);
+  }
+
+  validateArtifactEnvironment(artifact.environment, path, options);
+  validateArtifactRedaction(artifact.redaction, path);
+  validateArtifactSurfaces(artifact.surfaces, path);
+  validateArtifactReview(artifact.review, path);
+  scanForbiddenArtifactKeys(artifact, path);
+  validateNoSensitiveArtifactLiterals(artifact, path);
+}
+
+function validateArtifactEnvironment(environment, path, options) {
+  if (environment === null || typeof environment !== 'object' || Array.isArray(environment)) {
+    violations.push(`${path}: environment must be an object`);
+    return;
+  }
+
+  for (const field of ['environmentId', 'imageDigest', 'sampledAt', 'operator']) {
+    if (typeof environment[field] !== 'string' || environment[field].trim().length === 0) {
+      violations.push(`${path}: environment.${field} must be a non-empty string`);
+    }
+  }
+  if (!/^sha256:[0-9a-f]{64}$/.test(String(environment.imageDigest ?? ''))) {
+    violations.push(`${path}: environment.imageDigest must be an immutable sha256 digest`);
+  }
+  if (!isIsoDateString(environment.sampledAt)) {
+    violations.push(`${path}: environment.sampledAt must be an ISO timestamp`);
+  }
+  if (options.allowExample !== true && environment.environmentId?.includes('example')) {
+    violations.push(`${path}: real staging artifact environmentId must not be an example environment`);
+  }
+
+  const expected = options.expectedDeploy;
+  if (expected !== undefined) {
+    for (const field of ['environmentId', 'imageDigest', 'sampledAt']) {
+      if (environment[field] !== expected[field]) {
+        violations.push(`${path}: environment.${field} must match deploySampleEvidence.${field}`);
+      }
+    }
+  }
+}
+
+function validateArtifactRedaction(redaction, path) {
+  if (redaction === null || typeof redaction !== 'object' || Array.isArray(redaction)) {
+    violations.push(`${path}: redaction must be an object`);
+    return;
+  }
+
+  for (const [field, expected] of Object.entries(requiredArtifactRedactionFlags)) {
+    if (redaction[field] !== expected) {
+      violations.push(`${path}: redaction.${field} must be ${expected}`);
+    }
+  }
+
+  if (typeof redaction.method !== 'string' || redaction.method.trim().length < 20) {
+    violations.push(`${path}: redaction.method must explain how staging samples were sanitized`);
+  }
+}
+
+function validateArtifactSurfaces(surfaces, path) {
+  if (!Array.isArray(surfaces)) {
+    violations.push(`${path}: surfaces must be an array`);
+    return;
+  }
+
+  const surfaceIds = new Set();
+  for (const [index, surface] of surfaces.entries()) {
+    const surfaceLabel = `${path}: surfaces[${index}]`;
+    validateArtifactSurface(surface, surfaceLabel, surfaceIds);
+  }
+
+  for (const surfaceId of requiredSurfaceIds) {
+    if (!surfaceIds.has(surfaceId)) {
+      violations.push(`${path}: surfaces must include ${surfaceId}`);
+    }
+  }
+}
+
+function validateArtifactSurface(surface, surfaceLabel, surfaceIds) {
+  if (surface === null || typeof surface !== 'object' || Array.isArray(surface)) {
+    violations.push(`${surfaceLabel}: surface must be an object`);
+    return;
+  }
+
+  if (!requiredSurfaceIds.has(surface.surfaceId)) {
+    violations.push(`${surfaceLabel}: unsupported surfaceId "${surface.surfaceId}"`);
+  } else if (surfaceIds.has(surface.surfaceId)) {
+    violations.push(`${surfaceLabel}: duplicate surfaceId "${surface.surfaceId}"`);
+  } else {
+    surfaceIds.add(surface.surfaceId);
+  }
+
+  if (!Number.isInteger(surface.sampleCount) || surface.sampleCount <= 0) {
+    violations.push(`${surfaceLabel}: sampleCount must be a positive integer`);
+  }
+  if (surface.scanStatus !== 'passed') {
+    violations.push(`${surfaceLabel}: scanStatus must be passed`);
+  }
+  if (surface.redactedOnly !== true) {
+    violations.push(`${surfaceLabel}: redactedOnly must be true`);
+  }
+  if (!Array.isArray(surface.safeDiagnosticFields) || surface.safeDiagnosticFields.length === 0) {
+    violations.push(`${surfaceLabel}: safeDiagnosticFields must be a non-empty array`);
+  }
+
+  for (const field of surface.safeDiagnosticFields ?? []) {
+    if (typeof field !== 'string' || field.trim().length === 0) {
+      violations.push(`${surfaceLabel}: safeDiagnosticFields must contain non-empty strings`);
+      continue;
+    }
+    const normalized = field.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (forbiddenArtifactKeys.has(normalized)) {
+      violations.push(`${surfaceLabel}: unsafe diagnostic field "${field}"`);
+    }
+  }
+
+  validateLeakClassResults(surface.leakClassResults, surfaceLabel);
+}
+
+function validateLeakClassResults(results, surfaceLabel) {
+  if (!Array.isArray(results)) {
+    violations.push(`${surfaceLabel}: leakClassResults must be an array`);
+    return;
+  }
+
+  const resultIds = new Set();
+  for (const [index, result] of results.entries()) {
+    const resultLabel = `${surfaceLabel}.leakClassResults[${index}]`;
+    if (result === null || typeof result !== 'object' || Array.isArray(result)) {
+      violations.push(`${resultLabel}: result must be an object`);
+      continue;
+    }
+
+    if (!requiredLeakClasses.has(result.leakClass)) {
+      violations.push(`${resultLabel}: unsupported leakClass "${result.leakClass}"`);
+    } else if (resultIds.has(result.leakClass)) {
+      violations.push(`${resultLabel}: duplicate leakClass "${result.leakClass}"`);
+    } else {
+      resultIds.add(result.leakClass);
+    }
+    if (result.found !== false) {
+      violations.push(`${resultLabel}: found must be false`);
+    }
+    if (!Number.isInteger(result.sampleCount) || result.sampleCount <= 0) {
+      violations.push(`${resultLabel}: sampleCount must be a positive integer`);
+    }
+  }
+
+  for (const leakClass of requiredLeakClasses) {
+    if (!resultIds.has(leakClass)) {
+      violations.push(`${surfaceLabel}: leakClassResults must include ${leakClass}`);
+    }
+  }
+}
+
+function validateArtifactReview(review, path) {
+  if (review === null || typeof review !== 'object' || Array.isArray(review)) {
+    violations.push(`${path}: review must be an object`);
+    return;
+  }
+
+  if (typeof review.reviewer !== 'string' || review.reviewer.trim().length === 0) {
+    violations.push(`${path}: review.reviewer must be a non-empty string`);
+  }
+  if (review.decision !== 'passed') {
+    violations.push(`${path}: review.decision must be passed`);
+  }
+  if (typeof review.notes !== 'string' || review.notes.trim().length < 20) {
+    violations.push(`${path}: review.notes must explain the staging redaction review`);
+  }
+}
+
+function scanForbiddenArtifactKeys(value, label) {
+  if (value === null || typeof value !== 'object') {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      scanForbiddenArtifactKeys(item, `${label}[${index}]`);
+    }
+    return;
+  }
+
+  for (const [key, nested] of Object.entries(value)) {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (forbiddenArtifactKeys.has(normalizedKey)) {
+      violations.push(`${label}: forbidden sensitive field "${key}"`);
+    }
+    scanForbiddenArtifactKeys(nested, `${label}.${key}`);
+  }
+}
+
+function validateNoSensitiveArtifactLiterals(artifact, path) {
+  const serialized = JSON.stringify(artifact).toLowerCase();
+  for (const fragment of forbiddenArtifactFragments) {
+    if (serialized.includes(fragment)) {
+      violations.push(`${path}: artifact must not contain sensitive literal fragment "${fragment}"`);
+    }
+  }
+}
+
+function isIsoDateString(value) {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value)) && value.includes('T');
 }
 
 function validateDeploySampleEvidence() {

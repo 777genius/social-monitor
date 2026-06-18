@@ -80,6 +80,10 @@
       "path": "ops/security/security-final-sweep-evidence.json"
     },
     {
+      "artifactId": "security-final-sweep-staging-artifact-example",
+      "path": "ops/security/fixtures/security-final-sweep-staging-artifact-examples.json"
+    },
+    {
       "artifactId": "source-live-certification-evidence",
       "path": "ops/ingestion/source-live-certification-evidence.json"
     },

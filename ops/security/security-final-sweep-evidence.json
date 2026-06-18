@@ -14,6 +14,30 @@
     "sampledAt": null,
     "exitCondition": "Attach staging deploy samples proving logs, metrics, public errors and audit responses contain no secrets or raw provider/source/prompt payloads."
   },
+  "deploySampleContentSchema": {
+    "artifactFormat": "security-final-sweep-staging-artifact-v1",
+    "exampleArtifact": "ops/security/fixtures/security-final-sweep-staging-artifact-examples.json",
+    "requiredSurfaces": [
+      "logs",
+      "metrics",
+      "public-errors",
+      "audit-metadata"
+    ],
+    "requiredLeakClasses": [
+      "secret-values",
+      "raw-provider-payloads",
+      "raw-prompt-or-source-text"
+    ],
+    "requiredRedactionFlags": {
+      "secretValuesIncluded": false,
+      "credentialUrlsIncluded": false,
+      "rawProviderPayloadsIncluded": false,
+      "rawPromptTextIncluded": false,
+      "rawSourceTextIncluded": false,
+      "piiIncluded": false
+    },
+    "exitCondition": "SECURITY_FINAL_SWEEP_ARTIFACT_PATH must validate against security-final-sweep-staging-artifact-v1 before external beta go."
+  },
   "requiredChecks": [
     {
       "checkId": "secret-scan",
@@ -93,6 +117,7 @@
   ],
   "externalBetaExitCriteria": [
     "Security final sweep gate is green on the release commit.",
+    "SECURITY_FINAL_SWEEP_ARTIFACT_PATH validates against security-final-sweep-staging-artifact-v1.",
     "Staging deploy log, metric, public-error and audit-response samples are attached for the promoted image digest.",
     "Any exception has owner, expiry, mitigation and remains blocking until explicitly approved."
   ]

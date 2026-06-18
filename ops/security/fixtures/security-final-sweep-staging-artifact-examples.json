@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "security-final-sweep-staging-artifact-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "environment": {
+    "environmentId": "staging-redaction-example",
+    "imageDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sampledAt": "2026-06-18T00:00:00.000Z",
+    "operator": "security-owner"
+  },
+  "redaction": {
+    "secretValuesIncluded": false,
+    "credentialUrlsIncluded": false,
+    "rawProviderPayloadsIncluded": false,
+    "rawPromptTextIncluded": false,
+    "rawSourceTextIncluded": false,
+    "piiIncluded": false,
+    "method": "Sample exports keep support-safe ids, counters and statuses only."
+  },
+  "surfaces": [
+    {
+      "surfaceId": "logs",
+      "sampleCount": 12,
+      "scanStatus": "passed",
+      "redactedOnly": true,
+      "safeDiagnosticFields": [
+        "requestId",
+        "tenantId",
+        "workspaceId",
+        "service",
+        "operation",
+        "status"
+      ],
+      "leakClassResults": [
+        {
+          "leakClass": "secret-values",
+          "found": false,
+          "sampleCount": 12
+        },
+        {
+          "leakClass": "raw-provider-payloads",
+          "found": false,
+          "sampleCount": 12
+        },
+        {
+          "leakClass": "raw-prompt-or-source-text",
+          "found": false,
+          "sampleCount": 12
+        }
+      ]
+    },
+    {
+      "surfaceId": "metrics",
+      "sampleCount": 9,
+      "scanStatus": "passed",
+      "redactedOnly": true,
+      "safeDiagnosticFields": [
+        "metricName",
+        "tenantId",
+        "workspaceId",
+        "service",
+        "status"
+      ],
+      "leakClassResults": [
+        {
+          "leakClass": "secret-values",
+          "found": false,
+          "sampleCount": 9
+        },
+        {
+          "leakClass": "raw-provider-payloads",
+          "found": false,
+          "sampleCount": 9
+        },
+        {
+          "leakClass": "raw-prompt-or-source-text",
+          "found": false,
+          "sampleCount": 9
+        }
+      ]
+    },
+    {
+      "surfaceId": "public-errors",
+      "sampleCount": 6,
+      "scanStatus": "passed",
+      "redactedOnly": true,
+      "safeDiagnosticFields": [
+        "requestId",
+        "statusCode",
+        "errorCode",
+        "operation"
+      ],
+      "leakClassResults": [
+        {
+          "leakClass": "secret-values",
+          "found": false,
+          "sampleCount": 6
+        },
+        {
+          "leakClass": "raw-provider-payloads",
+          "found": false,
+          "sampleCount": 6
+        },
+        {
+          "leakClass": "raw-prompt-or-source-text",
+          "found": false,
+          "sampleCount": 6
+        }
+      ]
+    },
+    {
+      "surfaceId": "audit-metadata",
+      "sampleCount": 10,
+      "scanStatus": "passed",
+      "redactedOnly": true,
+      "safeDiagnosticFields": [
+        "auditEventId",
+        "tenantId",
+        "workspaceId",
+        "actorId",
+        "operation",
+        "status"
+      ],
+      "leakClassResults": [
+        {
+          "leakClass": "secret-values",
+          "found": false,
+          "sampleCount": 10
+        },
+        {
+          "leakClass": "raw-provider-payloads",
+          "found": false,
+          "sampleCount": 10
+        },
+        {
+          "leakClass": "raw-prompt-or-source-text",
+          "found": false,
+          "sampleCount": 10
+        }
+      ]
+    }
+  ],
+  "review": {
+    "reviewer": "security-owner",
+    "decision": "passed",
+    "notes": "Example shape only. Real staging artifact must be generated from the promoted backend image."
+  }
+}
