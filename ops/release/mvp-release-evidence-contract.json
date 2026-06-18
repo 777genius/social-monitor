@@ -110,6 +110,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "operational-support-package",
+      "command": "npm run check:operational-support-package",
+      "blocksRelease": true
+    },
+    {
       "gateId": "api-health-smoke",
       "command": "npm run check:api-health",
       "blocksRelease": true

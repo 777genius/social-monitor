@@ -34,6 +34,14 @@
       "supportOutcome": "summary_degraded"
     },
     {
+      "drillId": "delivery-failure-spike",
+      "failureMode": "delivery_failure_spike",
+      "requiredAlertId": "webhook-delivery-failures",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#delivery-failure-triage",
+      "verificationCommand": "npm run check:observability",
+      "supportOutcome": "delivery_degraded"
+    },
+    {
       "drillId": "backup-restore",
       "failureMode": "restore_validation",
       "requiredAlertId": null,

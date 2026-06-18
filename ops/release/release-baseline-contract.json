@@ -18,6 +18,7 @@
     "check:staging-reliability-evidence",
     "check:summary-feedback-hardening",
     "check:backend-ops-readiness",
+    "check:operational-support-package",
     "check:no-go-cleanup",
     "check:release",
     "check:e2e-traceability",
@@ -69,6 +70,10 @@
     {
       "artifactId": "summary-feedback-hardening",
       "path": "ops/release/summary-feedback-hardening-evidence.json"
+    },
+    {
+      "artifactId": "operational-support-package",
+      "path": "ops/release/operational-support-package.json"
     },
     {
       "artifactId": "no-go-cleanup",

@@ -183,8 +183,19 @@
       "owner": "ops-owner",
       "status": "contract_ready",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:observability", "npm run check:drills", "npm run check:beta-launch-support"],
-      "requiredArtifacts": ["ops/observability/dashboards/mvp-health.json", "ops/observability/alerts/mvp-alerts.json", "docs/iterations/06-production-hardening/12-operational-runbook.md"],
+      "verificationCommands": [
+        "npm run check:observability",
+        "npm run check:drills",
+        "npm run check:operational-support-package",
+        "npm run check:beta-launch-support"
+      ],
+      "requiredArtifacts": [
+        "ops/observability/dashboards/mvp-health.json",
+        "ops/observability/alerts/mvp-alerts.json",
+        "ops/drills/mvp-staging-drills.json",
+        "ops/release/operational-support-package.json",
+        "docs/iterations/06-production-hardening/12-operational-runbook.md"
+      ],
       "exitCondition": "operator package covers DLQ, provider outage, rate-limit, summary cost spike and delivery failure triage"
     },
     {

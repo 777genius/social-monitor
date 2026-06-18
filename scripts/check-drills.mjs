@@ -5,7 +5,14 @@ const alertsPath = 'ops/observability/alerts/mvp-alerts.json';
 const drills = JSON.parse(readFileSync(drillsPath, 'utf8'));
 const alerts = JSON.parse(readFileSync(alertsPath, 'utf8'));
 const alertIds = new Set((alerts.alerts ?? []).map((alert) => alert.alertId));
-const requiredDrills = new Set(['provider-outage', 'provider-rate-limit', 'dlq-growth', 'summary-cost-spike', 'backup-restore']);
+const requiredDrills = new Set([
+  'provider-outage',
+  'provider-rate-limit',
+  'dlq-growth',
+  'summary-cost-spike',
+  'delivery-failure-spike',
+  'backup-restore',
+]);
 const allowedCommands = new Set([
   'npm run check:backup-restore',
   'npm run check:load-cost',

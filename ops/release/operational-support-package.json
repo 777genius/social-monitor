@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "packageId": "operational-support-package-backend-mvp-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "externalBetaStatus": "contract_ready_pending_staging_evidence",
+  "dashboardArtifact": "ops/observability/dashboards/mvp-health.json",
+  "alertArtifact": "ops/observability/alerts/mvp-alerts.json",
+  "drillArtifact": "ops/drills/mvp-staging-drills.json",
+  "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md",
+  "supportApiSmoke": "npm run check:beta-launch-support",
+  "requiredSupportEndpoints": [
+    "/beta/launch-support",
+    "/beta/launch-support/known-limitations",
+    "/beta/launch-support/post-mvp-backlog"
+  ],
+  "requiredTriageFlows": [
+    {
+      "flowId": "dlq-triage",
+      "owner": "ops-owner",
+      "alertId": "scan-dlq-growth",
+      "dashboardPanelId": "scan-dlq-backlog",
+      "drillId": "dlq-growth",
+      "runbookAnchor": "dlq-triage",
+      "firstMitigation": "classify_dead_letter_before_replay_or_suppression",
+      "safeDiagnosticFields": ["scan_id", "source_binding_id", "failure_class", "correlation_id"]
+    },
+    {
+      "flowId": "provider-outage",
+      "owner": "source-owner",
+      "alertId": "provider-unavailable-scan-failures",
+      "dashboardPanelId": "provider-unavailable-failures",
+      "drillId": "provider-outage",
+      "runbookAnchor": "provider-failure-triage",
+      "firstMitigation": "check_provider_health_before_replaying_scans",
+      "safeDiagnosticFields": ["provider_key", "source_binding_id", "failure_class", "correlation_id"]
+    },
+    {
+      "flowId": "provider-rate-limit",
+      "owner": "source-owner",
+      "alertId": "provider-rate-limit-scan-failures",
+      "dashboardPanelId": "provider-rate-limit-failures",
+      "drillId": "provider-rate-limit",
+      "runbookAnchor": "provider-failure-triage",
+      "firstMitigation": "reduce_scan_frequency_before_adding_workers",
+      "safeDiagnosticFields": ["provider_key", "source_binding_id", "failure_class", "correlation_id"]
+    },
+    {
+      "flowId": "summary-cost-spike",
+      "owner": "summary-owner",
+      "alertId": "summary-model-cost-spike",
+      "dashboardPanelId": "summary-model-cost",
+      "drillId": "summary-cost-spike",
+      "runbookAnchor": "summary-cost-triage",
+      "firstMitigation": "check_model_route_and_quota_before_retrying_summaries",
+      "safeDiagnosticFields": ["provider", "model", "tenant_id", "workspace_id", "correlation_id"]
+    },
+    {
+      "flowId": "delivery-failure-spike",
+      "owner": "delivery-owner",
+      "alertId": "webhook-delivery-failures",
+      "dashboardPanelId": "delivery-webhook-failures",
+      "drillId": "delivery-failure-spike",
+      "runbookAnchor": "delivery-failure-triage",
+      "firstMitigation": "check_webhook_endpoint_status_before_replaying_delivery_attempts",
+      "safeDiagnosticFields": ["attempt_id", "channel", "resource_type", "correlation_id"]
+    }
+  ],
+  "forbiddenDiagnosticFields": [
+    "authorization",
+    "body",
+    "credential",
+    "email",
+    "payload",
+    "prompt",
+    "raw_provider_payload",
+    "raw_text",
+    "source_url",
+    "token",
+    "url",
+    "webhook_secret"
+  ],
+  "externalBetaExitCriteria": [
+    "Support can use dashboards, alerts and runbook anchors without raw provider payloads or secrets.",
+    "DLQ, provider outage, rate-limit, summary cost spike and delivery failure spike flows have alerts, panels, drills and first mitigations.",
+    "Support API exposes known limitations and post-MVP backlog without frontend implementation."
+  ]
+}

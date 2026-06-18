@@ -117,6 +117,7 @@
         "check:retention",
         "check:retention-plan",
         "check:drills",
+        "check:operational-support-package",
         "check:staging-reliability-evidence"
       ],
       "releaseGateIds": [
@@ -125,6 +126,7 @@
         "retention-contract",
         "retention-plan",
         "staging-drills",
+        "operational-support-package",
         "staging-reliability-evidence"
       ],
       "artifacts": [
@@ -133,6 +135,7 @@
         "ops/recovery/backup-restore-contract.json",
         "ops/privacy/retention-contract.json",
         "ops/drills/mvp-staging-drills.json",
+        "ops/release/operational-support-package.json",
         "ops/drills/staging-reliability-evidence.json"
       ]
     },

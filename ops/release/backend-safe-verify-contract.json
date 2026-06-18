@@ -40,6 +40,7 @@
     "check:no-go-cleanup",
     "check:release-artifact-evidence",
     "check:observability",
+    "check:operational-support-package",
     "check:api-health",
     "check:openapi",
     "check:events",

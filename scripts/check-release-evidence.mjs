@@ -31,6 +31,7 @@ const requiredGateIds = new Set([
   'no-go-cleanup',
   'release-artifact-evidence',
   'observability-contract',
+  'operational-support-package',
   'api-health-smoke',
   'openapi-drift',
   'event-contracts',
