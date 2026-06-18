@@ -41,6 +41,14 @@ export type AuthorizeApiKeyRequestParams = {
   readonly operation: string;
 };
 
+export type AuthorizeUserWorkspaceRequestParams = {
+  readonly authorizationHeader: string | undefined;
+  readonly tenantId: TenantId;
+  readonly workspaceId: WorkspaceId;
+  readonly operation: string;
+  readonly requiredScope?: ApiKeyScope;
+};
+
 @Injectable()
 export class ApiKeyRequestAuthorizer {
   constructor(
@@ -131,8 +139,21 @@ export class ApiKeyRequestAuthorizer {
     };
   }
 
+  async authorizeUser(params: AuthorizeUserWorkspaceRequestParams): Promise<UserRequestAuthorization> {
+    const bearerToken = parseBearerToken(params.authorizationHeader);
+
+    if (bearerToken.startsWith('smk_')) {
+      throw new DomainError('authorization.denied', 'Bearer JWT authorization is required');
+    }
+
+    return this.authorizeUserAccessTokenRequest({
+      ...params,
+      bearerToken,
+    });
+  }
+
   private async authorizeUserAccessTokenRequest(
-    params: AuthorizeApiKeyRequestParams & { readonly bearerToken: string },
+    params: AuthorizeUserWorkspaceRequestParams & { readonly bearerToken: string },
   ): Promise<UserRequestAuthorization> {
     const principal = await this.userAccessTokenVerifier.verify(params.bearerToken);
 
@@ -269,7 +290,7 @@ export class ApiKeyRequestAuthorizer {
     readonly tenantId: TenantId;
     readonly workspaceId: WorkspaceId;
     readonly operation: string;
-    readonly requiredScope: ApiKeyScope;
+    readonly requiredScope?: ApiKeyScope;
     readonly outcome: 'succeeded' | 'denied';
     readonly reasonCode?: string;
     readonly membershipRoles?: readonly WorkspaceRole[];
@@ -365,7 +386,14 @@ const fallbackWorkspaceActionByScope: Record<ApiKeyScope, WorkspaceAction> = {
   'write:webhook_endpoints': 'webhook_endpoints.create',
 };
 
-const resolveWorkspaceAction = (operation: string, requiredScope: ApiKeyScope): WorkspaceAction =>
-  workspaceActions.has(operation as WorkspaceAction)
-    ? operation as WorkspaceAction
-    : fallbackWorkspaceActionByScope[requiredScope];
+const resolveWorkspaceAction = (operation: string, requiredScope: ApiKeyScope | undefined): WorkspaceAction => {
+  if (workspaceActions.has(operation as WorkspaceAction)) {
+    return operation as WorkspaceAction;
+  }
+
+  if (requiredScope === undefined) {
+    throw new DomainError('authorization.denied', 'Workspace action is not recognized');
+  }
+
+  return fallbackWorkspaceActionByScope[requiredScope];
+};

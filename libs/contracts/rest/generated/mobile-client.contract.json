@@ -62,15 +62,15 @@
     "additionalJsonProperties": "ignore_for_strong_models_preserve_in_raw_payload_when_available"
   },
   "operationCount": 48,
-  "mobileReadyOperationCount": 43,
+  "mobileReadyOperationCount": 46,
   "devOnlyWorkspaceRoleOperations": [
-    "ApiKeysController_create",
-    "ApiKeysController_list",
-    "ApiKeysController_revoke",
     "PublicApiAuditEventsController_list",
     "ScanDeadLetterController_list"
   ],
   "mobileReadyOperations": [
+    "ApiKeysController_create",
+    "ApiKeysController_list",
+    "ApiKeysController_revoke",
     "BetaLaunchSupportController_getSnapshot",
     "BetaLaunchSupportController_listKnownLimitations",
     "BetaLaunchSupportController_listPostMvpBacklog",
@@ -666,14 +666,16 @@
       "queryParameters": [],
       "requiredHeaders": [
         "x-tenant-id",
-        "x-workspace-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
         "x-workspace-role"
       ],
-      "optionalHeaders": [],
       "requiresTenantWorkspace": true,
-      "supportsBearerApiKey": false,
+      "supportsBearerApiKey": true,
       "usesDevOnlyWorkspaceRoleHeader": true,
-      "devOnlyWorkspaceRoleRequired": true,
+      "devOnlyWorkspaceRoleRequired": false,
       "requestBodySchemaRef": null,
       "successResponseSchemaRefs": []
     },
@@ -690,14 +692,16 @@
       "queryParameters": [],
       "requiredHeaders": [
         "x-tenant-id",
-        "x-workspace-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
         "x-workspace-role"
       ],
-      "optionalHeaders": [],
       "requiresTenantWorkspace": true,
-      "supportsBearerApiKey": false,
+      "supportsBearerApiKey": true,
       "usesDevOnlyWorkspaceRoleHeader": true,
-      "devOnlyWorkspaceRoleRequired": true,
+      "devOnlyWorkspaceRoleRequired": false,
       "requestBodySchemaRef": "#/components/schemas/CreateApiKeyRequestDto",
       "successResponseSchemaRefs": []
     },
@@ -716,14 +720,16 @@
       "queryParameters": [],
       "requiredHeaders": [
         "x-tenant-id",
-        "x-workspace-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
         "x-workspace-role"
       ],
-      "optionalHeaders": [],
       "requiresTenantWorkspace": true,
-      "supportsBearerApiKey": false,
+      "supportsBearerApiKey": true,
       "usesDevOnlyWorkspaceRoleHeader": true,
-      "devOnlyWorkspaceRoleRequired": true,
+      "devOnlyWorkspaceRoleRequired": false,
       "requestBodySchemaRef": null,
       "successResponseSchemaRefs": []
     },

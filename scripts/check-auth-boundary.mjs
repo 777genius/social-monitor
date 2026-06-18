@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 const policySource = readFileSync('libs/identity/ports/workspace-authorization-policy.port.ts', 'utf8');
 const identityProviderTokens = readFileSync('libs/identity/interfaces/rest/identity-provider-tokens.ts', 'utf8');
 const requestAuthorizer = readFileSync('libs/identity/interfaces/rest/api-key-request-authorizer.ts', 'utf8');
+const apiKeysController = readFileSync('libs/identity/interfaces/rest/api-keys.controller.ts', 'utf8');
 const userTokenVerifier = readFileSync('libs/identity/adapters/authorization/jwks-user-access-token.verifier.ts', 'utf8');
 const membershipPort = readFileSync('libs/identity/ports/user-workspace-membership-verifier.port.ts', 'utf8');
 const membershipPrisma = readFileSync('libs/identity/adapters/persistence/prisma/prisma-user-workspace-membership.verifier.ts', 'utf8');
@@ -69,11 +70,25 @@ for (const marker of [
   'oidc_jwt',
   "actorType: 'user'",
   "startsWith('smk_')",
+  'authorizeUser',
+  'Bearer JWT authorization is required',
   'Bearer JWT workspace membership is missing',
   'membershipSource',
 ]) {
   if (!requestAuthorizer.includes(marker)) {
     violations.push(`api request authorizer missing JWT boundary marker "${marker}"`);
+  }
+}
+
+for (const marker of [
+  'authorizationHeader',
+  'hasBearerAuthorizationHeader',
+  'authorizeUser',
+  "operation: action",
+  "actorType: authorization.actorType",
+]) {
+  if (!apiKeysController.includes(marker)) {
+    violations.push(`api key management controller missing user JWT marker "${marker}"`);
   }
 }
 
@@ -120,6 +135,10 @@ if (!String(packageJson.scripts?.verify ?? '').includes('check:auth-boundary')) 
 
 if (!String(packageJson.scripts?.['check:user-auth-boundary'] ?? '').includes('user-jwt-auth-boundary.e2e-spec.ts')) {
   violations.push('package.json missing check:user-auth-boundary JWT e2e guard');
+}
+
+if (!String(packageJson.scripts?.['check:user-auth-boundary'] ?? '').includes('api-keys.user-jwt-management.e2e-spec.ts')) {
+  violations.push('package.json missing check:user-auth-boundary API key user JWT e2e guard');
 }
 
 if (!String(packageJson.scripts?.verify ?? '').includes('check:user-auth-boundary')) {

@@ -1114,10 +1114,19 @@
         "operationId": "ApiKeysController_list",
         "parameters": [
           {
-            "description": "Comma-separated workspace roles. API key listing requires owner or admin.",
+            "description": "Local-dev fallback only. API key listing requires owner or admin.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bearer OIDC JWT for production API key management.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1153,10 +1162,19 @@
         "operationId": "ApiKeysController_create",
         "parameters": [
           {
-            "description": "Comma-separated workspace roles. API key management requires owner or admin.",
+            "description": "Local-dev fallback only. API key management requires owner or admin.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bearer OIDC JWT for production API key management.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1212,10 +1230,19 @@
             }
           },
           {
-            "description": "Comma-separated workspace roles. API key revocation requires owner or admin.",
+            "description": "Local-dev fallback only. API key revocation requires owner or admin.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bearer OIDC JWT for production API key management.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
             "schema": {
               "type": "string"
             }

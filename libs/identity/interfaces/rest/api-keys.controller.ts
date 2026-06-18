@@ -3,7 +3,7 @@ import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { parsePaginationLimit } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
-import type { PublicApiAuditMetadataValue, PublicApiAuditOutcome } from '@social-monitor/usage/ports';
+import type { PublicApiAuditActorType, PublicApiAuditMetadataValue, PublicApiAuditOutcome } from '@social-monitor/usage/ports';
 
 import { CreateApiKeyUseCase } from '../../features/create-api-key/create-api-key.use-case';
 import { ListApiKeysUseCase } from '../../features/list-api-keys/list-api-keys.use-case';
@@ -20,6 +20,11 @@ import {
   type ListApiKeysResponseDto,
   type RevokeApiKeyResponseDto,
 } from './api-keys.dto';
+import {
+  ApiKeyRequestAuthorizer,
+  hasBearerAuthorizationHeader,
+  type UserRequestAuthorization,
+} from './api-key-request-authorizer';
 
 @ApiTags('api-keys')
 @Controller('identity/api-keys')
@@ -28,6 +33,7 @@ export class ApiKeysController {
     private readonly createApiKey: CreateApiKeyUseCase,
     private readonly listApiKeys: ListApiKeysUseCase,
     private readonly revokeApiKey: RevokeApiKeyUseCase,
+    private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
@@ -38,18 +44,25 @@ export class ApiKeysController {
   @ApiOperation({ summary: 'Create tenant/workspace API key and return the raw secret once.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. API key management requires owner or admin.' })
+  @ApiHeader({ name: 'authorization', required: false, description: 'Bearer OIDC JWT for production API key management.' })
+  @ApiHeader({ name: 'x-workspace-role', required: false, description: 'Local-dev fallback only. API key management requires owner or admin.' })
   async create(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Body() body: CreateApiKeyRequestDto,
   ): Promise<CreateApiKeyResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    this.ensureWorkspaceRole(scope, workspaceRoleHeader, 'api_keys.create');
+    const authorization = await this.authorizeApiKeyManagement(
+      scope,
+      workspaceRoleHeader,
+      authorizationHeader,
+      'api_keys.create',
+    );
     const result = await this.createApiKey.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
@@ -64,6 +77,8 @@ export class ApiKeysController {
     await this.recordApiKeyAuditEvent({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
+      actorType: authorization.actorType,
+      actorId: authorization.actorId,
       action: 'api_key.created',
       outcome: 'succeeded',
       resourceId: result.value.apiKey.id,
@@ -81,11 +96,13 @@ export class ApiKeysController {
   @ApiOperation({ summary: 'List tenant/workspace API keys without exposing raw secrets or hashes.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. API key listing requires owner or admin.' })
+  @ApiHeader({ name: 'authorization', required: false, description: 'Bearer OIDC JWT for production API key management.' })
+  @ApiHeader({ name: 'x-workspace-role', required: false, description: 'Local-dev fallback only. API key listing requires owner or admin.' })
   async list(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
   ): Promise<ListApiKeysResponseDto> {
@@ -93,7 +110,12 @@ export class ApiKeysController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    this.ensureWorkspaceRole(scope, workspaceRoleHeader, 'api_keys.list');
+    const authorization = await this.authorizeApiKeyManagement(
+      scope,
+      workspaceRoleHeader,
+      authorizationHeader,
+      'api_keys.list',
+    );
     const result = await this.listApiKeys.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
@@ -111,6 +133,8 @@ export class ApiKeysController {
     await this.recordApiKeyAuditEvent({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
+      actorType: authorization.actorType,
+      actorId: authorization.actorId,
       action: 'api_key.listed',
       outcome: 'succeeded',
       metadata: {
@@ -126,18 +150,25 @@ export class ApiKeysController {
   @ApiOperation({ summary: 'Revoke a tenant/workspace API key.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({ name: 'x-workspace-role', required: true, description: 'Comma-separated workspace roles. API key revocation requires owner or admin.' })
+  @ApiHeader({ name: 'authorization', required: false, description: 'Bearer OIDC JWT for production API key management.' })
+  @ApiHeader({ name: 'x-workspace-role', required: false, description: 'Local-dev fallback only. API key revocation requires owner or admin.' })
   async revoke(
     @Param('apiKeyId') apiKeyId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
   ): Promise<RevokeApiKeyResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    this.ensureWorkspaceRole(scope, workspaceRoleHeader, 'api_keys.revoke');
+    const authorization = await this.authorizeApiKeyManagement(
+      scope,
+      workspaceRoleHeader,
+      authorizationHeader,
+      'api_keys.revoke',
+    );
     const result = await this.revokeApiKey.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
@@ -151,6 +182,8 @@ export class ApiKeysController {
     await this.recordApiKeyAuditEvent({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
+      actorType: authorization.actorType,
+      actorId: authorization.actorId,
       action: 'api_key.revoked',
       outcome: 'succeeded',
       resourceId: result.value.id,
@@ -166,6 +199,8 @@ export class ApiKeysController {
   private async recordApiKeyAuditEvent(params: {
     readonly tenantId: TenantId;
     readonly workspaceId: WorkspaceId;
+    readonly actorType: PublicApiAuditActorType;
+    readonly actorId: string;
     readonly action: string;
     readonly outcome: PublicApiAuditOutcome;
     readonly resourceId?: string;
@@ -174,8 +209,8 @@ export class ApiKeysController {
     const result = await this.recordPublicApiAuditEvent.execute({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
-      actorType: 'system',
-      actorId: 'identity.api-keys',
+      actorType: params.actorType,
+      actorId: params.actorId,
       action: params.action,
       outcome: params.outcome,
       resourceType: 'api_key',
@@ -188,11 +223,21 @@ export class ApiKeysController {
     }
   }
 
-  private ensureWorkspaceRole(
+  private async authorizeApiKeyManagement(
     scope: { readonly tenantId: TenantId; readonly workspaceId: WorkspaceId },
     workspaceRoleHeader: string | undefined,
+    authorizationHeader: string | undefined,
     action: WorkspaceAction,
-  ): void {
+  ): Promise<UserRequestAuthorization | { readonly actorType: 'system'; readonly actorId: 'identity.api-keys' }> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      return this.apiKeyRequestAuthorizer.authorizeUser({
+        authorizationHeader,
+        tenantId: scope.tenantId,
+        workspaceId: scope.workspaceId,
+        operation: action,
+      });
+    }
+
     const result = this.workspaceAuthorization.authorize({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
@@ -203,5 +248,10 @@ export class ApiKeysController {
     if (!result.ok) {
       throw result.error;
     }
+
+    return {
+      actorType: 'system',
+      actorId: 'identity.api-keys',
+    };
   }
 }

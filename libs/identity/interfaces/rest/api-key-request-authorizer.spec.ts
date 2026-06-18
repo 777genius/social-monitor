@@ -200,6 +200,40 @@ describe('ApiKeyRequestAuthorizer', () => {
     });
     expect(dependencies.checkPublicApiRateLimit.execute).not.toHaveBeenCalled();
   });
+
+  it('authorizes user-only workspace actions without accepting smk API keys', async () => {
+    const dependencies = createDependencies();
+    const authorizer = createAuthorizer(dependencies);
+
+    const result = await authorizer.authorizeUser({
+      authorizationHeader: 'Bearer jwt.header.signature',
+      tenantId: tenant,
+      workspaceId: workspace,
+      operation: 'api_keys.create',
+    });
+
+    expect(result).toEqual({
+      actorType: 'user',
+      actorId: 'user-1',
+      userId: 'user-1',
+    });
+    expect(dependencies.workspaceAuthorization.authorize).toHaveBeenCalledWith({
+      tenantId: tenant,
+      workspaceId: workspace,
+      action: 'api_keys.create',
+      roles: ['admin'],
+    });
+
+    await expect(authorizer.authorizeUser({
+      authorizationHeader: 'Bearer smk_test-secret',
+      tenantId: tenant,
+      workspaceId: workspace,
+      operation: 'api_keys.create',
+    })).rejects.toMatchObject<Partial<DomainError>>({
+      code: 'authorization.denied',
+      message: 'Bearer JWT authorization is required',
+    });
+  });
 });
 
 type Dependencies = {

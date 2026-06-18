@@ -601,14 +601,16 @@ export const mobileApiOperations = [
     "queryParameters": [],
     "requiredHeaders": [
       "x-tenant-id",
-      "x-workspace-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
       "x-workspace-role"
     ],
-    "optionalHeaders": [],
     "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": false,
+    "supportsBearerApiKey": true,
     "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": true,
+    "devOnlyWorkspaceRoleRequired": false,
     "requestBodySchemaRef": null,
     "successResponseSchemaRefs": []
   },
@@ -625,14 +627,16 @@ export const mobileApiOperations = [
     "queryParameters": [],
     "requiredHeaders": [
       "x-tenant-id",
-      "x-workspace-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
       "x-workspace-role"
     ],
-    "optionalHeaders": [],
     "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": false,
+    "supportsBearerApiKey": true,
     "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": true,
+    "devOnlyWorkspaceRoleRequired": false,
     "requestBodySchemaRef": "#/components/schemas/CreateApiKeyRequestDto",
     "successResponseSchemaRefs": []
   },
@@ -651,14 +655,16 @@ export const mobileApiOperations = [
     "queryParameters": [],
     "requiredHeaders": [
       "x-tenant-id",
-      "x-workspace-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
       "x-workspace-role"
     ],
-    "optionalHeaders": [],
     "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": false,
+    "supportsBearerApiKey": true,
     "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": true,
+    "devOnlyWorkspaceRoleRequired": false,
     "requestBodySchemaRef": null,
     "successResponseSchemaRefs": []
   },
