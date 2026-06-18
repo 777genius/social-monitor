@@ -1,0 +1,260 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "staging-reliability-evidence-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "externalBetaStatus": "hold_until_real_staging_drill_output",
+  "goRequiresAllSignalsPassed": true,
+  "stagingEvidenceArtifacts": [
+    {
+      "artifactId": "rabbitmq-staging-drill-output",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "path": null,
+      "sha256": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "operator": null,
+      "startedAt": null,
+      "completedAt": null,
+      "exitCondition": "Attach real RabbitMQ staging drill output for the promoted backend image."
+    },
+    {
+      "artifactId": "postgres-restore-drill-output",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "path": null,
+      "sha256": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "operator": null,
+      "startedAt": null,
+      "completedAt": null,
+      "exitCondition": "Attach real Postgres staging backup, restore and migration drill output for the promoted backend image."
+    },
+    {
+      "artifactId": "durable-backend-e2e-output",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "path": null,
+      "sha256": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "operator": null,
+      "startedAt": null,
+      "completedAt": null,
+      "exitCondition": "Attach real durable backend E2E loop output for the promoted backend image."
+    }
+  ],
+  "requiredSignals": [
+    {
+      "signalId": "rabbitmq-publisher-confirms",
+      "domain": "rabbitmq",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:rabbitmq-queue-publisher",
+      "contractArtifact": "scripts/check-rabbitmq-queue-publisher-smoke.ts",
+      "stagingArtifactId": "rabbitmq-staging-drill-output",
+      "requiredSignal": "publisher confirms acknowledge durable command publish on the promoted backend image",
+      "exitCondition": "staging artifact records broker URL redacted, queue name, message id, confirm ack timestamp and image digest"
+    },
+    {
+      "signalId": "rabbitmq-persistent-publish",
+      "domain": "rabbitmq",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:rabbitmq-queue-publisher",
+      "contractArtifact": "scripts/check-rabbitmq-queue-publisher-smoke.ts",
+      "stagingArtifactId": "rabbitmq-staging-drill-output",
+      "requiredSignal": "published queue commands are persistent and survive broker or worker restart",
+      "exitCondition": "staging artifact records deliveryMode/persistent flag, restart step and recovered message id"
+    },
+    {
+      "signalId": "rabbitmq-consumer-ack",
+      "domain": "rabbitmq",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:scan-queue-drain-loop",
+      "contractArtifact": "scripts/check-scan-queue-drain-loop-smoke.ts",
+      "stagingArtifactId": "rabbitmq-staging-drill-output",
+      "requiredSignal": "worker ack removes successful scan command from RabbitMQ without duplicate durable side effects",
+      "exitCondition": "staging artifact records acked message id and matching scan attempt id"
+    },
+    {
+      "signalId": "rabbitmq-consumer-nack-retry",
+      "domain": "rabbitmq",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:summary-queue-drain-loop",
+      "contractArtifact": "scripts/check-summary-queue-drain-loop-smoke.ts",
+      "stagingArtifactId": "rabbitmq-staging-drill-output",
+      "requiredSignal": "worker nack/requeue path retries transient summary command without losing correlation metadata",
+      "exitCondition": "staging artifact records nack, redelivery count and eventual ack or controlled terminal failure"
+    },
+    {
+      "signalId": "rabbitmq-poison-message-dlx",
+      "domain": "rabbitmq",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:delivery-attempt-queue-drain-loop",
+      "contractArtifact": "scripts/check-delivery-attempt-queue-drain-loop-smoke.ts",
+      "stagingArtifactId": "rabbitmq-staging-drill-output",
+      "requiredSignal": "poison delivery command reaches the configured DLX instead of looping forever",
+      "exitCondition": "staging artifact records DLX exchange, dead-letter routing key and delivery attempt id"
+    },
+    {
+      "signalId": "rabbitmq-quorum-delivery-limit",
+      "domain": "rabbitmq",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:rabbitmq-queue-publisher",
+      "contractArtifact": "docker-compose.yml",
+      "stagingArtifactId": "rabbitmq-staging-drill-output",
+      "requiredSignal": "quorum queue delivery limit is active for beta command queues",
+      "exitCondition": "staging artifact records queue arguments x-queue-type=quorum and x-delivery-limit=20"
+    },
+    {
+      "signalId": "rabbitmq-worker-restart-recovery",
+      "domain": "rabbitmq",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:scan-queue-drain-loop",
+      "contractArtifact": "scripts/check-scan-queue-drain-loop-smoke.ts",
+      "stagingArtifactId": "rabbitmq-staging-drill-output",
+      "requiredSignal": "worker restart recovers unacked work without duplicate scan/feed/summary/delivery effects",
+      "exitCondition": "staging artifact records restart window, recovered message id and idempotent durable result"
+    },
+    {
+      "signalId": "rabbitmq-queue-lag-metrics",
+      "domain": "rabbitmq",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:observability",
+      "contractArtifact": "ops/observability/alerts/mvp-alerts.json",
+      "stagingArtifactId": "rabbitmq-staging-drill-output",
+      "requiredSignal": "queue lag metrics emit for scan, summary and delivery workers on RabbitMQ",
+      "exitCondition": "staging artifact records metric names, worker labels and lag sample values without payload data"
+    },
+    {
+      "signalId": "rabbitmq-event-relay-retry",
+      "domain": "rabbitmq",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:event-relay",
+      "contractArtifact": "scripts/check-event-relay-smoke.ts",
+      "stagingArtifactId": "rabbitmq-staging-drill-output",
+      "requiredSignal": "event relay retries transient delivery failure and preserves outbox idempotency",
+      "exitCondition": "staging artifact records relay retry count, outbox event id and final delivery result"
+    },
+    {
+      "signalId": "postgres-backup-created",
+      "domain": "postgres",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:backup-restore",
+      "contractArtifact": "ops/recovery/backup-restore-contract.json",
+      "stagingArtifactId": "postgres-restore-drill-output",
+      "requiredSignal": "staging backup includes all Prisma mapped tables and operational state tables",
+      "exitCondition": "staging artifact records backup id, schema version and included table count"
+    },
+    {
+      "signalId": "postgres-restore-rpo-rto",
+      "domain": "postgres",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:backup-restore",
+      "contractArtifact": "ops/recovery/backup-restore-contract.json",
+      "stagingArtifactId": "postgres-restore-drill-output",
+      "requiredSignal": "restore completes inside RPO/RTO envelope",
+      "exitCondition": "staging artifact records restore start/end timestamps, RPO minutes and RTO minutes"
+    },
+    {
+      "signalId": "postgres-migration-version",
+      "domain": "postgres",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:migrations",
+      "contractArtifact": "prisma/schema.prisma",
+      "stagingArtifactId": "postgres-restore-drill-output",
+      "requiredSignal": "restored database migration state matches release commit schema",
+      "exitCondition": "staging artifact records applied migration identifiers and release commit SHA"
+    },
+    {
+      "signalId": "postgres-validation-queries",
+      "domain": "postgres",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:backup-restore",
+      "contractArtifact": "ops/recovery/backup-restore-contract.json",
+      "stagingArtifactId": "postgres-restore-drill-output",
+      "requiredSignal": "restore validation queries pass for tenants, workspaces, jobs, delivery, audit and quota tables",
+      "exitCondition": "staging artifact records redacted query names and counts, not raw user/provider payloads"
+    },
+    {
+      "signalId": "postgres-outbox-inbox-idempotency",
+      "domain": "postgres",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:persistence-readiness",
+      "contractArtifact": "ops/release/persistence-readiness-contract.json",
+      "stagingArtifactId": "postgres-restore-drill-output",
+      "requiredSignal": "outbox, inbox and idempotency state survives restore",
+      "exitCondition": "staging artifact records outbox/inbox/idempotency counts before and after restore"
+    },
+    {
+      "signalId": "postgres-worker-pause-resume",
+      "domain": "postgres",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:tenant-db-guards",
+      "contractArtifact": "scripts/check-tenant-db-guards.mjs",
+      "stagingArtifactId": "postgres-restore-drill-output",
+      "requiredSignal": "workers stay paused during restore validation and resume only after validation passes",
+      "exitCondition": "staging artifact records pause command, resume command and no work accepted during validation"
+    },
+    {
+      "signalId": "postgres-no-duplicate-side-effects",
+      "domain": "postgres",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:mvp-core-loop",
+      "contractArtifact": "scripts/check-mvp-core-loop-smoke.ts",
+      "stagingArtifactId": "postgres-restore-drill-output",
+      "requiredSignal": "restored runtime resumes without duplicate scan, feed, summary or delivery effects",
+      "exitCondition": "staging artifact records idempotency key reuse and stable counts after worker resume"
+    },
+    {
+      "signalId": "backend-loop-topic-to-delivery-audit",
+      "domain": "durable-backend-e2e",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:mvp-core-loop",
+      "contractArtifact": "scripts/check-mvp-core-loop-smoke.ts",
+      "stagingArtifactId": "durable-backend-e2e-output",
+      "requiredSignal": "create topic to source binding to scheduled scan to feed to summary to feedback to digest/webhook/realtime to audit passes on durable runtime",
+      "exitCondition": "staging artifact records redacted object ids for every backend step and no raw provider payloads"
+    },
+    {
+      "signalId": "backend-loop-tenant-isolation",
+      "domain": "durable-backend-e2e",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:e2e-traceability",
+      "contractArtifact": "ops/release/e2e-acceptance-traceability.json",
+      "stagingArtifactId": "durable-backend-e2e-output",
+      "requiredSignal": "wrong tenant and wrong workspace cannot observe scan, feed, summary, delivery or audit data during durable loop",
+      "exitCondition": "staging artifact records negative access checks and expected 403 or empty result outcomes"
+    },
+    {
+      "signalId": "backend-loop-idempotency",
+      "domain": "durable-backend-e2e",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:write-idempotency",
+      "contractArtifact": "scripts/check-write-idempotency-smoke.ts",
+      "stagingArtifactId": "durable-backend-e2e-output",
+      "requiredSignal": "retrying topic, scan, summary and delivery writes through the durable loop does not duplicate side effects",
+      "exitCondition": "staging artifact records idempotency keys, response ids and stable durable counts"
+    }
+  ]
+}

@@ -13,6 +13,7 @@
     "check:user-auth-boundary",
     "check:production-auth-matrix",
     "check:credential-secret-runtime-flow",
+    "check:staging-reliability-evidence",
     "check:backend-ops-readiness",
     "check:release",
     "check:e2e-traceability",
@@ -48,6 +49,10 @@
     {
       "artifactId": "credential-secret-runtime-flow",
       "path": "ops/security/credential-secret-runtime-flow.json"
+    },
+    {
+      "artifactId": "staging-reliability-evidence",
+      "path": "ops/drills/staging-reliability-evidence.json"
     }
   ]
 }

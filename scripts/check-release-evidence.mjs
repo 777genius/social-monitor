@@ -97,6 +97,7 @@ const requiredGateIds = new Set([
   'retention-contract',
   'retention-plan',
   'staging-drills',
+  'staging-reliability-evidence',
 ]);
 const requiredSmokeIds = new Set([
   'api-health',

@@ -63,7 +63,8 @@
         "check:summary-persistence",
         "check:identity-persistence",
         "check:usage-persistence",
-        "check:delivery-persistence"
+        "check:delivery-persistence",
+        "check:staging-reliability-evidence"
       ],
       "releaseGateIds": [
         "migration-safety",
@@ -75,9 +76,15 @@
         "summary-prisma-persistence",
         "identity-prisma-persistence",
         "usage-prisma-persistence",
-        "delivery-prisma-persistence"
+        "delivery-prisma-persistence",
+        "staging-reliability-evidence"
       ],
-      "artifacts": ["prisma/schema.prisma", "ops/recovery/backup-restore-contract.json", "ops/privacy/retention-contract.json"]
+      "artifacts": [
+        "prisma/schema.prisma",
+        "ops/recovery/backup-restore-contract.json",
+        "ops/privacy/retention-contract.json",
+        "ops/drills/staging-reliability-evidence.json"
+      ]
     },
     {
       "domainId": "rabbitmq-reliability",
@@ -86,27 +93,44 @@
         "check:scan-queue-drain-loop",
         "check:summary-queue-drain-loop",
         "check:delivery-attempt-queue-drain-loop",
-        "check:event-relay"
+        "check:event-relay",
+        "check:staging-reliability-evidence"
       ],
       "releaseGateIds": [
         "rabbitmq-queue-publisher",
         "scan-queue-drain-loop",
         "summary-queue-drain-loop",
         "delivery-attempt-queue-drain-loop",
-        "event-relay"
+        "event-relay",
+        "staging-reliability-evidence"
       ],
-      "artifacts": ["docker-compose.yml"]
+      "artifacts": ["docker-compose.yml", "ops/drills/staging-reliability-evidence.json"]
     },
     {
       "domainId": "observability-and-drills",
-      "gates": ["check:observability", "check:backup-restore", "check:retention", "check:retention-plan", "check:drills"],
-      "releaseGateIds": ["observability-contract", "backup-restore-contract", "retention-contract", "retention-plan", "staging-drills"],
+      "gates": [
+        "check:observability",
+        "check:backup-restore",
+        "check:retention",
+        "check:retention-plan",
+        "check:drills",
+        "check:staging-reliability-evidence"
+      ],
+      "releaseGateIds": [
+        "observability-contract",
+        "backup-restore-contract",
+        "retention-contract",
+        "retention-plan",
+        "staging-drills",
+        "staging-reliability-evidence"
+      ],
       "artifacts": [
         "ops/observability/dashboards/mvp-health.json",
         "ops/observability/alerts/mvp-alerts.json",
         "ops/recovery/backup-restore-contract.json",
         "ops/privacy/retention-contract.json",
-        "ops/drills/mvp-staging-drills.json"
+        "ops/drills/mvp-staging-drills.json",
+        "ops/drills/staging-reliability-evidence.json"
       ]
     },
     {
@@ -121,9 +145,25 @@
     },
     {
       "domainId": "mvp-loop",
-      "gates": ["check:mvp-core-loop", "check:openapi", "check:events", "check:usage-audit-rest"],
-      "releaseGateIds": ["mvp-core-loop", "openapi-drift", "event-contracts", "usage-audit-rest"],
-      "artifacts": ["libs/contracts/rest/openapi.snapshot.json", "libs/contracts/events/event-catalog.json"]
+      "gates": [
+        "check:mvp-core-loop",
+        "check:openapi",
+        "check:events",
+        "check:usage-audit-rest",
+        "check:staging-reliability-evidence"
+      ],
+      "releaseGateIds": [
+        "mvp-core-loop",
+        "openapi-drift",
+        "event-contracts",
+        "usage-audit-rest",
+        "staging-reliability-evidence"
+      ],
+      "artifacts": [
+        "libs/contracts/rest/openapi.snapshot.json",
+        "libs/contracts/events/event-catalog.json",
+        "ops/drills/staging-reliability-evidence.json"
+      ]
     },
     {
       "domainId": "external-beta-evidence",

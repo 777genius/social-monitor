@@ -438,6 +438,11 @@
       "gateId": "staging-drills",
       "command": "npm run check:drills",
       "blocksRelease": true
+    },
+    {
+      "gateId": "staging-reliability-evidence",
+      "command": "npm run check:staging-reliability-evidence",
+      "blocksRelease": true
     }
   ],
   "deploySmokeChecks": [

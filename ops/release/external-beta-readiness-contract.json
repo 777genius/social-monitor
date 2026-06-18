@@ -95,8 +95,20 @@
       "owner": "ops-owner",
       "status": "pending_staging_evidence",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:rabbitmq-queue-publisher", "npm run check:scan-queue-drain-loop", "npm run check:summary-queue-drain-loop", "npm run check:delivery-attempt-queue-drain-loop", "npm run check:event-relay"],
-      "requiredArtifacts": ["ops/drills/mvp-staging-drills.json", "ops/observability/dashboards/mvp-health.json", "ops/observability/alerts/mvp-alerts.json"],
+      "verificationCommands": [
+        "npm run check:rabbitmq-queue-publisher",
+        "npm run check:scan-queue-drain-loop",
+        "npm run check:summary-queue-drain-loop",
+        "npm run check:delivery-attempt-queue-drain-loop",
+        "npm run check:event-relay",
+        "npm run check:staging-reliability-evidence"
+      ],
+      "requiredArtifacts": [
+        "ops/drills/mvp-staging-drills.json",
+        "ops/drills/staging-reliability-evidence.json",
+        "ops/observability/dashboards/mvp-health.json",
+        "ops/observability/alerts/mvp-alerts.json"
+      ],
       "exitCondition": "real RabbitMQ staging drill proves confirms, persistent publish, ack/nack, DLX, quorum delivery limit, worker restart, lag metrics and event relay retry"
     },
     {
@@ -104,8 +116,18 @@
       "owner": "ops-owner",
       "status": "pending_staging_evidence",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:migrations", "npm run check:backup-restore", "npm run check:persistence-readiness", "npm run check:tenant-db-guards"],
-      "requiredArtifacts": ["ops/recovery/backup-restore-contract.json", "prisma/schema.prisma"],
+      "verificationCommands": [
+        "npm run check:migrations",
+        "npm run check:backup-restore",
+        "npm run check:persistence-readiness",
+        "npm run check:tenant-db-guards",
+        "npm run check:staging-reliability-evidence"
+      ],
+      "requiredArtifacts": [
+        "ops/recovery/backup-restore-contract.json",
+        "ops/drills/staging-reliability-evidence.json",
+        "prisma/schema.prisma"
+      ],
       "exitCondition": "staging restore validates RPO/RTO queries, outbox/inbox/idempotency state and rollback path"
     },
     {
@@ -113,8 +135,17 @@
       "owner": "backend-lead",
       "status": "pending_staging_evidence",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:mvp-core-loop", "npm run check:openapi", "npm run check:e2e-traceability"],
-      "requiredArtifacts": ["libs/contracts/rest/openapi.snapshot.json", "ops/release/e2e-acceptance-traceability.json"],
+      "verificationCommands": [
+        "npm run check:mvp-core-loop",
+        "npm run check:openapi",
+        "npm run check:e2e-traceability",
+        "npm run check:staging-reliability-evidence"
+      ],
+      "requiredArtifacts": [
+        "libs/contracts/rest/openapi.snapshot.json",
+        "ops/release/e2e-acceptance-traceability.json",
+        "ops/drills/staging-reliability-evidence.json"
+      ],
       "exitCondition": "topic -> source binding -> scheduled scan -> feed -> summary -> feedback -> digest/webhook/realtime -> audit passes on durable runtime"
     },
     {

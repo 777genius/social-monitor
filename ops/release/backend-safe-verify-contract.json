@@ -106,6 +106,7 @@
     "check:retention",
     "check:retention-plan",
     "check:drills",
+    "check:staging-reliability-evidence",
     "check:release",
     "check:e2e-traceability",
     "build",

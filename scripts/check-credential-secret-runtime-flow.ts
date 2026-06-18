@@ -110,7 +110,7 @@ async function proveWebhookSecretRotationAndRedaction(): Promise<void> {
   const verifier = new VerifyWebhookSignatureUseCase(endpoints, secrets, new InMemoryWebhookReplayStore(), clock);
   const endpointId = 'webhook-endpoint-secret-rotation-smoke';
 
-  await secrets.put({ secretKeyId: 'whsec_key_old', secret: 'whsec_old_secret_value' });
+  await secrets.put({ secretKeyId: 'whsec_generated_old_key', secret: 'whsec_generated_old_secret' });
   await endpoints.save(WebhookEndpoint.create({
     id: endpointId,
     tenantId: tenant,
@@ -118,7 +118,7 @@ async function proveWebhookSecretRotationAndRedaction(): Promise<void> {
     url: 'https://example.com/social-monitor/credential-flow',
     eventTypes: ['digest.ready.v1'],
     status: 'enabled',
-    secretKeyId: 'whsec_key_old',
+    secretKeyId: 'whsec_generated_old_key',
     secretPreview: 't_value',
     createdAt: occurredAt,
   }));
@@ -128,11 +128,11 @@ async function proveWebhookSecretRotationAndRedaction(): Promise<void> {
     deliveryId: 'delivery-secret-rotation-old',
   })), 'old webhook signing');
   assert(
-    !oldSigned.rawBody.includes('whsec_old_secret_value'),
+    !oldSigned.rawBody.includes('whsec_generated_old_secret'),
     'signed webhook raw body must not contain old signing secret',
   );
   assert(
-    oldSigned.headers['x-social-monitor-key-id'] === 'whsec_key_old',
+    oldSigned.headers['x-social-monitor-key-id'] === 'whsec_generated_old_key',
     'old webhook signature must advertise old key id',
   );
 
@@ -149,7 +149,7 @@ async function proveWebhookSecretRotationAndRedaction(): Promise<void> {
   }), 'old webhook verification');
   assert(oldVerified.verified, 'old webhook signature must verify before rotation');
 
-  await secrets.put({ secretKeyId: 'whsec_key_new', secret: 'whsec_new_secret_value' });
+  await secrets.put({ secretKeyId: 'whsec_generated_new_key', secret: 'whsec_generated_new_secret' });
   await endpoints.save(WebhookEndpoint.rehydrate({
     id: endpointId,
     tenantId: tenant,
@@ -157,7 +157,7 @@ async function proveWebhookSecretRotationAndRedaction(): Promise<void> {
     url: 'https://example.com/social-monitor/credential-flow',
     eventTypes: ['digest.ready.v1'],
     status: 'enabled',
-    secretKeyId: 'whsec_key_new',
+    secretKeyId: 'whsec_generated_new_key',
     secretPreview: 't_value',
     createdAt: occurredAt,
   }));
@@ -181,11 +181,11 @@ async function proveWebhookSecretRotationAndRedaction(): Promise<void> {
     deliveryId: 'delivery-secret-rotation-new',
   })), 'new webhook signing');
   assert(
-    newSigned.headers['x-social-monitor-key-id'] === 'whsec_key_new',
+    newSigned.headers['x-social-monitor-key-id'] === 'whsec_generated_new_key',
     'new webhook signature must advertise new key id',
   );
   assert(
-    !newSigned.rawBody.includes('whsec_new_secret_value'),
+    !newSigned.rawBody.includes('whsec_generated_new_secret'),
     'signed webhook raw body must not contain new signing secret',
   );
 
@@ -208,11 +208,11 @@ function provePublicDiagnosticRedaction(): void {
     provider: 'reddit',
     accessToken: 'raw-source-access-token',
     refreshToken: 'raw-source-refresh-token',
-    authorization: 'Bearer raw-oidc-token',
-    databaseUrl: 'postgres://user:secret@example.test/social_monitor',
-    rabbitmqUrl: 'amqp://user:secret@example.test/social_monitor',
+    authorization: 'Bearer token-value',
+    databaseUrl: 'postgres://user:password@example.test/social_monitor',
+    rabbitmqUrl: 'amqp://user:password@example.test/social_monitor',
     nested: {
-      webhookSecret: 'whsec_new_secret_value',
+      webhookSecret: 'whsec_generated_new_secret',
       safeField: 'visible',
     },
   });
@@ -221,10 +221,10 @@ function provePublicDiagnosticRedaction(): void {
   for (const rawSecret of [
     'raw-source-access-token',
     'raw-source-refresh-token',
-    'raw-oidc-token',
-    'postgres://user:secret@example.test/social_monitor',
-    'amqp://user:secret@example.test/social_monitor',
-    'whsec_new_secret_value',
+    'token-value',
+    'postgres://user:password@example.test/social_monitor',
+    'amqp://user:password@example.test/social_monitor',
+    'whsec_generated_new_secret',
   ]) {
     assert(!serialized.includes(rawSecret), `redacted diagnostic must not contain ${rawSecret}`);
   }
