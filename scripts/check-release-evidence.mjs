@@ -77,6 +77,7 @@ const requiredGateIds = new Set([
   'notification-preference-rest',
   'load-cost-guardrail',
   'source-provider-certification',
+  'source-live-certification-evidence',
   'hacker-news-ingestion-smoke',
   'github-ingestion-smoke',
   'reddit-ingestion-smoke',

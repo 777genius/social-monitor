@@ -14,6 +14,7 @@
     "check:production-auth-matrix",
     "check:credential-secret-runtime-flow",
     "check:security-final-sweep",
+    "check:source-live-certification-evidence",
     "check:staging-reliability-evidence",
     "check:summary-feedback-hardening",
     "check:backend-ops-readiness",
@@ -55,6 +56,10 @@
     {
       "artifactId": "security-final-sweep",
       "path": "ops/security/security-final-sweep-evidence.json"
+    },
+    {
+      "artifactId": "source-live-certification-evidence",
+      "path": "ops/ingestion/source-live-certification-evidence.json"
     },
     {
       "artifactId": "staging-reliability-evidence",

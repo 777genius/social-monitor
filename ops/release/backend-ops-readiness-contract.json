@@ -138,10 +138,21 @@
     },
     {
       "domainId": "source-scope",
-      "gates": ["check:source-certification", "check:beta-scope-policy", "check:beta-ring-policy"],
-      "releaseGateIds": ["source-provider-certification", "beta-scope-policy", "beta-ring-policy"],
+      "gates": [
+        "check:source-certification",
+        "check:source-live-certification-evidence",
+        "check:beta-scope-policy",
+        "check:beta-ring-policy"
+      ],
+      "releaseGateIds": [
+        "source-provider-certification",
+        "source-live-certification-evidence",
+        "beta-scope-policy",
+        "beta-ring-policy"
+      ],
       "artifacts": [
         "ops/ingestion/source-provider-certification.json",
+        "ops/ingestion/source-live-certification-evidence.json",
         "ops/release/beta-ring-expansion-policy.json",
         "ops/release/beta-ring-expansion-decision-record.json"
       ]

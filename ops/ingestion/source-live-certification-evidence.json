@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "source-live-certification-evidence-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "evidenceMode": "fixture_contract_with_live_evidence_required",
+  "externalBetaStatus": "hold_until_live_provider_evidence",
+  "sourceCertification": "ops/ingestion/source-provider-certification.json",
+  "liveProviderEvidence": [
+    {
+      "providerKey": "hacker-news",
+      "status": "pending_live_evidence",
+      "requiredForExternalBeta": true,
+      "owner": "source-owner",
+      "liveSmokeCommand": "npm run check:live-open-connectors",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "sampledAt": null,
+      "signals": [
+        {
+          "signalId": "hn-live-http-smoke",
+          "status": "pending_live_evidence",
+          "requiredSignal": "live Hacker News HTTP listing and search return normalized stable ids"
+        },
+        {
+          "signalId": "hn-rate-limit-evidence",
+          "status": "pending_live_evidence",
+          "requiredSignal": "rate-limit budget and degradation behavior are recorded for deployed Hacker News scans"
+        }
+      ],
+      "exitCondition": "Attach live HTTP smoke and rate-limit evidence for Hacker News before external beta."
+    },
+    {
+      "providerKey": "rss",
+      "status": "pending_live_evidence",
+      "requiredForExternalBeta": true,
+      "owner": "source-owner",
+      "liveSmokeCommand": "npm run check:live-open-connectors",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "sampledAt": null,
+      "signals": [
+        {
+          "signalId": "rss-allowlisted-live-feeds",
+          "status": "pending_live_evidence",
+          "requiredSignal": "representative allowlisted live RSS feeds return normalized items"
+        },
+        {
+          "signalId": "rss-http-cache-evidence",
+          "status": "pending_live_evidence",
+          "requiredSignal": "ETag and Last-Modified cache behavior is recorded for repeated live feed scans"
+        },
+        {
+          "signalId": "rss-ssrf-proof",
+          "status": "pending_live_evidence",
+          "requiredSignal": "SSRF protections reject private, loopback, file and metadata-service targets before fetch"
+        }
+      ],
+      "exitCondition": "Attach allowlisted feed, HTTP cache and SSRF evidence for RSS before external beta."
+    },
+    {
+      "providerKey": "github",
+      "status": "pending_live_evidence",
+      "requiredForExternalBeta": true,
+      "owner": "source-owner",
+      "liveSmokeCommand": "npm run check:live-open-connectors",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "sampledAt": null,
+      "signals": [
+        {
+          "signalId": "github-live-api-smoke",
+          "status": "pending_live_evidence",
+          "requiredSignal": "live GitHub API smoke returns normalized issue items with canonical GitHub URLs"
+        },
+        {
+          "signalId": "github-rate-limit-budget",
+          "status": "pending_live_evidence",
+          "requiredSignal": "GitHub rate-limit budget and fallback behavior are recorded for deployed scans"
+        }
+      ],
+      "exitCondition": "Attach live API smoke and rate-limit budget evidence for GitHub before external beta."
+    },
+    {
+      "providerKey": "reddit",
+      "status": "pending_live_evidence",
+      "requiredForExternalBeta": true,
+      "owner": "source-owner",
+      "liveSmokeCommand": "npm run check:live-reddit-oauth",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "sampledAt": null,
+      "signals": [
+        {
+          "signalId": "reddit-tenant-oauth-smoke",
+          "status": "pending_live_evidence",
+          "requiredSignal": "tenant-owned Reddit OAuth credential returns normalized listing items"
+        },
+        {
+          "signalId": "reddit-auth-failure",
+          "status": "pending_live_evidence",
+          "requiredSignal": "invalid or expired Reddit OAuth credential fails closed with classified auth failure"
+        },
+        {
+          "signalId": "reddit-rate-limit-budget",
+          "status": "pending_live_evidence",
+          "requiredSignal": "Reddit rate-limit budget and retry/degradation behavior are recorded"
+        },
+        {
+          "signalId": "reddit-credential-lifecycle",
+          "status": "pending_live_evidence",
+          "requiredSignal": "credential create, rotate, revoke and redacted preview lifecycle is recorded without exposing tokens"
+        }
+      ],
+      "exitCondition": "Attach tenant OAuth, auth failure, rate-limit and credential lifecycle evidence for Reddit before external beta."
+    }
+  ],
+  "deferredProviders": [
+    {
+      "providerKey": "telegram",
+      "status": "deferred",
+      "requiredForExternalBeta": false,
+      "exitCondition": "Authorized channel scope and credential lifecycle must be approved before enabling Telegram automation."
+    },
+    {
+      "providerKey": "x-twitter",
+      "status": "deferred",
+      "requiredForExternalBeta": false,
+      "exitCondition": "Paid API or approved vendor contract must be approved before enabling X/Twitter automation."
+    }
+  ],
+  "externalBetaExitCriteria": [
+    "HN, RSS, GitHub and Reddit live evidence artifacts are attached for the promoted backend image.",
+    "RSS SSRF proof and HTTP cache evidence are attached before any external beta feed binding is enabled.",
+    "Reddit tenant OAuth lifecycle evidence proves create, rotate, revoke and redacted preview behavior.",
+    "Telegram and X/Twitter remain deferred and cannot appear in enabled beta provider bindings."
+  ]
+}

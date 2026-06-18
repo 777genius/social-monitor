@@ -340,6 +340,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "source-live-certification-evidence",
+      "command": "npm run check:source-live-certification-evidence",
+      "blocksRelease": true
+    },
+    {
       "gateId": "hacker-news-ingestion-smoke",
       "command": "npm run check:hn-smoke",
       "blocksRelease": true

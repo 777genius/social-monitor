@@ -86,6 +86,7 @@
     "check:notification-preference-rest",
     "check:load-cost",
     "check:source-certification",
+    "check:source-live-certification-evidence",
     "check:hn-smoke",
     "check:github-smoke",
     "check:reddit-smoke",

@@ -68,8 +68,16 @@
       "owner": "source-owner",
       "status": "blocked_without_live_credentials",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:source-certification", "npm run check:live-open-connectors", "npm run check:live-reddit-oauth"],
-      "requiredArtifacts": ["ops/ingestion/source-provider-certification.json"],
+      "verificationCommands": [
+        "npm run check:source-certification",
+        "npm run check:source-live-certification-evidence",
+        "npm run check:live-open-connectors",
+        "npm run check:live-reddit-oauth"
+      ],
+      "requiredArtifacts": [
+        "ops/ingestion/source-provider-certification.json",
+        "ops/ingestion/source-live-certification-evidence.json"
+      ],
       "exitCondition": "HN, RSS, GitHub and Reddit have live rate-limit/auth/cursor evidence; Telegram and X remain deferred"
     },
     {
