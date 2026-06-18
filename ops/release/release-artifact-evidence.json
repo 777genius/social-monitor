@@ -17,6 +17,49 @@
     "value": null,
     "exitCondition": "Attach immutable image digest sha256:<64 hex chars> for the promoted backend image."
   },
+  "deploySmokeArtifactContentSchema": {
+    "schemaVersion": 1,
+    "format": "release-deploy-smoke-artifact-v1",
+    "exampleArtifactPath": "ops/release/fixtures/release-deploy-smoke-artifact-examples.json",
+    "requiredTopLevelFields": [
+      "schemaVersion",
+      "format",
+      "artifactId",
+      "environmentId",
+      "imageDigest",
+      "commitSha",
+      "migrationVersion",
+      "operator",
+      "sampledAt",
+      "redaction",
+      "artifactDigests",
+      "smokeResults"
+    ],
+    "redactionRequirements": {
+      "secretsIncluded": false,
+      "rawHeadersIncluded": false,
+      "rawPayloadsIncluded": false,
+      "databaseUrlsIncluded": false,
+      "brokerUrlsIncluded": false
+    },
+    "smokeResultRequirements": {
+      "status": "passed",
+      "requiredFields": [
+        "smokeId",
+        "status",
+        "observedAt",
+        "evidence"
+      ],
+      "matchingRules": [
+        "artifact commitSha must match the release commit",
+        "artifact imageDigest must match imageDigest.value and every passed deploySmokeEvidence entry",
+        "artifact migrationVersion must match the release evidence migrationVersion",
+        "artifact artifactDigests must match committed OpenAPI, event catalog and Prisma schema hashes",
+        "artifact smokeResults must include every deploy smoke declared in the release contract",
+        "artifact JSON must not include tokens, raw headers, raw payloads, DB URLs or broker URLs"
+      ]
+    }
+  },
   "artifactDigests": [
     {
       "artifactId": "openapi-snapshot",

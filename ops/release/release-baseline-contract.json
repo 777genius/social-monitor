@@ -51,6 +51,10 @@
       "path": "ops/release/release-artifact-evidence.json"
     },
     {
+      "artifactId": "release-deploy-smoke-artifact-examples",
+      "path": "ops/release/fixtures/release-deploy-smoke-artifact-examples.json"
+    },
+    {
       "artifactId": "backend-ops-readiness",
       "path": "ops/release/backend-ops-readiness-contract.json"
     },
