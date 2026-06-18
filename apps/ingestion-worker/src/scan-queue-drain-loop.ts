@@ -1,6 +1,5 @@
 import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
-import type { QueueCommandEnvelope } from '@social-monitor/platform-queue';
 import { ExecuteScanCommandHandler } from '@social-monitor/ingestion/interfaces/queue/execute-scan-command.handler';
 import type { RetryScanCommand, ScanRetryQueuePort } from '@social-monitor/ingestion/ports';
 

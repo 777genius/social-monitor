@@ -1,0 +1,572 @@
+{
+  "schemaVersion": 1,
+  "description": "Executable traceability from beta MVP acceptance plans to e2e suites and verify gates.",
+  "planReferences": [
+    "docs/iterations/07-beta-mvp-launch/11-acceptance-test-plan.md",
+    "docs/iterations/07-beta-mvp-launch/41-test-fixtures-and-scenarios.md",
+    "docs/iterations/07-beta-mvp-launch/46-qa-acceptance-signoff.md",
+    "docs/iterations/07-beta-mvp-launch/47-implementation-command-checklist.md",
+    "docs/iterations/07-beta-mvp-launch/59-traceable-evidence-register.md",
+    "docs/iterations/07-beta-mvp-launch/60-final-go-no-go-checklist.md"
+  ],
+  "requiredScenarioIds": [
+    "acceptance.new_beta_user_onboarding",
+    "acceptance.topic_supported_source_binding",
+    "acceptance.scheduled_scan_feed_items",
+    "acceptance.summary_with_citations",
+    "acceptance.realtime_status_updates",
+    "acceptance.feedback_submission",
+    "acceptance.support_diagnoses_failed_scan",
+    "acceptance.known_limitations_visible",
+    "acceptance.beta_metrics_capture",
+    "acceptance.rollback_checklist_executable",
+    "negative.unsupported_source_request",
+    "negative.provider_quota_exhausted",
+    "negative.vague_topic_summary_quality",
+    "negative.mobile_backend_version_mismatch",
+    "negative.user_exceeds_beta_quota",
+    "regression.no_unapproved_source_adapter",
+    "regression.support_failure_context_mapping",
+    "regression.feedback_taxonomy_signals",
+    "regression.launch_checklist_tied_to_gates"
+  ],
+  "entries": [
+    {
+      "id": "acceptance.new_beta_user_onboarding",
+      "type": "acceptance",
+      "title": "New beta user completes onboarding and core API workflow",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts",
+          "markers": [
+            "allows a scoped headless monitoring API key",
+            ".post('/topics')",
+            "/scan-requests"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:mvp-core-loop"
+        },
+        {
+          "kind": "command",
+          "command": "npm run test:e2e"
+        }
+      ]
+    },
+    {
+      "id": "acceptance.topic_supported_source_binding",
+      "type": "acceptance",
+      "title": "User creates topic and binds a supported source",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/source-bindings.create.e2e-spec.ts",
+          "markers": [
+            "binds fake source to an existing topic",
+            "source_binding.created",
+            "providerKey: 'fake-source'"
+          ]
+        },
+        {
+          "kind": "e2e",
+          "path": "test/e2e/source-profiles.list.e2e-spec.ts",
+          "markers": [
+            "returns enabled fake provider and readiness-only future source profiles",
+            "providerKey: 'x-twitter'",
+            "providerKey: 'telegram'"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:source-certification"
+        }
+      ]
+    },
+    {
+      "id": "acceptance.scheduled_scan_feed_items",
+      "type": "acceptance",
+      "title": "Scheduled scan produces feed items and scan status evidence",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/scheduled-scans.enqueue.e2e-spec.ts",
+          "markers": [
+            "enqueues due scan from configured scan policy",
+            "ingestion.scan.execute",
+            "skips due scheduled scan for a paused source binding"
+          ]
+        },
+        {
+          "kind": "e2e",
+          "path": "test/e2e/ingestion-worker.execute-scan.e2e-spec.ts",
+          "markers": [
+            "handles queued scan command and persists fetched source items idempotently",
+            "projected"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:scan-scheduler-loop"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:ingestion-feed-persistence"
+        }
+      ]
+    },
+    {
+      "id": "acceptance.summary_with_citations",
+      "type": "acceptance",
+      "title": "Summary appears with citations and quality evidence",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/summaries.read.e2e-spec.ts",
+          "markers": [
+            "returns executed summaries through REST detail and list endpoints",
+            "schemaVersion: 'summary.artifact.v1'"
+          ]
+        },
+        {
+          "kind": "e2e",
+          "path": "test/e2e/summary-evals.run.e2e-spec.ts",
+          "markers": [
+            "Summary eval quality gates",
+            "runs blocking summary eval fixtures"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:summary-evidence-smoke"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:summary-evals"
+        }
+      ]
+    },
+    {
+      "id": "acceptance.realtime_status_updates",
+      "type": "acceptance",
+      "title": "Realtime status updates are visible and replayable",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/summary-ready-to-realtime.e2e-spec.ts",
+          "markers": [
+            "projects summary.ready into realtime summary status replay",
+            "summary-status",
+            "resyncRequired: false"
+          ]
+        },
+        {
+          "kind": "e2e",
+          "path": "test/e2e/realtime-events.list.e2e-spec.ts",
+          "markers": [
+            "replays tenant/workspace realtime events",
+            "/realtime/events"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:realtime-websocket"
+        }
+      ]
+    },
+    {
+      "id": "acceptance.feedback_submission",
+      "type": "acceptance",
+      "title": "User submits classified feedback with evidence",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/summary-feedback.submit.e2e-spec.ts",
+          "markers": [
+            "records classified feedback with citation evidence",
+            "eligibleForEvalFixture: true",
+            "Feedback citation must belong to the summary"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:summary-feedback-rest"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:mvp-core-loop"
+        }
+      ]
+    },
+    {
+      "id": "acceptance.support_diagnoses_failed_scan",
+      "type": "acceptance",
+      "title": "Support diagnoses failed scan from safe operational context",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/scan-dead-letters.authorization.e2e-spec.ts",
+          "markers": [
+            "support-safe scan dead-letter inspection",
+            "provider_rate_limited",
+            "correlationId: 'correlation-dlq-auth-e2e-1'"
+          ]
+        },
+        {
+          "kind": "e2e",
+          "path": "test/e2e/source-bindings.status.e2e-spec.ts",
+          "markers": [
+            "reports paused health",
+            "operatorAction: 'resume_source_binding_before_scanning'"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:source-binding-health-rest"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:scan-status-attempt-rest"
+        }
+      ]
+    },
+    {
+      "id": "acceptance.known_limitations_visible",
+      "type": "acceptance",
+      "title": "Known limitations are visible to beta support surfaces",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/beta-launch-support.e2e-spec.ts",
+          "markers": [
+            "knownLimitations",
+            "frontend-deferred",
+            "durable-runtime-required-before-external-beta"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:beta-launch-support"
+        }
+      ]
+    },
+    {
+      "id": "acceptance.beta_metrics_capture",
+      "type": "acceptance",
+      "title": "Beta metrics capture activation, scan success, usefulness and source requests",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/usage-audit-events.list.e2e-spec.ts",
+          "markers": [
+            "lists scoped audit events with filters",
+            "/usage/audit-events"
+          ]
+        },
+        {
+          "kind": "contract",
+          "path": "ops/observability/dashboards/mvp-health.json",
+          "markers": [
+            "scan_jobs_total",
+            "summary_model_estimated_cost_usd"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:observability"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:load-cost"
+        }
+      ]
+    },
+    {
+      "id": "acceptance.rollback_checklist_executable",
+      "type": "acceptance",
+      "title": "Rollback checklist and pause drills are executable",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "contract",
+          "path": "ops/drills/mvp-staging-drills.json",
+          "markers": [
+            "backup-restore",
+            "workers_paused_until_restore_validated"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:drills"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:backup-restore"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:release"
+        }
+      ]
+    },
+    {
+      "id": "negative.unsupported_source_request",
+      "type": "negative",
+      "title": "Unsupported source requests are rejected and preserved as demand signal",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/source-bindings.create.e2e-spec.ts",
+          "markers": [
+            "rejects deferred providers before creating bindings",
+            "providerKey: 'x-twitter'",
+            "Source provider is not available for production-safe MVP scans"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:beta-scope-policy"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:beta-feedback-report"
+        }
+      ]
+    },
+    {
+      "id": "negative.provider_quota_exhausted",
+      "type": "negative",
+      "title": "Provider or scan quota exhaustion blocks extra work before enqueue",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/scan-requests.quota.e2e-spec.ts",
+          "markers": [
+            "rejects a second new manual scan before enqueueing more work",
+            "operation.quota_exceeded"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:usage-persistence"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:load-cost"
+        }
+      ]
+    },
+    {
+      "id": "negative.vague_topic_summary_quality",
+      "type": "negative",
+      "title": "Vague topics and poor summary quality are visible through eval and feedback gates",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/summary-evals.run.e2e-spec.ts",
+          "markers": [
+            "runs blocking summary eval fixtures",
+            "summary.eval.mvp.v1"
+          ]
+        },
+        {
+          "kind": "e2e",
+          "path": "test/e2e/summary-feedback.submit.e2e-spec.ts",
+          "markers": [
+            "bad_citation",
+            "summary-owner"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:summary-evals"
+        }
+      ]
+    },
+    {
+      "id": "negative.mobile_backend_version_mismatch",
+      "type": "negative",
+      "title": "Backend/mobile or client contract mismatch is caught by health and OpenAPI gates",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/api-gateway.health.e2e-spec.ts",
+          "markers": [
+            "keeps /healthz as a liveness alias",
+            "keeps /health/ready as a readiness alias"
+          ]
+        },
+        {
+          "kind": "e2e",
+          "path": "test/e2e/beta-launch-support.e2e-spec.ts",
+          "markers": [
+            "frontend-deferred"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:openapi"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:api-health"
+        }
+      ]
+    },
+    {
+      "id": "negative.user_exceeds_beta_quota",
+      "type": "negative",
+      "title": "Beta quota limits reject extra scan and summary work",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/scan-requests.quota.e2e-spec.ts",
+          "markers": [
+            "Manual scan request quota",
+            "operation.quota_exceeded"
+          ]
+        },
+        {
+          "kind": "e2e",
+          "path": "test/e2e/summary-requests.quota.e2e-spec.ts",
+          "markers": [
+            "Summary request quota",
+            "operation.quota_exceeded"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:usage-persistence"
+        }
+      ]
+    },
+    {
+      "id": "regression.no_unapproved_source_adapter",
+      "type": "regression",
+      "title": "No beta workflow depends on an unapproved source adapter",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/source-profiles.list.e2e-spec.ts",
+          "markers": [
+            "readiness-only future source profiles",
+            "providerKey: 'x-twitter'",
+            "providerKey: 'telegram'"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:beta-scope-policy"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:source-certification"
+        }
+      ]
+    },
+    {
+      "id": "regression.support_failure_context_mapping",
+      "type": "regression",
+      "title": "Support workflow maps failures to source, topic, summary and correlation context",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/scan-dead-letters.authorization.e2e-spec.ts",
+          "markers": [
+            "scanJobId: 'scan-dlq-auth-e2e-1'",
+            "sourceBindingId: 'source-binding-dlq-auth-e2e-1'",
+            "correlationId: 'correlation-dlq-auth-e2e-1'"
+          ]
+        },
+        {
+          "kind": "e2e",
+          "path": "test/e2e/source-bindings.status.e2e-spec.ts",
+          "markers": [
+            "healthState: 'paused'",
+            "source_binding.status_changed"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:scan-status-attempt-rest"
+        }
+      ]
+    },
+    {
+      "id": "regression.feedback_taxonomy_signals",
+      "type": "regression",
+      "title": "Feedback taxonomy captures product and source expansion signals",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "e2e",
+          "path": "test/e2e/summary-feedback.submit.e2e-spec.ts",
+          "markers": [
+            "category: 'bad_citation'",
+            "triageOwner: 'summary-owner'",
+            "eligibleForEvalFixture: true"
+          ]
+        },
+        {
+          "kind": "contract",
+          "path": "ops/release/beta-feedback-classification-report.json",
+          "markers": [
+            "source_request",
+            "ux_confusing",
+            "x-twitter-source-adapter"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:beta-feedback-report"
+        }
+      ]
+    },
+    {
+      "id": "regression.launch_checklist_tied_to_gates",
+      "type": "regression",
+      "title": "Launch checklist remains tied to production hardening gates",
+      "required": true,
+      "evidence": [
+        {
+          "kind": "contract",
+          "path": "ops/release/mvp-release-evidence-contract.json",
+          "markers": [
+            "mvp-core-loop",
+            "beta-launch-support",
+            "persistence-readiness"
+          ]
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:release"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:persistence-readiness"
+        },
+        {
+          "kind": "command",
+          "command": "npm run verify"
+        }
+      ]
+    }
+  ]
+}

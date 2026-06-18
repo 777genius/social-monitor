@@ -3,7 +3,6 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { DeliveryAttempt, type DeliveryAttemptProps } from '../../domain';
 import type {
   DeliveryAttemptRepositoryPort,
-  ListDeliveryAttemptsQuery,
   ListDeliveryAttemptsResult,
 } from '../../ports';
 import { GetDeliveryAttemptUseCase } from './get-delivery-attempt.use-case';
@@ -28,7 +27,7 @@ class FakeDeliveryAttempts implements DeliveryAttemptRepositoryPort {
     return [];
   }
 
-  async list(_query: ListDeliveryAttemptsQuery): Promise<ListDeliveryAttemptsResult> {
+  async list(): Promise<ListDeliveryAttemptsResult> {
     return {
       attempts: [...this.attempts.values()],
       nextCursor: undefined,

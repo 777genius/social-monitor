@@ -44,6 +44,16 @@
       "purgeTrigger": "user_or_workspace_membership_removed"
     },
     {
+      "table": "api_keys",
+      "dataClass": "credential_access_control",
+      "owner": "identity-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_revocation_window",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "api_key_revoked_and_retention_window_expired"
+    },
+    {
       "table": "topics",
       "dataClass": "user_configuration",
       "owner": "monitoring-owner",
@@ -124,6 +134,36 @@
       "purgeTrigger": "source_item_age_expired_or_topic_deleted"
     },
     {
+      "table": "scan_failure_queue_entries",
+      "dataClass": "operational_dead_letter_state",
+      "owner": "ingestion-owner",
+      "retentionDays": 90,
+      "deleteMode": "hard_delete_after_replay_window",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "scan_failure_resolved_or_replay_window_expired"
+    },
+    {
+      "table": "scan_attempts",
+      "dataClass": "operational_scan_state",
+      "owner": "ingestion-owner",
+      "retentionDays": 90,
+      "deleteMode": "hard_delete_after_replay_window",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "scan_attempt_terminal_and_replay_window_expired"
+    },
+    {
+      "table": "scan_leases",
+      "dataClass": "operational_lock_state",
+      "owner": "ingestion-owner",
+      "retentionDays": 7,
+      "deleteMode": "hard_delete_after_expiry",
+      "exportable": false,
+      "legalHoldAware": false,
+      "purgeTrigger": "scan_lease_expired"
+    },
+    {
       "table": "feed_items",
       "dataClass": "derived_content_index",
       "owner": "feed-owner",
@@ -142,6 +182,26 @@
       "exportable": true,
       "legalHoldAware": true,
       "purgeTrigger": "summary_retention_expired_or_topic_deleted"
+    },
+    {
+      "table": "summary_jobs",
+      "dataClass": "operational_summary_state",
+      "owner": "summary-owner",
+      "retentionDays": 90,
+      "deleteMode": "hard_delete_after_replay_window",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "summary_job_terminal_and_replay_window_expired"
+    },
+    {
+      "table": "summary_policies",
+      "dataClass": "user_summary_configuration",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_topic_deleted",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "topic_deleted_or_workspace_offboarding_completed"
     },
     {
       "table": "summary_feedback",
@@ -164,6 +224,76 @@
       "purgeTrigger": "delivery_attempt_replay_window_expired"
     },
     {
+      "table": "digests",
+      "dataClass": "derived_delivery_content",
+      "owner": "delivery-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_retention",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "digest_retention_expired_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "digest_schedules",
+      "dataClass": "user_delivery_configuration",
+      "owner": "delivery-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_schedule_disabled_or_workspace_offboarding",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "digest_schedule_disabled_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "realtime_events",
+      "dataClass": "operational_realtime_replay_state",
+      "owner": "delivery-owner",
+      "retentionDays": 30,
+      "deleteMode": "hard_delete_after_replay_window",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "realtime_replay_window_expired"
+    },
+    {
+      "table": "webhook_endpoints",
+      "dataClass": "integration_configuration",
+      "owner": "delivery-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_endpoint_deleted_or_workspace_offboarding",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "webhook_endpoint_deleted_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "webhook_secrets",
+      "dataClass": "credential_secret_material",
+      "owner": "delivery-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_endpoint_deleted_or_key_rotated",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "webhook_endpoint_deleted_or_secret_rotated"
+    },
+    {
+      "table": "webhook_replay_deliveries",
+      "dataClass": "operational_idempotency_state",
+      "owner": "delivery-owner",
+      "retentionDays": 30,
+      "deleteMode": "hard_delete_after_expiry",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "webhook_replay_delivery_expired"
+    },
+    {
+      "table": "notification_preferences",
+      "dataClass": "user_delivery_configuration",
+      "owner": "delivery-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_recipient_or_workspace_deleted",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "recipient_or_workspace_offboarding_completed"
+    },
+    {
       "table": "usage_records",
       "dataClass": "billing_usage_audit",
       "owner": "billing-owner",
@@ -172,6 +302,36 @@
       "exportable": true,
       "legalHoldAware": true,
       "purgeTrigger": "billing_audit_window_expired"
+    },
+    {
+      "table": "public_api_audit_events",
+      "dataClass": "security_audit_log",
+      "owner": "platform-owner",
+      "retentionDays": 2555,
+      "deleteMode": "retain_for_audit_then_hard_delete",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "security_audit_window_expired"
+    },
+    {
+      "table": "rate_limit_buckets",
+      "dataClass": "operational_rate_limit_state",
+      "owner": "platform-owner",
+      "retentionDays": 30,
+      "deleteMode": "hard_delete_after_window_expiry",
+      "exportable": false,
+      "legalHoldAware": false,
+      "purgeTrigger": "rate_limit_window_expired"
+    },
+    {
+      "table": "usage_quota_buckets",
+      "dataClass": "operational_quota_state",
+      "owner": "billing-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_quota_window_expiry",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "quota_window_expired_and_usage_records_retained"
     },
     {
       "table": "outbox_events",

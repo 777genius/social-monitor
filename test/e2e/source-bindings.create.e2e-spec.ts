@@ -84,9 +84,10 @@ describe('Bind source flow (e2e)', () => {
     const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
       tenantId: tenant,
       workspaceId: workspace,
+      limit: 10,
     });
 
-    expect(auditRecords.filter((record) => record.action === 'source_binding.created')).toEqual([
+    expect(auditRecords.records.filter((record) => record.action === 'source_binding.created')).toEqual([
       expect.objectContaining({
         actorType: 'system',
         actorId: 'monitoring.source-bindings',
@@ -101,6 +102,61 @@ describe('Bind source flow (e2e)', () => {
         },
       }),
     ]);
-    expect(JSON.stringify(auditRecords)).not.toContain('config');
+    expect(JSON.stringify(auditRecords.records)).not.toContain('config');
+  });
+
+  it('rejects deferred providers before creating bindings or audit success records', async () => {
+    const tenant = tenantId('tenant-source-deferred-e2e');
+    const workspace = workspaceId('workspace-source-deferred-e2e');
+    const topic = await request(app.getHttpServer())
+      .post('/topics')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-source-deferred-topic')
+      .set('idempotency-key', 'create-source-deferred-topic')
+      .send({
+        name: 'Deferred Source Monitoring',
+        query: 'x twitter launch monitoring',
+      })
+      .expect(201);
+
+    const rejected = await request(app.getHttpServer())
+      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-source-bind-deferred')
+      .set('idempotency-key', 'bind-x-twitter-deferred')
+      .send({
+        providerKey: 'x-twitter',
+        config: { query: 'x twitter launch monitoring' },
+      })
+      .expect(400);
+
+    expect(rejected.body).toMatchObject({
+      code: 'validation.failed',
+      detail: 'Source provider is not available for production-safe MVP scans',
+      details: {
+        providerKey: 'x-twitter',
+      },
+    });
+
+    const bindings = await request(app.getHttpServer())
+      .get(`/topics/${topic.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(bindings.body.sourceBindings).toEqual([]);
+
+    const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 10,
+    });
+
+    expect(auditRecords.records.filter((record) => record.action === 'source_binding.created')).toEqual([]);
   });
 });

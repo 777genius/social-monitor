@@ -1,7 +1,7 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { WebhookEndpoint, type WebhookEndpointProps } from '../../domain';
-import type { ListWebhookEndpointsQuery, WebhookEndpointRepositoryPort } from '../../ports';
+import type { WebhookEndpointRepositoryPort } from '../../ports';
 import { GetWebhookEndpointUseCase } from './get-webhook-endpoint.use-case';
 
 class FakeWebhookEndpoints implements WebhookEndpointRepositoryPort {
@@ -16,7 +16,7 @@ class FakeWebhookEndpoints implements WebhookEndpointRepositoryPort {
     return this.endpoints.get(`${params.tenantId}:${params.workspaceId}:${params.webhookEndpointId}`) ?? null;
   }
 
-  async list(_query: ListWebhookEndpointsQuery): Promise<{ readonly endpoints: readonly WebhookEndpoint[] }> {
+  async list(): Promise<{ readonly endpoints: readonly WebhookEndpoint[] }> {
     return {
       endpoints: [...this.endpoints.values()],
     };

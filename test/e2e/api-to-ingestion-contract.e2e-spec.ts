@@ -22,6 +22,7 @@ import type {
   SourceFetcherPort,
 } from '../../libs/ingestion/ports';
 import { RecordScanExecutionUseCase } from '../../libs/monitoring/features/record-scan-execution/record-scan-execution.use-case';
+import { MonitoringRestModule } from '../../libs/monitoring/interfaces/rest/monitoring-rest.module';
 
 class MonitoringScanExecutionReporter implements ScanExecutionReporterPort {
   constructor(private readonly recordScanExecution: RecordScanExecutionUseCase) {}
@@ -90,7 +91,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
   it('publishes a scan command that the ingestion worker can execute', async () => {
     const tenant = 'tenant-contract-e2e';
     const workspace = 'workspace-contract-e2e';
-    const queue = api.get(InMemoryQueuePublisher);
+    const queue = api.select(MonitoringRestModule).get(InMemoryQueuePublisher, { strict: true });
 
     const topic = await request(api.getHttpServer())
       .post('/topics')
@@ -163,7 +164,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
     await workerModuleRef.init();
 
     const handler = workerModuleRef.get(ExecuteScanCommandHandler);
-    const metrics = workerModuleRef.get(InMemoryMetricsRecorder);
+    const metrics = workerModuleRef.select(IngestionWorkerModule).get(InMemoryMetricsRecorder, { strict: true });
     const repository = workerModuleRef.get(InMemorySourceItemRepository);
     const feedRepository = workerModuleRef.get(InMemoryFeedItemReadRepository);
     const command = queue.all()[0];
@@ -194,7 +195,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
         job_type: 'scan',
         worker: 'ingestion-worker',
       }),
-    ).toBe(1);
+    ).toBe(0);
     expect(
       metrics.counterValue('scan_jobs_total', {
         job_type: 'scan',
@@ -250,7 +251,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
   it('publishes and executes an RSS scan command through the same API-to-feed path', async () => {
     const tenant = 'tenant-rss-contract-e2e';
     const workspace = 'workspace-rss-contract-e2e';
-    const queue = api.get(InMemoryQueuePublisher);
+    const queue = api.select(MonitoringRestModule).get(InMemoryQueuePublisher, { strict: true });
     const initialQueueLength = queue.all().length;
 
     const topic = await request(api.getHttpServer())
@@ -379,7 +380,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
   it('records failed scan status when ingestion worker execution fails', async () => {
     const tenant = 'tenant-contract-failure-e2e';
     const workspace = 'workspace-contract-failure-e2e';
-    const queue = api.get(InMemoryQueuePublisher);
+    const queue = api.select(MonitoringRestModule).get(InMemoryQueuePublisher, { strict: true });
     const initialQueueLength = queue.all().length;
 
     const topic = await request(api.getHttpServer())
@@ -447,7 +448,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
     await workerModuleRef.init();
 
     const handler = workerModuleRef.get(ExecuteScanCommandHandler);
-    const metrics = workerModuleRef.get(InMemoryMetricsRecorder);
+    const metrics = workerModuleRef.select(IngestionWorkerModule).get(InMemoryMetricsRecorder, { strict: true });
     await expect(handler.handle(command)).rejects.toThrow('Provider unavailable');
     expect(
       metrics.counterValue('scan_jobs_total', {

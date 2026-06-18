@@ -17,8 +17,8 @@ describe('InMemorySourceProviderRegistry', () => {
     await expect(registry.getReadinessProfile('reddit')).resolves.toEqual(
       expect.objectContaining({
         providerKey: 'reddit',
-        state: 'profiled',
-        acquisitionMode: 'official_api_or_approved_vendor',
+        state: 'enabled_beta',
+        acquisitionMode: 'official_oauth_api',
       }),
     );
     await expect(registry.listReadinessProfiles()).resolves.toEqual(

@@ -1,6 +1,7 @@
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
-import { DomainError, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import type { DomainError} from '@social-monitor/shared-kernel';
+import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { ScheduleDueScansUseCase } from '../../features/schedule-due-scans/schedule-due-scans.use-case';
 import { ScheduleDueScansCommandHandler } from './schedule-due-scans-command.handler';

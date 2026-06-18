@@ -161,7 +161,7 @@ async function main(): Promise<void> {
     throw new Error(`${outputPath} is missing. Run npm run check:source-certification -- --update`);
   }
 
-  const expected = readFileSync(outputPath, 'utf8');
+  const expected = normalizeLineEndings(readFileSync(outputPath, 'utf8'));
   if (expected !== serialized) {
     throw new Error(`${outputPath} is stale. Run npm run check:source-certification -- --update`);
   }
@@ -316,4 +316,8 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function normalizeLineEndings(value: string): string {
+  return value.replaceAll('\r\n', '\n');
 }

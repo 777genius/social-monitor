@@ -22,7 +22,9 @@ export class DeliveryAttemptDispatchQueuePublisherAdapter implements DeliveryAtt
     this.backlogReader = backlogReader ?? (isQueueBacklogReader(publisher) ? publisher : undefined);
   }
 
-  async canAccept(_command: EnqueueDeliveryAttemptDispatchQueueCommand): Promise<boolean> {
+  async canAccept(command: EnqueueDeliveryAttemptDispatchQueueCommand): Promise<boolean> {
+    void command;
+
     return this.backlogReader === undefined || this.backlogReader.all().length < this.maxDepth;
   }
 

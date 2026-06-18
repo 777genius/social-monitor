@@ -15,6 +15,8 @@ import type {
   FindDueDigestSchedulesQuery,
   ListDeliveryAttemptsQuery,
   ListDeliveryAttemptsResult,
+  ListDigestSchedulesQuery,
+  ListDigestSchedulesResult,
 } from '../../ports';
 import { AssembleDigestUseCase } from '../assemble-digest/assemble-digest.use-case';
 import { QueueDeliveryAttemptUseCase } from '../queue-delivery-attempt/queue-delivery-attempt.use-case';
@@ -44,6 +46,17 @@ class FakeDigestSchedules implements DigestScheduleRepositoryPort {
 
   async findById(params: Parameters<DigestScheduleRepositoryPort['findById']>[0]): Promise<DigestSchedule | null> {
     return this.schedulesById.get(`${params.tenantId}:${params.workspaceId}:${params.digestScheduleId}`) ?? null;
+  }
+
+  async list(query: ListDigestSchedulesQuery): Promise<ListDigestSchedulesResult> {
+    return {
+      schedules: [...this.schedulesById.values()].filter((schedule) => {
+        const snapshot = schedule.toSnapshot();
+
+        return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId;
+      }),
+      nextCursor: undefined,
+    };
   }
 
   async findDue(query: FindDueDigestSchedulesQuery): Promise<readonly DigestSchedule[]> {

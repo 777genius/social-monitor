@@ -1,6 +1,6 @@
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { DeliveryAttempt } from '../../domain';
+import type { DeliveryAttempt } from '../../domain';
 import type {
   DeliveryAttemptRepositoryPort,
   ListDeliveryAttemptsQuery,

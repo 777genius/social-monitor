@@ -212,7 +212,8 @@ const setup = async (attempts: ScanExecutionAttemptReadPort = new FakeScanExecut
 const setupWithCompletedJob = async (completedAt: Date, failureReason?: string) => {
   const context = await setup();
   await context.policies.save(makePolicy());
-  const enqueued = makeJob().markEnqueued({ enqueuedAt: new Date('2026-06-16T00:00:01.000Z') });
+  const requestedAt = new Date(completedAt.getTime() - 2_000);
+  const enqueued = makeJob(requestedAt).markEnqueued({ enqueuedAt: new Date(completedAt.getTime() - 1_000) });
   await context.jobs.save(failureReason === undefined
     ? enqueued.markSucceeded({ completedAt })
     : enqueued.markFailed({ completedAt, failureReason }));
@@ -262,7 +263,7 @@ const makePolicy = () =>
     createdAt: new Date('2026-06-16T00:00:00.000Z'),
   });
 
-const makeJob = () =>
+const makeJob = (requestedAt: Date = new Date('2026-06-16T00:00:00.000Z')) =>
   ScanJob.request({
     id: 'scan-job-1',
     tenantId: tenant,
@@ -270,5 +271,5 @@ const makeJob = () =>
     sourceBindingId: 'binding-1',
     scanPolicyId: 'policy-1',
     idempotencyKey: 'scan-1',
-    requestedAt: new Date('2026-06-16T00:00:00.000Z'),
+    requestedAt,
   });

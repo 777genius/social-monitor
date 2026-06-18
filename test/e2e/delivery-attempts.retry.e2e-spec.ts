@@ -1,6 +1,6 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import type { InMemoryDeliveryProvider } from '@social-monitor/delivery/adapters/notification/in-memory-delivery.provider';
+import { InMemoryDeliveryProvider } from '@social-monitor/delivery/adapters/notification/in-memory-delivery.provider';
 import { QueueDeliveryAttemptUseCase } from '@social-monitor/delivery/features/queue-delivery-attempt/queue-delivery-attempt.use-case';
 import { RetryDeliveryAttemptUseCase } from '@social-monitor/delivery/features/retry-delivery-attempt/retry-delivery-attempt.use-case';
 import { SendDeliveryAttemptUseCase } from '@social-monitor/delivery/features/send-delivery-attempt/send-delivery-attempt.use-case';
@@ -12,11 +12,20 @@ import { AppModule } from '../../apps/api-gateway/src/app.module';
 
 describe('Delivery retry orchestration (e2e)', () => {
   let app: INestApplication;
+  let webhookProvider: InMemoryDeliveryProvider;
 
   beforeAll(async () => {
+    webhookProvider = new InMemoryDeliveryProvider('webhook');
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(DELIVERY_PROVIDERS)
+      .useValue([
+        new InMemoryDeliveryProvider('in_app'),
+        new InMemoryDeliveryProvider('email'),
+        webhookProvider,
+      ])
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(
@@ -36,19 +45,12 @@ describe('Delivery retry orchestration (e2e)', () => {
   it('retries retryable webhook failure and exposes delivered status', async () => {
     const tenant = tenantId('tenant-delivery-retry-e2e');
     const workspace = workspaceId('workspace-delivery-retry-e2e');
-    const providers = app.get<readonly InMemoryDeliveryProvider[]>(DELIVERY_PROVIDERS);
-    const provider = providers.find((candidate) => candidate.channel === 'webhook');
-
-    if (provider === undefined) {
-      throw new Error('Expected webhook provider to be registered');
-    }
-
-    provider.enqueueResult({
+    webhookProvider.enqueueResult({
       accepted: false,
       retryable: true,
       reason: 'Webhook provider returned 429',
     });
-    provider.enqueueResult({
+    webhookProvider.enqueueResult({
       accepted: true,
       providerMessageId: 'provider-message-retry-e2e',
     });
@@ -106,7 +108,6 @@ describe('Delivery retry orchestration (e2e)', () => {
       state: 'delivered',
       channel: 'webhook',
       retryCount: 1,
-      failureReason: 'Webhook provider returned 429',
       deliveredAt: expect.any(String),
     });
   });

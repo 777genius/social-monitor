@@ -99,9 +99,10 @@ describe('API key lifecycle and scopes (e2e)', () => {
     const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
       tenantId: tenant,
       workspaceId: workspace,
+      limit: 10,
     });
 
-    expect(auditRecords).toEqual(expect.arrayContaining([
+    expect(auditRecords.records).toEqual(expect.arrayContaining([
       expect.objectContaining({
         actorType: 'system',
         actorId: 'identity.api-keys',
@@ -119,7 +120,7 @@ describe('API key lifecycle and scopes (e2e)', () => {
         resourceId: created.body.apiKey.id,
       }),
     ]));
-    expect(JSON.stringify(auditRecords)).not.toContain(secret);
+    expect(JSON.stringify(auditRecords.records)).not.toContain(secret);
 
     await expect(app.get(VerifyApiKeyUseCase).execute({
       secret,

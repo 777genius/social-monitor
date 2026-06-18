@@ -11,6 +11,8 @@ import { SummaryArtifact, type SummaryFeedback } from '../../domain';
 import type {
   ListSummaryArtifactsQuery,
   ListSummaryArtifactsResult,
+  ListSummaryFeedbackQuery,
+  ListSummaryFeedbackResult,
   SummaryArtifactRepositoryPort,
   SummaryFeedbackRepositoryPort,
 } from '../../ports';
@@ -69,6 +71,21 @@ class FakeSummaryFeedback implements SummaryFeedbackRepositoryPort {
     return this.feedbackByIdempotencyKey.get(
       `${query.tenantId}:${query.workspaceId}:${query.idempotencyKey}`,
     ) ?? null;
+  }
+
+  async list(query: ListSummaryFeedbackQuery): Promise<ListSummaryFeedbackResult> {
+    return {
+      items: [...this.feedbackByIdempotencyKey.values()].filter((feedback) => {
+        const snapshot = feedback.toSnapshot();
+
+        return (
+          snapshot.tenantId === query.tenantId &&
+          snapshot.workspaceId === query.workspaceId &&
+          snapshot.summaryId === query.summaryId
+        );
+      }),
+      nextCursor: undefined,
+    };
   }
 
   all(): readonly SummaryFeedback[] {

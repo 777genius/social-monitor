@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 const policyPath = 'ops/security/dependency-audit-policy.json';
@@ -35,7 +35,11 @@ for (const exception of policy.allowedExceptions ?? []) {
 
 let audit;
 try {
-  audit = JSON.parse(execFileSync('npm', ['audit', '--json', '--audit-level=high'], { encoding: 'utf8' }));
+  const auditJson =
+    process.platform === 'win32'
+      ? execSync('npm audit --json --audit-level=high', { encoding: 'utf8' })
+      : execFileSync('npm', ['audit', '--json', '--audit-level=high'], { encoding: 'utf8' });
+  audit = JSON.parse(auditJson);
 } catch (error) {
   const stdout = String(error.stdout ?? '').trim();
   if (stdout.length === 0) {

@@ -93,10 +93,15 @@ const parseEvent = (
     throw new DomainError('validation.failed', 'summary.ready payload scope must match event scope');
   }
 
+  const schemaVersion = readPositiveInteger(event, 'schemaVersion');
+  if (schemaVersion !== 1) {
+    throw new Error('Invalid summary.ready event field: schemaVersion');
+  }
+
   return {
     eventId: eventId(readString(event, 'eventId')),
     eventType: 'summary.ready',
-    schemaVersion: readPositiveInteger(event, 'schemaVersion'),
+    schemaVersion: 1,
     occurredAt: readDate(event.occurredAt, 'occurredAt'),
     tenantId: topLevelTenantId,
     workspaceId: topLevelWorkspaceId,

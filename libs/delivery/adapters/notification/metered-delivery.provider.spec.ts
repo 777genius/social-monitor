@@ -1,4 +1,5 @@
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type {
   DeliveryProviderPort,
@@ -20,8 +21,8 @@ class FakeDeliveryProvider implements DeliveryProviderPort {
 const request: SendDeliveryRequest = {
   attempt: {
     id: 'delivery-attempt-1',
-    tenantId: 'tenant-1',
-    workspaceId: 'workspace-1',
+    tenantId: tenantId('tenant-1'),
+    workspaceId: workspaceId('workspace-1'),
     idempotencyKey: 'digest:1',
     channel: 'webhook',
     recipientKey: 'endpoint-1',

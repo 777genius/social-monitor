@@ -5,6 +5,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { MonitoringRestModule } from '../../libs/monitoring/interfaces/rest/monitoring-rest.module';
 
 describe('Manual scan request quota (e2e)', () => {
   let app: INestApplication;
@@ -20,7 +21,7 @@ describe('Manual scan request quota (e2e)', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
-    queue = moduleRef.get(InMemoryQueuePublisher);
+    queue = moduleRef.select(MonitoringRestModule).get(InMemoryQueuePublisher, { strict: true });
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,

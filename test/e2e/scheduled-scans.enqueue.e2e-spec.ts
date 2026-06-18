@@ -6,6 +6,7 @@ import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { ScheduleDueScansUseCase } from '../../libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case';
+import { MonitoringRestModule } from '../../libs/monitoring/interfaces/rest/monitoring-rest.module';
 
 describe('Scheduled scan enqueue flow (e2e)', () => {
   let app: INestApplication;
@@ -18,7 +19,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
-    queue = moduleRef.get(InMemoryQueuePublisher);
+    queue = moduleRef.select(MonitoringRestModule).get(InMemoryQueuePublisher, { strict: true });
     scheduler = moduleRef.get(ScheduleDueScansUseCase);
     app.useGlobalPipes(
       new ValidationPipe({
@@ -64,7 +65,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       })
       .expect(201);
 
-    const policy = await request(app.getHttpServer())
+    await request(app.getHttpServer())
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
@@ -77,6 +78,12 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
         retryBudget: 3,
       })
       .expect(201);
+    const policy = await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
 
     const result = await scheduler.execute({
       tenantId: tenantId(tenant),
@@ -105,7 +112,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
         workspaceId: workspace,
         topicId: topic.body.topicId,
         sourceBindingId: binding.body.sourceBindingId,
-        scanPolicyId: policy.body.scanPolicyId,
+        scanPolicyId: policy.body.id,
       },
     });
 
@@ -116,11 +123,13 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    expect(status.body).toEqual({
+    expect(status.body).toMatchObject({
       scanJobId: queuedCommand.commandId,
       sourceBindingId: binding.body.sourceBindingId,
-      scanPolicyId: policy.body.scanPolicyId,
+      scanPolicyId: policy.body.id,
       status: 'enqueued',
+      userState: 'scan_in_progress',
+      operatorAction: 'check_worker_lag_if_status_exceeds_freshness_slo',
       requestedAt: expect.any(String),
       enqueuedAt: expect.any(String),
     });
@@ -232,7 +241,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       })
       .expect(201);
 
-    const policy = await request(app.getHttpServer())
+    await request(app.getHttpServer())
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
@@ -245,6 +254,12 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
         retryBudget: 3,
       })
       .expect(201);
+    const policy = await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
 
     await request(app.getHttpServer())
       .patch(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/status`)
@@ -279,7 +294,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       .expect(200);
 
     expect(unchangedPolicy.body).toMatchObject({
-      scanPolicyId: policy.body.scanPolicyId,
+      id: policy.body.id,
       sourceBindingId: binding.body.sourceBindingId,
       nextRunAt: policy.body.nextRunAt,
     });

@@ -37,10 +37,29 @@ describe('API gateway health (e2e)', () => {
       .expect('x-request-id', 'test-request-id')
       .expect('x-correlation-id', 'test-correlation-id')
       .expect('x-causation-id', 'test-causation-id')
-      .expect({
-        status: 'ok',
-        service: 'api-gateway',
+      .expect((response) => {
+        expect(response.body).toEqual(expect.objectContaining({
+          status: 'ok',
+          service: 'api-gateway',
+          checkedAt: expect.any(String),
+          uptimeSeconds: expect.any(Number),
+        }));
       });
+  });
+
+  it('keeps /healthz as a liveness alias', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/healthz')
+      .set('x-request-id', 'test-healthz-request-id')
+      .expect(200);
+
+    expect(response.headers['x-request-id']).toBe('test-healthz-request-id');
+    expect(response.body).toEqual(expect.objectContaining({
+      status: 'ok',
+      service: 'api-gateway',
+      checkedAt: expect.any(String),
+      uptimeSeconds: expect.any(Number),
+    }));
   });
 
   it('returns readiness', async () => {
@@ -48,10 +67,36 @@ describe('API gateway health (e2e)', () => {
 
     expect(response.headers['x-request-id']).toEqual(expect.any(String));
     expect(response.headers['x-correlation-id']).toBe(response.headers['x-request-id']);
-    expect(response.body).toEqual({
+    expect(response.body).toEqual(expect.objectContaining({
       status: 'ok',
       service: 'api-gateway',
-    });
+      checkedAt: expect.any(String),
+      uptimeSeconds: expect.any(Number),
+      checks: expect.arrayContaining([
+        expect.objectContaining({ name: 'api_gateway', status: 'ok' }),
+      ]),
+      capabilities: expect.objectContaining({
+        rest: 'enabled',
+      }),
+      runtime: expect.objectContaining({
+        nodeEnv: 'test',
+      }),
+    }));
+  });
+
+  it('keeps /health/ready as a readiness alias', async () => {
+    const response = await request(app.getHttpServer()).get('/health/ready').expect(200);
+
+    expect(response.body).toEqual(expect.objectContaining({
+      status: 'ok',
+      service: 'api-gateway',
+      checks: expect.arrayContaining([
+        expect.objectContaining({ name: 'api_gateway', status: 'ok' }),
+      ]),
+      capabilities: expect.objectContaining({
+        rest: 'enabled',
+      }),
+    }));
   });
 
   it('drops unsafe context headers and falls back to generated safe ids', async () => {

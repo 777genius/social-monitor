@@ -1,6 +1,7 @@
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { DigestSchedule, type DeliveryChannel } from '../../domain';
+import type { DigestSchedule} from '../../domain';
+import { type DeliveryChannel } from '../../domain';
 import type {
   DigestScheduleRepositoryPort,
   FindDueDigestSchedulesQuery,

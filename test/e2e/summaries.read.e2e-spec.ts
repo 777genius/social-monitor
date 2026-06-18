@@ -97,8 +97,17 @@ describe('Summary read model (e2e)', () => {
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    expect(list.body).toEqual({
-      items: [detail.body],
+    expect(list.body.items).toHaveLength(1);
+    expect(list.body.items[0]).toMatchObject({
+      schemaVersion: 'summary.artifact.v1',
+      summaryId: executed.value.summaryId,
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      freshness: {
+        status: 'fresh',
+        checkedAt: expect.any(String),
+      },
     });
   });
 });

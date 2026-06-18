@@ -1,6 +1,7 @@
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
-import { DomainError, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import type { DomainError} from '@social-monitor/shared-kernel';
+import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { ExecuteSummaryJobUseCase } from '../../features/execute-summary-job/execute-summary-job.use-case';
 import type { ExecuteSummaryJobResult } from '../../features/execute-summary-job/execute-summary-job.result';

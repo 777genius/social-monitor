@@ -21,10 +21,15 @@ if (!Number.isInteger(timeoutMs) || timeoutMs < 1_000) {
 
 const command = args[separatorIndex + 1];
 const commandArgs = args.slice(separatorIndex + 2);
-const child = spawn(command, commandArgs, {
+const childEnv = buildChildEnv(args.slice(0, separatorIndex));
+const childCommand = process.platform === 'win32'
+  ? [command, ...commandArgs].map(quoteShellArg).join(' ')
+  : command;
+const childArgs = process.platform === 'win32' ? [] : commandArgs;
+const child = spawn(childCommand, childArgs, {
   detached: process.platform !== 'win32',
-  env: process.env,
-  shell: false,
+  env: childEnv,
+  shell: process.platform === 'win32',
   stdio: 'inherit',
 });
 
@@ -77,3 +82,106 @@ const terminate = (pid) => {
     }
   }, 5_000).unref();
 };
+
+function buildChildEnv(optionArgs) {
+  let cleanEnv = false;
+  let nodeOptions;
+  const copyEnvNames = [];
+  const explicitEnv = new Map();
+
+  for (let index = 0; index < optionArgs.length; index += 1) {
+    const arg = optionArgs[index];
+
+    if (arg === '--timeout-ms') {
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--clean-env') {
+      cleanEnv = true;
+      continue;
+    }
+
+    if (arg === '--node-options') {
+      nodeOptions = optionArgs[index + 1];
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--node-options=')) {
+      nodeOptions = arg.slice('--node-options='.length);
+      continue;
+    }
+
+    if (arg === '--copy-env') {
+      copyEnvNames.push(optionArgs[index + 1]);
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--env') {
+      const [name, ...valueParts] = String(optionArgs[index + 1] ?? '').split('=');
+      if (name.length > 0) {
+        explicitEnv.set(name, valueParts.join('='));
+      }
+      index += 1;
+    }
+  }
+
+  const env = cleanEnv ? buildCleanEnv() : { ...process.env };
+
+  for (const name of copyEnvNames) {
+    const value = getEnvValue(name);
+    if (value !== undefined) {
+      env[name] = value;
+    }
+  }
+
+  for (const [name, value] of explicitEnv.entries()) {
+    env[name] = value;
+  }
+
+  if (nodeOptions !== undefined) {
+    env.NODE_OPTIONS = nodeOptions;
+  }
+
+  return env;
+}
+
+function buildCleanEnv() {
+  const env = {};
+  const preserveNames = process.platform === 'win32'
+    ? ['Path', 'PATH', 'PATHEXT', 'ComSpec', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA']
+    : ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'TMP'];
+
+  for (const name of preserveNames) {
+    const value = getEnvValue(name);
+    if (value !== undefined) {
+      env[name] = value;
+    }
+  }
+
+  return env;
+}
+
+function getEnvValue(name) {
+  if (process.env[name] !== undefined) {
+    return process.env[name];
+  }
+
+  if (process.platform !== 'win32') {
+    return undefined;
+  }
+
+  const lowerName = name.toLowerCase();
+  const matchingKey = Object.keys(process.env).find((key) => key.toLowerCase() === lowerName);
+  return matchingKey === undefined ? undefined : process.env[matchingKey];
+}
+
+function quoteShellArg(value) {
+  if (/^[A-Za-z0-9_./:\\@%+=,-]+$/.test(value)) {
+    return value;
+  }
+
+  return `"${value.replace(/(["^&|<>])/g, '^$1')}"`;
+}

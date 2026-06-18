@@ -1,5 +1,6 @@
+import type {
+  DomainError} from '@social-monitor/shared-kernel';
 import {
-  DomainError,
   FixedClock,
   type IdGenerator,
   ok,
