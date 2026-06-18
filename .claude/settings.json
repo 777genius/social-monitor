@@ -1,0 +1,129 @@
+{
+  "permissions": {
+    "disableAutoMode": "disable",
+    "disableBypassPermissionsMode": "disable",
+    "deny": [
+      "Read(//**/.env)",
+      "Read(//**/.env.local)",
+      "Read(//**/.env.production)",
+      "Read(//**/.env.staging)",
+      "Read(//**/.env.beta)",
+      "Read(//**/.env.development)",
+      "Read(//**/.envrc)",
+      "Read(//**/.npmrc)",
+      "Read(//**/.pypirc)",
+      "Read(//**/.netrc)",
+      "Read(//**/secrets/**)",
+      "Read(//**/credentials/**)",
+      "Read(//**/.ssh/**)",
+      "Read(//**/.aws/**)",
+      "Read(//**/.azure/**)",
+      "Read(//**/.kube/**)",
+      "Read(//**/.config/gh/**)",
+      "Read(//**/.config/gcloud/**)",
+      "Read(//**/.config/stripe/**)",
+      "Read(//**/.config/vercel/**)",
+      "Read(//**/.config/supabase/**)",
+      "Read(//**/.docker/config.json)",
+      "Read(//**/*.pem)",
+      "Read(//**/*.key)",
+      "Read(//**/id_rsa)",
+      "Read(//**/id_ed25519)",
+      "Edit(//**/.env)",
+      "Edit(//**/.env.local)",
+      "Edit(//**/.env.production)",
+      "Edit(//**/.env.staging)",
+      "Edit(//**/.env.beta)",
+      "Edit(//**/.env.development)",
+      "Edit(//**/.envrc)",
+      "Edit(//**/.npmrc)",
+      "Edit(//**/.pypirc)",
+      "Edit(//**/.netrc)",
+      "Edit(//**/secrets/**)",
+      "Edit(//**/credentials/**)",
+      "Edit(//**/.ssh/**)",
+      "Edit(//**/.aws/**)",
+      "Edit(//**/.azure/**)",
+      "Edit(//**/.kube/**)",
+      "Edit(//**/.config/gh/**)",
+      "Edit(//**/.config/gcloud/**)",
+      "Edit(//**/.config/stripe/**)",
+      "Edit(//**/.config/vercel/**)",
+      "Edit(//**/.config/supabase/**)",
+      "Edit(//**/.docker/config.json)",
+      "Edit(//**/*.pem)",
+      "Edit(//**/*.key)",
+      "Edit(//**/id_rsa)",
+      "Edit(//**/id_ed25519)",
+      "Write(//**/.env)",
+      "Write(//**/.env.local)",
+      "Write(//**/.env.production)",
+      "Write(//**/.env.staging)",
+      "Write(//**/.env.beta)",
+      "Write(//**/.env.development)",
+      "Write(//**/.envrc)",
+      "Write(//**/.npmrc)",
+      "Write(//**/.pypirc)",
+      "Write(//**/.netrc)",
+      "Write(//**/secrets/**)",
+      "Write(//**/credentials/**)",
+      "Write(//**/.ssh/**)",
+      "Write(//**/.aws/**)",
+      "Write(//**/.azure/**)",
+      "Write(//**/.kube/**)",
+      "Write(//**/.config/gh/**)",
+      "Write(//**/.config/gcloud/**)",
+      "Write(//**/.config/stripe/**)",
+      "Write(//**/.config/vercel/**)",
+      "Write(//**/.config/supabase/**)",
+      "Write(//**/.docker/config.json)",
+      "Write(//**/*.pem)",
+      "Write(//**/*.key)",
+      "Write(//**/id_rsa)",
+      "Write(//**/id_ed25519)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/scripts/claude-hook-guard.mjs"
+            ]
+          }
+        ]
+      }
+    ],
+    "TaskCreated": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/scripts/claude-hook-guard.mjs"
+            ]
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/scripts/claude-hook-stop-quality.mjs"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

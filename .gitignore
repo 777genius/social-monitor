@@ -22,6 +22,14 @@ prisma/generated/
 .env
 .env.*
 !.env.example
+CLAUDE.local.md
+!CLAUDE.md
+!.claude/
+!.claude/rules/
+!.claude/rules/*.md
+!.claude/settings.json
+.claude/settings.local.json
+.serena/
 
 # OS/editor
 .DS_Store

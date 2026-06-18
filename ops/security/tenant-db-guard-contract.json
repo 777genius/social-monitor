@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "posture": "pre_rls_tenant_guardrails",
+  "owner": "security-owner",
+  "tenantOwnedTables": [
+    "api_keys",
+    "cursor_checkpoints",
+    "delivery_attempts",
+    "digest_schedules",
+    "digests",
+    "feed_items",
+    "memberships",
+    "notification_preferences",
+    "public_api_audit_events",
+    "realtime_events",
+    "scan_attempts",
+    "scan_failure_queue_entries",
+    "scan_jobs",
+    "scan_leases",
+    "scan_policies",
+    "source_bindings",
+    "source_items",
+    "summary_artifacts",
+    "summary_feedback",
+    "summary_jobs",
+    "summary_policies",
+    "topics",
+    "usage_quota_buckets",
+    "usage_records",
+    "users",
+    "webhook_endpoints",
+    "workspaces"
+  ],
+  "tenantScopedSystemTables": [
+    {
+      "table": "idempotency_keys",
+      "tenantIdRequired": false,
+      "workspaceIdRequired": false,
+      "tenantPrefixedIndexRequired": true,
+      "reason": "Some internal idempotency scopes are global, but tenant/workspace scoped write commands must be indexed by tenant and workspace."
+    },
+    {
+      "table": "inbox_records",
+      "tenantIdRequired": false,
+      "workspaceIdRequired": false,
+      "tenantPrefixedIndexRequired": true,
+      "reason": "Platform inbox entries can represent global events, but tenant event dedupe must remain tenant-queryable."
+    },
+    {
+      "table": "outbox_events",
+      "tenantIdRequired": false,
+      "workspaceIdRequired": false,
+      "tenantPrefixedIndexRequired": true,
+      "reason": "Platform outbox can emit global events, but tenant event dispatch and support triage must remain tenant-queryable."
+    }
+  ],
+  "sharedTables": [
+    {
+      "table": "capability_profiles",
+      "reason": "Versioned source capability metadata is shared reference data."
+    },
+    {
+      "table": "rate_limit_buckets",
+      "reason": "Rate limit buckets are keyed by opaque subject and operation; tenant-specific quotas live in usage_quota_buckets."
+    },
+    {
+      "table": "source_catalog_entries",
+      "reason": "Source catalog metadata is shared reference data."
+    },
+    {
+      "table": "tenants",
+      "reason": "Tenant root table cannot contain tenant_id."
+    },
+    {
+      "table": "webhook_replay_deliveries",
+      "reason": "Replay nonces are scoped through webhook_endpoint_id and short retention."
+    },
+    {
+      "table": "webhook_secrets",
+      "reason": "Encrypted secret vault is addressed only through endpoint-owned secret_key_id; future RLS may add tenant columns if direct querying is introduced."
+    }
+  ]
+}

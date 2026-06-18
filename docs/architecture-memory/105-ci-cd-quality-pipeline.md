@@ -18,6 +18,7 @@ Use reusable CI workflows and contract gates. The pipeline must protect architec
 
 Backend:
 
+- agent quality rules;
 - format;
 - lint;
 - code-quality guardrails;
@@ -84,6 +85,8 @@ The CI/CD system is the enforcement layer for Clean Architecture, generated cont
 - direct in-memory adapter construction inside feature use cases;
 - tenant-scoped REST controllers without `requireTenantScope(...)`;
 - production `console.*` calls.
+
+`npm run check:agent-quality-rules` must also run before expensive gates. It blocks missing or vague Claude/agent instructions for Clean Architecture, SOLID, DRY, runtime profile safety, source readiness, generated contracts and dependency audit discipline.
 
 ## Release Gate Coverage
 
