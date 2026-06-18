@@ -2,9 +2,9 @@ import { Controller, Get, Headers, Inject, Param } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
@@ -24,6 +24,7 @@ export class ScanStatusController {
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
   ) {}
 
   @Get()
@@ -116,7 +117,7 @@ export class ScanStatusController {
       tenantId,
       workspaceId,
       action: 'scan_jobs.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {

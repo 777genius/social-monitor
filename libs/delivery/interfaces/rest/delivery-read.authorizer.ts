@@ -3,12 +3,13 @@ import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import type { ApiKeyScope } from '@social-monitor/identity/domain';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
   type WorkspaceAction,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 export type DeliveryReadAuthorizationParams = {
@@ -16,6 +17,7 @@ export type DeliveryReadAuthorizationParams = {
   readonly workspaceId: WorkspaceId;
   readonly workspaceRoleHeader: string | undefined;
   readonly authorizationHeader: string | undefined;
+  readonly requiredScope?: ApiKeyScope;
   readonly action: WorkspaceAction;
   readonly operation: string;
 };
@@ -26,6 +28,7 @@ export class DeliveryReadAuthorizer {
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
   ) {}
 
   async authorize(params: DeliveryReadAuthorizationParams): Promise<void> {
@@ -34,7 +37,7 @@ export class DeliveryReadAuthorizer {
         authorizationHeader: params.authorizationHeader,
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
-        requiredScope: 'read:delivery_status',
+        requiredScope: params.requiredScope ?? 'read:delivery_status',
         operation: params.operation,
       });
       return;
@@ -44,7 +47,7 @@ export class DeliveryReadAuthorizer {
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       action: params.action,
-      roles: parseWorkspaceRolesHeader(params.workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(params.workspaceRoleHeader),
     });
 
     if (!authorization.ok) {

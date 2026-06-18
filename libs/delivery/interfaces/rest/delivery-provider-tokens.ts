@@ -1,3 +1,5 @@
+import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
+
 import type {
   DeliveryAttemptRepositoryPort,
   DigestRepositoryPort,
@@ -48,10 +50,24 @@ export const resolveDeliveryPersistenceMode = (env: NodeJS.ProcessEnv): Delivery
   const value = env.DELIVERY_PERSISTENCE ?? 'in-memory';
 
   if (value === 'in-memory') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'DELIVERY_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     return 'in-memory';
   }
 
   if (value === 'prisma') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'DELIVERY_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     if ((env.DATABASE_URL ?? '').trim().length === 0) {
       throw new Error('DELIVERY_PERSISTENCE=prisma requires DATABASE_URL');
     }

@@ -1,12 +1,13 @@
 import { Body, Controller, Delete, Get, Headers, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiKeyRequestAuthorizer } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
   type WorkspaceAction,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { parsePaginationLimit } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 
@@ -34,6 +35,7 @@ export class WebhookEndpointsController {
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
   ) {}
 
   @Post()
@@ -124,7 +126,10 @@ export class WebhookEndpointsController {
     const result = await this.listWebhookEndpoints.execute({
       tenantId: tenant,
       workspaceId: workspace,
-      limit: limitQuery === undefined ? 50 : Number(limitQuery),
+      limit: parsePaginationLimit(limitQuery, {
+        defaultLimit: 50,
+        invalidMessage: 'Webhook endpoint list limit must be between 1 and 100',
+      }),
       cursor,
     });
 
@@ -311,7 +316,7 @@ export class WebhookEndpointsController {
       tenantId: params.tenant,
       workspaceId: params.workspace,
       action: params.action,
-      roles: parseWorkspaceRolesHeader(params.workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(params.workspaceRoleHeader),
     });
 
     if (!authorization.ok) {

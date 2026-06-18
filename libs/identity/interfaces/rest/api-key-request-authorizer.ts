@@ -1,9 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { ApiKeyScope } from '@social-monitor/identity/domain';
 import { VerifyApiKeyUseCase } from '@social-monitor/identity/features/verify-api-key/verify-api-key.use-case';
 import { DomainError, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/check-public-api-rate-limit/check-public-api-rate-limit.use-case';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
+
+import { IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE } from './identity-provider-tokens';
 
 export type ApiKeyRequestAuthorization = {
   readonly apiKeyId: string;
@@ -23,6 +25,8 @@ export class ApiKeyRequestAuthorizer {
     private readonly verifyApiKey: VerifyApiKeyUseCase,
     private readonly checkPublicApiRateLimit: CheckPublicApiRateLimitUseCase,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
+    @Inject(IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE)
+    private readonly publicApiRateLimitPerMinute: number,
   ) {}
 
   async authorize(params: AuthorizeApiKeyRequestParams): Promise<ApiKeyRequestAuthorization> {
@@ -55,7 +59,7 @@ export class ApiKeyRequestAuthorizer {
     const rateLimit = await this.checkPublicApiRateLimit.execute({
       subjectKey: `api-key:${verifiedApiKey.value.apiKey.id}`,
       operation: params.operation,
-      limit: publicApiRateLimitPerMinute(),
+      limit: this.publicApiRateLimitPerMinute,
       windowSeconds: 60,
     });
 
@@ -130,14 +134,4 @@ const parseBearerSecret = (authorizationHeader: string | undefined): string => {
   }
 
   return secret;
-};
-
-const publicApiRateLimitPerMinute = (): number => {
-  const configured = Number(process.env.PUBLIC_API_RATE_LIMIT_PER_MINUTE);
-
-  if (Number.isInteger(configured) && configured > 0) {
-    return configured;
-  }
-
-  return 60;
 };

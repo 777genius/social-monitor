@@ -1,12 +1,8 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import {
-  WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
-  type WorkspaceAction,
-  type WorkspaceAuthorizationPolicyPort,
-} from '@social-monitor/identity/ports';
-import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
+import { parsePaginationLimit } from '@social-monitor/platform-request-context';
+import { DomainError, requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { CreateDigestScheduleUseCase } from '../../features/create-digest-schedule/create-digest-schedule.use-case';
 import { GetDigestScheduleUseCase } from '../../features/get-digest-schedule/get-digest-schedule.use-case';
@@ -27,34 +23,35 @@ export class DigestSchedulesController {
     private readonly getDigestSchedule: GetDigestScheduleUseCase,
     private readonly listDigestSchedules: ListDigestSchedulesUseCase,
     private readonly deliveryReadAuthorizer: DeliveryReadAuthorizer,
-    @Inject(WORKSPACE_AUTHORIZATION_POLICY)
-    private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a periodic digest schedule for one recipient and topic set.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Digest schedule creation allows owner, admin or member.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:delivery_status',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Digest schedule creation allows owner, admin or member.',
   })
   async create(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Body() body: CreateDigestScheduleRequestDto,
   ): Promise<CreateDigestScheduleResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    this.authorizeWorkspaceRole({
+    await this.deliveryReadAuthorizer.authorize({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       workspaceRoleHeader,
+      authorizationHeader,
+      requiredScope: 'write:delivery_status',
       action: 'digest_schedules.create',
+      operation: 'digest_schedules.create',
     });
 
     const result = await this.createDigestSchedule.execute({
@@ -79,10 +76,9 @@ export class DigestSchedulesController {
   @ApiOperation({ summary: 'List digest schedules for the current tenant/workspace.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Digest schedule reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:delivery_status',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Digest schedule reads allow owner, admin, member or viewer.',
   })
   async list(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -108,7 +104,10 @@ export class DigestSchedulesController {
     const result = await this.listDigestSchedules.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      limit: limitQuery === undefined ? 50 : Number(limitQuery),
+      limit: parsePaginationLimit(limitQuery, {
+        defaultLimit: 50,
+        invalidMessage: 'Digest schedule list limit must be between 1 and 100',
+      }),
       cursor,
     });
 
@@ -123,10 +122,9 @@ export class DigestSchedulesController {
   @ApiOperation({ summary: 'Get one digest schedule for the current tenant/workspace.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Digest schedule reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:delivery_status',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Digest schedule reads allow owner, admin, member or viewer.',
   })
   async get(
     @Param('digestScheduleId') digestScheduleId: string,
@@ -158,24 +156,6 @@ export class DigestSchedulesController {
     }
 
     return result.value;
-  }
-
-  private authorizeWorkspaceRole(params: {
-    readonly tenantId: TenantId;
-    readonly workspaceId: WorkspaceId;
-    readonly workspaceRoleHeader: string | undefined;
-    readonly action: WorkspaceAction;
-  }): void {
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId: params.tenantId,
-      workspaceId: params.workspaceId,
-      action: params.action,
-      roles: parseWorkspaceRolesHeader(params.workspaceRoleHeader),
-    });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
   }
 }
 

@@ -12,9 +12,9 @@ import {
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import type { Server, Socket } from 'socket.io';
 
@@ -62,6 +62,7 @@ export class RealtimeEventsGateway implements RealtimeFanoutPort {
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
   ) {}
 
   @SubscribeMessage('realtime.subscribe')
@@ -159,7 +160,7 @@ export class RealtimeEventsGateway implements RealtimeFanoutPort {
       tenantId,
       workspaceId,
       action: 'realtime_events.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {

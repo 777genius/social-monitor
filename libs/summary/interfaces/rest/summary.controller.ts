@@ -2,14 +2,15 @@ import { Controller, Get, Headers, Inject, Param, Post, Query } from '@nestjs/co
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
+import { parsePaginationLimit, RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { GetSummaryUseCase } from '../../features/get-summary/get-summary.use-case';
@@ -28,6 +29,8 @@ export class SummaryController {
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
+    private readonly requestCorrelationIds: RequestCorrelationIdFactory,
   ) {}
 
   @Get()
@@ -60,7 +63,10 @@ export class SummaryController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       topicId: normalizeTopicId(topicId),
-      limit: parseLimit(limitQuery),
+      limit: parsePaginationLimit(limitQuery, {
+        defaultLimit: 20,
+        invalidMessage: 'Summary page limit must be between 1 and 100',
+      }),
       cursor,
     });
 
@@ -140,7 +146,7 @@ export class SummaryController {
       workspaceId: scope.workspaceId,
       summaryId,
       idempotencyKey,
-      correlationId: requestId ?? crypto.randomUUID(),
+      correlationId: this.requestCorrelationIds.fromRequestId(requestId),
     });
 
     if (!result.ok) {
@@ -171,7 +177,7 @@ export class SummaryController {
       tenantId,
       workspaceId,
       action: 'summaries.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {
@@ -201,7 +207,7 @@ export class SummaryController {
       tenantId,
       workspaceId,
       action: operation,
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {
@@ -209,16 +215,6 @@ export class SummaryController {
     }
   }
 }
-
-const parseLimit = (value: string | undefined): number => {
-  if (value === undefined) {
-    return 20;
-  }
-
-  const parsed = Number(value);
-
-  return Number.isInteger(parsed) ? parsed : Number.NaN;
-};
 
 const normalizeTopicId = (value: string | undefined): string | undefined => {
   if (value === undefined) {

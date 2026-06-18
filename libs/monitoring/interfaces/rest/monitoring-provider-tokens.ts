@@ -1,4 +1,5 @@
 import type { Provider } from '@nestjs/common';
+import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
 
 import type {
   IdempotencyPort,
@@ -61,10 +62,24 @@ export const resolveMonitoringPersistenceMode = (env: NodeJS.ProcessEnv): Monito
   const value = env.MONITORING_PERSISTENCE ?? 'in-memory';
 
   if (value === 'in-memory') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'MONITORING_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     return 'in-memory';
   }
 
   if (value === 'prisma') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'MONITORING_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     if ((env.DATABASE_URL ?? '').trim().length === 0) {
       throw new Error('MONITORING_PERSISTENCE=prisma requires DATABASE_URL');
     }
@@ -79,10 +94,24 @@ export const resolveMonitoringScanQueueMode = (env: NodeJS.ProcessEnv): Monitori
   const value = env.MONITORING_SCAN_QUEUE ?? 'in-memory';
 
   if (value === 'in-memory') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'MONITORING_SCAN_QUEUE',
+      selectedMode: value,
+      durableModes: ['rabbitmq'],
+    });
+
     return 'in-memory';
   }
 
   if (value === 'rabbitmq') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'MONITORING_SCAN_QUEUE',
+      selectedMode: value,
+      durableModes: ['rabbitmq'],
+    });
+
     if ((env.RABBITMQ_URL ?? '').trim().length === 0) {
       throw new Error('MONITORING_SCAN_QUEUE=rabbitmq requires RABBITMQ_URL');
     }
@@ -91,4 +120,17 @@ export const resolveMonitoringScanQueueMode = (env: NodeJS.ProcessEnv): Monitori
   }
 
   throw new Error('MONITORING_SCAN_QUEUE must be "in-memory" or "rabbitmq"');
+};
+
+export const resolveManualScanRequestQuotaPerHour = (env: NodeJS.ProcessEnv): number =>
+  parsePositiveInteger(env.MANUAL_SCAN_REQUEST_QUOTA_PER_HOUR, 60);
+
+const parsePositiveInteger = (value: string | undefined, fallback: number): number => {
+  const parsed = Number(value);
+
+  if (Number.isInteger(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  return fallback;
 };

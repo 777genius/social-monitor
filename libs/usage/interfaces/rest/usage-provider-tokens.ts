@@ -1,3 +1,5 @@
+import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
+
 import type { PublicApiAuditLogPort, RateLimitCounterPort, UsageQuotaLedgerPort } from '../../ports';
 
 export type UsagePersistenceMode = 'in-memory' | 'prisma';
@@ -20,10 +22,24 @@ export const resolveUsagePersistenceMode = (env: NodeJS.ProcessEnv): UsagePersis
   const value = env.USAGE_PERSISTENCE ?? 'in-memory';
 
   if (value === 'in-memory') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'USAGE_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     return 'in-memory';
   }
 
   if (value === 'prisma') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'USAGE_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     if ((env.DATABASE_URL ?? '').trim().length === 0) {
       throw new Error('USAGE_PERSISTENCE=prisma requires DATABASE_URL');
     }

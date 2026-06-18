@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Headers, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { parsePaginationLimit } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import type { PublicApiAuditMetadataValue, PublicApiAuditOutcome } from '@social-monitor/usage/ports';
@@ -9,10 +10,10 @@ import { ListApiKeysUseCase } from '../../features/list-api-keys/list-api-keys.u
 import { RevokeApiKeyUseCase } from '../../features/revoke-api-key/revoke-api-key.use-case';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
   type WorkspaceAction,
   type WorkspaceAuthorizationPolicyPort,
 } from '../../ports';
+import { WorkspaceRoleHeaderParser } from '../authorization/workspace-role-header.parser';
 import {
   CreateApiKeyRequestDto,
   type CreateApiKeyResponseDto,
@@ -30,6 +31,7 @@ export class ApiKeysController {
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
   ) {}
 
   @Post()
@@ -95,7 +97,10 @@ export class ApiKeysController {
     const result = await this.listApiKeys.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      limit: limitQuery === undefined ? 50 : Number(limitQuery),
+      limit: parsePaginationLimit(limitQuery, {
+        defaultLimit: 50,
+        invalidMessage: 'API key list limit must be between 1 and 100',
+      }),
       cursor,
     });
 
@@ -192,7 +197,7 @@ export class ApiKeysController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       action,
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!result.ok) {

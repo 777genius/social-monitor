@@ -5,11 +5,12 @@ import {
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { parsePaginationLimit, RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
@@ -26,6 +27,8 @@ export class TopicController {
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
+    private readonly requestCorrelationIds: RequestCorrelationIdFactory,
   ) {}
 
   @Post()
@@ -37,7 +40,7 @@ export class TopicController {
     workspaceRoleDescription: 'Comma-separated workspace roles. Topic creation requires owner or admin.',
   })
   @ApiHeader({ name: 'idempotency-key', required: true })
-  create(
+  async create(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
@@ -51,27 +54,27 @@ export class TopicController {
       workspaceIdHeader: workspaceHeader,
     });
 
-    return this.authorizeTopicWrite(
+    await this.authorizeTopicWrite(
       scope.tenantId,
       scope.workspaceId,
       workspaceRoleHeader,
       authorizationHeader,
-    ).then(() => this.createTopic
-      .execute({
-        tenantId: scope.tenantId,
-        workspaceId: scope.workspaceId,
-        name: body.name,
-        query: body.query,
-        idempotencyKey,
-        correlationId: requestId ?? crypto.randomUUID(),
-      })
-      .then((result) => {
-        if (!result.ok) {
-          throw result.error;
-        }
+    );
 
-        return result.value;
-      }));
+    const result = await this.createTopic.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      name: body.name,
+      query: body.query,
+      idempotencyKey,
+      correlationId: this.requestCorrelationIds.fromRequestId(requestId),
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
   }
 
   @Get()
@@ -101,7 +104,10 @@ export class TopicController {
     const result = await this.listTopics.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      limit: limitQuery === undefined ? 50 : Number(limitQuery),
+      limit: parsePaginationLimit(limitQuery, {
+        defaultLimit: 50,
+        invalidMessage: 'Topic list limit must be between 1 and 100',
+      }),
       cursor,
     });
 
@@ -133,7 +139,7 @@ export class TopicController {
       tenantId,
       workspaceId,
       action: 'topics.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {
@@ -162,7 +168,7 @@ export class TopicController {
       tenantId,
       workspaceId,
       action: 'topics.create',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {

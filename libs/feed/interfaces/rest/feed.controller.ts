@@ -2,14 +2,15 @@ import { Controller, Get, Headers, Inject, Param, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
+import { parsePaginationLimit } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { GetFeedItemUseCase } from '../../features/get-feed-item/get-feed-item.use-case';
@@ -25,6 +26,7 @@ export class FeedController {
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
   ) {}
 
   @Get()
@@ -57,7 +59,10 @@ export class FeedController {
     const result = await this.listFeedItems.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      limit: parseLimit(limitQuery),
+      limit: parsePaginationLimit(limitQuery, {
+        defaultLimit: 20,
+        invalidMessage: 'Feed page limit must be between 1 and 100',
+      }),
       cursor,
       topicId: normalizeTopicId(topicId),
       searchQuery: normalizeSearchQuery(searchQuery),
@@ -124,7 +129,7 @@ export class FeedController {
       tenantId,
       workspaceId,
       action: 'feed.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {
@@ -132,16 +137,6 @@ export class FeedController {
     }
   }
 }
-
-const parseLimit = (value: string | undefined): number => {
-  if (value === undefined) {
-    return 20;
-  }
-
-  const parsed = Number(value);
-
-  return Number.isInteger(parsed) ? parsed : Number.NaN;
-};
 
 const normalizeSearchQuery = (value: string | undefined): string | undefined => {
   if (value === undefined) {

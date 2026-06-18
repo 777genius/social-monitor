@@ -2,14 +2,15 @@ import { Controller, Headers, Inject, Param, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
+import { RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
@@ -23,6 +24,8 @@ export class SummaryRequestController {
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
+    private readonly requestCorrelationIds: RequestCorrelationIdFactory,
   ) {}
 
   @Post()
@@ -60,7 +63,7 @@ export class SummaryRequestController {
       workspaceId: scope.workspaceId,
       topicId,
       idempotencyKey,
-      correlationId: requestId ?? crypto.randomUUID(),
+      correlationId: this.requestCorrelationIds.fromRequestId(requestId),
     });
 
     if (!result.ok) {
@@ -92,7 +95,7 @@ export class SummaryRequestController {
       tenantId,
       workspaceId,
       action: operation,
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {

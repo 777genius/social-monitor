@@ -17,8 +17,10 @@ import { ApiKeyRequestAuthorizer } from './api-key-request-authorizer';
 import { ApiKeysController } from './api-keys.controller';
 import {
   IDENTITY_API_KEY_REPOSITORY,
+  IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE,
   IDENTITY_PERSISTENCE_MODE,
   IDENTITY_PRISMA_CLIENT,
+  resolvePublicApiRateLimitPerMinute,
   resolveIdentityPersistenceMode,
   type IdentityPersistenceMode,
 } from './identity-provider-tokens';
@@ -30,6 +32,10 @@ import {
     {
       provide: IDENTITY_PERSISTENCE_MODE,
       useFactory: () => resolveIdentityPersistenceMode(process.env),
+    },
+    {
+      provide: IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE,
+      useFactory: () => resolvePublicApiRateLimitPerMinute(process.env),
     },
     {
       provide: IDENTITY_PRISMA_CLIENT,

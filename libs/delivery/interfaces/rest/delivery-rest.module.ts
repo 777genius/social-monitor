@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
+import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
+import { ContractWebhookEventCatalogAdapter } from '../../adapters/events/contract-webhook-event-catalog.adapter';
 import { CircuitBreakerDeliveryProvider } from '../../adapters/notification/circuit-breaker-delivery.provider';
 import {
   FetchWebhookHttpClient,
@@ -96,11 +98,13 @@ import type {
   RealtimeFanoutPort,
   RealtimeEventRepositoryPort,
   WebhookEndpointRepositoryPort,
+  WebhookEventCatalogPort,
   WebhookReplayStorePort,
   WebhookSecretVaultPort,
 } from '../../ports';
 
 export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
+const DELIVERY_WEBHOOK_EVENT_CATALOG = Symbol('DELIVERY_WEBHOOK_EVENT_CATALOG');
 
 @Module({
   imports: [IdentityRestModule, UsageRestModule],
@@ -133,6 +137,10 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
     InMemoryWebhookReplayStore,
     InMemoryWebhookSecretVault,
     InMemoryMetricsRecorder,
+    {
+      provide: DELIVERY_WEBHOOK_EVENT_CATALOG,
+      useClass: ContractWebhookEventCatalogAdapter,
+    },
     DeliveryReadAuthorizer,
     RealtimeEventsGateway,
     {
@@ -145,12 +153,18 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
         metrics: InMemoryMetricsRecorder,
         endpoints: WebhookEndpointRepositoryPort,
         secrets: WebhookSecretVaultPort,
+        eventCatalog: WebhookEventCatalogPort,
       ) => [
         createInMemoryDeliveryProvider('in_app', metrics),
         createInMemoryDeliveryProvider('email', metrics),
-        createWebhookDeliveryProvider(metrics, endpoints, secrets),
+        createWebhookDeliveryProvider(metrics, endpoints, secrets, eventCatalog),
       ],
-      inject: [InMemoryMetricsRecorder, DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_SECRET_VAULT],
+      inject: [
+        InMemoryMetricsRecorder,
+        DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
+        DELIVERY_WEBHOOK_SECRET_VAULT,
+        DELIVERY_WEBHOOK_EVENT_CATALOG,
+      ],
     },
     {
       provide: DELIVERY_ATTEMPT_REPOSITORY,
@@ -337,8 +351,15 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       useFactory: (
         endpoints: WebhookEndpointRepositoryPort,
         secrets: WebhookSecretVaultPort,
-      ) => new CreateWebhookEndpointUseCase(endpoints, secrets, new CryptoIdGenerator(), new SystemClock()),
-      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_SECRET_VAULT],
+        eventCatalog: WebhookEventCatalogPort,
+      ) => new CreateWebhookEndpointUseCase(
+        endpoints,
+        secrets,
+        new CryptoIdGenerator(),
+        new SystemClock(),
+        eventCatalog,
+      ),
+      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_SECRET_VAULT, DELIVERY_WEBHOOK_EVENT_CATALOG],
     },
     {
       provide: GetWebhookEndpointUseCase,
@@ -361,8 +382,9 @@ export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
       useFactory: (
         endpoints: WebhookEndpointRepositoryPort,
         secrets: WebhookSecretVaultPort,
-      ) => new SignWebhookPayloadUseCase(endpoints, secrets),
-      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_SECRET_VAULT],
+        eventCatalog: WebhookEventCatalogPort,
+      ) => new SignWebhookPayloadUseCase(endpoints, secrets, eventCatalog),
+      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_SECRET_VAULT, DELIVERY_WEBHOOK_EVENT_CATALOG],
     },
     {
       provide: QuarantineWebhookEndpointUseCase,
@@ -496,12 +518,13 @@ const createWebhookDeliveryProvider = (
   metrics: InMemoryMetricsRecorder,
   endpoints: WebhookEndpointRepositoryPort,
   secrets: WebhookSecretVaultPort,
+  eventCatalog: WebhookEventCatalogPort,
 ): DeliveryProviderPort => {
   const mode = resolveDeliveryWebhookProviderMode(process.env);
   const delegate = mode === 'http'
     ? new HttpWebhookDeliveryProvider(
         endpoints,
-        new SignWebhookPayloadUseCase(endpoints, secrets),
+        new SignWebhookPayloadUseCase(endpoints, secrets, eventCatalog),
         new FetchWebhookHttpClient(),
         new SystemClock(),
         resolveHttpWebhookDeliveryProviderOptions(process.env),
@@ -523,10 +546,17 @@ const wrapDeliveryProvider = (
     metrics,
   );
 
-const resolveDeliveryWebhookProviderMode = (env: NodeJS.ProcessEnv): 'in-memory' | 'http' => {
+export const resolveDeliveryWebhookProviderMode = (env: NodeJS.ProcessEnv): 'in-memory' | 'http' => {
   const value = env.DELIVERY_WEBHOOK_PROVIDER ?? 'in-memory';
 
   if (value === 'in-memory' || value === 'http') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'DELIVERY_WEBHOOK_PROVIDER',
+      selectedMode: value,
+      durableModes: ['http'],
+    });
+
     return value;
   }
 

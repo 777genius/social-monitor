@@ -526,6 +526,24 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
 
 describe('parseWorkspaceRolesHeader', () => {
   it('normalizes comma-separated role headers', () => {
-    expect(parseWorkspaceRolesHeader(' Admin, viewer ,,OWNER ')).toEqual(['admin', 'viewer', 'owner']);
+    expect(parseWorkspaceRolesHeader(' Admin, viewer ,,OWNER ', {
+      NODE_ENV: 'test',
+    })).toEqual(['admin', 'viewer', 'owner']);
+  });
+
+  it('trusts workspace role headers only in dev and test profiles', () => {
+    expect(parseWorkspaceRolesHeader('admin', {
+      NODE_ENV: 'test',
+    })).toEqual(['admin']);
+
+    expect(parseWorkspaceRolesHeader('admin', {
+      NODE_ENV: 'development',
+      SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+    })).toEqual([]);
+
+    expect(parseWorkspaceRolesHeader('admin', {
+      NODE_ENV: 'production',
+      TRUSTED_WORKSPACE_ROLE_HEADER: 'enabled',
+    })).toEqual([]);
   });
 });

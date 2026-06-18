@@ -1,5 +1,6 @@
 import type { Provider } from '@nestjs/common';
-import type { RabbitMqQueuePublisherOptions } from '@social-monitor/platform-queue';
+import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
+import type { RabbitMqQueuePublisherOptions } from '@social-monitor/platform-queue/adapters/rabbitmq';
 
 import type {
   SummaryArtifactRepositoryPort,
@@ -58,10 +59,24 @@ export const resolveSummaryPersistenceMode = (env: NodeJS.ProcessEnv): SummaryPe
   const value = env.SUMMARY_PERSISTENCE ?? 'in-memory';
 
   if (value === 'in-memory') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'SUMMARY_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     return 'in-memory';
   }
 
   if (value === 'prisma') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'SUMMARY_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     if ((env.DATABASE_URL ?? '').trim().length === 0) {
       throw new Error('SUMMARY_PERSISTENCE=prisma requires DATABASE_URL');
     }
@@ -76,10 +91,24 @@ export const resolveSummaryJobQueueMode = (env: NodeJS.ProcessEnv): SummaryJobQu
   const value = env.SUMMARY_JOB_QUEUE_MODE ?? 'in-memory';
 
   if (value === 'in-memory') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'SUMMARY_JOB_QUEUE_MODE',
+      selectedMode: value,
+      durableModes: ['rabbitmq'],
+    });
+
     return 'in-memory';
   }
 
   if (value === 'rabbitmq') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'SUMMARY_JOB_QUEUE_MODE',
+      selectedMode: value,
+      durableModes: ['rabbitmq'],
+    });
+
     if ((env.RABBITMQ_URL ?? '').trim().length === 0) {
       throw new Error('SUMMARY_JOB_QUEUE_MODE=rabbitmq requires RABBITMQ_URL');
     }
@@ -108,6 +137,9 @@ export const resolveSummaryRabbitMqJobQueueOptions = (
   },
 });
 
+export const resolveSummaryJobQuotaPerHour = (env: NodeJS.ProcessEnv): number =>
+  parsePositiveInteger(env.SUMMARY_JOB_QUOTA_PER_HOUR, 60);
+
 const emptyToUndefined = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim();
 
@@ -118,4 +150,14 @@ const nonEmptyOrFallback = (value: string | undefined, fallback: string): string
   const trimmed = value?.trim();
 
   return trimmed === undefined || trimmed.length === 0 ? fallback : trimmed;
+};
+
+const parsePositiveInteger = (value: string | undefined, fallback: number): number => {
+  const parsed = Number(value);
+
+  if (Number.isInteger(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  return fallback;
 };

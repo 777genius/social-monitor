@@ -1,5 +1,6 @@
 import { Controller, Get, Headers, Param } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { GetDigestUseCase } from '../../features/get-digest/get-digest.use-case';
@@ -18,10 +19,9 @@ export class DigestsController {
   @ApiOperation({ summary: 'Get one tenant/workspace digest with provenance.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Digest reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:delivery_status',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Digest reads allow owner, admin, member or viewer.',
   })
   async get(
     @Param('digestId') digestId: string,

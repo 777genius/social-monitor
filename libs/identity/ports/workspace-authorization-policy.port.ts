@@ -53,8 +53,39 @@ export interface WorkspaceAuthorizationPolicyPort {
 
 export const WORKSPACE_AUTHORIZATION_POLICY = Symbol('WORKSPACE_AUTHORIZATION_POLICY');
 
-export const parseWorkspaceRolesHeader = (header: string | undefined): readonly string[] =>
-  (header ?? '')
+export type WorkspaceRoleHeaderEnv = {
+  readonly NODE_ENV?: string;
+  readonly SOCIAL_MONITOR_RUNTIME_PROFILE?: string;
+  readonly TRUSTED_WORKSPACE_ROLE_HEADER?: string;
+};
+
+export const parseWorkspaceRolesHeader = (
+  header: string | undefined,
+  env: WorkspaceRoleHeaderEnv,
+): readonly string[] => {
+  if (!trustedWorkspaceRoleHeaderEnabled(env)) {
+    return [];
+  }
+
+  return (header ?? '')
     .split(',')
     .map((role) => role.trim().toLowerCase())
     .filter((role) => role.length > 0);
+};
+
+export const trustedWorkspaceRoleHeaderEnabled = (
+  env: WorkspaceRoleHeaderEnv,
+): boolean => {
+  const nodeEnv = env.NODE_ENV ?? 'development';
+  const runtimeProfile = env.SOCIAL_MONITOR_RUNTIME_PROFILE;
+
+  if (runtimeProfile === 'beta' || nodeEnv === 'staging' || nodeEnv === 'production') {
+    return false;
+  }
+
+  if (env.TRUSTED_WORKSPACE_ROLE_HEADER !== undefined) {
+    return env.TRUSTED_WORKSPACE_ROLE_HEADER === 'enabled';
+  }
+
+  return nodeEnv === 'development' || nodeEnv === 'test';
+};

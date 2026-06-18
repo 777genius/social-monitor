@@ -1,5 +1,7 @@
 import { Controller, Get, Headers, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
+import { parsePaginationLimit } from '@social-monitor/platform-request-context';
 import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { ListRealtimeEventsUseCase } from '../../features/list-realtime-events/list-realtime-events.use-case';
@@ -18,10 +20,9 @@ export class RealtimeEventsController {
   @ApiOperation({ summary: 'Replay tenant/workspace realtime events for REST resync.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Realtime event reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:delivery_status',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Realtime event reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'channel', required: true, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -52,7 +53,10 @@ export class RealtimeEventsController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       channel,
-      limit: parseLimit(limitQuery),
+      limit: parsePaginationLimit(limitQuery, {
+        defaultLimit: 20,
+        invalidMessage: 'Realtime event page limit must be between 1 and 100',
+      }),
       cursor,
     });
 
@@ -63,13 +67,3 @@ export class RealtimeEventsController {
     return result.value;
   }
 }
-
-const parseLimit = (value: string | undefined): number => {
-  if (value === undefined) {
-    return 20;
-  }
-
-  const parsed = Number(value);
-
-  return Number.isInteger(parsed) ? parsed : Number.NaN;
-};

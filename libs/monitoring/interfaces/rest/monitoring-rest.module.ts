@@ -1,12 +1,15 @@
 import { Module } from '@nestjs/common';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import {
   AmqplibRabbitMqChannel,
-  InMemoryQueuePublisher,
   RabbitMqQueuePublisher,
+} from '@social-monitor/platform-queue/adapters/rabbitmq';
+import {
   type QueuePublisherPort,
 } from '@social-monitor/platform-queue';
+import { RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
@@ -73,6 +76,7 @@ import {
   type MonitoringScanQueueMode,
   monitoringPersistenceModeProvider,
   monitoringScanQueueModeProvider,
+  resolveManualScanRequestQuotaPerHour,
 } from './monitoring-provider-tokens';
 import { ScanPolicyController } from './scan-policy.controller';
 import { ScanRequestController } from './scan-request.controller';
@@ -158,6 +162,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
     },
     InMemoryQueuePublisher,
     InMemoryMetricsRecorder,
+    RequestCorrelationIdFactory,
     {
       provide: MONITORING_RABBITMQ_CHANNEL,
       useFactory: (mode: MonitoringScanQueueMode): AmqplibRabbitMqChannel | null =>
@@ -175,6 +180,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
           ? new RabbitMqQueuePublisher(
               requireRabbitMqChannel(rabbitMqChannel),
               monitoringScanQueueRabbitMqOptions(process.env),
+              new SystemClock(),
             )
           : inMemoryPublisher,
       inject: [MONITORING_SCAN_QUEUE_MODE, InMemoryQueuePublisher, MONITORING_RABBITMQ_CHANNEL],
@@ -212,14 +218,16 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
         prisma: PrismaMonitoringClient | null,
       ): IdempotencyPort =>
         mode === 'prisma'
-          ? new PrismaIdempotencyAdapter(requirePrismaMonitoringClient(prisma))
+          ? new PrismaIdempotencyAdapter(requirePrismaMonitoringClient(prisma), new CryptoIdGenerator())
           : new InMemoryIdempotencyAdapter(),
       inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
     },
     {
       provide: UsageScanRequestQuotaAdapter,
       useFactory: (reserveUsageQuota: ReserveUsageQuotaUseCase) =>
-        new UsageScanRequestQuotaAdapter(reserveUsageQuota),
+        new UsageScanRequestQuotaAdapter(reserveUsageQuota, {
+          quotaPerHour: resolveManualScanRequestQuotaPerHour(process.env),
+        }),
       inject: [ReserveUsageQuotaUseCase],
     },
     {

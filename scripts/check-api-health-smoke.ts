@@ -1,7 +1,16 @@
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { sourceReadinessProfiles } from '@social-monitor/ingestion/adapters/source/source-readiness-profiles';
+import { FixedClock } from '@social-monitor/shared-kernel';
 
 import { HealthController } from '../apps/api-gateway/src/health.controller';
+import {
+  API_GATEWAY_HEALTH_CLOCK,
+  API_GATEWAY_HEALTH_ENV,
+  API_GATEWAY_SOURCE_READINESS_PROFILES,
+  API_GATEWAY_UPTIME_SECONDS,
+  ApiGatewayHealthReporter,
+} from '../apps/api-gateway/src/health-reporter';
 
 const assertHealthResponse = (body: unknown, route: string): void => {
   const payload = body as {
@@ -119,6 +128,25 @@ const assertRecord = (value: unknown, label: string): Readonly<Record<string, un
 async function main(): Promise<void> {
   const moduleRef = await Test.createTestingModule({
     controllers: [HealthController],
+    providers: [
+      ApiGatewayHealthReporter,
+      {
+        provide: API_GATEWAY_HEALTH_ENV,
+        useValue: process.env,
+      },
+      {
+        provide: API_GATEWAY_HEALTH_CLOCK,
+        useValue: new FixedClock(new Date('2026-01-02T03:04:05.000Z')),
+      },
+      {
+        provide: API_GATEWAY_UPTIME_SECONDS,
+        useValue: () => 1,
+      },
+      {
+        provide: API_GATEWAY_SOURCE_READINESS_PROFILES,
+        useValue: sourceReadinessProfiles,
+      },
+    ],
   }).compile();
   const app = moduleRef.createNestApplication();
 

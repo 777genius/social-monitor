@@ -1,4 +1,5 @@
 import type { Provider } from '@nestjs/common';
+import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
 
 export type FeedPersistenceMode = 'in-memory' | 'prisma';
 
@@ -14,10 +15,24 @@ export const resolveFeedPersistenceMode = (env: NodeJS.ProcessEnv): FeedPersiste
   const value = env.FEED_PERSISTENCE ?? 'in-memory';
 
   if (value === 'in-memory') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'FEED_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     return 'in-memory';
   }
 
   if (value === 'prisma') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'FEED_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     if ((env.DATABASE_URL ?? '').trim().length === 0) {
       throw new Error('FEED_PERSISTENCE=prisma requires DATABASE_URL');
     }

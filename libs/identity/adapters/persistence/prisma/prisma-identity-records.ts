@@ -26,6 +26,7 @@ const apiKeyScopes = [
   'read:summaries',
   'write:summaries',
   'read:delivery_status',
+  'write:delivery_status',
   'read:webhook_endpoints',
   'write:webhook_endpoints',
 ] as const satisfies readonly ApiKeyScope[];

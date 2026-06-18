@@ -3,13 +3,14 @@ import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.m
 import { FEED_ITEM_READ_REPOSITORY, type FeedItemReadRepositoryPort } from '@social-monitor/feed/ports';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import {
   AmqplibRabbitMqChannel,
-  InMemoryQueuePublisher,
   RabbitMqQueuePublisher,
   type RabbitMqQueueChannelPort,
   type RabbitMqQueuePublisherOptions,
-} from '@social-monitor/platform-queue';
+} from '@social-monitor/platform-queue/adapters/rabbitmq';
+import { RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
@@ -71,6 +72,7 @@ import {
   SUMMARY_RABBITMQ_QUEUE_CHANNEL,
   type SummaryJobQueueMode,
   type SummaryPersistenceMode,
+  resolveSummaryJobQuotaPerHour,
   summaryJobQueueModeProvider,
   summaryPersistenceModeProvider,
   summaryRabbitMqJobQueueOptionsProvider,
@@ -121,7 +123,7 @@ import { SummaryController } from './summary.controller';
       ): SummaryJobQueuePort =>
         mode === 'rabbitmq'
           ? new SummaryJobQueuePublisherAdapter(
-              new RabbitMqQueuePublisher(requireRabbitMqQueueChannel(rabbitChannel), rabbitOptions),
+              new RabbitMqQueuePublisher(requireRabbitMqQueueChannel(rabbitChannel), rabbitOptions, new SystemClock()),
               metrics,
             )
           : new InMemorySummaryJobQueueAdapter(publisher, metrics),
@@ -196,7 +198,8 @@ import { SummaryController } from './summary.controller';
     },
     {
       provide: FeedSummaryEvidenceSelector,
-      useFactory: (feedItems: FeedItemReadRepositoryPort) => new FeedSummaryEvidenceSelector(feedItems),
+      useFactory: (feedItems: FeedItemReadRepositoryPort) =>
+        new FeedSummaryEvidenceSelector(feedItems, new SystemClock()),
       inject: [FEED_ITEM_READ_REPOSITORY],
     },
     {
@@ -206,6 +209,7 @@ import { SummaryController } from './summary.controller';
       inject: [FEED_ITEM_READ_REPOSITORY],
     },
     InMemoryMetricsRecorder,
+    RequestCorrelationIdFactory,
     DeterministicSummaryModelAdapter,
     {
       provide: MeteredSummaryModelAdapter,
@@ -216,7 +220,9 @@ import { SummaryController } from './summary.controller';
     {
       provide: UsageSummaryQuotaAdapter,
       useFactory: (reserveUsageQuota: ReserveUsageQuotaUseCase) =>
-        new UsageSummaryQuotaAdapter(reserveUsageQuota),
+        new UsageSummaryQuotaAdapter(reserveUsageQuota, {
+          quotaPerHour: resolveSummaryJobQuotaPerHour(process.env),
+        }),
       inject: [ReserveUsageQuotaUseCase],
     },
     {

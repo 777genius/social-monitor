@@ -2,9 +2,10 @@ import { Controller, Get, Headers, Inject, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
+import { parsePaginationLimit } from '@social-monitor/platform-request-context';
 import { DomainError, requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { ListPublicApiAuditEventsUseCase } from '../../features/list-public-api-audit-events/list-public-api-audit-events.use-case';
@@ -21,6 +22,7 @@ export class PublicApiAuditEventsController {
     private readonly listPublicApiAuditEvents: ListPublicApiAuditEventsUseCase,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
   ) {}
 
   @Get()
@@ -59,7 +61,7 @@ export class PublicApiAuditEventsController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       action: 'public_api_audit.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {
@@ -74,7 +76,10 @@ export class PublicApiAuditEventsController {
       action,
       outcome: parseOutcome(outcome),
       resourceType,
-      limit: parseLimit(limitQuery),
+      limit: parsePaginationLimit(limitQuery, {
+        defaultLimit: 50,
+        invalidMessage: 'Public API audit event page limit must be between 1 and 100',
+      }),
       cursor,
     });
 
@@ -85,16 +90,6 @@ export class PublicApiAuditEventsController {
     return result.value;
   }
 }
-
-const parseLimit = (value: string | undefined): number => {
-  if (value === undefined) {
-    return 50;
-  }
-
-  const parsed = Number(value);
-
-  return Number.isInteger(parsed) ? parsed : Number.NaN;
-};
 
 const parseActorType = (value: string | undefined): PublicApiAuditRecord['actorType'] | undefined => {
   const normalized = normalizeOptionalQueryValue(value);

@@ -2,14 +2,15 @@ import { Body, Controller, Get, Headers, Inject, Param, Put } from '@nestjs/comm
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
+import { RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { GetSummaryPolicyUseCase } from '../../features/get-summary-policy/get-summary-policy.use-case';
@@ -29,6 +30,8 @@ export class SummaryPolicyController {
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
+    private readonly requestCorrelationIds: RequestCorrelationIdFactory,
   ) {}
 
   @Get()
@@ -109,7 +112,7 @@ export class SummaryPolicyController {
       includeRisks: body.includeRisks,
       includeSourceHighlights: body.includeSourceHighlights,
       customInstructions: body.customInstructions,
-      correlationId: requestId ?? crypto.randomUUID(),
+      correlationId: this.requestCorrelationIds.fromRequestId(requestId),
     });
 
     if (!result.ok) {
@@ -140,7 +143,7 @@ export class SummaryPolicyController {
       tenantId,
       workspaceId,
       action: 'summary_policies.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {
@@ -169,7 +172,7 @@ export class SummaryPolicyController {
       tenantId,
       workspaceId,
       action: 'summary_policies.set',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {

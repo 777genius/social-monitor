@@ -5,11 +5,12 @@ import {
   hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { parsePaginationLimit, RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
@@ -38,6 +39,8 @@ export class SourceBindingController {
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
+    private readonly requestCorrelationIds: RequestCorrelationIdFactory,
   ) {}
 
   @Post()
@@ -78,7 +81,7 @@ export class SourceBindingController {
       providerKey: body.providerKey,
       config: normalizeSourceBindingConfig(body.config),
       idempotencyKey,
-      correlationId: requestId ?? crypto.randomUUID(),
+      correlationId: this.requestCorrelationIds.fromRequestId(requestId),
     });
 
     if (!result.ok) {
@@ -136,7 +139,10 @@ export class SourceBindingController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       topicId,
-      limit: limitQuery === undefined ? 50 : Number(limitQuery),
+      limit: parsePaginationLimit(limitQuery, {
+        defaultLimit: 50,
+        invalidMessage: 'Source binding list limit must be between 1 and 100',
+      }),
       cursor,
     });
 
@@ -209,7 +215,7 @@ export class SourceBindingController {
       tenantId,
       workspaceId,
       action: 'source_bindings.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {
@@ -256,7 +262,7 @@ export class SourceBindingController {
       sourceBindingId,
       status: body.status,
       idempotencyKey,
-      correlationId: requestId ?? crypto.randomUUID(),
+      correlationId: this.requestCorrelationIds.fromRequestId(requestId),
     });
 
     if (!result.ok) {
@@ -325,7 +331,7 @@ export class SourceBindingController {
       tenantId,
       workspaceId,
       action: operation,
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {

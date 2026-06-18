@@ -1,13 +1,8 @@
-import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import {
-  type WorkspaceAction,
-  WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
-  type WorkspaceAuthorizationPolicyPort,
-} from '@social-monitor/identity/ports';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
-import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
+import { parsePaginationLimit } from '@social-monitor/platform-request-context';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { GetDeliveryAttemptUseCase } from '../../features/get-delivery-attempt/get-delivery-attempt.use-case';
 import { ListDeliveryAttemptsUseCase } from '../../features/list-delivery-attempts/list-delivery-attempts.use-case';
@@ -28,8 +23,6 @@ export class DeliveryAttemptsController {
     private readonly listDeliveryAttempts: ListDeliveryAttemptsUseCase,
     private readonly retryDeliveryAttempt: RetryDeliveryAttemptUseCase,
     private readonly deliveryReadAuthorizer: DeliveryReadAuthorizer,
-    @Inject(WORKSPACE_AUTHORIZATION_POLICY)
-    private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
   ) {}
 
   @Get()
@@ -66,7 +59,10 @@ export class DeliveryAttemptsController {
     const result = await this.listDeliveryAttempts.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      limit: limitQuery === undefined ? 50 : Number(limitQuery),
+      limit: parsePaginationLimit(limitQuery, {
+        defaultLimit: 50,
+        invalidMessage: 'Delivery attempt list limit must be between 1 and 100',
+      }),
       cursor,
     });
 
@@ -123,10 +119,9 @@ export class DeliveryAttemptsController {
   @ApiOperation({ summary: 'Retry a retryable failed delivery attempt with caller-supplied content.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Delivery retries allow owner, admin or member.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:delivery_status',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Delivery retries allow owner, admin or member.',
   })
   async retry(
     @Param('deliveryAttemptId') deliveryAttemptId: string,
@@ -134,16 +129,20 @@ export class DeliveryAttemptsController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
   ): Promise<RetryDeliveryAttemptResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    this.authorizeWorkspaceRole({
+    await this.deliveryReadAuthorizer.authorize({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       workspaceRoleHeader,
+      authorizationHeader,
+      requiredScope: 'write:delivery_status',
       action: 'delivery_attempts.retry',
+      operation: 'delivery_attempts.retry',
     });
 
     const result = await this.retryDeliveryAttempt.execute({
@@ -158,23 +157,5 @@ export class DeliveryAttemptsController {
     }
 
     return result.value;
-  }
-
-  private authorizeWorkspaceRole(params: {
-    readonly tenantId: TenantId;
-    readonly workspaceId: WorkspaceId;
-    readonly workspaceRoleHeader: string | undefined;
-    readonly action: WorkspaceAction;
-  }): void {
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId: params.tenantId,
-      workspaceId: params.workspaceId,
-      action: params.action,
-      roles: parseWorkspaceRolesHeader(params.workspaceRoleHeader),
-    });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
   }
 }
