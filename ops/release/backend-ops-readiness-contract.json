@@ -28,18 +28,21 @@
       "domainId": "credential-secret-runtime-flow",
       "gates": [
         "check:credential-secret-runtime-flow",
+        "check:security-final-sweep",
         "check:secrets",
         "check:source-config-protector",
         "check:http-webhook-delivery-provider"
       ],
       "releaseGateIds": [
         "credential-secret-runtime-flow",
+        "security-final-sweep",
         "secret-scan",
         "source-config-protector",
         "http-webhook-delivery-provider"
       ],
       "artifacts": [
         "ops/security/credential-secret-runtime-flow.json",
+        "ops/security/security-final-sweep-evidence.json",
         "ops/security/secret-scan-allowlist.json",
         "scripts/check-credential-secret-runtime-flow.ts",
         "libs/shared-kernel/src/redaction.ts"

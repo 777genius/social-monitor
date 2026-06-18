@@ -200,10 +200,20 @@
     {
       "groupId": "security-final-sweep",
       "owner": "security-owner",
-      "status": "contract_ready",
+      "status": "pending_staging_evidence",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:secrets", "npm run check:dependencies", "npm run check:user-auth-boundary", "npm run check:usage-audit-rest"],
-      "requiredArtifacts": ["ops/security/dependency-audit-policy.json", "ops/security/secret-scan-allowlist.json"],
+      "verificationCommands": [
+        "npm run check:security-final-sweep",
+        "npm run check:secrets",
+        "npm run check:dependencies",
+        "npm run check:user-auth-boundary",
+        "npm run check:usage-audit-rest"
+      ],
+      "requiredArtifacts": [
+        "ops/security/security-final-sweep-evidence.json",
+        "ops/security/dependency-audit-policy.json",
+        "ops/security/secret-scan-allowlist.json"
+      ],
       "exitCondition": "tokens, secret URLs, provider payloads and raw prompts stay out of logs, metrics, public errors and audit metadata"
     },
     {

@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "security-final-sweep-evidence-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "externalBetaStatus": "hold_until_deploy_log_metric_public_error_samples",
+  "deploySampleEvidence": {
+    "status": "pending_staging_evidence",
+    "requiredForExternalBeta": true,
+    "owner": "security-owner",
+    "artifactPath": null,
+    "environmentId": null,
+    "imageDigest": null,
+    "sampledAt": null,
+    "exitCondition": "Attach staging deploy samples proving logs, metrics, public errors and audit responses contain no secrets or raw provider/source/prompt payloads."
+  },
+  "requiredChecks": [
+    {
+      "checkId": "secret-scan",
+      "command": "npm run check:secrets",
+      "blocking": true,
+      "artifacts": ["ops/security/secret-scan-allowlist.json", "scripts/check-secrets.mjs"],
+      "requiredSignal": "committed files contain no private keys, secret-like environment values, generated keys or credential URLs outside documented placeholders"
+    },
+    {
+      "checkId": "dependency-audit",
+      "command": "npm run check:dependencies",
+      "blocking": true,
+      "artifacts": ["ops/security/dependency-audit-policy.json", "scripts/check-dependencies.mjs"],
+      "requiredSignal": "high and critical dependency vulnerabilities have no unapproved exception"
+    },
+    {
+      "checkId": "auth-e2e-boundary",
+      "command": "npm run check:user-auth-boundary",
+      "blocking": true,
+      "artifacts": [
+        "test/e2e/user-jwt-auth-boundary.e2e-spec.ts",
+        "test/e2e/production-auth-boundary-matrix.e2e-spec.ts",
+        "ops/security/production-auth-matrix.json"
+      ],
+      "requiredSignal": "JWT/OIDC, workspace membership, tenant isolation and beta dev-header rejection stay green"
+    },
+    {
+      "checkId": "redaction-tests",
+      "command": "npm run test",
+      "blocking": true,
+      "artifacts": [
+        "libs/shared-kernel/src/redaction.spec.ts",
+        "apps/api-gateway/src/domain-error.filter.spec.ts",
+        "libs/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case.spec.ts"
+      ],
+      "requiredSignal": "problem details, nested diagnostics and audit metadata redact secret-looking keys and values"
+    },
+    {
+      "checkId": "audit-event-review",
+      "command": "npm run check:usage-audit-rest",
+      "blocking": true,
+      "artifacts": [
+        "scripts/check-usage-audit-rest-smoke.ts",
+        "libs/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case.ts",
+        "libs/usage/features/shared/public-api-audit-presenter.ts"
+      ],
+      "requiredSignal": "audit list endpoint is tenant-scoped and audit metadata is redacted before persistence"
+    },
+    {
+      "checkId": "credential-redaction-proof",
+      "command": "npm run check:credential-secret-runtime-flow",
+      "blocking": true,
+      "artifacts": [
+        "ops/security/credential-secret-runtime-flow.json",
+        "scripts/check-credential-secret-runtime-flow.ts",
+        "libs/shared-kernel/src/redaction.ts"
+      ],
+      "requiredSignal": "source credentials, webhook secrets and diagnostic records are encrypted or redacted through approved runtime boundaries"
+    }
+  ],
+  "forbiddenRuntimeLeakClasses": [
+    {
+      "leakClass": "secret-values",
+      "surfaces": ["logs", "metrics", "public-errors", "audit-metadata"],
+      "requiredMitigation": "redact secret-looking keys, generated keys, credential URLs and authorization strings before serialization"
+    },
+    {
+      "leakClass": "raw-provider-payloads",
+      "surfaces": ["logs", "metrics", "public-errors", "audit-metadata"],
+      "requiredMitigation": "store source/provider payload details only in controlled persistence fields and expose support-safe ids/statuses"
+    },
+    {
+      "leakClass": "raw-prompt-or-source-text",
+      "surfaces": ["logs", "metrics", "public-errors", "audit-metadata"],
+      "requiredMitigation": "summary gates may expose fixture ids, citation ids, source window ids and cost counters, not raw prompt or source body text"
+    }
+  ],
+  "externalBetaExitCriteria": [
+    "Security final sweep gate is green on the release commit.",
+    "Staging deploy log, metric, public-error and audit-response samples are attached for the promoted image digest.",
+    "Any exception has owner, expiry, mitigation and remains blocking until explicitly approved."
+  ]
+}

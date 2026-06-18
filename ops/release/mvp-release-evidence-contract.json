@@ -45,6 +45,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "security-final-sweep",
+      "command": "npm run check:security-final-sweep",
+      "blocksRelease": true
+    },
+    {
       "gateId": "release-baseline",
       "command": "npm run check:release-baseline",
       "blocksRelease": true

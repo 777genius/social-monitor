@@ -79,6 +79,7 @@
     "check:retention-plan": "ts-node -r tsconfig-paths/register scripts/check-retention-plan.ts",
     "check:runtime-compose": "node scripts/check-runtime-compose.mjs",
     "check:runtime-profile-guards": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=512 -- ts-node -r tsconfig-paths/register scripts/check-runtime-profile-guards.ts",
+    "check:security-final-sweep": "node scripts/check-security-final-sweep.mjs",
     "check:staging-reliability-evidence": "node scripts/check-staging-reliability-evidence.mjs",
     "check:reddit-smoke": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reddit-ingestion-smoke.ts",
     "check:rss-smoke": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-rss-ingestion-smoke.ts",

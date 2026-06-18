@@ -27,6 +27,7 @@
     "check:container",
     "check:runtime-compose",
     "check:runtime-profile-guards",
+    "check:security-final-sweep",
     "check:release-baseline",
     "check:durable-runtime-proof",
     "check:auth-boundary",

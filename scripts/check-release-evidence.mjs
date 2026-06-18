@@ -18,6 +18,7 @@ const requiredGateIds = new Set([
   'container-contract',
   'runtime-compose-contract',
   'runtime-profile-guards',
+  'security-final-sweep',
   'release-baseline',
   'backend-safe-verify-contract',
   'durable-runtime-proof',
