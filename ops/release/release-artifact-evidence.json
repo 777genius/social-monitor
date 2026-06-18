@@ -6,6 +6,11 @@
     "mode": "computed_at_release_time",
     "command": "git rev-parse HEAD"
   },
+  "migrationVersion": {
+    "mode": "latest_prisma_migration_directory",
+    "value": "20260618143000_baseline",
+    "path": "prisma/migrations/20260618143000_baseline/migration.sql"
+  },
   "imageDigest": {
     "requiredForExternalBeta": true,
     "status": "pending_external_registry",
@@ -16,38 +21,57 @@
     {
       "artifactId": "openapi-snapshot",
       "path": "libs/contracts/rest/openapi.snapshot.json",
-      "algorithm": "sha256"
+      "algorithm": "sha256",
+      "value": "2baad8d6198eb88ec4cd801c9fc6688d98217325bd89ae258de7a32cc8aa3902"
     },
     {
       "artifactId": "event-catalog",
       "path": "libs/contracts/events/event-catalog.json",
-      "algorithm": "sha256"
+      "algorithm": "sha256",
+      "value": "c1b75cd0278501128b809e9dfb2256554107f239f6e64e3d9a9fcb6f8ff4f012"
     },
     {
       "artifactId": "prisma-schema",
       "path": "prisma/schema.prisma",
-      "algorithm": "sha256"
+      "algorithm": "sha256",
+      "value": "8bf5bcc4964ddf579d07c8d9e7a85aa7bad5dbb7b5c23e520d29a1b30c0ff7d6"
     }
   ],
   "deploySmokeEvidence": [
     {
       "smokeId": "api-health",
       "status": "pending_staging_deploy",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "sampledAt": null,
       "requiredSignal": "GET /health and GET /healthz return healthy on promoted image"
     },
     {
       "smokeId": "openapi-contract",
       "status": "pending_staging_deploy",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "sampledAt": null,
       "requiredSignal": "deployed OpenAPI contract matches committed snapshot"
     },
     {
       "smokeId": "migration-version",
       "status": "pending_staging_deploy",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "sampledAt": null,
       "requiredSignal": "database schema version matches release commit"
     },
     {
       "smokeId": "worker-pause-resume",
       "status": "pending_staging_deploy",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "sampledAt": null,
       "requiredSignal": "workers can pause during restore and resume without duplicate side effects"
     }
   ]

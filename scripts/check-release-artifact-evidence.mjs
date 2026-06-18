@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
 const artifactPath = 'ops/release/release-artifact-evidence.json';
 const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
@@ -30,6 +30,26 @@ if (releaseContract.artifactEvidence?.requiresImageDigest !== true) {
   violations.push(`${releaseContractPath}: release contract must require image digest`);
 }
 
+const migrationVersion = artifact.migrationVersion ?? {};
+if (migrationVersion.mode !== 'latest_prisma_migration_directory') {
+  violations.push(`${artifactPath}: migrationVersion.mode must be latest_prisma_migration_directory`);
+}
+if (!existsSync(migrationVersion.path ?? '')) {
+  violations.push(`${artifactPath}: migrationVersion.path must exist`);
+}
+
+const latestMigration = readdirSync('prisma/migrations', { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort()
+  .at(-1);
+if (migrationVersion.value !== latestMigration) {
+  violations.push(`${artifactPath}: migrationVersion.value must match latest Prisma migration directory`);
+}
+if (migrationVersion.path !== `prisma/migrations/${latestMigration}/migration.sql`) {
+  violations.push(`${artifactPath}: migrationVersion.path must point to latest migration.sql`);
+}
+
 if (artifact.imageDigest?.requiredForExternalBeta !== true) {
   violations.push(`${artifactPath}: imageDigest.requiredForExternalBeta must be true`);
 }
@@ -55,6 +75,9 @@ for (const item of artifact.artifactDigests ?? []) {
   if (!/^[0-9a-f]{64}$/.test(digest)) {
     violations.push(`${artifactPath}: artifact "${item.artifactId}" must produce sha256 digest`);
   }
+  if (item.value !== digest) {
+    violations.push(`${artifactPath}: artifact "${item.artifactId}" sha256 value is stale`);
+  }
 }
 
 const smokeIds = new Set((releaseContract.deploySmokeChecks ?? []).map((smoke) => smoke.smokeId));
@@ -64,6 +87,27 @@ for (const smoke of artifact.deploySmokeEvidence ?? []) {
   }
   if (smoke.status !== 'pending_staging_deploy' && smoke.status !== 'passed') {
     violations.push(`${artifactPath}: deploy smoke "${smoke.smokeId}" must be pending_staging_deploy or passed`);
+  }
+  if (smoke.status === 'pending_staging_deploy') {
+    for (const field of ['stagingArtifactPath', 'environmentId', 'imageDigest', 'sampledAt']) {
+      if (smoke[field] !== null) {
+        violations.push(`${artifactPath}: pending deploy smoke "${smoke.smokeId}" must keep ${field}=null`);
+      }
+    }
+  }
+  if (smoke.status === 'passed') {
+    if (!existsSync(smoke.stagingArtifactPath ?? '')) {
+      violations.push(`${artifactPath}: passed deploy smoke "${smoke.smokeId}" must reference stagingArtifactPath`);
+    }
+    if (typeof smoke.environmentId !== 'string' || smoke.environmentId.trim().length === 0) {
+      violations.push(`${artifactPath}: passed deploy smoke "${smoke.smokeId}" must define environmentId`);
+    }
+    if (!/^sha256:[0-9a-f]{64}$/.test(String(smoke.imageDigest ?? ''))) {
+      violations.push(`${artifactPath}: passed deploy smoke "${smoke.smokeId}" must define imageDigest`);
+    }
+    if (typeof smoke.sampledAt !== 'string' || smoke.sampledAt.trim().length === 0) {
+      violations.push(`${artifactPath}: passed deploy smoke "${smoke.smokeId}" must define sampledAt`);
+    }
   }
 }
 

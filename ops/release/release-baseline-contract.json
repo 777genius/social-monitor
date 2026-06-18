@@ -21,6 +21,7 @@
     "check:operational-support-package",
     "check:capacity-envelope-beta-ring-decision",
     "check:no-go-cleanup",
+    "check:release-artifact-evidence",
     "check:release",
     "check:e2e-traceability",
     "build",
@@ -43,6 +44,10 @@
     {
       "artifactId": "mvp-release-contract",
       "path": "ops/release/mvp-release-evidence-contract.json"
+    },
+    {
+      "artifactId": "release-artifact-evidence",
+      "path": "ops/release/release-artifact-evidence.json"
     },
     {
       "artifactId": "backend-ops-readiness",
