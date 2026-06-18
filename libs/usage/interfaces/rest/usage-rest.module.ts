@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { IdentityAuthorizationModule } from '@social-monitor/identity/interfaces/authorization/identity-authorization.module';
+import { IdentityUserAuthModule } from '@social-monitor/identity/interfaces/authorization/identity-user-auth.module';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { InMemoryPublicApiAuditLog } from '../../adapters/audit/in-memory-public-api-audit-log';
@@ -27,7 +27,7 @@ import {
 import { PublicApiAuditEventsController } from './public-api-audit-events.controller';
 
 @Module({
-  imports: [IdentityAuthorizationModule],
+  imports: [IdentityUserAuthModule],
   controllers: [PublicApiAuditEventsController],
   providers: [
     {

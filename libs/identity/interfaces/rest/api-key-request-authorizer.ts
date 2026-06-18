@@ -17,7 +17,10 @@ import { DomainError, type TenantId, type WorkspaceId } from '@social-monitor/sh
 import { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/check-public-api-rate-limit/check-public-api-rate-limit.use-case';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 
+import { parseBearerToken } from '../authorization/bearer-authorization';
 import { IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE } from './identity-provider-tokens';
+
+export { hasBearerAuthorizationHeader } from '../authorization/bearer-authorization';
 
 export type ApiKeyRequestAuthorization = {
   readonly actorType: 'api_key';
@@ -321,19 +324,6 @@ export class ApiKeyRequestAuthorizer {
     }
   }
 }
-
-export const hasBearerAuthorizationHeader = (authorizationHeader: string | undefined): boolean =>
-  authorizationHeader !== undefined && authorizationHeader.trim().length > 0;
-
-const parseBearerToken = (authorizationHeader: string | undefined): string => {
-  const [scheme, secret, extra] = authorizationHeader?.trim().split(/\s+/) ?? [];
-
-  if (scheme?.toLowerCase() !== 'bearer' || secret === undefined || extra !== undefined) {
-    throw new DomainError('authorization.denied', 'Bearer authorization is required');
-  }
-
-  return secret;
-};
 
 const workspaceActions = new Set<WorkspaceAction>([
   'api_keys.create',

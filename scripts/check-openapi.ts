@@ -29,6 +29,7 @@ import { FeedController } from '@social-monitor/feed/interfaces/rest/feed.contro
 import { GetFeedItemUseCase } from '@social-monitor/feed/features/get-feed-item/get-feed-item.use-case';
 import { ListFeedItemsUseCase } from '@social-monitor/feed/features/list-feed-items/list-feed-items.use-case';
 import { ApiKeyRequestAuthorizer } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { UserWorkspaceRequestAuthorizer } from '@social-monitor/identity/interfaces/authorization/user-workspace-request.authorizer';
 import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import { ApiKeysController } from '@social-monitor/identity/interfaces/rest/api-keys.controller';
 import { CreateApiKeyUseCase } from '@social-monitor/identity/features/create-api-key/create-api-key.use-case';
@@ -91,6 +92,19 @@ const noopUseCase = {
 
 const noopApiKeyAuthorizer = {
   authorize: async () => ({ apiKeyId: 'contract-check-api-key' }),
+  authorizeUser: async () => ({
+    actorType: 'user',
+    actorId: 'contract-check-user',
+    userId: 'contract-check-user',
+  }),
+};
+
+const noopUserWorkspaceRequestAuthorizer = {
+  authorize: async () => ({
+    actorType: 'user',
+    actorId: 'contract-check-user',
+    userId: 'contract-check-user',
+  }),
 };
 
 const noopWorkspaceAuthorization = {
@@ -207,6 +221,10 @@ const useCaseProviders = [
     {
       provide: ApiKeyRequestAuthorizer,
       useValue: noopApiKeyAuthorizer,
+    },
+    {
+      provide: UserWorkspaceRequestAuthorizer,
+      useValue: noopUserWorkspaceRequestAuthorizer,
     },
     {
       provide: DeliveryReadAuthorizer,

@@ -62,10 +62,8 @@
     "additionalJsonProperties": "ignore_for_strong_models_preserve_in_raw_payload_when_available"
   },
   "operationCount": 48,
-  "mobileReadyOperationCount": 47,
-  "devOnlyWorkspaceRoleOperations": [
-    "PublicApiAuditEventsController_list"
-  ],
+  "mobileReadyOperationCount": 48,
+  "devOnlyWorkspaceRoleOperations": [],
   "mobileReadyOperations": [
     "ApiKeysController_create",
     "ApiKeysController_list",
@@ -88,6 +86,7 @@
     "HealthController_ready[1]",
     "NotificationPreferencesController_get",
     "NotificationPreferencesController_set",
+    "PublicApiAuditEventsController_list",
     "RealtimeEventsController_list",
     "ScanDeadLetterController_list",
     "ScanPolicyController_create",
@@ -1401,14 +1400,16 @@
       ],
       "requiredHeaders": [
         "x-tenant-id",
-        "x-workspace-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
         "x-workspace-role"
       ],
-      "optionalHeaders": [],
       "requiresTenantWorkspace": true,
-      "supportsBearerApiKey": false,
+      "supportsBearerApiKey": true,
       "usesDevOnlyWorkspaceRoleHeader": true,
-      "devOnlyWorkspaceRoleRequired": true,
+      "devOnlyWorkspaceRoleRequired": false,
       "requestBodySchemaRef": null,
       "successResponseSchemaRefs": []
     }

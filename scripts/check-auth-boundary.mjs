@@ -5,6 +5,9 @@ const identityProviderTokens = readFileSync('libs/identity/interfaces/rest/ident
 const requestAuthorizer = readFileSync('libs/identity/interfaces/rest/api-key-request-authorizer.ts', 'utf8');
 const apiKeysController = readFileSync('libs/identity/interfaces/rest/api-keys.controller.ts', 'utf8');
 const scanDeadLetterController = readFileSync('libs/ingestion/interfaces/rest/scan-dead-letter.controller.ts', 'utf8');
+const userWorkspaceAuthorizer = readFileSync('libs/identity/interfaces/authorization/user-workspace-request.authorizer.ts', 'utf8');
+const userAuthModule = readFileSync('libs/identity/interfaces/authorization/identity-user-auth.module.ts', 'utf8');
+const usageAuditController = readFileSync('libs/usage/interfaces/rest/public-api-audit-events.controller.ts', 'utf8');
 const userTokenVerifier = readFileSync('libs/identity/adapters/authorization/jwks-user-access-token.verifier.ts', 'utf8');
 const membershipPort = readFileSync('libs/identity/ports/user-workspace-membership-verifier.port.ts', 'utf8');
 const membershipPrisma = readFileSync('libs/identity/adapters/persistence/prisma/prisma-user-workspace-membership.verifier.ts', 'utf8');
@@ -94,6 +97,30 @@ for (const marker of [
 }
 
 for (const marker of [
+  'UserWorkspaceRequestAuthorizer',
+  'USER_ACCESS_TOKEN_VERIFIER',
+  'USER_WORKSPACE_MEMBERSHIP_VERIFIER',
+  'Bearer JWT authorization is required',
+  'Bearer JWT workspace membership is missing',
+]) {
+  if (!userWorkspaceAuthorizer.includes(marker)) {
+    violations.push(`user workspace authorizer missing marker "${marker}"`);
+  }
+}
+
+for (const marker of [
+  'IdentityUserAuthModule',
+  'UserWorkspaceRequestAuthorizer',
+  'IDENTITY_PRISMA_CLIENT',
+  'USER_ACCESS_TOKEN_VERIFIER',
+  'USER_WORKSPACE_MEMBERSHIP_VERIFIER',
+]) {
+  if (!userAuthModule.includes(marker)) {
+    violations.push(`identity user auth module missing marker "${marker}"`);
+  }
+}
+
+for (const marker of [
   'authorizationHeader',
   'hasBearerAuthorizationHeader',
   'authorizeUser',
@@ -102,6 +129,18 @@ for (const marker of [
 ]) {
   if (!scanDeadLetterController.includes(marker)) {
     violations.push(`scan dead-letter controller missing user JWT marker "${marker}"`);
+  }
+}
+
+for (const marker of [
+  'authorizationHeader',
+  'hasBearerAuthorizationHeader',
+  'UserWorkspaceRequestAuthorizer',
+  "operation: 'public_api_audit.read'",
+  'Bearer OIDC JWT for production audit event reads',
+]) {
+  if (!usageAuditController.includes(marker)) {
+    violations.push(`usage audit controller missing user JWT marker "${marker}"`);
   }
 }
 
@@ -156,6 +195,10 @@ if (!String(packageJson.scripts?.['check:user-auth-boundary'] ?? '').includes('a
 
 if (!String(packageJson.scripts?.['check:user-auth-boundary'] ?? '').includes('scan-dead-letters.authorization.e2e-spec.ts')) {
   violations.push('package.json missing check:user-auth-boundary scan dead-letter user JWT e2e guard');
+}
+
+if (!String(packageJson.scripts?.['check:user-auth-boundary'] ?? '').includes('usage-audit-events.list.e2e-spec.ts')) {
+  violations.push('package.json missing check:user-auth-boundary usage audit user JWT e2e guard');
 }
 
 if (!String(packageJson.scripts?.verify ?? '').includes('check:user-auth-boundary')) {

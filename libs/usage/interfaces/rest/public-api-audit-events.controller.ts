@@ -4,9 +4,11 @@ import {
   WORKSPACE_AUTHORIZATION_POLICY,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { hasBearerAuthorizationHeader } from '@social-monitor/identity/interfaces/authorization/bearer-authorization';
 import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
+import { UserWorkspaceRequestAuthorizer } from '@social-monitor/identity/interfaces/authorization/user-workspace-request.authorizer';
 import { parsePaginationLimit } from '@social-monitor/platform-request-context';
-import { DomainError, requireTenantScope } from '@social-monitor/shared-kernel';
+import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { ListPublicApiAuditEventsUseCase } from '../../features/list-public-api-audit-events/list-public-api-audit-events.use-case';
 import type { PublicApiAuditOutcome, PublicApiAuditRecord } from '../../ports';
@@ -20,6 +22,7 @@ const outcomes = ['succeeded', 'failed', 'denied'] as const satisfies readonly P
 export class PublicApiAuditEventsController {
   constructor(
     private readonly listPublicApiAuditEvents: ListPublicApiAuditEventsUseCase,
+    private readonly userWorkspaceRequestAuthorizer: UserWorkspaceRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
     private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
@@ -30,9 +33,14 @@ export class PublicApiAuditEventsController {
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiHeader({
+    name: 'authorization',
+    required: false,
+    description: 'Bearer OIDC JWT for production audit event reads.',
+  })
+  @ApiHeader({
     name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Audit event reads require owner or admin.',
+    required: false,
+    description: 'Local-dev fallback only. Audit event reads require owner or admin.',
   })
   @ApiQuery({ name: 'actorType', required: false, enum: actorTypes })
   @ApiQuery({ name: 'actorId', required: false, type: String })
@@ -45,6 +53,7 @@ export class PublicApiAuditEventsController {
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
     @Query('actorType') actorType: string | undefined,
     @Query('actorId') actorId: string | undefined,
     @Query('action') action: string | undefined,
@@ -57,16 +66,12 @@ export class PublicApiAuditEventsController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = this.workspaceAuthorization.authorize({
-      tenantId: scope.tenantId,
-      workspaceId: scope.workspaceId,
-      action: 'public_api_audit.read',
-      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
-    });
-
-    if (!authorization.ok) {
-      throw authorization.error;
-    }
+    await this.authorizePublicApiAuditRead(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
 
     const result = await this.listPublicApiAuditEvents.execute({
       tenantId: scope.tenantId,
@@ -88,6 +93,34 @@ export class PublicApiAuditEventsController {
     }
 
     return result.value;
+  }
+
+  private async authorizePublicApiAuditRead(
+    tenantId: TenantId,
+    workspaceId: WorkspaceId,
+    workspaceRoleHeader: string | undefined,
+    authorizationHeader: string | undefined,
+  ): Promise<void> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      await this.userWorkspaceRequestAuthorizer.authorize({
+        authorizationHeader,
+        tenantId,
+        workspaceId,
+        operation: 'public_api_audit.read',
+      });
+      return;
+    }
+
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId,
+      workspaceId,
+      action: 'public_api_audit.read',
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
   }
 }
 
