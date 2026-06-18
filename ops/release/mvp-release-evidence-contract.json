@@ -405,6 +405,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "capacity-envelope-beta-ring-decision",
+      "command": "npm run check:capacity-envelope-beta-ring-decision",
+      "blocksRelease": true
+    },
+    {
       "gateId": "beta-launch-support",
       "command": "npm run check:beta-launch-support",
       "blocksRelease": true

@@ -99,6 +99,7 @@
     "check:beta-scope-policy",
     "check:beta-ring-policy",
     "check:beta-ring-decision",
+    "check:capacity-envelope-beta-ring-decision",
     "check:beta-launch-support",
     "check:beta-feedback-report",
     "check:summary-evidence-smoke",

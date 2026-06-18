@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "contractId": "capacity-envelope-beta-ring-decision-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "targetRing": "private-beta-1",
+  "decision": "hold",
+  "capacityEnvelopeSource": "ops/release/external-beta-readiness-contract.json",
+  "ringPolicy": "ops/release/beta-ring-expansion-policy.json",
+  "decisionRecord": "ops/release/beta-ring-expansion-decision-record.json",
+  "limits": {
+    "maxTenants": 3,
+    "maxWorkspacesPerTenant": 2,
+    "maxUsers": 5,
+    "maxTopicsPerWorkspace": 10,
+    "maxEnabledSourcesPerTopic": 3,
+    "minScheduledScanIntervalMinutes": 60,
+    "maxManualScansPerWorkspacePerHour": 50,
+    "maxSummaryRequestsPerWorkspacePerHour": 20,
+    "maxQueueLagSeconds": 300,
+    "maxSummaryEstimatedCostUsdPerWorkspacePerDay": 5,
+    "maxDeliveryAttemptsPerWorkspacePerHour": 100
+  },
+  "goPrerequisites": [
+    {
+      "prerequisiteId": "durable-runtime-proof",
+      "owner": "backend-lead",
+      "artifact": "ops/release/durable-runtime-proof.json",
+      "requiredStatusField": "externalBetaStatus",
+      "requiredPassedValue": "passed",
+      "currentHoldValue": "hold_until_staging_runtime_evidence"
+    },
+    {
+      "prerequisiteId": "live-source-provider-evidence",
+      "owner": "source-owner",
+      "artifact": "ops/ingestion/source-live-certification-evidence.json",
+      "requiredStatusField": "externalBetaStatus",
+      "requiredPassedValue": "passed",
+      "currentHoldValue": "hold_until_live_provider_evidence"
+    },
+    {
+      "prerequisiteId": "real-feedback-samples",
+      "owner": "product-owner",
+      "artifact": "ops/release/summary-feedback-hardening-evidence.json",
+      "requiredStatusField": "externalBetaStatus",
+      "requiredPassedValue": "passed",
+      "currentHoldValue": "hold_until_redacted_real_feedback_samples"
+    },
+    {
+      "prerequisiteId": "staging-reliability-drills",
+      "owner": "ops-owner",
+      "artifact": "ops/drills/staging-reliability-evidence.json",
+      "requiredStatusField": "externalBetaStatus",
+      "requiredPassedValue": "passed",
+      "currentHoldValue": "hold_until_real_staging_drill_output"
+    },
+    {
+      "prerequisiteId": "release-artifact-evidence",
+      "owner": "release-owner",
+      "artifact": "ops/release/release-artifact-evidence.json",
+      "requiredStatusField": "status",
+      "requiredPassedValue": "passed",
+      "currentHoldValue": "pending_image_digest_and_deploy_smoke"
+    }
+  ],
+  "allowedWhileHeld": [
+    "internal dogfood",
+    "fixture-backed backend verification",
+    "redacted feedback collection",
+    "live source evidence collection",
+    "staging drill execution"
+  ],
+  "forbiddenWhileHeld": [
+    "invite_private_beta_1_users",
+    "increase_capacity_limits",
+    "lower_scan_interval_below_envelope",
+    "enable_deferred_sources",
+    "change_decision_to_go_without_passed_prerequisites"
+  ],
+  "externalBetaExitCriteria": [
+    "Capacity limits are present for tenants, workspaces, topics, bindings, scan interval, queue lag, summary cost and delivery attempts.",
+    "Beta ring decision remains hold while any go prerequisite is not passed.",
+    "Changing externalBetaDecision to go requires durable runtime, live source evidence, real feedback samples, staging reliability evidence and release artifact evidence."
+  ]
+}

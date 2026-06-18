@@ -19,6 +19,7 @@
     "check:summary-feedback-hardening",
     "check:backend-ops-readiness",
     "check:operational-support-package",
+    "check:capacity-envelope-beta-ring-decision",
     "check:no-go-cleanup",
     "check:release",
     "check:e2e-traceability",
@@ -74,6 +75,10 @@
     {
       "artifactId": "operational-support-package",
       "path": "ops/release/operational-support-package.json"
+    },
+    {
+      "artifactId": "capacity-envelope-beta-ring-decision",
+      "path": "ops/release/capacity-envelope-beta-ring-decision.json"
     },
     {
       "artifactId": "no-go-cleanup",

@@ -15,9 +15,12 @@
   ],
   "capacityEnvelope": {
     "ringId": "private-beta-1",
+    "maxTenants": 3,
+    "maxWorkspacesPerTenant": 2,
     "maxUsers": 5,
     "maxTopicsPerWorkspace": 10,
     "maxEnabledSourcesPerTopic": 3,
+    "minScheduledScanIntervalMinutes": 60,
     "maxManualScansPerWorkspacePerHour": 50,
     "maxSummaryRequestsPerWorkspacePerHour": 20,
     "maxQueueLagSeconds": 300,
@@ -203,8 +206,17 @@
       "owner": "release-owner",
       "status": "hold",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:load-cost", "npm run check:beta-ring-policy", "npm run check:beta-ring-decision"],
-      "requiredArtifacts": ["ops/release/beta-ring-expansion-policy.json", "ops/release/beta-ring-expansion-decision-record.json"],
+      "verificationCommands": [
+        "npm run check:load-cost",
+        "npm run check:beta-ring-policy",
+        "npm run check:beta-ring-decision",
+        "npm run check:capacity-envelope-beta-ring-decision"
+      ],
+      "requiredArtifacts": [
+        "ops/release/beta-ring-expansion-policy.json",
+        "ops/release/beta-ring-expansion-decision-record.json",
+        "ops/release/capacity-envelope-beta-ring-decision.json"
+      ],
       "exitCondition": "ring decision changes from hold to go only after durable runtime, live source and real feedback evidence are attached"
     },
     {

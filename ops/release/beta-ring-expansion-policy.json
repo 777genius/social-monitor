@@ -5,11 +5,17 @@
   "rings": [
     {
       "ringId": "internal-dogfood",
+      "maxTenants": 1,
+      "maxWorkspacesPerTenant": 1,
       "maxUsers": 3,
       "maxTopicsPerWorkspace": 5,
       "maxEnabledSourcesPerTopic": 3,
+      "minScheduledScanIntervalMinutes": 60,
       "maxManualScansPerWorkspacePerHour": 20,
       "maxSummaryRequestsPerWorkspacePerHour": 10,
+      "maxQueueLagSeconds": 300,
+      "maxSummaryEstimatedCostUsdPerWorkspacePerDay": 5,
+      "maxDeliveryAttemptsPerWorkspacePerHour": 50,
       "requiredGates": [
         "check:mvp-core-loop",
         "check:source-certification",
@@ -21,11 +27,17 @@
     },
     {
       "ringId": "private-beta-1",
+      "maxTenants": 3,
+      "maxWorkspacesPerTenant": 2,
       "maxUsers": 5,
       "maxTopicsPerWorkspace": 10,
       "maxEnabledSourcesPerTopic": 3,
+      "minScheduledScanIntervalMinutes": 60,
       "maxManualScansPerWorkspacePerHour": 50,
       "maxSummaryRequestsPerWorkspacePerHour": 20,
+      "maxQueueLagSeconds": 300,
+      "maxSummaryEstimatedCostUsdPerWorkspacePerDay": 5,
+      "maxDeliveryAttemptsPerWorkspacePerHour": 100,
       "requiredGates": [
         "check:mvp-core-loop",
         "check:source-certification",
@@ -40,11 +52,17 @@
     },
     {
       "ringId": "private-beta-2",
+      "maxTenants": 10,
+      "maxWorkspacesPerTenant": 3,
       "maxUsers": 20,
       "maxTopicsPerWorkspace": 10,
       "maxEnabledSourcesPerTopic": 3,
+      "minScheduledScanIntervalMinutes": 60,
       "maxManualScansPerWorkspacePerHour": 50,
       "maxSummaryRequestsPerWorkspacePerHour": 20,
+      "maxQueueLagSeconds": 300,
+      "maxSummaryEstimatedCostUsdPerWorkspacePerDay": 5,
+      "maxDeliveryAttemptsPerWorkspacePerHour": 200,
       "requiredGates": [
         "check:mvp-core-loop",
         "check:source-certification",

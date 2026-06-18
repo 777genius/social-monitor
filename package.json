@@ -20,6 +20,7 @@
     "check:beta-ring-decision": "node scripts/check-beta-ring-decision-record.mjs",
     "check:beta-ring-policy": "node scripts/check-beta-ring-policy.mjs",
     "check:beta-scope-policy": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-beta-scope-policy.ts",
+    "check:capacity-envelope-beta-ring-decision": "node scripts/check-capacity-envelope-beta-ring-decision.mjs",
     "check:code-quality": "node scripts/check-code-quality.mjs",
     "check:container": "node scripts/check-container.mjs",
     "check:credential-secret-runtime-flow": "node scripts/check-credential-secret-runtime-flow.mjs && node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-credential-secret-runtime-flow.ts",

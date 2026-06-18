@@ -90,6 +90,7 @@ const requiredGateIds = new Set([
   'beta-scope-policy',
   'beta-ring-policy',
   'beta-ring-decision',
+  'capacity-envelope-beta-ring-decision',
   'beta-launch-support',
   'beta-feedback-report',
   'summary-evidence-citations',

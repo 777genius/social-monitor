@@ -24,6 +24,7 @@
       "status": "ready_for_enabled_beta_sources",
       "evidence": [
         "npm run check:source-certification",
+        "npm run check:source-live-certification-evidence",
         "npm run check:hn-smoke",
         "npm run check:github-smoke",
         "npm run check:reddit-smoke",
@@ -58,6 +59,7 @@
   "requiredGateCommands": [
     "npm run check:mvp-core-loop",
     "npm run check:source-certification",
+    "npm run check:source-live-certification-evidence",
     "npm run check:hn-smoke",
     "npm run check:rss-smoke",
     "npm run check:beta-scope-policy",
@@ -67,7 +69,13 @@
     "npm run check:delivery-replay",
     "npm run check:beta-feedback-report",
     "npm run check:persistence-readiness",
-    "npm run check:release"
+    "npm run check:release",
+    "npm run check:durable-runtime-proof",
+    "npm run check:staging-reliability-evidence",
+    "npm run check:summary-feedback-hardening",
+    "npm run check:release-artifact-evidence",
+    "npm run check:external-beta-readiness",
+    "npm run check:capacity-envelope-beta-ring-decision"
   ],
   "holdReasons": [
     {
@@ -84,6 +92,11 @@
       "reasonId": "durable-runtime-not-proven-for-external-beta",
       "owner": "backend-lead",
       "exitCondition": "Target environment runtime selectors use durable adapters for API and worker state."
+    },
+    {
+      "reasonId": "live-source-evidence-not-attached",
+      "owner": "source-owner",
+      "exitCondition": "Attach live HN, RSS, GitHub and Reddit source evidence while Telegram and X remain deferred."
     }
   ],
   "allowedWhileHeld": [
@@ -118,6 +131,11 @@
       "itemId": "source-scope-stays-locked",
       "owner": "source-owner",
       "requiredEvidence": "Deferred source requests do not alter beta binding catalog"
+    },
+    {
+      "itemId": "live-source-evidence",
+      "owner": "source-owner",
+      "requiredEvidence": "HN, RSS, GitHub and Reddit live source evidence artifacts are attached for the promoted backend image"
     }
   ]
 }

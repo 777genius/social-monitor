@@ -4,13 +4,18 @@ const decisionPath = 'ops/release/beta-ring-expansion-decision-record.json';
 const policyPath = 'ops/release/beta-ring-expansion-policy.json';
 const feedbackPath = 'ops/release/beta-feedback-classification-report.json';
 const packagePath = 'package.json';
+const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 
 const decision = JSON.parse(readFileSync(decisionPath, 'utf8'));
 const policy = JSON.parse(readFileSync(policyPath, 'utf8'));
 const feedbackReport = JSON.parse(readFileSync(feedbackPath, 'utf8'));
 const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
+const backendSafe = JSON.parse(readFileSync(backendSafePath, 'utf8'));
 const scripts = packageJson.scripts ?? {};
 const verifyScript = String(scripts.verify ?? '');
+const backendSafeScripts = new Set(backendSafe.backendScripts ?? []);
+const hasVerificationScript = (scriptName) =>
+  verifyScript.includes(`npm run ${scriptName}`) || backendSafeScripts.has(scriptName);
 const violations = [];
 
 const fail = (message) => {
@@ -103,8 +108,8 @@ for (const command of requiredGateCommands) {
   if (!scripts[scriptName]) {
     fail(`${decisionPath}: requiredGateCommands references missing npm script "${scriptName}"`);
   }
-  if (!verifyScript.includes(`npm run ${scriptName}`)) {
-    fail(`${packagePath}: npm run verify must include ring decision gate dependency "${scriptName}"`);
+  if (!hasVerificationScript(scriptName)) {
+    fail(`${packagePath}: npm run verify or verify:backend must include ring decision gate dependency "${scriptName}"`);
   }
 }
 
@@ -135,6 +140,7 @@ for (const requiredReason of [
   'feedback-report-is-fixture-only',
   'summary-feedback-blockers-exist',
   'durable-runtime-not-proven-for-external-beta',
+  'live-source-evidence-not-attached',
 ]) {
   if (!holdReasonIds.has(requiredReason)) {
     fail(`${decisionPath}: holdReasons missing "${requiredReason}"`);
@@ -173,8 +179,8 @@ for (const owner of [
 
 if (!scripts['check:beta-ring-decision']) {
   fail(`${packagePath}: missing check:beta-ring-decision script`);
-} else if (!verifyScript.includes('npm run check:beta-ring-decision')) {
-  fail(`${packagePath}: npm run verify must include check:beta-ring-decision`);
+} else if (!hasVerificationScript('check:beta-ring-decision')) {
+  fail(`${packagePath}: npm run verify or verify:backend must include check:beta-ring-decision`);
 }
 
 if (violations.length > 0) {
