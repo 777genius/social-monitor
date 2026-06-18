@@ -75,6 +75,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "credential-secret-runtime-flow",
+      "command": "npm run check:credential-secret-runtime-flow",
+      "blocksRelease": true
+    },
+    {
       "gateId": "backend-ops-readiness",
       "command": "npm run check:backend-ops-readiness",
       "blocksRelease": true

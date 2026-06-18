@@ -77,8 +77,17 @@
       "owner": "security-owner",
       "status": "pending_staging_evidence",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:secrets", "npm run check:source-config-protector", "npm run check:http-webhook-delivery-provider"],
-      "requiredArtifacts": ["ops/security/secret-scan-allowlist.json", "ops/privacy/retention-contract.json"],
+      "verificationCommands": [
+        "npm run check:credential-secret-runtime-flow",
+        "npm run check:secrets",
+        "npm run check:source-config-protector",
+        "npm run check:http-webhook-delivery-provider"
+      ],
+      "requiredArtifacts": [
+        "ops/security/credential-secret-runtime-flow.json",
+        "ops/security/secret-scan-allowlist.json",
+        "ops/privacy/retention-contract.json"
+      ],
       "exitCondition": "source credentials, webhook secrets, OIDC config, DB and RabbitMQ credentials are supplied through approved runtime secret boundary and rotation drill is attached"
     },
     {

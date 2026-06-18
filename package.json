@@ -22,6 +22,7 @@
     "check:beta-scope-policy": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-beta-scope-policy.ts",
     "check:code-quality": "node scripts/check-code-quality.mjs",
     "check:container": "node scripts/check-container.mjs",
+    "check:credential-secret-runtime-flow": "node scripts/check-credential-secret-runtime-flow.mjs && node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-credential-secret-runtime-flow.ts",
     "check:cross-process-scheduler": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-cross-process-scheduler-smoke.ts",
     "check:dependencies": "node scripts/check-dependencies.mjs",
     "check:delivery-persistence": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-delivery-prisma-persistence.ts",

@@ -25,6 +25,27 @@
       ]
     },
     {
+      "domainId": "credential-secret-runtime-flow",
+      "gates": [
+        "check:credential-secret-runtime-flow",
+        "check:secrets",
+        "check:source-config-protector",
+        "check:http-webhook-delivery-provider"
+      ],
+      "releaseGateIds": [
+        "credential-secret-runtime-flow",
+        "secret-scan",
+        "source-config-protector",
+        "http-webhook-delivery-provider"
+      ],
+      "artifacts": [
+        "ops/security/credential-secret-runtime-flow.json",
+        "ops/security/secret-scan-allowlist.json",
+        "scripts/check-credential-secret-runtime-flow.ts",
+        "libs/shared-kernel/src/redaction.ts"
+      ]
+    },
+    {
       "domainId": "durable-runtime",
       "gates": ["check:runtime-compose", "check:runtime-profile-guards", "check:container", "check:local-infra"],
       "releaseGateIds": ["runtime-compose-contract", "runtime-profile-guards", "container-contract", "local-infra-contract"],

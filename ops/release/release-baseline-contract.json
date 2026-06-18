@@ -12,6 +12,7 @@
     "check:auth-boundary",
     "check:user-auth-boundary",
     "check:production-auth-matrix",
+    "check:credential-secret-runtime-flow",
     "check:backend-ops-readiness",
     "check:release",
     "check:e2e-traceability",
@@ -43,6 +44,10 @@
     {
       "artifactId": "production-auth-matrix",
       "path": "ops/security/production-auth-matrix.json"
+    },
+    {
+      "artifactId": "credential-secret-runtime-flow",
+      "path": "ops/security/credential-secret-runtime-flow.json"
     }
   ]
 }

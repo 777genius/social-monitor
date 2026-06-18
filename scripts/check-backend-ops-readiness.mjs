@@ -20,6 +20,7 @@ const violations = [];
 
 const requiredDomains = new Set([
   'auth-boundary',
+  'credential-secret-runtime-flow',
   'durable-runtime',
   'postgres-reliability',
   'rabbitmq-reliability',
