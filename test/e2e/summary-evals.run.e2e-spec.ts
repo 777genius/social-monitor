@@ -45,6 +45,12 @@ describe('Summary eval quality gates (e2e)', () => {
 
     expect(result.blockingPassed).toBe(true);
     expect(result.datasetVersions).toEqual(['summary.eval.mvp.v1']);
-    expect(result.fixtureResults).toHaveLength(3);
+    expect(result.fixtureResults.map((fixture) => fixture.fixtureId)).toEqual([
+      'empty-window-no-signal',
+      'hn-citation-golden',
+      'rss-prompt-injection-boundary',
+      'feedback-wrong-fact-grounding',
+      'feedback-bad-citation-grounding',
+    ]);
   });
 });

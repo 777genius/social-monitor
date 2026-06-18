@@ -150,19 +150,22 @@
         "check:openapi",
         "check:events",
         "check:usage-audit-rest",
-        "check:staging-reliability-evidence"
+        "check:staging-reliability-evidence",
+        "check:summary-feedback-hardening"
       ],
       "releaseGateIds": [
         "mvp-core-loop",
         "openapi-drift",
         "event-contracts",
         "usage-audit-rest",
-        "staging-reliability-evidence"
+        "staging-reliability-evidence",
+        "summary-feedback-hardening"
       ],
       "artifacts": [
         "libs/contracts/rest/openapi.snapshot.json",
         "libs/contracts/events/event-catalog.json",
-        "ops/drills/staging-reliability-evidence.json"
+        "ops/drills/staging-reliability-evidence.json",
+        "ops/release/summary-feedback-hardening-evidence.json"
       ]
     },
     {

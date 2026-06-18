@@ -153,8 +153,21 @@
       "owner": "summary-owner",
       "status": "blocked_until_real_feedback",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:beta-feedback-report", "npm run check:summary-evals", "npm run check:summary-evidence-smoke", "npm run check:summary-cost", "npm run check:summary-window", "npm run check:summary-retry"],
-      "requiredArtifacts": ["ops/release/beta-feedback-classification-report.json", "ops/evals/summary-eval-output.json", "ops/cost/summary-cost-attribution.json"],
+      "verificationCommands": [
+        "npm run check:beta-feedback-report",
+        "npm run check:summary-evals",
+        "npm run check:summary-evidence-smoke",
+        "npm run check:summary-cost",
+        "npm run check:summary-window",
+        "npm run check:summary-retry",
+        "npm run check:summary-feedback-hardening"
+      ],
+      "requiredArtifacts": [
+        "ops/release/beta-feedback-classification-report.json",
+        "ops/release/summary-feedback-hardening-evidence.json",
+        "ops/evals/summary-eval-output.json",
+        "ops/cost/summary-cost-attribution.json"
+      ],
       "exitCondition": "redacted beta samples replace fixture report and every blocker has eval fixture, validator change or runbook action"
     },
     {

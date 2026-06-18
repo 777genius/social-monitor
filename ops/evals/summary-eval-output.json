@@ -24,11 +24,11 @@
   ],
   "blockingPassed": true,
   "totals": {
-    "fixtureCount": 3,
-    "passedFixtureCount": 3,
+    "fixtureCount": 5,
+    "passedFixtureCount": 5,
     "failedFixtureCount": 0,
-    "inputTokens": 104,
-    "outputTokens": 368,
+    "inputTokens": 244,
+    "outputTokens": 688,
     "estimatedCostUsd": 0
   },
   "fixtureResults": [
@@ -69,6 +69,32 @@
         "estimatedCostUsd": 0,
         "keyPointCount": 1,
         "citationCount": 1
+      }
+    },
+    {
+      "fixtureId": "feedback-wrong-fact-grounding",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "blockingPassed": true,
+      "failures": [],
+      "metrics": {
+        "inputTokens": 66,
+        "outputTokens": 160,
+        "estimatedCostUsd": 0,
+        "keyPointCount": 2,
+        "citationCount": 2
+      }
+    },
+    {
+      "fixtureId": "feedback-bad-citation-grounding",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "blockingPassed": true,
+      "failures": [],
+      "metrics": {
+        "inputTokens": 74,
+        "outputTokens": 160,
+        "estimatedCostUsd": 0,
+        "keyPointCount": 2,
+        "citationCount": 2
       }
     }
   ]

@@ -93,6 +93,7 @@ const requiredGateIds = new Set([
   'summary-cost-attribution',
   'summary-window-freshness',
   'summary-retry-safety',
+  'summary-feedback-hardening',
   'backup-restore-contract',
   'retention-contract',
   'retention-plan',

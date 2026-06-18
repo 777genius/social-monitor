@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "summary-feedback-hardening-evidence-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "evidenceMode": "fixture_contract_with_redacted_real_samples_required",
+  "externalBetaStatus": "hold_until_redacted_real_feedback_samples",
+  "sourceReport": "ops/release/beta-feedback-classification-report.json",
+  "redactedSampleEvidence": {
+    "status": "pending_real_samples",
+    "requiredForExternalBeta": true,
+    "owner": "product-owner",
+    "artifactPath": null,
+    "exitCondition": "Replace deterministic feedback report with redacted internal dogfood or beta samples before external beta go."
+  },
+  "privacyGuardrails": {
+    "rawProviderPayloadsIncluded": false,
+    "piiIncluded": false,
+    "rawPromptTextIncluded": false,
+    "rawSourceTextIncluded": false,
+    "commentsAreSyntheticOrRedacted": true
+  },
+  "blockerActions": [
+    {
+      "feedbackId": "beta-feedback-wrong-fact-001",
+      "triageOwner": "summary-owner",
+      "actionType": "eval_fixture",
+      "status": "fixture_covered_pending_real_sample",
+      "releaseBlocking": true,
+      "command": "npm run check:summary-evals",
+      "artifact": "ops/evals/summary-eval-output.json",
+      "fixtureIds": ["feedback-wrong-fact-grounding"],
+      "exitCondition": "Convert the real redacted wrong-fact sample into a blocking eval fixture or close it with a validator/runbook action."
+    },
+    {
+      "feedbackId": "beta-feedback-bad-citation-001",
+      "triageOwner": "summary-owner",
+      "actionType": "validator_change",
+      "status": "fixture_covered_pending_real_sample",
+      "releaseBlocking": true,
+      "command": "npm run test",
+      "artifact": "libs/summary/features/shared/summary-citation-validator.spec.ts",
+      "fixtureIds": ["feedback-bad-citation-grounding"],
+      "exitCondition": "Convert the real redacted bad-citation sample into a validator regression or close it with a runbook action."
+    }
+  ],
+  "watchActions": [
+    {
+      "feedbackId": "beta-feedback-missing-source-001",
+      "triageOwner": "summary-owner",
+      "actionType": "runbook_action",
+      "status": "fixture_covered_pending_real_sample",
+      "releaseBlocking": true,
+      "command": "npm run check:summary-window",
+      "artifact": "scripts/check-summary-window-freshness-smoke.ts",
+      "fixtureIds": [],
+      "exitCondition": "Keep stale/source-window markers release-blocking and add a real redacted fixture if this repeats in beta samples."
+    }
+  ],
+  "releaseBlockingInvariants": [
+    {
+      "invariantId": "claims-and-citations-grounded",
+      "command": "npm run check:summary-evals",
+      "artifact": "ops/evals/summary-eval-output.json",
+      "requiredSignal": "blocking eval fixtures pass and include feedback grounding/citation regression cases"
+    },
+    {
+      "invariantId": "summary-evidence-citations-valid",
+      "command": "npm run check:summary-evidence-smoke",
+      "artifact": "scripts/check-summary-evidence-smoke.ts",
+      "requiredSignal": "summary artifacts keep key points and citation maps bound to selected evidence"
+    },
+    {
+      "invariantId": "summary-cost-budget-attributed",
+      "command": "npm run check:summary-cost",
+      "artifact": "ops/cost/summary-cost-attribution.json",
+      "requiredSignal": "summary eval fixtures have cost attribution and stay within release budget"
+    },
+    {
+      "invariantId": "summary-window-stale-markers",
+      "command": "npm run check:summary-window",
+      "artifact": "scripts/check-summary-window-freshness-smoke.ts",
+      "requiredSignal": "source window freshness marks stale summaries when newer feed evidence exists"
+    },
+    {
+      "invariantId": "summary-retry-safety",
+      "command": "npm run check:summary-retry",
+      "artifact": "scripts/check-summary-retry-smoke.ts",
+      "requiredSignal": "retryable summary failures stay bounded and do not duplicate completed artifacts"
+    }
+  ],
+  "externalBetaExitCriteria": [
+    "Feedback report evidenceMode is redacted_beta_samples.",
+    "Every blocker finding from real samples has an owner and one release-blocking eval fixture, validator change or runbook action.",
+    "Claims, citations, summary cost and stale-window markers are covered by release-blocking gates."
+  ]
+}

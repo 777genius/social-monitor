@@ -420,6 +420,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "summary-feedback-hardening",
+      "command": "npm run check:summary-feedback-hardening",
+      "blocksRelease": true
+    },
+    {
       "gateId": "backup-restore-contract",
       "command": "npm run check:backup-restore",
       "blocksRelease": true

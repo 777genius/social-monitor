@@ -14,6 +14,7 @@
     "check:production-auth-matrix",
     "check:credential-secret-runtime-flow",
     "check:staging-reliability-evidence",
+    "check:summary-feedback-hardening",
     "check:backend-ops-readiness",
     "check:release",
     "check:e2e-traceability",
@@ -53,6 +54,10 @@
     {
       "artifactId": "staging-reliability-evidence",
       "path": "ops/drills/staging-reliability-evidence.json"
+    },
+    {
+      "artifactId": "summary-feedback-hardening",
+      "path": "ops/release/summary-feedback-hardening-evidence.json"
     }
   ]
 }

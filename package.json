@@ -85,6 +85,7 @@
     "check:secrets": "node scripts/check-secrets.mjs",
     "check:source-certification": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-source-provider-certification.ts",
     "check:summary-evals": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-evals.ts",
+    "check:summary-feedback-hardening": "node scripts/check-summary-feedback-hardening.mjs",
     "check:summary-cost": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-cost-attribution.ts",
     "check:summary-evidence-smoke": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-evidence-smoke.ts",
     "check:summary-feedback-rest": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-feedback-rest-smoke.ts",

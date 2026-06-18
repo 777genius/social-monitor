@@ -102,6 +102,7 @@
     "check:summary-cost",
     "check:summary-window",
     "check:summary-retry",
+    "check:summary-feedback-hardening",
     "check:backup-restore",
     "check:retention",
     "check:retention-plan",

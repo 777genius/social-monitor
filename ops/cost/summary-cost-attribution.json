@@ -18,10 +18,10 @@
   },
   "blockingPassed": true,
   "totals": {
-    "fixtureCount": 3,
-    "attributedFixtureCount": 3,
-    "inputTokens": 104,
-    "outputTokens": 368,
+    "fixtureCount": 5,
+    "attributedFixtureCount": 5,
+    "inputTokens": 244,
+    "outputTokens": 688,
     "estimatedCostUsd": 0,
     "estimatedCostMicroUsd": 0
   },
@@ -82,6 +82,44 @@
         "estimatedCostMicroUsd": 0
       },
       "maxFixtureCostUsd": 0
+    },
+    {
+      "fixtureId": "feedback-wrong-fact-grounding",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "tenantId": "eval-tenant",
+      "workspaceId": "eval-workspace",
+      "topicId": "feedback-grounding",
+      "sourceWindowId": "eval-feedback-grounding-window",
+      "provider": "deterministic-local",
+      "model": "summary-fake-v1",
+      "promptVersion": "summary.prompt.v1",
+      "schemaVersion": "summary.artifact.v1",
+      "usage": {
+        "inputTokens": 66,
+        "outputTokens": 160,
+        "estimatedCostUsd": 0,
+        "estimatedCostMicroUsd": 0
+      },
+      "maxFixtureCostUsd": 0
+    },
+    {
+      "fixtureId": "feedback-bad-citation-grounding",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "tenantId": "eval-tenant",
+      "workspaceId": "eval-workspace",
+      "topicId": "feedback-citation",
+      "sourceWindowId": "eval-feedback-citation-window",
+      "provider": "deterministic-local",
+      "model": "summary-fake-v1",
+      "promptVersion": "summary.prompt.v1",
+      "schemaVersion": "summary.artifact.v1",
+      "usage": {
+        "inputTokens": 74,
+        "outputTokens": 160,
+        "estimatedCostUsd": 0,
+        "estimatedCostMicroUsd": 0
+      },
+      "maxFixtureCostUsd": 0
     }
   ],
   "aggregates": {
@@ -121,16 +159,40 @@
           "estimatedCostUsd": 0,
           "estimatedCostMicroUsd": 0
         }
+      },
+      {
+        "tenantId": "eval-tenant",
+        "workspaceId": "eval-workspace",
+        "topicId": "feedback-grounding",
+        "fixtureCount": 1,
+        "usage": {
+          "inputTokens": 66,
+          "outputTokens": 160,
+          "estimatedCostUsd": 0,
+          "estimatedCostMicroUsd": 0
+        }
+      },
+      {
+        "tenantId": "eval-tenant",
+        "workspaceId": "eval-workspace",
+        "topicId": "feedback-citation",
+        "fixtureCount": 1,
+        "usage": {
+          "inputTokens": 74,
+          "outputTokens": 160,
+          "estimatedCostUsd": 0,
+          "estimatedCostMicroUsd": 0
+        }
       }
     ],
     "byProviderModel": [
       {
         "provider": "deterministic-local",
         "model": "summary-fake-v1",
-        "fixtureCount": 3,
+        "fixtureCount": 5,
         "usage": {
-          "inputTokens": 104,
-          "outputTokens": 368,
+          "inputTokens": 244,
+          "outputTokens": 688,
           "estimatedCostUsd": 0,
           "estimatedCostMicroUsd": 0
         }

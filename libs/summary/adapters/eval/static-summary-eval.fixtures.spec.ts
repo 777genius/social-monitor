@@ -6,6 +6,8 @@ describe('staticSummaryEvalFixtures', () => {
       'empty-window-no-signal',
       'hn-citation-golden',
       'rss-prompt-injection-boundary',
+      'feedback-wrong-fact-grounding',
+      'feedback-bad-citation-grounding',
     ]);
     expect(new Set(staticSummaryEvalFixtures.map((fixture) => fixture.datasetVersion))).toEqual(
       new Set(['summary.eval.mvp.v1']),
