@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { IdentityAuthorizationModule } from '@social-monitor/identity/interfaces/authorization/identity-authorization.module';
+import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 
@@ -32,7 +32,7 @@ import { ScanDeadLetterController } from './scan-dead-letter.controller';
 import { SourceProfileController } from './source-profile.controller';
 
 @Module({
-  imports: [IdentityAuthorizationModule],
+  imports: [IdentityRestModule],
   controllers: [SourceProfileController, ScanDeadLetterController],
   providers: [
     ingestionSupportPersistenceModeProvider,

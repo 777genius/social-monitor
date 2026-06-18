@@ -4,6 +4,7 @@ const policySource = readFileSync('libs/identity/ports/workspace-authorization-p
 const identityProviderTokens = readFileSync('libs/identity/interfaces/rest/identity-provider-tokens.ts', 'utf8');
 const requestAuthorizer = readFileSync('libs/identity/interfaces/rest/api-key-request-authorizer.ts', 'utf8');
 const apiKeysController = readFileSync('libs/identity/interfaces/rest/api-keys.controller.ts', 'utf8');
+const scanDeadLetterController = readFileSync('libs/ingestion/interfaces/rest/scan-dead-letter.controller.ts', 'utf8');
 const userTokenVerifier = readFileSync('libs/identity/adapters/authorization/jwks-user-access-token.verifier.ts', 'utf8');
 const membershipPort = readFileSync('libs/identity/ports/user-workspace-membership-verifier.port.ts', 'utf8');
 const membershipPrisma = readFileSync('libs/identity/adapters/persistence/prisma/prisma-user-workspace-membership.verifier.ts', 'utf8');
@@ -93,6 +94,18 @@ for (const marker of [
 }
 
 for (const marker of [
+  'authorizationHeader',
+  'hasBearerAuthorizationHeader',
+  'authorizeUser',
+  "operation: 'scan_dead_letters.read'",
+  'Bearer OIDC JWT for production scan dead-letter inspection',
+]) {
+  if (!scanDeadLetterController.includes(marker)) {
+    violations.push(`scan dead-letter controller missing user JWT marker "${marker}"`);
+  }
+}
+
+for (const marker of [
   'UserWorkspaceMembershipVerifierPort',
   'USER_WORKSPACE_MEMBERSHIP_VERIFIER',
   'source: UserWorkspaceMembershipSource',
@@ -139,6 +152,10 @@ if (!String(packageJson.scripts?.['check:user-auth-boundary'] ?? '').includes('u
 
 if (!String(packageJson.scripts?.['check:user-auth-boundary'] ?? '').includes('api-keys.user-jwt-management.e2e-spec.ts')) {
   violations.push('package.json missing check:user-auth-boundary API key user JWT e2e guard');
+}
+
+if (!String(packageJson.scripts?.['check:user-auth-boundary'] ?? '').includes('scan-dead-letters.authorization.e2e-spec.ts')) {
+  violations.push('package.json missing check:user-auth-boundary scan dead-letter user JWT e2e guard');
 }
 
 if (!String(packageJson.scripts?.verify ?? '').includes('check:user-auth-boundary')) {
