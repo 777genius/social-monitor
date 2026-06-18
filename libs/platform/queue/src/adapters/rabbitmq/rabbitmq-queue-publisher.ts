@@ -1,4 +1,6 @@
-import type { QueueCommandEnvelope, QueuePublisherPort } from './queue-command';
+import type { Clock } from '@social-monitor/shared-kernel';
+
+import type { QueueCommandEnvelope, QueuePublisherPort } from '../../queue-command';
 
 type RabbitMqFieldValue = string | number | boolean;
 
@@ -47,6 +49,7 @@ export interface RabbitMqQueueChannelPort {
     content: Buffer,
     options: RabbitMqPublishOptions,
   ): boolean | Promise<boolean>;
+  waitForConfirms(exchange: string, routingKey: string, messageId: string): Promise<void>;
 }
 
 export type RabbitMqPublishOptions = {
@@ -66,6 +69,7 @@ export class RabbitMqQueuePublisher implements QueuePublisherPort {
   constructor(
     private readonly channel: RabbitMqQueueChannelPort,
     private readonly options: RabbitMqQueuePublisherOptions,
+    private readonly clock: Clock,
   ) {
     if (options.exchange.trim().length === 0) {
       throw new Error('RabbitMQ queue exchange must be non-empty');
@@ -94,7 +98,7 @@ export class RabbitMqQueuePublisher implements QueuePublisherPort {
       messageId: command.commandId,
       correlationId: command.correlationId,
       type: command.commandType,
-      timestamp: Math.floor(Date.now() / 1000),
+      timestamp: Math.floor(this.clock.now().getTime() / 1000),
       headers: {
         command_type: command.commandType,
         schema_version: command.schemaVersion,
@@ -106,6 +110,8 @@ export class RabbitMqQueuePublisher implements QueuePublisherPort {
     if (!accepted) {
       throw new Error(`RabbitMQ publish backpressure for command type: ${command.commandType}`);
     }
+
+    await this.channel.waitForConfirms(this.options.exchange, route.routingKey, command.commandId);
   }
 
   private async ensureRoute(route: RabbitMqQueueRoute): Promise<void> {

@@ -1,6 +1,6 @@
 import { correlationId, eventId, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { InMemoryEventPublisher, InMemoryOutboxStore } from './in-memory-event-adapters';
+import { InMemoryEventPublisher, InMemoryOutboxStore } from './adapters/in-memory';
 import { OutboxDispatcher } from './outbox-dispatcher';
 
 describe('OutboxDispatcher', () => {

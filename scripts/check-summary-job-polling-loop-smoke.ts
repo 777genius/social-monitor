@@ -40,6 +40,7 @@ async function main(): Promise<void> {
   const events = new InMemorySummaryEventPublisher();
   const metrics = new InMemoryMetricsRecorder();
   const runtime = new WorkerRuntime({ serviceName: 'intelligence-worker' });
+  const clock = new FixedClock(new Date('2026-06-06T00:01:00.000Z'));
   runtime.onModuleInit();
 
   await summaryJobs.save(SummaryJob.request({
@@ -57,11 +58,11 @@ async function main(): Promise<void> {
         summaryJobs,
         summaryArtifacts,
         summaryPolicies,
-        new FeedSummaryEvidenceSelector(new InMemoryFeedItemReadRepository()),
+        new FeedSummaryEvidenceSelector(new InMemoryFeedItemReadRepository(), clock),
         new DeterministicSummaryModelAdapter(),
         events,
         new SequenceIdGenerator(),
-        new FixedClock(new Date('2026-06-06T00:01:00.000Z')),
+        clock,
       ),
       metrics,
       runtime,

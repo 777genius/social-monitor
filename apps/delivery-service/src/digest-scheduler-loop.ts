@@ -1,6 +1,7 @@
 import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { ScheduleDueDigestsCommandHandler } from '@social-monitor/delivery/interfaces/queue/schedule-due-digests-command.handler';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
+import { WorkerCommandIdFactory } from '@social-monitor/platform-worker';
 
 import {
   DELIVERY_DIGEST_SCHEDULER_LOOP_OPTIONS,
@@ -18,6 +19,7 @@ export class DigestSchedulerLoop implements OnModuleInit, OnApplicationShutdown 
     private readonly handler: ScheduleDueDigestsCommandHandler,
     @Inject(DELIVERY_DIGEST_SCHEDULER_LOOP_OPTIONS)
     private readonly options: DeliveryDigestSchedulerLoopOptions,
+    private readonly commandIds: WorkerCommandIdFactory = WorkerCommandIdFactory.system(),
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -68,10 +70,10 @@ export class DigestSchedulerLoop implements OnModuleInit, OnApplicationShutdown 
   private async executeTick(trigger: 'startup' | 'interval'): Promise<void> {
     try {
       const result = await this.handler.handle({
-        commandId: `digest-scheduler:${Date.now()}`,
+        commandId: this.commandIds.next('digest-scheduler'),
         commandType: 'delivery.digests.schedule_due',
         schemaVersion: 1,
-        correlationId: `digest-scheduler:${trigger}:${Date.now()}`,
+        correlationId: this.commandIds.next('digest-scheduler', [trigger]),
         payload: {
           limit: this.options.limit,
           ...(this.options.tenantId === undefined

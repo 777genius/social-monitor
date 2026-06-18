@@ -1,9 +1,7 @@
 import { Module } from '@nestjs/common';
 
-import {
-  AmqplibRabbitMqChannel,
-  InMemoryQueuePublisher,
-} from '@social-monitor/platform-queue';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
+import { AmqplibRabbitMqChannel } from '@social-monitor/platform-queue/adapters/rabbitmq';
 import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case';
 import { ExecuteSummaryJobCommandHandler } from '@social-monitor/summary/interfaces/queue/execute-summary-job-command.handler';
 import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summary-rest.module';

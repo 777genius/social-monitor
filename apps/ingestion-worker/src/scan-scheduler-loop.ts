@@ -1,5 +1,6 @@
 import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
+import { WorkerCommandIdFactory } from '@social-monitor/platform-worker';
 
 import { ScheduleDueScansCommandHandler } from '@social-monitor/monitoring/interfaces/queue/schedule-due-scans-command.handler';
 
@@ -19,6 +20,7 @@ export class ScanSchedulerLoop implements OnModuleInit, OnApplicationShutdown {
     private readonly handler: ScheduleDueScansCommandHandler,
     @Inject(INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS)
     private readonly options: IngestionScanSchedulerLoopOptions,
+    private readonly commandIds: WorkerCommandIdFactory = WorkerCommandIdFactory.system(),
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -69,10 +71,10 @@ export class ScanSchedulerLoop implements OnModuleInit, OnApplicationShutdown {
   private async executeTick(trigger: 'startup' | 'interval'): Promise<void> {
     try {
       const result = await this.handler.handle({
-        commandId: `scan-scheduler:${Date.now()}`,
+        commandId: this.commandIds.next('scan-scheduler'),
         commandType: 'monitoring.scans.schedule_due',
         schemaVersion: 1,
-        correlationId: `scan-scheduler:${trigger}:${Date.now()}`,
+        correlationId: this.commandIds.next('scan-scheduler', [trigger]),
         payload: {
           limit: this.options.limit,
           ...(this.options.tenantId === undefined

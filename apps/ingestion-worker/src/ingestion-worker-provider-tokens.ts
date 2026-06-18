@@ -1,3 +1,4 @@
+import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
 import type {
   FeedProjectionPort,
   ScanAttemptRepositoryPort,
@@ -70,10 +71,24 @@ export const resolveIngestionWorkerPersistenceMode = (
   const value = env.INGESTION_WORKER_PERSISTENCE ?? 'in-memory';
 
   if (value === 'in-memory') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'INGESTION_WORKER_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     return 'in-memory';
   }
 
   if (value === 'prisma') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'INGESTION_WORKER_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     if ((env.DATABASE_URL ?? '').trim().length === 0) {
       throw new Error('INGESTION_WORKER_PERSISTENCE=prisma requires DATABASE_URL');
     }
@@ -88,10 +103,24 @@ export const resolveIngestionScanReporterMode = (env: NodeJS.ProcessEnv): Ingest
   const value = env.INGESTION_SCAN_REPORTER ?? 'noop';
 
   if (value === 'noop') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'INGESTION_SCAN_REPORTER',
+      selectedMode: value,
+      durableModes: ['monitoring'],
+    });
+
     return 'noop';
   }
 
   if (value === 'monitoring') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'INGESTION_SCAN_REPORTER',
+      selectedMode: value,
+      durableModes: ['monitoring'],
+    });
+
     if (env.MONITORING_PERSISTENCE !== 'prisma') {
       throw new Error('INGESTION_SCAN_REPORTER=monitoring requires MONITORING_PERSISTENCE=prisma');
     }
@@ -106,10 +135,24 @@ export const resolveIngestionScanQueueReaderMode = (env: NodeJS.ProcessEnv): Ing
   const value = env.INGESTION_SCAN_QUEUE_READER ?? 'in-memory';
 
   if (value === 'in-memory') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'INGESTION_SCAN_QUEUE_READER',
+      selectedMode: value,
+      durableModes: ['rabbitmq'],
+    });
+
     return 'in-memory';
   }
 
   if (value === 'rabbitmq') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'INGESTION_SCAN_QUEUE_READER',
+      selectedMode: value,
+      durableModes: ['rabbitmq'],
+    });
+
     if ((env.RABBITMQ_URL ?? '').trim().length === 0) {
       throw new Error('INGESTION_SCAN_QUEUE_READER=rabbitmq requires RABBITMQ_URL');
     }

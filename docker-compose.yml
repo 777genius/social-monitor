@@ -7,6 +7,7 @@ x-app-common: &app-common
     - .env.example
   environment: &app-env
     NODE_ENV: development
+    SOCIAL_MONITOR_RUNTIME_PROFILE: beta
     DATABASE_URL: postgresql://social_monitor:social_monitor_local_password@postgres:5432/social_monitor
     REDIS_URL: redis://redis:6379/0
     RABBITMQ_URL: amqp://social_monitor:social_monitor_local_password@rabbitmq:5672
@@ -107,6 +108,7 @@ services:
       - .env.example
     environment:
       NODE_ENV: development
+      SOCIAL_MONITOR_RUNTIME_PROFILE: beta
       DATABASE_URL: postgresql://social_monitor:social_monitor_local_password@postgres:5432/social_monitor
     command: ["npm", "run", "migrate:deploy"]
     depends_on:

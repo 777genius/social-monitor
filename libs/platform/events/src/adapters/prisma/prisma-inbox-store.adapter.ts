@@ -1,10 +1,13 @@
-import { randomUUID } from 'node:crypto';
+import type { IdGenerator } from '@social-monitor/shared-kernel';
 
 import type { InboxStorePort } from '../../inbox-deduplicator';
 import type { PrismaEventStoreClient } from './prisma-event-store-client';
 
 export class PrismaInboxStoreAdapter implements InboxStorePort {
-  constructor(private readonly prisma: PrismaEventStoreClient) {}
+  constructor(
+    private readonly prisma: PrismaEventStoreClient,
+    private readonly ids: IdGenerator,
+  ) {}
 
   async hasProcessed(params: { consumerName: string; eventId: string }): Promise<boolean> {
     const record = await this.prisma.inboxRecord.findUnique({
@@ -27,7 +30,7 @@ export class PrismaInboxStoreAdapter implements InboxStorePort {
     try {
       await this.prisma.inboxRecord.create({
         data: {
-          id: randomUUID(),
+          id: this.ids.generate(),
           consumerName: params.consumerName,
           eventId: params.eventId,
           tenantId: null,

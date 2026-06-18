@@ -1,4 +1,4 @@
-import { InMemoryInboxStore } from './in-memory-event-adapters';
+import { InMemoryInboxStore } from './adapters/in-memory';
 import { InboxDeduplicator } from './inbox-deduplicator';
 
 describe('InboxDeduplicator', () => {

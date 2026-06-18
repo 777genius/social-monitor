@@ -7,7 +7,7 @@ import { EnqueueDeliveryAttemptDispatchUseCase } from '@social-monitor/delivery/
 import { SendDeliveryAttemptUseCase } from '@social-monitor/delivery/features/send-delivery-attempt/send-delivery-attempt.use-case';
 import { SendDeliveryAttemptCommandHandler } from '@social-monitor/delivery/interfaces/queue/send-delivery-attempt-command.handler';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
-import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
 import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 

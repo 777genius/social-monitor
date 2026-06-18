@@ -1,12 +1,14 @@
 import {
-  InMemoryOutboxStore,
   OutboxDispatcher,
-  RabbitMqEventPublisher,
 } from '@social-monitor/platform-events';
+import {
+  RabbitMqEventPublisher,
+} from '@social-monitor/platform-events/adapters/rabbitmq';
+import { InMemoryOutboxStore } from '@social-monitor/platform-events/adapters/in-memory';
 import type {
   RabbitMqPublishOptions,
   RabbitMqQueueChannelPort,
-} from '@social-monitor/platform-queue';
+} from '@social-monitor/platform-queue/adapters/rabbitmq';
 import {
   correlationId,
   eventId,
@@ -110,6 +112,10 @@ class FakeRabbitMqEventChannel implements RabbitMqQueueChannelPort {
     this.published.push({ exchange, routingKey, content, options });
 
     return true;
+  }
+
+  async waitForConfirms(): Promise<void> {
+    return undefined;
   }
 }
 

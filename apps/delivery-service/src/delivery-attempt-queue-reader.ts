@@ -1,8 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import {
-  InMemoryQueuePublisher,
-  type QueueCommandEnvelope,
-} from '@social-monitor/platform-queue';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
+import type { QueueCommandEnvelope } from '@social-monitor/platform-queue';
 import type { GetMessage, Message } from 'amqplib';
 
 import {

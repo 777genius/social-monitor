@@ -51,6 +51,13 @@ async function main(): Promise<void> {
       name: 'Delivery attempt status reader',
       scopes: ['read:delivery_status'],
     });
+    const deliveryWriteSecret = await createApiKey({
+      server: app.getHttpServer(),
+      tenant,
+      workspace,
+      name: 'Delivery attempt status writer',
+      scopes: ['write:delivery_status'],
+    });
     const wrongScopeSecret = await createApiKey({
       server: app.getHttpServer(),
       tenant,
@@ -179,10 +186,22 @@ async function main(): Promise<void> {
       })
       .expect(403);
 
+    await request(app.getHttpServer())
+      .post(`/delivery/attempts/${queued.value.deliveryAttemptId}/retry`)
+      .set(headers)
+      .set('Authorization', `Bearer ${deliveryStatusSecret}`)
+      .send({
+        content: {
+          subject: 'Daily digest',
+          body: 'Digest body',
+        },
+      })
+      .expect(403);
+
     const retried = await request(app.getHttpServer())
       .post(`/delivery/attempts/${queued.value.deliveryAttemptId}/retry`)
       .set(headers)
-      .set('x-workspace-role', 'member')
+      .set('Authorization', `Bearer ${deliveryWriteSecret}`)
       .send({
         content: {
           subject: 'Daily digest',
@@ -193,6 +212,10 @@ async function main(): Promise<void> {
 
     assert(retried.body.attempt.state === 'delivered', 'delivery attempt REST retry must mark delivered');
     assert(retried.body.attempt.retryCount === 1, 'delivery attempt REST retry must preserve retry count');
+    assert(
+      retried.body.attempt.id === queued.value.deliveryAttemptId,
+      'write:delivery_status API key must retry delivery attempts without workspace role',
+    );
 
     await request(app.getHttpServer())
       .post(`/delivery/attempts/${queued.value.deliveryAttemptId}/retry`)

@@ -15,37 +15,38 @@ import type {
   SourceBindingRepositoryPort,
 } from '@social-monitor/monitoring/ports';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
-import { AmqplibRabbitMqChannel, InMemoryQueuePublisher } from '@social-monitor/platform-queue';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
+import { AmqplibRabbitMqChannel } from '@social-monitor/platform-queue/adapters/rabbitmq';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { WorkerRuntime, WorkerRuntimeModule } from '@social-monitor/platform-worker';
-import { NoopScanExecutionReporterAdapter } from '../../../libs/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter';
-import { InMemoryScanLeaseAdapter } from '../../../libs/ingestion/adapters/lease/in-memory-scan-lease.adapter';
-import { InMemoryScanAttemptRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
-import { InMemoryScanCursorRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
-import { InMemorySourceItemRepository } from '../../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
-import { PrismaScanAttemptRepository } from '../../../libs/ingestion/adapters/persistence/prisma/prisma-scan-attempt.repository';
-import { PrismaScanCursorRepository } from '../../../libs/ingestion/adapters/persistence/prisma/prisma-scan-cursor.repository';
-import { PrismaScanFailureQueueAdapter } from '../../../libs/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter';
-import { PrismaScanLeaseAdapter } from '../../../libs/ingestion/adapters/persistence/prisma/prisma-scan-lease.adapter';
-import { PrismaSourceItemRepository } from '../../../libs/ingestion/adapters/persistence/prisma/prisma-source-item.repository';
-import { InMemoryScanFailureQueueAdapter } from '../../../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
-import { CircuitBreakerSourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
-import { FakeSourceProvider } from '../../../libs/ingestion/adapters/source/fake-source.provider';
-import { GitHubSourceProvider } from '../../../libs/ingestion/adapters/source/github/github-source.provider';
-import { HttpGitHubClient } from '../../../libs/ingestion/adapters/source/github/http-github-client';
-import { HackerNewsSourceProvider } from '../../../libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
-import { HttpHackerNewsClient } from '../../../libs/ingestion/adapters/source/hacker-news/http-hacker-news-client';
-import { InMemorySourceProviderRegistry } from '../../../libs/ingestion/adapters/source/in-memory-source-provider.registry';
-import { RegistrySourceFetcherAdapter } from '../../../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
-import { HttpRedditClient } from '../../../libs/ingestion/adapters/source/reddit/http-reddit-client';
-import { RedditSourceProvider } from '../../../libs/ingestion/adapters/source/reddit/reddit-source.provider';
-import { HttpRssClient } from '../../../libs/ingestion/adapters/source/rss/http-rss-client';
-import { RssSourceProvider } from '../../../libs/ingestion/adapters/source/rss/rss-source.provider';
-import { sourceReadinessProfiles } from '../../../libs/ingestion/adapters/source/source-readiness-profiles';
-import { ExecuteScanUseCase } from '../../../libs/ingestion/features/execute-scan/execute-scan.use-case';
-import { ExecuteScanCommandHandler } from '../../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
-import type { ScanExecutionReporterPort } from '../../../libs/ingestion/ports';
+import { InMemoryScanLeaseAdapter } from '@social-monitor/ingestion/adapters/lease/in-memory-scan-lease.adapter';
+import { InMemoryScanAttemptRepository } from '@social-monitor/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
+import { InMemoryScanCursorRepository } from '@social-monitor/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
+import { InMemorySourceItemRepository } from '@social-monitor/ingestion/adapters/persistence/in-memory-source-item.repository';
+import { PrismaScanAttemptRepository } from '@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-attempt.repository';
+import { PrismaScanCursorRepository } from '@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-cursor.repository';
+import { PrismaScanFailureQueueAdapter } from '@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter';
+import { PrismaScanLeaseAdapter } from '@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-lease.adapter';
+import { PrismaSourceItemRepository } from '@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-item.repository';
+import { InMemoryScanFailureQueueAdapter } from '@social-monitor/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
+import { NoopScanExecutionReporterAdapter } from '@social-monitor/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter';
+import { CircuitBreakerSourceFetcherAdapter } from '@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
+import { FakeSourceProvider } from '@social-monitor/ingestion/adapters/source/fake-source.provider';
+import { GitHubSourceProvider } from '@social-monitor/ingestion/adapters/source/github/github-source.provider';
+import { HttpGitHubClient } from '@social-monitor/ingestion/adapters/source/github/http-github-client';
+import { HackerNewsSourceProvider } from '@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
+import { HttpHackerNewsClient } from '@social-monitor/ingestion/adapters/source/hacker-news/http-hacker-news-client';
+import { InMemorySourceProviderRegistry } from '@social-monitor/ingestion/adapters/source/in-memory-source-provider.registry';
+import { RegistrySourceFetcherAdapter } from '@social-monitor/ingestion/adapters/source/registry-source-fetcher.adapter';
+import { HttpRedditClient } from '@social-monitor/ingestion/adapters/source/reddit/http-reddit-client';
+import { RedditSourceProvider } from '@social-monitor/ingestion/adapters/source/reddit/reddit-source.provider';
+import { HttpRssClient } from '@social-monitor/ingestion/adapters/source/rss/http-rss-client';
+import { RssSourceProvider } from '@social-monitor/ingestion/adapters/source/rss/rss-source.provider';
+import { sourceReadinessProfiles } from '@social-monitor/ingestion/adapters/source/source-readiness-profiles';
+import { ExecuteScanUseCase } from '@social-monitor/ingestion/features/execute-scan/execute-scan.use-case';
+import { ExecuteScanCommandHandler } from '@social-monitor/ingestion/interfaces/queue/execute-scan-command.handler';
+import type { ScanExecutionReporterPort } from '@social-monitor/ingestion/ports';
 import type {
   FeedProjectionPort,
   ScanAttemptRepositoryPort,
@@ -55,7 +56,7 @@ import type {
   ScanRetryQueuePort,
   ScanLeasePort,
   SourceItemRepositoryPort,
-} from '../../../libs/ingestion/ports';
+} from '@social-monitor/ingestion/ports';
 import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-projection.adapter';
 import {
   PrismaIngestionWorkerConnection,

@@ -1,3 +1,5 @@
+import { REDACTED_VALUE, isSensitiveKey, isSensitiveString } from '@social-monitor/shared-kernel';
+
 import { safeLabelValue } from './safe-label';
 
 export type LogFields = Readonly<Record<string, string | number | boolean | undefined>>;
@@ -16,28 +18,17 @@ export const formatLogMessage = (message: string, fields: LogFields = {}): strin
   return entries.length === 0 ? message : `${message} ${entries.join(' ')}`;
 };
 
-const REDACTED = '[REDACTED]';
-
-const secretKeyPattern = /(?:secret|token|password|credential|authorization|api[_-]?key|refresh[_-]?token|access[_-]?token)/i;
-const bearerPattern = /^bearer\s+\S+/i;
-const generatedSecretPattern = /^(?:smk|whsec)_[A-Za-z0-9_-]+/;
-const urlWithPasswordPattern = /^[a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:[^@\s]+@/i;
-
 const formatLogValue = (key: string, value: string | number | boolean): string => {
-  if (secretKeyPattern.test(key)) {
-    return REDACTED;
+  if (isSensitiveKey(key)) {
+    return REDACTED_VALUE;
   }
 
   if (typeof value !== 'string') {
     return String(value);
   }
 
-  if (
-    bearerPattern.test(value) ||
-    generatedSecretPattern.test(value) ||
-    urlWithPasswordPattern.test(value)
-  ) {
-    return REDACTED;
+  if (isSensitiveString(value)) {
+    return REDACTED_VALUE;
   }
 
   return safeLabelValue(value);

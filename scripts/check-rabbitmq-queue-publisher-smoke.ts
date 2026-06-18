@@ -1,8 +1,9 @@
 import type {
   RabbitMqPublishOptions,
   RabbitMqQueueChannelPort,
-} from '@social-monitor/platform-queue';
-import { RabbitMqQueuePublisher } from '@social-monitor/platform-queue';
+} from '@social-monitor/platform-queue/adapters/rabbitmq';
+import { RabbitMqQueuePublisher } from '@social-monitor/platform-queue/adapters/rabbitmq';
+import { FixedClock } from '@social-monitor/shared-kernel';
 
 class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
   readonly exchanges: unknown[] = [];
@@ -16,6 +17,7 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
   }> = [];
 
   publishAccepted = true;
+  confirmCount = 0;
 
   async assertExchange(
     exchange: string,
@@ -49,6 +51,10 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
 
     return this.publishAccepted;
   }
+
+  async waitForConfirms(): Promise<void> {
+    this.confirmCount += 1;
+  }
 }
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
@@ -68,7 +74,7 @@ async function main(): Promise<void> {
         deadLetterExchange: 'social-monitor.jobs.dlx',
       },
     },
-  });
+  }, new FixedClock(new Date('2026-06-18T10:15:30.000Z')));
 
   await publisher.publish({
     commandId: 'scan-job-rabbit-smoke',
@@ -91,6 +97,8 @@ async function main(): Promise<void> {
   assert(channel.published[0]?.routingKey === 'scan.execute', 'publisher must use configured routing key');
   assert(channel.published[0]?.options.deliveryMode === 2, 'publisher must use persistent delivery mode by default');
   assert(channel.published[0]?.options.mandatory === true, 'publisher must require mandatory routing by default');
+  assert(channel.published[0]?.options.timestamp === 1781777730, 'publisher must use injected clock for timestamp');
+  assert(channel.confirmCount === 1, 'publisher must wait for broker confirms after publish');
 
   const payload = JSON.parse(channel.published[0]?.content.toString('utf8') ?? '{}') as Readonly<Record<string, unknown>>;
   assert(payload.commandType === 'ingestion.scan.execute', 'serialized command must preserve command type');

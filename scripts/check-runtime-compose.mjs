@@ -59,6 +59,7 @@ for (const [service, npmService] of runtimeServices) {
 for (const marker of [
   'migrate:',
   'condition: service_completed_successfully',
+  'SOCIAL_MONITOR_RUNTIME_PROFILE: beta',
   'MONITORING_PERSISTENCE: prisma',
   'MONITORING_SCAN_QUEUE: rabbitmq',
   'INGESTION_WORKER_PERSISTENCE: prisma',
@@ -76,6 +77,7 @@ for (const marker of [
 }
 
 for (const marker of [
+  'SOCIAL_MONITOR_RUNTIME_PROFILE=local-dev',
   'DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY=',
   'MONITORING_PERSISTENCE=',
   'SUMMARY_JOB_QUEUE_MODE=',
@@ -90,6 +92,10 @@ for (const marker of [
 
 if (!String(packageJson.scripts?.verify ?? '').includes('check:runtime-compose')) {
   violations.push('package.json verify must include check:runtime-compose');
+}
+
+if (envExample.includes('SOCIAL_MONITOR_RUNTIME_PROFILE=beta')) {
+  violations.push('.env.example must default to local-dev, not beta');
 }
 
 if (violations.length > 0) {

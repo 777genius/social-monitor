@@ -1,6 +1,6 @@
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
-import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
 import { FeedSummaryEvidenceSelector } from '@social-monitor/summary/adapters/evidence/feed-summary-evidence.selector';
 import { InMemorySummaryEventPublisher } from '@social-monitor/summary/adapters/messaging/in-memory-summary-event-publisher';
@@ -55,6 +55,7 @@ async function verifyInMemoryDrainLoop(): Promise<void> {
   const metrics = new InMemoryMetricsRecorder();
   const runtime = new WorkerRuntime({ serviceName: 'intelligence-worker' });
   const queue = new InMemoryQueuePublisher();
+  const clock = new FixedClock(new Date('2026-06-16T01:01:00.000Z'));
   runtime.onModuleInit();
 
   await summaryJobs.save(SummaryJob.request({
@@ -85,11 +86,11 @@ async function verifyInMemoryDrainLoop(): Promise<void> {
         summaryJobs,
         summaryArtifacts,
         summaryPolicies,
-        new FeedSummaryEvidenceSelector(new InMemoryFeedItemReadRepository()),
+        new FeedSummaryEvidenceSelector(new InMemoryFeedItemReadRepository(), clock),
         new DeterministicSummaryModelAdapter(),
         events,
         new SequenceIdGenerator(),
-        new FixedClock(new Date('2026-06-16T01:01:00.000Z')),
+        clock,
       ),
       metrics,
       runtime,

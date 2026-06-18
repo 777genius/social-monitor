@@ -1,17 +1,31 @@
 import {
   InboxDeduplicator,
-  InMemoryEventPublisher,
   OutboxDispatcher,
+} from '@social-monitor/platform-events';
+import { FixedClock, type IdGenerator } from '@social-monitor/shared-kernel';
+import {
   PrismaInboxStoreAdapter,
   PrismaOutboxStoreAdapter,
   type PrismaEventOutboxRecord,
   type PrismaEventStoreClient,
   type PrismaInboxRecord,
-} from '@social-monitor/platform-events';
+} from '@social-monitor/platform-events/adapters/prisma';
+import { InMemoryEventPublisher } from '@social-monitor/platform-events/adapters/in-memory';
 
 const fixedEventId = '00000000-0000-7000-8000-000000000701';
 const tenant = '00000000-0000-7000-8000-000000000702';
 const workspace = '00000000-0000-7000-8000-000000000703';
+const clock = new FixedClock(new Date('2026-06-16T00:02:00.000Z'));
+
+class SequenceIdGenerator implements IdGenerator {
+  private nextId = 1;
+
+  generate(): string {
+    const id = `platform-event-store-smoke-${this.nextId}`;
+    this.nextId += 1;
+    return id;
+  }
+}
 
 async function main(): Promise<void> {
   const prisma = new FakePrismaEventStoreClient();
@@ -30,7 +44,7 @@ async function main(): Promise<void> {
   });
 
   const publisher = new InMemoryEventPublisher();
-  const firstDispatcher = new OutboxDispatcher(new PrismaOutboxStoreAdapter(prisma), publisher);
+  const firstDispatcher = new OutboxDispatcher(new PrismaOutboxStoreAdapter(prisma, clock), publisher);
   const dispatchResult = await firstDispatcher.dispatchBatch(10);
 
   assertEqual(dispatchResult.published, 1, 'expected one published outbox event');
@@ -38,7 +52,7 @@ async function main(): Promise<void> {
   assertEqual(publisher.published.length, 1, 'expected publisher to receive one event');
   assertEqual(prisma.outboxEvents.get(fixedEventId)?.status, 'PUBLISHED', 'expected outbox status PUBLISHED');
 
-  const restartedOutbox = new PrismaOutboxStoreAdapter(prisma);
+  const restartedOutbox = new PrismaOutboxStoreAdapter(prisma, clock);
   assertEqual((await restartedOutbox.pending(10)).length, 0, 'expected no pending outbox after restart');
 
   const failedEventId = '00000000-0000-7000-8000-000000000704';
@@ -56,7 +70,7 @@ async function main(): Promise<void> {
     publishedAt: null,
   });
 
-  const failingDispatcher = new OutboxDispatcher(new PrismaOutboxStoreAdapter(prisma), {
+  const failingDispatcher = new OutboxDispatcher(new PrismaOutboxStoreAdapter(prisma, clock), {
     publish: async () => {
       throw new Error('broker unavailable');
     },
@@ -67,7 +81,8 @@ async function main(): Promise<void> {
   assertEqual(failureResult.failed, 1, 'expected one failed publish');
   assertEqual(prisma.outboxEvents.get(failedEventId)?.status, 'FAILED', 'expected failed outbox status');
 
-  const deduplicator = new InboxDeduplicator(new PrismaInboxStoreAdapter(prisma));
+  const ids = new SequenceIdGenerator();
+  const deduplicator = new InboxDeduplicator(new PrismaInboxStoreAdapter(prisma, ids));
   let handlerCalls = 0;
   const firstInboxResult = await deduplicator.runOnce({
     consumerName: 'feed-projection',
@@ -78,7 +93,7 @@ async function main(): Promise<void> {
     },
   });
 
-  const restartedDeduplicator = new InboxDeduplicator(new PrismaInboxStoreAdapter(prisma));
+  const restartedDeduplicator = new InboxDeduplicator(new PrismaInboxStoreAdapter(prisma, ids));
   const secondInboxResult = await restartedDeduplicator.runOnce({
     consumerName: 'feed-projection',
     eventId: fixedEventId,

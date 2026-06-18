@@ -1,3 +1,5 @@
+import { FixedClock } from '@social-monitor/shared-kernel';
+
 import type { RabbitMqPublishOptions, RabbitMqQueueChannelPort } from './rabbitmq-queue-publisher';
 import { RabbitMqQueuePublisher } from './rabbitmq-queue-publisher';
 
@@ -13,6 +15,7 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
   }> = [];
 
   publishAccepted = true;
+  confirmCount = 0;
 
   async assertExchange(
     exchange: string,
@@ -46,6 +49,10 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
 
     return this.publishAccepted;
   }
+
+  async waitForConfirms(): Promise<void> {
+    this.confirmCount += 1;
+  }
 }
 
 describe('RabbitMqQueuePublisher', () => {
@@ -60,7 +67,7 @@ describe('RabbitMqQueuePublisher', () => {
           deadLetterExchange: 'social-monitor.jobs.dlx',
         },
       },
-    });
+    }, new FixedClock(new Date('2026-06-18T10:15:30.000Z')));
 
     await publisher.publish({
       commandId: 'scan-job-1',
@@ -101,6 +108,7 @@ describe('RabbitMqQueuePublisher', () => {
       },
     ]);
     expect(channel.published).toHaveLength(1);
+    expect(channel.confirmCount).toBe(1);
     expect(channel.published[0]?.exchange).toBe('social-monitor.jobs');
     expect(channel.published[0]?.routingKey).toBe('scan.execute');
     expect(JSON.parse(channel.published[0]?.content.toString('utf8') ?? '{}')).toMatchObject({
@@ -117,6 +125,7 @@ describe('RabbitMqQueuePublisher', () => {
       messageId: 'scan-job-1',
       correlationId: 'correlation-1',
       type: 'ingestion.scan.execute',
+      timestamp: 1781777730,
       headers: {
         command_type: 'ingestion.scan.execute',
         schema_version: 1,
@@ -129,9 +138,13 @@ describe('RabbitMqQueuePublisher', () => {
     const channel = new FakeRabbitMqChannel();
     channel.publishAccepted = false;
 
-    await expect(new RabbitMqQueuePublisher(channel, {
-      exchange: 'social-monitor.jobs',
-    }).publish({
+    await expect(new RabbitMqQueuePublisher(
+      channel,
+      {
+        exchange: 'social-monitor.jobs',
+      },
+      new FixedClock(new Date('2026-06-18T10:15:30.000Z')),
+    ).publish({
       commandId: 'summary-job-1',
       commandType: 'summary.job.execute',
       schemaVersion: 1,
@@ -140,15 +153,20 @@ describe('RabbitMqQueuePublisher', () => {
         summaryJobId: 'summary-job-1',
       },
     })).rejects.toThrow('RabbitMQ publish backpressure');
+    expect(channel.confirmCount).toBe(0);
   });
 
   it('rejects oversized command payloads before publishing', async () => {
     const channel = new FakeRabbitMqChannel();
 
-    await expect(new RabbitMqQueuePublisher(channel, {
-      exchange: 'social-monitor.jobs',
-      maxPayloadBytes: 32,
-    }).publish({
+    await expect(new RabbitMqQueuePublisher(
+      channel,
+      {
+        exchange: 'social-monitor.jobs',
+        maxPayloadBytes: 32,
+      },
+      new FixedClock(new Date('2026-06-18T10:15:30.000Z')),
+    ).publish({
       commandId: 'command-1',
       commandType: 'summary.job.execute',
       schemaVersion: 1,

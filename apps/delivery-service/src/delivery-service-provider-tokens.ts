@@ -1,3 +1,5 @@
+import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
+
 export type DeliveryDigestSchedulerLoopOptions = {
   readonly enabled: boolean;
   readonly intervalMs: number;
@@ -103,6 +105,13 @@ export const resolveDeliveryAttemptDispatchTarget = (
   const value = env.DELIVERY_ATTEMPT_DISPATCH_TARGET ?? defaultTarget;
 
   if (value === 'direct' || value === 'queue') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'DELIVERY_ATTEMPT_DISPATCH_TARGET',
+      selectedMode: value,
+      durableModes: ['queue'],
+    });
+
     return value;
   }
 
@@ -117,10 +126,24 @@ export const resolveDeliveryAttemptDispatchQueueMode = (
   );
 
   if (value === 'in-memory') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'DELIVERY_ATTEMPT_DISPATCH_QUEUE',
+      selectedMode: value,
+      durableModes: ['rabbitmq'],
+    });
+
     return 'in-memory';
   }
 
   if (value === 'rabbitmq') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'DELIVERY_ATTEMPT_DISPATCH_QUEUE',
+      selectedMode: value,
+      durableModes: ['rabbitmq'],
+    });
+
     if ((env.RABBITMQ_URL ?? '').trim().length === 0) {
       throw new Error('DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq requires RABBITMQ_URL');
     }
@@ -137,10 +160,24 @@ export const resolveDeliveryAttemptQueueReaderMode = (
   const value = env.DELIVERY_ATTEMPT_QUEUE_READER ?? 'in-memory';
 
   if (value === 'in-memory') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'DELIVERY_ATTEMPT_QUEUE_READER',
+      selectedMode: value,
+      durableModes: ['rabbitmq'],
+    });
+
     return 'in-memory';
   }
 
   if (value === 'rabbitmq') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'DELIVERY_ATTEMPT_QUEUE_READER',
+      selectedMode: value,
+      durableModes: ['rabbitmq'],
+    });
+
     if ((env.RABBITMQ_URL ?? '').trim().length === 0) {
       throw new Error('DELIVERY_ATTEMPT_QUEUE_READER=rabbitmq requires RABBITMQ_URL');
     }

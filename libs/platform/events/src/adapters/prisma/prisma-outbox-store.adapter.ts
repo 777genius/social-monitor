@@ -4,6 +4,7 @@ import {
   eventId,
   tenantId,
   workspaceId,
+  type Clock,
   type EventEnvelope,
 } from '@social-monitor/shared-kernel';
 
@@ -11,7 +12,10 @@ import type { OutboxRecord, OutboxStorePort } from '../../outbox-dispatcher';
 import type { PrismaEventOutboxRecord, PrismaEventStoreClient } from './prisma-event-store-client';
 
 export class PrismaOutboxStoreAdapter implements OutboxStorePort {
-  constructor(private readonly prisma: PrismaEventStoreClient) {}
+  constructor(
+    private readonly prisma: PrismaEventStoreClient,
+    private readonly clock: Clock,
+  ) {}
 
   async pending(limit: number): Promise<readonly OutboxRecord[]> {
     const records = await this.prisma.outboxEvent.findMany({
@@ -31,7 +35,7 @@ export class PrismaOutboxStoreAdapter implements OutboxStorePort {
       where: { id },
       data: {
         status: 'PUBLISHED',
-        publishedAt: new Date(),
+        publishedAt: this.clock.now(),
       },
     });
   }

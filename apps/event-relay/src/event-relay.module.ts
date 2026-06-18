@@ -1,16 +1,19 @@
 import { Module } from '@nestjs/common';
 import {
-  OutboxDispatcher,
   PrismaEventStoreConnection,
   PrismaOutboxStoreAdapter,
+} from '@social-monitor/platform-events/adapters/prisma';
+import {
   RabbitMqEventPublisher,
   type RabbitMqEventPublisherOptions,
-} from '@social-monitor/platform-events';
+} from '@social-monitor/platform-events/adapters/rabbitmq';
+import { OutboxDispatcher } from '@social-monitor/platform-events';
 import {
   AmqplibRabbitMqChannel,
   type RabbitMqQueueChannelPort,
-} from '@social-monitor/platform-queue';
+} from '@social-monitor/platform-queue/adapters/rabbitmq';
 import { WorkerRuntimeModule } from '@social-monitor/platform-worker';
+import { SystemClock } from '@social-monitor/shared-kernel';
 
 import {
   EVENT_RELAY_LOOP_OPTIONS,
@@ -58,7 +61,7 @@ import { OutboxRelayLoop } from './outbox-relay-loop';
     },
     {
       provide: PrismaOutboxStoreAdapter,
-      useFactory: (prisma: PrismaEventStoreConnection) => new PrismaOutboxStoreAdapter(prisma),
+      useFactory: (prisma: PrismaEventStoreConnection) => new PrismaOutboxStoreAdapter(prisma, new SystemClock()),
       inject: [PrismaEventStoreConnection],
     },
     {

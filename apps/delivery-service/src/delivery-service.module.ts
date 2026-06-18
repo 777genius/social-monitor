@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import {
   AmqplibRabbitMqChannel,
-  InMemoryQueuePublisher,
   RabbitMqQueuePublisher,
   type RabbitMqQueueChannelPort,
   type RabbitMqQueuePublisherOptions,
-} from '@social-monitor/platform-queue';
+} from '@social-monitor/platform-queue/adapters/rabbitmq';
 import { DeliveryAttemptDispatchQueuePublisherAdapter } from '@social-monitor/delivery/adapters/messaging/in-memory-delivery-attempt-dispatch-queue.adapter';
 import { ScheduleDueDigestsUseCase } from '@social-monitor/delivery/features/schedule-due-digests/schedule-due-digests.use-case';
 import { SendDeliveryAttemptUseCase } from '@social-monitor/delivery/features/send-delivery-attempt/send-delivery-attempt.use-case';
@@ -114,7 +114,7 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
       ): DeliveryAttemptDispatchQueuePort =>
         mode === 'rabbitmq'
           ? new DeliveryAttemptDispatchQueuePublisherAdapter(
-              new RabbitMqQueuePublisher(requireRabbitMqDeliveryAttemptQueueChannel(channel), options),
+              new RabbitMqQueuePublisher(requireRabbitMqDeliveryAttemptQueueChannel(channel), options, new SystemClock()),
               metrics,
             )
           : new DeliveryAttemptDispatchQueuePublisherAdapter(inMemoryQueue, metrics),

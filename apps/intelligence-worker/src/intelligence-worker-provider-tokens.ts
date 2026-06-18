@@ -1,3 +1,5 @@
+import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
+
 export type IntelligenceSummaryJobLoopOptions = {
   readonly enabled: boolean;
   readonly intervalMs: number;
@@ -62,10 +64,24 @@ export const resolveIntelligenceSummaryQueueReaderMode = (
   const value = env.INTELLIGENCE_SUMMARY_QUEUE_READER ?? 'in-memory';
 
   if (value === 'in-memory') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'INTELLIGENCE_SUMMARY_QUEUE_READER',
+      selectedMode: value,
+      durableModes: ['rabbitmq'],
+    });
+
     return 'in-memory';
   }
 
   if (value === 'rabbitmq') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'INTELLIGENCE_SUMMARY_QUEUE_READER',
+      selectedMode: value,
+      durableModes: ['rabbitmq'],
+    });
+
     if ((env.RABBITMQ_URL ?? '').trim().length === 0) {
       throw new Error('INTELLIGENCE_SUMMARY_QUEUE_READER=rabbitmq requires RABBITMQ_URL');
     }

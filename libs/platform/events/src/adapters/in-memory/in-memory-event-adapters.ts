@@ -1,7 +1,7 @@
 import type { EventEnvelope } from '@social-monitor/shared-kernel';
 
-import type { EventPublisherPort, OutboxRecord, OutboxStorePort } from './outbox-dispatcher';
-import type { InboxStorePort } from './inbox-deduplicator';
+import type { InboxStorePort } from '../../inbox-deduplicator';
+import type { EventPublisherPort, OutboxRecord, OutboxStorePort } from '../../outbox-dispatcher';
 
 export class InMemoryOutboxStore implements OutboxStorePort {
   private readonly records = new Map<string, OutboxRecord & { status: 'pending' | 'published' | 'failed' }>();

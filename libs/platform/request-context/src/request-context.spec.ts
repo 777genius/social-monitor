@@ -1,6 +1,14 @@
 import { buildRequestContext } from './request-context';
 
 describe('buildRequestContext', () => {
+  const idGenerator = {
+    generate: jest.fn(() => 'generated-request-id'),
+  };
+
+  beforeEach(() => {
+    idGenerator.generate.mockClear();
+  });
+
   it('uses request id as default correlation id', () => {
     const context = buildRequestContext({ requestId: 'request-1' });
 
@@ -29,10 +37,11 @@ describe('buildRequestContext', () => {
       requestId: '   ',
       correlationId: 'contains spaces',
       causationId: 'x'.repeat(129),
-    });
+    }, idGenerator);
 
-    expect(context.requestId).toEqual(expect.any(String));
+    expect(context.requestId).toBe('generated-request-id');
     expect(context.correlationId).toBe(context.requestId);
     expect(context.causationId).toBeUndefined();
+    expect(idGenerator.generate).toHaveBeenCalledTimes(1);
   });
 });

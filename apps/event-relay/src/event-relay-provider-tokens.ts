@@ -1,4 +1,5 @@
-import type { RabbitMqEventPublisherOptions } from '@social-monitor/platform-events';
+import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
+import type { RabbitMqEventPublisherOptions } from '@social-monitor/platform-events/adapters/rabbitmq';
 
 export type EventRelayLoopOptions = {
   readonly enabled: boolean;
@@ -16,6 +17,13 @@ export const resolveEventRelayLoopOptions = (env: NodeJS.ProcessEnv): EventRelay
   if (loopMode !== 'enabled' && loopMode !== 'disabled') {
     throw new Error('EVENT_RELAY_LOOP must be "enabled" or "disabled"');
   }
+
+  assertRuntimeProfileAllowsMode({
+    env,
+    settingName: 'EVENT_RELAY_LOOP',
+    selectedMode: loopMode,
+    durableModes: ['enabled'],
+  });
 
   return {
     enabled: loopMode === 'enabled',

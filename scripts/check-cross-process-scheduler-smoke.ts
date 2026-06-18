@@ -3,7 +3,7 @@ import {
   RabbitMqQueuePublisher,
   type RabbitMqPublishOptions,
   type RabbitMqQueueChannelPort,
-} from '@social-monitor/platform-queue';
+} from '@social-monitor/platform-queue/adapters/rabbitmq';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
@@ -104,7 +104,7 @@ async function main(): Promise<void> {
               durable: true,
             },
           },
-        }),
+        }, new FixedClock(now)),
         metrics,
       ),
       new SequenceIdGenerator(),
@@ -326,6 +326,10 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
     this.published.push({ routingKey, content, options });
 
     return true;
+  }
+
+  async waitForConfirms(): Promise<void> {
+    return undefined;
   }
 }
 

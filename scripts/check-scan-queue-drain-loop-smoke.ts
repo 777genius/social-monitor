@@ -1,6 +1,6 @@
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
-import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import type { GetMessage } from 'amqplib';

@@ -1,5 +1,6 @@
 import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
+import { WorkerCommandIdFactory } from '@social-monitor/platform-worker';
 import { ExecuteSummaryJobCommandHandler } from '@social-monitor/summary/interfaces/queue/execute-summary-job-command.handler';
 import { SUMMARY_JOB_REPOSITORY } from '@social-monitor/summary/interfaces/rest/summary-provider-tokens';
 import type { SummaryJobRepositoryPort } from '@social-monitor/summary/ports';
@@ -23,6 +24,7 @@ export class SummaryJobPollingLoop implements OnModuleInit, OnApplicationShutdow
     private readonly summaryJobs: SummaryJobRepositoryPort,
     @Inject(INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS)
     private readonly options: IntelligenceSummaryJobLoopOptions,
+    private readonly commandIds: WorkerCommandIdFactory = WorkerCommandIdFactory.system(),
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -89,10 +91,10 @@ export class SummaryJobPollingLoop implements OnModuleInit, OnApplicationShutdow
 
         try {
           await this.handler.handle({
-            commandId: `summary-job-poller:${snapshot.id}:${Date.now()}`,
+            commandId: this.commandIds.next('summary-job-poller', [snapshot.id]),
             commandType: 'summary.job.execute',
             schemaVersion: 1,
-            correlationId: `summary-job-poller:${trigger}:${Date.now()}`,
+            correlationId: this.commandIds.next('summary-job-poller', [trigger]),
             payload: {
               tenantId: snapshot.tenantId,
               workspaceId: snapshot.workspaceId,

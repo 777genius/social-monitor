@@ -1,5 +1,6 @@
 import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
+import { WorkerCommandIdFactory } from '@social-monitor/platform-worker';
 import type { DeliveryAttemptProps } from '@social-monitor/delivery/domain';
 import { EnqueueDeliveryAttemptDispatchUseCase } from '@social-monitor/delivery/features/enqueue-delivery-attempt-dispatch/enqueue-delivery-attempt-dispatch.use-case';
 import { SendDeliveryAttemptCommandHandler } from '@social-monitor/delivery/interfaces/queue/send-delivery-attempt-command.handler';
@@ -26,6 +27,7 @@ export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnApplicationS
     @Inject(DELIVERY_ATTEMPT_DISPATCH_LOOP_OPTIONS)
     private readonly options: DeliveryAttemptDispatchLoopOptions,
     private readonly enqueueDispatch?: EnqueueDeliveryAttemptDispatchUseCase,
+    private readonly commandIds: WorkerCommandIdFactory = WorkerCommandIdFactory.system(),
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -96,10 +98,10 @@ export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnApplicationS
             await this.enqueueQueuedAttempt(snapshot, trigger);
           } else {
             await this.handler.handle({
-              commandId: `delivery-attempt-dispatch:${snapshot.id}:${Date.now()}`,
+              commandId: this.commandIds.next('delivery-attempt-dispatch', [snapshot.id]),
               commandType: 'delivery.attempt.send',
               schemaVersion: 1,
-              correlationId: `delivery-attempt-dispatch:${trigger}:${Date.now()}`,
+              correlationId: this.commandIds.next('delivery-attempt-dispatch', [trigger]),
               payload: {
                 tenantId: snapshot.tenantId,
                 workspaceId: snapshot.workspaceId,
@@ -151,7 +153,7 @@ export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnApplicationS
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
       deliveryAttemptId: snapshot.id,
-      correlationId: `delivery-attempt-dispatch:${trigger}:${Date.now()}`,
+      correlationId: this.commandIds.next('delivery-attempt-dispatch', [trigger]),
       causationId: `delivery-attempt-dispatch-loop:${snapshot.id}`,
     });
 

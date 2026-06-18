@@ -1,4 +1,4 @@
-import type { QueueCommandEnvelope, QueuePublisherPort } from './queue-command';
+import type { QueueCommandEnvelope, QueuePublisherPort } from '../../queue-command';
 
 export class InMemoryQueuePublisher implements QueuePublisherPort {
   private readonly commands: QueueCommandEnvelope<Readonly<Record<string, unknown>>>[] = [];

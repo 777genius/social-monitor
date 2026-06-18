@@ -1,4 +1,4 @@
-import type { RabbitMqQueueChannelPort } from '@social-monitor/platform-queue';
+import type { RabbitMqQueueChannelPort } from '@social-monitor/platform-queue/adapters/rabbitmq';
 import type { EventEnvelope } from '@social-monitor/shared-kernel';
 
 import type { EventPublisherPort } from '../../outbox-dispatcher';
@@ -59,6 +59,8 @@ export class RabbitMqEventPublisher implements EventPublisherPort {
     if (!accepted) {
       throw new Error(`RabbitMQ publish backpressure for event type: ${event.eventType}`);
     }
+
+    await this.channel.waitForConfirms(this.options.exchange, event.eventType, event.eventId);
   }
 
   private async ensureExchange(): Promise<void> {
