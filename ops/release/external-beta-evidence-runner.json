@@ -1,0 +1,480 @@
+{
+  "schemaVersion": 1,
+  "runnerId": "external-beta-evidence-runner-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "defaultMode": "plan_only",
+  "checkCommand": "npm run check:external-beta-evidence-runner",
+  "planCommand": "npm run beta:evidence:plan",
+  "executeCommand": "npm run beta:evidence:run -- --execute",
+  "runnerFile": "scripts/external-beta-evidence-runner.mjs",
+  "checkFile": "scripts/check-external-beta-evidence-runner.mjs",
+  "executionSafety": {
+    "liveExecutionRequires": [
+      "--execute",
+      "EXTERNAL_BETA_EVIDENCE_CONFIRM=run-live"
+    ],
+    "forbiddenTargets": [
+      "frontend",
+      "mobile",
+      "flutter",
+      "agent-runtime",
+      "claude-hooks"
+    ],
+    "defaultActionWithoutExecute": "print_plan_only",
+    "manualArtifactJobsFailExecute": true,
+    "secretValuesMustStayOutOfArtifacts": true
+  },
+  "jobs": [
+    {
+      "jobId": "release-baseline-freeze",
+      "evidenceGroupId": "release-baseline-freeze",
+      "requirementId": "release-baseline-freeze",
+      "mode": "local_contract",
+      "runPolicy": "local_contract",
+      "owner": "release-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": null,
+      "validationCommands": [
+        "npm run check:release-baseline",
+        "npm run check:backend-safe-verify",
+        "npm run check:release-artifact-evidence"
+      ],
+      "requiredEnv": [],
+      "optionalEnv": [],
+      "outputArtifacts": [
+        {
+          "path": "ops/release/release-baseline-contract.json",
+          "format": "release-baseline-contract-v1"
+        }
+      ],
+      "exitCondition": "Backend-safe release baseline is green for the release commit."
+    },
+    {
+      "jobId": "durable-runtime-staging-proof",
+      "evidenceGroupId": "durable-runtime-proof",
+      "requirementId": "durable-runtime-proof",
+      "mode": "staging_artifact",
+      "runPolicy": "manual_artifact_then_validator",
+      "owner": "backend-lead",
+      "blocksExternalBeta": true,
+      "runnerCommand": null,
+      "validationCommands": [
+        "npm run check:durable-runtime-proof",
+        "npm run check:persistence-readiness",
+        "npm run check:runtime-profile-guards"
+      ],
+      "requiredEnv": [
+        "STAGING_ENVIRONMENT_ID",
+        "BACKEND_IMAGE_DIGEST",
+        "API_BASE_URL"
+      ],
+      "optionalEnv": [
+        "OIDC_ISSUER",
+        "JWKS_URL"
+      ],
+      "outputArtifacts": [
+        {
+          "path": "ops/release/durable-runtime-proof.json",
+          "format": "durable-runtime-proof-contract-v1"
+        }
+      ],
+      "exitCondition": "API, ingestion-worker, intelligence-worker, delivery-service and event-relay are proven on Postgres, RabbitMQ and real auth selectors."
+    },
+    {
+      "jobId": "production-auth-finalization",
+      "evidenceGroupId": "production-auth-finalization",
+      "requirementId": "production-auth-finalization",
+      "mode": "local_contract",
+      "runPolicy": "local_contract",
+      "owner": "identity-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": null,
+      "validationCommands": [
+        "npm run check:auth-boundary",
+        "npm run check:user-auth-boundary",
+        "npm run check:production-auth-matrix",
+        "npm run check:read-api-key-scope",
+        "npm run check:write-api-key-scope"
+      ],
+      "requiredEnv": [],
+      "optionalEnv": [],
+      "outputArtifacts": [
+        {
+          "path": "ops/security/production-auth-matrix.json",
+          "format": "production-auth-matrix-v1"
+        }
+      ],
+      "exitCondition": "JWT/OIDC, durable workspace membership, roles and API key scopes are green on protected REST surfaces."
+    },
+    {
+      "jobId": "live-open-connectors",
+      "evidenceGroupId": "source-provider-live-certification",
+      "requirementId": "source-provider-live-certification",
+      "mode": "live_network",
+      "runPolicy": "live_command",
+      "owner": "source-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": "npm run check:live-open-connectors",
+      "validationCommands": [
+        "npm run check:source-live-certification-evidence",
+        "npm run check:source-certification"
+      ],
+      "requiredEnv": [
+        "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+        "SOURCE_LIVE_ENVIRONMENT_ID",
+        "BACKEND_IMAGE_DIGEST",
+        "SOURCE_LIVE_OPERATOR"
+      ],
+      "optionalEnv": [
+        "GITHUB_ACCESS_TOKEN"
+      ],
+      "outputArtifacts": [
+        {
+          "env": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+          "format": "source-live-provider-evidence-v1"
+        }
+      ],
+      "exitCondition": "HN, RSS and GitHub live smoke, cache, SSRF and rate-limit evidence is attached for the promoted backend image."
+    },
+    {
+      "jobId": "live-reddit-oauth",
+      "evidenceGroupId": "source-provider-live-certification",
+      "requirementId": "source-provider-live-certification",
+      "mode": "live_network",
+      "runPolicy": "live_command",
+      "owner": "source-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": "npm run check:live-reddit-oauth",
+      "validationCommands": [
+        "npm run check:source-live-certification-evidence"
+      ],
+      "requiredEnv": [
+        "REDDIT_ACCESS_TOKEN",
+        "REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH",
+        "REDDIT_LIVE_EVIDENCE_PATH",
+        "SOURCE_LIVE_ENVIRONMENT_ID",
+        "BACKEND_IMAGE_DIGEST",
+        "SOURCE_LIVE_OPERATOR"
+      ],
+      "optionalEnv": [
+        "REDDIT_USER_AGENT",
+        "REDDIT_SUBREDDIT",
+        "REDDIT_LISTING"
+      ],
+      "outputArtifacts": [
+        {
+          "env": "REDDIT_LIVE_EVIDENCE_PATH",
+          "format": "source-live-provider-evidence-v1"
+        },
+        {
+          "env": "REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH",
+          "format": "reddit-credential-lifecycle-redacted-v1"
+        }
+      ],
+      "exitCondition": "Reddit tenant OAuth smoke, auth failure, rate-limit and credential lifecycle evidence is attached without token values."
+    },
+    {
+      "jobId": "credential-secret-rotation-drill",
+      "evidenceGroupId": "credential-secret-runtime-flow",
+      "requirementId": "credential-secret-runtime-flow",
+      "mode": "staging_artifact",
+      "runPolicy": "manual_artifact_then_validator",
+      "owner": "security-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": null,
+      "validationCommands": [
+        "npm run check:credential-secret-runtime-flow",
+        "npm run check:secrets",
+        "npm run check:source-config-protector",
+        "npm run check:http-webhook-delivery-provider"
+      ],
+      "requiredEnv": [
+        "STAGING_SECRET_STORE_ID",
+        "SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH",
+        "WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH"
+      ],
+      "optionalEnv": [
+        "OIDC_CONFIG_SECRET_REF",
+        "DATABASE_URL_SECRET_REF",
+        "RABBITMQ_URL_SECRET_REF"
+      ],
+      "outputArtifacts": [
+        {
+          "path": "ops/security/credential-secret-runtime-flow.json",
+          "format": "credential-secret-runtime-flow-v1"
+        }
+      ],
+      "exitCondition": "Source credentials, webhook secrets, OIDC config, DB and RabbitMQ secrets use approved runtime secret boundaries with rotation evidence."
+    },
+    {
+      "jobId": "rabbitmq-staging-reliability-drill",
+      "evidenceGroupId": "rabbitmq-staging-reliability-drill",
+      "requirementId": "rabbitmq-staging-reliability-drill",
+      "mode": "staging_artifact",
+      "runPolicy": "manual_artifact_then_validator",
+      "owner": "ops-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": null,
+      "validationCommands": [
+        "npm run check:rabbitmq-queue-publisher",
+        "npm run check:scan-queue-drain-loop",
+        "npm run check:summary-queue-drain-loop",
+        "npm run check:delivery-attempt-queue-drain-loop",
+        "npm run check:event-relay",
+        "npm run check:staging-reliability-evidence"
+      ],
+      "requiredEnv": [
+        "RABBITMQ_URL",
+        "STAGING_ENVIRONMENT_ID",
+        "BACKEND_IMAGE_DIGEST",
+        "RABBITMQ_STAGING_DRILL_ARTIFACT_PATH"
+      ],
+      "optionalEnv": [
+        "RABBITMQ_MANAGEMENT_URL"
+      ],
+      "outputArtifacts": [
+        {
+          "env": "RABBITMQ_STAGING_DRILL_ARTIFACT_PATH",
+          "format": "staging-reliability-artifact-v1"
+        }
+      ],
+      "exitCondition": "Real RabbitMQ staging drill proves confirms, persistent publish, ack/nack, DLX, quorum delivery limit, restart recovery, lag metrics and event relay retry."
+    },
+    {
+      "jobId": "postgres-restore-migration-drill",
+      "evidenceGroupId": "postgres-restore-migration-drill",
+      "requirementId": "postgres-restore-migration-drill",
+      "mode": "staging_artifact",
+      "runPolicy": "manual_artifact_then_validator",
+      "owner": "ops-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": null,
+      "validationCommands": [
+        "npm run check:migrations",
+        "npm run check:backup-restore",
+        "npm run check:persistence-readiness",
+        "npm run check:tenant-db-guards",
+        "npm run check:staging-reliability-evidence"
+      ],
+      "requiredEnv": [
+        "DATABASE_URL",
+        "STAGING_ENVIRONMENT_ID",
+        "BACKEND_IMAGE_DIGEST",
+        "POSTGRES_RESTORE_DRILL_ARTIFACT_PATH"
+      ],
+      "optionalEnv": [
+        "BACKUP_OBJECT_URI"
+      ],
+      "outputArtifacts": [
+        {
+          "env": "POSTGRES_RESTORE_DRILL_ARTIFACT_PATH",
+          "format": "staging-reliability-artifact-v1"
+        }
+      ],
+      "exitCondition": "Backup/restore proves RPO/RTO, validation queries, migration version and outbox/inbox/idempotency state after resume."
+    },
+    {
+      "jobId": "durable-backend-e2e-loop",
+      "evidenceGroupId": "durable-backend-e2e-loop",
+      "requirementId": "durable-backend-e2e-loop",
+      "mode": "staging_artifact",
+      "runPolicy": "manual_artifact_then_validator",
+      "owner": "backend-lead",
+      "blocksExternalBeta": true,
+      "runnerCommand": null,
+      "validationCommands": [
+        "npm run check:mvp-core-loop",
+        "npm run check:openapi",
+        "npm run check:e2e-traceability",
+        "npm run check:staging-reliability-evidence"
+      ],
+      "requiredEnv": [
+        "API_BASE_URL",
+        "STAGING_ENVIRONMENT_ID",
+        "BACKEND_IMAGE_DIGEST",
+        "DURABLE_BACKEND_E2E_ARTIFACT_PATH"
+      ],
+      "optionalEnv": [
+        "OIDC_TEST_TOKEN_REF",
+        "WEBHOOK_TEST_ENDPOINT"
+      ],
+      "outputArtifacts": [
+        {
+          "env": "DURABLE_BACKEND_E2E_ARTIFACT_PATH",
+          "format": "staging-reliability-artifact-v1"
+        }
+      ],
+      "exitCondition": "Topic to source binding to scheduled scan to feed to summary to feedback to digest/webhook/realtime to audit passes on durable runtime with tenant isolation."
+    },
+    {
+      "jobId": "summary-real-feedback-import",
+      "evidenceGroupId": "summary-quality-feedback-hardening",
+      "requirementId": "summary-quality-feedback-hardening",
+      "mode": "redacted_samples",
+      "runPolicy": "manual_artifact_then_validator",
+      "owner": "summary-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": null,
+      "validationCommands": [
+        "npm run check:beta-feedback-report",
+        "npm run check:summary-evals",
+        "npm run check:summary-evidence-smoke",
+        "npm run check:summary-cost",
+        "npm run check:summary-window",
+        "npm run check:summary-retry",
+        "npm run check:summary-feedback-hardening"
+      ],
+      "requiredEnv": [
+        "SUMMARY_REAL_FEEDBACK_SAMPLES_PATH"
+      ],
+      "optionalEnv": [
+        "SUMMARY_FEEDBACK_TRIAGE_OWNER"
+      ],
+      "outputArtifacts": [
+        {
+          "env": "SUMMARY_REAL_FEEDBACK_SAMPLES_PATH",
+          "format": "redacted-summary-feedback-samples-v1"
+        }
+      ],
+      "exitCondition": "Redacted internal dogfood or beta samples replace fixture-only feedback report and every blocker is mapped to an eval, validator or runbook action."
+    },
+    {
+      "jobId": "operational-support-package",
+      "evidenceGroupId": "operational-support-package",
+      "requirementId": "operational-support-package",
+      "mode": "local_contract",
+      "runPolicy": "local_contract",
+      "owner": "ops-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": null,
+      "validationCommands": [
+        "npm run check:observability",
+        "npm run check:drills",
+        "npm run check:operational-support-package",
+        "npm run check:beta-launch-support"
+      ],
+      "requiredEnv": [],
+      "optionalEnv": [],
+      "outputArtifacts": [
+        {
+          "path": "ops/release/operational-support-package.json",
+          "format": "operational-support-package-v1"
+        }
+      ],
+      "exitCondition": "Operator package covers DLQ, provider outage, rate-limit, summary cost spike and delivery failure triage."
+    },
+    {
+      "jobId": "capacity-envelope-beta-ring-decision",
+      "evidenceGroupId": "capacity-envelope-beta-ring-decision",
+      "requirementId": "capacity-envelope-beta-ring-decision",
+      "mode": "local_contract",
+      "runPolicy": "local_contract",
+      "owner": "release-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": null,
+      "validationCommands": [
+        "npm run check:load-cost",
+        "npm run check:beta-ring-policy",
+        "npm run check:beta-ring-decision",
+        "npm run check:capacity-envelope-beta-ring-decision"
+      ],
+      "requiredEnv": [],
+      "optionalEnv": [],
+      "outputArtifacts": [
+        {
+          "path": "ops/release/capacity-envelope-beta-ring-decision.json",
+          "format": "capacity-envelope-beta-ring-decision-v1"
+        }
+      ],
+      "exitCondition": "Beta ring remains hold until durable runtime, live source, real feedback and release evidence are attached."
+    },
+    {
+      "jobId": "release-deploy-smoke",
+      "evidenceGroupId": "release-artifact-evidence",
+      "requirementId": "release-artifact-evidence",
+      "mode": "staging_deploy",
+      "runPolicy": "manual_artifact_then_validator",
+      "owner": "release-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": null,
+      "validationCommands": [
+        "npm run check:release-artifact-evidence",
+        "npm run check:release"
+      ],
+      "requiredEnv": [
+        "RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH",
+        "STAGING_ENVIRONMENT_ID",
+        "BACKEND_IMAGE_DIGEST",
+        "API_BASE_URL"
+      ],
+      "optionalEnv": [
+        "DEPLOYMENT_ID"
+      ],
+      "outputArtifacts": [
+        {
+          "env": "RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH",
+          "format": "release-deploy-smoke-artifact-v1"
+        }
+      ],
+      "exitCondition": "Release evidence includes commit SHA, immutable image digest, artifact hashes and deploy smoke output."
+    },
+    {
+      "jobId": "security-final-sweep-staging",
+      "evidenceGroupId": "security-final-sweep",
+      "requirementId": "security-final-sweep",
+      "mode": "staging_artifact",
+      "runPolicy": "manual_artifact_then_validator",
+      "owner": "security-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": null,
+      "validationCommands": [
+        "npm run check:security-final-sweep",
+        "npm run check:secrets",
+        "npm run check:dependencies",
+        "npm run check:user-auth-boundary",
+        "npm run check:usage-audit-rest"
+      ],
+      "requiredEnv": [
+        "SECURITY_FINAL_SWEEP_ARTIFACT_PATH",
+        "LOG_EXPORT_PATH",
+        "METRICS_EXPORT_PATH",
+        "PUBLIC_ERROR_EXPORT_PATH"
+      ],
+      "optionalEnv": [
+        "AUDIT_EVENT_EXPORT_PATH"
+      ],
+      "outputArtifacts": [
+        {
+          "env": "SECURITY_FINAL_SWEEP_ARTIFACT_PATH",
+          "format": "security-final-sweep-staging-artifact-v1"
+        }
+      ],
+      "exitCondition": "Logs, metrics, audit events and public errors do not contain tokens, secret URLs, raw provider payloads or raw prompt/source text."
+    },
+    {
+      "jobId": "no-go-cleanup",
+      "evidenceGroupId": "no-go-cleanup",
+      "requirementId": "no-go-cleanup",
+      "mode": "local_contract",
+      "runPolicy": "local_contract",
+      "owner": "release-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": null,
+      "validationCommands": [
+        "npm run check:external-beta-readiness",
+        "npm run check:no-go-cleanup",
+        "npm run check:beta-ring-decision"
+      ],
+      "requiredEnv": [],
+      "optionalEnv": [],
+      "outputArtifacts": [
+        {
+          "path": "ops/release/no-go-cleanup-contract.json",
+          "format": "no-go-cleanup-contract-v1"
+        }
+      ],
+      "exitCondition": "Every fixture-ready or pending evidence claim has owner, exit condition and blocking/non-blocking status."
+    }
+  ]
+}

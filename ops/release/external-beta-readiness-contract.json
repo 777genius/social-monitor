@@ -13,6 +13,11 @@
     "summary blocker feedback is converted into eval fixtures, validator changes or runbook actions",
     "release artifact evidence includes immutable image digest and deploy smoke output"
   ],
+  "evidenceRunner": {
+    "contract": "ops/release/external-beta-evidence-runner.json",
+    "checkCommand": "npm run check:external-beta-evidence-runner",
+    "planCommand": "npm run beta:evidence:plan"
+  },
   "capacityEnvelope": {
     "ringId": "private-beta-1",
     "maxTenants": 3,

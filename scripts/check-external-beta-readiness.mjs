@@ -65,6 +65,21 @@ if (!['hold', 'go', 'rework'].includes(contract.externalBetaDecision)) {
   violations.push(`${contractPath}: externalBetaDecision must be hold, go or rework`);
 }
 
+const evidenceRunner = contract.evidenceRunner;
+if (typeof evidenceRunner !== 'object' || evidenceRunner === null) {
+  violations.push(`${contractPath}: evidenceRunner is required`);
+} else {
+  if (!existsSync(evidenceRunner.contract ?? '')) {
+    violations.push(`${contractPath}: evidenceRunner.contract must reference an existing contract`);
+  }
+  for (const field of ['checkCommand', 'planCommand']) {
+    const scriptName = String(evidenceRunner[field] ?? '').replace(/^npm run /, '');
+    if (!String(evidenceRunner[field] ?? '').startsWith('npm run ') || !scripts[scriptName]) {
+      violations.push(`${contractPath}: evidenceRunner.${field} must reference an existing npm script`);
+    }
+  }
+}
+
 const groupIds = new Set();
 let hasBlockingPendingEvidence = false;
 for (const group of contract.requiredEvidenceGroups ?? []) {

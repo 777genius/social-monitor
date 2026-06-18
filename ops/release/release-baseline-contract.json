@@ -19,6 +19,7 @@
     "check:summary-feedback-hardening",
     "check:backend-ops-readiness",
     "check:backend-mvp-completion-audit",
+    "check:external-beta-evidence-runner",
     "check:operational-support-package",
     "check:capacity-envelope-beta-ring-decision",
     "check:no-go-cleanup",
@@ -61,6 +62,10 @@
     {
       "artifactId": "backend-mvp-completion-audit",
       "path": "ops/release/backend-mvp-completion-audit.json"
+    },
+    {
+      "artifactId": "external-beta-evidence-runner",
+      "path": "ops/release/external-beta-evidence-runner.json"
     },
     {
       "artifactId": "production-auth-matrix",
