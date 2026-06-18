@@ -1,3 +1,5 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
+
 import type {
   ListPublicApiAuditRecordsQuery,
   ListPublicApiAuditRecordsResult,
@@ -11,7 +13,7 @@ export class PrismaPublicApiAuditLog implements PublicApiAuditLogPort {
   constructor(private readonly prisma: PrismaUsageClient) {}
 
   async append(record: PublicApiAuditRecord): Promise<void> {
-    await this.prisma.publicApiAuditEvent.create({
+    await withPrismaWriteRetry(() => this.prisma.publicApiAuditEvent.create({
       data: {
         id: record.id,
         tenantId: record.tenantId,
@@ -26,7 +28,7 @@ export class PrismaPublicApiAuditLog implements PublicApiAuditLogPort {
         metadata: record.metadata,
         occurredAt: record.occurredAt,
       },
-    });
+    }));
   }
 
   async list(query: ListPublicApiAuditRecordsQuery): Promise<ListPublicApiAuditRecordsResult> {

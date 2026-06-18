@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 
-import type { PrismaUsageClient } from './prisma-usage-client';
+import type { PrismaUsageClient, PrismaUsageTransactionClient, PrismaUsageTransactionOptions } from './prisma-usage-client';
 
 type PrismaUsageRuntimeClient = PrismaUsageClient & {
   $disconnect(): Promise<void>;
@@ -39,6 +39,16 @@ export class PrismaUsageConnection implements PrismaUsageClient {
     this.publicApiAuditEvent = this.client.publicApiAuditEvent;
     this.rateLimitBucket = this.client.rateLimitBucket;
     this.usageQuotaBucket = this.client.usageQuotaBucket;
+  }
+
+  async $transaction<TValue>(
+    operation: (client: PrismaUsageTransactionClient) => Promise<TValue>,
+    options?: PrismaUsageTransactionOptions,
+  ): Promise<TValue> {
+    return this.client.$transaction(
+      (client) => operation(client as PrismaUsageTransactionClient),
+      options,
+    );
   }
 
   async close(): Promise<void> {

@@ -1,5 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
+
 import type { WebhookSecretVaultPort } from '../../../ports';
 import type { PrismaDeliveryClient, PrismaWebhookSecretWriteData } from '../../persistence/prisma/prisma-delivery-client';
 
@@ -26,14 +28,14 @@ export class PrismaWebhookSecretVault implements WebhookSecretVaultPort {
       authTag: encrypted.authTag,
     };
 
-    await this.prisma.webhookSecret.upsert({
+    await withPrismaWriteRetry(() => this.prisma.webhookSecret.upsert({
       where: { id: params.secretKeyId },
       update: data,
       create: {
         id: params.secretKeyId,
         ...data,
       },
-    });
+    }));
   }
 
   async get(params: { readonly secretKeyId: string }): Promise<string | null> {

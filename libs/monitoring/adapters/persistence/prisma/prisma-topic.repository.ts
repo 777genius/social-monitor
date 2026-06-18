@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { Topic } from '../../../domain';
@@ -12,7 +13,7 @@ export class PrismaTopicRepository implements TopicRepositoryPort {
   async save(topic: Topic): Promise<void> {
     const snapshot = topic.toSnapshot();
 
-    await this.prisma.topic.upsert({
+    await withPrismaWriteRetry(() => this.prisma.topic.upsert({
       where: { id: snapshot.id },
       update: {
         name: snapshot.name,
@@ -25,7 +26,7 @@ export class PrismaTopicRepository implements TopicRepositoryPort {
         name: snapshot.name,
         query: snapshot.query,
       },
-    });
+    }));
   }
 
   async findByName(params: {

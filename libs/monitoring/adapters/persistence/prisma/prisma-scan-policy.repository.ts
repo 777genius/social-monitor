@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { ScanPolicy } from '../../../domain';
@@ -11,7 +12,7 @@ export class PrismaScanPolicyRepository implements ScanPolicyRepositoryPort {
   async save(policy: ScanPolicy): Promise<void> {
     const snapshot = policy.toSnapshot();
 
-    await this.prisma.scanPolicy.upsert({
+    await withPrismaWriteRetry(() => this.prisma.scanPolicy.upsert({
       where: { id: snapshot.id },
       update: {
         intervalSeconds: snapshot.intervalSeconds,
@@ -29,7 +30,7 @@ export class PrismaScanPolicyRepository implements ScanPolicyRepositoryPort {
         retryBudget: snapshot.retryBudget,
         nextRunAt: snapshot.nextRunAt,
       },
-    });
+    }));
   }
 
   async findDue(params: {

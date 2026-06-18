@@ -61,6 +61,7 @@ Code quality rules must be enforceable, not only documented. `npm run verify` mu
 49. App services/controllers/reporters must not import bounded-context adapters directly; adapter-backed readiness data is injected by module provider tokens, and composition roots may import adapters.
 50. Platform root barrels expose core ports/primitives only. They must not re-export `./adapters/*`, RabbitMQ, InMemory, Prisma or SDK implementation files; composition roots import platform queue/event adapters through explicit adapter subpaths and never legacy adapter shortcuts.
 51. Secret and token redaction policy must live in shared-kernel redaction helpers; duplicated sensitive-key/string regexes in filters, loggers, audits or adapters are blocked.
+52. Prisma persistence writes must use `withPrismaWriteRetry` from `@social-monitor/platform-persistence`; write transactions must use Serializable isolation so P2034 conflicts are retried consistently.
 
 ## Current Gate
 
@@ -118,6 +119,7 @@ Clean Architecture fails slowly when use cases stop being directly testable, con
 - Runtime circular dependencies in production `apps`/`libs` imports are blocked.
 - Interface controllers, gateways, support services and authorizers reading `process.env` directly are blocked; move env-derived config into provider tokens.
 - App controllers reading `process.env`, `new Date()` or `process.uptime()` directly are blocked; move readiness assembly into provider-backed reporters.
+- Prisma persistence writes without the shared retry helper or write transactions without Serializable isolation are blocked.
 - App services/controllers/reporters importing bounded-context adapters are blocked; composition roots may import adapters and pass adapter-backed readiness data through provider tokens.
 - Platform root barrels re-exporting adapter paths, adapter-named implementation files or legacy platform adapter shortcut imports are blocked; root aliases expose stable ports/core services, not infrastructure shortcuts.
 - Duplicated secret/token redaction regexes are blocked; use shared-kernel redaction helpers so problem details, logs, audits and config protection stay aligned.

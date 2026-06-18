@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { IdGenerator, TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { IdempotencyPort, IdempotencyRecord } from '../../../ports';
@@ -38,7 +39,9 @@ export class PrismaIdempotencyAdapter implements IdempotencyPort {
     key: string;
     value: TValue;
   }): Promise<void> {
-    await this.prisma.idempotencyKey.upsert({
+    const id = this.idGenerator.generate();
+
+    await withPrismaWriteRetry(() => this.prisma.idempotencyKey.upsert({
       where: {
         tenantId_workspaceId_scope_key: {
           tenantId: params.tenantId,
@@ -53,7 +56,7 @@ export class PrismaIdempotencyAdapter implements IdempotencyPort {
         expiresAt: null,
       },
       create: {
-        id: this.idGenerator.generate(),
+        id,
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
         scope: params.scope,
@@ -63,6 +66,6 @@ export class PrismaIdempotencyAdapter implements IdempotencyPort {
         responseStatus: 200,
         expiresAt: null,
       },
-    });
+    }));
   }
 }

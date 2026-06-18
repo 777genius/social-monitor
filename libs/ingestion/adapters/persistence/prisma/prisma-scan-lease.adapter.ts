@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { IdGenerator } from '@social-monitor/shared-kernel';
 
 import type { AcquireScanLeaseCommand, ScanLease, ScanLeasePort } from '../../../ports';
@@ -11,22 +12,23 @@ export class PrismaScanLeaseAdapter implements ScanLeasePort {
   ) {}
 
   async acquire(command: AcquireScanLeaseCommand): Promise<ScanLease | null> {
-    await this.prisma.scanLeaseEntry.deleteMany({
+    await withPrismaWriteRetry(() => this.prisma.scanLeaseEntry.deleteMany({
       where: {
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         scanJobId: command.scanJobId,
         expiresAt: { lte: command.leasedAt },
       },
-    });
+    }));
 
     const expiresAt = new Date(command.leasedAt.getTime() + command.ttlSeconds * 1000);
     const fencingToken = `${command.scanJobId}:${command.workerId}:${command.leasedAt.getTime()}`;
+    const leaseId = this.ids.generate();
 
     try {
-      const record = await this.prisma.scanLeaseEntry.create({
+      const record = await withPrismaWriteRetry(() => this.prisma.scanLeaseEntry.create({
         data: {
-          id: this.ids.generate(),
+          id: leaseId,
           tenantId: command.tenantId,
           workspaceId: command.workspaceId,
           scanJobId: command.scanJobId,
@@ -35,7 +37,7 @@ export class PrismaScanLeaseAdapter implements ScanLeasePort {
           leasedAt: command.leasedAt,
           expiresAt,
         },
-      });
+      }));
 
       return scanLeaseFromPrisma(record);
     } catch (error) {
@@ -48,14 +50,14 @@ export class PrismaScanLeaseAdapter implements ScanLeasePort {
   }
 
   async release(lease: ScanLease): Promise<void> {
-    await this.prisma.scanLeaseEntry.deleteMany({
+    await withPrismaWriteRetry(() => this.prisma.scanLeaseEntry.deleteMany({
       where: {
         tenantId: lease.tenantId,
         workspaceId: lease.workspaceId,
         scanJobId: lease.scanJobId,
         fencingToken: lease.fencingToken,
       },
-    });
+    }));
   }
 }
 

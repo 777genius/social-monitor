@@ -3,15 +3,58 @@ import type {
   PrismaRateLimitBucketRecord,
   PrismaUsageQuotaBucketRecord,
 } from './prisma-usage-records';
+import type { PublicApiAuditActorType } from '../../../ports';
+
+export type PrismaUsageTransactionOptions = {
+  readonly isolationLevel?: 'Serializable';
+  readonly maxWait?: number;
+  readonly timeout?: number;
+};
+
+export type PrismaUsageQuotaBucketDelegate = {
+  deleteMany(args: {
+    readonly where: { readonly windowEndsAt: { readonly lte: Date } };
+  }): Promise<{ readonly count: number }>;
+  findUnique(args: {
+    readonly where: { readonly bucketKey: string };
+  }): Promise<PrismaUsageQuotaBucketRecord | null>;
+  upsert(args: {
+    readonly where: { readonly bucketKey: string };
+    readonly update: {
+      readonly windowEndsAt: Date;
+      readonly consumed: number;
+      readonly limit: number;
+    };
+    readonly create: {
+      readonly bucketKey: string;
+      readonly tenantId: string;
+      readonly workspaceId: string;
+      readonly subjectKey: string;
+      readonly operation: string;
+      readonly windowStartedAt: Date;
+      readonly windowEndsAt: Date;
+      readonly consumed: number;
+      readonly limit: number;
+    };
+  }): Promise<PrismaUsageQuotaBucketRecord>;
+};
+
+export type PrismaUsageTransactionClient = {
+  readonly usageQuotaBucket: PrismaUsageQuotaBucketDelegate;
+};
 
 export type PrismaUsageClient = {
+  $transaction<TValue>(
+    operation: (client: PrismaUsageTransactionClient) => Promise<TValue>,
+    options?: PrismaUsageTransactionOptions,
+  ): Promise<TValue>;
   readonly publicApiAuditEvent: {
     create(args: {
       readonly data: {
         readonly id: string;
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly actorType: 'api_key' | 'system';
+        readonly actorType: PublicApiAuditActorType;
         readonly actorId: string;
         readonly action: string;
         readonly outcome: 'succeeded' | 'failed' | 'denied';
@@ -26,7 +69,7 @@ export type PrismaUsageClient = {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly actorType?: 'api_key' | 'system';
+        readonly actorType?: PublicApiAuditActorType;
         readonly actorId?: string;
         readonly action?: string;
         readonly outcome?: 'succeeded' | 'failed' | 'denied';
@@ -40,7 +83,7 @@ export type PrismaUsageClient = {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly actorType?: 'api_key' | 'system';
+        readonly actorType?: PublicApiAuditActorType;
         readonly actorId?: string;
         readonly action?: string;
         readonly outcome?: 'succeeded' | 'failed' | 'denied';
@@ -67,31 +110,5 @@ export type PrismaUsageClient = {
       };
     }): Promise<PrismaRateLimitBucketRecord>;
   };
-  readonly usageQuotaBucket: {
-    deleteMany(args: {
-      readonly where: { readonly windowEndsAt: { readonly lte: Date } };
-    }): Promise<{ readonly count: number }>;
-    findUnique(args: {
-      readonly where: { readonly bucketKey: string };
-    }): Promise<PrismaUsageQuotaBucketRecord | null>;
-    upsert(args: {
-      readonly where: { readonly bucketKey: string };
-      readonly update: {
-        readonly windowEndsAt: Date;
-        readonly consumed: number;
-        readonly limit: number;
-      };
-      readonly create: {
-        readonly bucketKey: string;
-        readonly tenantId: string;
-        readonly workspaceId: string;
-        readonly subjectKey: string;
-        readonly operation: string;
-        readonly windowStartedAt: Date;
-        readonly windowEndsAt: Date;
-        readonly consumed: number;
-        readonly limit: number;
-      };
-    }): Promise<PrismaUsageQuotaBucketRecord>;
-  };
+  readonly usageQuotaBucket: PrismaUsageQuotaBucketDelegate;
 };

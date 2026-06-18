@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { WebhookEndpoint } from '../../../domain';
 import type {
   ListWebhookEndpointsQuery,
@@ -26,14 +27,14 @@ export class PrismaWebhookEndpointRepository implements WebhookEndpointRepositor
       quarantineReason: snapshot.quarantineReason ?? null,
     };
 
-    await this.prisma.webhookEndpoint.upsert({
+    await withPrismaWriteRetry(() => this.prisma.webhookEndpoint.upsert({
       where: { id: snapshot.id },
       update: data,
       create: {
         id: snapshot.id,
         ...data,
       },
-    });
+    }));
   }
 
   async findById(

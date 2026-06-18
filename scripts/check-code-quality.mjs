@@ -24,6 +24,9 @@ const outboundUrlPolicyAllowedFiles = new Set([
   'libs/shared-kernel/src/outbound-url-policy.ts',
 ]);
 
+const prismaWritePattern =
+  /\b(?:this\.)?prisma\.[A-Za-z0-9_]+\.(?:create|update|upsert|delete|deleteMany|updateMany|createMany)\s*\(/;
+
 function normalizedPath(file) {
   return file.replaceAll('\\', '/');
 }
@@ -197,6 +200,22 @@ for (const file of [
 
   if (/\bawait\s+fetch\s*\(/.test(source) && !source.includes('AbortSignal.timeout')) {
     addViolation(file, 'HTTP adapters must use AbortSignal.timeout for outbound fetch calls');
+  }
+}
+
+for (const file of productionTsFiles('libs/**/adapters/**/prisma/**/*.ts')) {
+  const source = readFileSync(file, 'utf8');
+
+  if (!prismaWritePattern.test(source)) {
+    continue;
+  }
+
+  if (!source.includes("from '@social-monitor/platform-persistence'")) {
+    addViolation(file, 'Prisma persistence writes must use withPrismaWriteRetry from @social-monitor/platform-persistence');
+  }
+
+  if (source.includes('$transaction(') && !source.includes("isolationLevel: 'Serializable'")) {
+    addViolation(file, 'Prisma write transactions must set Serializable isolation and rely on P2034 retry');
   }
 }
 

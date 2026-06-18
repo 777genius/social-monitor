@@ -1,3 +1,5 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
+
 import type {
   IncrementRateLimitCounterCommand,
   IncrementRateLimitCounterResult,
@@ -9,25 +11,27 @@ export class PrismaRateLimitCounter implements RateLimitCounterPort {
   constructor(private readonly prisma: PrismaUsageClient) {}
 
   async increment(command: IncrementRateLimitCounterCommand): Promise<IncrementRateLimitCounterResult> {
-    await this.prisma.rateLimitBucket.deleteMany({
-      where: { windowEndsAt: { lte: command.windowStartedAt } },
-    });
+    return withPrismaWriteRetry(async () => {
+      await this.prisma.rateLimitBucket.deleteMany({
+        where: { windowEndsAt: { lte: command.windowStartedAt } },
+      });
 
-    const record = await this.prisma.rateLimitBucket.upsert({
-      where: { bucketKey: command.bucketKey },
-      update: {
-        windowStartedAt: command.windowStartedAt,
-        windowEndsAt: command.windowEndsAt,
-        count: { increment: 1 },
-      },
-      create: {
-        bucketKey: command.bucketKey,
-        windowStartedAt: command.windowStartedAt,
-        windowEndsAt: command.windowEndsAt,
-        count: 1,
-      },
-    });
+      const record = await this.prisma.rateLimitBucket.upsert({
+        where: { bucketKey: command.bucketKey },
+        update: {
+          windowStartedAt: command.windowStartedAt,
+          windowEndsAt: command.windowEndsAt,
+          count: { increment: 1 },
+        },
+        create: {
+          bucketKey: command.bucketKey,
+          windowStartedAt: command.windowStartedAt,
+          windowEndsAt: command.windowEndsAt,
+          count: 1,
+        },
+      });
 
-    return { count: record.count };
+      return { count: record.count };
+    });
   }
 }

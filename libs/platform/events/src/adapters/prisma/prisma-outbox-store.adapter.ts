@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import {
   causationId,
   correlationId,
@@ -31,23 +32,23 @@ export class PrismaOutboxStoreAdapter implements OutboxStorePort {
   }
 
   async markPublished(id: string): Promise<void> {
-    await this.prisma.outboxEvent.update({
+    await withPrismaWriteRetry(() => this.prisma.outboxEvent.update({
       where: { id },
       data: {
         status: 'PUBLISHED',
         publishedAt: this.clock.now(),
       },
-    });
+    }));
   }
 
   async markFailed(id: string): Promise<void> {
-    await this.prisma.outboxEvent.update({
+    await withPrismaWriteRetry(() => this.prisma.outboxEvent.update({
       where: { id },
       data: {
         status: 'FAILED',
         publishedAt: null,
       },
-    });
+    }));
   }
 }
 

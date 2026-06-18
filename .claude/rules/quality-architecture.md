@@ -32,6 +32,7 @@ These rules exist because code quality must not depend on the memory or taste of
 - Secret and token redaction policy lives in shared-kernel redaction helpers. Do not duplicate sensitive-key/string regexes in filters, loggers, audits or adapters.
 - User-controlled outbound URLs use shared-kernel outbound URL policy. Webhook/RSS URLs must block localhost, private, carrier-grade NAT, link-local, multicast and metadata-service targets to reduce SSRF risk.
 - HTTP adapters must use bounded outbound requests with `AbortSignal.timeout`; live provider calls cannot wait forever on a remote service.
+- Prisma persistence writes must use `withPrismaWriteRetry` from `@social-monitor/platform-persistence`; write transactions must use Serializable isolation so P2034 conflicts are retried consistently.
 - Production files that approach the line budget need splitting by responsibility before more behavior is added.
 
 ## SOLID

@@ -2,7 +2,11 @@ import { FixedClock, type IdGenerator, isOk, tenantId, workspaceId } from '@soci
 
 import { PrismaPublicApiAuditLog } from '../libs/usage/adapters/persistence/prisma/prisma-public-api-audit-log';
 import { PrismaRateLimitCounter } from '../libs/usage/adapters/persistence/prisma/prisma-rate-limit-counter';
-import type { PrismaUsageClient } from '../libs/usage/adapters/persistence/prisma/prisma-usage-client';
+import type {
+  PrismaUsageClient,
+  PrismaUsageTransactionClient,
+  PrismaUsageTransactionOptions,
+} from '../libs/usage/adapters/persistence/prisma/prisma-usage-client';
 import { PrismaUsageQuotaLedger } from '../libs/usage/adapters/persistence/prisma/prisma-usage-quota-ledger';
 import type {
   PrismaPublicApiAuditEventRecord,
@@ -103,6 +107,10 @@ async function main(): Promise<void> {
     windowSeconds: 60,
   });
   assert(!isOk(rejectedQuota), 'quota reservation over limit must fail');
+  assert(
+    prisma.transactionIsolationLevels.every((isolationLevel) => isolationLevel === 'Serializable'),
+    'usage quota reservations must run in Serializable Prisma transactions',
+  );
 
   console.log('Usage Prisma persistence smoke OK');
 }
@@ -129,6 +137,16 @@ class FakePrismaUsageClient implements PrismaUsageClient {
   private readonly auditEvents: PrismaPublicApiAuditEventRecord[] = [];
   private readonly rateLimitBuckets = new Map<string, PrismaRateLimitBucketRecord>();
   private readonly quotaBuckets = new Map<string, PrismaUsageQuotaBucketRecord>();
+  readonly transactionIsolationLevels: string[] = [];
+
+  async $transaction<TValue>(
+    operation: (client: PrismaUsageTransactionClient) => Promise<TValue>,
+    options?: PrismaUsageTransactionOptions,
+  ): Promise<TValue> {
+    this.transactionIsolationLevels.push(options?.isolationLevel ?? 'default');
+
+    return operation(this);
+  }
 
   readonly publicApiAuditEvent: PrismaUsageClient['publicApiAuditEvent'] = {
     create: async (args) => {

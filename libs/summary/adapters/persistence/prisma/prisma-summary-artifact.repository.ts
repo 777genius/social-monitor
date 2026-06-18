@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { SummaryArtifact } from '../../../domain';
 import type {
   ListSummaryArtifactsQuery,
@@ -24,7 +25,7 @@ export class PrismaSummaryArtifactRepository implements SummaryArtifactRepositor
     const status = summaryArtifactStatusToPrisma(artifact);
     const artifactPayload = serializeSummaryArtifact(artifact);
 
-    await this.prisma.summaryArtifact.upsert({
+    await withPrismaWriteRetry(() => this.prisma.summaryArtifact.upsert({
       where: { id: snapshot.summaryId },
       update: {
         status,
@@ -51,7 +52,7 @@ export class PrismaSummaryArtifactRepository implements SummaryArtifactRepositor
         citations: snapshot.citationMap,
         qualitySignals: summaryQualitySignalsToPrisma(artifact),
       },
-    });
+    }));
   }
 
   async list(query: ListSummaryArtifactsQuery): Promise<ListSummaryArtifactsResult> {

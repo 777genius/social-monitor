@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { EventEnvelope } from '@social-monitor/shared-kernel';
 
 import type { OutboxPort } from '../../../ports';
@@ -7,7 +8,7 @@ export class PrismaMonitoringOutboxAdapter implements OutboxPort {
   constructor(private readonly prisma: PrismaMonitoringClient) {}
 
   async append(event: EventEnvelope<Readonly<Record<string, unknown>>>): Promise<void> {
-    await this.prisma.outboxEvent.create({
+    await withPrismaWriteRetry(() => this.prisma.outboxEvent.create({
       data: {
         id: event.eventId,
         tenantId: event.tenantId ?? null,
@@ -18,6 +19,6 @@ export class PrismaMonitoringOutboxAdapter implements OutboxPort {
         correlationId: event.correlationId,
         causationId: event.causationId ?? null,
       },
-    });
+    }));
   }
 }

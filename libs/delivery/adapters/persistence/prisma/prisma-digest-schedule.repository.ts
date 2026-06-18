@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { DigestSchedule } from '../../../domain';
 import type {
   DigestScheduleRepositoryPort,
@@ -26,14 +27,14 @@ export class PrismaDigestScheduleRepository implements DigestScheduleRepositoryP
       status: digestScheduleStatusToPrisma(snapshot.status),
     };
 
-    await this.prisma.digestSchedule.upsert({
+    await withPrismaWriteRetry(() => this.prisma.digestSchedule.upsert({
       where: { id: snapshot.id },
       update: data,
       create: {
         id: snapshot.id,
         ...data,
       },
-    });
+    }));
   }
 
   async findById(params: Parameters<DigestScheduleRepositoryPort['findById']>[0]): Promise<DigestSchedule | null> {

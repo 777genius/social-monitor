@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type {
@@ -27,7 +28,7 @@ export class PrismaNotificationPreferenceReader
       throw new Error('Notification suppression reason must be non-empty');
     }
 
-    await this.prisma.notificationPreference.upsert({
+    await withPrismaWriteRetry(() => this.prisma.notificationPreference.upsert({
       where: {
         tenantId_workspaceId_recipientKey_channel: preferenceKey(params),
       },
@@ -40,7 +41,7 @@ export class PrismaNotificationPreferenceReader
         allowed: false,
         reason: params.reason,
       },
-    });
+    }));
   }
 
   async allowRecipientChannel(params: {
@@ -49,7 +50,7 @@ export class PrismaNotificationPreferenceReader
     readonly recipientKey: string;
     readonly channel: string;
   }): Promise<void> {
-    await this.prisma.notificationPreference.upsert({
+    await withPrismaWriteRetry(() => this.prisma.notificationPreference.upsert({
       where: {
         tenantId_workspaceId_recipientKey_channel: preferenceKey(params),
       },
@@ -62,7 +63,7 @@ export class PrismaNotificationPreferenceReader
         allowed: true,
         reason: null,
       },
-    });
+    }));
   }
 
   async setRecipientChannelPreference(

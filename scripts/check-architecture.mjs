@@ -57,6 +57,7 @@ const platformAliases = new Map([
   ['@social-monitor/platform-events', 'libs/platform/events/src/index.ts'],
   ['@social-monitor/platform-logging', 'libs/platform/logging/src/index.ts'],
   ['@social-monitor/platform-metrics', 'libs/platform/metrics/src/index.ts'],
+  ['@social-monitor/platform-persistence', 'libs/platform/persistence/src/index.ts'],
   ['@social-monitor/platform-queue', 'libs/platform/queue/src/index.ts'],
   ['@social-monitor/platform-request-context', 'libs/platform/request-context/src/index.ts'],
   ['@social-monitor/platform-worker', 'libs/platform/worker/src/index.ts'],

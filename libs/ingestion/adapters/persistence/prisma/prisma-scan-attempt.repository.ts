@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { ScanAttempt } from '../../../domain';
 import type { FindScanAttemptQuery, ScanAttemptRepositoryPort } from '../../../ports';
 import type { PrismaIngestionClient } from './prisma-ingestion-client';
@@ -10,7 +11,7 @@ export class PrismaScanAttemptRepository implements ScanAttemptRepositoryPort {
     const snapshot = attempt.toSnapshot();
     const status = scanAttemptStatusToPrisma(snapshot.status);
 
-    await this.prisma.scanAttempt.upsert({
+    await withPrismaWriteRetry(() => this.prisma.scanAttempt.upsert({
       where: { scanJobId: snapshot.scanJobId },
       update: {
         status,
@@ -36,7 +37,7 @@ export class PrismaScanAttemptRepository implements ScanAttemptRepositoryPort {
         projected: snapshot.projected,
         failureReason: snapshot.failureReason ?? null,
       },
-    });
+    }));
   }
 
   async findByScanJob(query: FindScanAttemptQuery): Promise<ScanAttempt | null> {

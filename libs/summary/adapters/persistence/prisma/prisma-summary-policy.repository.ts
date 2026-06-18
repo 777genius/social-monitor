@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { SummaryPolicy } from '../../../domain';
 import type { SummaryPolicyRepositoryPort } from '../../../ports';
 import type { PrismaSummaryClient } from './prisma-summary-client';
@@ -20,7 +21,7 @@ export class PrismaSummaryPolicyRepository implements SummaryPolicyRepositoryPor
       updatedAt: snapshot.updatedAt,
     };
 
-    await this.prisma.summaryPolicy.upsert({
+    await withPrismaWriteRetry(() => this.prisma.summaryPolicy.upsert({
       where: {
         tenantId_workspaceId_topicId: {
           tenantId: snapshot.tenantId,
@@ -37,7 +38,7 @@ export class PrismaSummaryPolicyRepository implements SummaryPolicyRepositoryPor
         topicId: snapshot.topicId,
         createdAt: snapshot.createdAt,
       },
-    });
+    }));
   }
 
   async findByTopic(

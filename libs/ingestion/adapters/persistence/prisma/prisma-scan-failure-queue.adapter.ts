@@ -1,4 +1,5 @@
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import { tenantId, workspaceId, type IdGenerator, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type {
@@ -59,11 +60,11 @@ export class PrismaScanFailureQueueAdapter implements ScanFailureQueuePort, Scan
     const ids = records.map((record) => record.id);
 
     if (ids.length > 0) {
-      await this.prisma.scanFailureQueueEntry.deleteMany({
+      await withPrismaWriteRetry(() => this.prisma.scanFailureQueueEntry.deleteMany({
         where: {
           id: { in: ids },
         },
-      });
+      }));
     }
 
     for (const scope of uniqueScopes(records)) {
@@ -86,9 +87,11 @@ export class PrismaScanFailureQueueAdapter implements ScanFailureQueuePort, Scan
     status: 'RETRY_ENQUEUED' | 'DEAD_LETTERED',
     nextAttemptNumber: number | null,
   ): Promise<void> {
-    await this.prisma.scanFailureQueueEntry.create({
+    const id = this.ids.generate();
+
+    await withPrismaWriteRetry(() => this.prisma.scanFailureQueueEntry.create({
       data: {
-        id: this.ids.generate(),
+        id,
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         scanJobId: command.scanJobId,
@@ -105,7 +108,7 @@ export class PrismaScanFailureQueueAdapter implements ScanFailureQueuePort, Scan
         failureReason: command.failureReason,
         status,
       },
-    });
+    }));
 
     this.metrics.incrementCounter({
       name: 'scan_failure_queue_events_total',

@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { SummaryFeedback } from '../../../domain';
 import type {
   FindSummaryFeedbackByIdempotencyKeyQuery,
@@ -23,7 +24,7 @@ export class PrismaSummaryFeedbackRepository implements SummaryFeedbackRepositor
       evidence: snapshot.evidence,
     };
 
-    await this.prisma.summaryFeedback.upsert({
+    await withPrismaWriteRetry(() => this.prisma.summaryFeedback.upsert({
       where: {
         tenantId_idempotencyKey: {
           tenantId: snapshot.tenantId,
@@ -41,7 +42,7 @@ export class PrismaSummaryFeedbackRepository implements SummaryFeedbackRepositor
         createdAt: snapshot.createdAt,
         ...data,
       },
-    });
+    }));
   }
 
   async findByIdempotencyKey(

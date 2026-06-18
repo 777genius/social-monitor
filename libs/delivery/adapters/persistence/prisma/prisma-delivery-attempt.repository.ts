@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { DeliveryAttempt } from '../../../domain';
 import type {
   DeliveryAttemptRepositoryPort,
@@ -35,14 +36,14 @@ export class PrismaDeliveryAttemptRepository implements DeliveryAttemptRepositor
       suppressionReason: snapshot.suppressionReason ?? null,
     };
 
-    await this.prisma.deliveryAttempt.upsert({
+    await withPrismaWriteRetry(() => this.prisma.deliveryAttempt.upsert({
       where: { id: snapshot.id },
       update: data,
       create: {
         id: snapshot.id,
         ...data,
       },
-    });
+    }));
   }
 
   async findById(params: Parameters<DeliveryAttemptRepositoryPort['findById']>[0]): Promise<DeliveryAttempt | null> {

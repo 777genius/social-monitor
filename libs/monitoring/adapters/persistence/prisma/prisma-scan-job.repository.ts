@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { ScanJob } from '../../../domain';
@@ -14,7 +15,7 @@ export class PrismaScanJobRepository implements ScanJobRepositoryPort {
     const snapshot = job.toSnapshot();
     const status = scanJobStatusToPrisma(snapshot.status);
 
-    await this.prisma.scanJob.upsert({
+    await withPrismaWriteRetry(() => this.prisma.scanJob.upsert({
       where: { id: snapshot.id },
       update: {
         status,
@@ -37,7 +38,7 @@ export class PrismaScanJobRepository implements ScanJobRepositoryPort {
         completedAt: snapshot.completedAt ?? null,
         failureReason: snapshot.failureReason ?? null,
       },
-    });
+    }));
   }
 
   async findById(params: {

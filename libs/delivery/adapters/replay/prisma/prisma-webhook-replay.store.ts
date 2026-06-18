@@ -1,3 +1,5 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
+
 import type { WebhookReplayStorePort } from '../../../ports';
 import type { PrismaDeliveryClient } from '../../persistence/prisma/prisma-delivery-client';
 
@@ -23,26 +25,26 @@ export class PrismaWebhookReplayStore implements WebhookReplayStorePort {
         return false;
       }
 
-      await this.prisma.webhookReplayDelivery.update({
+      await withPrismaWriteRetry(() => this.prisma.webhookReplayDelivery.update({
         where,
         data: {
           rememberedAt: params.now,
           expiresAt: params.expiresAt,
         },
-      });
+      }));
 
       return true;
     }
 
     try {
-      await this.prisma.webhookReplayDelivery.create({
+      await withPrismaWriteRetry(() => this.prisma.webhookReplayDelivery.create({
         data: {
           webhookEndpointId: params.webhookEndpointId,
           deliveryId: params.deliveryId,
           rememberedAt: params.now,
           expiresAt: params.expiresAt,
         },
-      });
+      }));
     } catch (error) {
       if (isUniqueConstraintViolation(error)) {
         return false;

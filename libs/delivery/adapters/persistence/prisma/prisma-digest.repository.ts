@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { Digest } from '../../../domain';
 import type { DigestRepositoryPort } from '../../../ports';
 import type { PrismaDeliveryClient, PrismaDigestWriteData } from './prisma-delivery-client';
@@ -24,14 +25,14 @@ export class PrismaDigestRepository implements DigestRepositoryPort {
       assembledAt: snapshot.assembledAt,
     };
 
-    await this.prisma.digest.upsert({
+    await withPrismaWriteRetry(() => this.prisma.digest.upsert({
       where: { id: snapshot.id },
       update: data,
       create: {
         id: snapshot.id,
         ...data,
       },
-    });
+    }));
   }
 
   async findById(params: Parameters<DigestRepositoryPort['findById']>[0]): Promise<Digest | null> {

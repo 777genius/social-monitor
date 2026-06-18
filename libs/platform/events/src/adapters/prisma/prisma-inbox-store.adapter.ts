@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { IdGenerator } from '@social-monitor/shared-kernel';
 
 import type { InboxStorePort } from '../../inbox-deduplicator';
@@ -27,16 +28,18 @@ export class PrismaInboxStoreAdapter implements InboxStorePort {
     eventId: string;
     schemaVersion: number;
   }): Promise<void> {
+    const id = this.ids.generate();
+
     try {
-      await this.prisma.inboxRecord.create({
+      await withPrismaWriteRetry(() => this.prisma.inboxRecord.create({
         data: {
-          id: this.ids.generate(),
+          id,
           consumerName: params.consumerName,
           eventId: params.eventId,
           tenantId: null,
           schemaVersion: params.schemaVersion,
         },
-      });
+      }));
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         return;

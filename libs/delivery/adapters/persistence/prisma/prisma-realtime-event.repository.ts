@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import { encodeRealtimeReplayCursor, parseRealtimeReplayCursor, type RealtimeEvent } from '../../../domain';
 import {
   RealtimeEventSequenceConflictError,
@@ -42,12 +43,12 @@ export class PrismaRealtimeEventRepository implements RealtimeEventRepositoryPor
     };
 
     try {
-      await this.prisma.realtimeEvent.create({
+      await withPrismaWriteRetry(() => this.prisma.realtimeEvent.create({
         data: {
           id: snapshot.id,
           ...data,
         },
-      });
+      }));
     } catch (error) {
       if (isUniqueConstraintViolation(error)) {
         throw new RealtimeEventSequenceConflictError();

@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import { DomainError, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { SourceBinding } from '../../../domain';
@@ -28,7 +29,7 @@ export class PrismaSourceBindingRepository implements SourceBindingRepositoryPor
       });
     }
 
-    await this.prisma.sourceBinding.upsert({
+    await withPrismaWriteRetry(() => this.prisma.sourceBinding.upsert({
       where: { id: snapshot.id },
       update: {
         capabilityProfileVersion: snapshot.capabilityProfileVersion,
@@ -45,7 +46,7 @@ export class PrismaSourceBindingRepository implements SourceBindingRepositoryPor
         status: sourceBindingStatusToPrisma(snapshot.status),
         config: snapshot.config,
       },
-    });
+    }));
   }
 
   async findByTopicAndProvider(params: {

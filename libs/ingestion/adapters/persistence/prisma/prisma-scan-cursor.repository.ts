@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { IdGenerator } from '@social-monitor/shared-kernel';
 
 import type { FindScanCursorQuery, SaveScanCursorCommand, ScanCursorRepositoryPort, ScanCursorRecord } from '../../../ports';
@@ -11,7 +12,9 @@ export class PrismaScanCursorRepository implements ScanCursorRepositoryPort {
   ) {}
 
   async save(command: SaveScanCursorCommand): Promise<void> {
-    await this.prisma.cursorCheckpoint.upsert({
+    const id = this.ids.generate();
+
+    await withPrismaWriteRetry(() => this.prisma.cursorCheckpoint.upsert({
       where: {
         tenantId_sourceBindingId: {
           tenantId: command.tenantId,
@@ -22,13 +25,13 @@ export class PrismaScanCursorRepository implements ScanCursorRepositoryPort {
         cursorPayload: { cursor: command.cursor },
       },
       create: {
-        id: this.ids.generate(),
+        id,
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         sourceBindingId: command.sourceBindingId,
         cursorPayload: { cursor: command.cursor },
       },
-    });
+    }));
   }
 
   async findBySourceBinding(query: FindScanCursorQuery): Promise<ScanCursorRecord | null> {

@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { EventEnvelope } from '@social-monitor/shared-kernel';
 
 import type { SummaryEventPublisherPort } from '../../../ports';
@@ -7,7 +8,7 @@ export class PrismaSummaryEventPublisher implements SummaryEventPublisherPort {
   constructor(private readonly prisma: PrismaSummaryClient) {}
 
   async publish(event: EventEnvelope<Readonly<Record<string, unknown>>>): Promise<void> {
-    await this.prisma.outboxEvent.create({
+    await withPrismaWriteRetry(() => this.prisma.outboxEvent.create({
       data: {
         id: event.eventId,
         tenantId: event.tenantId ?? null,
@@ -18,6 +19,6 @@ export class PrismaSummaryEventPublisher implements SummaryEventPublisherPort {
         correlationId: event.correlationId,
         causationId: event.causationId ?? null,
       },
-    });
+    }));
   }
 }

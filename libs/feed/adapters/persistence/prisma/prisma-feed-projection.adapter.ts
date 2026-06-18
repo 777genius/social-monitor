@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { IdGenerator } from '@social-monitor/shared-kernel';
 import type {
   FeedProjectionPort,
@@ -20,8 +21,9 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
     for (const sourceItem of command.sourceItems) {
       const snapshot = sourceItem.toSnapshot();
       const dedupeKey = normalizeFeedCanonicalUrl(snapshot.canonicalUrl);
+      const feedItemId = this.ids.generate();
 
-      await this.prisma.feedItem.upsert({
+      await withPrismaWriteRetry(() => this.prisma.feedItem.upsert({
         where: {
           tenantId_topicId_dedupeKey: {
             tenantId: command.tenantId,
@@ -41,7 +43,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
           status: 'VISIBLE',
         },
         create: {
-          id: this.ids.generate(),
+          id: feedItemId,
           tenantId: command.tenantId,
           workspaceId: command.workspaceId,
           topicId: command.topicId,
@@ -56,7 +58,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
           observedAt: snapshot.ingestedAt,
           status: 'VISIBLE',
         },
-      });
+      }));
       projected += 1;
     }
 

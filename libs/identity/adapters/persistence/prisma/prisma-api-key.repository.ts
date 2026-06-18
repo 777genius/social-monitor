@@ -1,3 +1,4 @@
+import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { ApiKey } from '../../../domain';
 import type { ApiKeyRepositoryPort, ListApiKeysQuery, ListApiKeysResult } from '../../../ports';
 import type { PrismaIdentityClient } from './prisma-identity-client';
@@ -10,7 +11,7 @@ export class PrismaApiKeyRepository implements ApiKeyRepositoryPort {
     const snapshot = apiKey.toSnapshot();
     const status = apiKeyStatusToPrisma(snapshot.status);
 
-    await this.prisma.apiKeyCredential.upsert({
+    await withPrismaWriteRetry(() => this.prisma.apiKeyCredential.upsert({
       where: { id: snapshot.id },
       update: {
         name: snapshot.name,
@@ -32,7 +33,7 @@ export class PrismaApiKeyRepository implements ApiKeyRepositoryPort {
         createdAt: snapshot.createdAt,
         revokedAt: snapshot.revokedAt ?? null,
       },
-    });
+    }));
   }
 
   async findById(params: Parameters<ApiKeyRepositoryPort['findById']>[0]): Promise<ApiKey | null> {
