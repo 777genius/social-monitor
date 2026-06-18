@@ -13,7 +13,10 @@ import { resolveIntelligenceSummaryQueueReaderMode } from '../apps/intelligence-
 import { resolveDeliveryPersistenceMode } from '../libs/delivery/interfaces/rest/delivery-provider-tokens';
 import { resolveDeliveryWebhookProviderMode } from '../libs/delivery/interfaces/rest/delivery-rest.module';
 import { resolveFeedPersistenceMode } from '../libs/feed/interfaces/rest/feed-provider-tokens';
-import { resolveIdentityPersistenceMode } from '../libs/identity/interfaces/rest/identity-provider-tokens';
+import {
+  resolveIdentityPersistenceMode,
+  resolveIdentityUserAccessTokenConfig,
+} from '../libs/identity/interfaces/rest/identity-provider-tokens';
 import { resolveIngestionSupportPersistenceMode } from '../libs/ingestion/interfaces/rest/ingestion-provider-tokens';
 import {
   resolveMonitoringPersistenceMode,
@@ -148,6 +151,20 @@ assertThrows(
 assert(
   resolveIdentityPersistenceMode({ ...databaseEnv, IDENTITY_PERSISTENCE: 'prisma' }) === 'prisma',
   'identity beta persistence',
+);
+assertThrows(
+  () => resolveIdentityUserAccessTokenConfig(betaEnv),
+  'SOCIAL_MONITOR_USER_AUTH_MODE must reject disabled mode in beta runtime',
+);
+assert(
+  resolveIdentityUserAccessTokenConfig({
+    ...betaEnv,
+    SOCIAL_MONITOR_USER_AUTH_MODE: 'oidc-jwt',
+    SOCIAL_MONITOR_OIDC_ISSUER: 'https://auth.example.test',
+    SOCIAL_MONITOR_OIDC_AUDIENCE: 'social-monitor-api',
+    SOCIAL_MONITOR_OIDC_JWKS_JSON: '{"keys":[{"kty":"RSA","kid":"test","n":"x","e":"AQAB"}]}',
+  }).mode === 'oidc-jwt',
+  'identity beta user auth',
 );
 assertThrows(
   () => resolveUsagePersistenceMode(betaEnv),

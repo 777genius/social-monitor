@@ -2,12 +2,13 @@ import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 export type PublicApiAuditMetadataValue = string | number | boolean | readonly string[] | undefined;
 export type PublicApiAuditOutcome = 'succeeded' | 'failed' | 'denied';
+export type PublicApiAuditActorType = 'api_key' | 'system' | 'user';
 
 export type PublicApiAuditRecord = {
   readonly id: string;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly actorType: 'api_key' | 'system';
+  readonly actorType: PublicApiAuditActorType;
   readonly actorId: string;
   readonly action: string;
   readonly outcome: PublicApiAuditOutcome;

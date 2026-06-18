@@ -1,6 +1,9 @@
 import { Body, Controller, Delete, Get, Headers, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { ApiKeyRequestAuthorizer } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import {
+  ApiKeyRequestAuthorizer,
+  type BearerRequestAuthorization,
+} from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
@@ -9,6 +12,7 @@ import {
 } from '@social-monitor/identity/ports';
 import { parsePaginationLimit } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
+import type { PublicApiAuditRecord } from '@social-monitor/usage/ports';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 
 import { CreateWebhookEndpointUseCase } from '../../features/create-webhook-endpoint/create-webhook-endpoint.use-case';
@@ -81,7 +85,8 @@ export class WebhookEndpointsController {
     await this.recordWebhookAuditEvent({
       tenant,
       workspace,
-      actorId: authorization.apiKeyId,
+      actorType: authorization.actorType,
+      actorId: authorization.actorId,
       action: 'webhook_endpoint.created',
       outcome: 'succeeded',
       resourceId: result.value.endpoint.id,
@@ -140,7 +145,8 @@ export class WebhookEndpointsController {
     await this.recordWebhookAuditEvent({
       tenant,
       workspace,
-      actorId: authorization.apiKeyId,
+      actorType: authorization.actorType,
+      actorId: authorization.actorId,
       action: 'webhook_endpoint.listed',
       outcome: 'succeeded',
       metadata: {
@@ -193,7 +199,8 @@ export class WebhookEndpointsController {
     await this.recordWebhookAuditEvent({
       tenant,
       workspace,
-      actorId: authorization.apiKeyId,
+      actorType: authorization.actorType,
+      actorId: authorization.actorId,
       action: 'webhook_endpoint.read',
       outcome: 'succeeded',
       resourceId: result.value.id,
@@ -246,7 +253,8 @@ export class WebhookEndpointsController {
     await this.recordWebhookAuditEvent({
       tenant,
       workspace,
-      actorId: authorization.apiKeyId,
+      actorType: authorization.actorType,
+      actorId: authorization.actorId,
       action: 'webhook_endpoint.disabled',
       outcome: 'succeeded',
       resourceId: result.value.id,
@@ -262,7 +270,7 @@ export class WebhookEndpointsController {
     authorizationHeader: string | undefined,
     tenant: TenantId,
     workspace: WorkspaceId,
-  ): Promise<{ readonly apiKeyId: string }> {
+  ): Promise<BearerRequestAuthorization> {
     return this.authorizeWebhookEndpointApiKey({
       authorizationHeader,
       tenant,
@@ -276,7 +284,7 @@ export class WebhookEndpointsController {
     authorizationHeader: string | undefined,
     tenant: TenantId,
     workspace: WorkspaceId,
-  ): Promise<{ readonly apiKeyId: string }> {
+  ): Promise<BearerRequestAuthorization> {
     return this.authorizeWebhookEndpointApiKey({
       authorizationHeader,
       tenant,
@@ -292,18 +300,14 @@ export class WebhookEndpointsController {
     readonly workspace: WorkspaceId;
     readonly requiredScope: 'read:webhook_endpoints' | 'write:webhook_endpoints';
     readonly operation: 'webhook_endpoints.read' | 'webhook_endpoints.manage';
-  }): Promise<{ readonly apiKeyId: string }> {
-    const authorization = await this.apiKeyRequestAuthorizer.authorize({
+  }): Promise<BearerRequestAuthorization> {
+    return this.apiKeyRequestAuthorizer.authorize({
       authorizationHeader: params.authorizationHeader,
       tenantId: params.tenant,
       workspaceId: params.workspace,
       requiredScope: params.requiredScope,
       operation: params.operation,
     });
-
-    return {
-      apiKeyId: authorization.apiKeyId,
-    };
   }
 
   private authorizeWorkspaceRole(params: {
@@ -327,6 +331,7 @@ export class WebhookEndpointsController {
   private async recordWebhookAuditEvent(params: {
     readonly tenant: TenantId;
     readonly workspace: WorkspaceId;
+    readonly actorType: PublicApiAuditRecord['actorType'];
     readonly actorId: string;
     readonly action: string;
     readonly outcome: 'succeeded' | 'failed' | 'denied';
@@ -336,7 +341,7 @@ export class WebhookEndpointsController {
     const result = await this.recordPublicApiAuditEvent.execute({
       tenantId: params.tenant,
       workspaceId: params.workspace,
-      actorType: 'api_key',
+      actorType: params.actorType,
       actorId: params.actorId,
       action: params.action,
       outcome: params.outcome,

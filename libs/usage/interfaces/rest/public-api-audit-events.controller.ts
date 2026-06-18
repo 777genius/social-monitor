@@ -12,7 +12,7 @@ import { ListPublicApiAuditEventsUseCase } from '../../features/list-public-api-
 import type { PublicApiAuditOutcome, PublicApiAuditRecord } from '../../ports';
 import type { ListPublicApiAuditEventsResponseDto } from './public-api-audit-events.dto';
 
-const actorTypes = ['api_key', 'system'] as const satisfies readonly PublicApiAuditRecord['actorType'][];
+const actorTypes = ['api_key', 'system', 'user'] as const satisfies readonly PublicApiAuditRecord['actorType'][];
 const outcomes = ['succeeded', 'failed', 'denied'] as const satisfies readonly PublicApiAuditOutcome[];
 
 @ApiTags('usage')

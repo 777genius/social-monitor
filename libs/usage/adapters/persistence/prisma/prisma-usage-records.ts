@@ -3,6 +3,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import type {
   PublicApiAuditMetadataValue,
   PublicApiAuditOutcome,
+  PublicApiAuditActorType,
   PublicApiAuditRecord,
 } from '../../../ports';
 
@@ -10,7 +11,7 @@ export type PrismaPublicApiAuditEventRecord = {
   readonly id: string;
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly actorType: 'api_key' | 'system';
+  readonly actorType: PublicApiAuditActorType;
   readonly actorId: string;
   readonly action: string;
   readonly outcome: PublicApiAuditOutcome;

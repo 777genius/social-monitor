@@ -8,7 +8,7 @@ import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/a
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
-  type ApiKeyRequestAuthorization,
+  type BearerRequestAuthorization,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import { parsePaginationLimit, RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
@@ -124,7 +124,7 @@ export class SummaryFeedbackController {
       workspaceId: scope.workspaceId,
       summaryId,
       idempotencyKey,
-      submittedBy: actorHeader ?? authorization?.apiKeyId ?? '',
+      submittedBy: actorHeader ?? authorization?.actorId ?? '',
       rating: body.rating,
       category: body.category,
       comment: body.comment,
@@ -144,7 +144,7 @@ export class SummaryFeedbackController {
     workspaceId: WorkspaceId,
     workspaceRoleHeader: string | undefined,
     authorizationHeader: string | undefined,
-  ): Promise<ApiKeyRequestAuthorization | undefined> {
+  ): Promise<BearerRequestAuthorization | undefined> {
     if (hasBearerAuthorizationHeader(authorizationHeader)) {
       return this.apiKeyRequestAuthorizer.authorize({
         authorizationHeader,
@@ -174,7 +174,7 @@ export class SummaryFeedbackController {
     workspaceId: WorkspaceId,
     workspaceRoleHeader: string | undefined,
     authorizationHeader: string | undefined,
-  ): Promise<ApiKeyRequestAuthorization | undefined> {
+  ): Promise<BearerRequestAuthorization | undefined> {
     if (hasBearerAuthorizationHeader(authorizationHeader)) {
       return this.apiKeyRequestAuthorizer.authorize({
         authorizationHeader,

@@ -1,11 +1,11 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
-import type { PublicApiAuditMetadataValue, PublicApiAuditOutcome } from '../../ports';
+import type { PublicApiAuditActorType, PublicApiAuditMetadataValue, PublicApiAuditOutcome } from '../../ports';
 
 export type RecordPublicApiAuditEventCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly actorType: 'api_key' | 'system';
+  readonly actorType: PublicApiAuditActorType;
   readonly actorId: string;
   readonly action: string;
   readonly outcome: PublicApiAuditOutcome;

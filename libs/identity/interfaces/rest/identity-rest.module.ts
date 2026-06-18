@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
+import { JwksUserAccessTokenVerifier } from '../../adapters/authorization/jwks-user-access-token.verifier';
+import { RejectingUserAccessTokenVerifier } from '../../adapters/authorization/rejecting-user-access-token.verifier';
 import { Sha256ApiKeyHasher } from '../../adapters/hash/hmac-api-key.hasher';
 import { InMemoryApiKeyRepository } from '../../adapters/persistence/in-memory-api-key.repository';
 import { PrismaApiKeyRepository } from '../../adapters/persistence/prisma/prisma-api-key.repository';
@@ -11,7 +13,11 @@ import { CreateApiKeyUseCase } from '../../features/create-api-key/create-api-ke
 import { ListApiKeysUseCase } from '../../features/list-api-keys/list-api-keys.use-case';
 import { RevokeApiKeyUseCase } from '../../features/revoke-api-key/revoke-api-key.use-case';
 import { VerifyApiKeyUseCase } from '../../features/verify-api-key/verify-api-key.use-case';
-import type { ApiKeyRepositoryPort } from '../../ports';
+import {
+  USER_ACCESS_TOKEN_VERIFIER,
+  type ApiKeyRepositoryPort,
+  type UserAccessTokenVerifierPort,
+} from '../../ports';
 import { IdentityAuthorizationModule } from '../authorization/identity-authorization.module';
 import { ApiKeyRequestAuthorizer } from './api-key-request-authorizer';
 import { ApiKeysController } from './api-keys.controller';
@@ -20,8 +26,11 @@ import {
   IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE,
   IDENTITY_PERSISTENCE_MODE,
   IDENTITY_PRISMA_CLIENT,
+  IDENTITY_USER_ACCESS_TOKEN_CONFIG,
+  resolveIdentityUserAccessTokenConfig,
   resolvePublicApiRateLimitPerMinute,
   resolveIdentityPersistenceMode,
+  type IdentityUserAccessTokenConfig,
   type IdentityPersistenceMode,
 } from './identity-provider-tokens';
 
@@ -36,6 +45,18 @@ import {
     {
       provide: IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE,
       useFactory: () => resolvePublicApiRateLimitPerMinute(process.env),
+    },
+    {
+      provide: IDENTITY_USER_ACCESS_TOKEN_CONFIG,
+      useFactory: () => resolveIdentityUserAccessTokenConfig(process.env),
+    },
+    {
+      provide: USER_ACCESS_TOKEN_VERIFIER,
+      useFactory: (config: IdentityUserAccessTokenConfig): UserAccessTokenVerifierPort =>
+        config.mode === 'oidc-jwt'
+          ? new JwksUserAccessTokenVerifier(config, new SystemClock())
+          : new RejectingUserAccessTokenVerifier(),
+      inject: [IDENTITY_USER_ACCESS_TOKEN_CONFIG],
     },
     {
       provide: IDENTITY_PRISMA_CLIENT,
@@ -86,6 +107,7 @@ import {
     ApiKeyRequestAuthorizer,
     CreateApiKeyUseCase,
     IDENTITY_API_KEY_REPOSITORY,
+    USER_ACCESS_TOKEN_VERIFIER,
     InMemoryApiKeyRepository,
     ListApiKeysUseCase,
     RevokeApiKeyUseCase,
