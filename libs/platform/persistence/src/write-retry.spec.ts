@@ -26,6 +26,28 @@ describe('withPrismaWriteRetry', () => {
     expect(sleeps).toEqual([10, 20]);
   });
 
+  it('retries PostgreSQL serialization and deadlock SQLSTATE conflicts', async () => {
+    const errors = [{ code: '40001' }, { cause: { code: '40P01' } }];
+    let attempts = 0;
+
+    const result = await withPrismaWriteRetry(async () => {
+      const error = errors[attempts];
+      attempts += 1;
+
+      if (error !== undefined) {
+        throw error;
+      }
+
+      return 'committed';
+    }, {
+      maxAttempts: 3,
+      sleep: async () => undefined,
+    });
+
+    expect(result).toBe('committed');
+    expect(attempts).toBe(3);
+  });
+
   it('does not retry non-retryable Prisma errors', async () => {
     let attempts = 0;
 

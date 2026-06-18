@@ -7,6 +7,7 @@ export type PrismaWriteRetryOptions = {
 const defaultMaxAttempts = 3;
 const defaultBaseDelayMs = 25;
 const retryablePrismaCodes = new Set(['P2034']);
+const retryablePostgresSqlStates = new Set(['40001', '40P01']);
 
 export const withPrismaWriteRetry = async <TValue>(
   operation: () => Promise<TValue>,
@@ -36,10 +37,20 @@ export const withPrismaWriteRetry = async <TValue>(
 };
 
 export const isRetryablePrismaWriteConflict = (error: unknown): boolean =>
-  typeof error === 'object' &&
-  error !== null &&
-  'code' in error &&
-  retryablePrismaCodes.has(String((error as { readonly code?: unknown }).code));
+  hasRetryableWriteConflictCode(error);
+
+const hasRetryableWriteConflictCode = (error: unknown, depth = 0): boolean => {
+  if (depth > 2 || typeof error !== 'object' || error === null) {
+    return false;
+  }
+
+  const code = String((error as { readonly code?: unknown }).code ?? '');
+  if (retryablePrismaCodes.has(code) || retryablePostgresSqlStates.has(code)) {
+    return true;
+  }
+
+  return hasRetryableWriteConflictCode((error as { readonly cause?: unknown }).cause, depth + 1);
+};
 
 const delay = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => {
