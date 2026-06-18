@@ -5,11 +5,20 @@ const allowlistPath = 'ops/security/secret-scan-allowlist.json';
 const allowlist = JSON.parse(readFileSync(allowlistPath, 'utf8'));
 const allowedLiteralValues = new Set(allowlist.allowedLiteralValues ?? []);
 const allowedValuePrefixes = allowlist.allowedValuePrefixes ?? [];
+const allowedValuePatterns = [];
 const ignoredPaths = allowlist.ignoredPaths ?? [];
 const violations = [];
 
 if (allowlist.schemaVersion !== 1) {
   violations.push(`${allowlistPath}: schemaVersion must be 1`);
+}
+
+for (const pattern of allowlist.allowedValuePatterns ?? []) {
+  try {
+    allowedValuePatterns.push(new RegExp(pattern));
+  } catch {
+    violations.push(`${allowlistPath}: invalid allowedValuePatterns entry "${pattern}"`);
+  }
 }
 
 const trackedFiles = execFileSync('git', ['ls-files'], { encoding: 'utf8' })
@@ -30,9 +39,36 @@ const isAllowedValue = (value) => {
   return (
     allowedLiteralValues.has(normalized) ||
     allowedValuePrefixes.some((prefix) => normalized.startsWith(prefix)) ||
+    allowedValuePatterns.some((pattern) => pattern.test(normalized)) ||
     normalized.includes('...')
   );
 };
+
+for (const value of [
+  'JWT',
+  'OIDC',
+  'authorization',
+  'jwt.header.signature',
+  'token-value',
+  'smk_test-secret',
+  'smk_fake-audit-reader',
+  'smk_generated_secret',
+  'whsec_generated_secret',
+]) {
+  if (!isAllowedValue(value)) {
+    violations.push(`${allowlistPath}: deterministic placeholder "${value}" must be allowed`);
+  }
+}
+
+for (const value of [
+  ['prod', 'bearer', 'token'].join('.'),
+  ['smk', 'prod', 'secret'].join('_'),
+  ['whsec', 'prod', 'secret'].join('_'),
+]) {
+  if (isAllowedValue(value)) {
+    violations.push(`${allowlistPath}: synthetic non-placeholder secret "${value}" must not be allowed`);
+  }
+}
 
 const report = (file, reason, value) => {
   const suffix = value === undefined ? '' : ` (${value})`;
