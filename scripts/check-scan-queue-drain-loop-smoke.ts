@@ -42,12 +42,21 @@ class SequenceIdGenerator implements IdGenerator {
 }
 
 class FakeRabbitMqReaderChannel implements RabbitMqScanQueueReaderChannelPort {
+  readonly assertedExchanges: unknown[] = [];
   readonly assertedQueues: string[] = [];
   readonly prefetchCounts: number[] = [];
   acked = 0;
   nacked = 0;
 
   constructor(private readonly messages: GetMessage[]) {}
+
+  async assertExchange(
+    exchange: string,
+    type: 'fanout',
+    options: { readonly durable: boolean },
+  ): Promise<void> {
+    this.assertedExchanges.push({ exchange, type, options });
+  }
 
   async assertQueue(queue: string): Promise<void> {
     this.assertedQueues.push(queue);
@@ -275,6 +284,13 @@ async function main(): Promise<void> {
     'retry drain loop must record second succeeded scan metric',
   );
 
+  const malformedRabbitMessage = {
+    content: Buffer.from(JSON.stringify({
+      commandType: 'ingestion.scan.execute',
+      schemaVersion: 1,
+      payload: {},
+    })),
+  } as GetMessage;
   const rabbitMessage = {
     content: Buffer.from(JSON.stringify({
       commandId: 'rabbit-scan-command-smoke',
@@ -287,8 +303,22 @@ async function main(): Promise<void> {
         scanJobId: 'rabbit-scan-command-smoke',
       },
     })),
+    fields: {
+      redelivered: true,
+    },
+    properties: {
+      headers: {
+        'x-death': [
+          {
+            queue: 'jobs.freshness.scan',
+            count: 2,
+            reason: 'expired',
+          },
+        ],
+      },
+    },
   } as GetMessage;
-  const rabbitChannel = new FakeRabbitMqReaderChannel([rabbitMessage]);
+  const rabbitChannel = new FakeRabbitMqReaderChannel([malformedRabbitMessage, rabbitMessage]);
   const rabbitReader = new RabbitMqScanCommandQueueReader(rabbitChannel, {
     queue: 'jobs.freshness.scan',
     deadLetterExchange: 'social-monitor.jobs.dlx',
@@ -298,6 +328,14 @@ async function main(): Promise<void> {
     limit: 5,
   });
   assert(rabbitDeliveries.length === 1, 'RabbitMQ reader must drain one matching scan command');
+  assert(
+    JSON.stringify(rabbitChannel.assertedExchanges[0]) === JSON.stringify({
+      exchange: 'social-monitor.jobs.dlx',
+      type: 'fanout',
+      options: { durable: true },
+    }),
+    'RabbitMQ reader must assert configured scan dead-letter exchange',
+  );
   assert(rabbitChannel.assertedQueues[0] === 'jobs.freshness.scan', 'RabbitMQ reader must assert configured scan queue');
   assert(rabbitChannel.prefetchCounts[0] === 5, 'RabbitMQ reader must prefetch the drain limit');
   const rabbitDelivery = rabbitDeliveries[0];
@@ -306,9 +344,16 @@ async function main(): Promise<void> {
     rabbitDelivery.command.commandId === 'rabbit-scan-command-smoke',
     'RabbitMQ reader must parse command envelope',
   );
+  assert(
+    rabbitDelivery.diagnostics.redelivered === true &&
+      rabbitDelivery.diagnostics.deadLetterCount === 2 &&
+      rabbitDelivery.diagnostics.deadLetterReason === 'expired',
+    'RabbitMQ reader must expose x-death diagnostics on valid deliveries',
+  );
+  assert(rabbitChannel.nacked === 1, 'RabbitMQ reader must nack malformed poison envelopes and continue');
   await rabbitDelivery.ack();
   assert(rabbitChannel.acked === 1, 'RabbitMQ reader delivery ack must ack broker message');
-  assert(rabbitChannel.nacked === 0, 'RabbitMQ reader must not nack successful broker message');
+  assert(rabbitChannel.nacked === 1, 'RabbitMQ reader must not nack successful broker message');
 
   console.log('Scan queue drain loop smoke OK');
 }

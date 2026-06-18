@@ -1,6 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
-import type { QueueCommandEnvelope } from '@social-monitor/platform-queue';
+import {
+  emptyQueueCommandDeliveryDiagnostics,
+  queueCommandDeliveryDiagnosticsFromRabbitMq,
+  type QueueCommandDeliveryDiagnostics,
+  type QueueCommandEnvelope,
+} from '@social-monitor/platform-queue';
 import type { GetMessage, Message } from 'amqplib';
 
 import {
@@ -12,6 +17,7 @@ export const INTELLIGENCE_SUMMARY_JOB_QUEUE_READER = Symbol('INTELLIGENCE_SUMMAR
 
 export type SummaryJobCommandDelivery = {
   readonly command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>;
+  readonly diagnostics: QueueCommandDeliveryDiagnostics;
   ack(): Promise<void>;
   nack(params: { readonly requeue: boolean }): Promise<void>;
 };
@@ -24,6 +30,11 @@ export interface SummaryJobQueueReaderPort {
 }
 
 export interface RabbitMqSummaryQueueReaderChannelPort {
+  assertExchange(
+    exchange: string,
+    type: 'fanout',
+    options: { readonly durable: boolean },
+  ): Promise<unknown>;
   assertQueue(
     queue: string,
     options: {
@@ -47,6 +58,7 @@ export class InMemorySummaryJobQueueReader implements SummaryJobQueueReaderPort 
   }): Promise<readonly SummaryJobCommandDelivery[]> {
     return this.queue.drain(params).map((command) => ({
       command,
+      diagnostics: emptyQueueCommandDeliveryDiagnostics,
       ack: async () => undefined,
       nack: async () => undefined,
     }));
@@ -78,6 +90,10 @@ export class RabbitMqSummaryJobQueueReader implements SummaryJobQueueReaderPort 
       }
 
       const command = await parseQueueCommandOrNack(this.channel, message);
+      if (command === null) {
+        continue;
+      }
+
       if (command.commandType !== params.commandType) {
         await this.channel.nack(message, false, false);
         continue;
@@ -85,6 +101,7 @@ export class RabbitMqSummaryJobQueueReader implements SummaryJobQueueReaderPort 
 
       deliveries.push({
         command,
+        diagnostics: queueCommandDeliveryDiagnosticsFromRabbitMq(message, this.options.queue),
         ack: async () => this.channel.ack(message),
         nack: async ({ requeue }) => this.channel.nack(message, false, requeue),
       });
@@ -98,6 +115,9 @@ export class RabbitMqSummaryJobQueueReader implements SummaryJobQueueReaderPort 
       return;
     }
 
+    if (this.options.deadLetterExchange !== undefined) {
+      await this.channel.assertExchange(this.options.deadLetterExchange, 'fanout', { durable: true });
+    }
     await this.channel.assertQueue(this.options.queue, {
       durable: true,
       arguments: this.options.deadLetterExchange === undefined
@@ -148,11 +168,11 @@ const parseQueueCommand = (
 const parseQueueCommandOrNack = async (
   channel: RabbitMqSummaryQueueReaderChannelPort,
   message: GetMessage,
-): Promise<QueueCommandEnvelope<Readonly<Record<string, unknown>>>> => {
+): Promise<QueueCommandEnvelope<Readonly<Record<string, unknown>>> | null> => {
   try {
     return parseQueueCommand(message);
-  } catch (error) {
+  } catch {
     await channel.nack(message, false, false);
-    throw error;
+    return null;
   }
 };

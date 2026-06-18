@@ -8,6 +8,7 @@ import {
 } from 'amqplib';
 
 import type {
+  RabbitMqExchangeType,
   RabbitMqPublishOptions,
   RabbitMqQueueChannelPort,
 } from './rabbitmq-queue-publisher';
@@ -30,7 +31,7 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
 
   async assertExchange(
     exchange: string,
-    type: 'direct' | 'topic',
+    type: RabbitMqExchangeType,
     options: { readonly durable: boolean },
   ): Promise<unknown> {
     return (await this.channel()).assertExchange(exchange, type, options);

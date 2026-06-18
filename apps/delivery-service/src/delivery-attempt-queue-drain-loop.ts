@@ -91,6 +91,10 @@ export class DeliveryAttemptQueueDrainLoop implements OnModuleInit, OnApplicatio
           commandId: command.commandId,
           trigger,
           error: error instanceof Error ? error.message : String(error),
+          redelivered: delivery.diagnostics.redelivered,
+          deadLetterCount: delivery.diagnostics.deadLetterCount,
+          deadLetterReason: delivery.diagnostics.deadLetterReason,
+          deadLetterQueue: delivery.diagnostics.deadLetterQueue,
           worker: 'delivery-service',
         });
       }

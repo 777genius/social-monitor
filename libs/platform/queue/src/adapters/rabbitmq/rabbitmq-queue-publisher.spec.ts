@@ -19,7 +19,7 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
 
   async assertExchange(
     exchange: string,
-    type: 'direct' | 'topic',
+    type: 'direct' | 'fanout' | 'topic',
     options: { readonly durable: boolean },
   ): Promise<void> {
     this.exchanges.push({ exchange, type, options });
@@ -86,6 +86,11 @@ describe('RabbitMqQueuePublisher', () => {
       {
         exchange: 'social-monitor.jobs',
         type: 'direct',
+        options: { durable: true },
+      },
+      {
+        exchange: 'social-monitor.jobs.dlx',
+        type: 'fanout',
         options: { durable: true },
       },
     ]);

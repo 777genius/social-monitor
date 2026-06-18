@@ -3,18 +3,20 @@ import type { Clock } from '@social-monitor/shared-kernel';
 import type { QueueCommandEnvelope, QueuePublisherPort } from '../../queue-command';
 
 type RabbitMqFieldValue = string | number | boolean;
+export type RabbitMqExchangeType = 'direct' | 'fanout' | 'topic';
 
 export type RabbitMqQueueRoute = {
   readonly queue: string;
   readonly routingKey: string;
   readonly durable?: boolean;
   readonly deadLetterExchange?: string;
+  readonly deadLetterExchangeType?: RabbitMqExchangeType;
   readonly headers?: Readonly<Record<string, RabbitMqFieldValue>>;
 };
 
 export type RabbitMqQueuePublisherOptions = {
   readonly exchange: string;
-  readonly exchangeType?: 'direct' | 'topic';
+  readonly exchangeType?: RabbitMqExchangeType;
   readonly durable?: boolean;
   readonly persistent?: boolean;
   readonly mandatory?: boolean;
@@ -27,7 +29,7 @@ export type RabbitMqQueuePublisherOptions = {
 export interface RabbitMqQueueChannelPort {
   assertExchange(
     exchange: string,
-    type: 'direct' | 'topic',
+    type: RabbitMqExchangeType,
     options: { readonly durable: boolean },
   ): Promise<unknown>;
   assertQueue(
@@ -123,6 +125,11 @@ export class RabbitMqQueuePublisher implements QueuePublisherPort {
 
     const durable = route.durable ?? this.options.durable ?? true;
     await this.channel.assertExchange(this.options.exchange, this.options.exchangeType ?? 'direct', { durable });
+    if (route.deadLetterExchange !== undefined) {
+      await this.channel.assertExchange(route.deadLetterExchange, route.deadLetterExchangeType ?? 'fanout', {
+        durable,
+      });
+    }
     await this.channel.assertQueue(route.queue, {
       durable,
       arguments: route.deadLetterExchange === undefined

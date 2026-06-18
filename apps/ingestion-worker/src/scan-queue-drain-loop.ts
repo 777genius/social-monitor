@@ -93,6 +93,10 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
           commandId: command.commandId,
           trigger,
           error: error instanceof Error ? error.message : String(error),
+          redelivered: delivery.diagnostics.redelivered,
+          deadLetterCount: delivery.diagnostics.deadLetterCount,
+          deadLetterReason: delivery.diagnostics.deadLetterReason,
+          deadLetterQueue: delivery.diagnostics.deadLetterQueue,
           worker: 'ingestion-worker',
         });
       }
@@ -164,6 +168,10 @@ const retryToDelivery = (
       attemptNumber: command.nextAttemptNumber,
       retryBudget: command.retryBudget,
     },
+  },
+  diagnostics: {
+    redelivered: false,
+    deadLetterCount: 0,
   },
   ack: async () => undefined,
   nack: async () => undefined,

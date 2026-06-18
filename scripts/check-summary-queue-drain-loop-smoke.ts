@@ -125,6 +125,11 @@ async function verifyInMemoryDrainLoop(): Promise<void> {
 async function verifyRabbitMqReaderDelivery(): Promise<void> {
   const channel = new FakeRabbitMqSummaryQueueReaderChannel();
   channel.messages.push(messageFrom({
+    commandType: 'summary.job.execute',
+    schemaVersion: 1,
+    payload: {},
+  }));
+  channel.messages.push(messageFrom({
     commandId: 'summary-rabbit-reader-smoke',
     commandType: 'summary.job.execute',
     schemaVersion: 1,
@@ -133,6 +138,17 @@ async function verifyRabbitMqReaderDelivery(): Promise<void> {
       tenantId: 'tenant-summary-rabbit-reader-smoke',
       workspaceId: 'workspace-summary-rabbit-reader-smoke',
       summaryJobId: 'summary-rabbit-reader-smoke',
+    },
+  }, {
+    redelivered: true,
+    headers: {
+      'x-death': [
+        {
+          queue: 'jobs.summary.execute',
+          count: 3,
+          reason: 'rejected',
+        },
+      ],
     },
   }));
 
@@ -143,19 +159,45 @@ async function verifyRabbitMqReaderDelivery(): Promise<void> {
   const deliveries = await reader.drain({ commandType: 'summary.job.execute', limit: 5 });
 
   assert(channel.assertedQueue === 'jobs.summary.execute', 'Rabbit reader must assert summary queue');
+  assert(
+    JSON.stringify(channel.assertedExchange) === JSON.stringify({
+      exchange: 'dead.letters',
+      type: 'fanout',
+      options: { durable: true },
+    }),
+    'Rabbit reader must assert summary dead-letter exchange',
+  );
   assert(channel.prefetchCount === 5, 'Rabbit reader must set prefetch from limit');
   assert(deliveries.length === 1, `expected one Rabbit delivery, got ${deliveries.length}`);
   assert(deliveries[0]?.command.payload.summaryJobId === 'summary-rabbit-reader-smoke', 'summary job id mismatch');
+  assert(channel.nacked === 1, `expected malformed summary message to be nacked, got ${channel.nacked}`);
+  assert(
+    deliveries[0]?.diagnostics.redelivered === true &&
+      deliveries[0]?.diagnostics.deadLetterCount === 3 &&
+      deliveries[0]?.diagnostics.deadLetterReason === 'rejected',
+    'Rabbit reader must expose summary x-death diagnostics',
+  );
   await deliveries[0]?.ack();
   assert(channel.acked === 1, `expected one Rabbit ack, got ${channel.acked}`);
 }
 
 class FakeRabbitMqSummaryQueueReaderChannel implements RabbitMqSummaryQueueReaderChannelPort {
   readonly messages: GetMessage[] = [];
+  assertedExchange: unknown;
   assertedQueue: string | undefined;
   prefetchCount = 0;
   acked = 0;
   nacked = 0;
+
+  async assertExchange(
+    exchange: string,
+    type: 'fanout',
+    options: { readonly durable: boolean },
+  ): Promise<unknown> {
+    this.assertedExchange = { exchange, type, options };
+
+    return undefined;
+  }
 
   async assertQueue(queue: string): Promise<unknown> {
     this.assertedQueue = queue;
@@ -182,9 +224,21 @@ class FakeRabbitMqSummaryQueueReaderChannel implements RabbitMqSummaryQueueReade
   }
 }
 
-function messageFrom(command: Readonly<Record<string, unknown>>): GetMessage {
+function messageFrom(
+  command: Readonly<Record<string, unknown>>,
+  metadata: {
+    readonly redelivered?: boolean;
+    readonly headers?: Readonly<Record<string, unknown>>;
+  } = {},
+): GetMessage {
   return {
     content: Buffer.from(JSON.stringify(command), 'utf8'),
+    fields: {
+      redelivered: metadata.redelivered ?? false,
+    },
+    properties: {
+      headers: metadata.headers ?? {},
+    },
   } as GetMessage & Message;
 }
 

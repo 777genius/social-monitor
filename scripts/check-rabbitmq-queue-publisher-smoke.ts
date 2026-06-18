@@ -21,7 +21,7 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
 
   async assertExchange(
     exchange: string,
-    type: 'direct' | 'topic',
+    type: 'direct' | 'fanout' | 'topic',
     options: { readonly durable: boolean },
   ): Promise<void> {
     this.exchanges.push({ exchange, type, options });
@@ -89,7 +89,15 @@ async function main(): Promise<void> {
     },
   });
 
-  assert(channel.exchanges.length === 1, 'publisher must assert one exchange');
+  assert(channel.exchanges.length === 2, 'publisher must assert main and dead-letter exchanges');
+  assert(
+    JSON.stringify(channel.exchanges[1]) === JSON.stringify({
+      exchange: 'social-monitor.jobs.dlx',
+      type: 'fanout',
+      options: { durable: true },
+    }),
+    'publisher must assert configured dead-letter exchange before binding the queue',
+  );
   assert(channel.queues.length === 1, 'publisher must assert one queue');
   assert(channel.bindings.length === 1, 'publisher must bind one queue');
   assert(channel.published.length === 1, 'publisher must publish one command');
