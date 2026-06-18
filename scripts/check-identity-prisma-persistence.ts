@@ -1,11 +1,13 @@
-import { FixedClock, type IdGenerator, isOk, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { FixedClock, type IdGenerator, isOk, tenantId, userId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { Sha256ApiKeyHasher } from '../libs/identity/adapters/hash/hmac-api-key.hasher';
 import { PrismaApiKeyRepository } from '../libs/identity/adapters/persistence/prisma/prisma-api-key.repository';
 import type { PrismaIdentityClient } from '../libs/identity/adapters/persistence/prisma/prisma-identity-client';
 import type {
   PrismaApiKeyCredentialRecord,
+  PrismaMembershipRecord,
 } from '../libs/identity/adapters/persistence/prisma/prisma-identity-records';
+import { PrismaUserWorkspaceMembershipVerifier } from '../libs/identity/adapters/persistence/prisma/prisma-user-workspace-membership.verifier';
 import { CreateApiKeyUseCase } from '../libs/identity/features/create-api-key/create-api-key.use-case';
 import { ListApiKeysUseCase } from '../libs/identity/features/list-api-keys/list-api-keys.use-case';
 import { RevokeApiKeyUseCase } from '../libs/identity/features/revoke-api-key/revoke-api-key.use-case';
@@ -84,6 +86,32 @@ async function main(): Promise<void> {
   });
   assert(!isOk(rejectedAfterRevoke), 'API key verify must reject revoked key');
 
+  prisma.seedMembership({
+    id: '00000000-0000-7000-8000-000000000504',
+    tenantId: tenant,
+    workspaceId: workspace,
+    userId: '00000000-0000-7000-8000-000000000505',
+    role: 'ADMIN',
+  });
+  const membershipVerifier = new PrismaUserWorkspaceMembershipVerifier(prisma);
+  const membership = await membershipVerifier.verify({
+    tenantId: tenant,
+    workspaceId: workspace,
+    userId: userId('00000000-0000-7000-8000-000000000505'),
+    tokenRoles: ['viewer'],
+  });
+  assert(membership !== null, 'JWT user membership verify must load durable Prisma membership');
+  assert(membership.roles[0] === 'admin', 'JWT user membership must prefer durable Prisma role over token claim');
+  assert(membership.source === 'durable', 'JWT user membership source must be durable in Prisma mode');
+
+  const missingMembership = await membershipVerifier.verify({
+    tenantId: tenant,
+    workspaceId: workspace,
+    userId: userId('00000000-0000-7000-8000-000000000506'),
+    tokenRoles: ['admin'],
+  });
+  assert(missingMembership === null, 'JWT user membership must reject users without Prisma membership');
+
   console.log('Identity Prisma persistence smoke OK');
 }
 
@@ -107,6 +135,7 @@ class SequenceIdGenerator implements IdGenerator {
 
 class FakePrismaIdentityClient implements PrismaIdentityClient {
   private readonly apiKeys = new Map<string, PrismaApiKeyCredentialRecord>();
+  private readonly memberships = new Map<string, PrismaMembershipRecord>();
 
   readonly apiKeyCredential: PrismaIdentityClient['apiKeyCredential'] = {
     upsert: async (args) => {
@@ -137,6 +166,15 @@ class FakePrismaIdentityClient implements PrismaIdentityClient {
     count: async (args) =>
       [...this.apiKeys.values()].filter((record) => matchesApiKeyWhere(record, args.where)).length,
   };
+
+  readonly membership: PrismaIdentityClient['membership'] = {
+    findFirst: async (args) =>
+      [...this.memberships.values()].find((record) => matchesMembershipWhere(record, args.where)) ?? null,
+  };
+
+  seedMembership(record: PrismaMembershipRecord): void {
+    this.memberships.set(record.id, record);
+  }
 }
 
 const matchesApiKeyWhere = (
@@ -152,6 +190,18 @@ const matchesApiKeyWhere = (
   (where.workspaceId === undefined || record.workspaceId === where.workspaceId) &&
   (where.id === undefined || record.id === where.id) &&
   (where.keyPrefix === undefined || record.keyPrefix === where.keyPrefix);
+
+const matchesMembershipWhere = (
+  record: PrismaMembershipRecord,
+  where: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly userId: string;
+  },
+): boolean =>
+  record.tenantId === where.tenantId &&
+  record.workspaceId === where.workspaceId &&
+  record.userId === where.userId;
 
 const compareApiKeyRecords = (
   left: PrismaApiKeyCredentialRecord,

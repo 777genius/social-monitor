@@ -168,6 +168,8 @@ describe('User JWT auth boundary (e2e)', () => {
             authType: 'oidc_jwt',
             requiredScope: 'write:topics',
             roles: ['admin'],
+            claimedRoles: ['admin'],
+            membershipSource: 'token_claim',
           }),
         }),
         expect.objectContaining({

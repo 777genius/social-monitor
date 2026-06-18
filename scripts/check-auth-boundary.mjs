@@ -4,6 +4,8 @@ const policySource = readFileSync('libs/identity/ports/workspace-authorization-p
 const identityProviderTokens = readFileSync('libs/identity/interfaces/rest/identity-provider-tokens.ts', 'utf8');
 const requestAuthorizer = readFileSync('libs/identity/interfaces/rest/api-key-request-authorizer.ts', 'utf8');
 const userTokenVerifier = readFileSync('libs/identity/adapters/authorization/jwks-user-access-token.verifier.ts', 'utf8');
+const membershipPort = readFileSync('libs/identity/ports/user-workspace-membership-verifier.port.ts', 'utf8');
+const membershipPrisma = readFileSync('libs/identity/adapters/persistence/prisma/prisma-user-workspace-membership.verifier.ts', 'utf8');
 const usageAuditPort = readFileSync('libs/usage/ports/public-api-audit-log.port.ts', 'utf8');
 const envExample = readFileSync('.env.example', 'utf8');
 const compose = readFileSync('docker-compose.yml', 'utf8');
@@ -62,13 +64,36 @@ for (const marker of [
 
 for (const marker of [
   'USER_ACCESS_TOKEN_VERIFIER',
+  'USER_WORKSPACE_MEMBERSHIP_VERIFIER',
   'WORKSPACE_AUTHORIZATION_POLICY',
   'oidc_jwt',
   "actorType: 'user'",
   "startsWith('smk_')",
+  'Bearer JWT workspace membership is missing',
+  'membershipSource',
 ]) {
   if (!requestAuthorizer.includes(marker)) {
     violations.push(`api request authorizer missing JWT boundary marker "${marker}"`);
+  }
+}
+
+for (const marker of [
+  'UserWorkspaceMembershipVerifierPort',
+  'USER_WORKSPACE_MEMBERSHIP_VERIFIER',
+  'source: UserWorkspaceMembershipSource',
+]) {
+  if (!membershipPort.includes(marker)) {
+    violations.push(`user workspace membership port missing marker "${marker}"`);
+  }
+}
+
+for (const marker of [
+  'this.prisma.membership.findFirst',
+  "source: 'durable'",
+  'workspaceRoleFromPrisma',
+]) {
+  if (!membershipPrisma.includes(marker)) {
+    violations.push(`Prisma membership verifier missing marker "${marker}"`);
   }
 }
 

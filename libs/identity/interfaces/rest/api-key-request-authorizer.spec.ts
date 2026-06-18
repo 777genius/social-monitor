@@ -2,11 +2,12 @@ import type { ApiKeyScope } from '@social-monitor/identity/domain';
 import type { VerifyApiKeyCommand } from '@social-monitor/identity/features/verify-api-key/verify-api-key.command';
 import type { VerifyApiKeyUseCase } from '@social-monitor/identity/features/verify-api-key/verify-api-key.use-case';
 import {
+  DomainError,
+  err,
   ok,
   tenantId,
   userId,
   workspaceId,
-  type DomainError,
   type Result,
 } from '@social-monitor/shared-kernel';
 import type { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/check-public-api-rate-limit/check-public-api-rate-limit.use-case';
@@ -17,6 +18,8 @@ import type { RecordPublicApiAuditEventCommand } from '@social-monitor/usage/fea
 import type {
   UserAccessTokenPrincipal,
   UserAccessTokenVerifierPort,
+  UserWorkspaceMembership,
+  UserWorkspaceMembershipVerifierPort,
   WorkspaceAuthorizationPolicyPort,
   WorkspaceAuthorizationRequest,
 } from '../../ports';
@@ -50,7 +53,7 @@ describe('ApiKeyRequestAuthorizer', () => {
     expect(dependencies.userAccessTokenVerifier.verify).not.toHaveBeenCalled();
   });
 
-  it('authorizes JWT users through workspace roles and records user audit evidence', async () => {
+  it('authorizes JWT users through durable workspace membership and records user audit evidence', async () => {
     const dependencies = createDependencies();
     const authorizer = createAuthorizer(dependencies);
 
@@ -66,6 +69,12 @@ describe('ApiKeyRequestAuthorizer', () => {
       actorType: 'user',
       actorId: 'user-1',
       userId: 'user-1',
+    });
+    expect(dependencies.userWorkspaceMembershipVerifier.verify).toHaveBeenCalledWith({
+      tenantId: tenant,
+      workspaceId: workspace,
+      userId: 'user-1',
+      tokenRoles: ['admin'],
     });
     expect(dependencies.workspaceAuthorization.authorize).toHaveBeenCalledWith({
       tenantId: tenant,
@@ -89,6 +98,8 @@ describe('ApiKeyRequestAuthorizer', () => {
         issuer: 'https://auth.example.test',
         requiredScope: 'write:topics',
         roles: ['admin'],
+        claimedRoles: ['admin'],
+        membershipSource: 'durable',
       },
     });
   });
@@ -126,6 +137,69 @@ describe('ApiKeyRequestAuthorizer', () => {
       reasonCode: 'authorization.denied',
     });
   });
+
+  it('denies JWT users without durable workspace membership and audits the denial', async () => {
+    const dependencies = createDependencies({ membership: null });
+    const authorizer = createAuthorizer(dependencies);
+
+    await expect(authorizer.authorize({
+      authorizationHeader: 'Bearer jwt.header.signature',
+      tenantId: tenant,
+      workspaceId: workspace,
+      requiredScope: 'write:topics',
+      operation: 'topics.create',
+    })).rejects.toMatchObject<Partial<DomainError>>({
+      code: 'authorization.denied',
+      message: 'Bearer JWT workspace membership is missing',
+    });
+
+    expect(dependencies.workspaceAuthorization.authorize).not.toHaveBeenCalled();
+    expect(dependencies.checkPublicApiRateLimit.execute).not.toHaveBeenCalled();
+    expect(dependencies.auditEvents.at(-1)).toMatchObject({
+      actorType: 'user',
+      actorId: 'user-1',
+      outcome: 'denied',
+      reasonCode: 'authorization.denied',
+      metadata: {
+        membershipSource: 'missing',
+        claimedRoles: ['admin'],
+      },
+    });
+  });
+
+  it('uses durable membership roles instead of elevated JWT claims', async () => {
+    const dependencies = createDependencies({
+      membership: {
+        tenantId: tenant,
+        workspaceId: workspace,
+        userId: userId('user-1'),
+        roles: ['viewer'],
+        source: 'durable',
+      },
+    });
+    dependencies.workspaceAuthorization.authorize.mockReturnValue(err(
+      new DomainError('authorization.denied', 'Workspace role is not allowed for this action'),
+    ));
+    const authorizer = createAuthorizer(dependencies);
+
+    await expect(authorizer.authorize({
+      authorizationHeader: 'Bearer jwt.header.signature',
+      tenantId: tenant,
+      workspaceId: workspace,
+      requiredScope: 'write:topics',
+      operation: 'topics.create',
+    })).rejects.toMatchObject<Partial<DomainError>>({
+      code: 'authorization.denied',
+    });
+
+    expect(dependencies.workspaceAuthorization.authorize).toHaveBeenCalledWith({
+      tenantId: tenant,
+      workspaceId: workspace,
+      action: 'topics.create',
+      roles: ['viewer'],
+    });
+    expect(dependencies.checkPublicApiRateLimit.execute).not.toHaveBeenCalled();
+  });
 });
 
 type Dependencies = {
@@ -133,12 +207,14 @@ type Dependencies = {
   readonly checkPublicApiRateLimit: jest.Mocked<Pick<CheckPublicApiRateLimitUseCase, 'execute'>>;
   readonly recordPublicApiAuditEvent: jest.Mocked<Pick<RecordPublicApiAuditEventUseCase, 'execute'>>;
   readonly userAccessTokenVerifier: jest.Mocked<UserAccessTokenVerifierPort>;
+  readonly userWorkspaceMembershipVerifier: jest.Mocked<UserWorkspaceMembershipVerifierPort>;
   readonly workspaceAuthorization: jest.Mocked<WorkspaceAuthorizationPolicyPort>;
   readonly auditEvents: RecordPublicApiAuditEventCommand[];
 };
 
 const createDependencies = (params: {
   readonly principal?: UserAccessTokenPrincipal;
+  readonly membership?: UserWorkspaceMembership | null;
 } = {}): Dependencies => {
   const principal = params.principal ?? {
     subject: userId('user-1'),
@@ -148,6 +224,15 @@ const createDependencies = (params: {
     issuer: 'https://auth.example.test',
     audience: ['social-monitor-api'],
   } satisfies UserAccessTokenPrincipal;
+  const membership = params.membership === undefined
+    ? {
+        tenantId: principal.tenantId,
+        workspaceId: principal.workspaceId,
+        userId: principal.subject,
+        roles: ['admin'],
+        source: 'durable',
+      } satisfies UserWorkspaceMembership
+    : params.membership;
   const auditEvents: RecordPublicApiAuditEventCommand[] = [];
 
   return {
@@ -194,6 +279,14 @@ const createDependencies = (params: {
         return principal;
       }),
     },
+    userWorkspaceMembershipVerifier: {
+      verify: jest.fn(async (
+        params: Parameters<UserWorkspaceMembershipVerifierPort['verify']>[0],
+      ) => {
+        void params;
+        return membership;
+      }),
+    },
     workspaceAuthorization: {
       authorize: jest.fn((request: WorkspaceAuthorizationRequest): Result<void, DomainError> => {
         void request;
@@ -210,6 +303,7 @@ const createAuthorizer = (dependencies: Dependencies): ApiKeyRequestAuthorizer =
     dependencies.checkPublicApiRateLimit as unknown as CheckPublicApiRateLimitUseCase,
     dependencies.recordPublicApiAuditEvent as unknown as RecordPublicApiAuditEventUseCase,
     dependencies.userAccessTokenVerifier,
+    dependencies.userWorkspaceMembershipVerifier,
     dependencies.workspaceAuthorization,
     60,
   );

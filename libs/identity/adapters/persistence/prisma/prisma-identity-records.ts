@@ -1,8 +1,10 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { ApiKey, type ApiKeyProps, type ApiKeyScope, type ApiKeyStatus } from '../../../domain';
+import type { WorkspaceRole } from '../../../ports';
 
 export type PrismaApiKeyCredentialStatus = 'ACTIVE' | 'REVOKED';
+export type PrismaMembershipRole = 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER';
 
 export type PrismaApiKeyCredentialRecord = {
   readonly id: string;
@@ -15,6 +17,14 @@ export type PrismaApiKeyCredentialRecord = {
   readonly status: PrismaApiKeyCredentialStatus;
   readonly createdAt: Date;
   readonly revokedAt: Date | null;
+};
+
+export type PrismaMembershipRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly userId: string;
+  readonly role: PrismaMembershipRole;
 };
 
 const apiKeyScopes = [
@@ -57,4 +67,17 @@ const apiKeyScopeFromPrisma = (scope: string): ApiKeyScope => {
   }
 
   throw new Error(`Unknown API key scope from Prisma: ${scope}`);
+};
+
+export const workspaceRoleFromPrisma = (role: PrismaMembershipRole): WorkspaceRole => {
+  switch (role) {
+    case 'OWNER':
+      return 'owner';
+    case 'ADMIN':
+      return 'admin';
+    case 'MEMBER':
+      return 'member';
+    case 'VIEWER':
+      return 'viewer';
+  }
 };

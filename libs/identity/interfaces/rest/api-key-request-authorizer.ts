@@ -3,11 +3,15 @@ import type { ApiKeyScope } from '@social-monitor/identity/domain';
 import { VerifyApiKeyUseCase } from '@social-monitor/identity/features/verify-api-key/verify-api-key.use-case';
 import {
   USER_ACCESS_TOKEN_VERIFIER,
+  USER_WORKSPACE_MEMBERSHIP_VERIFIER,
   WORKSPACE_AUTHORIZATION_POLICY,
   type UserAccessTokenPrincipal,
   type UserAccessTokenVerifierPort,
+  type UserWorkspaceMembership,
+  type UserWorkspaceMembershipVerifierPort,
   type WorkspaceAction,
   type WorkspaceAuthorizationPolicyPort,
+  type WorkspaceRole,
 } from '@social-monitor/identity/ports';
 import { DomainError, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/check-public-api-rate-limit/check-public-api-rate-limit.use-case';
@@ -45,6 +49,8 @@ export class ApiKeyRequestAuthorizer {
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
     @Inject(USER_ACCESS_TOKEN_VERIFIER)
     private readonly userAccessTokenVerifier: UserAccessTokenVerifierPort,
+    @Inject(USER_WORKSPACE_MEMBERSHIP_VERIFIER)
+    private readonly userWorkspaceMembershipVerifier: UserWorkspaceMembershipVerifierPort,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
     @Inject(IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE)
@@ -139,8 +145,30 @@ export class ApiKeyRequestAuthorizer {
         requiredScope: params.requiredScope,
         outcome: 'denied',
         reasonCode: 'authorization.denied',
+        membershipSource: 'unverified',
       });
       throw new DomainError('authorization.denied', 'Bearer JWT tenant or workspace does not match request scope');
+    }
+
+    const membership = await this.userWorkspaceMembershipVerifier.verify({
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      userId: principal.subject,
+      tokenRoles: principal.roles,
+    });
+
+    if (membership === null) {
+      await this.recordUserRequestAuditEvent({
+        principal,
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        operation: params.operation,
+        requiredScope: params.requiredScope,
+        outcome: 'denied',
+        reasonCode: 'authorization.denied',
+        membershipSource: 'missing',
+      });
+      throw new DomainError('authorization.denied', 'Bearer JWT workspace membership is missing');
     }
 
     const workspaceAction = resolveWorkspaceAction(params.operation, params.requiredScope);
@@ -148,7 +176,7 @@ export class ApiKeyRequestAuthorizer {
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       action: workspaceAction,
-      roles: principal.roles,
+      roles: membership.roles,
     });
 
     if (!authorization.ok) {
@@ -160,6 +188,8 @@ export class ApiKeyRequestAuthorizer {
         requiredScope: params.requiredScope,
         outcome: 'denied',
         reasonCode: authorization.error.code,
+        membershipRoles: membership.roles,
+        membershipSource: membership.source,
       });
       throw authorization.error;
     }
@@ -180,6 +210,8 @@ export class ApiKeyRequestAuthorizer {
         requiredScope: params.requiredScope,
         outcome: 'denied',
         reasonCode: rateLimit.error.code,
+        membershipRoles: membership.roles,
+        membershipSource: membership.source,
       });
       throw rateLimit.error;
     }
@@ -191,6 +223,8 @@ export class ApiKeyRequestAuthorizer {
       operation: params.operation,
       requiredScope: params.requiredScope,
       outcome: 'succeeded',
+      membershipRoles: membership.roles,
+      membershipSource: membership.source,
     });
 
     return {
@@ -238,6 +272,8 @@ export class ApiKeyRequestAuthorizer {
     readonly requiredScope: ApiKeyScope;
     readonly outcome: 'succeeded' | 'denied';
     readonly reasonCode?: string;
+    readonly membershipRoles?: readonly WorkspaceRole[];
+    readonly membershipSource?: UserWorkspaceMembership['source'] | 'missing' | 'unverified';
   }): Promise<void> {
     const auditEvent = await this.recordPublicApiAuditEvent.execute({
       tenantId: params.tenantId,
@@ -253,7 +289,9 @@ export class ApiKeyRequestAuthorizer {
         issuer: params.principal.issuer,
         audience: params.principal.audience,
         requiredScope: params.requiredScope,
-        roles: params.principal.roles,
+        roles: params.membershipRoles ?? params.principal.roles,
+        claimedRoles: params.principal.roles,
+        membershipSource: params.membershipSource ?? 'unverified',
       },
     });
 

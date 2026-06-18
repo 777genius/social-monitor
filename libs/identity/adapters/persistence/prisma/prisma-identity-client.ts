@@ -1,4 +1,8 @@
-import type { PrismaApiKeyCredentialRecord, PrismaApiKeyCredentialStatus } from './prisma-identity-records';
+import type {
+  PrismaApiKeyCredentialRecord,
+  PrismaApiKeyCredentialStatus,
+  PrismaMembershipRecord,
+} from './prisma-identity-records';
 
 export type PrismaIdentityClient = {
   readonly apiKeyCredential: {
@@ -51,5 +55,16 @@ export type PrismaIdentityClient = {
         readonly workspaceId: string;
       };
     }): Promise<number>;
+  };
+  readonly membership: {
+    findFirst(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly userId: string;
+        readonly user?: { readonly deletedAt: null };
+        readonly workspace?: { readonly deletedAt: null };
+      };
+    }): Promise<PrismaMembershipRecord | null>;
   };
 };

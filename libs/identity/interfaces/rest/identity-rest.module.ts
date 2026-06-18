@@ -3,20 +3,24 @@ import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
 import { JwksUserAccessTokenVerifier } from '../../adapters/authorization/jwks-user-access-token.verifier';
+import { ClaimUserWorkspaceMembershipVerifier } from '../../adapters/authorization/claim-user-workspace-membership.verifier';
 import { RejectingUserAccessTokenVerifier } from '../../adapters/authorization/rejecting-user-access-token.verifier';
 import { Sha256ApiKeyHasher } from '../../adapters/hash/hmac-api-key.hasher';
 import { InMemoryApiKeyRepository } from '../../adapters/persistence/in-memory-api-key.repository';
 import { PrismaApiKeyRepository } from '../../adapters/persistence/prisma/prisma-api-key.repository';
 import type { PrismaIdentityClient } from '../../adapters/persistence/prisma/prisma-identity-client';
 import { PrismaIdentityConnection } from '../../adapters/persistence/prisma/prisma-identity-connection';
+import { PrismaUserWorkspaceMembershipVerifier } from '../../adapters/persistence/prisma/prisma-user-workspace-membership.verifier';
 import { CreateApiKeyUseCase } from '../../features/create-api-key/create-api-key.use-case';
 import { ListApiKeysUseCase } from '../../features/list-api-keys/list-api-keys.use-case';
 import { RevokeApiKeyUseCase } from '../../features/revoke-api-key/revoke-api-key.use-case';
 import { VerifyApiKeyUseCase } from '../../features/verify-api-key/verify-api-key.use-case';
 import {
   USER_ACCESS_TOKEN_VERIFIER,
+  USER_WORKSPACE_MEMBERSHIP_VERIFIER,
   type ApiKeyRepositoryPort,
   type UserAccessTokenVerifierPort,
+  type UserWorkspaceMembershipVerifierPort,
 } from '../../ports';
 import { IdentityAuthorizationModule } from '../authorization/identity-authorization.module';
 import { ApiKeyRequestAuthorizer } from './api-key-request-authorizer';
@@ -64,6 +68,17 @@ import {
         mode === 'prisma' ? new PrismaIdentityConnection(process.env.DATABASE_URL ?? '') : null,
       inject: [IDENTITY_PERSISTENCE_MODE],
     },
+    {
+      provide: USER_WORKSPACE_MEMBERSHIP_VERIFIER,
+      useFactory: (
+        mode: IdentityPersistenceMode,
+        prisma: PrismaIdentityClient | null,
+      ): UserWorkspaceMembershipVerifierPort =>
+        mode === 'prisma'
+          ? new PrismaUserWorkspaceMembershipVerifier(requirePrismaIdentityClient(prisma))
+          : new ClaimUserWorkspaceMembershipVerifier(),
+      inject: [IDENTITY_PERSISTENCE_MODE, IDENTITY_PRISMA_CLIENT],
+    },
     InMemoryApiKeyRepository,
     {
       provide: IDENTITY_API_KEY_REPOSITORY,
@@ -108,6 +123,7 @@ import {
     CreateApiKeyUseCase,
     IDENTITY_API_KEY_REPOSITORY,
     USER_ACCESS_TOKEN_VERIFIER,
+    USER_WORKSPACE_MEMBERSHIP_VERIFIER,
     InMemoryApiKeyRepository,
     ListApiKeysUseCase,
     RevokeApiKeyUseCase,

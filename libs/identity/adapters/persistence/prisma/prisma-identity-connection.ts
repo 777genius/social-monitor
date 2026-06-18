@@ -21,6 +21,7 @@ const runtimeRequire = createRequire(`${process.cwd()}/package.json`);
 
 export class PrismaIdentityConnection implements PrismaIdentityClient {
   readonly apiKeyCredential: PrismaIdentityClient['apiKeyCredential'];
+  readonly membership: PrismaIdentityClient['membership'];
 
   private readonly pool: Pool;
   private readonly client: PrismaIdentityRuntimeClient;
@@ -35,6 +36,7 @@ export class PrismaIdentityConnection implements PrismaIdentityClient {
     this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
 
     this.apiKeyCredential = this.client.apiKeyCredential;
+    this.membership = this.client.membership;
   }
 
   async close(): Promise<void> {
