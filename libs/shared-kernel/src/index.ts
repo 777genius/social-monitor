@@ -3,5 +3,7 @@ export * from './domain-error';
 export * from './event-envelope';
 export * from './id-generator';
 export * from './ids';
+export * from './outbound-url-policy';
+export * from './redaction';
 export * from './result';
 export * from './tenant-scope';

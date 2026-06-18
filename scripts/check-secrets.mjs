@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const allowlistPath = 'ops/security/secret-scan-allowlist.json';
@@ -15,6 +15,7 @@ if (allowlist.schemaVersion !== 1) {
 const trackedFiles = execFileSync('git', ['ls-files'], { encoding: 'utf8' })
   .split('\n')
   .filter((path) => path.length > 0)
+  .filter((path) => existsSync(path))
   .filter((path) => !ignoredPaths.some((ignoredPath) => path.startsWith(ignoredPath)));
 
 const textFilePattern = /\.(cjs|conf|env|example|json|js|md|mjs|prisma|sh|sql|ts|tsx|txt|yaml|yml)$/i;

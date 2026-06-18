@@ -42,6 +42,31 @@ async function main(): Promise<void> {
   try {
     const tenant = tenantId('tenant-notification-preference-rest-smoke');
     const workspace = workspaceId('workspace-notification-preference-rest-smoke');
+    const headers = {
+      'x-tenant-id': tenant,
+      'x-workspace-id': workspace,
+    };
+    const deliveryReadSecret = await createApiKey({
+      server: app.getHttpServer(),
+      tenant,
+      workspace,
+      name: 'Notification preference reader',
+      scopes: ['read:delivery_status'],
+    });
+    const deliveryWriteSecret = await createApiKey({
+      server: app.getHttpServer(),
+      tenant,
+      workspace,
+      name: 'Notification preference writer',
+      scopes: ['write:delivery_status'],
+    });
+    const wrongScopeSecret = await createApiKey({
+      server: app.getHttpServer(),
+      tenant,
+      workspace,
+      name: 'Notification preference wrong scope',
+      scopes: ['read:feed'],
+    });
     const body = {
       recipientKey: 'user-rest-smoke',
       channel: 'email',
@@ -51,16 +76,21 @@ async function main(): Promise<void> {
 
     await request(app.getHttpServer())
       .put('/delivery/notification-preferences')
-      .set('x-tenant-id', tenant)
-      .set('x-workspace-id', workspace)
+      .set(headers)
       .set('x-workspace-role', 'viewer')
+      .send(body)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .put('/delivery/notification-preferences')
+      .set(headers)
+      .set('Authorization', `Bearer ${deliveryReadSecret}`)
       .send(body)
       .expect(403);
 
     const suppressed = await request(app.getHttpServer())
       .put('/delivery/notification-preferences')
-      .set('x-tenant-id', tenant)
-      .set('x-workspace-id', workspace)
+      .set(headers)
       .set('x-workspace-role', 'member')
       .send(body)
       .expect(200);
@@ -75,12 +105,30 @@ async function main(): Promise<void> {
     const listed = await request(app.getHttpServer())
       .get('/delivery/notification-preferences')
       .query({ recipientKey: body.recipientKey, channel: body.channel })
-      .set('x-tenant-id', tenant)
-      .set('x-workspace-id', workspace)
+      .set(headers)
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
     assert(listed.body.allowed === false, 'notification preference REST get must return suppression');
+
+    const listedWithApiKey = await request(app.getHttpServer())
+      .get('/delivery/notification-preferences')
+      .query({ recipientKey: body.recipientKey, channel: body.channel })
+      .set(headers)
+      .set('Authorization', `Bearer ${deliveryReadSecret}`)
+      .expect(200);
+
+    assert(
+      listedWithApiKey.body.allowed === false,
+      'read:delivery_status API key must get notification preferences without workspace role',
+    );
+
+    await request(app.getHttpServer())
+      .get('/delivery/notification-preferences')
+      .query({ recipientKey: body.recipientKey, channel: body.channel })
+      .set(headers)
+      .set('Authorization', `Bearer ${wrongScopeSecret}`)
+      .expect(403);
 
     const reader = app.get<NotificationPreferenceReaderPort>(DELIVERY_NOTIFICATION_PREFERENCE_READER);
     const sendDecision = await reader.getDeliveryPreference({
@@ -95,9 +143,8 @@ async function main(): Promise<void> {
 
     const allowed = await request(app.getHttpServer())
       .put('/delivery/notification-preferences')
-      .set('x-tenant-id', tenant)
-      .set('x-workspace-id', workspace)
-      .set('x-workspace-role', 'member')
+      .set(headers)
+      .set('Authorization', `Bearer ${deliveryWriteSecret}`)
       .send({
         recipientKey: body.recipientKey,
         channel: body.channel,
@@ -107,11 +154,36 @@ async function main(): Promise<void> {
 
     assert(allowed.body.preference.allowed === true, 'notification preference REST set must allow delivery');
     assert(allowed.body.preference.reason === undefined, 'allowed notification preference must not expose stale reason');
+    assert(
+      allowed.body.preference.recipientKey === body.recipientKey,
+      'write:delivery_status API key must set notification preferences without workspace role',
+    );
 
     console.log('Notification preference REST smoke OK');
   } finally {
     await app.close();
   }
 }
+
+const createApiKey = async (params: {
+  readonly server: Parameters<typeof request>[0];
+  readonly tenant: string;
+  readonly workspace: string;
+  readonly name: string;
+  readonly scopes: readonly string[];
+}): Promise<string> => {
+  const response = await request(params.server)
+    .post('/identity/api-keys')
+    .set('x-tenant-id', params.tenant)
+    .set('x-workspace-id', params.workspace)
+    .set('x-workspace-role', 'admin')
+    .send({
+      name: params.name,
+      scopes: params.scopes,
+    })
+    .expect(201);
+
+  return response.body.secret;
+};
 
 void main();

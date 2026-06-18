@@ -50,6 +50,13 @@ async function main(): Promise<void> {
       name: 'Digest status reader',
       scopes: ['read:delivery_status'],
     });
+    const deliveryWriteSecret = await createApiKey({
+      server: app.getHttpServer(),
+      tenant,
+      workspace,
+      name: 'Digest status writer',
+      scopes: ['write:delivery_status'],
+    });
     const wrongScopeSecret = await createApiKey({
       server: app.getHttpServer(),
       tenant,
@@ -88,28 +95,53 @@ async function main(): Promise<void> {
       'digest schedule REST create must normalize topic ids',
     );
 
+    await request(app.getHttpServer())
+      .post('/delivery/digest-schedules')
+      .set(headers)
+      .set('Authorization', `Bearer ${deliveryStatusSecret}`)
+      .send({
+        ...body,
+        recipientKey: 'user-rest-smoke-readonly',
+      })
+      .expect(403);
+
+    const createdWithApiKey = await request(app.getHttpServer())
+      .post('/delivery/digest-schedules')
+      .set(headers)
+      .set('Authorization', `Bearer ${deliveryWriteSecret}`)
+      .send({
+        ...body,
+        recipientKey: 'user-rest-smoke-api-key',
+      })
+      .expect(201);
+
+    assert(
+      createdWithApiKey.body.schedule.recipientKey === 'user-rest-smoke-api-key',
+      'write:delivery_status API key must create digest schedules without workspace role',
+    );
+
     const listed = await request(app.getHttpServer())
       .get('/delivery/digest-schedules')
-      .query({ limit: 1 })
+      .query({ limit: 2 })
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    assert(listed.body.schedules.length === 1, 'digest schedule REST list must return created schedule');
+    assert(listed.body.schedules.length === 2, 'digest schedule REST list must return created schedules');
     assert(
-      listed.body.schedules[0].id === created.body.schedule.id,
-      'digest schedule REST list must preserve schedule id',
+      listed.body.schedules.some((schedule: { readonly id: string }) => schedule.id === created.body.schedule.id),
+      'digest schedule REST list must include role-created schedule id',
     );
 
     const listedWithApiKey = await request(app.getHttpServer())
       .get('/delivery/digest-schedules')
-      .query({ limit: 1 })
+      .query({ limit: 2 })
       .set(headers)
       .set('Authorization', `Bearer ${deliveryStatusSecret}`)
       .expect(200);
 
     assert(
-      listedWithApiKey.body.schedules[0].id === created.body.schedule.id,
+      listedWithApiKey.body.schedules.some((schedule: { readonly id: string }) => schedule.id === created.body.schedule.id),
       'read:delivery_status API key must list digest schedules without workspace role',
     );
 

@@ -23,6 +23,10 @@ describe('RssSourceProvider', () => {
       ok: false,
       reason: 'Feed URL must not target private or local networks.',
     });
+    expect(validateFeedUrl('http://169.254.169.254/latest/meta-data')).toEqual({
+      ok: false,
+      reason: 'Feed URL must not target private or local networks.',
+    });
     expect(validateFeedUrl('file:///tmp/feed.xml')).toEqual({
       ok: false,
       reason: 'Feed URL must use http or https.',

@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+import { isSensitiveKey } from '@social-monitor/shared-kernel';
 
 import type {
   SourceBindingConfig,
@@ -17,8 +18,6 @@ type EncryptedConfigValue = {
   readonly ciphertext: string;
   readonly authTag: string;
 };
-
-const secretKeyPattern = /(?:secret|token|password|credential|authorization|api[_-]?key|refresh[_-]?token|access[_-]?token)/i;
 
 export class AesGcmSourceBindingConfigProtector implements SourceBindingConfigProtectorPort {
   constructor(
@@ -70,7 +69,7 @@ export class AesGcmSourceBindingConfigProtector implements SourceBindingConfigPr
   }
 
   private protectValue(key: string, value: SourceBindingConfigValue): SourceBindingConfigValue | EncryptedConfigValue {
-    if (secretKeyPattern.test(key)) {
+    if (isSensitiveKey(key)) {
       return this.encrypt(value);
     }
 

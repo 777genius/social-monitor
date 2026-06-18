@@ -45,6 +45,7 @@ import { DeliveryAttempt, Digest, DigestSchedule } from '../libs/delivery/domain
 import { AssembleDigestUseCase } from '../libs/delivery/features/assemble-digest/assemble-digest.use-case';
 import { CreateDigestScheduleUseCase } from '../libs/delivery/features/create-digest-schedule/create-digest-schedule.use-case';
 import { CreateWebhookEndpointUseCase } from '../libs/delivery/features/create-webhook-endpoint/create-webhook-endpoint.use-case';
+import { ContractWebhookEventCatalogAdapter } from '../libs/delivery/adapters/events/contract-webhook-event-catalog.adapter';
 import { DisableWebhookEndpointUseCase } from '../libs/delivery/features/disable-webhook-endpoint/disable-webhook-endpoint.use-case';
 import { GetDeliveryAttemptUseCase } from '../libs/delivery/features/get-delivery-attempt/get-delivery-attempt.use-case';
 import { GetDigestUseCase } from '../libs/delivery/features/get-digest/get-digest.use-case';
@@ -97,6 +98,7 @@ async function main(): Promise<void> {
   const webhookEndpoints = new PrismaWebhookEndpointRepository(prisma);
   const webhookSecrets = new PrismaWebhookSecretVault(prisma, Buffer.alloc(32, 7));
   const webhookReplayStore = new PrismaWebhookReplayStore(prisma);
+  const webhookEventCatalog = new ContractWebhookEventCatalogAdapter();
   const ids = new SequenceIdGenerator([
     '00000000-0000-7000-8000-000000000703',
     '00000000-0000-7000-8000-000000000704',
@@ -482,6 +484,7 @@ async function main(): Promise<void> {
     webhookSecrets,
     ids,
     clock,
+    webhookEventCatalog,
   ).execute({
     tenantId: tenant,
     workspaceId: workspace,
@@ -496,7 +499,11 @@ async function main(): Promise<void> {
     'webhook secret vault must decrypt the persisted signing secret',
   );
 
-  const signedWebhook = await new SignWebhookPayloadUseCase(webhookEndpoints, webhookSecrets).execute({
+  const signedWebhook = await new SignWebhookPayloadUseCase(
+    webhookEndpoints,
+    webhookSecrets,
+    webhookEventCatalog,
+  ).execute({
     tenantId: tenant,
     workspaceId: workspace,
     webhookEndpointId,

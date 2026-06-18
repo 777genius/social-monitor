@@ -8,6 +8,22 @@ const publicRestControllers = new Set([
   'libs/ingestion/interfaces/rest/source-profile.controller.ts',
 ]);
 
+const productionLineBudgets = new Map([
+  ['libs/delivery/interfaces/rest/delivery-rest.module.ts', 600],
+]);
+
+const directIdentityGenerationAllowedFiles = new Set([
+  'libs/shared-kernel/src/id-generator.ts',
+]);
+
+const sensitiveRedactionPolicyAllowedFiles = new Set([
+  'libs/shared-kernel/src/redaction.ts',
+]);
+
+const outboundUrlPolicyAllowedFiles = new Set([
+  'libs/shared-kernel/src/outbound-url-policy.ts',
+]);
+
 function normalizedPath(file) {
   return file.replaceAll('\\', '/');
 }
@@ -59,6 +75,14 @@ for (const useCaseFile of globSync('libs/**/features/**/*.use-case.ts')) {
     addViolation(useCaseFile, 'feature use case must return err(new DomainError(...)) instead of throwing DomainError');
   }
 
+  if (/throw\s+new\s+Error\s*\(/.test(source)) {
+    addViolation(useCaseFile, 'feature use case must return Result failures instead of throwing generic Error');
+  }
+
+  if (/\bDate\.now\s*\(/.test(source) || /\bnew\s+Date\s*\(\s*\)/.test(source)) {
+    addViolation(useCaseFile, 'feature use case must use injected Clock instead of wall-clock time');
+  }
+
   if (/\bnew\s+InMemory[A-Za-z0-9_]*\s*\(/.test(source)) {
     addViolation(useCaseFile, 'feature use case must depend on ports, not concrete in-memory adapters');
   }
@@ -73,6 +97,14 @@ for (const controllerFile of globSync('libs/**/interfaces/rest/*.controller.ts')
   if (!source.includes('requireTenantScope(')) {
     addViolation(controllerFile, 'REST controller must enforce tenant/workspace scope with requireTenantScope');
   }
+
+  if (/\bNumber\s*\(\s*limitQuery\s*\)/.test(source) || /\bconst\s+parseLimit\s*=/.test(source)) {
+    addViolation(controllerFile, 'REST controllers must use parsePaginationLimit helpers for page limits, not ad hoc Number(limitQuery) parsing');
+  }
+
+  if (/\.then\s*\(/.test(source)) {
+    addViolation(controllerFile, 'REST controllers must use async/await for transport flow instead of promise chains');
+  }
 }
 
 for (const file of [
@@ -82,6 +114,96 @@ for (const file of [
   const source = readFileSync(file, 'utf8');
   if (/\bconsole\.(log|info|warn|error|debug)\s*\(/.test(source)) {
     addViolation(file, 'production code must use structured logging ports/adapters, not console.*');
+  }
+
+  const normalized = normalizedPath(file);
+  const maxLines = productionLineBudgets.get(normalized) ?? 500;
+  const lineCount = source.split('\n').length;
+  if (!normalized.includes('/generated/') && lineCount > maxLines) {
+    addViolation(file, `production file exceeds ${maxLines} line budget (${lineCount}); split by responsibility before adding features`);
+  }
+
+  if (/\brandomUUID\s*\(/.test(source) && !directIdentityGenerationAllowedFiles.has(normalized)) {
+    addViolation(file, 'production code must use IdGenerator or RequestCorrelationIdFactory instead of direct randomUUID');
+  }
+
+  if (
+    /\b(sensitiveKeyPattern|secretKeyPattern|bearerPattern|basicPattern|generatedSecretPattern|urlWithPasswordPattern)\b/.test(source) &&
+    !sensitiveRedactionPolicyAllowedFiles.has(normalized)
+  ) {
+    addViolation(file, 'sensitive redaction patterns must live in shared-kernel redaction helpers, not be duplicated');
+  }
+
+  if (
+    /\b(blockedHosts|isPrivateIp|isPrivateOrLocalNetworkHost|localhost\.localdomain|169\s*&&\s*second\s*===\s*254)\b/.test(source) &&
+    !outboundUrlPolicyAllowedFiles.has(normalized)
+  ) {
+    addViolation(file, 'outbound URL SSRF policy must live in shared-kernel outbound URL helpers, not be duplicated');
+  }
+}
+
+for (const file of productionTsFiles('libs/**/interfaces/**/*.ts')) {
+  const normalized = normalizedPath(file);
+  const isCompositionFile = (
+    normalized.endsWith('.module.ts') ||
+    normalized.endsWith('-provider-tokens.ts')
+  );
+
+  if (isCompositionFile) {
+    continue;
+  }
+
+  const source = readFileSync(file, 'utf8');
+  if (source.includes('process.env')) {
+    addViolation(file, 'interface transport/support files must receive env-derived config through provider tokens, not read process.env');
+  }
+}
+
+for (const file of productionTsFiles('apps/**/src/*.controller.ts')) {
+  const source = readFileSync(file, 'utf8');
+  if (source.includes('process.env')) {
+    addViolation(file, 'app controllers must receive env-derived readiness/config through providers, not read process.env');
+  }
+
+  if (/\bDate\.now\s*\(/.test(source) || /\bnew\s+Date\s*\(\s*\)/.test(source)) {
+    addViolation(file, 'app controllers must receive Clock-backed timestamps through providers, not read wall-clock time');
+  }
+
+  if (/\bprocess\.uptime\s*\(/.test(source)) {
+    addViolation(file, 'app controllers must receive uptime through providers, not read process uptime directly');
+  }
+}
+
+for (const file of [
+  ...productionTsFiles('libs/**/adapters/**/*.ts'),
+  ...productionTsFiles('libs/platform/queue/**/*.ts'),
+]) {
+  const source = readFileSync(file, 'utf8');
+  if (source.includes('process.env')) {
+    addViolation(file, 'adapters must receive runtime configuration explicitly from composition roots, not read process.env');
+  }
+
+  if (/\bDate\.now\s*\(/.test(source) || /\bnew\s+Date\s*\(\s*\)/.test(source)) {
+    addViolation(file, 'adapters must receive Clock explicitly instead of reading wall-clock time');
+  }
+
+  if (/\brandomUUID\s*\(/.test(source)) {
+    addViolation(file, 'adapters must receive IdGenerator explicitly instead of generating identities directly');
+  }
+
+  if (/\bnew\s+(SystemClock|CryptoIdGenerator)\s*\(/.test(source)) {
+    addViolation(file, 'adapters must receive Clock/IdGenerator instances explicitly from composition roots, not create defaults');
+  }
+
+  if (/\bawait\s+fetch\s*\(/.test(source) && !source.includes('AbortSignal.timeout')) {
+    addViolation(file, 'HTTP adapters must use AbortSignal.timeout for outbound fetch calls');
+  }
+}
+
+for (const file of productionTsFiles('apps/**/src/*loop.ts')) {
+  const source = readFileSync(file, 'utf8');
+  if (/\bDate\.now\s*\(/.test(source) || /\bnew\s+Date\s*\(\s*\)/.test(source)) {
+    addViolation(file, 'worker loops must use injected command id/clock helpers instead of wall-clock time');
   }
 }
 

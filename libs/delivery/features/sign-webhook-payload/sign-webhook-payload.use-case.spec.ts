@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto';
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { WebhookEndpoint } from '../../domain';
-import type { WebhookEndpointRepositoryPort, WebhookSecretVaultPort } from '../../ports';
+import type { WebhookEndpointRepositoryPort, WebhookEventCatalogPort, WebhookSecretVaultPort } from '../../ports';
 import { CreateWebhookEndpointUseCase } from '../create-webhook-endpoint/create-webhook-endpoint.use-case';
 import { SignWebhookPayloadUseCase } from './sign-webhook-payload.use-case';
 
@@ -49,6 +49,11 @@ class FakeSecrets implements WebhookSecretVaultPort {
   }
 }
 
+const fakeWebhookEventCatalog: WebhookEventCatalogPort = {
+  payloadVersion: 1,
+  isSupported: (eventType) => eventType === 'digest.ready.v1',
+};
+
 describe('SignWebhookPayloadUseCase', () => {
   it('rejects event types outside the webhook catalog', async () => {
     const tenant = tenantId('tenant-1');
@@ -60,6 +65,7 @@ describe('SignWebhookPayloadUseCase', () => {
       secrets,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
+      fakeWebhookEventCatalog,
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -71,7 +77,7 @@ describe('SignWebhookPayloadUseCase', () => {
       throw created.error;
     }
 
-    const signed = await new SignWebhookPayloadUseCase(endpoints, secrets).execute({
+    const signed = await new SignWebhookPayloadUseCase(endpoints, secrets, fakeWebhookEventCatalog).execute({
       tenantId: tenant,
       workspaceId: workspace,
       webhookEndpointId: created.value.endpoint.id,
@@ -108,6 +114,7 @@ describe('SignWebhookPayloadUseCase', () => {
       secrets,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
+      fakeWebhookEventCatalog,
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -119,7 +126,7 @@ describe('SignWebhookPayloadUseCase', () => {
       throw created.error;
     }
 
-    const signed = await new SignWebhookPayloadUseCase(endpoints, secrets).execute({
+    const signed = await new SignWebhookPayloadUseCase(endpoints, secrets, fakeWebhookEventCatalog).execute({
       tenantId: tenant,
       workspaceId: workspace,
       webhookEndpointId: created.value.endpoint.id,

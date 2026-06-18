@@ -1,4 +1,5 @@
 import { WebhookEndpoint } from '@social-monitor/delivery/domain';
+import { ContractWebhookEventCatalogAdapter } from '@social-monitor/delivery/adapters/events/contract-webhook-event-catalog.adapter';
 import {
   HttpWebhookDeliveryProvider,
   type WebhookHttpClientPort,
@@ -52,7 +53,7 @@ async function main(): Promise<void> {
 
   const provider = new HttpWebhookDeliveryProvider(
     endpoints,
-    new SignWebhookPayloadUseCase(endpoints, secrets),
+    new SignWebhookPayloadUseCase(endpoints, secrets, new ContractWebhookEventCatalogAdapter()),
     http,
     clock,
     {

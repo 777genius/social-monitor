@@ -3,6 +3,7 @@ import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-mon
 import type { WebhookEndpoint } from '../../domain';
 import type {
   WebhookEndpointRepositoryPort,
+  WebhookEventCatalogPort,
   WebhookReplayStorePort,
   WebhookSecretVaultPort,
 } from '../../ports';
@@ -73,6 +74,11 @@ class FakeReplayStore implements WebhookReplayStorePort {
   }
 }
 
+const fakeWebhookEventCatalog: WebhookEventCatalogPort = {
+  payloadVersion: 1,
+  isSupported: (eventType) => eventType === 'digest.ready.v1',
+};
+
 describe('VerifyWebhookSignatureUseCase', () => {
   it('verifies first delivery and rejects replayed delivery id', async () => {
     const tenant = tenantId('tenant-1');
@@ -85,6 +91,7 @@ describe('VerifyWebhookSignatureUseCase', () => {
       secrets,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
+      fakeWebhookEventCatalog,
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -96,7 +103,7 @@ describe('VerifyWebhookSignatureUseCase', () => {
       throw created.error;
     }
 
-    const signed = await new SignWebhookPayloadUseCase(endpoints, secrets).execute({
+    const signed = await new SignWebhookPayloadUseCase(endpoints, secrets, fakeWebhookEventCatalog).execute({
       tenantId: tenant,
       workspaceId: workspace,
       webhookEndpointId: created.value.endpoint.id,
@@ -162,6 +169,7 @@ describe('VerifyWebhookSignatureUseCase', () => {
       secrets,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
+      fakeWebhookEventCatalog,
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,

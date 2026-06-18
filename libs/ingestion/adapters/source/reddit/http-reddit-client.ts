@@ -17,7 +17,10 @@ type RedditApiListingResponse = {
 };
 
 export class HttpRedditClient implements RedditClientPort {
-  constructor(private readonly baseUrl = 'https://oauth.reddit.com') {}
+  constructor(
+    private readonly baseUrl = 'https://oauth.reddit.com',
+    private readonly timeoutMs = 10_000,
+  ) {}
 
   async listSubredditPosts(request: RedditListSubredditPostsRequest): Promise<RedditListingPage> {
     const url = this.url(`/r/${encodeURIComponent(request.subreddit)}/${request.listing}`, {
@@ -51,6 +54,7 @@ export class HttpRedditClient implements RedditClientPort {
         accept: 'application/json',
         'user-agent': userAgent ?? 'social-monitor-mvp/0.1',
       },
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
 
     if (!response.ok) {

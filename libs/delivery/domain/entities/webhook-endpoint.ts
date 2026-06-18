@@ -1,4 +1,4 @@
-import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import { validateOutboundUrl, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 export type WebhookEndpointStatus = 'enabled' | 'disabled' | 'quarantined';
 
@@ -33,8 +33,9 @@ export class WebhookEndpoint {
       throw new Error('Webhook endpoint id must be non-empty');
     }
 
-    if (!isHttpsUrl(props.url)) {
-      throw new Error('Webhook endpoint URL must be HTTPS');
+    const urlValidation = validateWebhookEndpointUrl(props.url);
+    if (!urlValidation.ok) {
+      throw new Error(urlValidation.reason);
     }
 
     if (props.eventTypes.length === 0 || props.eventTypes.some((eventType) => eventType.trim().length === 0)) {
@@ -97,10 +98,11 @@ export class WebhookEndpoint {
 
 const webhookEndpointStatuses = ['enabled', 'disabled', 'quarantined'] as const satisfies readonly WebhookEndpointStatus[];
 
-const isHttpsUrl = (value: string): boolean => {
-  try {
-    return new URL(value).protocol === 'https:';
-  } catch {
-    return false;
-  }
+const validateWebhookEndpointUrl = (value: string): { readonly ok: true } | { readonly ok: false; readonly reason: string } => {
+  const result = validateOutboundUrl(value, {
+    label: 'Webhook endpoint URL',
+    allowedProtocols: ['https:'],
+  });
+
+  return result.ok ? { ok: true } : result;
 };

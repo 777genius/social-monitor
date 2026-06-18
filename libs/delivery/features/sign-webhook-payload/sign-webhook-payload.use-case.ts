@@ -1,9 +1,8 @@
 import { createHmac } from 'node:crypto';
 
-import { isSupportedWebhookEventType, WEBHOOK_PAYLOAD_VERSION } from '@social-monitor/contracts/events/webhook-events';
 import { DomainError, err, ok, type Result } from '@social-monitor/shared-kernel';
 
-import type { WebhookEndpointRepositoryPort, WebhookSecretVaultPort } from '../../ports';
+import type { WebhookEndpointRepositoryPort, WebhookEventCatalogPort, WebhookSecretVaultPort } from '../../ports';
 import type { SignWebhookPayloadCommand } from './sign-webhook-payload.command';
 import type { SignedWebhookPayload, SignWebhookPayloadResult } from './sign-webhook-payload.result';
 
@@ -13,6 +12,7 @@ export class SignWebhookPayloadUseCase {
   constructor(
     private readonly endpoints: WebhookEndpointRepositoryPort,
     private readonly secrets: WebhookSecretVaultPort,
+    private readonly eventCatalog: WebhookEventCatalogPort,
   ) {}
 
   async execute(
@@ -26,7 +26,7 @@ export class SignWebhookPayloadUseCase {
       }));
     }
 
-    if (!isSupportedWebhookEventType(command.eventType)) {
+    if (!this.eventCatalog.isSupported(command.eventType)) {
       return err(new DomainError('validation.failed', 'Webhook event type is not supported', {
         eventType: command.eventType,
       }));
@@ -57,7 +57,7 @@ export class SignWebhookPayloadUseCase {
     }
 
     const payload: SignedWebhookPayload = {
-      payloadVersion: WEBHOOK_PAYLOAD_VERSION,
+      payloadVersion: this.eventCatalog.payloadVersion,
       deliveryId: command.deliveryId,
       eventType: command.eventType,
       occurredAt: command.occurredAt.toISOString(),
