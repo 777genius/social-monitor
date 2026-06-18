@@ -31,6 +31,7 @@
     "check:durable-runtime-proof",
     "check:auth-boundary",
     "check:user-auth-boundary",
+    "check:production-auth-matrix",
     "check:backend-ops-readiness",
     "check:backend-safe-verify",
     "check:external-beta-readiness",

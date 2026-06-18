@@ -23,6 +23,7 @@ const requiredGateIds = new Set([
   'durable-runtime-proof',
   'auth-boundary',
   'user-auth-boundary',
+  'production-auth-matrix',
   'backend-ops-readiness',
   'external-beta-readiness',
   'release-artifact-evidence',

@@ -70,6 +70,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "production-auth-matrix",
+      "command": "npm run check:production-auth-matrix",
+      "blocksRelease": true
+    },
+    {
       "gateId": "backend-ops-readiness",
       "command": "npm run check:backend-ops-readiness",
       "blocksRelease": true

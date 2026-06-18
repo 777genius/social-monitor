@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "matrixId": "production-auth-rest-matrix-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "openApiSnapshot": "libs/contracts/rest/openapi.snapshot.json",
+  "publicOperations": [
+    { "method": "GET", "path": "/health", "reason": "liveness" },
+    { "method": "GET", "path": "/healthz", "reason": "liveness alias" },
+    { "method": "GET", "path": "/ready", "reason": "readiness" },
+    { "method": "GET", "path": "/health/ready", "reason": "readiness alias" },
+    { "method": "GET", "path": "/sources/profiles", "reason": "public source capability catalog" },
+    { "method": "GET", "path": "/beta/launch-support", "reason": "scoped beta support document" },
+    { "method": "GET", "path": "/beta/launch-support/known-limitations", "reason": "scoped beta support document" },
+    { "method": "GET", "path": "/beta/launch-support/post-mvp-backlog", "reason": "scoped beta support document" }
+  ],
+  "surfaces": [
+    {
+      "surfaceId": "topics",
+      "evidenceFiles": [
+        "test/e2e/topics.authorization.e2e-spec.ts",
+        "test/e2e/user-jwt-auth-boundary.e2e-spec.ts",
+        "test/e2e/read-surfaces.api-key-scope.e2e-spec.ts",
+        "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts"
+      ],
+      "operations": [
+        { "method": "GET", "path": "/topics", "action": "topics.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/topics", "action": "topics.create", "apiKeyScope": "write:topics", "roles": ["owner", "admin"] }
+      ]
+    },
+    {
+      "surfaceId": "source-bindings",
+      "evidenceFiles": [
+        "test/e2e/source-bindings.authorization.e2e-spec.ts",
+        "test/e2e/source-bindings.status.e2e-spec.ts",
+        "test/e2e/source-bindings.create.e2e-spec.ts"
+      ],
+      "operations": [
+        { "method": "GET", "path": "/topics/{topicId}/source-bindings", "action": "source_bindings.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/topics/{topicId}/source-bindings", "action": "source_bindings.create", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] },
+        { "method": "GET", "path": "/topics/{topicId}/source-bindings/{sourceBindingId}/health", "action": "source_bindings.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "PATCH", "path": "/topics/{topicId}/source-bindings/{sourceBindingId}/status", "action": "source_bindings.update_status", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] }
+      ]
+    },
+    {
+      "surfaceId": "scans",
+      "evidenceFiles": [
+        "test/e2e/scan-requests.authorization.e2e-spec.ts",
+        "test/e2e/scan-status.authorization.e2e-spec.ts",
+        "test/e2e/scan-policies.authorization.e2e-spec.ts",
+        "test/e2e/scan-dead-letters.authorization.e2e-spec.ts"
+      ],
+      "operations": [
+        { "method": "GET", "path": "/scan-requests/{scanJobId}/status", "action": "scan_jobs.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/source-bindings/{sourceBindingId}/scan-requests", "action": "scan_requests.create", "apiKeyScope": "write:scan_requests", "roles": ["owner", "admin", "member"] },
+        { "method": "GET", "path": "/source-bindings/{sourceBindingId}/scan-policy", "action": "scan_policies.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/source-bindings/{sourceBindingId}/scan-policy", "action": "scan_policies.set", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] },
+        { "method": "GET", "path": "/ingestion/scan-dead-letters", "action": "scan_dead_letters.read", "authModes": ["bearer-oidc-jwt", "workspace-role-dev-test"], "roles": ["owner", "admin"] }
+      ]
+    },
+    {
+      "surfaceId": "feed",
+      "evidenceFiles": [
+        "test/e2e/feed.items.list.e2e-spec.ts",
+        "test/e2e/feed.tenant-scope.e2e-spec.ts",
+        "test/e2e/read-surfaces.api-key-scope.e2e-spec.ts"
+      ],
+      "operations": [
+        { "method": "GET", "path": "/feed/items", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/feed/items/{feedItemId}", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] }
+      ]
+    },
+    {
+      "surfaceId": "summaries",
+      "evidenceFiles": [
+        "test/e2e/summaries.read.e2e-spec.ts",
+        "test/e2e/summary.tenant-scope.e2e-spec.ts",
+        "test/e2e/summary-requests.authorization.e2e-spec.ts",
+        "test/e2e/summary-regenerations.authorization.e2e-spec.ts",
+        "test/e2e/read-surfaces.api-key-scope.e2e-spec.ts",
+        "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts"
+      ],
+      "operations": [
+        { "method": "GET", "path": "/summaries", "action": "summaries.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/summaries/{summaryId}", "action": "summaries.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/summaries/{summaryId}/regenerations", "action": "summary_regenerations.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
+        { "method": "GET", "path": "/summary-jobs/{summaryJobId}/status", "action": "summary_jobs.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/topics/{topicId}/summary-policy", "action": "summary_policies.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "PUT", "path": "/topics/{topicId}/summary-policy", "action": "summary_policies.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin"] },
+        { "method": "POST", "path": "/topics/{topicId}/summary-requests", "action": "summary_requests.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] }
+      ]
+    },
+    {
+      "surfaceId": "feedback",
+      "evidenceFiles": [
+        "test/e2e/summary-feedback.submit.e2e-spec.ts",
+        "test/e2e/summary-ready-to-realtime.e2e-spec.ts",
+        "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts"
+      ],
+      "operations": [
+        { "method": "GET", "path": "/summaries/{summaryId}/feedback", "action": "summary_feedback.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/summaries/{summaryId}/feedback", "action": "summary_feedback.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member", "viewer"] }
+      ]
+    },
+    {
+      "surfaceId": "delivery",
+      "evidenceFiles": [
+        "test/e2e/delivery-attempts.get.e2e-spec.ts",
+        "test/e2e/delivery-attempts.retry.e2e-spec.ts",
+        "test/e2e/delivery-read-tenant-scope.e2e-spec.ts",
+        "test/e2e/digest-schedules.management.e2e-spec.ts",
+        "test/e2e/notification-preferences.rest.e2e-spec.ts",
+        "test/e2e/realtime-events.list.e2e-spec.ts",
+        "test/e2e/webhook-endpoints.authorization.e2e-spec.ts",
+        "test/e2e/webhook-endpoints.api-key-scope.e2e-spec.ts"
+      ],
+      "operations": [
+        { "method": "GET", "path": "/delivery/attempts", "action": "delivery_attempts.read", "apiKeyScope": "read:delivery_status", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/delivery/attempts/{deliveryAttemptId}", "action": "delivery_attempts.read", "apiKeyScope": "read:delivery_status", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/delivery/attempts/{deliveryAttemptId}/retry", "action": "delivery_attempts.retry", "apiKeyScope": "write:delivery_status", "roles": ["owner", "admin", "member"] },
+        { "method": "GET", "path": "/delivery/digest-schedules", "action": "digest_schedules.read", "apiKeyScope": "read:delivery_status", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/delivery/digest-schedules", "action": "digest_schedules.create", "apiKeyScope": "write:delivery_status", "roles": ["owner", "admin", "member"] },
+        { "method": "GET", "path": "/delivery/digest-schedules/{digestScheduleId}", "action": "digest_schedules.read", "apiKeyScope": "read:delivery_status", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/delivery/digests/{digestId}", "action": "digests.read", "apiKeyScope": "read:delivery_status", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/delivery/notification-preferences", "action": "notification_preferences.read", "apiKeyScope": "read:delivery_status", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "PUT", "path": "/delivery/notification-preferences", "action": "notification_preferences.write", "apiKeyScope": "write:delivery_status", "roles": ["owner", "admin", "member"] },
+        { "method": "GET", "path": "/delivery/webhook-endpoints", "action": "webhook_endpoints.read", "apiKeyScope": "read:webhook_endpoints", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/delivery/webhook-endpoints", "action": "webhook_endpoints.create", "apiKeyScope": "write:webhook_endpoints", "roles": ["owner", "admin"] },
+        { "method": "GET", "path": "/delivery/webhook-endpoints/{webhookEndpointId}", "action": "webhook_endpoints.read", "apiKeyScope": "read:webhook_endpoints", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "DELETE", "path": "/delivery/webhook-endpoints/{webhookEndpointId}", "action": "webhook_endpoints.disable", "apiKeyScope": "write:webhook_endpoints", "roles": ["owner", "admin"] },
+        { "method": "GET", "path": "/realtime/events", "action": "realtime_events.read", "apiKeyScope": "read:delivery_status", "roles": ["owner", "admin", "member", "viewer"] }
+      ]
+    },
+    {
+      "surfaceId": "audit",
+      "evidenceFiles": [
+        "test/e2e/usage-audit-events.list.e2e-spec.ts"
+      ],
+      "operations": [
+        { "method": "GET", "path": "/usage/audit-events", "action": "public_api_audit.read", "authModes": ["bearer-oidc-jwt", "workspace-role-dev-test"], "roles": ["owner", "admin"] }
+      ]
+    },
+    {
+      "surfaceId": "api-keys",
+      "evidenceFiles": [
+        "test/e2e/api-keys.authorization.e2e-spec.ts",
+        "test/e2e/api-keys.user-jwt-management.e2e-spec.ts",
+        "test/e2e/api-keys.tenant-scope.e2e-spec.ts"
+      ],
+      "operations": [
+        { "method": "GET", "path": "/identity/api-keys", "action": "api_keys.list", "authModes": ["bearer-oidc-jwt", "workspace-role-dev-test"], "roles": ["owner", "admin"] },
+        { "method": "POST", "path": "/identity/api-keys", "action": "api_keys.create", "authModes": ["bearer-oidc-jwt", "workspace-role-dev-test"], "roles": ["owner", "admin"] },
+        { "method": "DELETE", "path": "/identity/api-keys/{apiKeyId}", "action": "api_keys.revoke", "authModes": ["bearer-oidc-jwt", "workspace-role-dev-test"], "roles": ["owner", "admin"] }
+      ]
+    }
+  ],
+  "globalNegativeCases": [
+    {
+      "caseId": "wrong-tenant",
+      "evidenceFile": "test/e2e/user-jwt-auth-boundary.e2e-spec.ts",
+      "requiredSnippet": "Bearer JWT tenant or workspace does not match request scope"
+    },
+    {
+      "caseId": "wrong-workspace-api-key",
+      "evidenceFile": "test/e2e/webhook-endpoints.api-key-scope.e2e-spec.ts",
+      "requiredSnippet": "different-workspace"
+    },
+    {
+      "caseId": "expired-jwt",
+      "evidenceFile": "test/e2e/user-jwt-auth-boundary.e2e-spec.ts",
+      "requiredSnippet": "Bearer JWT is expired"
+    },
+    {
+      "caseId": "wrong-audience",
+      "evidenceFile": "test/e2e/production-auth-boundary-matrix.e2e-spec.ts",
+      "requiredSnippet": "Bearer JWT audience is not allowed"
+    },
+    {
+      "caseId": "missing-durable-membership",
+      "evidenceFile": "test/e2e/production-auth-boundary-matrix.e2e-spec.ts",
+      "requiredSnippet": "Bearer JWT workspace membership is missing"
+    },
+    {
+      "caseId": "dev-role-header-ignored-in-beta",
+      "evidenceFile": "test/e2e/production-auth-boundary-matrix.e2e-spec.ts",
+      "requiredSnippet": "SOCIAL_MONITOR_RUNTIME_PROFILE: params.runtimeProfile"
+    },
+    {
+      "caseId": "read-scope-matrix",
+      "evidenceFile": "test/e2e/read-surfaces.api-key-scope.e2e-spec.ts",
+      "requiredSnippet": "read feed and summary surfaces without workspace role headers"
+    },
+    {
+      "caseId": "write-scope-matrix",
+      "evidenceFile": "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts",
+      "requiredSnippet": "write-monitoring-api-key-read-only-denied"
+    }
+  ]
+}

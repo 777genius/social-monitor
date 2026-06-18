@@ -49,8 +49,18 @@
       "owner": "identity-owner",
       "status": "contract_ready",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:auth-boundary", "npm run check:user-auth-boundary", "npm run check:read-api-key-scope", "npm run check:write-api-key-scope"],
-      "requiredArtifacts": ["test/e2e/user-jwt-auth-boundary.e2e-spec.ts"],
+      "verificationCommands": [
+        "npm run check:auth-boundary",
+        "npm run check:user-auth-boundary",
+        "npm run check:production-auth-matrix",
+        "npm run check:read-api-key-scope",
+        "npm run check:write-api-key-scope"
+      ],
+      "requiredArtifacts": [
+        "test/e2e/user-jwt-auth-boundary.e2e-spec.ts",
+        "test/e2e/production-auth-boundary-matrix.e2e-spec.ts",
+        "ops/security/production-auth-matrix.json"
+      ],
       "exitCondition": "JWT/OIDC, workspace membership, role and API-key scope matrix stays green against target runtime"
     },
     {
