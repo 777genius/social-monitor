@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "packageId": "backend-ops-readiness-beta-mvp-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "realSocialCredentialsRequiredForThisGate": false,
+  "liveSocialCredentialExitCriteria": [
+    "source provider live beta evidence replaces fixture-only certification for each externally enabled provider",
+    "tenant OAuth/API credentials are provided through approved secret storage and never through committed env files",
+    "rate-limit, quota, rollback and source-health evidence is attached before expanding external beta"
+  ],
+  "releaseContract": "ops/release/mvp-release-evidence-contract.json",
+  "sourceCertification": "ops/ingestion/source-provider-certification.json",
+  "requiredDomains": [
+    {
+      "domainId": "auth-boundary",
+      "gates": ["check:auth-boundary", "check:user-auth-boundary"],
+      "releaseGateIds": ["auth-boundary", "user-auth-boundary"],
+      "artifacts": [".env.example", "docker-compose.yml", "test/e2e/user-jwt-auth-boundary.e2e-spec.ts"]
+    },
+    {
+      "domainId": "durable-runtime",
+      "gates": ["check:runtime-compose", "check:runtime-profile-guards", "check:container", "check:local-infra"],
+      "releaseGateIds": ["runtime-compose-contract", "runtime-profile-guards", "container-contract", "local-infra-contract"],
+      "artifacts": ["docker-compose.yml", "ops/release/persistence-readiness-contract.json"]
+    },
+    {
+      "domainId": "postgres-reliability",
+      "gates": [
+        "check:migrations",
+        "check:tenant-db-guards",
+        "check:persistence-readiness",
+        "check:event-store",
+        "check:monitoring-persistence",
+        "check:ingestion-feed-persistence",
+        "check:summary-persistence",
+        "check:identity-persistence",
+        "check:usage-persistence",
+        "check:delivery-persistence"
+      ],
+      "releaseGateIds": [
+        "migration-safety",
+        "tenant-db-guards",
+        "persistence-readiness",
+        "platform-event-store",
+        "monitoring-prisma-persistence",
+        "ingestion-feed-prisma-persistence",
+        "summary-prisma-persistence",
+        "identity-prisma-persistence",
+        "usage-prisma-persistence",
+        "delivery-prisma-persistence"
+      ],
+      "artifacts": ["prisma/schema.prisma", "ops/recovery/backup-restore-contract.json", "ops/privacy/retention-contract.json"]
+    },
+    {
+      "domainId": "rabbitmq-reliability",
+      "gates": [
+        "check:rabbitmq-queue-publisher",
+        "check:scan-queue-drain-loop",
+        "check:summary-queue-drain-loop",
+        "check:delivery-attempt-queue-drain-loop",
+        "check:event-relay"
+      ],
+      "releaseGateIds": [
+        "rabbitmq-queue-publisher",
+        "scan-queue-drain-loop",
+        "summary-queue-drain-loop",
+        "delivery-attempt-queue-drain-loop",
+        "event-relay"
+      ],
+      "artifacts": ["docker-compose.yml"]
+    },
+    {
+      "domainId": "observability-and-drills",
+      "gates": ["check:observability", "check:backup-restore", "check:retention", "check:retention-plan", "check:drills"],
+      "releaseGateIds": ["observability-contract", "backup-restore-contract", "retention-contract", "retention-plan", "staging-drills"],
+      "artifacts": [
+        "ops/observability/dashboards/mvp-health.json",
+        "ops/observability/alerts/mvp-alerts.json",
+        "ops/recovery/backup-restore-contract.json",
+        "ops/privacy/retention-contract.json",
+        "ops/drills/mvp-staging-drills.json"
+      ]
+    },
+    {
+      "domainId": "source-scope",
+      "gates": ["check:source-certification", "check:beta-scope-policy", "check:beta-ring-policy"],
+      "releaseGateIds": ["source-provider-certification", "beta-scope-policy", "beta-ring-policy"],
+      "artifacts": [
+        "ops/ingestion/source-provider-certification.json",
+        "ops/release/beta-ring-expansion-policy.json",
+        "ops/release/beta-ring-expansion-decision-record.json"
+      ]
+    },
+    {
+      "domainId": "mvp-loop",
+      "gates": ["check:mvp-core-loop", "check:openapi", "check:events", "check:usage-audit-rest"],
+      "releaseGateIds": ["mvp-core-loop", "openapi-drift", "event-contracts", "usage-audit-rest"],
+      "artifacts": ["libs/contracts/rest/openapi.snapshot.json", "libs/contracts/events/event-catalog.json"]
+    }
+  ],
+  "requiredRuntimeMarkers": [
+    {
+      "file": "docker-compose.yml",
+      "marker": "SOCIAL_MONITOR_RUNTIME_PROFILE: beta"
+    },
+    {
+      "file": "docker-compose.yml",
+      "marker": "SOCIAL_MONITOR_USER_AUTH_MODE: ${SOCIAL_MONITOR_USER_AUTH_MODE:-oidc-jwt}"
+    },
+    {
+      "file": "docker-compose.yml",
+      "marker": "MONITORING_SCAN_QUEUE: rabbitmq"
+    },
+    {
+      "file": "docker-compose.yml",
+      "marker": "SUMMARY_JOB_QUEUE_MODE: rabbitmq"
+    },
+    {
+      "file": "docker-compose.yml",
+      "marker": "DELIVERY_ATTEMPT_QUEUE_READER: rabbitmq"
+    },
+    {
+      "file": "docker-compose.yml",
+      "marker": "EVENT_RELAY_LOOP: enabled"
+    }
+  ],
+  "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#release-rollback-triage",
+  "promotionDoc": "docs/iterations/06-production-hardening/42-release-gate-and-promotion.md"
+}

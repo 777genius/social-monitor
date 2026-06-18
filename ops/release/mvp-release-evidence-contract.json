@@ -40,6 +40,26 @@
       "blocksRelease": true
     },
     {
+      "gateId": "runtime-profile-guards",
+      "command": "npm run check:runtime-profile-guards",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "auth-boundary",
+      "command": "npm run check:auth-boundary",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "user-auth-boundary",
+      "command": "npm run check:user-auth-boundary",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "backend-ops-readiness",
+      "command": "npm run check:backend-ops-readiness",
+      "blocksRelease": true
+    },
+    {
       "gateId": "observability-contract",
       "command": "npm run check:observability",
       "blocksRelease": true
@@ -87,6 +107,11 @@
     {
       "gateId": "migration-safety",
       "command": "npm run check:migrations",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "tenant-db-guards",
+      "command": "npm run check:tenant-db-guards",
       "blocksRelease": true
     },
     {
@@ -207,6 +232,11 @@
     {
       "gateId": "usage-prisma-persistence",
       "command": "npm run check:usage-persistence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "usage-audit-rest",
+      "command": "npm run check:usage-audit-rest",
       "blocksRelease": true
     },
     {
