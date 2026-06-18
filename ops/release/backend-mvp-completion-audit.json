@@ -1,0 +1,386 @@
+{
+  "schemaVersion": 1,
+  "auditId": "backend-mvp-completion-audit-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "completionStatus": "hold_until_external_evidence",
+  "externalBetaDecision": "hold",
+  "mvpExitRequiresAllRequirementsPassed": true,
+  "requirements": [
+    {
+      "requirementId": "release-baseline-freeze",
+      "planLabel": "Release Baseline Freeze",
+      "status": "contract_ready",
+      "owner": "release-owner",
+      "externalReadinessGroupId": "release-baseline-freeze",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "ops/release/release-baseline-contract.json",
+        "ops/release/backend-safe-verify-contract.json",
+        "ops/release/release-artifact-evidence.json"
+      ],
+      "backendSafeVerificationCommands": [
+        "npm run check:release-baseline",
+        "npm run check:backend-safe-verify",
+        "npm run check:release-artifact-evidence"
+      ],
+      "externalVerificationCommands": [],
+      "releaseGateIds": ["release-baseline", "backend-safe-verify-contract", "release-artifact-evidence"],
+      "exitCondition": "release commit, backend-safe gates, OpenAPI, event catalog, Prisma schema and release evidence are frozen for the release candidate",
+      "goCondition": "backend-safe verification chain is green for the release commit"
+    },
+    {
+      "requirementId": "durable-runtime-proof",
+      "planLabel": "Durable Runtime Proof",
+      "status": "pending_staging_evidence",
+      "owner": "backend-lead",
+      "externalReadinessGroupId": "durable-runtime-proof",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "ops/release/durable-runtime-proof.json",
+        "ops/release/persistence-readiness-contract.json",
+        "docker-compose.yml"
+      ],
+      "backendSafeVerificationCommands": [
+        "npm run check:durable-runtime-proof",
+        "npm run check:persistence-readiness",
+        "npm run check:runtime-compose",
+        "npm run check:runtime-profile-guards"
+      ],
+      "externalVerificationCommands": [],
+      "releaseGateIds": [
+        "durable-runtime-proof",
+        "persistence-readiness",
+        "runtime-compose-contract",
+        "runtime-profile-guards"
+      ],
+      "exitCondition": "API, ingestion-worker, intelligence-worker, delivery-service and event-relay are proven on Postgres, RabbitMQ and real auth selectors in staging",
+      "goCondition": "no beta/staging process uses in-memory or noop adapters"
+    },
+    {
+      "requirementId": "production-auth-finalization",
+      "planLabel": "Production Auth Finalization",
+      "status": "contract_ready",
+      "owner": "identity-owner",
+      "externalReadinessGroupId": "production-auth-finalization",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "ops/security/production-auth-matrix.json",
+        "test/e2e/user-jwt-auth-boundary.e2e-spec.ts",
+        "test/e2e/production-auth-boundary-matrix.e2e-spec.ts"
+      ],
+      "backendSafeVerificationCommands": [
+        "npm run check:auth-boundary",
+        "npm run check:user-auth-boundary",
+        "npm run check:production-auth-matrix",
+        "npm run check:read-api-key-scope",
+        "npm run check:write-api-key-scope"
+      ],
+      "externalVerificationCommands": [],
+      "releaseGateIds": [
+        "auth-boundary",
+        "user-auth-boundary",
+        "production-auth-matrix",
+        "api-key-read-scope",
+        "api-key-write-scope"
+      ],
+      "exitCondition": "JWT/OIDC, workspace membership, roles and API-key scopes are enforced on every REST surface",
+      "goCondition": "wrong tenant, wrong workspace, expired JWT, wrong audience and dev role header bypasses stay rejected"
+    },
+    {
+      "requirementId": "source-provider-live-certification",
+      "planLabel": "Source Provider Live Certification",
+      "status": "blocked_without_live_credentials",
+      "owner": "source-owner",
+      "externalReadinessGroupId": "source-provider-live-certification",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "ops/ingestion/source-provider-certification.json",
+        "ops/ingestion/source-live-certification-evidence.json"
+      ],
+      "backendSafeVerificationCommands": [
+        "npm run check:source-certification",
+        "npm run check:source-live-certification-evidence"
+      ],
+      "externalVerificationCommands": ["npm run check:live-open-connectors", "npm run check:live-reddit-oauth"],
+      "releaseGateIds": ["source-provider-certification", "source-live-certification-evidence"],
+      "exitCondition": "HN, RSS, GitHub and Reddit have live smoke, auth, rate-limit and credential lifecycle evidence attached",
+      "goCondition": "Telegram and X stay deferred while enabled external providers are live-certified"
+    },
+    {
+      "requirementId": "credential-secret-runtime-flow",
+      "planLabel": "Credential & Secret Runtime Flow",
+      "status": "pending_staging_evidence",
+      "owner": "security-owner",
+      "externalReadinessGroupId": "credential-secret-runtime-flow",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "ops/security/credential-secret-runtime-flow.json",
+        "ops/security/secret-scan-allowlist.json",
+        "ops/privacy/retention-contract.json"
+      ],
+      "backendSafeVerificationCommands": [
+        "npm run check:credential-secret-runtime-flow",
+        "npm run check:secrets",
+        "npm run check:source-config-protector",
+        "npm run check:http-webhook-delivery-provider"
+      ],
+      "externalVerificationCommands": [],
+      "releaseGateIds": [
+        "credential-secret-runtime-flow",
+        "secret-scan",
+        "source-config-protector",
+        "http-webhook-delivery-provider"
+      ],
+      "exitCondition": "source credentials, webhook secrets, OIDC, DB and RabbitMQ secrets use approved runtime boundaries",
+      "goCondition": "source and webhook secret rotation drill plus redaction proof are attached"
+    },
+    {
+      "requirementId": "rabbitmq-staging-reliability-drill",
+      "planLabel": "RabbitMQ Staging Reliability Drill",
+      "status": "pending_staging_evidence",
+      "owner": "ops-owner",
+      "externalReadinessGroupId": "rabbitmq-staging-reliability-drill",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "ops/drills/mvp-staging-drills.json",
+        "ops/drills/staging-reliability-evidence.json",
+        "ops/observability/dashboards/mvp-health.json",
+        "ops/observability/alerts/mvp-alerts.json"
+      ],
+      "backendSafeVerificationCommands": [
+        "npm run check:rabbitmq-queue-publisher",
+        "npm run check:scan-queue-drain-loop",
+        "npm run check:summary-queue-drain-loop",
+        "npm run check:delivery-attempt-queue-drain-loop",
+        "npm run check:event-relay",
+        "npm run check:staging-reliability-evidence"
+      ],
+      "externalVerificationCommands": [],
+      "releaseGateIds": [
+        "rabbitmq-queue-publisher",
+        "scan-queue-drain-loop",
+        "summary-queue-drain-loop",
+        "delivery-attempt-queue-drain-loop",
+        "event-relay",
+        "staging-reliability-evidence"
+      ],
+      "exitCondition": "real RabbitMQ staging drill output proves confirms, persistent publish, ack/nack, DLX, quorum limit, restart recovery, lag metrics and event relay retry",
+      "goCondition": "drill artifact hash, environment id, image digest, operator and timestamps are attached"
+    },
+    {
+      "requirementId": "postgres-restore-migration-drill",
+      "planLabel": "Postgres Restore & Migration Drill",
+      "status": "pending_staging_evidence",
+      "owner": "ops-owner",
+      "externalReadinessGroupId": "postgres-restore-migration-drill",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "ops/recovery/backup-restore-contract.json",
+        "ops/drills/staging-reliability-evidence.json",
+        "prisma/schema.prisma"
+      ],
+      "backendSafeVerificationCommands": [
+        "npm run check:migrations",
+        "npm run check:backup-restore",
+        "npm run check:persistence-readiness",
+        "npm run check:tenant-db-guards",
+        "npm run check:staging-reliability-evidence"
+      ],
+      "externalVerificationCommands": [],
+      "releaseGateIds": [
+        "migration-safety",
+        "backup-restore-contract",
+        "persistence-readiness",
+        "tenant-db-guards",
+        "staging-reliability-evidence"
+      ],
+      "exitCondition": "staging backup and restore prove RPO/RTO, validation queries, migration version and idempotency state",
+      "goCondition": "stop workers, restore, resume path creates no duplicate scan, feed, summary or delivery side effects"
+    },
+    {
+      "requirementId": "durable-backend-e2e-loop",
+      "planLabel": "End-to-End Backend Beta Loop On Durable Runtime",
+      "status": "pending_staging_evidence",
+      "owner": "backend-lead",
+      "externalReadinessGroupId": "durable-backend-e2e-loop",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "libs/contracts/rest/openapi.snapshot.json",
+        "ops/release/e2e-acceptance-traceability.json",
+        "ops/drills/staging-reliability-evidence.json"
+      ],
+      "backendSafeVerificationCommands": [
+        "npm run check:mvp-core-loop",
+        "npm run check:openapi",
+        "npm run check:e2e-traceability",
+        "npm run check:staging-reliability-evidence"
+      ],
+      "externalVerificationCommands": [],
+      "releaseGateIds": ["mvp-core-loop", "openapi-drift", "staging-reliability-evidence"],
+      "exitCondition": "topic to source binding to scheduled scan to feed to summary to feedback to digest/webhook/realtime to audit passes on durable runtime",
+      "goCondition": "tenant isolation and idempotency are proven through the full durable loop"
+    },
+    {
+      "requirementId": "summary-quality-feedback-hardening",
+      "planLabel": "Summary Quality & Feedback Hardening",
+      "status": "blocked_until_real_feedback",
+      "owner": "summary-owner",
+      "externalReadinessGroupId": "summary-quality-feedback-hardening",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "ops/release/beta-feedback-classification-report.json",
+        "ops/release/summary-feedback-hardening-evidence.json",
+        "ops/evals/summary-eval-output.json",
+        "ops/cost/summary-cost-attribution.json"
+      ],
+      "backendSafeVerificationCommands": [
+        "npm run check:beta-feedback-report",
+        "npm run check:summary-evals",
+        "npm run check:summary-evidence-smoke",
+        "npm run check:summary-cost",
+        "npm run check:summary-window",
+        "npm run check:summary-retry",
+        "npm run check:summary-feedback-hardening"
+      ],
+      "externalVerificationCommands": [],
+      "releaseGateIds": [
+        "beta-feedback-report",
+        "summary-eval-regression",
+        "summary-evidence-citations",
+        "summary-cost-attribution",
+        "summary-window-freshness",
+        "summary-retry-safety",
+        "summary-feedback-hardening"
+      ],
+      "exitCondition": "redacted real/internal dogfood samples replace fixture-only feedback report",
+      "goCondition": "every blocker becomes an eval fixture, validator change or runbook action and summary claim/citation/cost/stale markers block release"
+    },
+    {
+      "requirementId": "operational-support-package",
+      "planLabel": "Operational Support Package",
+      "status": "contract_ready",
+      "owner": "ops-owner",
+      "externalReadinessGroupId": "operational-support-package",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "ops/observability/dashboards/mvp-health.json",
+        "ops/observability/alerts/mvp-alerts.json",
+        "ops/drills/mvp-staging-drills.json",
+        "ops/release/operational-support-package.json",
+        "docs/iterations/06-production-hardening/12-operational-runbook.md"
+      ],
+      "backendSafeVerificationCommands": [
+        "npm run check:observability",
+        "npm run check:drills",
+        "npm run check:operational-support-package",
+        "npm run check:beta-launch-support"
+      ],
+      "externalVerificationCommands": [],
+      "releaseGateIds": [
+        "observability-contract",
+        "staging-drills",
+        "operational-support-package",
+        "beta-launch-support"
+      ],
+      "exitCondition": "dashboards, alerts, runbook anchors, first mitigations, diagnostic fields and support API checks are operator-ready",
+      "goCondition": "DLQ triage, provider outage, rate-limit, summary cost spike and delivery failure spike paths are covered"
+    },
+    {
+      "requirementId": "capacity-envelope-beta-ring-decision",
+      "planLabel": "Capacity Envelope & Beta Ring Decision",
+      "status": "hold",
+      "owner": "release-owner",
+      "externalReadinessGroupId": "capacity-envelope-beta-ring-decision",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "ops/release/beta-ring-expansion-policy.json",
+        "ops/release/beta-ring-expansion-decision-record.json",
+        "ops/release/capacity-envelope-beta-ring-decision.json"
+      ],
+      "backendSafeVerificationCommands": [
+        "npm run check:load-cost",
+        "npm run check:beta-ring-policy",
+        "npm run check:beta-ring-decision",
+        "npm run check:capacity-envelope-beta-ring-decision"
+      ],
+      "externalVerificationCommands": [],
+      "releaseGateIds": [
+        "load-cost-guardrail",
+        "beta-ring-policy",
+        "beta-ring-decision",
+        "capacity-envelope-beta-ring-decision"
+      ],
+      "exitCondition": "tenant, workspace, topic, source, scan, queue, cost and delivery limits are set for the beta ring",
+      "goCondition": "decision changes from hold to go only after durable runtime, live source, real feedback, staging reliability and release artifact evidence pass"
+    },
+    {
+      "requirementId": "release-artifact-evidence",
+      "planLabel": "Release Artifact Evidence",
+      "status": "pending_image_digest_and_deploy_smoke",
+      "owner": "release-owner",
+      "externalReadinessGroupId": "release-artifact-evidence",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "ops/release/release-artifact-evidence.json",
+        "ops/release/mvp-release-evidence-contract.json"
+      ],
+      "backendSafeVerificationCommands": ["npm run check:release-artifact-evidence", "npm run check:release"],
+      "externalVerificationCommands": [],
+      "releaseGateIds": ["release-artifact-evidence"],
+      "exitCondition": "commit SHA, migration version, OpenAPI/event catalog hashes, image digest and deploy smoke output are attached",
+      "goCondition": "promoted backend image digest and deploy smoke evidence are immutable and hash-verified"
+    },
+    {
+      "requirementId": "security-final-sweep",
+      "planLabel": "Security Final Sweep",
+      "status": "pending_staging_evidence",
+      "owner": "security-owner",
+      "externalReadinessGroupId": "security-final-sweep",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "ops/security/security-final-sweep-evidence.json",
+        "ops/security/dependency-audit-policy.json",
+        "ops/security/secret-scan-allowlist.json"
+      ],
+      "backendSafeVerificationCommands": [
+        "npm run check:security-final-sweep",
+        "npm run check:secrets",
+        "npm run check:dependencies",
+        "npm run check:user-auth-boundary",
+        "npm run check:usage-audit-rest"
+      ],
+      "externalVerificationCommands": [],
+      "releaseGateIds": [
+        "security-final-sweep",
+        "secret-scan",
+        "dependency-audit",
+        "user-auth-boundary",
+        "usage-audit-rest"
+      ],
+      "exitCondition": "secret scan, dependency audit, auth e2e, redaction tests, audit event review and public error review are green",
+      "goCondition": "logs and metrics contain no tokens, secret URLs, raw provider payloads, prompt text or source raw text"
+    },
+    {
+      "requirementId": "no-go-cleanup",
+      "planLabel": "No-Go Cleanup",
+      "status": "contract_ready",
+      "owner": "release-owner",
+      "externalReadinessGroupId": "no-go-cleanup",
+      "blocksMvpExit": true,
+      "authoritativeArtifacts": [
+        "ops/release/external-beta-readiness-contract.json",
+        "ops/release/no-go-cleanup-contract.json"
+      ],
+      "backendSafeVerificationCommands": [
+        "npm run check:external-beta-readiness",
+        "npm run check:no-go-cleanup",
+        "npm run check:beta-ring-decision"
+      ],
+      "externalVerificationCommands": [],
+      "releaseGateIds": ["external-beta-readiness", "no-go-cleanup", "beta-ring-decision"],
+      "exitCondition": "misleading beta-ready claims are removed or qualified and every exception has owner, exit condition and blocking status",
+      "goCondition": "no required evidence group is pending, blocked or hold"
+    }
+  ]
+}

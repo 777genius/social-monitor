@@ -18,6 +18,7 @@
     "check:staging-reliability-evidence",
     "check:summary-feedback-hardening",
     "check:backend-ops-readiness",
+    "check:backend-mvp-completion-audit",
     "check:operational-support-package",
     "check:capacity-envelope-beta-ring-decision",
     "check:no-go-cleanup",
@@ -52,6 +53,10 @@
     {
       "artifactId": "backend-ops-readiness",
       "path": "ops/release/backend-ops-readiness-contract.json"
+    },
+    {
+      "artifactId": "backend-mvp-completion-audit",
+      "path": "ops/release/backend-mvp-completion-audit.json"
     },
     {
       "artifactId": "production-auth-matrix",

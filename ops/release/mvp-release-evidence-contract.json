@@ -95,6 +95,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "backend-mvp-completion-audit",
+      "command": "npm run check:backend-mvp-completion-audit",
+      "blocksRelease": true
+    },
+    {
       "gateId": "no-go-cleanup",
       "command": "npm run check:no-go-cleanup",
       "blocksRelease": true

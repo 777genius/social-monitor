@@ -28,6 +28,7 @@ const requiredGateIds = new Set([
   'credential-secret-runtime-flow',
   'backend-ops-readiness',
   'external-beta-readiness',
+  'backend-mvp-completion-audit',
   'no-go-cleanup',
   'release-artifact-evidence',
   'observability-contract',

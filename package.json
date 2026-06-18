@@ -12,6 +12,7 @@
     "check:api-health": "node scripts/run-with-timeout.mjs --timeout-ms 30000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-api-health-smoke.ts",
     "check:auth-boundary": "node scripts/check-auth-boundary.mjs",
     "check:backend-ops-readiness": "node scripts/check-backend-ops-readiness.mjs",
+    "check:backend-mvp-completion-audit": "node scripts/check-backend-mvp-completion-audit.mjs",
     "check:backend-safe-verify": "node scripts/check-backend-safe-verify.mjs",
     "check:user-auth-boundary": "node scripts/run-with-timeout.mjs --timeout-ms 90000 --clean-env --node-options --max-old-space-size=512 -- jest --config test/jest-e2e.config.ts --runInBand --runTestsByPath test/e2e/user-jwt-auth-boundary.e2e-spec.ts test/e2e/api-keys.user-jwt-management.e2e-spec.ts test/e2e/scan-dead-letters.authorization.e2e-spec.ts test/e2e/usage-audit-events.list.e2e-spec.ts test/e2e/production-auth-boundary-matrix.e2e-spec.ts",
     "check:backup-restore": "node scripts/check-backup-restore.mjs",

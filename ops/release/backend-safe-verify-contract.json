@@ -35,6 +35,7 @@
     "check:production-auth-matrix",
     "check:credential-secret-runtime-flow",
     "check:backend-ops-readiness",
+    "check:backend-mvp-completion-audit",
     "check:backend-safe-verify",
     "check:external-beta-readiness",
     "check:no-go-cleanup",
