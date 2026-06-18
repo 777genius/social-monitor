@@ -5,6 +5,40 @@
   "proofMode": "compose_contract_without_live_deploy",
   "externalBetaStatus": "hold_until_staging_runtime_evidence",
   "composeFile": "docker-compose.yml",
+  "stagingRuntimeEvidence": {
+    "status": "pending_staging_evidence",
+    "requiredForExternalBeta": true,
+    "owner": "backend-lead",
+    "artifactPath": null,
+    "environmentId": null,
+    "imageDigest": null,
+    "sampledAt": null,
+    "exitCondition": "Attach staging runtime selector evidence proving API and workers use Postgres, RabbitMQ and OIDC/JWT selectors."
+  },
+  "stagingRuntimeEvidenceSchema": {
+    "artifactFormat": "durable-runtime-selector-artifact-v1",
+    "exampleArtifact": "ops/release/fixtures/durable-runtime-selector-artifact-examples.json",
+    "requiredServices": [
+      "api-gateway",
+      "ingestion-worker",
+      "intelligence-worker",
+      "delivery-service",
+      "event-relay"
+    ],
+    "requiredSharedSelectors": {
+      "SOCIAL_MONITOR_RUNTIME_PROFILE": "beta",
+      "DATABASE_URL_KIND": "postgresql",
+      "RABBITMQ_URL_KIND": "amqp",
+      "SOCIAL_MONITOR_USER_AUTH_MODE": "oidc-jwt"
+    },
+    "forbiddenSelectorValues": [
+      "in-memory",
+      "noop",
+      "auth-disabled",
+      "event-relay-disabled"
+    ],
+    "exitCondition": "DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH must validate against durable-runtime-selector-artifact-v1 before external beta go."
+  },
   "requiredComposeMarkers": [
     "SOCIAL_MONITOR_RUNTIME_PROFILE: beta",
     "DATABASE_URL: postgresql://social_monitor:social_monitor_local_password@postgres:5432/social_monitor",
@@ -53,6 +87,7 @@
     "SOCIAL_MONITOR_USER_AUTH_MODE: disabled"
   ],
   "stagingExitCriteria": [
+    "DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH validates against durable-runtime-selector-artifact-v1",
     "deploy the same image digest with the durable selector set",
     "run backend beta loop against shared Postgres and RabbitMQ",
     "prove worker restart keeps scan/feed/summary/delivery state visible",

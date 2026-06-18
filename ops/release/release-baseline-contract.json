@@ -68,6 +68,14 @@
       "path": "ops/release/external-beta-evidence-runner.json"
     },
     {
+      "artifactId": "durable-runtime-proof",
+      "path": "ops/release/durable-runtime-proof.json"
+    },
+    {
+      "artifactId": "durable-runtime-selector-artifact-example",
+      "path": "ops/release/fixtures/durable-runtime-selector-artifact-examples.json"
+    },
+    {
       "artifactId": "production-auth-matrix",
       "path": "ops/security/production-auth-matrix.json"
     },

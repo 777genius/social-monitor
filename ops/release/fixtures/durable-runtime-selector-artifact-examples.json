@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "durable-runtime-selector-artifact-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "environment": {
+    "environmentId": "staging-runtime-selector-example",
+    "imageDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "sampledAt": "2026-06-18T00:00:00.000Z",
+    "operator": "backend-lead"
+  },
+  "services": [
+    {
+      "serviceId": "api-gateway",
+      "runtimeProfile": "beta",
+      "sharedSelectors": {
+        "SOCIAL_MONITOR_RUNTIME_PROFILE": "beta",
+        "DATABASE_URL_KIND": "postgresql",
+        "RABBITMQ_URL_KIND": "amqp",
+        "SOCIAL_MONITOR_USER_AUTH_MODE": "oidc-jwt"
+      },
+      "serviceSelectors": {
+        "MONITORING_PERSISTENCE": "prisma",
+        "MONITORING_SCAN_QUEUE": "rabbitmq",
+        "FEED_PERSISTENCE": "prisma",
+        "SUMMARY_PERSISTENCE": "prisma",
+        "SUMMARY_JOB_QUEUE_MODE": "rabbitmq",
+        "DELIVERY_PERSISTENCE": "prisma",
+        "DELIVERY_WEBHOOK_PROVIDER": "http",
+        "IDENTITY_PERSISTENCE": "prisma",
+        "USAGE_PERSISTENCE": "prisma"
+      },
+      "forbiddenSelectorValuesFound": [],
+      "healthCheck": {
+        "status": "passed",
+        "checkedAt": "2026-06-18T00:00:00.000Z"
+      }
+    },
+    {
+      "serviceId": "ingestion-worker",
+      "runtimeProfile": "beta",
+      "sharedSelectors": {
+        "SOCIAL_MONITOR_RUNTIME_PROFILE": "beta",
+        "DATABASE_URL_KIND": "postgresql",
+        "RABBITMQ_URL_KIND": "amqp",
+        "SOCIAL_MONITOR_USER_AUTH_MODE": "oidc-jwt"
+      },
+      "serviceSelectors": {
+        "INGESTION_SUPPORT_PERSISTENCE": "prisma",
+        "INGESTION_WORKER_PERSISTENCE": "prisma",
+        "INGESTION_SCAN_QUEUE_READER": "rabbitmq",
+        "INGESTION_SCAN_QUEUE_DRAIN_LOOP": "enabled",
+        "INGESTION_SCAN_REPORTER": "monitoring",
+        "MONITORING_PERSISTENCE": "prisma",
+        "FEED_PERSISTENCE": "prisma"
+      },
+      "forbiddenSelectorValuesFound": [],
+      "healthCheck": {
+        "status": "passed",
+        "checkedAt": "2026-06-18T00:00:00.000Z"
+      }
+    },
+    {
+      "serviceId": "intelligence-worker",
+      "runtimeProfile": "beta",
+      "sharedSelectors": {
+        "SOCIAL_MONITOR_RUNTIME_PROFILE": "beta",
+        "DATABASE_URL_KIND": "postgresql",
+        "RABBITMQ_URL_KIND": "amqp",
+        "SOCIAL_MONITOR_USER_AUTH_MODE": "oidc-jwt"
+      },
+      "serviceSelectors": {
+        "SUMMARY_PERSISTENCE": "prisma",
+        "SUMMARY_JOB_QUEUE_MODE": "rabbitmq",
+        "INTELLIGENCE_SUMMARY_QUEUE_READER": "rabbitmq",
+        "INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP": "enabled",
+        "INTELLIGENCE_SUMMARY_JOB_LOOP": "disabled"
+      },
+      "forbiddenSelectorValuesFound": [],
+      "healthCheck": {
+        "status": "passed",
+        "checkedAt": "2026-06-18T00:00:00.000Z"
+      }
+    },
+    {
+      "serviceId": "delivery-service",
+      "runtimeProfile": "beta",
+      "sharedSelectors": {
+        "SOCIAL_MONITOR_RUNTIME_PROFILE": "beta",
+        "DATABASE_URL_KIND": "postgresql",
+        "RABBITMQ_URL_KIND": "amqp",
+        "SOCIAL_MONITOR_USER_AUTH_MODE": "oidc-jwt"
+      },
+      "serviceSelectors": {
+        "DELIVERY_PERSISTENCE": "prisma",
+        "DELIVERY_WEBHOOK_PROVIDER": "http",
+        "DELIVERY_ATTEMPT_DISPATCH_TARGET": "queue",
+        "DELIVERY_ATTEMPT_DISPATCH_QUEUE": "rabbitmq",
+        "DELIVERY_ATTEMPT_QUEUE_READER": "rabbitmq",
+        "DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP": "enabled"
+      },
+      "forbiddenSelectorValuesFound": [],
+      "healthCheck": {
+        "status": "passed",
+        "checkedAt": "2026-06-18T00:00:00.000Z"
+      }
+    },
+    {
+      "serviceId": "event-relay",
+      "runtimeProfile": "beta",
+      "sharedSelectors": {
+        "SOCIAL_MONITOR_RUNTIME_PROFILE": "beta",
+        "DATABASE_URL_KIND": "postgresql",
+        "RABBITMQ_URL_KIND": "amqp",
+        "SOCIAL_MONITOR_USER_AUTH_MODE": "oidc-jwt"
+      },
+      "serviceSelectors": {
+        "EVENT_RELAY_LOOP": "enabled"
+      },
+      "forbiddenSelectorValuesFound": [],
+      "healthCheck": {
+        "status": "passed",
+        "checkedAt": "2026-06-18T00:00:00.000Z"
+      }
+    }
+  ],
+  "rollup": {
+    "allServicesDurable": true,
+    "forbiddenSelectorsFound": false,
+    "runtimeProfile": "beta"
+  }
+}
