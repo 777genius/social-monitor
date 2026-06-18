@@ -229,8 +229,15 @@
       "owner": "release-owner",
       "status": "contract_ready",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:external-beta-readiness", "npm run check:beta-ring-decision"],
-      "requiredArtifacts": ["ops/release/external-beta-readiness-contract.json"],
+      "verificationCommands": [
+        "npm run check:external-beta-readiness",
+        "npm run check:no-go-cleanup",
+        "npm run check:beta-ring-decision"
+      ],
+      "requiredArtifacts": [
+        "ops/release/external-beta-readiness-contract.json",
+        "ops/release/no-go-cleanup-contract.json"
+      ],
       "exitCondition": "all fixture-ready or pending evidence claims have owner, exit condition and blocking status"
     }
   ],

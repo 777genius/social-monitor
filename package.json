@@ -66,6 +66,7 @@
     "check:migrations": "node scripts/check-migrations.mjs",
     "check:mobile-client-contract": "node scripts/check-mobile-client-contract.mjs",
     "check:mvp-core-loop": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-mvp-core-loop-smoke.ts",
+    "check:no-go-cleanup": "node scripts/check-no-go-cleanup.mjs",
     "check:observability": "node scripts/check-observability.mjs",
     "check:openapi": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --clean-env --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-openapi.ts",
     "check:persistence-readiness": "node scripts/check-persistence-readiness.mjs",

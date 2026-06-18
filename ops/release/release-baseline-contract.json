@@ -18,6 +18,7 @@
     "check:staging-reliability-evidence",
     "check:summary-feedback-hardening",
     "check:backend-ops-readiness",
+    "check:no-go-cleanup",
     "check:release",
     "check:e2e-traceability",
     "build",
@@ -68,6 +69,10 @@
     {
       "artifactId": "summary-feedback-hardening",
       "path": "ops/release/summary-feedback-hardening-evidence.json"
+    },
+    {
+      "artifactId": "no-go-cleanup",
+      "path": "ops/release/no-go-cleanup-contract.json"
     }
   ]
 }

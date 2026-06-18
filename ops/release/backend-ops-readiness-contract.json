@@ -189,6 +189,7 @@
         "check:backend-safe-verify",
         "check:durable-runtime-proof",
         "check:external-beta-readiness",
+        "check:no-go-cleanup",
         "check:release-artifact-evidence"
       ],
       "releaseGateIds": [
@@ -196,6 +197,7 @@
         "backend-safe-verify-contract",
         "durable-runtime-proof",
         "external-beta-readiness",
+        "no-go-cleanup",
         "release-artifact-evidence"
       ],
       "artifacts": [
@@ -203,6 +205,7 @@
         "ops/release/backend-safe-verify-contract.json",
         "ops/release/durable-runtime-proof.json",
         "ops/release/external-beta-readiness-contract.json",
+        "ops/release/no-go-cleanup-contract.json",
         "ops/release/release-artifact-evidence.json"
       ]
     }

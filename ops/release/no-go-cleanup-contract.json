@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "contractId": "no-go-cleanup-backend-mvp-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "externalBetaStatus": "hold_until_all_exceptions_resolved",
+  "externalReadinessContract": "ops/release/external-beta-readiness-contract.json",
+  "requiredExceptionIds": [
+    "fixture-source-certification",
+    "staging-drills-not-run",
+    "image-digest-not-attached",
+    "feedback-report-is-fixture-only"
+  ],
+  "forbiddenExternalGoClaimPatterns": [
+    "external beta is ready",
+    "ready for external beta",
+    "external-beta ready",
+    "beta-ready",
+    "production ready",
+    "production-ready"
+  ],
+  "claimAudits": [
+    {
+      "claimId": "external-beta-decision-held",
+      "artifact": "ops/release/external-beta-readiness-contract.json",
+      "currentClaim": "\"externalBetaDecision\": \"hold\"",
+      "requiredQualifier": "\"blocksExternalBeta\": true",
+      "owner": "release-owner",
+      "blocking": true,
+      "exitCondition": "Change decision to go only after every required evidence group is passed."
+    },
+    {
+      "claimId": "source-live-evidence-pending",
+      "artifact": "ops/ingestion/source-live-certification-evidence.json",
+      "currentClaim": "\"externalBetaStatus\": \"hold_until_live_provider_evidence\"",
+      "requiredQualifier": "\"status\": \"pending_live_evidence\"",
+      "owner": "source-owner",
+      "blocking": true,
+      "exitCondition": "Attach live HN, RSS, GitHub and Reddit evidence artifacts before claiming live source readiness."
+    },
+    {
+      "claimId": "staging-drills-pending",
+      "artifact": "ops/drills/staging-reliability-evidence.json",
+      "currentClaim": "\"externalBetaStatus\": \"hold_until_real_staging_drill_output\"",
+      "requiredQualifier": "\"status\": \"pending_staging_evidence\"",
+      "owner": "ops-owner",
+      "blocking": true,
+      "exitCondition": "Attach real RabbitMQ, Postgres restore and durable backend E2E staging drill outputs."
+    },
+    {
+      "claimId": "release-artifact-pending",
+      "artifact": "ops/release/release-artifact-evidence.json",
+      "currentClaim": "\"status\": \"pending_image_digest_and_deploy_smoke\"",
+      "requiredQualifier": "\"status\": \"pending_external_registry\"",
+      "owner": "release-owner",
+      "blocking": true,
+      "exitCondition": "Attach immutable image digest and deploy smoke evidence for the promoted backend image."
+    },
+    {
+      "claimId": "summary-feedback-pending-real-samples",
+      "artifact": "ops/release/summary-feedback-hardening-evidence.json",
+      "currentClaim": "\"externalBetaStatus\": \"hold_until_redacted_real_feedback_samples\"",
+      "requiredQualifier": "\"status\": \"pending_real_samples\"",
+      "owner": "summary-owner",
+      "blocking": true,
+      "exitCondition": "Replace fixture feedback with redacted real/internal dogfood samples."
+    },
+    {
+      "claimId": "security-final-sweep-pending-staging-samples",
+      "artifact": "ops/security/security-final-sweep-evidence.json",
+      "currentClaim": "\"externalBetaStatus\": \"hold_until_deploy_log_metric_public_error_samples\"",
+      "requiredQualifier": "\"status\": \"pending_staging_evidence\"",
+      "owner": "security-owner",
+      "blocking": true,
+      "exitCondition": "Attach deploy log, metric, public error and audit redaction samples from the promoted runtime."
+    },
+    {
+      "claimId": "credential-secret-runtime-pending-rotation",
+      "artifact": "ops/security/credential-secret-runtime-flow.json",
+      "currentClaim": "\"externalBetaStatus\": \"hold_until_runtime_secret_store_and_rotation_evidence\"",
+      "requiredQualifier": "\"rotationDrill\"",
+      "owner": "security-owner",
+      "blocking": true,
+      "exitCondition": "Attach runtime secret storage and rotation evidence for source credentials, webhooks, OIDC, Postgres and RabbitMQ."
+    },
+    {
+      "claimId": "feedback-report-is-fixture-only",
+      "artifact": "ops/release/beta-feedback-classification-report.json",
+      "currentClaim": "\"evidenceMode\": \"deterministic_pre_beta_fixture\"",
+      "requiredQualifier": "\"externalRingExpansionStatus\": \"hold_until_real_feedback_report_replaces_fixture\"",
+      "owner": "product-owner",
+      "blocking": true,
+      "exitCondition": "Replace deterministic fixture report with redacted real feedback samples."
+    },
+    {
+      "claimId": "beta-ring-decision-held",
+      "artifact": "ops/release/beta-ring-expansion-decision-record.json",
+      "currentClaim": "\"decision\": \"hold\"",
+      "requiredQualifier": "\"evidenceMode\": \"deterministic_pre_beta_fixture\"",
+      "owner": "release-owner",
+      "blocking": true,
+      "exitCondition": "Move to go only after durable runtime, live source, real feedback and release artifact evidence pass."
+    },
+    {
+      "claimId": "promotion-doc-blocks-external-beta",
+      "artifact": "docs/iterations/07-beta-mvp-launch/42-release-gate-and-promotion.md",
+      "currentClaim": "external beta is blocked until durable adapter exit criteria are met",
+      "requiredQualifier": "Runtime persistence is still in-memory/noop-backed for any external beta or multi-process claim.",
+      "owner": "release-owner",
+      "blocking": true,
+      "exitCondition": "Update docs only after the target runtime has durable deployment evidence."
+    }
+  ],
+  "externalBetaExitCriteria": [
+    "No required evidence group is pending, blocked or hold.",
+    "No no-go exception remains blocking.",
+    "Docs and ops artifacts do not claim external beta or production readiness before evidence exists."
+  ]
+}

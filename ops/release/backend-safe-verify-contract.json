@@ -37,6 +37,7 @@
     "check:backend-ops-readiness",
     "check:backend-safe-verify",
     "check:external-beta-readiness",
+    "check:no-go-cleanup",
     "check:release-artifact-evidence",
     "check:observability",
     "check:api-health",
