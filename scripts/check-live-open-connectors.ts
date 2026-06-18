@@ -24,7 +24,11 @@ const coveredSignalIds: readonly LiveOpenSignalId[] = [
   'github-live-api-smoke',
   'github-rate-limit-budget',
 ];
+const liveArtifactFormat = 'source-live-provider-evidence-v1';
 const liveEvidencePathEnv = 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH';
+const environmentIdEnv = 'SOURCE_LIVE_ENVIRONMENT_ID';
+const imageDigestEnv = 'BACKEND_IMAGE_DIGEST';
+const operatorEnv = 'SOURCE_LIVE_OPERATOR';
 const timeoutMs = 10_000;
 const liveRssFeedUrls = [
   'https://hnrss.org/frontpage',
@@ -70,32 +74,101 @@ async function main(): Promise<void> {
     'GitHub public issue search must return issue URLs and must not include pull requests for is:issue query',
   );
   const githubRateLimit = await readGitHubRateLimitBudget();
+  const sampledAt = new Date().toISOString();
+  const providerResults = [
+    {
+      providerKey: 'hacker-news',
+      status: 'passed',
+      signalResults: [
+        {
+          signalId: 'hn-live-http-smoke' satisfies LiveOpenSignalId,
+          status: 'passed',
+          observedAt: sampledAt,
+          evidence: 'Live Hacker News listing and search returned normalized stable ids.',
+          metrics: {
+            topStoryCount: topStories.length,
+            searchStoryCount: searchStories.length,
+          },
+        },
+        {
+          signalId: 'hn-rate-limit-evidence' satisfies LiveOpenSignalId,
+          status: 'passed',
+          observedAt: sampledAt,
+          evidence: 'Hacker News request budget and provider_rate_limited degradation signal were recorded.',
+          metrics: {
+            timeoutMs,
+            maxListingStories: 2,
+            maxSearchStories: 2,
+          },
+        },
+      ],
+    },
+    {
+      providerKey: 'rss',
+      status: 'passed',
+      signalResults: [
+        {
+          signalId: 'rss-allowlisted-live-feeds' satisfies LiveOpenSignalId,
+          status: 'passed',
+          observedAt: sampledAt,
+          evidence: 'Allowlisted live RSS feeds returned normalized readable items.',
+          metrics: {
+            feedCount: rssEvidence.feeds.length,
+            itemCount: rssEvidence.feeds.reduce((total, feed) => total + feed.itemCount, 0),
+          },
+        },
+        {
+          signalId: 'rss-http-cache-evidence' satisfies LiveOpenSignalId,
+          status: 'passed',
+          observedAt: sampledAt,
+          evidence: 'ETag or Last-Modified validator behavior was recorded on repeated live RSS reads.',
+          metrics: {
+            cacheValidatorFeedCount: rssEvidence.cacheValidatorFeedCount,
+          },
+        },
+        {
+          signalId: 'rss-ssrf-proof' satisfies LiveOpenSignalId,
+          status: 'passed',
+          observedAt: sampledAt,
+          evidence: 'Private, loopback, file and metadata-service targets were rejected before fetch.',
+          metrics: {
+            rejectedProbeCount: rssEvidence.ssrfRejectedUrls.length,
+          },
+        },
+      ],
+    },
+    {
+      providerKey: 'github',
+      status: 'passed',
+      signalResults: [
+        {
+          signalId: 'github-live-api-smoke' satisfies LiveOpenSignalId,
+          status: 'passed',
+          observedAt: sampledAt,
+          evidence: 'Live GitHub API search returned normalized issue items with canonical GitHub URLs.',
+          metrics: {
+            issueCount: github.items.length,
+            authMode: readOptionalEnv('GITHUB_ACCESS_TOKEN') === undefined ? 'anonymous' : 'token_redacted',
+          },
+        },
+        {
+          signalId: 'github-rate-limit-budget' satisfies LiveOpenSignalId,
+          status: 'passed',
+          observedAt: sampledAt,
+          evidence: 'GitHub core and search rate-limit budget were recorded without credential values.',
+          metrics: {
+            coreRemaining: githubRateLimit.core.remaining,
+            searchRemaining: githubRateLimit.search.remaining,
+          },
+        },
+      ],
+    },
+  ] as const;
 
   const evidence = {
-    schemaVersion: 1,
-    evidenceId: 'live-open-connectors-evidence-v1',
-    sampledAt: new Date().toISOString(),
-    signalIds: coveredSignalIds,
-    providers: {
-      hackerNews: {
-        signalIds: ['hn-live-http-smoke', 'hn-rate-limit-evidence'] satisfies readonly LiveOpenSignalId[],
-        topStoryCount: topStories.length,
-        searchStoryCount: searchStories.length,
-        requestBudget: {
-          timeoutMs,
-          maxListingStories: 2,
-          maxSearchStories: 2,
-          degradationSignal: 'provider_rate_limited',
-        },
-      },
-      rss: rssEvidence,
-      github: {
-        signalIds: ['github-live-api-smoke', 'github-rate-limit-budget'] satisfies readonly LiveOpenSignalId[],
-        issueCount: github.items.length,
-        authMode: readOptionalEnv('GITHUB_ACCESS_TOKEN') === undefined ? 'anonymous' : 'token_redacted',
-        rateLimit: githubRateLimit,
-      },
-    },
+    artifactId: 'live-open-connectors-evidence-v1',
+    sampledAt,
+    providerResults,
   };
   writeEvidenceIfRequested(evidence);
 
@@ -238,14 +311,47 @@ const readOptionalEnv = (name: string): string | undefined => {
   return value === undefined || value.length === 0 ? undefined : value;
 };
 
-const writeEvidenceIfRequested = (evidence: unknown): void => {
+const writeEvidenceIfRequested = (evidence: {
+  readonly artifactId: string;
+  readonly sampledAt: string;
+  readonly providerResults: readonly unknown[];
+}): void => {
   const evidencePath = readOptionalEnv(liveEvidencePathEnv);
   if (evidencePath === undefined) {
     return;
   }
 
+  const artifact = {
+    schemaVersion: 1,
+    format: liveArtifactFormat,
+    artifactId: evidence.artifactId,
+    environmentId: readRequiredEnv(environmentIdEnv),
+    imageDigest: readRequiredImageDigest(),
+    operator: readRequiredEnv(operatorEnv),
+    sampledAt: evidence.sampledAt,
+    redaction: {
+      secretsIncluded: false,
+      rawProviderPayloadsIncluded: false,
+      credentialValuesIncluded: false,
+      privateNetworkUrlsIncluded: false,
+    },
+    providerResults: evidence.providerResults,
+  };
+
   mkdirSync(dirname(evidencePath), { recursive: true });
-  writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
+  writeFileSync(evidencePath, `${JSON.stringify(artifact, null, 2)}\n`);
+};
+
+const readRequiredEnv = (name: string): string => {
+  const value = readOptionalEnv(name);
+  assert(value !== undefined, `${liveEvidencePathEnv} requires ${name}`);
+  return value;
+};
+
+const readRequiredImageDigest = (): string => {
+  const imageDigest = readRequiredEnv(imageDigestEnv);
+  assert(/^sha256:[0-9a-f]{64}$/.test(imageDigest), `${imageDigestEnv} must be an immutable sha256 digest`);
+  return imageDigest;
 };
 
 void main().catch((error) => {

@@ -20,8 +20,12 @@ const coveredSignalIds: readonly RedditLiveSignalId[] = [
   'reddit-credential-lifecycle',
 ];
 const missingTokenPolicy = 'fail_closed_without_reddit_access_token';
+const liveArtifactFormat = 'source-live-provider-evidence-v1';
 const lifecycleEvidencePathEnv = 'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH';
 const liveEvidencePathEnv = 'REDDIT_LIVE_EVIDENCE_PATH';
+const environmentIdEnv = 'SOURCE_LIVE_ENVIRONMENT_ID';
+const imageDigestEnv = 'BACKEND_IMAGE_DIGEST';
+const operatorEnv = 'SOURCE_LIVE_OPERATOR';
 const timeoutMs = 10_000;
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -85,23 +89,54 @@ async function main(): Promise<void> {
 
   await assertRedditAuthFailure(provider, query, context);
   const rateLimit = await readRedditRateLimitBudget(accessToken, userAgent);
+  const sampledAt = new Date().toISOString();
   writeEvidenceIfRequested({
-    schemaVersion: 1,
-    evidenceId: 'live-reddit-oauth-evidence-v1',
-    sampledAt: new Date().toISOString(),
-    signalIds: coveredSignalIds,
-    provider: 'reddit',
-    subreddit,
-    listing,
-    itemCount: result.items.length,
-    nextCursorPresent: result.nextCursor !== undefined,
-    warningCount: result.warnings.length,
-    authFailure: {
-      status: 'failed_closed',
-      signalId: 'reddit-auth-failure' satisfies RedditLiveSignalId,
-    },
-    rateLimit,
-    credentialLifecycle,
+    artifactId: 'live-reddit-oauth-evidence-v1',
+    sampledAt,
+    providerResults: [
+      {
+        providerKey: 'reddit',
+        status: 'passed',
+        signalResults: [
+          {
+            signalId: 'reddit-tenant-oauth-smoke' satisfies RedditLiveSignalId,
+            status: 'passed',
+            observedAt: sampledAt,
+            evidence: 'Tenant-owned Reddit OAuth credential returned normalized listing items.',
+            metrics: {
+              subreddit,
+              listing,
+              itemCount: result.items.length,
+              nextCursorPresent: result.nextCursor !== undefined,
+              warningCount: result.warnings.length,
+            },
+          },
+          {
+            signalId: 'reddit-auth-failure' satisfies RedditLiveSignalId,
+            status: 'passed',
+            observedAt: sampledAt,
+            evidence: 'Invalid Reddit OAuth credential failed closed with classified auth failure.',
+            metrics: {
+              status: 'failed_closed',
+            },
+          },
+          {
+            signalId: 'reddit-rate-limit-budget' satisfies RedditLiveSignalId,
+            status: 'passed',
+            observedAt: sampledAt,
+            evidence: 'Reddit rate-limit headers were observed and recorded without token values.',
+            metrics: rateLimit,
+          },
+          {
+            signalId: 'reddit-credential-lifecycle' satisfies RedditLiveSignalId,
+            status: 'passed',
+            observedAt: sampledAt,
+            evidence: 'Credential create, rotate, revoke and redacted preview lifecycle artifact was hashed.',
+            metrics: credentialLifecycle,
+          },
+        ],
+      },
+    ],
   });
 
   console.log([
@@ -205,14 +240,47 @@ const readOptionalEnv = (name: string): string | undefined => {
   return value === undefined || value.length === 0 ? undefined : value;
 };
 
-const writeEvidenceIfRequested = (evidence: unknown): void => {
+const writeEvidenceIfRequested = (evidence: {
+  readonly artifactId: string;
+  readonly sampledAt: string;
+  readonly providerResults: readonly unknown[];
+}): void => {
   const evidencePath = readOptionalEnv(liveEvidencePathEnv);
   if (evidencePath === undefined) {
     return;
   }
 
+  const artifact = {
+    schemaVersion: 1,
+    format: liveArtifactFormat,
+    artifactId: evidence.artifactId,
+    environmentId: readRequiredEnv(environmentIdEnv),
+    imageDigest: readRequiredImageDigest(),
+    operator: readRequiredEnv(operatorEnv),
+    sampledAt: evidence.sampledAt,
+    redaction: {
+      secretsIncluded: false,
+      rawProviderPayloadsIncluded: false,
+      credentialValuesIncluded: false,
+      privateNetworkUrlsIncluded: false,
+    },
+    providerResults: evidence.providerResults,
+  };
+
   mkdirSync(dirname(evidencePath), { recursive: true });
-  writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
+  writeFileSync(evidencePath, `${JSON.stringify(artifact, null, 2)}\n`);
+};
+
+const readRequiredEnv = (name: string): string => {
+  const value = readOptionalEnv(name);
+  assert(value !== undefined, `${liveEvidencePathEnv} requires ${name}`);
+  return value;
+};
+
+const readRequiredImageDigest = (): string => {
+  const imageDigest = readRequiredEnv(imageDigestEnv);
+  assert(/^sha256:[0-9a-f]{64}$/.test(imageDigest), `${imageDigestEnv} must be an immutable sha256 digest`);
+  return imageDigest;
 };
 
 void main().catch((error) => {

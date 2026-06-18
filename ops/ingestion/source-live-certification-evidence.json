@@ -6,6 +6,43 @@
   "evidenceMode": "fixture_contract_with_live_evidence_required",
   "externalBetaStatus": "hold_until_live_provider_evidence",
   "sourceCertification": "ops/ingestion/source-provider-certification.json",
+  "passedArtifactContentSchema": {
+    "schemaVersion": 1,
+    "format": "source-live-provider-evidence-v1",
+    "exampleArtifactPath": "ops/ingestion/fixtures/source-live-certification-artifact-examples.json",
+    "requiredTopLevelFields": [
+      "schemaVersion",
+      "format",
+      "artifactId",
+      "environmentId",
+      "imageDigest",
+      "operator",
+      "sampledAt",
+      "redaction",
+      "providerResults"
+    ],
+    "redactionRequirements": {
+      "secretsIncluded": false,
+      "rawProviderPayloadsIncluded": false,
+      "credentialValuesIncluded": false,
+      "privateNetworkUrlsIncluded": false
+    },
+    "signalResultRequirements": {
+      "status": "passed",
+      "requiredFields": [
+        "signalId",
+        "status",
+        "observedAt",
+        "evidence"
+      ],
+      "matchingRules": [
+        "providerResults.providerKey must match the passed liveProviderEvidence providerKey",
+        "signalResults must include exactly every required signal for the provider",
+        "environmentId, imageDigest and sampledAt must match the liveProviderEvidence entry",
+        "artifact JSON must not include tokens, credential values, private network URLs or raw provider payloads"
+      ]
+    }
+  },
   "liveProviderEvidence": [
     {
       "providerKey": "hacker-news",

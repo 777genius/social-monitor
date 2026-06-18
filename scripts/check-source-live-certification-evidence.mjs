@@ -26,6 +26,7 @@ const gateScript = 'check:source-live-certification-evidence';
 const gateCommand = `npm run ${gateScript}`;
 const gateId = 'source-live-certification-evidence';
 const liveStatusValues = new Set(['pending_live_evidence', 'passed']);
+const liveArtifactFormat = 'source-live-provider-evidence-v1';
 const requiredProviderSignals = new Map([
   ['hacker-news', new Set(['hn-live-http-smoke', 'hn-rate-limit-evidence'])],
   ['rss', new Set(['rss-allowlisted-live-feeds', 'rss-http-cache-evidence', 'rss-ssrf-proof'])],
@@ -54,8 +55,13 @@ const forbiddenEvidenceFragments = [
   'access_token',
   'refresh_token',
   'private_key',
+  'client_secret',
   'reddit_access_token',
   'github_token',
+  'postgres://',
+  'postgresql://',
+  'amqp://',
+  'amqps://',
   'smk_',
   'whsec_',
 ];
@@ -82,7 +88,9 @@ if (evidence.sourceCertification !== sourceCertificationPath) {
 
 validateSourceCertification();
 validateLiveSmokeScripts();
+validatePassedArtifactContentSchema();
 validateLiveProviderEvidence();
+validateExampleArtifacts();
 validateDeferredProviders();
 validateNoSensitiveEvidenceLiterals();
 requireWiring();
@@ -163,12 +171,81 @@ function validateLiveSmokeScripts() {
   if (/SKIPPED:\s*REDDIT_ACCESS_TOKEN is not set/i.test(redditLiveScript)) {
     violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must not skip missing REDDIT_ACCESS_TOKEN`);
   }
+  if (!liveOpenScript.includes(liveArtifactFormat)) {
+    violations.push(`${liveOpenScriptPath}: live open connector smoke must emit ${liveArtifactFormat}`);
+  }
+  if (!redditLiveScript.includes(liveArtifactFormat)) {
+    violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must emit ${liveArtifactFormat}`);
+  }
 }
 
 function requireScriptSignals(scriptPath, scriptSource, signalIds) {
   for (const signalId of signalIds) {
     if (!scriptSource.includes(signalId)) {
       violations.push(`${scriptPath}: live smoke script must cover signalId "${signalId}"`);
+    }
+  }
+}
+
+function validatePassedArtifactContentSchema() {
+  const schema = evidence.passedArtifactContentSchema;
+  if (typeof schema !== 'object' || schema === null) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema is required`);
+    return;
+  }
+
+  if (schema.schemaVersion !== 1) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.schemaVersion must be 1`);
+  }
+  if (schema.format !== liveArtifactFormat) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.format must be ${liveArtifactFormat}`);
+  }
+  requireExistingPath(schema.exampleArtifactPath, 'passedArtifactContentSchema.exampleArtifactPath');
+
+  const requiredTopLevelFields = new Set(schema.requiredTopLevelFields ?? []);
+  for (const field of [
+    'schemaVersion',
+    'format',
+    'artifactId',
+    'environmentId',
+    'imageDigest',
+    'operator',
+    'sampledAt',
+    'redaction',
+    'providerResults',
+  ]) {
+    if (!requiredTopLevelFields.has(field)) {
+      violations.push(`${evidencePath}: passedArtifactContentSchema.requiredTopLevelFields must include ${field}`);
+    }
+  }
+
+  const redaction = schema.redactionRequirements;
+  if (typeof redaction !== 'object' || redaction === null) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.redactionRequirements is required`);
+  } else {
+    for (const field of [
+      'secretsIncluded',
+      'rawProviderPayloadsIncluded',
+      'credentialValuesIncluded',
+      'privateNetworkUrlsIncluded',
+    ]) {
+      if (redaction[field] !== false) {
+        violations.push(`${evidencePath}: passedArtifactContentSchema.redactionRequirements.${field} must be false`);
+      }
+    }
+  }
+
+  const signalResult = schema.signalResultRequirements;
+  if (typeof signalResult !== 'object' || signalResult === null) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.signalResultRequirements is required`);
+  } else {
+    if (signalResult.status !== 'passed') {
+      violations.push(`${evidencePath}: passedArtifactContentSchema.signalResultRequirements.status must be passed`);
+    }
+    for (const field of ['signalId', 'status', 'observedAt', 'evidence']) {
+      if (!signalResult.requiredFields?.includes(field)) {
+        violations.push(`${evidencePath}: passedArtifactContentSchema.signalResultRequirements.requiredFields must include ${field}`);
+      }
     }
   }
 }
@@ -245,6 +322,7 @@ function validateProviderEvidenceFields(provider) {
   if (!/^sha256:[0-9a-f]{64}$/.test(String(provider.imageDigest ?? ''))) {
     violations.push(`${evidencePath}: passed provider "${provider.providerKey}" must define immutable imageDigest`);
   }
+  validatePassedProviderArtifact(provider);
 }
 
 function validateProviderSignals(provider) {
@@ -277,6 +355,179 @@ function validateProviderSignals(provider) {
   for (const signalId of requiredSignals) {
     if (!signals.has(signalId)) {
       violations.push(`${evidencePath}: provider "${provider.providerKey}" missing signal "${signalId}"`);
+    }
+  }
+}
+
+function validatePassedProviderArtifact(provider) {
+  if (typeof provider.stagingArtifactPath !== 'string' || !existsSync(provider.stagingArtifactPath)) {
+    return;
+  }
+
+  const artifact = readJson(provider.stagingArtifactPath);
+  validateLiveProviderArtifact(artifact, {
+    label: `provider "${provider.providerKey}" stagingArtifactPath`,
+    expectedEnvironmentId: provider.environmentId,
+    expectedImageDigest: provider.imageDigest,
+    expectedSampledAt: provider.sampledAt,
+    requiredProviders: new Set([provider.providerKey]),
+  });
+}
+
+function validateExampleArtifacts() {
+  const examplePath = evidence.passedArtifactContentSchema?.exampleArtifactPath;
+  if (typeof examplePath !== 'string' || !existsSync(examplePath)) {
+    return;
+  }
+
+  const examples = readJson(examplePath).examples;
+  if (!Array.isArray(examples) || examples.length === 0) {
+    violations.push(`${examplePath}: examples must be a non-empty array`);
+    return;
+  }
+
+  const coveredProviders = new Set();
+  for (const example of examples) {
+    validateLiveProviderArtifact(example, {
+      label: `${examplePath}: example "${example.artifactId ?? '<missing>'}"`,
+      requiredProviders: undefined,
+    });
+
+    for (const providerResult of example.providerResults ?? []) {
+      coveredProviders.add(providerResult.providerKey);
+    }
+  }
+
+  for (const providerKey of requiredProviderSignals.keys()) {
+    if (!coveredProviders.has(providerKey)) {
+      violations.push(`${examplePath}: examples must include provider "${providerKey}"`);
+    }
+  }
+}
+
+function validateLiveProviderArtifact(artifact, options) {
+  const label = options.label;
+
+  if (artifact.schemaVersion !== 1) {
+    violations.push(`${label}: schemaVersion must be 1`);
+  }
+  if (artifact.format !== liveArtifactFormat) {
+    violations.push(`${label}: format must be ${liveArtifactFormat}`);
+  }
+  for (const field of ['artifactId', 'environmentId', 'imageDigest', 'operator', 'sampledAt']) {
+    if (typeof artifact[field] !== 'string' || artifact[field].trim().length === 0) {
+      violations.push(`${label}: ${field} must be a non-empty string`);
+    }
+  }
+  if (!/^sha256:[0-9a-f]{64}$/.test(String(artifact.imageDigest ?? ''))) {
+    violations.push(`${label}: imageDigest must be immutable sha256 digest`);
+  }
+  if (options.expectedEnvironmentId !== undefined && artifact.environmentId !== options.expectedEnvironmentId) {
+    violations.push(`${label}: environmentId must match liveProviderEvidence entry`);
+  }
+  if (options.expectedImageDigest !== undefined && artifact.imageDigest !== options.expectedImageDigest) {
+    violations.push(`${label}: imageDigest must match liveProviderEvidence entry`);
+  }
+  if (options.expectedSampledAt !== undefined && artifact.sampledAt !== options.expectedSampledAt) {
+    violations.push(`${label}: sampledAt must match liveProviderEvidence entry`);
+  }
+
+  validateArtifactRedaction(artifact, label);
+  validateNoSensitiveArtifactLiterals(artifact, label);
+  validateProviderResults(artifact, options);
+}
+
+function validateArtifactRedaction(artifact, label) {
+  if (typeof artifact.redaction !== 'object' || artifact.redaction === null) {
+    violations.push(`${label}: redaction object is required`);
+    return;
+  }
+
+  for (const field of [
+    'secretsIncluded',
+    'rawProviderPayloadsIncluded',
+    'credentialValuesIncluded',
+    'privateNetworkUrlsIncluded',
+  ]) {
+    if (artifact.redaction[field] !== false) {
+      violations.push(`${label}: redaction.${field} must be false`);
+    }
+  }
+}
+
+function validateNoSensitiveArtifactLiterals(artifact, label) {
+  const serialized = JSON.stringify(artifact).toLowerCase();
+
+  for (const fragment of forbiddenEvidenceFragments) {
+    if (serialized.includes(fragment)) {
+      violations.push(`${label}: artifact must not contain sensitive literal fragment "${fragment}"`);
+    }
+  }
+}
+
+function validateProviderResults(artifact, options) {
+  if (!Array.isArray(artifact.providerResults) || artifact.providerResults.length === 0) {
+    violations.push(`${options.label}: providerResults must be a non-empty array`);
+    return;
+  }
+
+  const providerResults = new Map();
+  for (const result of artifact.providerResults) {
+    if (providerResults.has(result.providerKey)) {
+      violations.push(`${options.label}: duplicate providerResult "${result.providerKey}"`);
+      continue;
+    }
+    providerResults.set(result.providerKey, result);
+
+    if (!requiredProviderSignals.has(result.providerKey)) {
+      violations.push(`${options.label}: unsupported providerResult "${result.providerKey}"`);
+      continue;
+    }
+    if (result.status !== 'passed') {
+      violations.push(`${options.label}: providerResult "${result.providerKey}" must have status=passed`);
+    }
+    validateArtifactSignalResults(result, options.label);
+  }
+
+  const requiredProviders = options.requiredProviders ?? new Set(providerResults.keys());
+  for (const providerKey of requiredProviders) {
+    if (!providerResults.has(providerKey)) {
+      violations.push(`${options.label}: missing providerResult "${providerKey}"`);
+    }
+  }
+}
+
+function validateArtifactSignalResults(providerResult, label) {
+  if (!Array.isArray(providerResult.signalResults) || providerResult.signalResults.length === 0) {
+    violations.push(`${label}: providerResult "${providerResult.providerKey}" must define signalResults`);
+    return;
+  }
+
+  const requiredSignals = requiredProviderSignals.get(providerResult.providerKey) ?? new Set();
+  const seenSignals = new Set();
+  for (const signal of providerResult.signalResults) {
+    if (seenSignals.has(signal.signalId)) {
+      violations.push(`${label}: duplicate signalResult "${signal.signalId}" for provider "${providerResult.providerKey}"`);
+      continue;
+    }
+    seenSignals.add(signal.signalId);
+
+    if (!requiredSignals.has(signal.signalId)) {
+      violations.push(`${label}: unsupported signalResult "${signal.signalId}" for provider "${providerResult.providerKey}"`);
+    }
+    if (signal.status !== 'passed') {
+      violations.push(`${label}: signalResult "${signal.signalId}" must have status=passed`);
+    }
+    for (const field of ['observedAt', 'evidence']) {
+      if (typeof signal[field] !== 'string' || signal[field].trim().length === 0) {
+        violations.push(`${label}: signalResult "${signal.signalId}" must define ${field}`);
+      }
+    }
+  }
+
+  for (const signalId of requiredSignals) {
+    if (!seenSignals.has(signalId)) {
+      violations.push(`${label}: provider "${providerResult.providerKey}" missing signalResult "${signalId}"`);
     }
   }
 }
@@ -405,5 +656,8 @@ function requireWiring() {
   }
   if (!baselineArtifacts.has(evidencePath)) {
     violations.push(`${baselinePath}: trackedArtifacts must include ${evidencePath}`);
+  }
+  if (!baselineArtifacts.has(evidence.passedArtifactContentSchema?.exampleArtifactPath)) {
+    violations.push(`${baselinePath}: trackedArtifacts must include source live certification example artifact path`);
   }
 }

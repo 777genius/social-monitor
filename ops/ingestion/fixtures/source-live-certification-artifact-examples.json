@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "fixtureOnly": true,
+  "description": "Shape examples for source live certification artifacts. These examples are not live provider evidence and must not unblock external beta.",
+  "examples": [
+    {
+      "schemaVersion": 1,
+      "format": "source-live-provider-evidence-v1",
+      "artifactId": "live-open-connectors-evidence-v1",
+      "environmentId": "staging-beta-a",
+      "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000101",
+      "operator": "source-owner",
+      "sampledAt": "2026-06-18T10:00:00.000Z",
+      "redaction": {
+        "secretsIncluded": false,
+        "rawProviderPayloadsIncluded": false,
+        "credentialValuesIncluded": false,
+        "privateNetworkUrlsIncluded": false
+      },
+      "providerResults": [
+        {
+          "providerKey": "hacker-news",
+          "status": "passed",
+          "signalResults": [
+            {
+              "signalId": "hn-live-http-smoke",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:01.000Z",
+              "evidence": "Redacted live Hacker News listing and search returned normalized numeric ids.",
+              "metrics": {
+                "topStoryCount": 2,
+                "searchStoryCount": 2
+              }
+            },
+            {
+              "signalId": "hn-rate-limit-evidence",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:02.000Z",
+              "evidence": "Request budget and provider_rate_limited degradation signal recorded for deployed HN scan.",
+              "metrics": {
+                "timeoutMs": 10000,
+                "maxListingStories": 2,
+                "maxSearchStories": 2
+              }
+            }
+          ]
+        },
+        {
+          "providerKey": "rss",
+          "status": "passed",
+          "signalResults": [
+            {
+              "signalId": "rss-allowlisted-live-feeds",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:03.000Z",
+              "evidence": "Redacted allowlisted RSS feeds returned normalized readable items.",
+              "metrics": {
+                "feedCount": 2,
+                "itemCount": 4
+              }
+            },
+            {
+              "signalId": "rss-http-cache-evidence",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:04.000Z",
+              "evidence": "ETag or Last-Modified validator behavior observed on repeated live RSS reads.",
+              "metrics": {
+                "cacheValidatorFeedCount": 1
+              }
+            },
+            {
+              "signalId": "rss-ssrf-proof",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:05.000Z",
+              "evidence": "Private, loopback, file and metadata-service targets were rejected before fetch.",
+              "metrics": {
+                "rejectedProbeCount": 4
+              }
+            }
+          ]
+        },
+        {
+          "providerKey": "github",
+          "status": "passed",
+          "signalResults": [
+            {
+              "signalId": "github-live-api-smoke",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:06.000Z",
+              "evidence": "Redacted live GitHub API search returned normalized issue items with canonical GitHub URLs.",
+              "metrics": {
+                "issueCount": 1,
+                "authMode": "anonymous"
+              }
+            },
+            {
+              "signalId": "github-rate-limit-budget",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:07.000Z",
+              "evidence": "GitHub core and search rate-limit budget recorded without credential values.",
+              "metrics": {
+                "coreRemainingObserved": true,
+                "searchRemainingObserved": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "format": "source-live-provider-evidence-v1",
+      "artifactId": "live-reddit-oauth-evidence-v1",
+      "environmentId": "staging-beta-a",
+      "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000102",
+      "operator": "source-owner",
+      "sampledAt": "2026-06-18T10:05:00.000Z",
+      "redaction": {
+        "secretsIncluded": false,
+        "rawProviderPayloadsIncluded": false,
+        "credentialValuesIncluded": false,
+        "privateNetworkUrlsIncluded": false
+      },
+      "providerResults": [
+        {
+          "providerKey": "reddit",
+          "status": "passed",
+          "signalResults": [
+            {
+              "signalId": "reddit-tenant-oauth-smoke",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:05:01.000Z",
+              "evidence": "Tenant-owned Reddit OAuth credential returned normalized listing items.",
+              "metrics": {
+                "itemCount": 3,
+                "nextCursorPresent": true
+              }
+            },
+            {
+              "signalId": "reddit-auth-failure",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:05:02.000Z",
+              "evidence": "Invalid Reddit OAuth credential failed closed with classified auth failure.",
+              "metrics": {
+                "status": "failed_closed"
+              }
+            },
+            {
+              "signalId": "reddit-rate-limit-budget",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:05:03.000Z",
+              "evidence": "Reddit rate-limit headers were observed and recorded without token values.",
+              "metrics": {
+                "headersObserved": true
+              }
+            },
+            {
+              "signalId": "reddit-credential-lifecycle",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:05:04.000Z",
+              "evidence": "Credential create, rotate, revoke and redacted preview lifecycle artifact was hashed.",
+              "metrics": {
+                "redactionChecked": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

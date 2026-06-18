@@ -75,6 +75,10 @@
       "path": "ops/ingestion/source-live-certification-evidence.json"
     },
     {
+      "artifactId": "source-live-certification-artifact-examples",
+      "path": "ops/ingestion/fixtures/source-live-certification-artifact-examples.json"
+    },
+    {
       "artifactId": "staging-reliability-evidence",
       "path": "ops/drills/staging-reliability-evidence.json"
     },
