@@ -5,6 +5,35 @@
   "frontendPolicy": "deferred_contract_only",
   "externalBetaStatus": "hold_until_real_staging_drill_output",
   "goRequiresAllSignalsPassed": true,
+  "passedArtifactContentSchema": {
+    "schemaVersion": 1,
+    "format": "staging-reliability-artifact-v1",
+    "exampleArtifactPath": "ops/drills/fixtures/staging-reliability-artifact-examples.json",
+    "requiredTopLevelFields": [
+      "schemaVersion",
+      "format",
+      "artifactId",
+      "environmentId",
+      "imageDigest",
+      "operator",
+      "startedAt",
+      "completedAt",
+      "redaction",
+      "signalResults"
+    ],
+    "redactionRequirements": [
+      "secretsIncluded=false",
+      "rawProviderPayloadsIncluded=false",
+      "databaseUrlsIncluded=false",
+      "brokerUrlsIncluded=false"
+    ],
+    "signalResultRequirements": [
+      "every required signalId for the stagingArtifactId is present exactly once",
+      "every signal result has status=passed",
+      "every signal result has observedAt and non-empty evidence",
+      "artifact metadata matches the release evidence row"
+    ]
+  },
   "stagingEvidenceArtifacts": [
     {
       "artifactId": "rabbitmq-staging-drill-output",

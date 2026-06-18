@@ -82,6 +82,8 @@ if (evidence.goRequiresAllSignalsPassed !== true) {
   violations.push(`${evidencePath}: goRequiresAllSignalsPassed must be true`);
 }
 
+validatePassedArtifactContentSchema();
+
 const artifactById = new Map();
 for (const artifact of evidence.stagingEvidenceArtifacts ?? []) {
   if (artifactById.has(artifact.artifactId)) {
@@ -117,12 +119,16 @@ for (const artifactId of requiredArtifactIds) {
 }
 
 const signalIds = new Set();
+const signalsByArtifactId = new Map();
 let hasPendingSignal = false;
 for (const signal of evidence.requiredSignals ?? []) {
   if (signalIds.has(signal.signalId)) {
     violations.push(`${evidencePath}: duplicate signal "${signal.signalId}"`);
   }
   signalIds.add(signal.signalId);
+  const artifactSignals = signalsByArtifactId.get(signal.stagingArtifactId) ?? [];
+  artifactSignals.push(signal);
+  signalsByArtifactId.set(signal.stagingArtifactId, artifactSignals);
 
   if (!requiredSignalIds.has(signal.signalId)) {
     violations.push(`${evidencePath}: unsupported signal "${signal.signalId}"`);
@@ -169,6 +175,22 @@ for (const signalId of requiredSignalIds) {
   }
 }
 
+validateExampleArtifactFixtures(signalsByArtifactId);
+
+for (const [artifactId, signals] of signalsByArtifactId.entries()) {
+  const artifact = artifactById.get(artifactId);
+  if (artifact === undefined || artifact.status !== 'passed') {
+    continue;
+  }
+
+  const pendingSignals = signals.filter((signal) => signal.status !== 'passed').map((signal) => signal.signalId);
+  if (pendingSignals.length > 0) {
+    violations.push(`${evidencePath}: passed artifact "${artifactId}" requires passed signals ${pendingSignals.join(', ')}`);
+  }
+
+  validatePassedArtifactContent(artifact, signals);
+}
+
 if (evidence.externalBetaStatus === 'passed' && hasPendingSignal) {
   violations.push(`${evidencePath}: externalBetaStatus cannot be passed while staging signals are pending`);
 }
@@ -188,6 +210,59 @@ console.log('Staging reliability evidence contract OK');
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function validatePassedArtifactContentSchema() {
+  const schema = evidence.passedArtifactContentSchema;
+  if (!isRecord(schema)) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema must define the required passed artifact format`);
+    return;
+  }
+  if (schema.schemaVersion !== 1) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.schemaVersion must be 1`);
+  }
+  if (schema.format !== 'staging-reliability-artifact-v1') {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.format must be staging-reliability-artifact-v1`);
+  }
+  if (typeof schema.exampleArtifactPath !== 'string' || schema.exampleArtifactPath.trim().length === 0) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.exampleArtifactPath must reference fixture examples`);
+  } else if (!existsSync(schema.exampleArtifactPath)) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.exampleArtifactPath does not exist`);
+  }
+
+  const requiredTopLevelFields = new Set(schema.requiredTopLevelFields ?? []);
+  for (const field of [
+    'schemaVersion',
+    'format',
+    'artifactId',
+    'environmentId',
+    'imageDigest',
+    'operator',
+    'startedAt',
+    'completedAt',
+    'redaction',
+    'signalResults',
+  ]) {
+    if (!requiredTopLevelFields.has(field)) {
+      violations.push(`${evidencePath}: passedArtifactContentSchema.requiredTopLevelFields must include ${field}`);
+    }
+  }
+
+  const redactionRequirements = new Set(schema.redactionRequirements ?? []);
+  for (const requirement of [
+    'secretsIncluded=false',
+    'rawProviderPayloadsIncluded=false',
+    'databaseUrlsIncluded=false',
+    'brokerUrlsIncluded=false',
+  ]) {
+    if (!redactionRequirements.has(requirement)) {
+      violations.push(`${evidencePath}: passedArtifactContentSchema.redactionRequirements must include ${requirement}`);
+    }
+  }
+
+  if (!Array.isArray(schema.signalResultRequirements) || schema.signalResultRequirements.length < 4) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.signalResultRequirements must describe signal coverage`);
+  }
 }
 
 function requirePassedArtifact(artifact) {
@@ -210,6 +285,198 @@ function requirePassedArtifact(artifact) {
   if (!/^sha256:[0-9a-f]{64}$/.test(String(artifact.imageDigest ?? ''))) {
     violations.push(`${evidencePath}: passed artifact "${artifact.artifactId}" must define immutable imageDigest`);
   }
+}
+
+function validatePassedArtifactContent(artifact, signals) {
+  const content = readArtifactContent(artifact);
+  if (content === undefined) {
+    return;
+  }
+
+  validateArtifactContentEnvelope(content, artifact.path, artifact.artifactId);
+  for (const field of ['artifactId', 'environmentId', 'imageDigest', 'operator', 'startedAt', 'completedAt']) {
+    if (content[field] !== artifact[field]) {
+      violations.push(`${artifact.path}: ${field} must match ${evidencePath} artifact metadata`);
+    }
+  }
+
+  validateRedaction(content, artifact.path);
+  validateSignalResults(content, artifact, signals);
+}
+
+function validateExampleArtifactFixtures(signalsByArtifactId) {
+  const examplePath = evidence.passedArtifactContentSchema?.exampleArtifactPath;
+  if (typeof examplePath !== 'string' || examplePath.trim().length === 0 || !existsSync(examplePath)) {
+    return;
+  }
+
+  const fixture = readJson(examplePath);
+  if (fixture.schemaVersion !== 1) {
+    violations.push(`${examplePath}: schemaVersion must be 1`);
+  }
+  if (fixture.fixtureOnly !== true) {
+    violations.push(`${examplePath}: fixtureOnly must be true`);
+  }
+  if (!Array.isArray(fixture.examples)) {
+    violations.push(`${examplePath}: examples must be an array`);
+    return;
+  }
+
+  const examplesByArtifactId = new Map();
+  for (const example of fixture.examples) {
+    if (!isRecord(example)) {
+      violations.push(`${examplePath}: every example must be an object`);
+      continue;
+    }
+    if (examplesByArtifactId.has(example.artifactId)) {
+      violations.push(`${examplePath}: duplicate example artifactId "${example.artifactId}"`);
+    }
+    examplesByArtifactId.set(example.artifactId, example);
+  }
+
+  for (const artifactId of requiredArtifactIds) {
+    const example = examplesByArtifactId.get(artifactId);
+    if (example === undefined) {
+      violations.push(`${examplePath}: missing example for "${artifactId}"`);
+      continue;
+    }
+
+    const artifactLabel = `${examplePath}#${artifactId}`;
+    validateArtifactContentEnvelope(example, artifactLabel, artifactId);
+    validateRedaction(example, artifactLabel);
+    validateSignalResults(
+      example,
+      { artifactId, path: artifactLabel },
+      signalsByArtifactId.get(artifactId) ?? [],
+    );
+  }
+}
+
+function validateArtifactContentEnvelope(content, artifactPath, artifactId) {
+  if (content.schemaVersion !== 1) {
+    violations.push(`${artifactPath}: schemaVersion must be 1`);
+  }
+  if (content.format !== 'staging-reliability-artifact-v1') {
+    violations.push(`${artifactPath}: format must be staging-reliability-artifact-v1`);
+  }
+  if (content.artifactId !== artifactId) {
+    violations.push(`${artifactPath}: artifactId must be ${artifactId}`);
+  }
+  if (typeof content.environmentId !== 'string' || content.environmentId.trim().length === 0) {
+    violations.push(`${artifactPath}: environmentId must be non-empty`);
+  }
+  if (!/^sha256:[0-9a-f]{64}$/.test(String(content.imageDigest ?? ''))) {
+    violations.push(`${artifactPath}: imageDigest must be immutable sha256:<64 hex chars>`);
+  }
+  for (const field of ['operator', 'startedAt', 'completedAt']) {
+    if (typeof content[field] !== 'string' || content[field].trim().length === 0) {
+      violations.push(`${artifactPath}: ${field} must be non-empty`);
+    }
+  }
+}
+
+function readArtifactContent(artifact) {
+  try {
+    const content = JSON.parse(readFileSync(artifact.path, 'utf8'));
+    if (!isRecord(content)) {
+      violations.push(`${artifact.path}: passed staging artifact must be a JSON object`);
+      return undefined;
+    }
+
+    return content;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    violations.push(`${artifact.path}: passed staging artifact must be valid JSON (${message})`);
+    return undefined;
+  }
+}
+
+function validateRedaction(content, artifactPath) {
+  if (!isRecord(content.redaction)) {
+    violations.push(`${artifactPath}: redaction must be an object`);
+    return;
+  }
+
+  for (const field of ['secretsIncluded', 'rawProviderPayloadsIncluded', 'databaseUrlsIncluded', 'brokerUrlsIncluded']) {
+    if (content.redaction[field] !== false) {
+      violations.push(`${artifactPath}: redaction.${field} must be false`);
+    }
+  }
+
+  const serialized = JSON.stringify(content).toLowerCase();
+  for (const fragment of [
+    'bearer ',
+    'basic ',
+    'access_token',
+    'refresh_token',
+    'private_key',
+    'postgres://',
+    'postgresql://',
+    'amqp://',
+    'amqps://',
+    'smk_',
+    'whsec_',
+  ]) {
+    if (serialized.includes(fragment)) {
+      violations.push(`${artifactPath}: passed staging artifact must not contain sensitive fragment "${fragment}"`);
+    }
+  }
+}
+
+function validateSignalResults(content, artifact, signals) {
+  if (!Array.isArray(content.signalResults)) {
+    violations.push(`${artifact.path}: signalResults must be an array`);
+    return;
+  }
+
+  const expectedSignalIds = new Set(signals.map((signal) => signal.signalId));
+  const resultBySignalId = new Map();
+  for (const result of content.signalResults) {
+    if (!isRecord(result)) {
+      violations.push(`${artifact.path}: every signalResults item must be an object`);
+      continue;
+    }
+    if (resultBySignalId.has(result.signalId)) {
+      violations.push(`${artifact.path}: duplicate signal result "${result.signalId}"`);
+    }
+    resultBySignalId.set(result.signalId, result);
+    if (!expectedSignalIds.has(result.signalId)) {
+      violations.push(`${artifact.path}: unsupported signal result "${result.signalId}" for ${artifact.artifactId}`);
+    }
+    if (result.status !== 'passed') {
+      violations.push(`${artifact.path}: signal result "${result.signalId}" must have status=passed`);
+    }
+    if (typeof result.observedAt !== 'string' || result.observedAt.trim().length === 0) {
+      violations.push(`${artifact.path}: signal result "${result.signalId}" must define observedAt`);
+    }
+    if (!hasNonEmptyEvidence(result.evidence)) {
+      violations.push(`${artifact.path}: signal result "${result.signalId}" must include non-empty evidence`);
+    }
+  }
+
+  for (const signal of signals) {
+    if (!resultBySignalId.has(signal.signalId)) {
+      violations.push(`${artifact.path}: missing signal result "${signal.signalId}" for ${artifact.artifactId}`);
+    }
+  }
+}
+
+function hasNonEmptyEvidence(evidenceValue) {
+  if (typeof evidenceValue === 'string') {
+    return evidenceValue.trim().length > 0;
+  }
+  if (Array.isArray(evidenceValue)) {
+    return evidenceValue.length > 0;
+  }
+  if (isRecord(evidenceValue)) {
+    return Object.keys(evidenceValue).length > 0;
+  }
+
+  return false;
+}
+
+function isRecord(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function requirePackageWiring() {
@@ -275,5 +542,9 @@ function requireBaselineWiring() {
   }
   if (!(baseline.trackedArtifacts ?? []).some((artifact) => artifact.path === evidencePath)) {
     violations.push(`${baselinePath}: trackedArtifacts must include ${evidencePath}`);
+  }
+  const examplePath = evidence.passedArtifactContentSchema?.exampleArtifactPath;
+  if (typeof examplePath === 'string' && !(baseline.trackedArtifacts ?? []).some((artifact) => artifact.path === examplePath)) {
+    violations.push(`${baselinePath}: trackedArtifacts must include ${examplePath}`);
   }
 }

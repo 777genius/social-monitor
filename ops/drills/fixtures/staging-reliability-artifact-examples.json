@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "staging-reliability-artifact-examples-v1",
+  "fixtureOnly": true,
+  "examples": [
+    {
+      "schemaVersion": 1,
+      "format": "staging-reliability-artifact-v1",
+      "artifactId": "rabbitmq-staging-drill-output",
+      "environmentId": "staging-example",
+      "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+      "operator": "ops-owner-example",
+      "startedAt": "2026-06-18T00:00:00.000Z",
+      "completedAt": "2026-06-18T00:10:00.000Z",
+      "redaction": {
+        "secretsIncluded": false,
+        "rawProviderPayloadsIncluded": false,
+        "databaseUrlsIncluded": false,
+        "brokerUrlsIncluded": false
+      },
+      "signalResults": [
+        {
+          "signalId": "rabbitmq-publisher-confirms",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:01:00.000Z",
+          "evidence": { "summary": "redacted publisher confirm ack observed" }
+        },
+        {
+          "signalId": "rabbitmq-persistent-publish",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:02:00.000Z",
+          "evidence": { "summary": "redacted persistent message survived restart" }
+        },
+        {
+          "signalId": "rabbitmq-consumer-ack",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:03:00.000Z",
+          "evidence": { "summary": "redacted ack removed command without duplicate side effects" }
+        },
+        {
+          "signalId": "rabbitmq-consumer-nack-retry",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:04:00.000Z",
+          "evidence": { "summary": "redacted nack retry kept correlation metadata" }
+        },
+        {
+          "signalId": "rabbitmq-poison-message-dlx",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:05:00.000Z",
+          "evidence": { "summary": "redacted poison command reached DLX" }
+        },
+        {
+          "signalId": "rabbitmq-quorum-delivery-limit",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:06:00.000Z",
+          "evidence": { "summary": "redacted quorum queue delivery limit observed" }
+        },
+        {
+          "signalId": "rabbitmq-worker-restart-recovery",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:07:00.000Z",
+          "evidence": { "summary": "redacted worker restart recovered unacked work" }
+        },
+        {
+          "signalId": "rabbitmq-queue-lag-metrics",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:08:00.000Z",
+          "evidence": { "summary": "redacted queue lag metric samples observed" }
+        },
+        {
+          "signalId": "rabbitmq-event-relay-retry",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:09:00.000Z",
+          "evidence": { "summary": "redacted event relay retry preserved outbox idempotency" }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "format": "staging-reliability-artifact-v1",
+      "artifactId": "postgres-restore-drill-output",
+      "environmentId": "staging-example",
+      "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+      "operator": "ops-owner-example",
+      "startedAt": "2026-06-18T00:20:00.000Z",
+      "completedAt": "2026-06-18T00:40:00.000Z",
+      "redaction": {
+        "secretsIncluded": false,
+        "rawProviderPayloadsIncluded": false,
+        "databaseUrlsIncluded": false,
+        "brokerUrlsIncluded": false
+      },
+      "signalResults": [
+        {
+          "signalId": "postgres-backup-created",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:21:00.000Z",
+          "evidence": { "summary": "redacted backup id and mapped table count observed" }
+        },
+        {
+          "signalId": "postgres-restore-rpo-rto",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:24:00.000Z",
+          "evidence": { "summary": "redacted restore timing stayed inside RPO/RTO" }
+        },
+        {
+          "signalId": "postgres-migration-version",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:27:00.000Z",
+          "evidence": { "summary": "redacted migration identifiers matched release commit" }
+        },
+        {
+          "signalId": "postgres-validation-queries",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:30:00.000Z",
+          "evidence": { "summary": "redacted validation query names and counts passed" }
+        },
+        {
+          "signalId": "postgres-outbox-inbox-idempotency",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:33:00.000Z",
+          "evidence": { "summary": "redacted outbox inbox idempotency counts matched before and after restore" }
+        },
+        {
+          "signalId": "postgres-worker-pause-resume",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:36:00.000Z",
+          "evidence": { "summary": "redacted worker pause and resume window observed" }
+        },
+        {
+          "signalId": "postgres-no-duplicate-side-effects",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:39:00.000Z",
+          "evidence": { "summary": "redacted durable counts stayed stable after resume" }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "format": "staging-reliability-artifact-v1",
+      "artifactId": "durable-backend-e2e-output",
+      "environmentId": "staging-example",
+      "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+      "operator": "backend-lead-example",
+      "startedAt": "2026-06-18T01:00:00.000Z",
+      "completedAt": "2026-06-18T01:12:00.000Z",
+      "redaction": {
+        "secretsIncluded": false,
+        "rawProviderPayloadsIncluded": false,
+        "databaseUrlsIncluded": false,
+        "brokerUrlsIncluded": false
+      },
+      "signalResults": [
+        {
+          "signalId": "backend-loop-topic-to-delivery-audit",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:04:00.000Z",
+          "evidence": { "summary": "redacted topic to source to scan to feed to summary to delivery to audit loop observed" }
+        },
+        {
+          "signalId": "backend-loop-tenant-isolation",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:08:00.000Z",
+          "evidence": { "summary": "redacted wrong tenant and workspace checks denied access" }
+        },
+        {
+          "signalId": "backend-loop-idempotency",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:11:00.000Z",
+          "evidence": { "summary": "redacted idempotency keys reused without duplicate side effects" }
+        }
+      ]
+    }
+  ]
+}

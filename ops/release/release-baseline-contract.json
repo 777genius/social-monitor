@@ -79,6 +79,10 @@
       "path": "ops/drills/staging-reliability-evidence.json"
     },
     {
+      "artifactId": "staging-reliability-artifact-examples",
+      "path": "ops/drills/fixtures/staging-reliability-artifact-examples.json"
+    },
+    {
       "artifactId": "summary-feedback-hardening",
       "path": "ops/release/summary-feedback-hardening-evidence.json"
     },
