@@ -8,6 +8,7 @@ const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
 const backendOpsPath = 'ops/release/backend-ops-readiness-contract.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
+const liveOpenScriptPath = 'scripts/check-live-open-connectors.ts';
 const redditLiveScriptPath = 'scripts/check-live-reddit-oauth.ts';
 
 const evidence = readJson(evidencePath);
@@ -80,7 +81,7 @@ if (evidence.sourceCertification !== sourceCertificationPath) {
 }
 
 validateSourceCertification();
-validateLiveSmokeFailClosed();
+validateLiveSmokeScripts();
 validateLiveProviderEvidence();
 validateDeferredProviders();
 validateNoSensitiveEvidenceLiterals();
@@ -136,13 +137,39 @@ function validateSourceCertification() {
   }
 }
 
-function validateLiveSmokeFailClosed() {
+function validateLiveSmokeScripts() {
+  const liveOpenScript = readFileSync(liveOpenScriptPath, 'utf8');
   const redditLiveScript = readFileSync(redditLiveScriptPath, 'utf8');
+
+  requireScriptSignals(liveOpenScriptPath, liveOpenScript, [
+    ...requiredProviderSignals.get('hacker-news'),
+    ...requiredProviderSignals.get('rss'),
+    ...requiredProviderSignals.get('github'),
+  ]);
+  requireScriptSignals(redditLiveScriptPath, redditLiveScript, [...requiredProviderSignals.get('reddit')]);
+
+  if (!liveOpenScript.includes('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH')) {
+    violations.push(`${liveOpenScriptPath}: live open connector smoke must support redacted evidence artifact output`);
+  }
+  if (!redditLiveScript.includes('REDDIT_LIVE_EVIDENCE_PATH')) {
+    violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must support redacted evidence artifact output`);
+  }
+  if (!redditLiveScript.includes('REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH')) {
+    violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must require credential lifecycle evidence`);
+  }
   if (!redditLiveScript.includes('fail_closed_without_reddit_access_token')) {
     violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must fail closed when REDDIT_ACCESS_TOKEN is missing`);
   }
   if (/SKIPPED:\s*REDDIT_ACCESS_TOKEN is not set/i.test(redditLiveScript)) {
     violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must not skip missing REDDIT_ACCESS_TOKEN`);
+  }
+}
+
+function requireScriptSignals(scriptPath, scriptSource, signalIds) {
+  for (const signalId of signalIds) {
+    if (!scriptSource.includes(signalId)) {
+      violations.push(`${scriptPath}: live smoke script must cover signalId "${signalId}"`);
+    }
   }
 }
 
