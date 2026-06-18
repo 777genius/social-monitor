@@ -157,4 +157,4 @@ Use this project only with data sources you are allowed to access and monitor. S
 
 ## License
 
-A public license has not been selected yet. Do not assume reuse rights beyond viewing this public repository until a LICENSE file is added.
+MIT. See [LICENSE](LICENSE).
