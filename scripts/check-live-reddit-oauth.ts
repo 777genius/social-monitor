@@ -9,12 +9,15 @@ const assert = (condition: unknown, message: string): void => {
   }
 };
 
+const missingTokenPolicy = 'fail_closed_without_reddit_access_token';
+
 async function main(): Promise<void> {
   const accessToken = process.env.REDDIT_ACCESS_TOKEN?.trim();
 
   if (accessToken === undefined || accessToken.length === 0) {
-    console.log('Live Reddit OAuth smoke SKIPPED: REDDIT_ACCESS_TOKEN is not set');
-    return;
+    throw new Error(
+      `Live Reddit OAuth smoke requires REDDIT_ACCESS_TOKEN (${missingTokenPolicy}). Use fixture reddit smoke for backend-safe checks.`,
+    );
   }
 
   const provider = new RedditSourceProvider(new HttpRedditClient());

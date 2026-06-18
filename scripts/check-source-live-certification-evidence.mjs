@@ -8,6 +8,7 @@ const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
 const backendOpsPath = 'ops/release/backend-ops-readiness-contract.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
+const redditLiveScriptPath = 'scripts/check-live-reddit-oauth.ts';
 
 const evidence = readJson(evidencePath);
 const sourceCertification = readJson(sourceCertificationPath);
@@ -79,6 +80,7 @@ if (evidence.sourceCertification !== sourceCertificationPath) {
 }
 
 validateSourceCertification();
+validateLiveSmokeFailClosed();
 validateLiveProviderEvidence();
 validateDeferredProviders();
 validateNoSensitiveEvidenceLiterals();
@@ -131,6 +133,16 @@ function validateSourceCertification() {
   const fakeSource = certified.get('fake-source');
   if (fakeSource !== undefined && fakeSource.liveBetaReady !== false) {
     violations.push(`${sourceCertificationPath}: fake-source must never claim live beta readiness`);
+  }
+}
+
+function validateLiveSmokeFailClosed() {
+  const redditLiveScript = readFileSync(redditLiveScriptPath, 'utf8');
+  if (!redditLiveScript.includes('fail_closed_without_reddit_access_token')) {
+    violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must fail closed when REDDIT_ACCESS_TOKEN is missing`);
+  }
+  if (/SKIPPED:\s*REDDIT_ACCESS_TOKEN is not set/i.test(redditLiveScript)) {
+    violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must not skip missing REDDIT_ACCESS_TOKEN`);
   }
 }
 
