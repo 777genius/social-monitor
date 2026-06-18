@@ -3,12 +3,17 @@ import { existsSync, readFileSync } from 'node:fs';
 const contractPath = 'ops/release/backend-ops-readiness-contract.json';
 const packagePath = 'package.json';
 const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
+const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 const contract = readJson(contractPath);
 const packageJson = readJson(packagePath);
 const releaseContract = readJson(releaseContractPath);
+const backendSafe = readJson(backendSafePath);
 const sourceCertification = readJson(contract.sourceCertification);
 const scripts = packageJson.scripts ?? {};
 const verifyScript = String(scripts.verify ?? '');
+const backendSafeScripts = new Set(backendSafe.backendScripts ?? []);
+const hasVerificationScript = (scriptName) =>
+  verifyScript.includes(`npm run ${scriptName}`) || backendSafeScripts.has(scriptName);
 const releaseGateIds = new Set((releaseContract.requiredGates ?? []).map((gate) => gate.gateId));
 const releaseGateCommands = new Set((releaseContract.requiredGates ?? []).map((gate) => gate.command));
 const violations = [];
@@ -21,6 +26,7 @@ const requiredDomains = new Set([
   'observability-and-drills',
   'source-scope',
   'mvp-loop',
+  'external-beta-evidence',
 ]);
 
 if (contract.schemaVersion !== 1) {
@@ -67,8 +73,8 @@ for (const domain of contract.requiredDomains ?? []) {
     if (!scripts[scriptName]) {
       violations.push(`${contractPath}: domain "${domain.domainId}" references missing npm script "${scriptName}"`);
     }
-    if (!verifyScript.includes(`npm run ${scriptName}`)) {
-      violations.push(`${packagePath}: npm run verify must include backend readiness script "${scriptName}"`);
+    if (!hasVerificationScript(scriptName)) {
+      violations.push(`${packagePath}: npm run verify or verify:backend must include backend readiness script "${scriptName}"`);
     }
     if (!releaseGateCommands.has(`npm run ${scriptName}`)) {
       violations.push(`${releaseContractPath}: release gates must include "${scriptName}" for domain "${domain.domainId}"`);
@@ -105,8 +111,8 @@ for (const marker of contract.requiredRuntimeMarkers ?? []) {
   }
 }
 
-if (!verifyScript.includes('npm run check:backend-ops-readiness')) {
-  violations.push(`${packagePath}: npm run verify must include check:backend-ops-readiness`);
+if (!hasVerificationScript('check:backend-ops-readiness')) {
+  violations.push(`${packagePath}: npm run verify or verify:backend must include check:backend-ops-readiness`);
 }
 
 if (!releaseGateIds.has('backend-ops-readiness')) {

@@ -97,6 +97,30 @@
       "gates": ["check:mvp-core-loop", "check:openapi", "check:events", "check:usage-audit-rest"],
       "releaseGateIds": ["mvp-core-loop", "openapi-drift", "event-contracts", "usage-audit-rest"],
       "artifacts": ["libs/contracts/rest/openapi.snapshot.json", "libs/contracts/events/event-catalog.json"]
+    },
+    {
+      "domainId": "external-beta-evidence",
+      "gates": [
+        "check:release-baseline",
+        "check:backend-safe-verify",
+        "check:durable-runtime-proof",
+        "check:external-beta-readiness",
+        "check:release-artifact-evidence"
+      ],
+      "releaseGateIds": [
+        "release-baseline",
+        "backend-safe-verify-contract",
+        "durable-runtime-proof",
+        "external-beta-readiness",
+        "release-artifact-evidence"
+      ],
+      "artifacts": [
+        "ops/release/release-baseline-contract.json",
+        "ops/release/backend-safe-verify-contract.json",
+        "ops/release/durable-runtime-proof.json",
+        "ops/release/external-beta-readiness-contract.json",
+        "ops/release/release-artifact-evidence.json"
+      ]
     }
   ],
   "requiredRuntimeMarkers": [

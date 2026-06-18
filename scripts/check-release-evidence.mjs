@@ -2,9 +2,12 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const contractPath = 'ops/release/mvp-release-evidence-contract.json';
 const packagePath = 'package.json';
+const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
 const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
+const backendSafe = JSON.parse(readFileSync(backendSafePath, 'utf8'));
 const scripts = packageJson.scripts ?? {};
+const backendSafeScripts = new Set(backendSafe.backendScripts ?? []);
 const violations = [];
 
 const requiredGateIds = new Set([
@@ -15,9 +18,14 @@ const requiredGateIds = new Set([
   'container-contract',
   'runtime-compose-contract',
   'runtime-profile-guards',
+  'release-baseline',
+  'backend-safe-verify-contract',
+  'durable-runtime-proof',
   'auth-boundary',
   'user-auth-boundary',
   'backend-ops-readiness',
+  'external-beta-readiness',
+  'release-artifact-evidence',
   'observability-contract',
   'api-health-smoke',
   'openapi-drift',
@@ -126,6 +134,8 @@ if (contract.artifactEvidence?.requiresImageDigest !== true) {
 
 const gateIds = new Set();
 const verifyScript = String(scripts.verify ?? '');
+const hasVerificationScript = (scriptName) =>
+  verifyScript.includes(`npm run ${scriptName}`) || backendSafeScripts.has(scriptName);
 for (const gate of contract.requiredGates ?? []) {
   if (gateIds.has(gate.gateId)) {
     violations.push(`${contractPath}: duplicate gateId "${gate.gateId}"`);
@@ -145,8 +155,8 @@ for (const gate of contract.requiredGates ?? []) {
     violations.push(`${contractPath}: gate "${gate.gateId}" references missing npm script "${scriptName}"`);
   }
 
-  if (!verifyScript.includes(`npm run ${scriptName}`)) {
-    violations.push(`${packagePath}: npm run verify must include release gate script "${scriptName}"`);
+  if (!hasVerificationScript(scriptName)) {
+    violations.push(`${packagePath}: npm run verify or verify:backend must include release gate script "${scriptName}"`);
   }
 }
 
@@ -217,8 +227,8 @@ if (!contract.promotionDoc || !existsSync(contract.promotionDoc)) {
   violations.push(`${contractPath}: promotionDoc must reference an existing document`);
 }
 
-if (!verifyScript.includes('check:release')) {
-  violations.push(`${packagePath}: npm run verify must include check:release`);
+if (!hasVerificationScript('check:release')) {
+  violations.push(`${packagePath}: npm run verify or verify:backend must include check:release`);
 }
 
 if (violations.length > 0) {

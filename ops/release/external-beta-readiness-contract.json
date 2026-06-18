@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "contractId": "external-beta-readiness-backend-mvp-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "evidenceMode": "fixture_contract_with_external_evidence_required",
+  "externalBetaDecision": "hold",
+  "goDecisionExitCriteria": [
+    "durable runtime proof has deployed staging evidence",
+    "live source provider certification replaces fixture-only certification for enabled external providers",
+    "RabbitMQ and Postgres staging drills have attached evidence",
+    "backend durable E2E loop passes on promoted image digest",
+    "summary blocker feedback is converted into eval fixtures, validator changes or runbook actions",
+    "release artifact evidence includes immutable image digest and deploy smoke output"
+  ],
+  "capacityEnvelope": {
+    "ringId": "private-beta-1",
+    "maxUsers": 5,
+    "maxTopicsPerWorkspace": 10,
+    "maxEnabledSourcesPerTopic": 3,
+    "maxManualScansPerWorkspacePerHour": 50,
+    "maxSummaryRequestsPerWorkspacePerHour": 20,
+    "maxQueueLagSeconds": 300,
+    "maxSummaryEstimatedCostUsdPerWorkspacePerDay": 5,
+    "maxDeliveryAttemptsPerWorkspacePerHour": 100,
+    "defaultDegradationAction": "hold_ring_expansion_reduce_frequency_or_pause_affected_sources"
+  },
+  "requiredEvidenceGroups": [
+    {
+      "groupId": "release-baseline-freeze",
+      "owner": "release-owner",
+      "status": "contract_ready",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:release-baseline", "npm run check:backend-safe-verify"],
+      "requiredArtifacts": ["ops/release/release-baseline-contract.json", "ops/release/backend-safe-verify-contract.json"],
+      "exitCondition": "backend-safe verification chain is green for the release commit"
+    },
+    {
+      "groupId": "durable-runtime-proof",
+      "owner": "backend-lead",
+      "status": "pending_staging_evidence",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:durable-runtime-proof", "npm run check:persistence-readiness"],
+      "requiredArtifacts": ["ops/release/durable-runtime-proof.json", "ops/release/persistence-readiness-contract.json"],
+      "exitCondition": "target environment uses Prisma/RabbitMQ/JWT selectors and no beta process uses in-memory or noop state"
+    },
+    {
+      "groupId": "production-auth-finalization",
+      "owner": "identity-owner",
+      "status": "contract_ready",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:auth-boundary", "npm run check:user-auth-boundary", "npm run check:read-api-key-scope", "npm run check:write-api-key-scope"],
+      "requiredArtifacts": ["test/e2e/user-jwt-auth-boundary.e2e-spec.ts"],
+      "exitCondition": "JWT/OIDC, workspace membership, role and API-key scope matrix stays green against target runtime"
+    },
+    {
+      "groupId": "source-provider-live-certification",
+      "owner": "source-owner",
+      "status": "blocked_without_live_credentials",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:source-certification", "npm run check:live-open-connectors", "npm run check:live-reddit-oauth"],
+      "requiredArtifacts": ["ops/ingestion/source-provider-certification.json"],
+      "exitCondition": "HN, RSS, GitHub and Reddit have live rate-limit/auth/cursor evidence; Telegram and X remain deferred"
+    },
+    {
+      "groupId": "credential-secret-runtime-flow",
+      "owner": "security-owner",
+      "status": "pending_staging_evidence",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:secrets", "npm run check:source-config-protector", "npm run check:http-webhook-delivery-provider"],
+      "requiredArtifacts": ["ops/security/secret-scan-allowlist.json", "ops/privacy/retention-contract.json"],
+      "exitCondition": "source credentials, webhook secrets, OIDC config, DB and RabbitMQ credentials are supplied through approved runtime secret boundary and rotation drill is attached"
+    },
+    {
+      "groupId": "rabbitmq-staging-reliability-drill",
+      "owner": "ops-owner",
+      "status": "pending_staging_evidence",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:rabbitmq-queue-publisher", "npm run check:scan-queue-drain-loop", "npm run check:summary-queue-drain-loop", "npm run check:delivery-attempt-queue-drain-loop", "npm run check:event-relay"],
+      "requiredArtifacts": ["ops/drills/mvp-staging-drills.json", "ops/observability/dashboards/mvp-health.json", "ops/observability/alerts/mvp-alerts.json"],
+      "exitCondition": "real RabbitMQ staging drill proves confirms, persistent publish, ack/nack, DLX, quorum delivery limit, worker restart, lag metrics and event relay retry"
+    },
+    {
+      "groupId": "postgres-restore-migration-drill",
+      "owner": "ops-owner",
+      "status": "pending_staging_evidence",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:migrations", "npm run check:backup-restore", "npm run check:persistence-readiness", "npm run check:tenant-db-guards"],
+      "requiredArtifacts": ["ops/recovery/backup-restore-contract.json", "prisma/schema.prisma"],
+      "exitCondition": "staging restore validates RPO/RTO queries, outbox/inbox/idempotency state and rollback path"
+    },
+    {
+      "groupId": "durable-backend-e2e-loop",
+      "owner": "backend-lead",
+      "status": "pending_staging_evidence",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:mvp-core-loop", "npm run check:openapi", "npm run check:e2e-traceability"],
+      "requiredArtifacts": ["libs/contracts/rest/openapi.snapshot.json", "ops/release/e2e-acceptance-traceability.json"],
+      "exitCondition": "topic -> source binding -> scheduled scan -> feed -> summary -> feedback -> digest/webhook/realtime -> audit passes on durable runtime"
+    },
+    {
+      "groupId": "summary-quality-feedback-hardening",
+      "owner": "summary-owner",
+      "status": "blocked_until_real_feedback",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:beta-feedback-report", "npm run check:summary-evals", "npm run check:summary-evidence-smoke", "npm run check:summary-cost", "npm run check:summary-window", "npm run check:summary-retry"],
+      "requiredArtifacts": ["ops/release/beta-feedback-classification-report.json", "ops/evals/summary-eval-output.json", "ops/cost/summary-cost-attribution.json"],
+      "exitCondition": "redacted beta samples replace fixture report and every blocker has eval fixture, validator change or runbook action"
+    },
+    {
+      "groupId": "operational-support-package",
+      "owner": "ops-owner",
+      "status": "contract_ready",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:observability", "npm run check:drills", "npm run check:beta-launch-support"],
+      "requiredArtifacts": ["ops/observability/dashboards/mvp-health.json", "ops/observability/alerts/mvp-alerts.json", "docs/iterations/06-production-hardening/12-operational-runbook.md"],
+      "exitCondition": "operator package covers DLQ, provider outage, rate-limit, summary cost spike and delivery failure triage"
+    },
+    {
+      "groupId": "capacity-envelope-beta-ring-decision",
+      "owner": "release-owner",
+      "status": "hold",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:load-cost", "npm run check:beta-ring-policy", "npm run check:beta-ring-decision"],
+      "requiredArtifacts": ["ops/release/beta-ring-expansion-policy.json", "ops/release/beta-ring-expansion-decision-record.json"],
+      "exitCondition": "ring decision changes from hold to go only after durable runtime, live source and real feedback evidence are attached"
+    },
+    {
+      "groupId": "release-artifact-evidence",
+      "owner": "release-owner",
+      "status": "pending_image_digest_and_deploy_smoke",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:release-artifact-evidence", "npm run check:release"],
+      "requiredArtifacts": ["ops/release/release-artifact-evidence.json", "ops/release/mvp-release-evidence-contract.json"],
+      "exitCondition": "release evidence includes commit SHA, immutable image digest, artifact hashes and deploy smoke output"
+    },
+    {
+      "groupId": "security-final-sweep",
+      "owner": "security-owner",
+      "status": "contract_ready",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:secrets", "npm run check:dependencies", "npm run check:user-auth-boundary", "npm run check:usage-audit-rest"],
+      "requiredArtifacts": ["ops/security/dependency-audit-policy.json", "ops/security/secret-scan-allowlist.json"],
+      "exitCondition": "tokens, secret URLs, provider payloads and raw prompts stay out of logs, metrics, public errors and audit metadata"
+    },
+    {
+      "groupId": "no-go-cleanup",
+      "owner": "release-owner",
+      "status": "contract_ready",
+      "blocksExternalBeta": true,
+      "verificationCommands": ["npm run check:external-beta-readiness", "npm run check:beta-ring-decision"],
+      "requiredArtifacts": ["ops/release/external-beta-readiness-contract.json"],
+      "exitCondition": "all fixture-ready or pending evidence claims have owner, exit condition and blocking status"
+    }
+  ],
+  "noGoExceptions": [
+    {
+      "exceptionId": "fixture-source-certification",
+      "owner": "source-owner",
+      "blocking": true,
+      "exitCondition": "Replace fixture-only source certification with live provider evidence for every externally enabled source."
+    },
+    {
+      "exceptionId": "staging-drills-not-run",
+      "owner": "ops-owner",
+      "blocking": true,
+      "exitCondition": "Attach RabbitMQ, Postgres restore and durable backend loop staging drill outputs."
+    },
+    {
+      "exceptionId": "image-digest-not-attached",
+      "owner": "release-owner",
+      "blocking": true,
+      "exitCondition": "Attach immutable backend image digest and deploy smoke evidence."
+    },
+    {
+      "exceptionId": "feedback-report-is-fixture-only",
+      "owner": "product-owner",
+      "blocking": true,
+      "exitCondition": "Replace deterministic feedback report with redacted beta samples."
+    }
+  ]
+}

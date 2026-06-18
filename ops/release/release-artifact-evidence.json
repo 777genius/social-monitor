@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "artifactEvidenceId": "backend-mvp-release-artifact-evidence-v1",
+  "status": "pending_image_digest_and_deploy_smoke",
+  "commitSha": {
+    "mode": "computed_at_release_time",
+    "command": "git rev-parse HEAD"
+  },
+  "imageDigest": {
+    "requiredForExternalBeta": true,
+    "status": "pending_external_registry",
+    "value": null,
+    "exitCondition": "Attach immutable image digest sha256:<64 hex chars> for the promoted backend image."
+  },
+  "artifactDigests": [
+    {
+      "artifactId": "openapi-snapshot",
+      "path": "libs/contracts/rest/openapi.snapshot.json",
+      "algorithm": "sha256"
+    },
+    {
+      "artifactId": "event-catalog",
+      "path": "libs/contracts/events/event-catalog.json",
+      "algorithm": "sha256"
+    },
+    {
+      "artifactId": "prisma-schema",
+      "path": "prisma/schema.prisma",
+      "algorithm": "sha256"
+    }
+  ],
+  "deploySmokeEvidence": [
+    {
+      "smokeId": "api-health",
+      "status": "pending_staging_deploy",
+      "requiredSignal": "GET /health and GET /healthz return healthy on promoted image"
+    },
+    {
+      "smokeId": "openapi-contract",
+      "status": "pending_staging_deploy",
+      "requiredSignal": "deployed OpenAPI contract matches committed snapshot"
+    },
+    {
+      "smokeId": "migration-version",
+      "status": "pending_staging_deploy",
+      "requiredSignal": "database schema version matches release commit"
+    },
+    {
+      "smokeId": "worker-pause-resume",
+      "status": "pending_staging_deploy",
+      "requiredSignal": "workers can pause during restore and resume without duplicate side effects"
+    }
+  ]
+}

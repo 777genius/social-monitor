@@ -45,6 +45,21 @@
       "blocksRelease": true
     },
     {
+      "gateId": "release-baseline",
+      "command": "npm run check:release-baseline",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "backend-safe-verify-contract",
+      "command": "npm run check:backend-safe-verify",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "durable-runtime-proof",
+      "command": "npm run check:durable-runtime-proof",
+      "blocksRelease": true
+    },
+    {
       "gateId": "auth-boundary",
       "command": "npm run check:auth-boundary",
       "blocksRelease": true
@@ -57,6 +72,16 @@
     {
       "gateId": "backend-ops-readiness",
       "command": "npm run check:backend-ops-readiness",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "external-beta-readiness",
+      "command": "npm run check:external-beta-readiness",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "release-artifact-evidence",
+      "command": "npm run check:release-artifact-evidence",
       "blocksRelease": true
     },
     {

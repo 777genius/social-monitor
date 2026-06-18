@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "backend-mvp-release-baseline-v1",
+  "scope": "backend-only",
+  "commitShaMode": "computed_at_verification_time",
+  "artifactDigestAlgorithm": "sha256",
+  "requiredGreenScripts": [
+    "check:architecture",
+    "check:code-quality",
+    "check:secrets",
+    "check:dependencies",
+    "check:auth-boundary",
+    "check:user-auth-boundary",
+    "check:backend-ops-readiness",
+    "check:release",
+    "check:e2e-traceability",
+    "build",
+    "test",
+    "test:e2e"
+  ],
+  "trackedArtifacts": [
+    {
+      "artifactId": "openapi-snapshot",
+      "path": "libs/contracts/rest/openapi.snapshot.json"
+    },
+    {
+      "artifactId": "event-catalog",
+      "path": "libs/contracts/events/event-catalog.json"
+    },
+    {
+      "artifactId": "prisma-schema",
+      "path": "prisma/schema.prisma"
+    },
+    {
+      "artifactId": "mvp-release-contract",
+      "path": "ops/release/mvp-release-evidence-contract.json"
+    },
+    {
+      "artifactId": "backend-ops-readiness",
+      "path": "ops/release/backend-ops-readiness-contract.json"
+    }
+  ]
+}
