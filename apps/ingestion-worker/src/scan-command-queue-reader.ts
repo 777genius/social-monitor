@@ -6,6 +6,10 @@ import {
   type QueueCommandDeliveryDiagnostics,
   type QueueCommandEnvelope,
 } from '@social-monitor/platform-queue';
+import {
+  rabbitMqDurableQueueArguments,
+  type RabbitMqFieldValue,
+} from '@social-monitor/platform-queue/adapters/rabbitmq';
 import type { GetMessage, Message } from 'amqplib';
 
 import {
@@ -39,7 +43,7 @@ export interface RabbitMqScanQueueReaderChannelPort {
     queue: string,
     options: {
       readonly durable: boolean;
-      readonly arguments?: Readonly<Record<string, string | number | boolean>>;
+      readonly arguments?: Readonly<Record<string, RabbitMqFieldValue>>;
     },
   ): Promise<unknown>;
   get(queue: string, options: { readonly noAck: boolean }): Promise<GetMessage | false>;
@@ -120,9 +124,11 @@ export class RabbitMqScanCommandQueueReader implements ScanCommandQueueReaderPor
     }
     await this.channel.assertQueue(this.options.queue, {
       durable: true,
-      arguments: this.options.deadLetterExchange === undefined
-        ? undefined
-        : { 'x-dead-letter-exchange': this.options.deadLetterExchange },
+      arguments: rabbitMqDurableQueueArguments({
+        deadLetterExchange: this.options.deadLetterExchange,
+        queueType: this.options.queueType,
+        deliveryLimit: this.options.deliveryLimit,
+      }),
     });
     await this.channel.prefetch(prefetch);
     this.routeAsserted = true;

@@ -128,7 +128,19 @@ async function main(): Promise<void> {
   assert(result.evaluated === 1, `expected one evaluated policy, got ${result.evaluated}`);
   assert(result.enqueued === 1, `expected one enqueued scan, got ${result.enqueued}`);
   assert(rabbit.published.length === 1, `expected one RabbitMQ command, got ${rabbit.published.length}`);
-  assert(rabbit.assertedQueue === 'jobs.freshness.scan', 'scheduler must assert scan command queue');
+  assert(
+    JSON.stringify(rabbit.assertedQueue) === JSON.stringify({
+      queue: 'jobs.freshness.scan',
+      options: {
+        durable: true,
+        arguments: {
+          'x-queue-type': 'quorum',
+          'x-delivery-limit': 20,
+        },
+      },
+    }),
+    'scheduler must assert quorum scan command queue',
+  );
   assert(rabbit.published[0]?.routingKey === 'ingestion.scan.execute', 'scheduler must route scan command');
 
   const publishedPayload = JSON.parse(rabbit.published[0]?.content.toString('utf8') ?? '{}') as {
@@ -296,7 +308,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
 }
 
 class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
-  assertedQueue: string | undefined;
+  assertedQueue: unknown;
   readonly published: {
     readonly routingKey: string;
     readonly content: Buffer;
@@ -307,8 +319,14 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
     return undefined;
   }
 
-  async assertQueue(queue: string): Promise<unknown> {
-    this.assertedQueue = queue;
+  async assertQueue(
+    queue: string,
+    options: {
+      readonly durable: boolean;
+      readonly arguments?: Readonly<Record<string, string | number | boolean>>;
+    },
+  ): Promise<unknown> {
+    this.assertedQueue = { queue, options };
 
     return undefined;
   }

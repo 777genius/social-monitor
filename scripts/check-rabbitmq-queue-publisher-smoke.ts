@@ -99,6 +99,20 @@ async function main(): Promise<void> {
     'publisher must assert configured dead-letter exchange before binding the queue',
   );
   assert(channel.queues.length === 1, 'publisher must assert one queue');
+  assert(
+    JSON.stringify(channel.queues[0]) === JSON.stringify({
+      queue: 'jobs.freshness.scan',
+      options: {
+        durable: true,
+        arguments: {
+          'x-queue-type': 'quorum',
+          'x-dead-letter-exchange': 'social-monitor.jobs.dlx',
+          'x-delivery-limit': 20,
+        },
+      },
+    }),
+    'publisher must assert quorum queue with bounded delivery limit and DLX',
+  );
   assert(channel.bindings.length === 1, 'publisher must bind one queue');
   assert(channel.published.length === 1, 'publisher must publish one command');
   assert(channel.published[0]?.exchange === 'social-monitor.jobs', 'publisher must use configured exchange');

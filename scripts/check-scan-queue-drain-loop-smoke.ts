@@ -43,7 +43,7 @@ class SequenceIdGenerator implements IdGenerator {
 
 class FakeRabbitMqReaderChannel implements RabbitMqScanQueueReaderChannelPort {
   readonly assertedExchanges: unknown[] = [];
-  readonly assertedQueues: string[] = [];
+  readonly assertedQueues: unknown[] = [];
   readonly prefetchCounts: number[] = [];
   acked = 0;
   nacked = 0;
@@ -58,8 +58,14 @@ class FakeRabbitMqReaderChannel implements RabbitMqScanQueueReaderChannelPort {
     this.assertedExchanges.push({ exchange, type, options });
   }
 
-  async assertQueue(queue: string): Promise<void> {
-    this.assertedQueues.push(queue);
+  async assertQueue(
+    queue: string,
+    options: {
+      readonly durable: boolean;
+      readonly arguments?: Readonly<Record<string, string | number | boolean>>;
+    },
+  ): Promise<void> {
+    this.assertedQueues.push({ queue, options });
   }
 
   async get(): Promise<GetMessage | false> {
@@ -322,6 +328,8 @@ async function main(): Promise<void> {
   const rabbitReader = new RabbitMqScanCommandQueueReader(rabbitChannel, {
     queue: 'jobs.freshness.scan',
     deadLetterExchange: 'social-monitor.jobs.dlx',
+    queueType: 'quorum',
+    deliveryLimit: 20,
   });
   const rabbitDeliveries = await rabbitReader.drain({
     commandType: 'ingestion.scan.execute',
@@ -336,7 +344,20 @@ async function main(): Promise<void> {
     }),
     'RabbitMQ reader must assert configured scan dead-letter exchange',
   );
-  assert(rabbitChannel.assertedQueues[0] === 'jobs.freshness.scan', 'RabbitMQ reader must assert configured scan queue');
+  assert(
+    JSON.stringify(rabbitChannel.assertedQueues[0]) === JSON.stringify({
+      queue: 'jobs.freshness.scan',
+      options: {
+        durable: true,
+        arguments: {
+          'x-queue-type': 'quorum',
+          'x-dead-letter-exchange': 'social-monitor.jobs.dlx',
+          'x-delivery-limit': 20,
+        },
+      },
+    }),
+    'RabbitMQ reader must assert configured quorum scan queue',
+  );
   assert(rabbitChannel.prefetchCounts[0] === 5, 'RabbitMQ reader must prefetch the drain limit');
   const rabbitDelivery = rabbitDeliveries[0];
   assert(rabbitDelivery !== undefined, 'RabbitMQ reader must return a delivery');

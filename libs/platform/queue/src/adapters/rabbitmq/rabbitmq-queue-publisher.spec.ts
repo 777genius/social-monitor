@@ -1,5 +1,6 @@
 import { FixedClock } from '@social-monitor/shared-kernel';
 
+import type { RabbitMqFieldValue } from './rabbitmq-queue-arguments';
 import type { RabbitMqPublishOptions, RabbitMqQueueChannelPort } from './rabbitmq-queue-publisher';
 import { RabbitMqQueuePublisher } from './rabbitmq-queue-publisher';
 
@@ -29,7 +30,7 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
     queue: string,
     options: {
       readonly durable: boolean;
-      readonly arguments?: Readonly<Record<string, string | number | boolean>>;
+      readonly arguments?: Readonly<Record<string, RabbitMqFieldValue>>;
     },
   ): Promise<void> {
     this.queues.push({ queue, options });
@@ -101,6 +102,8 @@ describe('RabbitMqQueuePublisher', () => {
           durable: true,
           arguments: {
             'x-dead-letter-exchange': 'social-monitor.jobs.dlx',
+            'x-delivery-limit': 20,
+            'x-queue-type': 'quorum',
           },
         },
       },
@@ -137,6 +140,40 @@ describe('RabbitMqQueuePublisher', () => {
         causation_id: 'scan-policy-1',
       },
     });
+  });
+
+  it('allows explicit classic queue routes for low-risk compatibility workloads', async () => {
+    const channel = new FakeRabbitMqChannel();
+    const publisher = new RabbitMqQueuePublisher(channel, {
+      exchange: 'social-monitor.jobs',
+      routes: {
+        'compat.low-risk': {
+          queue: 'jobs.compat.low-risk',
+          routingKey: 'compat.low-risk',
+          queueType: 'classic',
+        },
+      },
+    }, new FixedClock(new Date('2026-06-18T10:15:30.000Z')));
+
+    await publisher.publish({
+      commandId: 'compat-1',
+      commandType: 'compat.low-risk',
+      schemaVersion: 1,
+      correlationId: 'correlation-compat',
+      payload: {},
+    });
+
+    expect(channel.queues).toEqual([
+      {
+        queue: 'jobs.compat.low-risk',
+        options: {
+          durable: true,
+          arguments: {
+            'x-queue-type': 'classic',
+          },
+        },
+      },
+    ]);
   });
 
   it('fails fast when the broker reports publish backpressure', async () => {

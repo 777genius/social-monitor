@@ -7,6 +7,7 @@ import {
   type SocketOptions,
 } from 'amqplib';
 
+import type { RabbitMqFieldValue } from './rabbitmq-queue-arguments';
 import type {
   RabbitMqExchangeType,
   RabbitMqPublishOptions,
@@ -41,7 +42,7 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
     queue: string,
     options: {
       readonly durable: boolean;
-      readonly arguments?: Readonly<Record<string, string | number | boolean>>;
+      readonly arguments?: Readonly<Record<string, RabbitMqFieldValue>>;
     },
   ): Promise<unknown> {
     return (await this.channel()).assertQueue(queue, options);
@@ -51,7 +52,7 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
     queue: string,
     exchange: string,
     routingKey: string,
-    args?: Readonly<Record<string, string | number | boolean>>,
+    args?: Readonly<Record<string, RabbitMqFieldValue>>,
   ): Promise<unknown> {
     return (await this.channel()).bindQueue(queue, exchange, routingKey, args);
   }

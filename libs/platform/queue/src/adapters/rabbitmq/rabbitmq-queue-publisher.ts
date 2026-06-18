@@ -1,8 +1,12 @@
 import type { Clock } from '@social-monitor/shared-kernel';
 
 import type { QueueCommandEnvelope, QueuePublisherPort } from '../../queue-command';
+import {
+  rabbitMqDurableQueueArguments,
+  type RabbitMqFieldValue,
+  type RabbitMqQueueType,
+} from './rabbitmq-queue-arguments';
 
-type RabbitMqFieldValue = string | number | boolean;
 export type RabbitMqExchangeType = 'direct' | 'fanout' | 'topic';
 
 export type RabbitMqQueueRoute = {
@@ -12,6 +16,8 @@ export type RabbitMqQueueRoute = {
   readonly deadLetterExchange?: string;
   readonly deadLetterExchangeType?: RabbitMqExchangeType;
   readonly headers?: Readonly<Record<string, RabbitMqFieldValue>>;
+  readonly queueType?: RabbitMqQueueType;
+  readonly deliveryLimit?: number;
 };
 
 export type RabbitMqQueuePublisherOptions = {
@@ -132,9 +138,12 @@ export class RabbitMqQueuePublisher implements QueuePublisherPort {
     }
     await this.channel.assertQueue(route.queue, {
       durable,
-      arguments: route.deadLetterExchange === undefined
-        ? undefined
-        : { 'x-dead-letter-exchange': route.deadLetterExchange },
+      arguments: rabbitMqDurableQueueArguments({
+        deadLetterExchange: route.deadLetterExchange,
+        headers: route.headers,
+        queueType: route.queueType,
+        deliveryLimit: route.deliveryLimit,
+      }),
     });
     await this.channel.bindQueue(route.queue, this.options.exchange, route.routingKey);
     this.assertedRoutes.add(routeKey);

@@ -34,6 +34,7 @@ Do not treat Kafka replication as backup. It protects availability/durability in
 Production defaults:
 
 - quorum queues for critical durable jobs;
+- explicit delivery limits on quorum task queues;
 - persistent messages for accepted work;
 - DLQs for exhausted retries;
 - bounded queue length policies where runaway backlog is possible;
@@ -59,4 +60,3 @@ RabbitMQ:
 ## Best-Fact Choice
 
 Using both brokers is acceptable only with strict semantics. Kafka is event log; RabbitMQ is work dispatch. Blurring the boundary creates duplicate reliability models.
-

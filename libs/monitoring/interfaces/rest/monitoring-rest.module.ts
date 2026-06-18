@@ -4,6 +4,9 @@ import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import {
   AmqplibRabbitMqChannel,
+  parseRabbitMqDeadLetterExchange,
+  parseRabbitMqDeliveryLimit,
+  parseRabbitMqQueueType,
   RabbitMqQueuePublisher,
 } from '@social-monitor/platform-queue/adapters/rabbitmq';
 import {
@@ -459,7 +462,12 @@ const monitoringScanQueueRabbitMqOptions = (env: NodeJS.ProcessEnv) => ({
     'ingestion.scan.execute': {
       queue: envValue(env.RABBITMQ_SCAN_QUEUE, 'jobs.freshness.scan'),
       routingKey: envValue(env.RABBITMQ_SCAN_ROUTING_KEY, 'scan.execute'),
-      deadLetterExchange: optionalEnvValue(env.RABBITMQ_DEAD_LETTER_EXCHANGE),
+      deadLetterExchange: parseRabbitMqDeadLetterExchange(env.RABBITMQ_DEAD_LETTER_EXCHANGE, {
+        runtimeProfile: env.SOCIAL_MONITOR_RUNTIME_PROFILE,
+        settingName: 'MONITORING_SCAN_QUEUE=rabbitmq',
+      }),
+      queueType: parseRabbitMqQueueType(env.RABBITMQ_QUEUE_TYPE),
+      deliveryLimit: parseRabbitMqDeliveryLimit(env.RABBITMQ_QUEUE_DELIVERY_LIMIT),
     },
   },
 });
@@ -468,10 +476,4 @@ const envValue = (value: string | undefined, fallback: string): string => {
   const trimmed = value?.trim();
 
   return trimmed === undefined || trimmed.length === 0 ? fallback : trimmed;
-};
-
-const optionalEnvValue = (value: string | undefined): string | undefined => {
-  const trimmed = value?.trim();
-
-  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
 };

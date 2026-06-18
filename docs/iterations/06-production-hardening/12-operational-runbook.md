@@ -43,6 +43,7 @@
 - Use `docker compose --profile app up -d --build` for the durable local MVP runtime: API, ingestion worker, intelligence worker, delivery service, event relay, PostgreSQL and RabbitMQ.
 - The `migrate` service must complete successfully before app services accept traffic. If migration fails, keep workers stopped and inspect schema compatibility before replaying queued work.
 - Required durable selectors for the app profile: `MONITORING_PERSISTENCE=prisma`, `FEED_PERSISTENCE=prisma`, `SUMMARY_PERSISTENCE=prisma`, `DELIVERY_PERSISTENCE=prisma`, `IDENTITY_PERSISTENCE=prisma`, `USAGE_PERSISTENCE=prisma`, `MONITORING_SCAN_QUEUE=rabbitmq`, `SUMMARY_JOB_QUEUE_MODE=rabbitmq`, `INGESTION_SCAN_QUEUE_READER=rabbitmq`, `INTELLIGENCE_SUMMARY_QUEUE_READER=rabbitmq`, `DELIVERY_ATTEMPT_QUEUE_READER=rabbitmq`.
+- RabbitMQ task queues must use `RABBITMQ_DEAD_LETTER_EXCHANGE=social-monitor.commands.dlx`, `RABBITMQ_QUEUE_TYPE=quorum` and `RABBITMQ_QUEUE_DELIVERY_LIMIT=20` in beta runtime. If an existing local broker volume already declared classic queues, recreate the test broker volume before validating the app profile.
 - Event relay must run with `EVENT_RELAY_LOOP=enabled`; otherwise durable outbox events can accumulate without fanout to RabbitMQ-backed consumers.
 - Delivery service uses `DELIVERY_ATTEMPT_DISPATCH_TARGET=queue`, `DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq`, `DELIVERY_ATTEMPT_QUEUE_READER=rabbitmq` and `DELIVERY_WEBHOOK_PROVIDER=http` in app profile. If webhook failures spike, follow Delivery Failure Triage before replaying attempts.
 - Run `npm run check:runtime-compose`, `npm run check:container`, `npm run check:api-health`, `npm run check:event-relay`, `npm run check:cross-process-scheduler`, `npm run check:summary-queue-drain-loop` and `npm run check:delivery-attempt-queue-drain-loop` as targeted confidence checks when runtime wiring changes.
@@ -73,6 +74,7 @@ Scan status API responses expose support-safe fields for beta triage:
 - `queue_commands_backlog{command_type=ingestion.scan.execute,queue=scan}` shows current in-memory scan queue depth after enqueue.
 - If backlog grows while `scan_jobs_total{status=started}` is flat, inspect worker availability before increasing scan frequency.
 - If backlog grows together with provider rate-limit failures, reduce scan frequency or pause affected sources before adding workers.
+- Quorum queues dead-letter messages after the configured delivery limit when a DLX is present. Use RabbitMQ policy for at-least-once dead-lettering in shared/staging brokers before replaying production-like queues.
 - Queue lag seconds is intentionally not emitted yet because the MVP in-memory queue has no ack/dequeue timestamp model; add it when the broker adapter exposes consumed/acked timestamps.
 
 ## DLQ Triage

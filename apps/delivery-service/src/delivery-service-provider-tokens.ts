@@ -1,4 +1,10 @@
 import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
+import {
+  parseRabbitMqDeadLetterExchange,
+  parseRabbitMqDeliveryLimit,
+  parseRabbitMqQueueType,
+  type RabbitMqQueueType,
+} from '@social-monitor/platform-queue/adapters/rabbitmq';
 
 export type DeliveryDigestSchedulerLoopOptions = {
   readonly enabled: boolean;
@@ -25,6 +31,8 @@ export type DeliveryAttemptQueueReaderMode = 'in-memory' | 'rabbitmq';
 export type DeliveryRabbitMqAttemptQueueReaderOptions = {
   readonly queue: string;
   readonly deadLetterExchange?: string;
+  readonly queueType: RabbitMqQueueType;
+  readonly deliveryLimit: number;
 };
 export type DeliveryAttemptQueueDrainLoopOptions = {
   readonly enabled: boolean;
@@ -197,7 +205,12 @@ export const resolveDeliveryRabbitMqAttemptQueueOptions = (
     'delivery.attempt.send': {
       queue: nonEmptyOrFallback(env.RABBITMQ_DELIVERY_ATTEMPT_QUEUE, 'jobs.delivery.attempt.send'),
       routingKey: 'delivery.attempt.send',
-      deadLetterExchange: emptyToUndefined(env.RABBITMQ_DEAD_LETTER_EXCHANGE),
+      deadLetterExchange: parseRabbitMqDeadLetterExchange(env.RABBITMQ_DEAD_LETTER_EXCHANGE, {
+        runtimeProfile: env.SOCIAL_MONITOR_RUNTIME_PROFILE,
+        settingName: 'DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq',
+      }),
+      queueType: parseRabbitMqQueueType(env.RABBITMQ_QUEUE_TYPE),
+      deliveryLimit: parseRabbitMqDeliveryLimit(env.RABBITMQ_QUEUE_DELIVERY_LIMIT),
     },
   },
 });
@@ -206,7 +219,12 @@ export const resolveDeliveryRabbitMqAttemptQueueReaderOptions = (
   env: NodeJS.ProcessEnv,
 ): DeliveryRabbitMqAttemptQueueReaderOptions => ({
   queue: nonEmptyOrFallback(env.RABBITMQ_DELIVERY_ATTEMPT_QUEUE, 'jobs.delivery.attempt.send'),
-  deadLetterExchange: emptyToUndefined(env.RABBITMQ_DEAD_LETTER_EXCHANGE),
+  deadLetterExchange: parseRabbitMqDeadLetterExchange(env.RABBITMQ_DEAD_LETTER_EXCHANGE, {
+    runtimeProfile: env.SOCIAL_MONITOR_RUNTIME_PROFILE,
+    settingName: 'DELIVERY_ATTEMPT_QUEUE_READER=rabbitmq',
+  }),
+  queueType: parseRabbitMqQueueType(env.RABBITMQ_QUEUE_TYPE),
+  deliveryLimit: parseRabbitMqDeliveryLimit(env.RABBITMQ_QUEUE_DELIVERY_LIMIT),
 });
 
 export const resolveDeliveryAttemptQueueDrainLoopOptions = (

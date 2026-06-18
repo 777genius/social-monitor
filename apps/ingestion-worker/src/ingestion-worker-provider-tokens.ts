@@ -1,4 +1,10 @@
 import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
+import {
+  parseRabbitMqDeadLetterExchange,
+  parseRabbitMqDeliveryLimit,
+  parseRabbitMqQueueType,
+  type RabbitMqQueueType,
+} from '@social-monitor/platform-queue/adapters/rabbitmq';
 import type {
   FeedProjectionPort,
   ScanAttemptRepositoryPort,
@@ -30,6 +36,8 @@ export type IngestionWorkerPersistenceMode = 'in-memory' | 'prisma';
 export type IngestionRabbitMqScanQueueReaderOptions = {
   readonly queue: string;
   readonly deadLetterExchange?: string;
+  readonly queueType: RabbitMqQueueType;
+  readonly deliveryLimit: number;
 };
 
 export const INGESTION_WORKER_PERSISTENCE_MODE = Symbol('INGESTION_WORKER_PERSISTENCE_MODE');
@@ -167,7 +175,12 @@ export const resolveIngestionRabbitMqScanQueueReaderOptions = (
   env: NodeJS.ProcessEnv,
 ): IngestionRabbitMqScanQueueReaderOptions => ({
   queue: nonEmptyOrFallback(env.RABBITMQ_SCAN_QUEUE, 'jobs.freshness.scan'),
-  deadLetterExchange: emptyToUndefined(env.RABBITMQ_DEAD_LETTER_EXCHANGE),
+  deadLetterExchange: parseRabbitMqDeadLetterExchange(env.RABBITMQ_DEAD_LETTER_EXCHANGE, {
+    runtimeProfile: env.SOCIAL_MONITOR_RUNTIME_PROFILE,
+    settingName: 'INGESTION_SCAN_QUEUE_READER=rabbitmq',
+  }),
+  queueType: parseRabbitMqQueueType(env.RABBITMQ_QUEUE_TYPE),
+  deliveryLimit: parseRabbitMqDeliveryLimit(env.RABBITMQ_QUEUE_DELIVERY_LIMIT),
 });
 
 export const resolveIngestionScanSchedulerLoopOptions = (

@@ -123,6 +123,18 @@
     {
       "file": "docker-compose.yml",
       "marker": "EVENT_RELAY_LOOP: enabled"
+    },
+    {
+      "file": "docker-compose.yml",
+      "marker": "RABBITMQ_DEAD_LETTER_EXCHANGE: social-monitor.commands.dlx"
+    },
+    {
+      "file": "docker-compose.yml",
+      "marker": "RABBITMQ_QUEUE_TYPE: quorum"
+    },
+    {
+      "file": "docker-compose.yml",
+      "marker": "RABBITMQ_QUEUE_DELIVERY_LIMIT: \"20\""
     }
   ],
   "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#release-rollback-triage",

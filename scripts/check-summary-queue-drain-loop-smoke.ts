@@ -155,10 +155,25 @@ async function verifyRabbitMqReaderDelivery(): Promise<void> {
   const reader = new RabbitMqSummaryJobQueueReader(channel, {
     queue: 'jobs.summary.execute',
     deadLetterExchange: 'dead.letters',
+    queueType: 'quorum',
+    deliveryLimit: 20,
   });
   const deliveries = await reader.drain({ commandType: 'summary.job.execute', limit: 5 });
 
-  assert(channel.assertedQueue === 'jobs.summary.execute', 'Rabbit reader must assert summary queue');
+  assert(
+    JSON.stringify(channel.assertedQueue) === JSON.stringify({
+      queue: 'jobs.summary.execute',
+      options: {
+        durable: true,
+        arguments: {
+          'x-queue-type': 'quorum',
+          'x-dead-letter-exchange': 'dead.letters',
+          'x-delivery-limit': 20,
+        },
+      },
+    }),
+    'Rabbit reader must assert summary quorum queue',
+  );
   assert(
     JSON.stringify(channel.assertedExchange) === JSON.stringify({
       exchange: 'dead.letters',
@@ -184,7 +199,7 @@ async function verifyRabbitMqReaderDelivery(): Promise<void> {
 class FakeRabbitMqSummaryQueueReaderChannel implements RabbitMqSummaryQueueReaderChannelPort {
   readonly messages: GetMessage[] = [];
   assertedExchange: unknown;
-  assertedQueue: string | undefined;
+  assertedQueue: unknown;
   prefetchCount = 0;
   acked = 0;
   nacked = 0;
@@ -199,8 +214,14 @@ class FakeRabbitMqSummaryQueueReaderChannel implements RabbitMqSummaryQueueReade
     return undefined;
   }
 
-  async assertQueue(queue: string): Promise<unknown> {
-    this.assertedQueue = queue;
+  async assertQueue(
+    queue: string,
+    options: {
+      readonly durable: boolean;
+      readonly arguments?: Readonly<Record<string, string | number | boolean>>;
+    },
+  ): Promise<unknown> {
+    this.assertedQueue = { queue, options };
 
     return undefined;
   }

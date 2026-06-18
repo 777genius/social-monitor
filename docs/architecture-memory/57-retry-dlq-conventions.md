@@ -9,6 +9,8 @@ All queue consumers need explicit retry, DLQ and poison-message policy.
 
 Use RabbitMQ quorum queues for important task queues. Use at-least-once dead-lettering where queue safety matters and operational tradeoffs are understood.
 
+MVP beta RabbitMQ task queues must be declared through the platform RabbitMQ queue-arguments helper so publishers and readers share `x-queue-type=quorum`, bounded `x-delivery-limit` and the same DLX argument shape.
+
 References:
 
 - RabbitMQ Quorum Queues: https://www.rabbitmq.com/docs/next/quorum-queues
@@ -90,4 +92,4 @@ Poison messages require:
 3. DLQ replay is audited.
 4. Poison messages are treated as bugs or schema violations.
 5. Retry behavior is task-type-specific, not globally generic.
-
+6. Production RabbitMQ queue declarations do not build DLX/quorum arguments ad hoc.

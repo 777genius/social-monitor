@@ -70,6 +70,9 @@ for (const marker of [
   'DELIVERY_ATTEMPT_QUEUE_READER: rabbitmq',
   'DELIVERY_WEBHOOK_PROVIDER: http',
   'EVENT_RELAY_LOOP: enabled',
+  'RABBITMQ_DEAD_LETTER_EXCHANGE: social-monitor.commands.dlx',
+  'RABBITMQ_QUEUE_TYPE: quorum',
+  'RABBITMQ_QUEUE_DELIVERY_LIMIT: "20"',
 ]) {
   if (!compose.includes(marker)) {
     violations.push(`docker-compose.yml missing runtime marker "${marker}"`);

@@ -1,6 +1,11 @@
 import type { Provider } from '@nestjs/common';
 import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
-import type { RabbitMqQueuePublisherOptions } from '@social-monitor/platform-queue/adapters/rabbitmq';
+import {
+  parseRabbitMqDeadLetterExchange,
+  parseRabbitMqDeliveryLimit,
+  parseRabbitMqQueueType,
+  type RabbitMqQueuePublisherOptions,
+} from '@social-monitor/platform-queue/adapters/rabbitmq';
 
 import type {
   SummaryArtifactRepositoryPort,
@@ -132,19 +137,18 @@ export const resolveSummaryRabbitMqJobQueueOptions = (
       queue: nonEmptyOrFallback(env.RABBITMQ_SUMMARY_QUEUE, 'jobs.summary.execute'),
       routingKey: 'summary.job.execute',
       durable: true,
-      deadLetterExchange: emptyToUndefined(env.RABBITMQ_DEAD_LETTER_EXCHANGE),
+      deadLetterExchange: parseRabbitMqDeadLetterExchange(env.RABBITMQ_DEAD_LETTER_EXCHANGE, {
+        runtimeProfile: env.SOCIAL_MONITOR_RUNTIME_PROFILE,
+        settingName: 'SUMMARY_JOB_QUEUE_MODE=rabbitmq',
+      }),
+      queueType: parseRabbitMqQueueType(env.RABBITMQ_QUEUE_TYPE),
+      deliveryLimit: parseRabbitMqDeliveryLimit(env.RABBITMQ_QUEUE_DELIVERY_LIMIT),
     },
   },
 });
 
 export const resolveSummaryJobQuotaPerHour = (env: NodeJS.ProcessEnv): number =>
   parsePositiveInteger(env.SUMMARY_JOB_QUOTA_PER_HOUR, 60);
-
-const emptyToUndefined = (value: string | undefined): string | undefined => {
-  const trimmed = value?.trim();
-
-  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
-};
 
 const nonEmptyOrFallback = (value: string | undefined, fallback: string): string => {
   const trimmed = value?.trim();

@@ -24,6 +24,10 @@ const outboundUrlPolicyAllowedFiles = new Set([
   'libs/shared-kernel/src/outbound-url-policy.ts',
 ]);
 
+const rabbitMqQueueArgumentAllowedFiles = new Set([
+  'libs/platform/queue/src/adapters/rabbitmq/rabbitmq-queue-arguments.ts',
+]);
+
 const prismaWritePattern =
   /\b(?:this\.)?prisma\.[A-Za-z0-9_]+\.(?:create|update|upsert|delete|deleteMany|updateMany|createMany)\s*\(/;
 
@@ -200,6 +204,23 @@ for (const file of [
 
   if (/\bawait\s+fetch\s*\(/.test(source) && !source.includes('AbortSignal.timeout')) {
     addViolation(file, 'HTTP adapters must use AbortSignal.timeout for outbound fetch calls');
+  }
+}
+
+for (const file of [
+  ...productionTsFiles('apps/**/*.ts'),
+  ...productionTsFiles('libs/**/*.ts'),
+]) {
+  const normalized = normalizedPath(file);
+  const source = readFileSync(file, 'utf8');
+
+  if (
+    !rabbitMqQueueArgumentAllowedFiles.has(normalized) &&
+    /\bassertQueue\s*\(/.test(source) &&
+    /'x-dead-letter-exchange'|'x-queue-type'|'x-delivery-limit'/.test(source) &&
+    !source.includes('rabbitMqDurableQueueArguments(')
+  ) {
+    addViolation(file, 'RabbitMQ queue declarations must use rabbitMqDurableQueueArguments for DLX/quorum arguments');
   }
 }
 

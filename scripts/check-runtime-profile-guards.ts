@@ -1,15 +1,21 @@
 import {
+  resolveDeliveryRabbitMqAttemptQueueOptions,
+  resolveDeliveryRabbitMqAttemptQueueReaderOptions,
   resolveDeliveryAttemptDispatchQueueMode,
   resolveDeliveryAttemptDispatchTarget,
   resolveDeliveryAttemptQueueReaderMode,
 } from '../apps/delivery-service/src/delivery-service-provider-tokens';
 import { resolveEventRelayLoopOptions } from '../apps/event-relay/src/event-relay-provider-tokens';
 import {
+  resolveIngestionRabbitMqScanQueueReaderOptions,
   resolveIngestionScanQueueReaderMode,
   resolveIngestionScanReporterMode,
   resolveIngestionWorkerPersistenceMode,
 } from '../apps/ingestion-worker/src/ingestion-worker-provider-tokens';
-import { resolveIntelligenceSummaryQueueReaderMode } from '../apps/intelligence-worker/src/intelligence-worker-provider-tokens';
+import {
+  resolveIntelligenceRabbitMqSummaryQueueReaderOptions,
+  resolveIntelligenceSummaryQueueReaderMode,
+} from '../apps/intelligence-worker/src/intelligence-worker-provider-tokens';
 import { resolveDeliveryPersistenceMode } from '../libs/delivery/interfaces/rest/delivery-provider-tokens';
 import { resolveDeliveryWebhookProviderMode } from '../libs/delivery/interfaces/rest/delivery-rest.module';
 import { resolveFeedPersistenceMode } from '../libs/feed/interfaces/rest/feed-provider-tokens';
@@ -24,6 +30,7 @@ import {
 } from '../libs/monitoring/interfaces/rest/monitoring-provider-tokens';
 import {
   resolveSummaryJobQueueMode,
+  resolveSummaryRabbitMqJobQueueOptions,
   resolveSummaryPersistenceMode,
 } from '../libs/summary/interfaces/rest/summary-provider-tokens';
 import { resolveUsagePersistenceMode } from '../libs/usage/interfaces/rest/usage-provider-tokens';
@@ -38,6 +45,9 @@ const databaseEnv = {
 const rabbitMqEnv = {
   ...betaEnv,
   RABBITMQ_URL: 'amqp://social_monitor:password@localhost:5672',
+  RABBITMQ_DEAD_LETTER_EXCHANGE: 'social-monitor.commands.dlx',
+  RABBITMQ_QUEUE_TYPE: 'quorum',
+  RABBITMQ_QUEUE_DELIVERY_LIMIT: '20',
 };
 
 const assert = (condition: boolean, message: string): void => {
@@ -115,6 +125,10 @@ assert(
   resolveIngestionScanQueueReaderMode({ ...rabbitMqEnv, INGESTION_SCAN_QUEUE_READER: 'rabbitmq' }) === 'rabbitmq',
   'ingestion beta scan queue reader',
 );
+assert(
+  resolveIngestionRabbitMqScanQueueReaderOptions(rabbitMqEnv).deadLetterExchange === 'social-monitor.commands.dlx',
+  'ingestion beta RabbitMQ reader must carry DLX',
+);
 
 assertThrows(
   () => resolveSummaryPersistenceMode(betaEnv),
@@ -132,6 +146,10 @@ assert(
   resolveSummaryJobQueueMode({ ...rabbitMqEnv, SUMMARY_JOB_QUEUE_MODE: 'rabbitmq' }) === 'rabbitmq',
   'summary beta job queue',
 );
+assert(
+  resolveSummaryRabbitMqJobQueueOptions(rabbitMqEnv).routes?.['summary.job.execute']?.queueType === 'quorum',
+  'summary beta RabbitMQ publisher must carry quorum queue type',
+);
 assertThrows(
   () => resolveIntelligenceSummaryQueueReaderMode(betaEnv),
   'INTELLIGENCE_SUMMARY_QUEUE_READER must reject in-memory mode in beta runtime',
@@ -142,6 +160,10 @@ assert(
     INTELLIGENCE_SUMMARY_QUEUE_READER: 'rabbitmq',
   }) === 'rabbitmq',
   'intelligence beta queue reader',
+);
+assert(
+  resolveIntelligenceRabbitMqSummaryQueueReaderOptions(rabbitMqEnv).deliveryLimit === 20,
+  'intelligence beta RabbitMQ reader must carry delivery limit',
 );
 
 assertThrows(
@@ -210,6 +232,11 @@ assert(
   }) === 'rabbitmq',
   'delivery beta dispatch queue',
 );
+assert(
+  resolveDeliveryRabbitMqAttemptQueueOptions(rabbitMqEnv).routes['delivery.attempt.send']?.deadLetterExchange ===
+    'social-monitor.commands.dlx',
+  'delivery beta RabbitMQ publisher must carry DLX',
+);
 assertThrows(
   () => resolveDeliveryAttemptQueueReaderMode(betaEnv),
   'DELIVERY_ATTEMPT_QUEUE_READER must reject in-memory mode in beta runtime',
@@ -217,6 +244,17 @@ assertThrows(
 assert(
   resolveDeliveryAttemptQueueReaderMode({ ...rabbitMqEnv, DELIVERY_ATTEMPT_QUEUE_READER: 'rabbitmq' }) === 'rabbitmq',
   'delivery beta queue reader',
+);
+assert(
+  resolveDeliveryRabbitMqAttemptQueueReaderOptions(rabbitMqEnv).queueType === 'quorum',
+  'delivery beta RabbitMQ reader must carry quorum queue type',
+);
+assertThrows(
+  () => resolveSummaryRabbitMqJobQueueOptions({
+    ...rabbitMqEnv,
+    RABBITMQ_DEAD_LETTER_EXCHANGE: '',
+  }),
+  'RabbitMQ beta queue options must reject missing DLX',
 );
 
 assert(

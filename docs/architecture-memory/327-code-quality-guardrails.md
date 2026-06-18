@@ -62,6 +62,7 @@ Code quality rules must be enforceable, not only documented. `npm run verify` mu
 50. Platform root barrels expose core ports/primitives only. They must not re-export `./adapters/*`, RabbitMQ, InMemory, Prisma or SDK implementation files; composition roots import platform queue/event adapters through explicit adapter subpaths and never legacy adapter shortcuts.
 51. Secret and token redaction policy must live in shared-kernel redaction helpers; duplicated sensitive-key/string regexes in filters, loggers, audits or adapters are blocked.
 52. Prisma persistence writes must use `withPrismaWriteRetry` from `@social-monitor/platform-persistence`; write transactions must use Serializable isolation so P2034 conflicts are retried consistently.
+53. RabbitMQ production queue declarations must use the platform queue-arguments helper; ad hoc DLX/quorum argument maps in publishers or worker readers are blocked.
 
 ## Current Gate
 

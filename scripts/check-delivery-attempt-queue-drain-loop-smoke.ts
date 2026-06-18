@@ -165,6 +165,8 @@ async function verifyRabbitMqReaderDelivery(): Promise<void> {
   const reader = new RabbitMqDeliveryAttemptQueueReader(channel, {
     queue: 'jobs.delivery.attempt.send',
     deadLetterExchange: 'dead.letters',
+    queueType: 'quorum',
+    deliveryLimit: 20,
   });
   const deliveries = await reader.drain({ commandType: 'delivery.attempt.send', limit: 5 });
 
@@ -178,7 +180,20 @@ async function verifyRabbitMqReaderDelivery(): Promise<void> {
     }),
     'Rabbit delivery reader must assert dead-letter exchange',
   );
-  assert(channel.assertedQueue === 'jobs.delivery.attempt.send', 'Rabbit delivery reader must assert queue');
+  assert(
+    JSON.stringify(channel.assertedQueue) === JSON.stringify({
+      queue: 'jobs.delivery.attempt.send',
+      options: {
+        durable: true,
+        arguments: {
+          'x-queue-type': 'quorum',
+          'x-dead-letter-exchange': 'dead.letters',
+          'x-delivery-limit': 20,
+        },
+      },
+    }),
+    'Rabbit delivery reader must assert quorum queue',
+  );
   assert(deliveries[0]?.command.commandId === 'delivery-rabbit-reader-smoke', 'Rabbit delivery command id mismatch');
   assert(
     deliveries[0]?.diagnostics.redelivered === true &&
@@ -192,7 +207,7 @@ async function verifyRabbitMqReaderDelivery(): Promise<void> {
 
 class FakeRabbitMqDeliveryAttemptQueueReaderChannel implements RabbitMqDeliveryAttemptQueueReaderChannelPort {
   assertedExchange: unknown;
-  assertedQueue: string | undefined;
+  assertedQueue: unknown;
   prefetchCount = 0;
   acked = 0;
   nacked = 0;
@@ -209,8 +224,14 @@ class FakeRabbitMqDeliveryAttemptQueueReaderChannel implements RabbitMqDeliveryA
     return undefined;
   }
 
-  async assertQueue(queue: string): Promise<unknown> {
-    this.assertedQueue = queue;
+  async assertQueue(
+    queue: string,
+    options: {
+      readonly durable: boolean;
+      readonly arguments?: Readonly<Record<string, string | number | boolean>>;
+    },
+  ): Promise<unknown> {
+    this.assertedQueue = { queue, options };
 
     return undefined;
   }

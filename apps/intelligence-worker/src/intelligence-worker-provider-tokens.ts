@@ -1,4 +1,10 @@
 import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
+import {
+  parseRabbitMqDeadLetterExchange,
+  parseRabbitMqDeliveryLimit,
+  parseRabbitMqQueueType,
+  type RabbitMqQueueType,
+} from '@social-monitor/platform-queue/adapters/rabbitmq';
 
 export type IntelligenceSummaryJobLoopOptions = {
   readonly enabled: boolean;
@@ -12,6 +18,8 @@ export type IntelligenceSummaryQueueReaderMode = 'in-memory' | 'rabbitmq';
 export type IntelligenceRabbitMqSummaryQueueReaderOptions = {
   readonly queue: string;
   readonly deadLetterExchange?: string;
+  readonly queueType: RabbitMqQueueType;
+  readonly deliveryLimit: number;
 };
 export type IntelligenceSummaryQueueDrainLoopOptions = {
   readonly enabled: boolean;
@@ -96,7 +104,12 @@ export const resolveIntelligenceRabbitMqSummaryQueueReaderOptions = (
   env: NodeJS.ProcessEnv,
 ): IntelligenceRabbitMqSummaryQueueReaderOptions => ({
   queue: nonEmptyOrFallback(env.RABBITMQ_SUMMARY_QUEUE, 'jobs.summary.execute'),
-  deadLetterExchange: emptyToUndefined(env.RABBITMQ_DEAD_LETTER_EXCHANGE),
+  deadLetterExchange: parseRabbitMqDeadLetterExchange(env.RABBITMQ_DEAD_LETTER_EXCHANGE, {
+    runtimeProfile: env.SOCIAL_MONITOR_RUNTIME_PROFILE,
+    settingName: 'INTELLIGENCE_SUMMARY_QUEUE_READER=rabbitmq',
+  }),
+  queueType: parseRabbitMqQueueType(env.RABBITMQ_QUEUE_TYPE),
+  deliveryLimit: parseRabbitMqDeliveryLimit(env.RABBITMQ_QUEUE_DELIVERY_LIMIT),
 });
 
 export const resolveIntelligenceSummaryQueueDrainLoopOptions = (
