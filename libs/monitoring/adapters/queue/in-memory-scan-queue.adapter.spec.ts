@@ -1,5 +1,5 @@
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
-import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { EnqueueScanCommand } from '../../ports';

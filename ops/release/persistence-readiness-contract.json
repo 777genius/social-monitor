@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "posture": "durability_gap_declared",
   "mvpRuntimeDecision": {
-    "allowedRuntime": "single_process_private_mvp_and_deterministic_smoke_only",
+    "allowedRuntime": "local_dev_and_deterministic_test_fallbacks_with_durable_beta_profile",
     "blocksExternalBeta": true,
     "owner": "platform-owner",
     "exitCriteria": [
-      "replace API runtime repositories with Prisma adapters for monitoring, feed, summary, delivery, identity and usage state",
-      "replace in-memory queue/idempotency runtime adapters with durable broker/inbox adapters where local fallbacks remain",
+      "run beta only with SOCIAL_MONITOR_RUNTIME_PROFILE=beta and durable Prisma/RabbitMQ adapters",
+      "keep in-memory adapters limited to local-dev and deterministic-test profiles",
       "deploy event-relay and worker persistence, cursor, lease and scan reporter adapters against shared database/broker state",
       "prove restart survival and deployed cross-process scan status/feed/summary visibility through a targeted integration smoke"
     ]

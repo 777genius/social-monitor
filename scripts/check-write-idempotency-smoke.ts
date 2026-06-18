@@ -1,5 +1,4 @@
-import type {
-  DomainError} from '@social-monitor/shared-kernel';
+import type { DomainError } from '@social-monitor/shared-kernel';
 import {
   FixedClock,
   type IdGenerator,
@@ -9,7 +8,7 @@ import {
   workspaceId,
 } from '@social-monitor/shared-kernel';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
-import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 
 import { InMemoryDeliveryAttemptRepository } from '../libs/delivery/adapters/persistence/in-memory-delivery-attempt.repository';
 import { QueueDeliveryAttemptUseCase } from '../libs/delivery/features/queue-delivery-attempt/queue-delivery-attempt.use-case';

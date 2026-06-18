@@ -1,11 +1,15 @@
 import type { FeedItemReadRepositoryPort } from '@social-monitor/feed/ports';
+import type { Clock } from '@social-monitor/shared-kernel';
 
 import type { SummaryEvidenceItem, SummaryEvidenceSelection, SummaryEvidenceSelectorPort } from '../../ports';
 
 const MAX_EVIDENCE_ITEMS = 50;
 
 export class FeedSummaryEvidenceSelector implements SummaryEvidenceSelectorPort {
-  constructor(private readonly feedItems: FeedItemReadRepositoryPort) {}
+  constructor(
+    private readonly feedItems: FeedItemReadRepositoryPort,
+    private readonly clock: Clock,
+  ) {}
 
   async select(
     params: Parameters<SummaryEvidenceSelectorPort['select']>[0],
@@ -31,7 +35,7 @@ export class FeedSummaryEvidenceSelector implements SummaryEvidenceSelectorPort 
     });
 
     return {
-      sourceWindow: buildSourceWindow(params, items),
+      sourceWindow: buildSourceWindow(params, items, this.clock),
       items,
     };
   }
@@ -48,9 +52,10 @@ const normalizeLimit = (value: number): number => {
 const buildSourceWindow = (
   params: Parameters<SummaryEvidenceSelectorPort['select']>[0],
   items: readonly SummaryEvidenceItem[],
+  clock: Clock,
 ) => {
   if (items.length === 0) {
-    const endedAt = new Date();
+    const endedAt = clock.now();
     const startedAt = new Date(endedAt.getTime() - 1);
 
     return {

@@ -7,8 +7,15 @@ import type {
   ScanRequestQuotaPort,
 } from '../../ports';
 
+export type UsageScanRequestQuotaAdapterOptions = {
+  readonly quotaPerHour: number;
+};
+
 export class UsageScanRequestQuotaAdapter implements ScanRequestQuotaPort {
-  constructor(private readonly reserveUsageQuota: ReserveUsageQuotaUseCase) {}
+  constructor(
+    private readonly reserveUsageQuota: ReserveUsageQuotaUseCase,
+    private readonly options: UsageScanRequestQuotaAdapterOptions,
+  ) {}
 
   async reserveManualScanRequest(
     command: ReserveManualScanRequestQuotaCommand,
@@ -19,7 +26,7 @@ export class UsageScanRequestQuotaAdapter implements ScanRequestQuotaPort {
       subjectKey: `workspace:${command.tenantId}:${command.workspaceId}`,
       operation: 'scan_request.manual',
       amount: 1,
-      limit: manualScanRequestQuotaPerHour(),
+      limit: this.options.quotaPerHour,
       windowSeconds: 3600,
     });
 
@@ -33,13 +40,3 @@ export class UsageScanRequestQuotaAdapter implements ScanRequestQuotaPort {
     } satisfies ReserveManualScanRequestQuotaResult);
   }
 }
-
-const manualScanRequestQuotaPerHour = (): number => {
-  const configured = Number(process.env.MANUAL_SCAN_REQUEST_QUOTA_PER_HOUR);
-
-  if (Number.isInteger(configured) && configured > 0) {
-    return configured;
-  }
-
-  return 60;
-};

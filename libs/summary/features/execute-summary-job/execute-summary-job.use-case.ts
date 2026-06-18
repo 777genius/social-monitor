@@ -22,6 +22,7 @@ import type {
   SummaryEventPublisherPort,
   SummaryJobRepositoryPort,
   SummaryModelBudget,
+  SummaryModelFailure,
   SummaryModelPolicy,
   SummaryModelPort,
   SummaryPolicyRepositoryPort,
@@ -31,6 +32,7 @@ import type { ExecuteSummaryJobResult } from './execute-summary-job.result';
 import { validateSummaryCitationsAgainstEvidence } from '../shared/summary-citation-validator';
 
 type ExecuteSummaryJobFailure = DomainError | Error;
+type SummaryModelPipelineResult = Result<{ readonly artifact: SummaryArtifact }, SummaryModelFailure>;
 
 const defaultModelPolicy: SummaryModelPolicy = {
   preferredProvider: 'deterministic-local',
@@ -92,9 +94,22 @@ export class ExecuteSummaryJobUseCase {
 
     try {
       const result = await this.runModelPipeline(runningJob, command.maxEvidenceItems ?? 20);
-      await this.summaryArtifacts.save(result.artifact);
 
-      const artifactSnapshot = result.artifact.toSnapshot();
+      if (!result.ok) {
+        const failedJob = runningJob.fail({
+          failedAt: this.clock.now(),
+          failureReason: result.error.message,
+        });
+        await this.summaryJobs.save(failedJob);
+
+        return err(new DomainError('external.dependency_unavailable', result.error.message, {
+          kind: result.error.kind,
+        }));
+      }
+
+      await this.summaryArtifacts.save(result.value.artifact);
+
+      const artifactSnapshot = result.value.artifact.toSnapshot();
       const finalJob = artifactSnapshot.qualityFlags.includes('no_signal')
         ? runningJob.markNoSignal({
             completedAt: this.clock.now(),
@@ -146,7 +161,7 @@ export class ExecuteSummaryJobUseCase {
   private async runModelPipeline(
     job: SummaryJob,
     maxEvidenceItems: number,
-  ): Promise<{ readonly artifact: SummaryArtifact }> {
+  ): Promise<SummaryModelPipelineResult> {
     const snapshot = job.toSnapshot();
     const evidence = await this.evidenceSelector.select({
       tenantId: snapshot.tenantId,
@@ -172,10 +187,14 @@ export class ExecuteSummaryJobUseCase {
     const validation = this.summaryModel.validateRawProviderResponse(attempt);
 
     if (!validation.ok) {
-      throw new Error(validation.failure.message);
+      return err(validation.failure);
     }
 
-    validateSummaryCitationsAgainstEvidence(attempt.draft, evidence);
+    try {
+      validateSummaryCitationsAgainstEvidence(attempt.draft, evidence);
+    } catch (error) {
+      return err(this.summaryModel.classifyError(error));
+    }
 
     const artifact = SummaryArtifact.create({
       schemaVersion: 'summary.artifact.v1',
@@ -187,6 +206,6 @@ export class ExecuteSummaryJobUseCase {
       ...attempt.draft,
     });
 
-    return { artifact };
+    return ok({ artifact });
   }
 }

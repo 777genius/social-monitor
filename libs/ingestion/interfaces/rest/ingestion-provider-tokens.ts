@@ -1,4 +1,5 @@
 import type { Provider } from '@nestjs/common';
+import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
 
 import type { ScanFailureInspectionPort } from '../../ports';
 
@@ -25,10 +26,24 @@ export const resolveIngestionSupportPersistenceMode = (
   const value = env.INGESTION_SUPPORT_PERSISTENCE ?? 'in-memory';
 
   if (value === 'in-memory') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'INGESTION_SUPPORT_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     return 'in-memory';
   }
 
   if (value === 'prisma') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'INGESTION_SUPPORT_PERSISTENCE',
+      selectedMode: value,
+      durableModes: ['prisma'],
+    });
+
     if ((env.DATABASE_URL ?? '').trim().length === 0) {
       throw new Error('INGESTION_SUPPORT_PERSISTENCE=prisma requires DATABASE_URL');
     }

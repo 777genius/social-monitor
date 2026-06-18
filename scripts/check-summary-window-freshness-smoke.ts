@@ -20,7 +20,10 @@ async function main(): Promise<void> {
     observedAt: new Date('2026-06-06T00:01:00.000Z'),
   }));
 
-  const selection = await new FeedSummaryEvidenceSelector(feedItems).select({
+  const selection = await new FeedSummaryEvidenceSelector(
+    feedItems,
+    new FixedClock(new Date('2026-06-06T00:05:00.000Z')),
+  ).select({
     tenantId: tenant,
     workspaceId: workspace,
     topicId,

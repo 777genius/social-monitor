@@ -26,7 +26,7 @@ if (contract.posture !== 'durability_gap_declared') {
 }
 
 if (contract.mvpRuntimeDecision?.blocksExternalBeta !== true) {
-  violations.push(`${contractPath}: mvpRuntimeDecision.blocksExternalBeta must be true until durable adapters exist`);
+  violations.push(`${contractPath}: mvpRuntimeDecision.blocksExternalBeta must be true until deployed beta evidence exists`);
 }
 
 for (const field of ['allowedRuntime', 'owner']) {
@@ -37,6 +37,10 @@ for (const field of ['allowedRuntime', 'owner']) {
 
 if (!Array.isArray(contract.mvpRuntimeDecision?.exitCriteria) || contract.mvpRuntimeDecision.exitCriteria.length < 3) {
   violations.push(`${contractPath}: mvpRuntimeDecision.exitCriteria must list concrete durable-adapter exit criteria`);
+}
+
+if (!String(contract.mvpRuntimeDecision?.allowedRuntime ?? '').includes('durable_beta_profile')) {
+  violations.push(`${contractPath}: mvpRuntimeDecision.allowedRuntime must require the durable_beta_profile`);
 }
 
 const moduleContracts = new Map();

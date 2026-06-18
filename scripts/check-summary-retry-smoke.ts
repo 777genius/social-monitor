@@ -84,6 +84,7 @@ async function main(): Promise<void> {
   const artifacts = new InMemorySummaryArtifactRepository();
   const events = new InMemorySummaryEventPublisher();
   const jobId = 'summary-job-retry-smoke';
+  const clock = new FixedClock(new Date('2026-06-06T10:01:00.000Z'));
 
   await summaryJobs.save(SummaryJob.request({
     id: jobId,
@@ -98,11 +99,11 @@ async function main(): Promise<void> {
     summaryJobs,
     artifacts,
     new InMemorySummaryPolicyRepository(),
-    new EmptySummaryEvidenceSelector(),
+    new EmptySummaryEvidenceSelector(clock),
     new FailOnceSummaryModel(new DeterministicSummaryModelAdapter()),
     events,
     new SequenceIdGenerator(),
-    new FixedClock(new Date('2026-06-06T10:01:00.000Z')),
+    clock,
   );
 
   const first = await useCase.execute({

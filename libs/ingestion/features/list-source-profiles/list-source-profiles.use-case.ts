@@ -24,6 +24,8 @@ export class ListSourceProfilesUseCase {
             capabilityVersion: capability?.version,
             productionSafe: capability?.productionSafe ?? false,
             readinessState: profile.state,
+            runtimeReadiness: profile.runtimeReadiness,
+            liveBetaBlockers: profile.liveBetaBlockers,
             acquisitionMode: profile.acquisitionMode,
             supportedContentUnits: profile.supportedContentUnits,
             supportedQueryModes: capability?.supportedQueryModes ?? [],

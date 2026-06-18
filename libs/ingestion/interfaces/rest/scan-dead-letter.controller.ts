@@ -2,9 +2,10 @@ import { Controller, Get, Headers, Inject, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
-  parseWorkspaceRolesHeader,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
+import { parseOptionalPaginationLimit } from '@social-monitor/platform-request-context';
 import { requireTenantScope } from '@social-monitor/shared-kernel';
 
 import { ListScanDeadLettersUseCase } from '../../features/list-scan-dead-letters/list-scan-dead-letters.use-case';
@@ -17,6 +18,7 @@ export class ScanDeadLetterController {
     private readonly listScanDeadLetters: ListScanDeadLettersUseCase,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
+    private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
   ) {}
 
   @Get()
@@ -42,7 +44,7 @@ export class ScanDeadLetterController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       action: 'scan_dead_letters.read',
-      roles: parseWorkspaceRolesHeader(workspaceRoleHeader),
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
     if (!authorization.ok) {
@@ -52,7 +54,9 @@ export class ScanDeadLetterController {
     const result = await this.listScanDeadLetters.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      limit: parseLimit(limitQuery),
+      limit: parseOptionalPaginationLimit(limitQuery, {
+        invalidMessage: 'Dead letter limit must be an integer between 1 and 100',
+      }),
     });
 
     if (!result.ok) {
@@ -62,11 +66,3 @@ export class ScanDeadLetterController {
     return result.value;
   }
 }
-
-const parseLimit = (limitQuery: string | undefined): number | undefined => {
-  if (limitQuery === undefined || limitQuery.trim().length === 0) {
-    return undefined;
-  }
-
-  return Number(limitQuery);
-};

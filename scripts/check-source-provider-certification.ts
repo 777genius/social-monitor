@@ -39,6 +39,9 @@ type ProviderCase = {
 type ProviderCertificationReport = {
   readonly providerKey: string;
   readonly readinessState: string;
+  readonly runtimeReadiness: string;
+  readonly liveBetaReady: boolean;
+  readonly liveBetaBlockers: readonly string[];
   readonly productionSafe: boolean;
   readonly cursorModel: SourceCursorModel;
   readonly quotaModel: string;
@@ -61,6 +64,8 @@ type CertificationReport = {
   readonly deferredProviders: readonly {
     readonly providerKey: string;
     readonly state: string;
+    readonly runtimeReadiness: string;
+    readonly liveBetaBlockers: readonly string[];
     readonly acquisitionMode: string;
   }[];
 };
@@ -127,6 +132,10 @@ async function main(): Promise<void> {
       .map((profile) => profile.providerKey)
       .join(', ')}`,
   );
+  assert(
+    enabledBetaProfiles.every((profile) => profile.runtimeReadiness !== 'deferred'),
+    'Enabled beta providers must declare fixture_ready or live_beta_ready runtime readiness',
+  );
 
   const certifiedProviders = await Promise.all(
     cases.map((providerCase) => certifyProvider(providerCase, readinessByProvider)),
@@ -136,6 +145,8 @@ async function main(): Promise<void> {
     .map((profile) => ({
       providerKey: profile.providerKey,
       state: profile.state,
+      runtimeReadiness: profile.runtimeReadiness,
+      liveBetaBlockers: profile.liveBetaBlockers,
       acquisitionMode: profile.acquisitionMode,
     }))
     .sort((left, right) => left.providerKey.localeCompare(right.providerKey));
@@ -187,6 +198,14 @@ async function certifyProvider(
   assert(profile.providerKey === providerCase.expectedProviderKey, `${providerCase.expectedProviderKey}: profile key mismatch`);
   assert(readiness !== undefined, `${providerCase.expectedProviderKey}: missing source readiness profile`);
   assert(readiness.state === 'enabled_beta', `${providerCase.expectedProviderKey}: readiness profile must be enabled_beta`);
+  assert(
+    readiness.runtimeReadiness === 'fixture_ready',
+    `${providerCase.expectedProviderKey}: deterministic certification only proves fixture_ready runtime readiness`,
+  );
+  assert(
+    readiness.liveBetaBlockers.length > 0,
+    `${providerCase.expectedProviderKey}: fixture-ready providers must declare live beta blockers`,
+  );
   assert(profile.productionSafe === true, `${providerCase.expectedProviderKey}: provider must be productionSafe for beta`);
   assert(profile.displayName.trim().length > 0, `${providerCase.expectedProviderKey}: displayName is required`);
   assert(profile.version >= 1, `${providerCase.expectedProviderKey}: version must be >= 1`);
@@ -232,6 +251,9 @@ async function certifyProvider(
   return {
     providerKey: providerCase.expectedProviderKey,
     readinessState: readiness.state,
+    runtimeReadiness: readiness.runtimeReadiness,
+    liveBetaReady: false,
+    liveBetaBlockers: readiness.liveBetaBlockers,
     productionSafe: profile.productionSafe,
     cursorModel: profile.cursorModel,
     quotaModel: profile.quotaModel,

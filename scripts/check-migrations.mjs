@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync, globSync, readFileSync } from 'node:fs';
 
 const commands = [
   {
@@ -25,6 +26,7 @@ const commands = [
 ];
 
 let migrationSql = '';
+const migrationFiles = globSync('prisma/migrations/*/migration.sql').sort();
 
 for (const command of commands) {
   const result =
@@ -55,15 +57,40 @@ for (const command of commands) {
 }
 
 const violations = [];
+const committedMigrationSql = migrationFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
 
 if (!migrationSql.includes('CREATE TABLE')) {
   violations.push('clean migration diff must create tables from the current Prisma schema');
 }
 
-for (const destructive of ['DROP TABLE', 'DROP SCHEMA', 'TRUNCATE TABLE']) {
-  if (migrationSql.includes(destructive)) {
-    violations.push(`clean migration diff must not contain destructive statement: ${destructive}`);
+if (!existsSync('prisma/migrations')) {
+  violations.push('prisma/migrations must exist; production uses committed Prisma migration history');
+}
+
+if (migrationFiles.length === 0) {
+  violations.push('at least one committed Prisma migration.sql file is required');
+}
+
+for (const [label, sql] of [
+  ['clean migration diff', migrationSql],
+  ['committed migration history', committedMigrationSql],
+]) {
+  for (const destructive of ['DROP TABLE', 'DROP SCHEMA', 'TRUNCATE TABLE']) {
+    if (sql.includes(destructive)) {
+      violations.push(`${label} must not contain destructive statement: ${destructive}`);
+    }
   }
+}
+
+for (const tableName of mappedTables()) {
+  const createTable = `CREATE TABLE "${tableName}"`;
+  if (!committedMigrationSql.includes(createTable)) {
+    violations.push(`committed migration history must create mapped Prisma table "${tableName}"`);
+  }
+}
+
+if (migrationFiles.length > 0 && normalizeSql(committedMigrationSql) !== normalizeSql(migrationSql)) {
+  violations.push('committed migration history must match the current Prisma schema clean diff');
 }
 
 if (violations.length > 0) {
@@ -72,3 +99,16 @@ if (violations.length > 0) {
 }
 
 console.log('Migration schema checks OK');
+
+function mappedTables() {
+  const schema = readFileSync('prisma/schema.prisma', 'utf8');
+  return [...schema.matchAll(/@@map\("([^"]+)"\)/g)].map((match) => match[1]).sort();
+}
+
+function normalizeSql(sql) {
+  return sql
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join('\n');
+}

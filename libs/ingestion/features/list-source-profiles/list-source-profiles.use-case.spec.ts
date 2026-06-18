@@ -32,6 +32,8 @@ class FakeSourceProfileRegistry implements SourceProviderRegistryPort {
       {
         providerKey: 'fake-source',
         state: 'enabled_beta',
+        runtimeReadiness: 'fixture_ready',
+        liveBetaBlockers: ['local fixtures only'],
         acquisitionMode: 'deterministic_local_adapter',
         approvalOwner: 'engineering',
         termsNotes: 'local only',
@@ -49,6 +51,8 @@ class FakeSourceProfileRegistry implements SourceProviderRegistryPort {
       {
         providerKey: 'reddit',
         state: 'profiled',
+        runtimeReadiness: 'deferred',
+        liveBetaBlockers: ['approval'],
         acquisitionMode: 'official_api_or_approved_vendor',
         approvalOwner: 'product_and_legal',
         termsNotes: 'readiness only',
@@ -66,6 +70,8 @@ class FakeSourceProfileRegistry implements SourceProviderRegistryPort {
       {
         providerKey: 'x-twitter',
         state: 'provider_only',
+        runtimeReadiness: 'deferred',
+        liveBetaBlockers: ['approval'],
         acquisitionMode: 'approved_paid_api_or_vendor',
         approvalOwner: 'product_and_legal',
         termsNotes: 'readiness only',
@@ -97,6 +103,7 @@ describe('ListSourceProfilesUseCase', () => {
           providerKey: 'fake-source',
           productionSafe: true,
           readinessState: 'enabled_beta',
+          runtimeReadiness: 'fixture_ready',
           supportedQueryModes: expect.arrayContaining(['search']),
         }),
         expect.objectContaining({

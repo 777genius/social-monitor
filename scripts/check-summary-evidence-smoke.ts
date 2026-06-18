@@ -81,15 +81,16 @@ const run = async (): Promise<void> => {
 
   const artifacts = new InMemorySummaryArtifactRepository();
   const events = new InMemorySummaryEventPublisher();
+  const clock = new FixedClock(new Date('2026-06-06T10:03:00.000Z'));
   const useCase = new ExecuteSummaryJobUseCase(
     summaryJobs,
     artifacts,
     summaryPolicies,
-    new FeedSummaryEvidenceSelector(feedItems),
+    new FeedSummaryEvidenceSelector(feedItems, clock),
     new DeterministicSummaryModelAdapter(),
     events,
     new SequenceIdGenerator(),
-    new FixedClock(new Date('2026-06-06T10:03:00.000Z')),
+    clock,
   );
   const result = await useCase.execute({
     tenantId: tenant,

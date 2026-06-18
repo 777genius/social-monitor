@@ -3,8 +3,15 @@ import type { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/re
 
 import type { ReserveSummaryJobQuotaCommand, ReserveSummaryJobQuotaResult, SummaryQuotaPort } from '../../ports';
 
+export type UsageSummaryQuotaAdapterOptions = {
+  readonly quotaPerHour: number;
+};
+
 export class UsageSummaryQuotaAdapter implements SummaryQuotaPort {
-  constructor(private readonly reserveUsageQuota: ReserveUsageQuotaUseCase) {}
+  constructor(
+    private readonly reserveUsageQuota: ReserveUsageQuotaUseCase,
+    private readonly options: UsageSummaryQuotaAdapterOptions,
+  ) {}
 
   async reserveSummaryJob(command: ReserveSummaryJobQuotaCommand): ReturnType<SummaryQuotaPort['reserveSummaryJob']> {
     const result = await this.reserveUsageQuota.execute({
@@ -13,7 +20,7 @@ export class UsageSummaryQuotaAdapter implements SummaryQuotaPort {
       subjectKey: `workspace:${command.tenantId}:${command.workspaceId}`,
       operation: command.operation,
       amount: 1,
-      limit: summaryJobQuotaPerHour(),
+      limit: this.options.quotaPerHour,
       windowSeconds: 3600,
     });
 
@@ -27,13 +34,3 @@ export class UsageSummaryQuotaAdapter implements SummaryQuotaPort {
     } satisfies ReserveSummaryJobQuotaResult);
   }
 }
-
-const summaryJobQuotaPerHour = (): number => {
-  const configured = Number(process.env.SUMMARY_JOB_QUOTA_PER_HOUR);
-
-  if (Number.isInteger(configured) && configured > 0) {
-    return configured;
-  }
-
-  return 60;
-};

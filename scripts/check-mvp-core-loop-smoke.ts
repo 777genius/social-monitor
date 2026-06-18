@@ -11,7 +11,7 @@ import {
   type WorkspaceId,
 } from '@social-monitor/shared-kernel';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
-import { InMemoryQueuePublisher } from '@social-monitor/platform-queue';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
 
 import { ProjectSummaryReadyEventUseCase } from '../libs/delivery/features/project-summary-ready-event/project-summary-ready-event.use-case';
@@ -332,7 +332,7 @@ async function main(): Promise<void> {
       summaryJobs,
       summaryArtifacts,
       summaryPolicies,
-      new FeedSummaryEvidenceSelector(feedItems),
+      new FeedSummaryEvidenceSelector(feedItems, clock),
       new DeterministicSummaryModelAdapter(),
       summaryEvents,
       ids,

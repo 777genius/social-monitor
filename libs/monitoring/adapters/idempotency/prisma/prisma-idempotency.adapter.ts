@@ -1,4 +1,4 @@
-import { CryptoIdGenerator, type IdGenerator, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
+import type { IdGenerator, TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { IdempotencyPort, IdempotencyRecord } from '../../../ports';
 import type { PrismaMonitoringClient } from '../../persistence/prisma/prisma-monitoring-client';
@@ -6,7 +6,7 @@ import type { PrismaMonitoringClient } from '../../persistence/prisma/prisma-mon
 export class PrismaIdempotencyAdapter implements IdempotencyPort {
   constructor(
     private readonly prisma: PrismaMonitoringClient,
-    private readonly idGenerator: IdGenerator = new CryptoIdGenerator(),
+    private readonly idGenerator: IdGenerator,
   ) {}
 
   async get<TValue>(params: {

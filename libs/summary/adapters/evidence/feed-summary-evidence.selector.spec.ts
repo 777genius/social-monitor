@@ -1,6 +1,6 @@
 import { FeedItem } from '@social-monitor/feed/domain';
 import type { FeedItemReadRepositoryPort, ListFeedItemsQuery, ListFeedItemsResult } from '@social-monitor/feed/ports';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { FeedSummaryEvidenceSelector } from './feed-summary-evidence.selector';
 
@@ -81,7 +81,10 @@ describe('FeedSummaryEvidenceSelector', () => {
       observedAt: new Date('2026-06-06T12:01:00.000Z'),
     }));
 
-    const result = await new FeedSummaryEvidenceSelector(feedItems).select({
+    const result = await new FeedSummaryEvidenceSelector(
+      feedItems,
+      new FixedClock(new Date('2026-06-06T12:30:00.000Z')),
+    ).select({
       tenantId: tenant,
       workspaceId: workspace,
       topicId: 'topic-1',
@@ -119,7 +122,10 @@ describe('FeedSummaryEvidenceSelector', () => {
   it('returns an empty window when no feed evidence exists', async () => {
     const tenant = tenantId('tenant-1');
     const workspace = workspaceId('workspace-1');
-    const result = await new FeedSummaryEvidenceSelector(new FakeFeedItems()).select({
+    const result = await new FeedSummaryEvidenceSelector(
+      new FakeFeedItems(),
+      new FixedClock(new Date('2026-06-06T12:30:00.000Z')),
+    ).select({
       tenantId: tenant,
       workspaceId: workspace,
       topicId: 'topic-1',

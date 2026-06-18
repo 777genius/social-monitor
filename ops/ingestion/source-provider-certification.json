@@ -8,6 +8,11 @@
     {
       "providerKey": "fake-source",
       "readinessState": "enabled_beta",
+      "runtimeReadiness": "fixture_ready",
+      "liveBetaReady": false,
+      "liveBetaBlockers": [
+        "Synthetic provider is not a real external source."
+      ],
       "productionSafe": true,
       "cursorModel": "opaque",
       "quotaModel": "none",
@@ -29,6 +34,11 @@
     {
       "providerKey": "github",
       "readinessState": "enabled_beta",
+      "runtimeReadiness": "fixture_ready",
+      "liveBetaReady": false,
+      "liveBetaBlockers": [
+        "Live GitHub API smoke and deployed rate-limit budget evidence required before external beta."
+      ],
       "productionSafe": true,
       "cursorModel": "page_token",
       "quotaModel": "per_app",
@@ -50,6 +60,11 @@
     {
       "providerKey": "hacker-news",
       "readinessState": "enabled_beta",
+      "runtimeReadiness": "fixture_ready",
+      "liveBetaReady": false,
+      "liveBetaBlockers": [
+        "Live HTTP smoke and deployed rate-limit evidence required before external beta."
+      ],
       "productionSafe": true,
       "cursorModel": "time",
       "quotaModel": "per_app",
@@ -71,6 +86,11 @@
     {
       "providerKey": "reddit",
       "readinessState": "enabled_beta",
+      "runtimeReadiness": "fixture_ready",
+      "liveBetaReady": false,
+      "liveBetaBlockers": [
+        "Tenant OAuth credential and live Reddit API rate-limit evidence required before external beta."
+      ],
       "productionSafe": true,
       "cursorModel": "opaque",
       "quotaModel": "per_credential",
@@ -92,6 +112,11 @@
     {
       "providerKey": "rss",
       "readinessState": "enabled_beta",
+      "runtimeReadiness": "fixture_ready",
+      "liveBetaReady": false,
+      "liveBetaBlockers": [
+        "Representative live feed allowlist, HTTP cache and SSRF controls need deployed evidence."
+      ],
       "productionSafe": true,
       "cursorModel": "etag_last_modified",
       "quotaModel": "per_source_binding",
@@ -115,11 +140,19 @@
     {
       "providerKey": "telegram",
       "state": "manual_only",
+      "runtimeReadiness": "deferred",
+      "liveBetaBlockers": [
+        "Authorized channel scope and credential lifecycle are required before automation."
+      ],
       "acquisitionMode": "bot_or_channel_api_with_clear_scope"
     },
     {
       "providerKey": "x-twitter",
       "state": "provider_only",
+      "runtimeReadiness": "deferred",
+      "liveBetaBlockers": [
+        "Paid API or approved vendor contract is required before enablement."
+      ],
       "acquisitionMode": "approved_paid_api_or_vendor"
     }
   ]

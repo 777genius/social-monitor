@@ -4,6 +4,8 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   {
     providerKey: 'fake-source',
     state: 'enabled_beta',
+    runtimeReadiness: 'fixture_ready',
+    liveBetaBlockers: ['Synthetic provider is not a real external source.'],
     acquisitionMode: 'deterministic_local_adapter',
     approvalOwner: 'engineering',
     termsNotes: 'Local fake provider for MVP certification only.',
@@ -21,6 +23,8 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   {
     providerKey: 'hacker-news',
     state: 'enabled_beta',
+    runtimeReadiness: 'fixture_ready',
+    liveBetaBlockers: ['Live HTTP smoke and deployed rate-limit evidence required before external beta.'],
     acquisitionMode: 'official_or_open_api',
     approvalOwner: 'engineering',
     termsNotes: 'Uses public HN Firebase listings and HN Algolia search endpoints; no credentials required.',
@@ -38,6 +42,8 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   {
     providerKey: 'rss',
     state: 'enabled_beta',
+    runtimeReadiness: 'fixture_ready',
+    liveBetaBlockers: ['Representative live feed allowlist, HTTP cache and SSRF controls need deployed evidence.'],
     acquisitionMode: 'feed_polling_with_site_policy_respect',
     approvalOwner: 'engineering',
     termsNotes: 'Use RSS/Atom feeds with ETag/Last-Modified where available; no broad page scraping.',
@@ -59,6 +65,8 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   {
     providerKey: 'github',
     state: 'enabled_beta',
+    runtimeReadiness: 'fixture_ready',
+    liveBetaBlockers: ['Live GitHub API smoke and deployed rate-limit budget evidence required before external beta.'],
     acquisitionMode: 'official_or_open_api',
     approvalOwner: 'engineering',
     termsNotes: 'Uses GitHub REST search API for public issues; no GitHub UI scraping.',
@@ -80,6 +88,8 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   {
     providerKey: 'reddit',
     state: 'enabled_beta',
+    runtimeReadiness: 'fixture_ready',
+    liveBetaBlockers: ['Tenant OAuth credential and live Reddit API rate-limit evidence required before external beta.'],
     acquisitionMode: 'official_oauth_api',
     approvalOwner: 'product_and_legal',
     termsNotes: 'Uses Reddit OAuth API only; no unsafe scraping or bypassing platform controls.',
@@ -101,6 +111,8 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   {
     providerKey: 'x-twitter',
     state: 'provider_only',
+    runtimeReadiness: 'deferred',
+    liveBetaBlockers: ['Paid API or approved vendor contract is required before enablement.'],
     acquisitionMode: 'approved_paid_api_or_vendor',
     approvalOwner: 'product_and_legal',
     termsNotes: 'No production path without explicit policy, cost and access approval.',
@@ -118,6 +130,8 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   {
     providerKey: 'telegram',
     state: 'manual_only',
+    runtimeReadiness: 'deferred',
+    liveBetaBlockers: ['Authorized channel scope and credential lifecycle are required before automation.'],
     acquisitionMode: 'bot_or_channel_api_with_clear_scope',
     approvalOwner: 'product_and_legal',
     termsNotes: 'Only channels/scopes with explicit authorization.',

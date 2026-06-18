@@ -264,6 +264,19 @@ class InvalidCitationSummaryModel extends NoSignalSummaryModel {
   }
 }
 
+class InvalidRawResponseSummaryModel extends NoSignalSummaryModel {
+  override validateRawProviderResponse(): SummaryModelValidationResult {
+    return {
+      ok: false,
+      failure: {
+        kind: 'invalid_schema',
+        retryable: false,
+        message: 'Provider response failed schema validation',
+      },
+    };
+  }
+}
+
 class TransientFailureSummaryModel extends NoSignalSummaryModel {
   private attemptCount = 0;
 
@@ -423,6 +436,67 @@ describe('ExecuteSummaryJobUseCase', () => {
     }))?.toSnapshot()).toMatchObject({
       status: 'failed',
       failureReason: 'Summary citation validation failed: citation c1 references unselected feed item',
+    });
+  });
+
+  it('fails the job without throwing when provider response validation fails', async () => {
+    const jobs = new FakeSummaryJobs();
+    const artifacts = new FakeSummaryArtifacts();
+    const events = new FakeSummaryEvents();
+    const tenant = tenantId('tenant-1');
+    const workspace = workspaceId('workspace-1');
+    await jobs.save(
+      SummaryJob.request({
+        id: 'summary-job-invalid-provider-schema',
+        tenantId: tenant,
+        workspaceId: workspace,
+        topicId: 'topic-1',
+        idempotencyKey: 'summary-request-invalid-provider-schema',
+        requestedAt: new Date('2026-06-06T00:00:00.000Z'),
+      }),
+    );
+    const useCase = new ExecuteSummaryJobUseCase(
+      jobs,
+      artifacts,
+      new FakeSummaryPolicies(),
+      new EmptyEvidenceSelector(),
+      new InvalidRawResponseSummaryModel(),
+      events,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-06T00:00:02.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: 'summary-job-invalid-provider-schema',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'external.dependency_unavailable',
+        details: {
+          kind: 'invalid_schema',
+        },
+      }),
+    });
+    await expect(artifacts.list({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 10,
+    })).resolves.toEqual({
+      items: [],
+      nextCursor: undefined,
+    });
+    expect(events.events).toHaveLength(0);
+    expect((await jobs.findById({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: 'summary-job-invalid-provider-schema',
+    }))?.toSnapshot()).toMatchObject({
+      status: 'failed',
+      failureReason: 'Provider response failed schema validation',
     });
   });
 

@@ -3,6 +3,7 @@ import {
   correlationId,
   eventId,
   FixedClock,
+  type IdGenerator,
   tenantId,
   workspaceId,
 } from '@social-monitor/shared-kernel';
@@ -35,6 +36,16 @@ const fixedNow = new Date('2026-06-06T00:00:00.000Z');
 const clock = new FixedClock(fixedNow);
 const tenant = tenantId('00000000-0000-7000-8000-000000000001');
 const workspace = workspaceId('00000000-0000-7000-8000-000000000002');
+
+class SequenceIdGenerator implements IdGenerator {
+  private nextId = 1;
+
+  generate(): string {
+    const id = `monitoring-prisma-smoke-${this.nextId}`;
+    this.nextId += 1;
+    return id;
+  }
+}
 
 async function main(): Promise<void> {
   assert(
@@ -91,7 +102,8 @@ async function main(): Promise<void> {
   const policies = new PrismaScanPolicyRepository(prisma);
   const scanJobs = new PrismaScanJobRepository(prisma);
   const outbox = new PrismaMonitoringOutboxAdapter(prisma);
-  const idempotency = new PrismaIdempotencyAdapter(prisma);
+  const ids = new SequenceIdGenerator();
+  const idempotency = new PrismaIdempotencyAdapter(prisma, ids);
 
   const topic = Topic.create({
     id: '00000000-0000-7000-8000-000000000020',
@@ -276,7 +288,7 @@ async function main(): Promise<void> {
     },
   });
 
-  const rehydratedIdempotency = new PrismaIdempotencyAdapter(prisma);
+  const rehydratedIdempotency = new PrismaIdempotencyAdapter(prisma, ids);
   const idempotencyRecord = await rehydratedIdempotency.get<{
     readonly topicId: string;
     readonly created: boolean;
