@@ -67,7 +67,8 @@
       "requiredEnv": [
         "STAGING_ENVIRONMENT_ID",
         "BACKEND_IMAGE_DIGEST",
-        "API_BASE_URL"
+        "API_BASE_URL",
+        "DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH"
       ],
       "optionalEnv": [
         "OIDC_ISSUER",
@@ -77,6 +78,10 @@
         {
           "path": "ops/release/durable-runtime-proof.json",
           "format": "durable-runtime-proof-contract-v1"
+        },
+        {
+          "env": "DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH",
+          "format": "durable-runtime-selector-artifact-v1"
         }
       ],
       "exitCondition": "API, ingestion-worker, intelligence-worker, delivery-service and event-relay are proven on Postgres, RabbitMQ and real auth selectors."

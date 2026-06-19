@@ -52,6 +52,48 @@ const forbiddenLiteralFragments = [
   'smk_',
   'whsec_',
 ];
+const requiredJobEnvNames = new Map([
+  [
+    'durable-runtime-staging-proof',
+    [
+      'STAGING_ENVIRONMENT_ID',
+      'BACKEND_IMAGE_DIGEST',
+      'API_BASE_URL',
+      'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH',
+    ],
+  ],
+  ['summary-real-feedback-import', ['SUMMARY_REAL_FEEDBACK_SAMPLES_PATH']],
+  [
+    'security-final-sweep-staging',
+    [
+      'SECURITY_FINAL_SWEEP_ARTIFACT_PATH',
+      'LOG_EXPORT_PATH',
+      'METRICS_EXPORT_PATH',
+      'PUBLIC_ERROR_EXPORT_PATH',
+    ],
+  ],
+]);
+const requiredJobOutputArtifacts = new Map([
+  [
+    'durable-runtime-staging-proof',
+    [
+      { kind: 'path', ref: 'ops/release/durable-runtime-proof.json', format: 'durable-runtime-proof-contract-v1' },
+      { kind: 'env', ref: 'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH', format: 'durable-runtime-selector-artifact-v1' },
+    ],
+  ],
+  [
+    'summary-real-feedback-import',
+    [
+      { kind: 'env', ref: 'SUMMARY_REAL_FEEDBACK_SAMPLES_PATH', format: 'redacted-summary-feedback-samples-v1' },
+    ],
+  ],
+  [
+    'security-final-sweep-staging',
+    [
+      { kind: 'env', ref: 'SECURITY_FINAL_SWEEP_ARTIFACT_PATH', format: 'security-final-sweep-staging-artifact-v1' },
+    ],
+  ],
+]);
 
 if (contract.schemaVersion !== 1) {
   violations.push(`${contractPath}: schemaVersion must be 1`);
@@ -142,6 +184,7 @@ function validateJobs() {
     validateJobCommands(job, label);
     validateJobEnvironment(job, label);
     validateJobArtifacts(job, label);
+    validateRequiredJobEvidence(job, label);
     validateJobScopeSafety(job, label);
 
     if (job.evidenceGroupId === 'source-provider-live-certification') {
@@ -271,6 +314,31 @@ function validateJobArtifacts(job, label) {
     }
     if (artifact.env !== undefined && !envNames.has(artifact.env)) {
       violations.push(`${label}: output artifact env "${artifact.env}" must be listed in requiredEnv or optionalEnv`);
+    }
+  }
+}
+
+function validateRequiredJobEvidence(job, label) {
+  const envNames = new Set([...(job.requiredEnv ?? []), ...(job.optionalEnv ?? [])]);
+  const requiredEnvNames = requiredJobEnvNames.get(job.jobId) ?? [];
+  for (const envName of requiredEnvNames) {
+    if (!envNames.has(envName)) {
+      violations.push(`${label}: must include required evidence env "${envName}"`);
+    }
+  }
+
+  const requiredArtifacts = requiredJobOutputArtifacts.get(job.jobId) ?? [];
+  for (const requiredArtifact of requiredArtifacts) {
+    const hasArtifact = (job.outputArtifacts ?? []).some((artifact) => {
+      const refMatches = requiredArtifact.kind === 'path'
+        ? artifact.path === requiredArtifact.ref
+        : artifact.env === requiredArtifact.ref;
+      return refMatches && artifact.format === requiredArtifact.format;
+    });
+    if (!hasArtifact) {
+      violations.push(
+        `${label}: outputArtifacts must include ${requiredArtifact.kind} "${requiredArtifact.ref}" with format "${requiredArtifact.format}"`,
+      );
     }
   }
 }
