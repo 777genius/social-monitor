@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 const evidencePath = 'ops/security/security-final-sweep-evidence.json';
 const packagePath = 'package.json';
@@ -37,6 +38,11 @@ const requiredLeakClasses = new Set([
   'raw-prompt-or-source-text',
 ]);
 const requiredSurfaceIds = new Set(['logs', 'metrics', 'public-errors', 'audit-metadata']);
+const requiredSourceExportEnvBySurface = new Map([
+  ['logs', 'LOG_EXPORT_PATH'],
+  ['metrics', 'METRICS_EXPORT_PATH'],
+  ['public-errors', 'PUBLIC_ERROR_EXPORT_PATH'],
+]);
 const forbiddenEvidenceFragments = [
   'smk_',
   'whsec_',
@@ -152,6 +158,7 @@ function validateDeploySampleContentSchema(schema) {
     requiredLeakClasses,
     'deploySampleContentSchema.requiredLeakClasses',
   );
+  validateRequiredSourceExports(schema.requiredSourceExports);
 
   for (const [field, expected] of Object.entries(requiredArtifactRedactionFlags)) {
     if (schema.requiredRedactionFlags?.[field] !== expected) {
@@ -201,7 +208,8 @@ function validateSecurityFinalSweepArtifact(artifact, path, options) {
 
   validateArtifactEnvironment(artifact.environment, path, options);
   validateArtifactRedaction(artifact.redaction, path);
-  validateArtifactSurfaces(artifact.surfaces, path);
+  const sourceExports = validateArtifactSourceExports(artifact.sourceExports, path, options);
+  validateArtifactSurfaces(artifact.surfaces, path, sourceExports);
   validateArtifactReview(artifact.review, path);
   scanForbiddenArtifactKeys(artifact, path);
   validateNoSensitiveArtifactLiterals(artifact, path);
@@ -255,7 +263,91 @@ function validateArtifactRedaction(redaction, path) {
   }
 }
 
-function validateArtifactSurfaces(surfaces, path) {
+function validateArtifactSourceExports(sourceExports, path, options) {
+  const sourceExportMap = new Map();
+  if (!Array.isArray(sourceExports)) {
+    violations.push(`${path}: sourceExports must be an array`);
+    return sourceExportMap;
+  }
+
+  for (const [index, sourceExport] of sourceExports.entries()) {
+    const exportLabel = `${path}: sourceExports[${index}]`;
+    if (sourceExport === null || typeof sourceExport !== 'object' || Array.isArray(sourceExport)) {
+      violations.push(`${exportLabel}: source export must be an object`);
+      continue;
+    }
+
+    const expectedEnv = requiredSourceExportEnvBySurface.get(sourceExport.surfaceId);
+    if (expectedEnv === undefined) {
+      violations.push(`${exportLabel}: unsupported surfaceId "${sourceExport.surfaceId}"`);
+      continue;
+    }
+    if (sourceExportMap.has(sourceExport.surfaceId)) {
+      violations.push(`${exportLabel}: duplicate source export for surfaceId "${sourceExport.surfaceId}"`);
+      continue;
+    }
+    sourceExportMap.set(sourceExport.surfaceId, sourceExport);
+
+    if (sourceExport.envVar !== expectedEnv) {
+      violations.push(`${exportLabel}: envVar must be ${expectedEnv}`);
+    }
+    if (!Number.isInteger(sourceExport.sampleCount) || sourceExport.sampleCount <= 0) {
+      violations.push(`${exportLabel}: sampleCount must be a positive integer`);
+    }
+    if (sourceExport.redactedOnly !== true) {
+      violations.push(`${exportLabel}: redactedOnly must be true`);
+    }
+    if (sourceExport.sanitized !== true) {
+      violations.push(`${exportLabel}: sanitized must be true`);
+    }
+    if (!isIsoDateString(sourceExport.collectedAt)) {
+      violations.push(`${exportLabel}: collectedAt must be an ISO timestamp`);
+    }
+    validateSourceExportPath(sourceExport, exportLabel, expectedEnv, options);
+  }
+
+  for (const [surfaceId, expectedEnv] of requiredSourceExportEnvBySurface.entries()) {
+    if (!sourceExportMap.has(surfaceId)) {
+      violations.push(`${path}: sourceExports must include ${surfaceId} from ${expectedEnv}`);
+    }
+  }
+
+  return sourceExportMap;
+}
+
+function validateSourceExportPath(sourceExport, exportLabel, expectedEnv, options) {
+  const exportPath = sourceExport.path;
+  if (typeof exportPath !== 'string' || exportPath.trim().length === 0 || !existsSync(exportPath)) {
+    violations.push(`${exportLabel}: path must reference an existing redacted export file`);
+    return;
+  }
+  if (options.allowExample !== true) {
+    const expectedPath = process.env[expectedEnv];
+    if (typeof expectedPath !== 'string' || expectedPath.trim().length === 0) {
+      violations.push(`${exportLabel}: real staging artifact requires ${expectedEnv}`);
+    } else if (exportPath !== expectedPath) {
+      violations.push(`${exportLabel}: path must match ${expectedEnv}`);
+    }
+  }
+
+  const content = readFileSync(exportPath);
+  const digest = createHash('sha256').update(content).digest('hex');
+  if (sourceExport.sha256 !== digest) {
+    violations.push(`${exportLabel}: sha256 must match the export file content`);
+  }
+  validateNoSensitiveExportLiterals(content.toString('utf8'), exportLabel);
+}
+
+function validateNoSensitiveExportLiterals(content, exportLabel) {
+  const normalized = content.toLowerCase();
+  for (const fragment of forbiddenArtifactFragments) {
+    if (normalized.includes(fragment)) {
+      violations.push(`${exportLabel}: export file must not contain sensitive literal fragment "${fragment}"`);
+    }
+  }
+}
+
+function validateArtifactSurfaces(surfaces, path, sourceExports) {
   if (!Array.isArray(surfaces)) {
     violations.push(`${path}: surfaces must be an array`);
     return;
@@ -264,7 +356,7 @@ function validateArtifactSurfaces(surfaces, path) {
   const surfaceIds = new Set();
   for (const [index, surface] of surfaces.entries()) {
     const surfaceLabel = `${path}: surfaces[${index}]`;
-    validateArtifactSurface(surface, surfaceLabel, surfaceIds);
+    validateArtifactSurface(surface, surfaceLabel, surfaceIds, sourceExports);
   }
 
   for (const surfaceId of requiredSurfaceIds) {
@@ -274,7 +366,7 @@ function validateArtifactSurfaces(surfaces, path) {
   }
 }
 
-function validateArtifactSurface(surface, surfaceLabel, surfaceIds) {
+function validateArtifactSurface(surface, surfaceLabel, surfaceIds, sourceExports) {
   if (surface === null || typeof surface !== 'object' || Array.isArray(surface)) {
     violations.push(`${surfaceLabel}: surface must be an object`);
     return;
@@ -296,6 +388,12 @@ function validateArtifactSurface(surface, surfaceLabel, surfaceIds) {
   }
   if (surface.redactedOnly !== true) {
     violations.push(`${surfaceLabel}: redactedOnly must be true`);
+  }
+  const sourceExport = sourceExports.get(surface.surfaceId);
+  if (requiredSourceExportEnvBySurface.has(surface.surfaceId) && sourceExport === undefined) {
+    violations.push(`${surfaceLabel}: must have a matching sourceExports entry`);
+  } else if (sourceExport !== undefined && sourceExport.sampleCount !== surface.sampleCount) {
+    violations.push(`${surfaceLabel}: sampleCount must match sourceExports sampleCount`);
   }
   if (!Array.isArray(surface.safeDiagnosticFields) || surface.safeDiagnosticFields.length === 0) {
     violations.push(`${surfaceLabel}: safeDiagnosticFields must be a non-empty array`);
@@ -347,6 +445,49 @@ function validateLeakClassResults(results, surfaceLabel) {
   for (const leakClass of requiredLeakClasses) {
     if (!resultIds.has(leakClass)) {
       violations.push(`${surfaceLabel}: leakClassResults must include ${leakClass}`);
+    }
+  }
+}
+
+function validateRequiredSourceExports(sourceExports) {
+  if (!Array.isArray(sourceExports)) {
+    violations.push(`${evidencePath}: deploySampleContentSchema.requiredSourceExports must be an array`);
+    return;
+  }
+
+  const surfaceIds = new Set();
+  for (const [index, sourceExport] of sourceExports.entries()) {
+    const exportLabel = `deploySampleContentSchema.requiredSourceExports[${index}]`;
+    if (sourceExport === null || typeof sourceExport !== 'object' || Array.isArray(sourceExport)) {
+      violations.push(`${evidencePath}: ${exportLabel} must be an object`);
+      continue;
+    }
+    const expectedEnv = requiredSourceExportEnvBySurface.get(sourceExport.surfaceId);
+    if (expectedEnv === undefined) {
+      violations.push(`${evidencePath}: ${exportLabel}.surfaceId is unsupported`);
+      continue;
+    }
+    if (surfaceIds.has(sourceExport.surfaceId)) {
+      violations.push(`${evidencePath}: duplicate required source export for "${sourceExport.surfaceId}"`);
+    }
+    surfaceIds.add(sourceExport.surfaceId);
+    if (sourceExport.envVar !== expectedEnv) {
+      violations.push(`${evidencePath}: ${exportLabel}.envVar must be ${expectedEnv}`);
+    }
+    if (sourceExport.pathRequired !== true) {
+      violations.push(`${evidencePath}: ${exportLabel}.pathRequired must be true`);
+    }
+    if (sourceExport.sha256Required !== true) {
+      violations.push(`${evidencePath}: ${exportLabel}.sha256Required must be true`);
+    }
+    if (sourceExport.redactedOnly !== true) {
+      violations.push(`${evidencePath}: ${exportLabel}.redactedOnly must be true`);
+    }
+  }
+
+  for (const surfaceId of requiredSourceExportEnvBySurface.keys()) {
+    if (!surfaceIds.has(surfaceId)) {
+      violations.push(`${evidencePath}: deploySampleContentSchema.requiredSourceExports must include ${surfaceId}`);
     }
   }
 }

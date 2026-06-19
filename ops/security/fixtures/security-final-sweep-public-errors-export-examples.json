@@ -1,0 +1,14 @@
+[
+  {
+    "requestId": "request-example-003",
+    "statusCode": 401,
+    "errorCode": "auth_invalid",
+    "operation": "list-feed"
+  },
+  {
+    "requestId": "request-example-004",
+    "statusCode": 403,
+    "errorCode": "workspace_forbidden",
+    "operation": "create-source-binding"
+  }
+]

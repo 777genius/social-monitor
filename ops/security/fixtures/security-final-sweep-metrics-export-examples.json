@@ -1,0 +1,16 @@
+[
+  {
+    "metricName": "scan_queue_lag",
+    "tenantId": "tenant-example",
+    "workspaceId": "workspace-example",
+    "service": "ingestion-worker",
+    "status": "ok"
+  },
+  {
+    "metricName": "summary_cost_usd",
+    "tenantId": "tenant-example",
+    "workspaceId": "workspace-example",
+    "service": "intelligence-worker",
+    "status": "ok"
+  }
+]

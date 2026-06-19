@@ -1,0 +1,18 @@
+[
+  {
+    "requestId": "request-example-001",
+    "tenantId": "tenant-example",
+    "workspaceId": "workspace-example",
+    "service": "api-gateway",
+    "operation": "create-topic",
+    "status": "ok"
+  },
+  {
+    "requestId": "request-example-002",
+    "tenantId": "tenant-example",
+    "workspaceId": "workspace-example",
+    "service": "ingestion-worker",
+    "operation": "execute-scan",
+    "status": "ok"
+  }
+]

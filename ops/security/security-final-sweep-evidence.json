@@ -28,6 +28,29 @@
       "raw-provider-payloads",
       "raw-prompt-or-source-text"
     ],
+    "requiredSourceExports": [
+      {
+        "surfaceId": "logs",
+        "envVar": "LOG_EXPORT_PATH",
+        "pathRequired": true,
+        "sha256Required": true,
+        "redactedOnly": true
+      },
+      {
+        "surfaceId": "metrics",
+        "envVar": "METRICS_EXPORT_PATH",
+        "pathRequired": true,
+        "sha256Required": true,
+        "redactedOnly": true
+      },
+      {
+        "surfaceId": "public-errors",
+        "envVar": "PUBLIC_ERROR_EXPORT_PATH",
+        "pathRequired": true,
+        "sha256Required": true,
+        "redactedOnly": true
+      }
+    ],
     "requiredRedactionFlags": {
       "secretValuesIncluded": false,
       "credentialUrlsIncluded": false,

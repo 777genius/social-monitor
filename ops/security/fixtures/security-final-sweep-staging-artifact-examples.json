@@ -18,6 +18,38 @@
     "piiIncluded": false,
     "method": "Sample exports keep support-safe ids, counters and statuses only."
   },
+  "sourceExports": [
+    {
+      "surfaceId": "logs",
+      "envVar": "LOG_EXPORT_PATH",
+      "path": "ops/security/fixtures/security-final-sweep-logs-export-examples.json",
+      "sha256": "6cb5cf6d563f9b44dc1fb8df165bae9d87d242606c27b43d8a06a52ab9c9b2a4",
+      "sampleCount": 12,
+      "redactedOnly": true,
+      "sanitized": true,
+      "collectedAt": "2026-06-18T00:00:00.000Z"
+    },
+    {
+      "surfaceId": "metrics",
+      "envVar": "METRICS_EXPORT_PATH",
+      "path": "ops/security/fixtures/security-final-sweep-metrics-export-examples.json",
+      "sha256": "3859ff36cb7aeaf35c5cf5add97bc2e7cb39bf743cf3ac434d24814213b1eacb",
+      "sampleCount": 9,
+      "redactedOnly": true,
+      "sanitized": true,
+      "collectedAt": "2026-06-18T00:00:00.000Z"
+    },
+    {
+      "surfaceId": "public-errors",
+      "envVar": "PUBLIC_ERROR_EXPORT_PATH",
+      "path": "ops/security/fixtures/security-final-sweep-public-errors-export-examples.json",
+      "sha256": "2147748e380bd51d73beb88db538fb0dd80987e5e1be4b653f105370b81cb79c",
+      "sampleCount": 6,
+      "redactedOnly": true,
+      "sanitized": true,
+      "collectedAt": "2026-06-18T00:00:00.000Z"
+    }
+  ],
   "surfaces": [
     {
       "surfaceId": "logs",
