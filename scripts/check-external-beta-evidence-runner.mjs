@@ -321,6 +321,12 @@ function validateSafety() {
   if (!Number.isFinite(safety.evidencePathEnvMaxBytes) || safety.evidencePathEnvMaxBytes <= 0) {
     violations.push(`${contractPath}: executionSafety.evidencePathEnvMaxBytes must be positive`);
   }
+  if (safety.evidencePathEnvRequiresJsonExtension !== true) {
+    violations.push(`${contractPath}: executionSafety.evidencePathEnvRequiresJsonExtension must be true`);
+  }
+  if (safety.evidencePathEnvRequiresJsonContent !== true) {
+    violations.push(`${contractPath}: executionSafety.evidencePathEnvRequiresJsonContent must be true`);
+  }
   if (safety.outputArtifactPathEnvRequiresJsonExtension !== true) {
     violations.push(`${contractPath}: executionSafety.outputArtifactPathEnvRequiresJsonExtension must be true`);
   }
@@ -493,6 +499,10 @@ function validateRunnerImplementation() {
     'isOversizedEvidenceFile',
     'must not exceed',
     'Evidence path max size',
+    'evidencePathEnvRequiresJsonExtension',
+    'evidencePathEnvRequiresJsonContent',
+    'requiresJsonEvidencePathEnv',
+    'requiresJsonEvidencePathContent',
     'outputArtifactPathEnvRequiresJsonExtension',
     'isJsonEvidencePath',
     'path must end with .json',
@@ -503,6 +513,10 @@ function validateRunnerImplementation() {
     'realpath must not point to a git-tracked file',
     'validateEvidencePathFileContent',
     'must be readable',
+    'valid JSON evidence',
+    'JSON object or array evidence file',
+    'parseJsonEvidenceContent',
+    'isStructuredJsonEvidence',
     'validateArtifactRedaction',
     'validateArtifactIdentity',
     'expectedArtifactId',
@@ -561,7 +575,7 @@ function validateRunnerImplementation() {
     'isRedactedArtifactValue',
     'not-redacted',
     'unredacted',
-    'parseJsonOrNull',
+    'parseJsonEvidenceContent',
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);

@@ -35,6 +35,8 @@
     "evidencePathEnvRequiresAbsolutePath": true,
     "evidencePathEnvRequiresRegularFile": true,
     "evidencePathEnvMaxBytes": 26214400,
+    "evidencePathEnvRequiresJsonExtension": true,
+    "evidencePathEnvRequiresJsonContent": true,
     "outputArtifactPathEnvRequiresJsonExtension": true
   },
   "artifactFreshness": {

@@ -595,11 +595,6 @@ function isFixtureLikeEnvValue(value) {
 function validateEvidencePathEnv(job, missingEnvSet, violations) {
   const invalidPathEnv = new Set();
   const pathEnvNames = new Set([...(job.requiredEnv ?? []), ...(job.optionalEnv ?? [])]);
-  const outputArtifactPathEnvNames = new Set(
-    (job.outputArtifacts ?? [])
-      .map((artifact) => artifact.env)
-      .filter((envName) => envName !== undefined && envName.endsWith('_PATH')),
-  );
 
   for (const envName of pathEnvNames) {
     if (!envName.endsWith('_PATH') || missingEnvSet.has(envName)) {
@@ -615,8 +610,8 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
       invalidPathEnv.add(envName);
       continue;
     }
-    if (requiresJsonOutputArtifactPaths() && outputArtifactPathEnvNames.has(envName) && !isJsonEvidencePath(value)) {
-      violations.push(`${job.jobId}: output artifact env ${envName} path must end with .json`);
+    if (requiresJsonEvidencePathEnv() && !isJsonEvidencePath(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} path must end with .json`);
       invalidPathEnv.add(envName);
       continue;
     }
@@ -650,8 +645,8 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
       invalidPathEnv.add(envName);
       continue;
     }
-    if (requiresJsonOutputArtifactPaths() && outputArtifactPathEnvNames.has(envName) && !isJsonEvidencePath(realPath)) {
-      violations.push(`${job.jobId}: output artifact env ${envName} realpath must end with .json`);
+    if (requiresJsonEvidencePathEnv() && !isJsonEvidencePath(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must end with .json`);
       invalidPathEnv.add(envName);
       continue;
     }
@@ -692,6 +687,14 @@ function isJsonEvidencePath(path) {
 
 function requiresJsonOutputArtifactPaths() {
   return contract.executionSafety?.outputArtifactPathEnvRequiresJsonExtension === true;
+}
+
+function requiresJsonEvidencePathEnv() {
+  return contract.executionSafety?.evidencePathEnvRequiresJsonExtension === true || requiresJsonOutputArtifactPaths();
+}
+
+function requiresJsonEvidencePathContent() {
+  return contract.executionSafety?.evidencePathEnvRequiresJsonContent === true;
 }
 
 function requiresRegularEvidenceFiles() {
@@ -749,10 +752,20 @@ function validateEvidencePathFileContent(path, jobId, envName, violations) {
 
   validateArtifactLiteralRedaction(content, jobId, `evidence path env ${envName}`, violations);
 
-  const parsed = parseJsonOrNull(content);
-  if (parsed !== null && typeof parsed === 'object') {
-    validateArtifactStructuredRedaction(parsed, jobId, `evidence path env ${envName}`, violations);
+  const parsed = parseJsonEvidenceContent(content);
+  if (!parsed.ok) {
+    if (requiresJsonEvidencePathContent()) {
+      violations.push(`${jobId}: evidence path env ${envName} must point to valid JSON evidence`);
+    }
+    return;
   }
+  if (!isStructuredJsonEvidence(parsed.value)) {
+    if (requiresJsonEvidencePathContent()) {
+      violations.push(`${jobId}: evidence path env ${envName} must point to a JSON object or array evidence file`);
+    }
+    return;
+  }
+  validateArtifactStructuredRedaction(parsed.value, jobId, `evidence path env ${envName}`, violations);
 }
 
 function isFixtureLikeArtifactPath(path) {
@@ -1015,12 +1028,16 @@ function validateArtifactStructuredRedaction(content, jobId, label, violations) 
   }
 }
 
-function parseJsonOrNull(content) {
+function parseJsonEvidenceContent(content) {
   try {
-    return JSON.parse(content);
+    return { ok: true, value: JSON.parse(content) };
   } catch {
-    return null;
+    return { ok: false, value: undefined };
   }
+}
+
+function isStructuredJsonEvidence(value) {
+  return typeof value === 'object' && value !== null;
 }
 
 function containsFixtureProvenance(value) {
