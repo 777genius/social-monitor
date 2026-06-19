@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, relative } from 'node:path';
 
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
@@ -542,6 +542,11 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
       invalidPathEnv.add(envName);
       continue;
     }
+    if (requiresRegularEvidenceFiles() && !isRegularEvidenceFile(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} must point to a regular file`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
     if (isFixtureLikeArtifactPath(value)) {
       violations.push(`${job.jobId}: evidence path env ${envName} must not point to fixture or example evidence`);
       invalidPathEnv.add(envName);
@@ -559,6 +564,11 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
     }
     if (requiresJsonOutputArtifactPaths() && outputArtifactPathEnvNames.has(envName) && !isJsonEvidencePath(realPath)) {
       violations.push(`${job.jobId}: output artifact env ${envName} realpath must end with .json`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
+    if (requiresRegularEvidenceFiles() && !isRegularEvidenceFile(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must point to a regular file`);
       invalidPathEnv.add(envName);
       continue;
     }
@@ -589,6 +599,18 @@ function isJsonEvidencePath(path) {
 
 function requiresJsonOutputArtifactPaths() {
   return contract.executionSafety?.outputArtifactPathEnvRequiresJsonExtension === true;
+}
+
+function requiresRegularEvidenceFiles() {
+  return contract.executionSafety?.evidencePathEnvRequiresRegularFile === true;
+}
+
+function isRegularEvidenceFile(path) {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function readEvidenceRealPath(path, jobId, envName, violations) {

@@ -32,6 +32,7 @@
     "artifactValidationSkipsLiveRunners": true,
     "secretValuesMustStayOutOfArtifacts": true,
     "evidencePathEnvRequiresAbsolutePath": true,
+    "evidencePathEnvRequiresRegularFile": true,
     "outputArtifactPathEnvRequiresJsonExtension": true
   },
   "artifactFreshness": {
