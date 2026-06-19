@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { isAbsolute, relative } from 'node:path';
+import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { dirname, isAbsolute, relative } from 'node:path';
 import { URL } from 'node:url';
 
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
@@ -593,6 +593,9 @@ function validateExecutableOutputArtifactPathEnv(job, missingEnvSet, violations)
       violations.push(`${job.jobId}: output artifact env ${envName} must not be inside the git workspace before live execution`);
       continue;
     }
+    if (!isValidEvidencePathParentDirectory(value, job.jobId, envName, 'before live execution', violations)) {
+      continue;
+    }
     if (existsSync(value) && requiresRegularEvidenceFiles() && !isRegularEvidenceFile(value)) {
       violations.push(`${job.jobId}: output artifact env ${envName} must point to a regular file before live execution`);
       continue;
@@ -701,6 +704,9 @@ function validatePlannedEvidencePathEnv(job, missingEnvSet, violations) {
     }
     if (isForbiddenWorkspaceEvidencePath(value)) {
       violations.push(`${job.jobId}: evidence path env ${envName} must not be inside the git workspace before preflight`);
+      continue;
+    }
+    if (!isValidEvidencePathParentDirectory(value, job.jobId, envName, 'before preflight', violations)) {
       continue;
     }
     if (!existsSync(value)) {
@@ -1065,6 +1071,48 @@ function isForbiddenWorkspaceEvidencePath(path) {
 
   const relativePath = relative(process.cwd(), path);
   return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath));
+}
+
+function isValidEvidencePathParentDirectory(path, jobId, envName, stage, violations) {
+  if (contract.executionSafety?.evidencePathEnvRequiresWritableParent !== true) {
+    return true;
+  }
+
+  const parentDirectory = dirname(path);
+  if (!existsSync(parentDirectory)) {
+    violations.push(`${jobId}: evidence path env ${envName} parent directory must exist ${stage}`);
+    return false;
+  }
+  let parentRealPath;
+  try {
+    parentRealPath = realpathSync(parentDirectory);
+  } catch {
+    violations.push(`${jobId}: evidence path env ${envName} parent directory realpath must be readable ${stage}`);
+    return false;
+  }
+  if (!isRegularDirectory(parentRealPath)) {
+    violations.push(`${jobId}: evidence path env ${envName} parent path must be a directory ${stage}`);
+    return false;
+  }
+  if (isForbiddenWorkspaceEvidencePath(parentRealPath)) {
+    violations.push(`${jobId}: evidence path env ${envName} parent directory must not be inside the git workspace ${stage}`);
+    return false;
+  }
+  try {
+    accessSync(parentRealPath, constants.W_OK);
+  } catch {
+    violations.push(`${jobId}: evidence path env ${envName} parent directory must be writable ${stage}`);
+    return false;
+  }
+  return true;
+}
+
+function isRegularDirectory(path) {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function isGitTrackedPath(path) {
