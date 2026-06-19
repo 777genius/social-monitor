@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import {
+  validateEvidenceArtifactProvenance,
+  validateEvidenceProvenanceRequirements,
+} from './lib/evidence-provenance.mjs';
 
 const evidencePath = 'ops/ingestion/source-live-certification-evidence.json';
 const sourceCertificationPath = 'ops/ingestion/source-provider-certification.json';
@@ -29,8 +33,6 @@ const gateId = 'source-live-certification-evidence';
 const liveStatusValues = new Set(['pending_live_evidence', 'passed']);
 const liveArtifactFormat = 'source-live-provider-evidence-v1';
 const liveArtifactEvidenceKind = 'live_network';
-const fixtureArtifactEvidenceKind = 'fixture_example';
-const requiredArtifactProvenanceFields = new Set(['evidenceKind', 'collectionMethod', 'runner', 'fixtureOnly']);
 const requiredProviderSignals = new Map([
   ['hacker-news', new Set(['hn-live-http-smoke', 'hn-rate-limit-evidence'])],
   ['rss', new Set(['rss-allowlisted-live-feeds', 'rss-http-cache-evidence', 'rss-ssrf-proof'])],
@@ -173,13 +175,6 @@ const forbiddenEvidenceFragments = [
   'amqps://',
   'smk_',
   'whsec_',
-];
-const forbiddenRealProvenanceFragments = [
-  'example',
-  'fixture',
-  'synthetic',
-  'mock',
-  'test',
 ];
 
 if (evidence.schemaVersion !== 1) {
@@ -373,26 +368,13 @@ function validatePassedArtifactContentSchema() {
 }
 
 function validateProvenanceRequirements(requirements) {
-  if (!isRecord(requirements)) {
-    violations.push(`${evidencePath}: passedArtifactContentSchema.provenanceRequirements is required`);
-    return;
-  }
-  if (requirements.evidenceKind !== liveArtifactEvidenceKind) {
-    violations.push(`${evidencePath}: passedArtifactContentSchema.provenanceRequirements.evidenceKind must be ${liveArtifactEvidenceKind}`);
-  }
-  if (requirements.fixtureOnly !== false) {
-    violations.push(`${evidencePath}: passedArtifactContentSchema.provenanceRequirements.fixtureOnly must be false`);
-  }
-  requireSetCoverage(
-    new Set(requirements.requiredFields ?? []),
-    requiredArtifactProvenanceFields,
-    'passedArtifactContentSchema.provenanceRequirements.requiredFields',
-  );
-  requireSetCoverage(
-    new Set(requirements.forbiddenRealFragments ?? []),
-    new Set(forbiddenRealProvenanceFragments),
-    'passedArtifactContentSchema.provenanceRequirements.forbiddenRealFragments',
-  );
+  validateEvidenceProvenanceRequirements({
+    requirements,
+    expectedEvidenceKind: liveArtifactEvidenceKind,
+    label: 'passedArtifactContentSchema.provenanceRequirements',
+    sourcePath: evidencePath,
+    violations,
+  });
 }
 
 function validateLiveProviderEvidence() {
@@ -670,54 +652,14 @@ function validateLiveProviderArtifact(artifact, options) {
 }
 
 function validateArtifactProvenance(provenance, label, options) {
-  if (!isRecord(provenance)) {
-    violations.push(`${label}: provenance object is required`);
-    return;
-  }
-
-  for (const field of requiredArtifactProvenanceFields) {
-    if (!(field in provenance)) {
-      violations.push(`${label}: provenance.${field} is required`);
-    }
-  }
-  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
-    if (typeof provenance[field] !== 'string' || provenance[field].trim().length === 0) {
-      violations.push(`${label}: provenance.${field} must be a non-empty string`);
-    }
-  }
-
-  if (options.allowFixture === true) {
-    if (provenance.evidenceKind !== fixtureArtifactEvidenceKind) {
-      violations.push(`${label}: fixture provenance.evidenceKind must be ${fixtureArtifactEvidenceKind}`);
-    }
-    if (provenance.fixtureOnly !== true) {
-      violations.push(`${label}: fixture provenance.fixtureOnly must be true`);
-    }
-    return;
-  }
-
-  if (provenance.evidenceKind !== liveArtifactEvidenceKind) {
-    violations.push(`${label}: provenance.evidenceKind must be ${liveArtifactEvidenceKind}`);
-  }
-  if (provenance.fixtureOnly !== false) {
-    violations.push(`${label}: provenance.fixtureOnly must be false for live evidence`);
-  }
-  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
-    validateRealProvenanceString(provenance[field], `${label}: provenance.${field}`);
-  }
-}
-
-function validateRealProvenanceString(value, label) {
-  if (typeof value !== 'string') {
-    return;
-  }
-
-  const normalized = value.toLowerCase();
-  for (const fragment of forbiddenRealProvenanceFragments) {
-    if (normalized.includes(fragment)) {
-      violations.push(`${label} must not contain "${fragment}" for live evidence artifacts`);
-    }
-  }
+  validateEvidenceArtifactProvenance({
+    provenance,
+    label,
+    expectedEvidenceKind: liveArtifactEvidenceKind,
+    allowFixture: options.allowFixture === true,
+    violations,
+    realEvidenceLabel: 'live evidence artifacts',
+  });
 }
 
 function validateArtifactRedaction(artifact, label) {
@@ -951,14 +893,6 @@ function validateEnvArtifactValidation(validationRules) {
   ]) {
     if (!seenRules.has(envVar)) {
       violations.push(`${evidencePath}: envArtifactValidation must include ${envVar}`);
-    }
-  }
-}
-
-function requireSetCoverage(actual, expected, label) {
-  for (const expectedValue of expected) {
-    if (!actual.has(expectedValue)) {
-      violations.push(`${evidencePath}: ${label} must include ${expectedValue}`);
     }
   }
 }

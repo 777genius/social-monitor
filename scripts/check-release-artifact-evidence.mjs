@@ -2,6 +2,10 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { URL } from 'node:url';
+import {
+  validateEvidenceArtifactProvenance,
+  validateEvidenceProvenanceRequirements,
+} from './lib/evidence-provenance.mjs';
 
 const artifactPath = 'ops/release/release-artifact-evidence.json';
 const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
@@ -22,15 +26,6 @@ const hasVerificationScript = (scriptName) =>
 const violations = [];
 const deployArtifactFormat = 'release-deploy-smoke-artifact-v1';
 const deployArtifactEvidenceKind = 'staging_deploy';
-const fixtureArtifactEvidenceKind = 'fixture_example';
-const requiredDeployArtifactProvenanceFields = new Set(['evidenceKind', 'collectionMethod', 'runner', 'fixtureOnly']);
-const forbiddenRealProvenanceFragments = [
-  'example',
-  'fixture',
-  'synthetic',
-  'mock',
-  'test',
-];
 const releaseDeploySmokeArtifactPath = process.env.RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH?.trim();
 const allowedArtifactStatus = new Set(['pending_image_digest_and_deploy_smoke', 'passed']);
 const requiredSmokeEvidenceShapeBySmokeId = new Map([
@@ -289,26 +284,13 @@ function validateDeployArtifactContentSchema() {
 }
 
 function validateProvenanceRequirements(requirements) {
-  if (!isRecord(requirements)) {
-    violations.push(`${artifactPath}: deploySmokeArtifactContentSchema.provenanceRequirements is required`);
-    return;
-  }
-  if (requirements.evidenceKind !== deployArtifactEvidenceKind) {
-    violations.push(`${artifactPath}: deploySmokeArtifactContentSchema.provenanceRequirements.evidenceKind must be ${deployArtifactEvidenceKind}`);
-  }
-  if (requirements.fixtureOnly !== false) {
-    violations.push(`${artifactPath}: deploySmokeArtifactContentSchema.provenanceRequirements.fixtureOnly must be false`);
-  }
-  requireSetCoverage(
-    new Set(requirements.requiredFields ?? []),
-    requiredDeployArtifactProvenanceFields,
-    'deploySmokeArtifactContentSchema.provenanceRequirements.requiredFields',
-  );
-  requireSetCoverage(
-    new Set(requirements.forbiddenRealFragments ?? []),
-    new Set(forbiddenRealProvenanceFragments),
-    'deploySmokeArtifactContentSchema.provenanceRequirements.forbiddenRealFragments',
-  );
+  validateEvidenceProvenanceRequirements({
+    requirements,
+    expectedEvidenceKind: deployArtifactEvidenceKind,
+    label: 'deploySmokeArtifactContentSchema.provenanceRequirements',
+    sourcePath: artifactPath,
+    violations,
+  });
 }
 
 function validatePassedDeploySmokeArtifact(smoke, gitSha, migrationVersion, releaseImageDigest) {
@@ -405,54 +387,14 @@ function validateDeployArtifactShape(deployArtifact, options) {
 }
 
 function validateDeployArtifactProvenance(provenance, label, options) {
-  if (!isRecord(provenance)) {
-    violations.push(`${label}: provenance object is required`);
-    return;
-  }
-
-  for (const field of requiredDeployArtifactProvenanceFields) {
-    if (!(field in provenance)) {
-      violations.push(`${label}: provenance.${field} is required`);
-    }
-  }
-  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
-    if (typeof provenance[field] !== 'string' || provenance[field].trim().length === 0) {
-      violations.push(`${label}: provenance.${field} must be a non-empty string`);
-    }
-  }
-
-  if (options.allowFixture === true) {
-    if (provenance.evidenceKind !== fixtureArtifactEvidenceKind) {
-      violations.push(`${label}: fixture provenance.evidenceKind must be ${fixtureArtifactEvidenceKind}`);
-    }
-    if (provenance.fixtureOnly !== true) {
-      violations.push(`${label}: fixture provenance.fixtureOnly must be true`);
-    }
-    return;
-  }
-
-  if (provenance.evidenceKind !== deployArtifactEvidenceKind) {
-    violations.push(`${label}: provenance.evidenceKind must be ${deployArtifactEvidenceKind}`);
-  }
-  if (provenance.fixtureOnly !== false) {
-    violations.push(`${label}: provenance.fixtureOnly must be false for deploy evidence`);
-  }
-  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
-    validateRealProvenanceString(provenance[field], `${label}: provenance.${field}`);
-  }
-}
-
-function validateRealProvenanceString(value, label) {
-  if (typeof value !== 'string') {
-    return;
-  }
-
-  const normalized = value.toLowerCase();
-  for (const fragment of forbiddenRealProvenanceFragments) {
-    if (normalized.includes(fragment)) {
-      violations.push(`${label} must not contain "${fragment}" for deploy evidence artifacts`);
-    }
-  }
+  validateEvidenceArtifactProvenance({
+    provenance,
+    label,
+    expectedEvidenceKind: deployArtifactEvidenceKind,
+    allowFixture: options.allowFixture === true,
+    violations,
+    realEvidenceLabel: 'deploy evidence artifacts',
+  });
 }
 
 function validateDeployArtifactRedaction(deployArtifact, label) {
@@ -642,14 +584,6 @@ function validateEnvArtifactValidation(validationRules) {
   for (const envVar of ['STAGING_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'API_BASE_URL']) {
     if (!rule.requiredEnv?.includes(envVar)) {
       violations.push(`${artifactPath}: RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH requiredEnv must include ${envVar}`);
-    }
-  }
-}
-
-function requireSetCoverage(actual, expected, label) {
-  for (const expectedValue of expected) {
-    if (!actual.has(expectedValue)) {
-      violations.push(`${artifactPath}: ${label} must include ${expectedValue}`);
     }
   }
 }
