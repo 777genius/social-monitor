@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 
 const evidencePath = 'ops/ingestion/source-live-certification-evidence.json';
@@ -197,6 +198,7 @@ validatePassedArtifactContentSchema();
 validateSignalEvidenceSchemaMap();
 validateLiveProviderEvidence();
 validateExampleArtifacts();
+validateEnvironmentArtifacts();
 validateDeferredProviders();
 validateNoSensitiveEvidenceLiterals();
 requireWiring();
@@ -354,6 +356,8 @@ function validatePassedArtifactContentSchema() {
       }
     }
   }
+
+  validateEnvArtifactValidation(schema.envArtifactValidation);
 }
 
 function validateLiveProviderEvidence() {
@@ -511,6 +515,88 @@ function validateExampleArtifacts() {
   }
 }
 
+function validateEnvironmentArtifacts() {
+  validateLiveEvidenceEnvArtifact('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', new Set(['hacker-news', 'rss', 'github']));
+  validateLiveEvidenceEnvArtifact('REDDIT_LIVE_EVIDENCE_PATH', new Set(['reddit']));
+  validateRedditCredentialLifecycleEnvArtifact();
+}
+
+function validateLiveEvidenceEnvArtifact(envVar, requiredProviders) {
+  const artifactPath = readOptionalEnv(envVar);
+  if (artifactPath === undefined) {
+    return;
+  }
+  if (!existsSync(artifactPath)) {
+    violations.push(`${envVar}: must reference an existing ${liveArtifactFormat} artifact`);
+    return;
+  }
+
+  const expectedEnvironmentId = requireEnvWhenArtifactIsPresent(envVar, 'SOURCE_LIVE_ENVIRONMENT_ID');
+  const expectedImageDigest = requireEnvWhenArtifactIsPresent(envVar, 'BACKEND_IMAGE_DIGEST');
+  const expectedOperator = requireEnvWhenArtifactIsPresent(envVar, 'SOURCE_LIVE_OPERATOR');
+  const artifact = readJson(artifactPath);
+  validateLiveProviderArtifact(artifact, {
+    label: `${envVar} (${artifactPath})`,
+    expectedEnvironmentId,
+    expectedImageDigest,
+    expectedOperator,
+    requiredProviders,
+  });
+}
+
+function validateRedditCredentialLifecycleEnvArtifact() {
+  const lifecyclePath = readOptionalEnv('REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH');
+  if (lifecyclePath === undefined) {
+    return;
+  }
+  if (!existsSync(lifecyclePath)) {
+    violations.push('REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: must reference an existing redacted lifecycle evidence file');
+    return;
+  }
+
+  const serialized = readFileSync(lifecyclePath, 'utf8');
+  const lower = serialized.toLowerCase();
+  for (const fragment of forbiddenEvidenceFragments) {
+    if (lower.includes(fragment)) {
+      violations.push(`REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: lifecycle artifact must not contain "${fragment}"`);
+    }
+  }
+  for (const marker of ['create', 'rotate', 'revoke', 'redacted']) {
+    if (!lower.includes(marker)) {
+      violations.push(`REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: lifecycle artifact must include ${marker} evidence`);
+    }
+  }
+
+  const lifecycleSha256 = createHash('sha256').update(serialized).digest('hex');
+  const redditLivePath = readOptionalEnv('REDDIT_LIVE_EVIDENCE_PATH');
+  if (redditLivePath !== undefined && existsSync(redditLivePath)) {
+    const redditArtifact = readJson(redditLivePath);
+    const lifecycleSignal = findSignalResult(redditArtifact, 'reddit', 'reddit-credential-lifecycle');
+    if (lifecycleSignal?.evidence?.lifecycleArtifactSha256 !== lifecycleSha256) {
+      violations.push('REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: sha256 must match reddit live evidence lifecycle signal');
+    }
+  }
+}
+
+function findSignalResult(artifact, providerKey, signalId) {
+  const provider = (artifact.providerResults ?? []).find((result) => result.providerKey === providerKey);
+  return provider?.signalResults?.find((signal) => signal.signalId === signalId);
+}
+
+function requireEnvWhenArtifactIsPresent(artifactEnvVar, requiredEnvVar) {
+  const value = readOptionalEnv(requiredEnvVar);
+  if (value === undefined) {
+    violations.push(`${artifactEnvVar}: requires ${requiredEnvVar}`);
+  }
+
+  return value;
+}
+
+function readOptionalEnv(name) {
+  const value = process.env[name]?.trim();
+  return value === undefined || value.length === 0 ? undefined : value;
+}
+
 function validateLiveProviderArtifact(artifact, options) {
   const label = options.label;
 
@@ -536,6 +622,9 @@ function validateLiveProviderArtifact(artifact, options) {
   }
   if (options.expectedSampledAt !== undefined && artifact.sampledAt !== options.expectedSampledAt) {
     violations.push(`${label}: sampledAt must match liveProviderEvidence entry`);
+  }
+  if (options.expectedOperator !== undefined && artifact.operator !== options.expectedOperator) {
+    violations.push(`${label}: operator must match SOURCE_LIVE_OPERATOR`);
   }
 
   validateArtifactRedaction(artifact, label);
@@ -719,6 +808,69 @@ function validateSignalEvidenceSchemaMap() {
   for (const signalId of requiredEvidenceShapeBySignalId.keys()) {
     if (!requiredSignalIds.has(signalId)) {
       violations.push(`${evidencePath}: evidence schema references unsupported signal "${signalId}"`);
+    }
+  }
+}
+
+function validateEnvArtifactValidation(validationRules) {
+  if (!Array.isArray(validationRules)) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.envArtifactValidation must be an array`);
+    return;
+  }
+
+  const expectedRules = new Map([
+    ['LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', new Set(['hacker-news', 'rss', 'github'])],
+    ['REDDIT_LIVE_EVIDENCE_PATH', new Set(['reddit'])],
+  ]);
+  const seenRules = new Set();
+  for (const [index, rule] of validationRules.entries()) {
+    const label = `passedArtifactContentSchema.envArtifactValidation[${index}]`;
+    if (!isRecord(rule)) {
+      violations.push(`${evidencePath}: ${label} must be an object`);
+      continue;
+    }
+    if (rule.envVar === 'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH') {
+      seenRules.add(rule.envVar);
+      if (rule.kind !== 'reddit-credential-lifecycle-redacted') {
+        violations.push(`${evidencePath}: ${label}.kind must be reddit-credential-lifecycle-redacted`);
+      }
+      if (rule.sha256MustMatchSignal !== 'reddit-credential-lifecycle') {
+        violations.push(`${evidencePath}: ${label}.sha256MustMatchSignal must be reddit-credential-lifecycle`);
+      }
+      continue;
+    }
+
+    const expectedProviders = expectedRules.get(rule.envVar);
+    if (expectedProviders === undefined) {
+      violations.push(`${evidencePath}: ${label}.envVar is unsupported`);
+      continue;
+    }
+    seenRules.add(rule.envVar);
+    requireProviderSetCoverage(new Set(rule.requiredProviders ?? []), expectedProviders, label);
+    if (rule.format !== liveArtifactFormat) {
+      violations.push(`${evidencePath}: ${label}.format must be ${liveArtifactFormat}`);
+    }
+    for (const envVar of ['SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'SOURCE_LIVE_OPERATOR']) {
+      if (!rule.requiredEnv?.includes(envVar)) {
+        violations.push(`${evidencePath}: ${label}.requiredEnv must include ${envVar}`);
+      }
+    }
+  }
+
+  for (const envVar of [
+    ...expectedRules.keys(),
+    'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH',
+  ]) {
+    if (!seenRules.has(envVar)) {
+      violations.push(`${evidencePath}: envArtifactValidation must include ${envVar}`);
+    }
+  }
+}
+
+function requireProviderSetCoverage(actual, expected, label) {
+  for (const providerKey of expected) {
+    if (!actual.has(providerKey)) {
+      violations.push(`${evidencePath}: ${label}.requiredProviders must include ${providerKey}`);
     }
   }
 }

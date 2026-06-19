@@ -42,7 +42,40 @@
         "environmentId, imageDigest and sampledAt must match the liveProviderEvidence entry",
         "artifact JSON must not include tokens, credential values, private network URLs or raw provider payloads"
       ]
-    }
+    },
+    "envArtifactValidation": [
+      {
+        "envVar": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+        "format": "source-live-provider-evidence-v1",
+        "requiredProviders": [
+          "hacker-news",
+          "rss",
+          "github"
+        ],
+        "requiredEnv": [
+          "SOURCE_LIVE_ENVIRONMENT_ID",
+          "BACKEND_IMAGE_DIGEST",
+          "SOURCE_LIVE_OPERATOR"
+        ]
+      },
+      {
+        "envVar": "REDDIT_LIVE_EVIDENCE_PATH",
+        "format": "source-live-provider-evidence-v1",
+        "requiredProviders": [
+          "reddit"
+        ],
+        "requiredEnv": [
+          "SOURCE_LIVE_ENVIRONMENT_ID",
+          "BACKEND_IMAGE_DIGEST",
+          "SOURCE_LIVE_OPERATOR"
+        ]
+      },
+      {
+        "envVar": "REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH",
+        "kind": "reddit-credential-lifecycle-redacted",
+        "sha256MustMatchSignal": "reddit-credential-lifecycle"
+      }
+    ]
   },
   "liveProviderEvidence": [
     {
