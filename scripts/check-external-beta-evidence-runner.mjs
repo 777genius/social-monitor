@@ -280,6 +280,8 @@ validateRunnerPositiveCredentialRotationArtifactSmoke();
 validateRunnerNegativeCredentialRotationArtifactSmokes();
 validateRunnerPositiveSecurityFinalSweepArtifactSmoke();
 validateRunnerNegativeSecurityFinalSweepArtifactSmokes();
+validateRunnerPositiveStagingReliabilityArtifactSmokes();
+validateRunnerNegativeStagingReliabilityArtifactSmokes();
 validateRunnerPositiveArtifactSmoke();
 validateRunnerPositiveRedditArtifactSmoke();
 validateRunnerNegativeRedditArtifactSmokes();
@@ -936,6 +938,249 @@ function durableRuntimeSelectorArtifact() {
   return artifact;
 }
 
+function validateRunnerPositiveStagingReliabilityArtifactSmokes() {
+  for (const config of stagingReliabilitySmokeConfigs()) {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-staging-reliability-positive-'));
+    try {
+      const artifactPath = writeStagingReliabilityArtifact(tempDirectory, config);
+      const result = runRunnerStagingReliabilityArtifactSmoke(config, artifactPath);
+      if (result.exitCode !== 0) {
+        violations.push(`${contract.runnerFile}: runner positive staging reliability smoke must accept valid ${config.artifactId} evidence: ${smokeOutputSnippet(result.output)}`);
+      }
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+function validateRunnerNegativeStagingReliabilityArtifactSmokes() {
+  const scenarios = [
+    {
+      label: 'staging reliability fixture provenance',
+      artifactId: 'rabbitmq-staging-drill-output',
+      expectedOutput: 'fixture provenance',
+      mutateArtifact: (artifact) => {
+        artifact.provenance = {
+          evidenceKind: 'fixture_example',
+          collectionMethod: 'Synthetic fixture example for RabbitMQ staging drill schema validation.',
+          runner: 'ops/drills/fixtures/staging-reliability-artifact-examples.json',
+          fixtureOnly: true,
+        };
+      },
+    },
+    {
+      label: 'staging reliability wrong artifact id',
+      artifactId: 'rabbitmq-staging-drill-output',
+      expectedOutput: 'must use artifactId rabbitmq-staging-drill-output',
+      mutateArtifact: (artifact) => {
+        artifact.artifactId = 'wrong-staging-drill-output';
+      },
+    },
+    {
+      label: 'staging reliability image digest mismatch',
+      artifactId: 'postgres-restore-drill-output',
+      expectedOutput: 'imageDigest must match BACKEND_IMAGE_DIGEST',
+      mutateArtifact: (artifact) => {
+        artifact.imageDigest = `sha256:${'9'.repeat(64)}`;
+      },
+    },
+    {
+      label: 'staging reliability missing postgres signal',
+      artifactId: 'postgres-restore-drill-output',
+      expectedOutput: 'missing signal result "postgres-no-duplicate-side-effects"',
+      mutateArtifact: (artifact) => {
+        artifact.signalResults = artifact.signalResults.filter(
+          (result) => result.signalId !== 'postgres-no-duplicate-side-effects',
+        );
+      },
+    },
+    {
+      label: 'staging reliability failed durable signal',
+      artifactId: 'durable-backend-e2e-output',
+      expectedOutput: 'signal result "backend-loop-idempotency" must have status=passed',
+      mutateArtifact: (artifact) => {
+        const result = artifact.signalResults.find(
+          (item) => item.signalId === 'backend-loop-idempotency',
+        );
+        result.status = 'failed';
+      },
+    },
+    {
+      label: 'staging reliability durable API mismatch',
+      artifactId: 'durable-backend-e2e-output',
+      expectedOutput: 'apiBaseUrl must match API_BASE_URL',
+      mutateArtifact: (artifact) => {
+        artifact.apiBaseUrl = 'https://api.other-staging.social-monitor.invalid';
+      },
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-staging-reliability-negative-'));
+    try {
+      const config = stagingReliabilitySmokeConfigByArtifactId(scenario.artifactId);
+      const artifactPath = writeStagingReliabilityArtifact(tempDirectory, config, scenario);
+      const result = runRunnerStagingReliabilityArtifactSmoke(config, artifactPath);
+      if (result.exitCode === 0) {
+        violations.push(`${contract.runnerFile}: runner negative staging reliability smoke must reject ${scenario.label}`);
+        continue;
+      }
+      if (!result.output.includes(scenario.expectedOutput)) {
+        violations.push(`${contract.runnerFile}: runner negative staging reliability smoke for ${scenario.label} must report "${scenario.expectedOutput}"`);
+      }
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+function writeStagingReliabilityArtifact(tempDirectory, config, options = {}) {
+  const artifactPath = join(tempDirectory, `${config.artifactId}.json`);
+  const artifact = stagingReliabilityArtifact(config);
+  options.mutateArtifact?.(artifact);
+  writeFileSync(
+    artifactPath,
+    `${JSON.stringify(artifact, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  return artifactPath;
+}
+
+function stagingReliabilityArtifact(config) {
+  const fixture = readJson('ops/drills/fixtures/staging-reliability-artifact-examples.json');
+  const example = fixture.examples.find((item) => item.artifactId === config.artifactId);
+  if (example === undefined) {
+    throw new Error(`Missing staging reliability fixture for ${config.artifactId}`);
+  }
+
+  const artifact = sanitizeStagingReliabilityArtifactStrings(JSON.parse(JSON.stringify(example)));
+  const now = Date.now();
+  const startedAtMs = now - 10 * 60 * 1000;
+  const completedAtMs = now - 60 * 1000;
+  const startedAt = new Date(startedAtMs).toISOString();
+  const completedAt = new Date(completedAtMs).toISOString();
+
+  artifact.environmentId = 'staging-alpha-1';
+  artifact.imageDigest = config.imageDigest;
+  artifact.operator = config.operator;
+  artifact.startedAt = startedAt;
+  artifact.completedAt = completedAt;
+  artifact.provenance = {
+    evidenceKind: 'staging_drill',
+    collectionMethod: `${config.collectionLabel} captured from beta backend environment.`,
+    runner: config.runner,
+    fixtureOnly: false,
+  };
+  if (config.apiBaseUrl !== undefined) {
+    artifact.apiBaseUrl = config.apiBaseUrl;
+  } else {
+    delete artifact.apiBaseUrl;
+  }
+
+  const signalStepMs = Math.floor((completedAtMs - startedAtMs) / (artifact.signalResults.length + 1));
+  artifact.signalResults = artifact.signalResults.map((result, index) => {
+    const observedAt = new Date(startedAtMs + signalStepMs * (index + 1)).toISOString();
+    const refreshed = {
+      ...result,
+      observedAt,
+    };
+    refreshStagingReliabilityEvidenceTimestamps(refreshed.evidence, observedAt);
+    return refreshed;
+  });
+
+  return artifact;
+}
+
+function sanitizeStagingReliabilityArtifactStrings(value) {
+  if (typeof value === 'string') {
+    return value
+      .replaceAll('Synthetic', 'Captured')
+      .replaceAll('synthetic', 'captured')
+      .replaceAll('fixture', 'capture')
+      .replaceAll('Fixture', 'Capture')
+      .replaceAll('example', 'alpha')
+      .replaceAll('Example', 'Alpha');
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeStagingReliabilityArtifactStrings(item));
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, sanitizeStagingReliabilityArtifactStrings(item)]),
+    );
+  }
+  return value;
+}
+
+function refreshStagingReliabilityEvidenceTimestamps(value, observedAt) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      refreshStagingReliabilityEvidenceTimestamps(item, observedAt);
+    }
+    return;
+  }
+  if (value === null || typeof value !== 'object') {
+    return;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    if (key.endsWith('At') && typeof item === 'string') {
+      value[key] = observedAt;
+    } else {
+      refreshStagingReliabilityEvidenceTimestamps(item, observedAt);
+    }
+  }
+}
+
+function stagingReliabilitySmokeConfigByArtifactId(artifactId) {
+  const config = stagingReliabilitySmokeConfigs().find((item) => item.artifactId === artifactId);
+  if (config === undefined) {
+    throw new Error(`Missing staging reliability smoke config for ${artifactId}`);
+  }
+  return config;
+}
+
+function stagingReliabilitySmokeConfigs() {
+  return [
+    {
+      artifactId: 'rabbitmq-staging-drill-output',
+      collectionLabel: 'RabbitMQ reliability drill',
+      envName: 'RABBITMQ_STAGING_DRILL_ARTIFACT_PATH',
+      imageDigest: `sha256:${'1'.repeat(64)}`,
+      jobId: 'rabbitmq-staging-reliability-drill',
+      operator: 'ops-owner-1',
+      runner: 'scripts/capture-rabbitmq-reliability-drill.ts',
+      requiredEnv: {
+        RABBITMQ_URL: 'amqps://release:...@rabbitmq.staging.social-monitor.invalid:5671',
+      },
+    },
+    {
+      artifactId: 'postgres-restore-drill-output',
+      collectionLabel: 'Postgres restore and migration drill',
+      envName: 'POSTGRES_RESTORE_DRILL_ARTIFACT_PATH',
+      imageDigest: `sha256:${'2'.repeat(64)}`,
+      jobId: 'postgres-restore-migration-drill',
+      operator: 'ops-owner-1',
+      runner: 'scripts/capture-postgres-restore-drill.ts',
+      requiredEnv: {
+        DATABASE_URL: 'postgresql://release:...@db.staging.social-monitor.invalid:5432/social_monitor',
+      },
+    },
+    {
+      apiBaseUrl: 'https://api.staging.social-monitor.invalid',
+      artifactId: 'durable-backend-e2e-output',
+      collectionLabel: 'Durable backend E2E loop',
+      envName: 'DURABLE_BACKEND_E2E_ARTIFACT_PATH',
+      imageDigest: `sha256:${'3'.repeat(64)}`,
+      jobId: 'durable-backend-e2e-loop',
+      operator: 'backend-lead-1',
+      runner: 'scripts/capture-durable-backend-e2e-loop.ts',
+      requiredEnv: {
+        API_BASE_URL: 'https://api.staging.social-monitor.invalid',
+      },
+    },
+  ];
+}
+
 function validateRunnerPositiveCredentialRotationArtifactSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-rotation-positive-'));
   try {
@@ -1496,6 +1741,38 @@ function runRunnerDurableRuntimeArtifactSmoke(artifactPath) {
           BACKEND_IMAGE_DIGEST: imageDigest,
           DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: artifactPath,
           STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+        },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    );
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function runRunnerStagingReliabilityArtifactSmoke(config, artifactPath) {
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        contract.runnerFile,
+        '--validate-artifacts',
+        '--require-env',
+        '--job',
+        config.jobId,
+      ],
+      {
+        env: {
+          PATH: process.env.PATH ?? '',
+          BACKEND_IMAGE_DIGEST: config.imageDigest,
+          STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+          [config.envName]: artifactPath,
+          ...config.requiredEnv,
         },
         encoding: 'utf8',
         stdio: 'pipe',
