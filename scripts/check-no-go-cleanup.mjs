@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { extname, join } from 'node:path';
 
 const contractPath = 'ops/release/no-go-cleanup-contract.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
@@ -58,6 +59,7 @@ validateExternalReadinessHold();
 validateNoGoExceptions();
 validateClaimAudits();
 validateForbiddenGoClaims();
+validateDocumentationClaimScan();
 validateDecisionArtifacts();
 requireWiring();
 
@@ -180,6 +182,74 @@ function validateForbiddenGoClaims() {
       }
     }
   }
+}
+
+function validateDocumentationClaimScan() {
+  const scan = contract.documentationClaimScan;
+  if (typeof scan !== 'object' || scan === null) {
+    violations.push(`${contractPath}: documentationClaimScan is required`);
+    return;
+  }
+
+  const rootPaths = scan.rootPaths ?? [];
+  const extensions = new Set(scan.fileExtensions ?? []);
+  const forbiddenPatterns = scan.forbiddenPatterns ?? contract.forbiddenExternalGoClaimPatterns ?? [];
+  const allowedPhrases = (scan.allowedPhrases ?? []).map((phrase) => String(phrase).toLowerCase());
+
+  if (rootPaths.length === 0) {
+    violations.push(`${contractPath}: documentationClaimScan.rootPaths must not be empty`);
+  }
+  if (extensions.size === 0) {
+    violations.push(`${contractPath}: documentationClaimScan.fileExtensions must not be empty`);
+  }
+  if (forbiddenPatterns.length === 0) {
+    violations.push(`${contractPath}: documentationClaimScan.forbiddenPatterns must not be empty`);
+  }
+
+  for (const rootPath of rootPaths) {
+    if (!existsSync(rootPath)) {
+      violations.push(`${contractPath}: documentationClaimScan root path is missing: ${rootPath}`);
+      continue;
+    }
+
+    for (const path of walkFiles(rootPath, extensions)) {
+      const lines = readFileSync(path, 'utf8').split(/\r?\n/);
+      lines.forEach((line, index) => {
+        const lowerLine = line.toLowerCase();
+        const allowed = allowedPhrases.some((phrase) => lowerLine.includes(phrase));
+        if (allowed) {
+          return;
+        }
+        for (const pattern of forbiddenPatterns) {
+          if (lowerLine.includes(String(pattern).toLowerCase())) {
+            violations.push(`${path}:${index + 1}: forbidden documentation readiness claim "${pattern}"`);
+          }
+        }
+      });
+    }
+  }
+}
+
+function walkFiles(rootPath, extensions) {
+  const entries = readdirSync(rootPath, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const path = join(rootPath, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...walkFiles(path, extensions));
+      continue;
+    }
+    if (!entry.isFile()) {
+      continue;
+    }
+    if (extensions.has(extname(entry.name))) {
+      const stats = statSync(path);
+      if (stats.size > 0) {
+        files.push(path);
+      }
+    }
+  }
+  return files;
 }
 
 function validateDecisionArtifacts() {

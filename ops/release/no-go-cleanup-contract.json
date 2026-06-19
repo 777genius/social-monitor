@@ -19,6 +19,30 @@
     "production ready",
     "production-ready"
   ],
+  "documentationClaimScan": {
+    "rootPaths": [
+      "docs"
+    ],
+    "fileExtensions": [
+      ".md",
+      ".json"
+    ],
+    "forbiddenPatterns": [
+      "external beta is ready",
+      "ready for external beta",
+      "external-beta ready",
+      "beta-ready",
+      "production ready",
+      "production-ready"
+    ],
+    "allowedPhrases": [
+      "not production-ready",
+      "not production ready",
+      "treated as production-ready",
+      "treats unsupported acquisition path as production-ready",
+      "unsupported source strategy is treated as production-ready"
+    ]
+  },
   "claimAudits": [
     {
       "claimId": "external-beta-decision-held",

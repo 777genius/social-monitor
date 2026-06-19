@@ -206,6 +206,6 @@ Each core feature store tests:
 
 ### Acceptance Gate
 
-- App is beta-ready for core flows with reliable error/offline handling.
+- Frontend remains deferred; when resumed, core flows require a separate beta readiness gate with reliable error/offline handling.
 - Cache, secure storage and crash reporting pass tenant/privacy checks.
 - Flavor, cache isolation and privacy scrubber checks are automated.
