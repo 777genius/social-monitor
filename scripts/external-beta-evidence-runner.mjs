@@ -33,6 +33,20 @@ const forbiddenArtifactValueFragments = [
   'smk_',
   'whsec_',
 ];
+const forbiddenArtifactValuePatterns = [
+  {
+    label: 'query credential',
+    regex: /\b(?:access_token|refresh_token|id_token|api_key|apikey|client_secret|signature|sig)=([^&\s"']+)/gi,
+  },
+  {
+    label: 'header credential',
+    regex: /\b(?:authorization|x-api-key|x-amz-security-token):\s*([^,\s"'}]+)/gi,
+  },
+  {
+    label: 'jwt credential',
+    regex: /\b(eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/g,
+  },
+];
 const forbiddenArtifactKeyNames = new Set([
   'authorization',
   'bearer',
@@ -784,6 +798,15 @@ function validateArtifactLiteralRedaction(content, jobId, label, violations) {
   for (const fragment of forbiddenArtifactValueFragments) {
     if (serialized.includes(fragment)) {
       violations.push(`${jobId}: ${label} must not contain sensitive literal fragment "${fragment}"`);
+    }
+  }
+  for (const pattern of forbiddenArtifactValuePatterns) {
+    pattern.regex.lastIndex = 0;
+    for (const match of content.matchAll(pattern.regex)) {
+      const sensitiveValue = match[1] ?? match[0];
+      if (!isRedactedArtifactValue(sensitiveValue)) {
+        violations.push(`${jobId}: ${label} must not contain sensitive literal pattern "${pattern.label}"`);
+      }
     }
   }
 }
