@@ -5,6 +5,7 @@ import { URL } from 'node:url';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
+  validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
 
 const artifactPath = 'ops/release/release-artifact-evidence.json';
@@ -355,6 +356,15 @@ function validateDeployArtifactShape(deployArtifact, options) {
   }
   if (!isHttpUrlWithoutCredentials(deployArtifact.apiBaseUrl)) {
     violations.push(`${label}: apiBaseUrl must be an http(s) URL without credentials`);
+  }
+  if (options.allowFixture !== true) {
+    validateRealEvidenceIdentityStrings({
+      source: deployArtifact,
+      fields: ['environmentId', 'operator'],
+      label,
+      violations,
+      realEvidenceLabel: 'deploy evidence artifacts',
+    });
   }
 
   validateDeployArtifactProvenance(deployArtifact.provenance, label, { allowFixture: options.allowFixture === true });

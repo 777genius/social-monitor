@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
+  validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
 
 const evidencePath = 'ops/security/security-final-sweep-evidence.json';
@@ -260,8 +261,14 @@ function validateArtifactEnvironment(environment, path, options) {
   if (!isIsoDateString(environment.sampledAt)) {
     violations.push(`${path}: environment.sampledAt must be an ISO timestamp`);
   }
-  if (options.allowExample !== true && environment.environmentId?.includes('example')) {
-    violations.push(`${path}: real staging artifact environmentId must not be an example environment`);
+  if (options.allowExample !== true) {
+    validateRealEvidenceIdentityStrings({
+      source: environment,
+      fields: ['environmentId', 'operator'],
+      label: `${path}: environment`,
+      violations,
+      realEvidenceLabel: 'security final sweep evidence',
+    });
   }
 
   const expected = options.expectedDeploy;

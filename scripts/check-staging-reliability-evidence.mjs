@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { URL } from 'node:url';
 import {
-  forbiddenRealEvidenceProvenanceFragments,
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
+  validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
 
 const evidencePath = 'ops/drills/staging-reliability-evidence.json';
@@ -683,19 +683,13 @@ function validateEnvArtifactMetadata(content, config, artifactLabel) {
 }
 
 function validateRealArtifactIdentity(content, label) {
-  for (const field of requiredRealArtifactIdentityFields) {
-    const value = content[field];
-    if (typeof value !== 'string') {
-      continue;
-    }
-
-    const normalized = value.toLowerCase();
-    for (const fragment of forbiddenRealEvidenceProvenanceFragments) {
-      if (normalized.includes(fragment)) {
-        violations.push(`${label}: ${field} must not contain "${fragment}" for real staging artifacts`);
-      }
-    }
-  }
+  validateRealEvidenceIdentityStrings({
+    source: content,
+    fields: requiredRealArtifactIdentityFields,
+    label,
+    violations,
+    realEvidenceLabel: 'real staging artifacts',
+  });
 }
 
 function validateEnvArtifactValidation(validationRules) {

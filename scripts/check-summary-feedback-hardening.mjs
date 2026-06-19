@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
+  validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
 
 const evidencePath = 'ops/release/summary-feedback-hardening-evidence.json';
@@ -549,9 +550,14 @@ function validateSampleSource(source, path, options) {
     if (!allowedRealSampleSourceKinds.has(source.kind)) {
       violations.push(`${path}: real sample source.kind must be one of ${[...allowedRealSampleSourceKinds].join(', ')}`);
     }
-    for (const field of ['kind', 'environmentId', 'operator', 'collectionMethod', 'redactedBy', 'approvedBy']) {
-      validateRealSourceString(source[field], `${path}: source.${field}`);
-    }
+    validateRealEvidenceIdentityStrings({
+      source,
+      fields: ['kind', 'environmentId', 'operator', 'collectionMethod', 'redactedBy', 'approvedBy'],
+      label: `${path}: source`,
+      violations,
+      realEvidenceLabel: 'real feedback artifacts',
+      forbiddenRealFragments: forbiddenRealSourceFragments,
+    });
     if (typeof source.collectionMethod === 'string' && source.collectionMethod.trim().length < 20) {
       violations.push(`${path}: source.collectionMethod must describe the real export path`);
     }
@@ -563,19 +569,6 @@ function validateSampleSource(source, path, options) {
     violations.push(`${path}: source.sampleWindow must include ISO startedAt and endedAt`);
   } else if (Date.parse(source.sampleWindow.startedAt) >= Date.parse(source.sampleWindow.endedAt)) {
     violations.push(`${path}: source.sampleWindow.startedAt must be before endedAt`);
-  }
-}
-
-function validateRealSourceString(value, label) {
-  if (typeof value !== 'string') {
-    return;
-  }
-
-  const normalized = value.toLowerCase();
-  for (const fragment of forbiddenRealSourceFragments) {
-    if (normalized.includes(fragment)) {
-      violations.push(`${label} must not contain "${fragment}" for real feedback artifacts`);
-    }
   }
 }
 

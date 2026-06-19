@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
+  validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
 
 const contractPath = 'ops/security/credential-secret-runtime-flow.json';
@@ -508,11 +509,14 @@ function validateArtifactEnvironment(environment, path, options) {
   if (!isIsoDateString(environment.sampledAt)) {
     violations.push(`${path}: environment.sampledAt must be an ISO timestamp`);
   }
-  if (options.allowExample !== true && environment.environmentId?.includes('example')) {
-    violations.push(`${path}: real rotation artifact environmentId must not be an example environment`);
-  }
-  if (options.allowExample !== true && environment.secretStoreId?.includes('example')) {
-    violations.push(`${path}: real rotation artifact secretStoreId must not be an example secret store`);
+  if (options.allowExample !== true) {
+    validateRealEvidenceIdentityStrings({
+      source: environment,
+      fields: ['environmentId', 'secretStoreId', 'operator'],
+      label: `${path}: environment`,
+      violations,
+      realEvidenceLabel: 'rotation evidence',
+    });
   }
 
   const expected = options.expectedEvidence;

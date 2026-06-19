@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
+  validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
 
 const evidencePath = 'ops/ingestion/source-live-certification-evidence.json';
@@ -663,6 +664,15 @@ function validateLiveProviderArtifact(artifact, options) {
   if (!/^sha256:[0-9a-f]{64}$/.test(String(artifact.imageDigest ?? ''))) {
     violations.push(`${label}: imageDigest must be immutable sha256 digest`);
   }
+  if (options.allowFixture !== true) {
+    validateRealEvidenceIdentityStrings({
+      source: artifact,
+      fields: ['environmentId', 'operator'],
+      label,
+      violations,
+      realEvidenceLabel: 'live provider evidence artifacts',
+    });
+  }
   if (options.expectedEnvironmentId !== undefined && artifact.environmentId !== options.expectedEnvironmentId) {
     violations.push(`${label}: environmentId must match liveProviderEvidence entry`);
   }
@@ -793,6 +803,15 @@ function validateRedditCredentialLifecycleArtifact(artifact, options) {
   }
   if (!/^sha256:[0-9a-f]{64}$/.test(String(artifact.imageDigest ?? ''))) {
     violations.push(`${label}: imageDigest must be immutable sha256 digest`);
+  }
+  if (options.allowFixture !== true) {
+    validateRealEvidenceIdentityStrings({
+      source: artifact,
+      fields: ['environmentId', 'operator'],
+      label,
+      violations,
+      realEvidenceLabel: 'reddit credential lifecycle artifacts',
+    });
   }
   if (options.expectedEnvironmentId !== undefined && artifact.environmentId !== options.expectedEnvironmentId) {
     violations.push(`${label}: environmentId must match SOURCE_LIVE_ENVIRONMENT_ID`);

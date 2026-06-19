@@ -86,7 +86,7 @@ export function validateEvidenceArtifactProvenance({
     violations.push(`${label}: provenance.fixtureOnly must be false for ${realEvidenceLabel}`);
   }
   for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
-    validateRealProvenanceString({
+    validateRealEvidenceString({
       value: provenance[field],
       label: `${label}: provenance.${field}`,
       realEvidenceLabel,
@@ -96,7 +96,30 @@ export function validateEvidenceArtifactProvenance({
   }
 }
 
-function validateRealProvenanceString({
+export function validateRealEvidenceIdentityStrings({
+  source,
+  fields,
+  label,
+  violations,
+  realEvidenceLabel = 'evidence artifacts',
+  forbiddenRealFragments = forbiddenRealEvidenceProvenanceFragments,
+}) {
+  if (!isRecord(source)) {
+    return;
+  }
+
+  for (const field of fields) {
+    validateRealEvidenceString({
+      value: source[field],
+      label: `${label}.${field}`,
+      realEvidenceLabel,
+      forbiddenRealFragments,
+      violations,
+    });
+  }
+}
+
+function validateRealEvidenceString({
   value,
   label,
   realEvidenceLabel,

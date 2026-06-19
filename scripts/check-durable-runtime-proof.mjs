@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
+  validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
 import { URL } from 'node:url';
 
@@ -318,8 +319,14 @@ function validateArtifactEnvironment(environment, path, options) {
   if (!isHttpUrlWithoutCredentials(environment.apiBaseUrl)) {
     violations.push(`${path}: environment.apiBaseUrl must be an http(s) URL without credentials`);
   }
-  if (options.allowExample !== true && environment.environmentId?.includes('example')) {
-    violations.push(`${path}: real runtime selector artifact environmentId must not be an example environment`);
+  if (options.allowExample !== true) {
+    validateRealEvidenceIdentityStrings({
+      source: environment,
+      fields: ['environmentId', 'operator'],
+      label: `${path}: environment`,
+      violations,
+      realEvidenceLabel: 'runtime selector evidence',
+    });
   }
 
   const expected = options.expectedEvidence;
