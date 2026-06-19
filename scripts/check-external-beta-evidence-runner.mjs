@@ -284,6 +284,8 @@ validateRunnerPositiveStagingReliabilityArtifactSmokes();
 validateRunnerNegativeStagingReliabilityArtifactSmokes();
 validateRunnerPositiveSummaryFeedbackArtifactSmoke();
 validateRunnerNegativeSummaryFeedbackArtifactSmokes();
+validateRunnerPositiveReleaseDeployArtifactSmoke();
+validateRunnerNegativeReleaseDeployArtifactSmokes();
 validateRunnerPositiveArtifactSmoke();
 validateRunnerPositiveRedditArtifactSmoke();
 validateRunnerNegativeRedditArtifactSmokes();
@@ -1313,6 +1315,151 @@ function summaryFeedbackSamplesArtifact() {
   return artifact;
 }
 
+function validateRunnerPositiveReleaseDeployArtifactSmoke() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-release-deploy-positive-'));
+  try {
+    const artifactPath = writeReleaseDeploySmokeArtifact(tempDirectory);
+    const result = runRunnerReleaseDeployArtifactSmoke(artifactPath);
+    if (result.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner positive release deploy artifact smoke must accept valid deploy smoke evidence: ${smokeOutputSnippet(result.output)}`);
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function validateRunnerNegativeReleaseDeployArtifactSmokes() {
+  const scenarios = [
+    {
+      label: 'release deploy fixture provenance',
+      expectedOutput: 'must not contain fixture provenance',
+      mutateArtifact: (artifact) => {
+        artifact.provenance = {
+          evidenceKind: 'fixture_example',
+          collectionMethod: 'Synthetic fixture example for release deploy smoke schema validation.',
+          runner: 'ops/release/fixtures/release-deploy-smoke-artifact-examples.json',
+          fixtureOnly: true,
+        };
+      },
+    },
+    {
+      label: 'release deploy image digest mismatch',
+      expectedOutput: 'imageDigest must match BACKEND_IMAGE_DIGEST',
+      mutateArtifact: (artifact) => {
+        artifact.imageDigest = `sha256:${'9'.repeat(64)}`;
+      },
+    },
+    {
+      label: 'release deploy commit mismatch',
+      expectedOutput: 'commitSha must match current release commit',
+      mutateArtifact: (artifact) => {
+        artifact.commitSha = '0'.repeat(40);
+      },
+    },
+    {
+      label: 'release deploy artifact digest mismatch',
+      expectedOutput: 'artifact digest "openapi-snapshot" value must match release evidence',
+      mutateArtifact: (artifact) => {
+        const digest = artifact.artifactDigests.find((item) => item.artifactId === 'openapi-snapshot');
+        digest.value = '0'.repeat(64);
+      },
+    },
+    {
+      label: 'release deploy missing smoke result',
+      expectedOutput: 'missing smokeResult "worker-pause-resume"',
+      mutateArtifact: (artifact) => {
+        artifact.smokeResults = artifact.smokeResults.filter(
+          (result) => result.smokeId !== 'worker-pause-resume',
+        );
+      },
+    },
+    {
+      label: 'release deploy raw headers redaction flag',
+      expectedOutput: 'redaction.rawHeadersIncluded must be false',
+      mutateArtifact: (artifact) => {
+        artifact.redaction.rawHeadersIncluded = true;
+      },
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-release-deploy-negative-'));
+    try {
+      const artifactPath = writeReleaseDeploySmokeArtifact(tempDirectory, scenario);
+      const result = runRunnerReleaseDeployArtifactSmoke(artifactPath);
+      if (result.exitCode === 0) {
+        violations.push(`${contract.runnerFile}: runner negative release deploy smoke must reject ${scenario.label}`);
+        continue;
+      }
+      if (!result.output.includes(scenario.expectedOutput)) {
+        violations.push(`${contract.runnerFile}: runner negative release deploy smoke for ${scenario.label} must report "${scenario.expectedOutput}"`);
+      }
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+function writeReleaseDeploySmokeArtifact(tempDirectory, options = {}) {
+  const artifactPath = join(tempDirectory, 'release-deploy-smoke.json');
+  const artifact = releaseDeploySmokeArtifact();
+  options.mutateArtifact?.(artifact);
+  writeFileSync(
+    artifactPath,
+    `${JSON.stringify(artifact, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  return artifactPath;
+}
+
+function releaseDeploySmokeArtifact() {
+  const releaseEvidence = readJson('ops/release/release-artifact-evidence.json');
+  const fixture = readJson('ops/release/fixtures/release-deploy-smoke-artifact-examples.json');
+  const artifact = JSON.parse(JSON.stringify(fixture.examples[0]));
+  const imageDigest = releaseDeploySmokeImageDigest();
+  const sampledAt = new Date(Date.now() - 60 * 1000).toISOString();
+  const openApiDigest = releaseEvidence.artifactDigests.find((item) => item.artifactId === 'openapi-snapshot')?.value;
+  const gitSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
+  artifact.artifactId = 'backend-release-deploy-smoke-staging-alpha-1';
+  artifact.environmentId = 'staging-alpha-1';
+  artifact.imageDigest = imageDigest;
+  artifact.apiBaseUrl = 'https://api.staging.social-monitor.invalid';
+  artifact.commitSha = gitSha;
+  artifact.migrationVersion = releaseEvidence.migrationVersion;
+  artifact.operator = 'release-owner-1';
+  artifact.sampledAt = sampledAt;
+  artifact.provenance = {
+    evidenceKind: 'staging_deploy',
+    collectionMethod: 'Deploy smoke evidence captured from beta backend staging release.',
+    runner: 'scripts/capture-release-deploy-smoke.ts',
+    fixtureOnly: false,
+  };
+  artifact.artifactDigests = releaseEvidence.artifactDigests;
+  artifact.smokeResults = artifact.smokeResults.map((result, index) => {
+    const observedAt = new Date(Date.parse(sampledAt) + (index + 1) * 1000).toISOString();
+    const refreshed = {
+      ...result,
+      observedAt,
+    };
+    if (refreshed.smokeId === 'openapi-contract') {
+      refreshed.evidence.deployedOpenApiSha256 = openApiDigest;
+      refreshed.evidence.committedOpenApiSha256 = openApiDigest;
+    }
+    if (refreshed.smokeId === 'migration-version') {
+      refreshed.evidence.deployedMigrationValue = releaseEvidence.migrationVersion.value;
+      refreshed.evidence.releaseMigrationValue = releaseEvidence.migrationVersion.value;
+    }
+    return refreshed;
+  });
+
+  return artifact;
+}
+
+function releaseDeploySmokeImageDigest() {
+  return `sha256:${'4'.repeat(64)}`;
+}
+
 function validateRunnerPositiveCredentialRotationArtifactSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-rotation-positive-'));
   try {
@@ -1934,6 +2081,38 @@ function runRunnerSummaryFeedbackArtifactSmoke(artifactPath) {
         env: {
           PATH: process.env.PATH ?? '',
           SUMMARY_REAL_FEEDBACK_SAMPLES_PATH: artifactPath,
+        },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    );
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function runRunnerReleaseDeployArtifactSmoke(artifactPath) {
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        contract.runnerFile,
+        '--validate-artifacts',
+        '--require-env',
+        '--job',
+        'release-deploy-smoke',
+      ],
+      {
+        env: {
+          API_BASE_URL: 'https://api.staging.social-monitor.invalid',
+          BACKEND_IMAGE_DIGEST: releaseDeploySmokeImageDigest(),
+          PATH: process.env.PATH ?? '',
+          RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: artifactPath,
+          STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
         },
         encoding: 'utf8',
         stdio: 'pipe',
