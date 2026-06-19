@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { URL } from 'node:url';
 import {
+  forbiddenRealEvidenceProvenanceFragments,
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
 } from './lib/evidence-provenance.mjs';
@@ -277,6 +278,7 @@ const requiredBackendOpsDomains = [
   'observability-and-drills',
   'mvp-loop',
 ];
+const requiredRealArtifactIdentityFields = ['environmentId', 'operator'];
 
 if (evidence.schemaVersion !== 1) {
   violations.push(`${evidencePath}: schemaVersion must be 1`);
@@ -516,6 +518,7 @@ function requirePassedArtifact(artifact) {
   if (!/^sha256:[0-9a-f]{64}$/.test(String(artifact.imageDigest ?? ''))) {
     violations.push(`${evidencePath}: passed artifact "${artifact.artifactId}" must define immutable imageDigest`);
   }
+  validateRealArtifactIdentity(artifact, `${evidencePath}: stagingEvidenceArtifacts.${artifact.artifactId}`);
 }
 
 function validatePassedArtifactContent(artifact, signals) {
@@ -525,6 +528,7 @@ function validatePassedArtifactContent(artifact, signals) {
   }
 
   validateArtifactContentEnvelope(content, artifact.path, artifact.artifactId);
+  validateRealArtifactIdentity(content, artifact.path);
   validateArtifactProvenance(content.provenance, artifact.path, { allowFixture: false });
   for (const field of ['artifactId', 'environmentId', 'imageDigest', 'operator', 'startedAt', 'completedAt']) {
     if (content[field] !== artifact[field]) {
@@ -654,6 +658,7 @@ function validateEnvironmentArtifacts(signalsByArtifactId) {
 }
 
 function validateEnvArtifactMetadata(content, config, artifactLabel) {
+  validateRealArtifactIdentity(content, artifactLabel);
   for (const envVar of config.requiredEnv) {
     const expected = readOptionalEnv(envVar);
     if (expected === undefined) {
@@ -675,8 +680,21 @@ function validateEnvArtifactMetadata(content, config, artifactLabel) {
       }
     }
   }
-  if (String(content.environmentId ?? '').includes('example')) {
-    violations.push(`${artifactLabel}: real staging artifact environmentId must not be example-like`);
+}
+
+function validateRealArtifactIdentity(content, label) {
+  for (const field of requiredRealArtifactIdentityFields) {
+    const value = content[field];
+    if (typeof value !== 'string') {
+      continue;
+    }
+
+    const normalized = value.toLowerCase();
+    for (const fragment of forbiddenRealEvidenceProvenanceFragments) {
+      if (normalized.includes(fragment)) {
+        violations.push(`${label}: ${field} must not contain "${fragment}" for real staging artifacts`);
+      }
+    }
   }
 }
 

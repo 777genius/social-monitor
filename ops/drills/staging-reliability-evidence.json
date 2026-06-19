@@ -50,7 +50,8 @@
       "every signal result has status=passed",
       "every signal result has observedAt and non-empty evidence",
       "every signal result evidence is an object matching signal-specific required fields",
-      "artifact metadata matches the release evidence row"
+      "artifact metadata matches the release evidence row",
+      "real artifact environmentId and operator are not example, fixture, synthetic, mock or test identifiers"
     ],
     "envArtifactValidation": [
       {
