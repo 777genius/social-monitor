@@ -276,6 +276,8 @@ validateArtifactExamples();
 validateRunnerImplementation();
 validateRunnerPositiveDurableRuntimeArtifactSmoke();
 validateRunnerNegativeDurableRuntimeArtifactSmokes();
+validateRunnerPositiveCredentialRotationArtifactSmoke();
+validateRunnerNegativeCredentialRotationArtifactSmokes();
 validateRunnerPositiveArtifactSmoke();
 validateRunnerPositiveRedditArtifactSmoke();
 validateRunnerNegativeRedditArtifactSmokes();
@@ -932,6 +934,147 @@ function durableRuntimeSelectorArtifact() {
   return artifact;
 }
 
+function validateRunnerPositiveCredentialRotationArtifactSmoke() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-rotation-positive-'));
+  try {
+    const { sourceArtifactPath, webhookArtifactPath } = writeCredentialRotationArtifactPair(tempDirectory);
+    const result = runRunnerCredentialRotationArtifactSmoke(sourceArtifactPath, webhookArtifactPath);
+    if (result.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner positive credential rotation artifact smoke must accept valid redacted rotation artifacts: ${smokeOutputSnippet(result.output)}`);
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function validateRunnerNegativeCredentialRotationArtifactSmokes() {
+  const scenarios = [
+    {
+      label: 'source rotation fixture provenance',
+      expectedOutput: 'fixture provenance',
+      mutateSource: (artifact) => {
+        artifact.provenance = {
+          evidenceKind: 'fixture_example',
+          collectionMethod: 'Synthetic fixture example for source credential rotation schema validation.',
+          runner: 'ops/security/fixtures/source-credential-rotation-redacted-examples.json',
+          fixtureOnly: true,
+        };
+      },
+    },
+    {
+      label: 'source rotation missing preview operation',
+      expectedOutput: 'operations must include preview-redaction-proof',
+      mutateSource: (artifact) => {
+        artifact.operations = artifact.operations.filter(
+          (operation) => operation.operationId !== 'preview-redaction-proof',
+        );
+      },
+    },
+    {
+      label: 'webhook rotation plaintext redaction flag',
+      expectedOutput: 'unredacted sensitive key',
+      mutateWebhook: (artifact) => {
+        artifact.redaction.plaintextCredentialValuesIncluded = true;
+      },
+    },
+    {
+      label: 'webhook rotation unchanged old key',
+      expectedOutput: 'old-key-rejected-after-rotation must change key id',
+      mutateWebhook: (artifact) => {
+        const operation = artifact.operations.find(
+          (item) => item.operationId === 'old-key-rejected-after-rotation',
+        );
+        operation.keyIdAfter = operation.keyIdBefore;
+      },
+    },
+    {
+      label: 'source rotation secret store mismatch',
+      expectedOutput: 'secretStoreId must match STAGING_SECRET_STORE_ID',
+      mutateSource: (artifact) => {
+        artifact.environment.secretStoreId = 'secret-store-staging-other-1';
+      },
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-rotation-negative-'));
+    try {
+      const { sourceArtifactPath, webhookArtifactPath } = writeCredentialRotationArtifactPair(
+        tempDirectory,
+        scenario,
+      );
+      const result = runRunnerCredentialRotationArtifactSmoke(sourceArtifactPath, webhookArtifactPath);
+      if (result.exitCode === 0) {
+        violations.push(`${contract.runnerFile}: runner negative credential rotation smoke must reject ${scenario.label}`);
+        continue;
+      }
+      if (!result.output.includes(scenario.expectedOutput)) {
+        violations.push(`${contract.runnerFile}: runner negative credential rotation smoke for ${scenario.label} must report "${scenario.expectedOutput}"`);
+      }
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+function writeCredentialRotationArtifactPair(tempDirectory, options = {}) {
+  const sourceArtifactPath = join(tempDirectory, 'source-credential-rotation.json');
+  const webhookArtifactPath = join(tempDirectory, 'webhook-secret-rotation.json');
+  const sourceArtifact = sourceCredentialRotationArtifact();
+  const webhookArtifact = webhookSecretRotationArtifact();
+  options.mutateSource?.(sourceArtifact);
+  options.mutateWebhook?.(webhookArtifact);
+  writeFileSync(
+    sourceArtifactPath,
+    `${JSON.stringify(sourceArtifact, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  writeFileSync(
+    webhookArtifactPath,
+    `${JSON.stringify(webhookArtifact, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  return { sourceArtifactPath, webhookArtifactPath };
+}
+
+function sourceCredentialRotationArtifact() {
+  const artifact = readJson('ops/security/fixtures/source-credential-rotation-redacted-examples.json');
+  applyCredentialRotationRealEvidence(artifact, {
+    evidenceKind: 'staging_source_credential_rotation',
+    collectionMethod: 'Rotation drill captured from staging source credential boundary.',
+    runner: 'scripts/capture-source-credential-rotation.ts',
+  });
+  return artifact;
+}
+
+function webhookSecretRotationArtifact() {
+  const artifact = readJson('ops/security/fixtures/webhook-secret-rotation-redacted-examples.json');
+  applyCredentialRotationRealEvidence(artifact, {
+    evidenceKind: 'staging_webhook_secret_rotation',
+    collectionMethod: 'Rotation drill captured from staging webhook secret boundary.',
+    runner: 'scripts/capture-webhook-secret-rotation.ts',
+  });
+  return artifact;
+}
+
+function applyCredentialRotationRealEvidence(artifact, provenance) {
+  const now = new Date().toISOString();
+  artifact.provenance = {
+    ...provenance,
+    fixtureOnly: false,
+  };
+  artifact.environment = {
+    environmentId: 'staging-secret-rotation-alpha-1',
+    secretStoreId: 'secret-store-staging-alpha-1',
+    sampledAt: now,
+    operator: 'security-owner-1',
+  };
+  artifact.operations = artifact.operations.map((operation) => ({
+    ...operation,
+    observedAt: now,
+  }));
+}
+
 function validateRunnerPositiveRedditArtifactSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-reddit-positive-'));
   try {
@@ -1020,6 +1163,37 @@ function writeRedditArtifactPair(tempDirectory, options = {}) {
 
 function runRunnerNegativeSmoke(artifactPath) {
   return runRunnerArtifactSmoke(artifactPath);
+}
+
+function runRunnerCredentialRotationArtifactSmoke(sourceArtifactPath, webhookArtifactPath) {
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        contract.runnerFile,
+        '--validate-artifacts',
+        '--require-env',
+        '--job',
+        'credential-secret-rotation-drill',
+      ],
+      {
+        env: {
+          PATH: process.env.PATH ?? '',
+          SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: sourceArtifactPath,
+          STAGING_SECRET_STORE_ID: 'secret-store-staging-alpha-1',
+          WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: webhookArtifactPath,
+        },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    );
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
 }
 
 function runRunnerDurableRuntimeArtifactSmoke(artifactPath) {
