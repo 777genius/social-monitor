@@ -138,6 +138,10 @@ const requiredJobEnvNames = new Map([
     ],
   ],
 ]);
+const requiredJobOptionalEnvNames = new Map([
+  ['live-open-connectors', ['GITHUB_ACCESS_TOKEN']],
+  ['live-reddit-oauth', ['REDDIT_USER_AGENT', 'REDDIT_SUBREDDIT', 'REDDIT_LISTING']],
+]);
 const requiredJobOutputArtifacts = new Map([
   [
     'durable-runtime-staging-proof',
@@ -456,6 +460,13 @@ function validateRequiredJobEvidence(job, label) {
   for (const envName of requiredEnvNames) {
     if (!envNames.has(envName)) {
       violations.push(`${label}: must include required evidence env "${envName}"`);
+    }
+  }
+  const optionalEnvNames = new Set(job.optionalEnv ?? []);
+  const requiredOptionalEnvNames = requiredJobOptionalEnvNames.get(job.jobId) ?? [];
+  for (const envName of requiredOptionalEnvNames) {
+    if (!optionalEnvNames.has(envName)) {
+      violations.push(`${label}: must include optional evidence env "${envName}"`);
     }
   }
 
