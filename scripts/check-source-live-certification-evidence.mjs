@@ -41,6 +41,111 @@ const requiredProviderSignals = new Map([
     ]),
   ],
 ]);
+const requiredEvidenceShapeBySignalId = new Map([
+  [
+    'hn-live-http-smoke',
+    [
+      ['summary', 'non_empty_string'],
+      ['listingStoryCount', 'positive_integer'],
+      ['searchStoryCount', 'positive_integer'],
+      ['stableNumericIds', 'boolean_true'],
+      ['normalizedIdsSampled', 'boolean_true'],
+    ],
+  ],
+  [
+    'hn-rate-limit-evidence',
+    [
+      ['summary', 'non_empty_string'],
+      ['timeoutMs', 'positive_integer'],
+      ['maxListingStories', 'positive_integer'],
+      ['maxSearchStories', 'positive_integer'],
+      ['degradationSignalRecorded', 'boolean_true'],
+    ],
+  ],
+  [
+    'rss-allowlisted-live-feeds',
+    [
+      ['summary', 'non_empty_string'],
+      ['feedCount', 'positive_integer'],
+      ['itemCount', 'positive_integer'],
+      ['allowlistMatched', 'boolean_true'],
+      ['normalizedItemsObserved', 'boolean_true'],
+    ],
+  ],
+  [
+    'rss-http-cache-evidence',
+    [
+      ['summary', 'non_empty_string'],
+      ['cacheValidatorFeedCount', 'positive_integer'],
+      ['validatorsObserved', 'non_empty_string_array'],
+      ['conditionalReadObserved', 'boolean_true'],
+    ],
+  ],
+  [
+    'rss-ssrf-proof',
+    [
+      ['summary', 'non_empty_string'],
+      ['rejectedProbeCount', 'positive_integer'],
+      ['blockedTargetClasses', 'non_empty_string_array'],
+      ['rejectedBeforeFetch', 'boolean_true'],
+    ],
+  ],
+  [
+    'github-live-api-smoke',
+    [
+      ['summary', 'non_empty_string'],
+      ['issueCount', 'positive_integer'],
+      ['canonicalUrlsObserved', 'boolean_true'],
+      ['pullRequestsExcluded', 'boolean_true'],
+      ['authMode', 'non_empty_string'],
+    ],
+  ],
+  [
+    'github-rate-limit-budget',
+    [
+      ['summary', 'non_empty_string'],
+      ['coreRemaining', 'non_negative_integer'],
+      ['searchRemaining', 'non_negative_integer'],
+      ['budgetObserved', 'boolean_true'],
+    ],
+  ],
+  [
+    'reddit-tenant-oauth-smoke',
+    [
+      ['summary', 'non_empty_string'],
+      ['subreddit', 'non_empty_string'],
+      ['listing', 'non_empty_string'],
+      ['itemCount', 'positive_integer'],
+      ['canonicalUrlsObserved', 'boolean_true'],
+      ['warningCount', 'non_negative_integer'],
+    ],
+  ],
+  [
+    'reddit-auth-failure',
+    [
+      ['summary', 'non_empty_string'],
+      ['status', 'non_empty_string'],
+      ['failedClosed', 'boolean_true'],
+    ],
+  ],
+  [
+    'reddit-rate-limit-budget',
+    [
+      ['summary', 'non_empty_string'],
+      ['headersObserved', 'boolean_true'],
+      ['observedHeaderNames', 'non_empty_string_array'],
+    ],
+  ],
+  [
+    'reddit-credential-lifecycle',
+    [
+      ['summary', 'non_empty_string'],
+      ['lifecycleArtifactSha256', 'sha256_hex'],
+      ['redactionChecked', 'boolean_true'],
+      ['lifecycleOperations', 'non_empty_string_array'],
+    ],
+  ],
+]);
 const requiredDeferredProviders = new Set(['telegram', 'x-twitter']);
 const expectedLiveCommands = new Map([
   ['hacker-news', 'npm run check:live-open-connectors'],
@@ -89,6 +194,7 @@ if (evidence.sourceCertification !== sourceCertificationPath) {
 validateSourceCertification();
 validateLiveSmokeScripts();
 validatePassedArtifactContentSchema();
+validateSignalEvidenceSchemaMap();
 validateLiveProviderEvidence();
 validateExampleArtifacts();
 validateDeferredProviders();
@@ -518,10 +624,13 @@ function validateArtifactSignalResults(providerResult, label) {
     if (signal.status !== 'passed') {
       violations.push(`${label}: signalResult "${signal.signalId}" must have status=passed`);
     }
-    for (const field of ['observedAt', 'evidence']) {
-      if (typeof signal[field] !== 'string' || signal[field].trim().length === 0) {
-        violations.push(`${label}: signalResult "${signal.signalId}" must define ${field}`);
-      }
+    if (typeof signal.observedAt !== 'string' || signal.observedAt.trim().length === 0) {
+      violations.push(`${label}: signalResult "${signal.signalId}" must define observedAt`);
+    }
+    if (!isRecord(signal.evidence)) {
+      violations.push(`${label}: signalResult "${signal.signalId}" must define evidence object`);
+    } else {
+      validateSignalEvidenceShape(label, signal);
     }
   }
 
@@ -580,6 +689,107 @@ function validateNoSensitiveEvidenceLiterals() {
       violations.push(`${evidencePath}: evidence must not contain sensitive literal fragment "${fragment}"`);
     }
   }
+}
+
+function validateSignalEvidenceSchemaMap() {
+  const requiredSignalIds = new Set([...requiredProviderSignals.values()].flatMap((signals) => [...signals]));
+
+  for (const signalId of requiredSignalIds) {
+    const shape = requiredEvidenceShapeBySignalId.get(signalId);
+    if (!Array.isArray(shape) || shape.length === 0) {
+      violations.push(`${evidencePath}: missing signal-specific evidence schema for "${signalId}"`);
+      continue;
+    }
+
+    const seenFields = new Set();
+    for (const [fieldPath, fieldType] of shape) {
+      if (typeof fieldPath !== 'string' || fieldPath.trim().length === 0) {
+        violations.push(`${evidencePath}: evidence schema for "${signalId}" has an empty field path`);
+      }
+      if (seenFields.has(fieldPath)) {
+        violations.push(`${evidencePath}: evidence schema for "${signalId}" duplicates field "${fieldPath}"`);
+      }
+      seenFields.add(fieldPath);
+      if (!isSupportedEvidenceType(fieldType)) {
+        violations.push(`${evidencePath}: evidence schema for "${signalId}" uses unsupported type "${fieldType}"`);
+      }
+    }
+  }
+
+  for (const signalId of requiredEvidenceShapeBySignalId.keys()) {
+    if (!requiredSignalIds.has(signalId)) {
+      violations.push(`${evidencePath}: evidence schema references unsupported signal "${signalId}"`);
+    }
+  }
+}
+
+function validateSignalEvidenceShape(label, signal) {
+  const shape = requiredEvidenceShapeBySignalId.get(signal.signalId);
+  if (shape === undefined) {
+    violations.push(`${label}: signalResult "${signal.signalId}" has no evidence schema`);
+    return;
+  }
+
+  for (const [fieldPath, fieldType] of shape) {
+    const value = getPath(signal.evidence, fieldPath);
+    if (value === undefined) {
+      violations.push(`${label}: signalResult "${signal.signalId}" evidence must include ${fieldPath}`);
+      continue;
+    }
+    if (!matchesEvidenceType(value, fieldType)) {
+      violations.push(`${label}: signalResult "${signal.signalId}" evidence.${fieldPath} must be ${fieldType}`);
+    }
+  }
+}
+
+function getPath(value, path) {
+  let current = value;
+  for (const segment of path.split('.')) {
+    if (!isRecord(current) || !(segment in current)) {
+      return undefined;
+    }
+    current = current[segment];
+  }
+
+  return current;
+}
+
+function matchesEvidenceType(value, fieldType) {
+  switch (fieldType) {
+    case 'non_empty_string':
+      return typeof value === 'string' && value.trim().length > 0;
+    case 'positive_integer':
+      return Number.isInteger(value) && value > 0;
+    case 'non_negative_integer':
+      return Number.isInteger(value) && value >= 0;
+    case 'boolean_true':
+      return value === true;
+    case 'non_empty_string_array':
+      return (
+        Array.isArray(value) &&
+        value.length > 0 &&
+        value.every((item) => typeof item === 'string' && item.trim().length > 0)
+      );
+    case 'sha256_hex':
+      return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+    default:
+      return false;
+  }
+}
+
+function isSupportedEvidenceType(fieldType) {
+  return new Set([
+    'non_empty_string',
+    'positive_integer',
+    'non_negative_integer',
+    'boolean_true',
+    'non_empty_string_array',
+    'sha256_hex',
+  ]).has(fieldType);
+}
+
+function isRecord(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function validateCommand(command, label) {

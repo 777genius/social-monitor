@@ -26,7 +26,13 @@
               "signalId": "hn-live-http-smoke",
               "status": "passed",
               "observedAt": "2026-06-18T10:00:01.000Z",
-              "evidence": "Redacted live Hacker News listing and search returned normalized numeric ids.",
+              "evidence": {
+                "summary": "Redacted live Hacker News listing and search returned normalized numeric ids.",
+                "listingStoryCount": 2,
+                "searchStoryCount": 2,
+                "stableNumericIds": true,
+                "normalizedIdsSampled": true
+              },
               "metrics": {
                 "topStoryCount": 2,
                 "searchStoryCount": 2
@@ -36,7 +42,13 @@
               "signalId": "hn-rate-limit-evidence",
               "status": "passed",
               "observedAt": "2026-06-18T10:00:02.000Z",
-              "evidence": "Request budget and provider_rate_limited degradation signal recorded for deployed HN scan.",
+              "evidence": {
+                "summary": "Request budget and provider_rate_limited degradation signal recorded for deployed HN scan.",
+                "timeoutMs": 10000,
+                "maxListingStories": 2,
+                "maxSearchStories": 2,
+                "degradationSignalRecorded": true
+              },
               "metrics": {
                 "timeoutMs": 10000,
                 "maxListingStories": 2,
@@ -53,7 +65,13 @@
               "signalId": "rss-allowlisted-live-feeds",
               "status": "passed",
               "observedAt": "2026-06-18T10:00:03.000Z",
-              "evidence": "Redacted allowlisted RSS feeds returned normalized readable items.",
+              "evidence": {
+                "summary": "Redacted allowlisted RSS feeds returned normalized readable items.",
+                "feedCount": 2,
+                "itemCount": 4,
+                "allowlistMatched": true,
+                "normalizedItemsObserved": true
+              },
               "metrics": {
                 "feedCount": 2,
                 "itemCount": 4
@@ -63,7 +81,15 @@
               "signalId": "rss-http-cache-evidence",
               "status": "passed",
               "observedAt": "2026-06-18T10:00:04.000Z",
-              "evidence": "ETag or Last-Modified validator behavior observed on repeated live RSS reads.",
+              "evidence": {
+                "summary": "ETag or Last-Modified validator behavior observed on repeated live RSS reads.",
+                "cacheValidatorFeedCount": 1,
+                "validatorsObserved": [
+                  "etag",
+                  "last-modified"
+                ],
+                "conditionalReadObserved": true
+              },
               "metrics": {
                 "cacheValidatorFeedCount": 1
               }
@@ -72,7 +98,17 @@
               "signalId": "rss-ssrf-proof",
               "status": "passed",
               "observedAt": "2026-06-18T10:00:05.000Z",
-              "evidence": "Private, loopback, file and metadata-service targets were rejected before fetch.",
+              "evidence": {
+                "summary": "Private, loopback, file and metadata-service targets were rejected before fetch.",
+                "rejectedProbeCount": 4,
+                "blockedTargetClasses": [
+                  "loopback",
+                  "localhost",
+                  "metadata-service",
+                  "file"
+                ],
+                "rejectedBeforeFetch": true
+              },
               "metrics": {
                 "rejectedProbeCount": 4
               }
@@ -87,7 +123,13 @@
               "signalId": "github-live-api-smoke",
               "status": "passed",
               "observedAt": "2026-06-18T10:00:06.000Z",
-              "evidence": "Redacted live GitHub API search returned normalized issue items with canonical GitHub URLs.",
+              "evidence": {
+                "summary": "Redacted live GitHub API search returned normalized issue items with canonical GitHub URLs.",
+                "issueCount": 1,
+                "canonicalUrlsObserved": true,
+                "pullRequestsExcluded": true,
+                "authMode": "anonymous"
+              },
               "metrics": {
                 "issueCount": 1,
                 "authMode": "anonymous"
@@ -97,7 +139,12 @@
               "signalId": "github-rate-limit-budget",
               "status": "passed",
               "observedAt": "2026-06-18T10:00:07.000Z",
-              "evidence": "GitHub core and search rate-limit budget recorded without credential values.",
+              "evidence": {
+                "summary": "GitHub core and search rate-limit budget recorded without credential values.",
+                "coreRemaining": 100,
+                "searchRemaining": 10,
+                "budgetObserved": true
+              },
               "metrics": {
                 "coreRemainingObserved": true,
                 "searchRemainingObserved": true
@@ -130,7 +177,14 @@
               "signalId": "reddit-tenant-oauth-smoke",
               "status": "passed",
               "observedAt": "2026-06-18T10:05:01.000Z",
-              "evidence": "Tenant-owned Reddit OAuth credential returned normalized listing items.",
+              "evidence": {
+                "summary": "Tenant-owned Reddit OAuth credential returned normalized listing items.",
+                "subreddit": "programming",
+                "listing": "hot",
+                "itemCount": 3,
+                "canonicalUrlsObserved": true,
+                "warningCount": 0
+              },
               "metrics": {
                 "itemCount": 3,
                 "nextCursorPresent": true
@@ -140,7 +194,11 @@
               "signalId": "reddit-auth-failure",
               "status": "passed",
               "observedAt": "2026-06-18T10:05:02.000Z",
-              "evidence": "Invalid Reddit OAuth credential failed closed with classified auth failure.",
+              "evidence": {
+                "summary": "Invalid Reddit OAuth credential failed closed with classified auth failure.",
+                "status": "failed_closed",
+                "failedClosed": true
+              },
               "metrics": {
                 "status": "failed_closed"
               }
@@ -149,7 +207,15 @@
               "signalId": "reddit-rate-limit-budget",
               "status": "passed",
               "observedAt": "2026-06-18T10:05:03.000Z",
-              "evidence": "Reddit rate-limit headers were observed and recorded without token values.",
+              "evidence": {
+                "summary": "Reddit rate-limit headers were observed and recorded without token values.",
+                "headersObserved": true,
+                "observedHeaderNames": [
+                  "x-ratelimit-remaining",
+                  "x-ratelimit-used",
+                  "x-ratelimit-reset"
+                ]
+              },
               "metrics": {
                 "headersObserved": true
               }
@@ -158,7 +224,17 @@
               "signalId": "reddit-credential-lifecycle",
               "status": "passed",
               "observedAt": "2026-06-18T10:05:04.000Z",
-              "evidence": "Credential create, rotate, revoke and redacted preview lifecycle artifact was hashed.",
+              "evidence": {
+                "summary": "Credential create, rotate, revoke and redacted preview lifecycle artifact was hashed.",
+                "lifecycleArtifactSha256": "0000000000000000000000000000000000000000000000000000000000000103",
+                "redactionChecked": true,
+                "lifecycleOperations": [
+                  "create",
+                  "rotate",
+                  "revoke",
+                  "redacted-preview"
+                ]
+              },
               "metrics": {
                 "redactionChecked": true
               }

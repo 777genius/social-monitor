@@ -102,7 +102,14 @@ async function main(): Promise<void> {
             signalId: 'reddit-tenant-oauth-smoke' satisfies RedditLiveSignalId,
             status: 'passed',
             observedAt: sampledAt,
-            evidence: 'Tenant-owned Reddit OAuth credential returned normalized listing items.',
+            evidence: {
+              summary: 'Tenant-owned Reddit OAuth credential returned normalized listing items.',
+              subreddit,
+              listing,
+              itemCount: result.items.length,
+              canonicalUrlsObserved: true,
+              warningCount: result.warnings.length,
+            },
             metrics: {
               subreddit,
               listing,
@@ -115,7 +122,11 @@ async function main(): Promise<void> {
             signalId: 'reddit-auth-failure' satisfies RedditLiveSignalId,
             status: 'passed',
             observedAt: sampledAt,
-            evidence: 'Invalid Reddit OAuth credential failed closed with classified auth failure.',
+            evidence: {
+              summary: 'Invalid Reddit OAuth credential failed closed with classified auth failure.',
+              status: 'failed_closed',
+              failedClosed: true,
+            },
             metrics: {
               status: 'failed_closed',
             },
@@ -124,15 +135,31 @@ async function main(): Promise<void> {
             signalId: 'reddit-rate-limit-budget' satisfies RedditLiveSignalId,
             status: 'passed',
             observedAt: sampledAt,
-            evidence: 'Reddit rate-limit headers were observed and recorded without token values.',
-            metrics: rateLimit,
+            evidence: {
+              summary: 'Reddit rate-limit headers were observed and recorded without token values.',
+              headersObserved: rateLimit.headersObserved,
+              observedHeaderNames: rateLimit.observedHeaderNames,
+            },
+            metrics: {
+              headersObserved: rateLimit.headersObserved,
+              observedHeaderNames: rateLimit.observedHeaderNames,
+            },
           },
           {
             signalId: 'reddit-credential-lifecycle' satisfies RedditLiveSignalId,
             status: 'passed',
             observedAt: sampledAt,
-            evidence: 'Credential create, rotate, revoke and redacted preview lifecycle artifact was hashed.',
-            metrics: credentialLifecycle,
+            evidence: {
+              summary: 'Credential create, rotate, revoke and redacted preview lifecycle artifact was hashed.',
+              lifecycleArtifactSha256: credentialLifecycle.sha256,
+              redactionChecked: credentialLifecycle.redactionChecked,
+              lifecycleOperations: credentialLifecycle.lifecycleOperations,
+            },
+            metrics: {
+              sha256: credentialLifecycle.sha256,
+              redactionChecked: credentialLifecycle.redactionChecked,
+              lifecycleOperations: credentialLifecycle.lifecycleOperations,
+            },
           },
         ],
       },
@@ -185,6 +212,7 @@ const readRedditRateLimitBudget = async (
   readonly remaining: string | null;
   readonly used: string | null;
   readonly reset: string | null;
+  readonly observedHeaderNames: readonly string[];
 }> => {
   const response = await fetch('https://oauth.reddit.com/api/v1/me', {
     headers: {
@@ -201,19 +229,25 @@ const readRedditRateLimitBudget = async (
   const reset = response.headers.get('x-ratelimit-reset');
   const headersObserved = remaining !== null || used !== null || reset !== null;
   assert(headersObserved, 'Reddit rate-limit evidence must include x-ratelimit headers');
+  const observedHeaderNames = [
+    ...(remaining !== null ? ['x-ratelimit-remaining'] : []),
+    ...(used !== null ? ['x-ratelimit-used'] : []),
+    ...(reset !== null ? ['x-ratelimit-reset'] : []),
+  ];
 
   return {
     headersObserved,
     remaining,
     used,
     reset,
+    observedHeaderNames,
   };
 };
 
 const readCredentialLifecycleEvidence = (): {
-  readonly path: string;
   readonly sha256: string;
   readonly redactionChecked: true;
+  readonly lifecycleOperations: readonly string[];
 } => {
   const path = readOptionalEnv(lifecycleEvidencePathEnv);
   assert(path !== undefined, `Live Reddit OAuth smoke requires ${lifecycleEvidencePathEnv} with redacted create/rotate/revoke evidence`);
@@ -229,9 +263,9 @@ const readCredentialLifecycleEvidence = (): {
   }
 
   return {
-    path,
     sha256: createHash('sha256').update(serialized).digest('hex'),
     redactionChecked: true,
+    lifecycleOperations: ['create', 'rotate', 'revoke', 'redacted-preview'],
   };
 };
 

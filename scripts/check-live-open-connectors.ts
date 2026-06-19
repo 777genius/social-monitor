@@ -84,7 +84,13 @@ async function main(): Promise<void> {
           signalId: 'hn-live-http-smoke' satisfies LiveOpenSignalId,
           status: 'passed',
           observedAt: sampledAt,
-          evidence: 'Live Hacker News listing and search returned normalized stable ids.',
+          evidence: {
+            summary: 'Live Hacker News listing and search returned normalized stable ids.',
+            listingStoryCount: topStories.length,
+            searchStoryCount: searchStories.length,
+            stableNumericIds: true,
+            normalizedIdsSampled: true,
+          },
           metrics: {
             topStoryCount: topStories.length,
             searchStoryCount: searchStories.length,
@@ -94,7 +100,13 @@ async function main(): Promise<void> {
           signalId: 'hn-rate-limit-evidence' satisfies LiveOpenSignalId,
           status: 'passed',
           observedAt: sampledAt,
-          evidence: 'Hacker News request budget and provider_rate_limited degradation signal were recorded.',
+          evidence: {
+            summary: 'Hacker News request budget and provider_rate_limited degradation signal were recorded.',
+            timeoutMs,
+            maxListingStories: 2,
+            maxSearchStories: 2,
+            degradationSignalRecorded: true,
+          },
           metrics: {
             timeoutMs,
             maxListingStories: 2,
@@ -111,7 +123,13 @@ async function main(): Promise<void> {
           signalId: 'rss-allowlisted-live-feeds' satisfies LiveOpenSignalId,
           status: 'passed',
           observedAt: sampledAt,
-          evidence: 'Allowlisted live RSS feeds returned normalized readable items.',
+          evidence: {
+            summary: 'Allowlisted live RSS feeds returned normalized readable items.',
+            feedCount: rssEvidence.feeds.length,
+            itemCount: rssEvidence.feeds.reduce((total, feed) => total + feed.itemCount, 0),
+            allowlistMatched: true,
+            normalizedItemsObserved: true,
+          },
           metrics: {
             feedCount: rssEvidence.feeds.length,
             itemCount: rssEvidence.feeds.reduce((total, feed) => total + feed.itemCount, 0),
@@ -121,7 +139,12 @@ async function main(): Promise<void> {
           signalId: 'rss-http-cache-evidence' satisfies LiveOpenSignalId,
           status: 'passed',
           observedAt: sampledAt,
-          evidence: 'ETag or Last-Modified validator behavior was recorded on repeated live RSS reads.',
+          evidence: {
+            summary: 'ETag or Last-Modified validator behavior was recorded on repeated live RSS reads.',
+            cacheValidatorFeedCount: rssEvidence.cacheValidatorFeedCount,
+            validatorsObserved: rssEvidence.validatorsObserved,
+            conditionalReadObserved: true,
+          },
           metrics: {
             cacheValidatorFeedCount: rssEvidence.cacheValidatorFeedCount,
           },
@@ -130,7 +153,12 @@ async function main(): Promise<void> {
           signalId: 'rss-ssrf-proof' satisfies LiveOpenSignalId,
           status: 'passed',
           observedAt: sampledAt,
-          evidence: 'Private, loopback, file and metadata-service targets were rejected before fetch.',
+          evidence: {
+            summary: 'Private, loopback, file and metadata-service targets were rejected before fetch.',
+            rejectedProbeCount: rssEvidence.ssrfRejectedUrls.length,
+            blockedTargetClasses: ['loopback', 'localhost', 'metadata-service', 'file'],
+            rejectedBeforeFetch: true,
+          },
           metrics: {
             rejectedProbeCount: rssEvidence.ssrfRejectedUrls.length,
           },
@@ -145,7 +173,13 @@ async function main(): Promise<void> {
           signalId: 'github-live-api-smoke' satisfies LiveOpenSignalId,
           status: 'passed',
           observedAt: sampledAt,
-          evidence: 'Live GitHub API search returned normalized issue items with canonical GitHub URLs.',
+          evidence: {
+            summary: 'Live GitHub API search returned normalized issue items with canonical GitHub URLs.',
+            issueCount: github.items.length,
+            canonicalUrlsObserved: true,
+            pullRequestsExcluded: true,
+            authMode: readOptionalEnv('GITHUB_ACCESS_TOKEN') === undefined ? 'anonymous' : 'token_redacted',
+          },
           metrics: {
             issueCount: github.items.length,
             authMode: readOptionalEnv('GITHUB_ACCESS_TOKEN') === undefined ? 'anonymous' : 'token_redacted',
@@ -155,7 +189,12 @@ async function main(): Promise<void> {
           signalId: 'github-rate-limit-budget' satisfies LiveOpenSignalId,
           status: 'passed',
           observedAt: sampledAt,
-          evidence: 'GitHub core and search rate-limit budget were recorded without credential values.',
+          evidence: {
+            summary: 'GitHub core and search rate-limit budget were recorded without credential values.',
+            coreRemaining: githubRateLimit.core.remaining,
+            searchRemaining: githubRateLimit.search.remaining,
+            budgetObserved: true,
+          },
           metrics: {
             coreRemaining: githubRateLimit.core.remaining,
             searchRemaining: githubRateLimit.search.remaining,
@@ -194,6 +233,7 @@ const readRssEvidence = async (): Promise<{
     readonly conditionalRequest: 'not_modified' | 'returned_items' | 'no_validator';
   }[];
   readonly cacheValidatorFeedCount: number;
+  readonly validatorsObserved: readonly string[];
   readonly ssrfRejectedUrls: readonly string[];
 }> => {
   const rssClient = new HttpRssClient(timeoutMs);
@@ -229,6 +269,11 @@ const readRssEvidence = async (): Promise<{
 
   const cacheValidatorFeedCount = feeds.filter((feed) => feed.hasEtag || feed.hasLastModified).length;
   assert(cacheValidatorFeedCount > 0, 'At least one allowlisted RSS feed must expose ETag or Last-Modified evidence');
+  const validatorsObserved = [
+    ...(feeds.some((feed) => feed.hasEtag) ? ['etag'] : []),
+    ...(feeds.some((feed) => feed.hasLastModified) ? ['last-modified'] : []),
+  ];
+  assert(validatorsObserved.length > 0, 'RSS cache evidence must include observed validator names');
 
   const ssrfRejectedUrls = rssSsrfProbeUrls.filter((url) => !validateFeedUrl(url).ok);
   assert(
@@ -240,6 +285,7 @@ const readRssEvidence = async (): Promise<{
     signalIds: ['rss-allowlisted-live-feeds', 'rss-http-cache-evidence', 'rss-ssrf-proof'],
     feeds,
     cacheValidatorFeedCount,
+    validatorsObserved,
     ssrfRejectedUrls,
   };
 };
