@@ -30,7 +30,8 @@
     "defaultActionWithoutExecute": "print_plan_only",
     "manualArtifactJobsFailExecute": true,
     "artifactValidationSkipsLiveRunners": true,
-    "secretValuesMustStayOutOfArtifacts": true
+    "secretValuesMustStayOutOfArtifacts": true,
+    "evidencePathEnvRequiresAbsolutePath": true
   },
   "artifactFreshness": {
     "maxArtifactAgeHours": 168,

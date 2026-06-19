@@ -508,6 +508,11 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
     if (value === undefined || value === '') {
       continue;
     }
+    if (!isAbsolute(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} must be an absolute file path`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
     if (!existsSync(value)) {
       violations.push(`${job.jobId}: evidence path env ${envName} must point to an existing file path`);
       invalidPathEnv.add(envName);

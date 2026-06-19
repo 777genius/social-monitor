@@ -282,6 +282,9 @@ function validateSafety() {
   if (safety.secretValuesMustStayOutOfArtifacts !== true) {
     violations.push(`${contractPath}: executionSafety.secretValuesMustStayOutOfArtifacts must be true`);
   }
+  if (safety.evidencePathEnvRequiresAbsolutePath !== true) {
+    violations.push(`${contractPath}: executionSafety.evidencePathEnvRequiresAbsolutePath must be true`);
+  }
   for (const forbidden of forbiddenFragments) {
     if (!safety.forbiddenTargets?.includes(forbidden)) {
       violations.push(`${contractPath}: executionSafety.forbiddenTargets must include ${forbidden}`);
@@ -432,6 +435,7 @@ function validateRunnerImplementation() {
     'schemaVersion 1',
     'validateEvidencePathEnv',
     'evidence path env',
+    'absolute file path',
     'readEvidenceRealPath',
     'realpathSync',
     'realpath must not point to fixture or example evidence',
