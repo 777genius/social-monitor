@@ -28,6 +28,17 @@ const rabbitMqQueueArgumentAllowedFiles = new Set([
   'libs/platform/queue/src/adapters/rabbitmq/rabbitmq-queue-arguments.ts',
 ]);
 
+const evidenceProvenanceHelperImport = "from './lib/evidence-provenance.mjs'";
+const evidenceProvenanceGuardIgnoredFiles = new Set([
+  'scripts/check-code-quality.mjs',
+]);
+const forbiddenLocalEvidenceProvenancePatterns = [
+  /\brequired(?:Deploy)?ArtifactProvenanceFields\b/,
+  /\bfixtureArtifactEvidenceKind\b/,
+  /\bforbiddenRealProvenanceFragments\b/,
+  /\bfunction\s+validateRealProvenanceString\b/,
+];
+
 const prismaWritePattern =
   /\b(?:this\.)?prisma\.[A-Za-z0-9_]+\.(?:create|update|upsert|delete|deleteMany|updateMany|createMany)\s*\(/;
 
@@ -251,6 +262,23 @@ for (const testFile of testFiles) {
   const source = readFileSync(testFile, 'utf8');
   if (/\b(describe|it|test)\.(only|skip)\s*\(/.test(source)) {
     addViolation(testFile, 'committed tests must not use .only or .skip');
+  }
+}
+
+for (const file of globSync('scripts/check-*.mjs')) {
+  const normalized = normalizedPath(file);
+  if (evidenceProvenanceGuardIgnoredFiles.has(normalized)) {
+    continue;
+  }
+
+  const source = readFileSync(file, 'utf8');
+  if (source.includes('provenanceRequirements') && !source.includes(evidenceProvenanceHelperImport)) {
+    addViolation(file, 'evidence provenance validators must use scripts/lib/evidence-provenance.mjs instead of local copies');
+  }
+  for (const pattern of forbiddenLocalEvidenceProvenancePatterns) {
+    if (pattern.test(source)) {
+      addViolation(file, 'evidence provenance constants and real-string checks must live in scripts/lib/evidence-provenance.mjs');
+    }
   }
 }
 
