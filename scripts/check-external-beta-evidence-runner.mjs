@@ -275,6 +275,7 @@ validateArtifactExamples();
 validateRunnerImplementation();
 validateRunnerNegativeSmokes();
 validateRunnerPreflightNegativeSmokes();
+validateRunnerPreflightPositiveSmoke();
 validateJobs();
 validateEnvExample();
 validateWiring();
@@ -883,13 +884,89 @@ function rabbitmqDrillPreflightEnv(tempDirectory, overrides = {}) {
 function redditOAuthPreflightEnv(tempDirectory, overrides = {}) {
   return {
     BACKEND_IMAGE_DIGEST: `sha256:${'e'.repeat(64)}`,
-    REDDIT_ACCESS_TOKEN: 'synthetic-reddit-token-value',
+    REDDIT_ACCESS_TOKEN: 'reddit-live-access-value-1234567890',
     REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: join(tempDirectory, 'reddit-credential-lifecycle.json'),
     REDDIT_LIVE_EVIDENCE_PATH: join(tempDirectory, 'reddit-live-evidence.json'),
     SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
     SOURCE_LIVE_OPERATOR: 'source-operator-1',
     ...overrides,
   };
+}
+
+function validateRunnerPreflightPositiveSmoke() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-preflight-positive-'));
+  try {
+    const result = runRunnerPreflightPositiveSmoke(completeExternalEvidencePreflightEnv(tempDirectory));
+    if (result.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner positive preflight smoke must accept structurally valid required env: ${smokeOutputSnippet(result.output)}`);
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function runRunnerPreflightPositiveSmoke(env) {
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        contract.runnerFile,
+        '--require-env',
+      ],
+      {
+        env: {
+          PATH: process.env.PATH ?? '',
+          ...env,
+        },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    );
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function completeExternalEvidencePreflightEnv(tempDirectory) {
+  return {
+    API_BASE_URL: 'https://api.staging.social-monitor.invalid',
+    BACKEND_IMAGE_DIGEST: `sha256:${'f'.repeat(64)}`,
+    DATABASE_URL: 'postgresql://release:...@db.staging.social-monitor.invalid:5432/social_monitor',
+    DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(tempDirectory, 'durable-backend-e2e.json'),
+    DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: join(tempDirectory, 'durable-runtime-selector.json'),
+    LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: join(tempDirectory, 'live-open-connectors.json'),
+    LOG_EXPORT_PATH: join(tempDirectory, 'security-log-export.json'),
+    METRICS_EXPORT_PATH: join(tempDirectory, 'security-metrics-export.json'),
+    POSTGRES_RESTORE_DRILL_ARTIFACT_PATH: join(tempDirectory, 'postgres-restore-drill.json'),
+    PUBLIC_ERROR_EXPORT_PATH: join(tempDirectory, 'security-public-error-export.json'),
+    RABBITMQ_STAGING_DRILL_ARTIFACT_PATH: join(tempDirectory, 'rabbitmq-staging-drill.json'),
+    RABBITMQ_URL: 'amqps://release:...@rabbitmq.staging.social-monitor.invalid:5671',
+    REDDIT_ACCESS_TOKEN: 'reddit-live-access-value-1234567890',
+    REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: join(tempDirectory, 'reddit-credential-lifecycle.json'),
+    REDDIT_LIVE_EVIDENCE_PATH: join(tempDirectory, 'reddit-live-evidence.json'),
+    RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: join(tempDirectory, 'release-deploy-smoke.json'),
+    SECURITY_FINAL_SWEEP_ARTIFACT_PATH: join(tempDirectory, 'security-final-sweep.json'),
+    SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: join(tempDirectory, 'source-credential-rotation.json'),
+    SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
+    SOURCE_LIVE_OPERATOR: 'source-operator-1',
+    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+    STAGING_SECRET_STORE_ID: 'secret-store-staging-alpha-1',
+    SUMMARY_REAL_FEEDBACK_SAMPLES_PATH: join(tempDirectory, 'summary-real-feedback-samples.json'),
+    WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: join(tempDirectory, 'webhook-secret-rotation.json'),
+  };
+}
+
+function smokeOutputSnippet(output) {
+  return String(output)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(-8)
+    .join(' | ');
 }
 
 function liveOpenConnectorsArtifact() {
