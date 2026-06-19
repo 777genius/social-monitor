@@ -277,9 +277,11 @@ function validateRunnerImplementation() {
     'unknownJobIds',
     'Unknown external beta evidence job id(s)',
     'Known jobs:',
+    'executableJobViolations',
+    'Refusing to execute external beta evidence jobs. Resolve all preflight violations first:',
   ]) {
     if (!runnerSource.includes(marker)) {
-      violations.push(`${contract.runnerFile}: runner must fail fast on unknown selected job ids`);
+      violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);
     }
   }
 }

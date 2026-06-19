@@ -37,22 +37,16 @@ if (process.env.EXTERNAL_BETA_EVIDENCE_CONFIRM !== 'run-live') {
   process.exit(1);
 }
 
-let failed = false;
+const executeViolations = executableJobViolations(jobs);
+if (executeViolations.length > 0) {
+  console.error('Refusing to execute external beta evidence jobs. Resolve all preflight violations first:');
+  for (const violation of executeViolations) {
+    console.error(`- ${violation}`);
+  }
+  process.exit(1);
+}
+
 for (const job of jobs) {
-  const missingEnv = missingRequiredEnv(job);
-  if (missingEnv.length > 0) {
-    console.error(`\n${job.jobId}: missing required env ${missingEnv.join(', ')}`);
-    failed = true;
-    continue;
-  }
-
-  if (job.runPolicy === 'manual_artifact_then_validator') {
-    console.error(`\n${job.jobId}: manual artifact job cannot be executed by this runner.`);
-    console.error('Attach the redacted artifact to the contract first, then run the validation commands.');
-    failed = true;
-    continue;
-  }
-
   if (job.runPolicy === 'live_command') {
     runCommand(job.runnerCommand, `${job.jobId}: runnerCommand`);
   }
@@ -60,10 +54,6 @@ for (const job of jobs) {
   for (const command of job.validationCommands) {
     runCommand(command, `${job.jobId}: validation`);
   }
-}
-
-if (failed) {
-  process.exit(1);
 }
 
 function printPlan(planJobs) {
@@ -112,6 +102,20 @@ function readSelectedJobIds(argv) {
 
 function missingRequiredEnv(job) {
   return job.requiredEnv.filter((envName) => process.env[envName]?.trim() === undefined || process.env[envName]?.trim() === '');
+}
+
+function executableJobViolations(candidateJobs) {
+  const violations = [];
+  for (const job of candidateJobs) {
+    const missingEnv = missingRequiredEnv(job);
+    if (missingEnv.length > 0) {
+      violations.push(`${job.jobId}: missing required env ${missingEnv.join(', ')}`);
+    }
+    if (job.runPolicy === 'manual_artifact_then_validator') {
+      violations.push(`${job.jobId}: manual artifact job cannot be executed by this runner`);
+    }
+  }
+  return violations;
 }
 
 function formatOutputArtifacts(job) {
