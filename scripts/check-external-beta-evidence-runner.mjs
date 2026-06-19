@@ -282,6 +282,8 @@ validateRunnerPositiveSecurityFinalSweepArtifactSmoke();
 validateRunnerNegativeSecurityFinalSweepArtifactSmokes();
 validateRunnerPositiveStagingReliabilityArtifactSmokes();
 validateRunnerNegativeStagingReliabilityArtifactSmokes();
+validateRunnerPositiveSummaryFeedbackArtifactSmoke();
+validateRunnerNegativeSummaryFeedbackArtifactSmokes();
 validateRunnerPositiveArtifactSmoke();
 validateRunnerPositiveRedditArtifactSmoke();
 validateRunnerNegativeRedditArtifactSmokes();
@@ -1181,6 +1183,136 @@ function stagingReliabilitySmokeConfigs() {
   ];
 }
 
+function validateRunnerPositiveSummaryFeedbackArtifactSmoke() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-summary-feedback-positive-'));
+  try {
+    const artifactPath = writeSummaryFeedbackSamplesArtifact(tempDirectory);
+    const result = runRunnerSummaryFeedbackArtifactSmoke(artifactPath);
+    if (result.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner positive summary feedback artifact smoke must accept valid redacted feedback samples: ${smokeOutputSnippet(result.output)}`);
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function validateRunnerNegativeSummaryFeedbackArtifactSmokes() {
+  const scenarios = [
+    {
+      label: 'summary feedback fixture provenance',
+      expectedOutput: 'must not contain fixture provenance',
+      mutateArtifact: (artifact) => {
+        artifact.provenance = {
+          evidenceKind: 'fixture_example',
+          collectionMethod: 'Synthetic fixture example for summary feedback sample schema validation.',
+          runner: 'ops/release/fixtures/redacted-summary-feedback-samples-examples.json',
+          fixtureOnly: true,
+        };
+      },
+    },
+    {
+      label: 'summary feedback non-real source kind',
+      expectedOutput: 'real sample source.kind must be one of internal_dogfood, private_beta',
+      mutateArtifact: (artifact) => {
+        artifact.source.kind = 'example_redacted_dogfood';
+      },
+    },
+    {
+      label: 'summary feedback raw source redaction flag',
+      expectedOutput: 'redaction.rawSourceTextIncluded must be false',
+      mutateArtifact: (artifact) => {
+        artifact.redaction.rawSourceTextIncluded = true;
+      },
+    },
+    {
+      label: 'summary feedback missing minimum samples',
+      expectedOutput: 'samples must include at least 2 samples',
+      mutateArtifact: (artifact) => {
+        artifact.samples = [artifact.samples[0]];
+        artifact.source.sampleCount = 1;
+      },
+    },
+    {
+      label: 'summary feedback rollup mismatch',
+      expectedOutput: 'rollup.releaseBlockingSamples must match releaseBlocking samples',
+      mutateArtifact: (artifact) => {
+        artifact.rollup.releaseBlockingSamples = 0;
+      },
+    },
+    {
+      label: 'summary feedback forbidden sensitive field',
+      expectedOutput: 'forbidden sensitive field "authorization"',
+      mutateArtifact: (artifact) => {
+        artifact.samples[0].summaryEvidence.authorization = 'redacted-header-name-only';
+      },
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-summary-feedback-negative-'));
+    try {
+      const artifactPath = writeSummaryFeedbackSamplesArtifact(tempDirectory, scenario);
+      const result = runRunnerSummaryFeedbackArtifactSmoke(artifactPath);
+      if (result.exitCode === 0) {
+        violations.push(`${contract.runnerFile}: runner negative summary feedback smoke must reject ${scenario.label}`);
+        continue;
+      }
+      if (!result.output.includes(scenario.expectedOutput)) {
+        violations.push(`${contract.runnerFile}: runner negative summary feedback smoke for ${scenario.label} must report "${scenario.expectedOutput}"`);
+      }
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+function writeSummaryFeedbackSamplesArtifact(tempDirectory, options = {}) {
+  const artifactPath = join(tempDirectory, 'summary-real-feedback-samples.json');
+  const artifact = summaryFeedbackSamplesArtifact();
+  options.mutateArtifact?.(artifact);
+  writeFileSync(
+    artifactPath,
+    `${JSON.stringify(artifact, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  return artifactPath;
+}
+
+function summaryFeedbackSamplesArtifact() {
+  const artifact = readJson('ops/release/fixtures/redacted-summary-feedback-samples-examples.json');
+  const now = Date.now();
+  const generatedAt = new Date(now - 60 * 1000).toISOString();
+  const sampleWindowEndedAt = new Date(now - 2 * 60 * 1000).toISOString();
+  const sampleWindowStartedAt = new Date(now - 26 * 60 * 60 * 1000).toISOString();
+
+  artifact.provenance = {
+    evidenceKind: 'redacted_real_feedback_samples',
+    collectionMethod: 'Redacted internal dogfood feedback export captured from summary review queue.',
+    runner: 'scripts/capture-summary-feedback-samples.ts',
+    fixtureOnly: false,
+  };
+  artifact.generatedAt = generatedAt;
+  artifact.source = {
+    kind: 'internal_dogfood',
+    environmentId: 'summary-dogfood-alpha-1',
+    sampleWindow: {
+      startedAt: sampleWindowStartedAt,
+      endedAt: sampleWindowEndedAt,
+    },
+    operator: 'summary-owner-1',
+    sampleCount: artifact.samples.length,
+    collectionMethod: 'Redacted internal dogfood export collected from summary feedback API review queue.',
+    redactedBy: 'summary-owner-1',
+    approvedBy: 'security-owner-1',
+  };
+  artifact.redaction = {
+    ...artifact.redaction,
+    method: 'Identifiers and free-text comments were irreversibly redacted before release review.',
+  };
+
+  return artifact;
+}
+
 function validateRunnerPositiveCredentialRotationArtifactSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-rotation-positive-'));
   try {
@@ -1773,6 +1905,35 @@ function runRunnerStagingReliabilityArtifactSmoke(config, artifactPath) {
           STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
           [config.envName]: artifactPath,
           ...config.requiredEnv,
+        },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    );
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function runRunnerSummaryFeedbackArtifactSmoke(artifactPath) {
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        contract.runnerFile,
+        '--validate-artifacts',
+        '--require-env',
+        '--job',
+        'summary-real-feedback-import',
+      ],
+      {
+        env: {
+          PATH: process.env.PATH ?? '',
+          SUMMARY_REAL_FEEDBACK_SAMPLES_PATH: artifactPath,
         },
         encoding: 'utf8',
         stdio: 'pipe',
