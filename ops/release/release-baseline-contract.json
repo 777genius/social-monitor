@@ -22,6 +22,7 @@
     "check:backend-mvp-status",
     "check:external-beta-evidence-runner",
     "check:external-beta-evidence-dry-run",
+    "check:external-beta-evidence-inputs",
     "check:operational-support-package",
     "check:capacity-envelope-beta-ring-decision",
     "check:no-go-cleanup",
@@ -76,6 +77,10 @@
     {
       "artifactId": "external-beta-evidence-dry-run",
       "path": "ops/release/external-beta-evidence-dry-run.json"
+    },
+    {
+      "artifactId": "external-beta-evidence-input-matrix",
+      "path": "ops/release/external-beta-evidence-input-matrix.json"
     },
     {
       "artifactId": "external-beta-evidence-env-example",

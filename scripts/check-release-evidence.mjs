@@ -30,6 +30,7 @@ const requiredGateIds = new Set([
   'external-beta-readiness',
   'backend-mvp-completion-audit',
   'backend-mvp-status',
+  'external-beta-evidence-inputs',
   'no-go-cleanup',
   'release-artifact-evidence',
   'observability-contract',

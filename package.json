@@ -44,6 +44,7 @@
     "check:external-beta-readiness": "node scripts/check-external-beta-readiness.mjs",
     "check:external-beta-evidence-runner": "node scripts/check-external-beta-evidence-runner.mjs",
     "check:external-beta-evidence-dry-run": "node scripts/check-external-beta-evidence-dry-run.mjs",
+    "check:external-beta-evidence-inputs": "node scripts/check-external-beta-evidence-inputs.mjs",
     "check:flutter-client-contract": "node scripts/check-flutter-client-contract.mjs",
     "check:event-store": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-platform-event-store-smoke.ts",
     "check:event-relay": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-event-relay-smoke.ts",

@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "matrixId": "external-beta-evidence-input-matrix-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "sourceRunnerContract": "ops/release/external-beta-evidence-runner.json",
+  "sourceDryRunContract": "ops/release/external-beta-evidence-dry-run.json",
+  "envExample": "ops/release/external-beta-evidence.env.example",
+  "checkCommand": "npm run check:external-beta-evidence-inputs",
+  "secretValuePolicy": "never_commit_values",
+  "artifactPathPolicy": "absolute_json_non_workspace_non_fixture_path",
+  "inputClasses": [
+    {
+      "inputClass": "artifact_path",
+      "description": "Absolute JSON evidence file path. Values must not live in the git workspace and must not point at fixtures or examples.",
+      "env": [
+        "AUDIT_EVENT_EXPORT_PATH",
+        "DURABLE_BACKEND_E2E_ARTIFACT_PATH",
+        "DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH",
+        "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+        "LOG_EXPORT_PATH",
+        "METRICS_EXPORT_PATH",
+        "POSTGRES_RESTORE_DRILL_ARTIFACT_PATH",
+        "PUBLIC_ERROR_EXPORT_PATH",
+        "RABBITMQ_STAGING_DRILL_ARTIFACT_PATH",
+        "REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH",
+        "REDDIT_LIVE_EVIDENCE_PATH",
+        "RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH",
+        "SECURITY_FINAL_SWEEP_ARTIFACT_PATH",
+        "SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH",
+        "SUMMARY_REAL_FEEDBACK_SAMPLES_PATH",
+        "WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH"
+      ]
+    },
+    {
+      "inputClass": "image_digest",
+      "description": "Immutable promoted backend image digest in sha256:<64 hex> form.",
+      "env": ["BACKEND_IMAGE_DIGEST"]
+    },
+    {
+      "inputClass": "https_url",
+      "description": "HTTPS endpoint used only by staging/live evidence collection.",
+      "env": [
+        "API_BASE_URL",
+        "JWKS_URL",
+        "OIDC_ISSUER",
+        "RABBITMQ_MANAGEMENT_URL",
+        "WEBHOOK_TEST_ENDPOINT"
+      ]
+    },
+    {
+      "inputClass": "postgres_url",
+      "description": "PostgreSQL connection URL supplied through approved operator env or secret runtime boundary.",
+      "env": ["DATABASE_URL"]
+    },
+    {
+      "inputClass": "rabbitmq_url",
+      "description": "RabbitMQ connection URL supplied through approved operator env or secret runtime boundary.",
+      "env": ["RABBITMQ_URL"]
+    },
+    {
+      "inputClass": "secret_value",
+      "description": "Live provider secret value. Never commit; use only in operator shell or approved secret storage.",
+      "env": [
+        "GITHUB_ACCESS_TOKEN",
+        "REDDIT_ACCESS_TOKEN"
+      ]
+    },
+    {
+      "inputClass": "secret_reference",
+      "description": "Reference to a stored secret, not a raw token, password, DSN or bearer value.",
+      "env": [
+        "DATABASE_URL_SECRET_REF",
+        "OIDC_CONFIG_SECRET_REF",
+        "OIDC_TEST_TOKEN_REF",
+        "RABBITMQ_URL_SECRET_REF"
+      ]
+    },
+    {
+      "inputClass": "identity",
+      "description": "Operator, environment, deployment or triage identity. Must not use local, fixture, example, mock or test identifiers.",
+      "env": [
+        "DEPLOYMENT_ID",
+        "SOURCE_LIVE_ENVIRONMENT_ID",
+        "SOURCE_LIVE_OPERATOR",
+        "STAGING_ENVIRONMENT_ID",
+        "STAGING_SECRET_STORE_ID",
+        "SUMMARY_FEEDBACK_TRIAGE_OWNER"
+      ]
+    },
+    {
+      "inputClass": "object_uri",
+      "description": "Backup object URI or equivalent restore evidence locator.",
+      "env": ["BACKUP_OBJECT_URI"]
+    },
+    {
+      "inputClass": "provider_option",
+      "description": "Non-secret live provider request option.",
+      "env": [
+        "REDDIT_LISTING",
+        "REDDIT_SUBREDDIT",
+        "REDDIT_USER_AGENT"
+      ]
+    }
+  ]
+}
