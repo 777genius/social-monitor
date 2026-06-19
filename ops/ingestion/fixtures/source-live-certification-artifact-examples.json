@@ -11,6 +11,12 @@
       "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000101",
       "operator": "source-owner",
       "sampledAt": "2026-06-18T10:00:00.000Z",
+      "provenance": {
+        "evidenceKind": "fixture_example",
+        "collectionMethod": "Synthetic fixture example for source live evidence schema validation.",
+        "runner": "ops/ingestion/fixtures/source-live-certification-artifact-examples.json",
+        "fixtureOnly": true
+      },
       "redaction": {
         "secretsIncluded": false,
         "rawProviderPayloadsIncluded": false,
@@ -162,6 +168,12 @@
       "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000102",
       "operator": "source-owner",
       "sampledAt": "2026-06-18T10:05:00.000Z",
+      "provenance": {
+        "evidenceKind": "fixture_example",
+        "collectionMethod": "Synthetic fixture example for Reddit live evidence schema validation.",
+        "runner": "ops/ingestion/fixtures/source-live-certification-artifact-examples.json",
+        "fixtureOnly": true
+      },
       "redaction": {
         "secretsIncluded": false,
         "rawProviderPayloadsIncluded": false,

@@ -292,6 +292,12 @@ const writeEvidenceIfRequested = (evidence: {
     imageDigest: readRequiredImageDigest(),
     operator: readRequiredEnv(operatorEnv),
     sampledAt: evidence.sampledAt,
+    provenance: {
+      evidenceKind: 'live_network',
+      collectionMethod: 'Live network Reddit OAuth smoke executed with tenant-owned credentials for the promoted backend image.',
+      runner: 'scripts/check-live-reddit-oauth.ts',
+      fixtureOnly: false,
+    },
     redaction: {
       secretsIncluded: false,
       rawProviderPayloadsIncluded: false,

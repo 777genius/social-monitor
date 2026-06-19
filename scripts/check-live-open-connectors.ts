@@ -375,6 +375,12 @@ const writeEvidenceIfRequested = (evidence: {
     imageDigest: readRequiredImageDigest(),
     operator: readRequiredEnv(operatorEnv),
     sampledAt: evidence.sampledAt,
+    provenance: {
+      evidenceKind: 'live_network',
+      collectionMethod: 'Live network smoke script executed against public provider APIs for the promoted backend image.',
+      runner: 'scripts/check-live-open-connectors.ts',
+      fixtureOnly: false,
+    },
     redaction: {
       secretsIncluded: false,
       rawProviderPayloadsIncluded: false,
