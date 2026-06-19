@@ -49,6 +49,8 @@
       "every required signalId for the stagingArtifactId is present exactly once",
       "every signal result has status=passed",
       "every signal result has observedAt and non-empty evidence",
+      "artifact startedAt/completedAt and signal observedAt use strict ISO-8601 timestamps",
+      "every signal result observedAt is inside artifact startedAt/completedAt window",
       "every signal result evidence is an object matching signal-specific required fields",
       "artifact metadata matches the release evidence row",
       "real artifact environmentId and operator are not example, fixture, synthetic, mock or test identifiers"

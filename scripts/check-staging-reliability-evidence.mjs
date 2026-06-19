@@ -279,6 +279,16 @@ const requiredBackendOpsDomains = [
   'mvp-loop',
 ];
 const requiredRealArtifactIdentityFields = ['environmentId', 'operator'];
+const requiredSignalResultRequirementTexts = new Set([
+  'every required signalId for the stagingArtifactId is present exactly once',
+  'every signal result has status=passed',
+  'every signal result has observedAt and non-empty evidence',
+  'artifact startedAt/completedAt and signal observedAt use strict ISO-8601 timestamps',
+  'every signal result observedAt is inside artifact startedAt/completedAt window',
+  'every signal result evidence is an object matching signal-specific required fields',
+  'artifact metadata matches the release evidence row',
+  'real artifact environmentId and operator are not example, fixture, synthetic, mock or test identifiers',
+]);
 
 if (evidence.schemaVersion !== 1) {
   violations.push(`${evidencePath}: schemaVersion must be 1`);
@@ -483,6 +493,13 @@ function validatePassedArtifactContentSchema() {
 
   if (!Array.isArray(schema.signalResultRequirements) || schema.signalResultRequirements.length < 4) {
     violations.push(`${evidencePath}: passedArtifactContentSchema.signalResultRequirements must describe signal coverage`);
+  } else {
+    const signalResultRequirements = new Set(schema.signalResultRequirements);
+    for (const requirement of requiredSignalResultRequirementTexts) {
+      if (!signalResultRequirements.has(requirement)) {
+        violations.push(`${evidencePath}: passedArtifactContentSchema.signalResultRequirements must include "${requirement}"`);
+      }
+    }
   }
   validateProvenanceRequirements(schema.provenanceRequirements);
   validateEnvArtifactValidation(schema.envArtifactValidation);
@@ -583,7 +600,12 @@ function validateExampleArtifactFixtures(signalsByArtifactId) {
     validateRedaction(example, artifactLabel);
     validateSignalResults(
       example,
-      { artifactId, path: artifactLabel },
+      {
+        artifactId,
+        path: artifactLabel,
+        startedAt: example.startedAt,
+        completedAt: example.completedAt,
+      },
       signalsByArtifactId.get(artifactId) ?? [],
     );
   }
@@ -615,6 +637,7 @@ function validateArtifactContentEnvelope(content, artifactPath, artifactId) {
       violations.push(`${artifactPath}: ${field} must be an ISO timestamp`);
     }
   }
+  validateArtifactTimeWindow(content, artifactPath);
 }
 
 function validateArtifactProvenance(provenance, artifactPath, options) {
@@ -651,7 +674,12 @@ function validateEnvironmentArtifacts(signalsByArtifactId) {
     validateRedaction(content, artifactLabel);
     validateSignalResults(
       content,
-      { artifactId, path: artifactLabel },
+      {
+        artifactId,
+        path: artifactLabel,
+        startedAt: content.startedAt,
+        completedAt: content.completedAt,
+      },
       signalsByArtifactId.get(artifactId) ?? [],
     );
   }
@@ -804,6 +832,10 @@ function validateSignalResults(content, artifact, signals) {
     }
     if (typeof result.observedAt !== 'string' || result.observedAt.trim().length === 0) {
       violations.push(`${artifact.path}: signal result "${result.signalId}" must define observedAt`);
+    } else if (!matchesEvidenceType(result.observedAt, 'iso_timestamp')) {
+      violations.push(`${artifact.path}: signal result "${result.signalId}" observedAt must be an ISO timestamp`);
+    } else {
+      validateSignalObservedAtWindow(artifact, result);
     }
     if (!hasNonEmptyEvidence(result.evidence)) {
       violations.push(`${artifact.path}: signal result "${result.signalId}" must include non-empty evidence`);
@@ -905,7 +937,7 @@ function matchesEvidenceType(value, fieldType) {
     case 'non_empty_string':
       return typeof value === 'string' && value.trim().length > 0;
     case 'iso_timestamp':
-      return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+      return isIsoTimestamp(value);
     case 'boolean_true':
       return value === true;
     case 'boolean_false':
@@ -923,6 +955,43 @@ function matchesEvidenceType(value, fieldType) {
     default:
       return false;
   }
+}
+
+function validateArtifactTimeWindow(content, artifactPath) {
+  const startedAtMs = parseIsoTimestampMs(content.startedAt);
+  const completedAtMs = parseIsoTimestampMs(content.completedAt);
+  if (startedAtMs === undefined || completedAtMs === undefined) {
+    return;
+  }
+  if (completedAtMs < startedAtMs) {
+    violations.push(`${artifactPath}: completedAt must be greater than or equal to startedAt`);
+  }
+}
+
+function validateSignalObservedAtWindow(artifact, result) {
+  const observedAtMs = parseIsoTimestampMs(result.observedAt);
+  const startedAtMs = parseIsoTimestampMs(artifact.startedAt);
+  const completedAtMs = parseIsoTimestampMs(artifact.completedAt);
+  if (observedAtMs === undefined || startedAtMs === undefined || completedAtMs === undefined) {
+    return;
+  }
+  if (observedAtMs < startedAtMs || observedAtMs > completedAtMs) {
+    violations.push(`${artifact.path}: signal result "${result.signalId}" observedAt must be within artifact startedAt/completedAt`);
+  }
+}
+
+function isIsoTimestamp(value) {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && parseIsoTimestampMs(value) !== undefined;
+}
+
+function parseIsoTimestampMs(value) {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? undefined : parsed;
 }
 
 function isSupportedEvidenceType(fieldType) {
