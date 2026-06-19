@@ -42,6 +42,12 @@ const requiredEnvRefs = new Set([
 ]);
 const sourceCredentialRotationFormat = 'source-credential-rotation-redacted-v1';
 const webhookSecretRotationFormat = 'webhook-secret-rotation-redacted-v1';
+const fixtureArtifactEvidenceKind = 'fixture_example';
+const rotationArtifactEvidenceKinds = {
+  sourceCredentialRotation: 'staging_source_credential_rotation',
+  webhookSecretRotation: 'staging_webhook_secret_rotation',
+};
+const requiredArtifactProvenanceFields = new Set(['evidenceKind', 'collectionMethod', 'runner', 'fixtureOnly']);
 const envArtifactValidationRules = new Map([
   ['SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH', {
     schemaKey: 'sourceCredentialRotation',
@@ -87,6 +93,13 @@ const forbiddenArtifactFragments = [
   'amqps://',
   'smk_',
   'whsec_',
+];
+const forbiddenRealProvenanceFragments = [
+  'example',
+  'fixture',
+  'synthetic',
+  'mock',
+  'test',
 ];
 const forbiddenArtifactKeys = new Set([
   'accesstoken',
@@ -418,6 +431,7 @@ function validateRotationSchema(schema, schemaKey, expectedFormat) {
     violations.push(`${contractPath}: rotationArtifactSchemas.${schemaKey}.artifactFormat must be ${expectedFormat}`);
   }
   requireExistingPath(schema.exampleArtifact, `rotationArtifactSchemas.${schemaKey}.exampleArtifact`);
+  validateProvenanceRequirements(schema.provenanceRequirements, schemaKey);
 
   const requiredOperations = requiredRotationOperations[schemaKey] ?? new Set();
   const operations = new Set(schema.requiredOperations ?? []);
@@ -452,12 +466,98 @@ function validateRotationArtifact(artifact, path, options) {
     violations.push(`${path}: frontendPolicy must be deferred_contract_only`);
   }
 
+  validateArtifactProvenance(artifact.provenance, path, options);
   validateArtifactEnvironment(artifact.environment, path, options);
   validateArtifactRedaction(artifact.redaction, path);
   validateArtifactOperations(artifact.operations, path, options);
   validateArtifactRollup(artifact.rollup, path);
   scanForbiddenArtifactKeys(artifact, path);
   validateNoSensitiveArtifactLiterals(artifact, path);
+}
+
+function validateProvenanceRequirements(requirements, schemaKey) {
+  const expectedEvidenceKind = rotationArtifactEvidenceKinds[schemaKey];
+  const label = `rotationArtifactSchemas.${schemaKey}.provenanceRequirements`;
+  if (requirements === null || typeof requirements !== 'object' || Array.isArray(requirements)) {
+    violations.push(`${contractPath}: ${label} is required`);
+    return;
+  }
+  if (requirements.evidenceKind !== expectedEvidenceKind) {
+    violations.push(`${contractPath}: ${label}.evidenceKind must be ${expectedEvidenceKind}`);
+  }
+  if (requirements.fixtureOnly !== false) {
+    violations.push(`${contractPath}: ${label}.fixtureOnly must be false`);
+  }
+  requireSetCoverage(
+    new Set(requirements.requiredFields ?? []),
+    requiredArtifactProvenanceFields,
+    `${label}.requiredFields`,
+  );
+  requireSetCoverage(
+    new Set(requirements.forbiddenRealFragments ?? []),
+    new Set(forbiddenRealProvenanceFragments),
+    `${label}.forbiddenRealFragments`,
+  );
+}
+
+function requireSetCoverage(actual, expected, label) {
+  for (const expectedValue of expected) {
+    if (!actual.has(expectedValue)) {
+      violations.push(`${contractPath}: ${label} must include "${expectedValue}"`);
+    }
+  }
+}
+
+function validateArtifactProvenance(provenance, path, options) {
+  if (provenance === null || typeof provenance !== 'object' || Array.isArray(provenance)) {
+    violations.push(`${path}: provenance must be an object`);
+    return;
+  }
+
+  for (const field of requiredArtifactProvenanceFields) {
+    if (!(field in provenance)) {
+      violations.push(`${path}: provenance.${field} is required`);
+    }
+  }
+  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
+    if (typeof provenance[field] !== 'string' || provenance[field].trim().length === 0) {
+      violations.push(`${path}: provenance.${field} must be a non-empty string`);
+    }
+  }
+
+  if (options.allowExample === true) {
+    if (provenance.evidenceKind !== fixtureArtifactEvidenceKind) {
+      violations.push(`${path}: fixture provenance.evidenceKind must be ${fixtureArtifactEvidenceKind}`);
+    }
+    if (provenance.fixtureOnly !== true) {
+      violations.push(`${path}: fixture provenance.fixtureOnly must be true`);
+    }
+    return;
+  }
+
+  const expectedEvidenceKind = rotationArtifactEvidenceKinds[options.schemaKey];
+  if (provenance.evidenceKind !== expectedEvidenceKind) {
+    violations.push(`${path}: provenance.evidenceKind must be ${expectedEvidenceKind}`);
+  }
+  if (provenance.fixtureOnly !== false) {
+    violations.push(`${path}: provenance.fixtureOnly must be false for rotation evidence`);
+  }
+  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
+    validateRealProvenanceString(provenance[field], `${path}: provenance.${field}`);
+  }
+}
+
+function validateRealProvenanceString(value, label) {
+  if (typeof value !== 'string') {
+    return;
+  }
+
+  const normalized = value.toLowerCase();
+  for (const fragment of forbiddenRealProvenanceFragments) {
+    if (normalized.includes(fragment)) {
+      violations.push(`${label} must not contain "${fragment}" for rotation artifacts`);
+    }
+  }
 }
 
 function validateArtifactEnvironment(environment, path, options) {
