@@ -372,7 +372,12 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
 
 function isFixtureLikeArtifactPath(path) {
   const normalized = path.toLowerCase();
-  return forbiddenEvidencePathFragments.some((fragment) => normalized.includes(fragment));
+  return forbiddenEvidencePathFragments.some((fragment) => normalized.includes(fragment))
+    || normalized.split(/[\\/]+/).some((segment) => isFixtureLikePathSegment(segment));
+}
+
+function isFixtureLikePathSegment(segment) {
+  return segment.includes('fixture') || segment.includes('example');
 }
 
 function readJsonArtifact(path, jobId, envName, violations) {

@@ -313,6 +313,7 @@ function validateRunnerImplementation() {
     'must use format',
     'forbiddenEvidencePathFragments',
     'isFixtureLikeArtifactPath',
+    'isFixtureLikePathSegment',
     'must not point to fixture or example evidence',
     'schemaVersion 1',
     'validateEvidencePathEnv',
