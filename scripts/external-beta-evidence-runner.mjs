@@ -116,10 +116,22 @@ if (executeViolations.length > 0) {
 for (const job of jobs) {
   if (job.runPolicy === 'live_command') {
     runCommand(job.runnerCommand, `${job.jobId}: runnerCommand`);
+    validateGeneratedArtifacts(job);
   }
 
   for (const command of job.validationCommands) {
     runCommand(command, `${job.jobId}: validation`);
+  }
+}
+
+function validateGeneratedArtifacts(job) {
+  const validationViolations = artifactValidationViolations([job]);
+  if (validationViolations.length > 0) {
+    console.error('Refusing to validate generated external beta evidence artifacts. Resolve all post-run violations first:');
+    for (const violation of validationViolations) {
+      console.error(`- ${violation}`);
+    }
+    process.exit(1);
   }
 }
 
