@@ -68,6 +68,10 @@
       "path": "ops/release/external-beta-evidence-runner.json"
     },
     {
+      "artifactId": "external-beta-evidence-env-example",
+      "path": "ops/release/external-beta-evidence.env.example"
+    },
+    {
       "artifactId": "durable-runtime-proof",
       "path": "ops/release/durable-runtime-proof.json"
     },

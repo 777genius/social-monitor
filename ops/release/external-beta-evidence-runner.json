@@ -12,6 +12,7 @@
   "executeCommand": "npm run beta:evidence:run -- --execute",
   "runnerFile": "scripts/external-beta-evidence-runner.mjs",
   "checkFile": "scripts/check-external-beta-evidence-runner.mjs",
+  "envExample": "ops/release/external-beta-evidence.env.example",
   "executionSafety": {
     "liveExecutionRequires": [
       "--execute",

@@ -14,6 +14,9 @@ const backendSafe = readJson(backendSafePath);
 const baseline = readJson(baselinePath);
 const packageJson = readJson(packagePath);
 const runnerSource = readFileSync(contract.runnerFile, 'utf8');
+const envExampleSource = typeof contract.envExample === 'string' && existsSync(contract.envExample)
+  ? readFileSync(contract.envExample, 'utf8')
+  : '';
 const packageScripts = packageJson.scripts ?? {};
 const backendScripts = new Set(backendSafe.backendScripts ?? []);
 const baselineScripts = new Set(baseline.requiredGreenScripts ?? []);
@@ -221,7 +224,7 @@ if (contract.frontendPolicy !== 'deferred_contract_only') {
 if (contract.defaultMode !== 'plan_only') {
   violations.push(`${contractPath}: defaultMode must be plan_only`);
 }
-for (const field of ['runnerFile', 'checkFile']) {
+for (const field of ['runnerFile', 'checkFile', 'envExample']) {
   if (!existsSync(contract[field] ?? '')) {
     violations.push(`${contractPath}: ${field} must reference an existing file`);
   }
@@ -236,6 +239,7 @@ validateCommand(contract.executeCommand, `${contractPath}: executeCommand`);
 validateSafety();
 validateRunnerImplementation();
 validateJobs();
+validateEnvExample();
 validateWiring();
 validateNoSensitiveLiterals();
 
@@ -355,6 +359,52 @@ function validateJobs() {
   for (const requiredSourceJob of ['live-open-connectors', 'live-reddit-oauth']) {
     if (!sourceJobs.has(requiredSourceJob)) {
       violations.push(`${contractPath}: source live certification must include ${requiredSourceJob}`);
+    }
+  }
+}
+
+function validateEnvExample() {
+  if (envExampleSource.trim().length === 0) {
+    violations.push(`${contractPath}: envExample must reference a non-empty env example file`);
+    return;
+  }
+
+  const expectedEnvNames = new Set([
+    'EXTERNAL_BETA_EVIDENCE_CONFIRM',
+    ...contract.jobs.flatMap((job) => job.requiredEnv ?? []),
+    ...contract.jobs.flatMap((job) => job.optionalEnv ?? []),
+  ]);
+  const actualEnvNames = new Set();
+
+  for (const [lineIndex, line] of envExampleSource.split('\n').entries()) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || trimmed.startsWith('#')) {
+      continue;
+    }
+
+    const match = /^([A-Z][A-Z0-9_]*)=(.*)$/.exec(trimmed);
+    if (match === null) {
+      violations.push(`${contract.envExample}:${lineIndex + 1}: env example line must be KEY=`);
+      continue;
+    }
+
+    const [, envName, value] = match;
+    if (actualEnvNames.has(envName)) {
+      violations.push(`${contract.envExample}: duplicate env example entry "${envName}"`);
+    }
+    actualEnvNames.add(envName);
+
+    if (!expectedEnvNames.has(envName)) {
+      violations.push(`${contract.envExample}: unexpected env example entry "${envName}"`);
+    }
+    if (value.trim().length > 0) {
+      violations.push(`${contract.envExample}: env example entry "${envName}" must not commit a value`);
+    }
+  }
+
+  for (const envName of expectedEnvNames) {
+    if (!actualEnvNames.has(envName)) {
+      violations.push(`${contract.envExample}: missing env example entry "${envName}"`);
     }
   }
 }
