@@ -304,6 +304,9 @@ function validateArtifactFreshnessPolicy() {
   if (!Number.isFinite(freshness.maxArtifactFutureSkewMinutes) || freshness.maxArtifactFutureSkewMinutes < 0) {
     violations.push(`${contractPath}: artifactFreshness.maxArtifactFutureSkewMinutes must be non-negative`);
   }
+  if (freshness.requiresIso8601Timestamp !== true) {
+    violations.push(`${contractPath}: artifactFreshness.requiresIso8601Timestamp must be true`);
+  }
 
   const timestampPaths = new Set(freshness.timestampPaths ?? []);
   for (const timestampPath of ['sampledAt', 'generatedAt', 'completedAt', 'environment.sampledAt', 'source.sampleWindow.endedAt']) {
@@ -446,6 +449,8 @@ function validateRunnerImplementation() {
     'validateArtifactEnvConsistency',
     'validateArtifactFreshness',
     'artifactFreshness',
+    'isIso8601Timestamp',
+    'requiresIso8601Timestamp',
     'maxArtifactAgeHours',
     'maxArtifactFutureSkewMinutes',
     'observedArtifactTimestampValues',

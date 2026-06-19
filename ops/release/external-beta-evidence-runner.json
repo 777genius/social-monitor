@@ -36,6 +36,7 @@
   "artifactFreshness": {
     "maxArtifactAgeHours": 168,
     "maxArtifactFutureSkewMinutes": 10,
+    "requiresIso8601Timestamp": true,
     "timestampPaths": [
       "sampledAt",
       "generatedAt",

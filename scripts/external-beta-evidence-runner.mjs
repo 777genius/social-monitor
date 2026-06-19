@@ -670,6 +670,10 @@ function validateArtifactFreshness(content, job, artifactEnv, artifactFormat, vi
 
   const now = Date.now();
   for (const timestamp of timestamps) {
+    if (freshness.requiresIso8601Timestamp === true && !isIso8601Timestamp(timestamp.value)) {
+      violations.push(`${job.jobId}: output artifact env ${artifactEnv} timestamp ${timestamp.path} must be ISO-8601`);
+      continue;
+    }
     const observedAtMs = Date.parse(timestamp.value);
     if (!Number.isFinite(observedAtMs)) {
       violations.push(`${job.jobId}: output artifact env ${artifactEnv} timestamp ${timestamp.path} must be ISO-8601`);
@@ -682,6 +686,10 @@ function validateArtifactFreshness(content, job, artifactEnv, artifactFormat, vi
       violations.push(`${job.jobId}: output artifact env ${artifactEnv} timestamp ${timestamp.path} is older than ${freshness.maxArtifactAgeHours} hours`);
     }
   }
+}
+
+function isIso8601Timestamp(value) {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value);
 }
 
 function artifactEnvConsistencyRules() {
