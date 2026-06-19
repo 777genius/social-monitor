@@ -294,6 +294,16 @@ function validateLiveSmokeScripts() {
   if (!redditLiveScript.includes(liveArtifactFormat)) {
     violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must emit ${liveArtifactFormat}`);
   }
+  for (const [scriptPath, scriptSource] of [
+    [liveOpenScriptPath, liveOpenScript],
+    [redditLiveScriptPath, redditLiveScript],
+  ]) {
+    for (const marker of ['writeEvidenceArtifactAtomically', 'renameSync', 'temporaryEvidencePath', 'mode: 0o600']) {
+      if (!scriptSource.includes(marker)) {
+        violations.push(`${scriptPath}: live smoke script must write evidence artifacts atomically with private temp files`);
+      }
+    }
+  }
 }
 
 function requireScriptSignals(scriptPath, scriptSource, signalIds) {

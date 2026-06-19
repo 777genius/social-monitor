@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { HttpRedditClient } from '../libs/ingestion/adapters/source/reddit/http-reddit-client';
@@ -421,8 +421,24 @@ const writeEvidenceIfRequested = (evidence: {
     providerResults: evidence.providerResults,
   };
 
+  writeEvidenceArtifactAtomically(evidencePath, `${JSON.stringify(artifact, null, 2)}\n`);
+};
+
+const writeEvidenceArtifactAtomically = (evidencePath: string, serializedArtifact: string): void => {
   mkdirSync(dirname(evidencePath), { recursive: true });
-  writeFileSync(evidencePath, `${JSON.stringify(artifact, null, 2)}\n`);
+  const temporaryEvidencePath = `${evidencePath}.${process.pid}.${Date.now()}.tmp`;
+
+  try {
+    writeFileSync(temporaryEvidencePath, serializedArtifact, { mode: 0o600 });
+    renameSync(temporaryEvidencePath, evidencePath);
+  } catch (error) {
+    try {
+      unlinkSync(temporaryEvidencePath);
+    } catch {
+      // Best effort cleanup only; preserve the original write failure.
+    }
+    throw error;
+  }
 };
 
 const readRequiredEnv = (name: string): string => {
