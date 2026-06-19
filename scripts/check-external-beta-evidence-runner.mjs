@@ -231,6 +231,7 @@ validateCommand(contract.checkCommand, `${contractPath}: checkCommand`);
 validateCommand(contract.planCommand, `${contractPath}: planCommand`);
 validateCommand(contract.jsonPlanCommand, `${contractPath}: jsonPlanCommand`);
 validateCommand(contract.preflightCommand, `${contractPath}: preflightCommand`);
+validateCommand(contract.artifactValidationCommand, `${contractPath}: artifactValidationCommand`);
 validateCommand(contract.executeCommand, `${contractPath}: executeCommand`);
 validateSafety();
 validateRunnerImplementation();
@@ -267,6 +268,9 @@ function validateSafety() {
   if (safety.manualArtifactJobsFailExecute !== true) {
     violations.push(`${contractPath}: executionSafety.manualArtifactJobsFailExecute must be true`);
   }
+  if (safety.artifactValidationSkipsLiveRunners !== true) {
+    violations.push(`${contractPath}: executionSafety.artifactValidationSkipsLiveRunners must be true`);
+  }
   if (safety.secretValuesMustStayOutOfArtifacts !== true) {
     violations.push(`${contractPath}: executionSafety.secretValuesMustStayOutOfArtifacts must be true`);
   }
@@ -295,6 +299,10 @@ function validateRunnerImplementation() {
     'blocked_missing_required_env',
     'manualArtifactJobCount',
     'executableLiveJobCount',
+    'validateArtifacts',
+    'artifactValidationViolations',
+    'Refusing to validate external beta evidence artifacts',
+    'output artifact env',
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);
@@ -513,9 +521,17 @@ function validateWiring() {
   const planScript = scriptNameFromCommand(contract.planCommand);
   const jsonPlanScript = scriptNameFromCommand(contract.jsonPlanCommand);
   const preflightScript = scriptNameFromCommand(contract.preflightCommand);
+  const artifactValidationScript = scriptNameFromCommand(contract.artifactValidationCommand);
   const executeScript = scriptNameFromCommand(contract.executeCommand);
 
-  for (const scriptName of [checkScript, planScript, jsonPlanScript, preflightScript, executeScript]) {
+  for (const scriptName of [
+    checkScript,
+    planScript,
+    jsonPlanScript,
+    preflightScript,
+    artifactValidationScript,
+    executeScript,
+  ]) {
     if (!packageScripts[scriptName]) {
       violations.push(`${packagePath}: missing npm script "${scriptName}"`);
     }
@@ -526,10 +542,16 @@ function validateWiring() {
   if (!String(packageScripts[preflightScript] ?? '').includes('--require-env')) {
     violations.push(`${packagePath}: ${preflightScript} must pass --require-env`);
   }
+  if (!String(packageScripts[artifactValidationScript] ?? '').includes('--validate-artifacts')) {
+    violations.push(`${packagePath}: ${artifactValidationScript} must pass --validate-artifacts`);
+  }
+  if (!String(packageScripts[artifactValidationScript] ?? '').includes('--require-env')) {
+    violations.push(`${packagePath}: ${artifactValidationScript} must pass --require-env`);
+  }
   if (!backendScripts.has(checkScript)) {
     violations.push(`${backendSafePath}: backendScripts must include ${checkScript}`);
   }
-  for (const scriptName of [planScript, jsonPlanScript, preflightScript, executeScript]) {
+  for (const scriptName of [planScript, jsonPlanScript, preflightScript, artifactValidationScript, executeScript]) {
     if (backendScripts.has(scriptName)) {
       violations.push(`${backendSafePath}: backend-safe verify must not run ${scriptName}`);
     }
@@ -560,6 +582,9 @@ function validateWiring() {
   }
   if (evidenceRunner.preflightCommand !== contract.preflightCommand) {
     violations.push(`${externalReadinessPath}: evidenceRunner.preflightCommand must match runner contract`);
+  }
+  if (evidenceRunner.artifactValidationCommand !== contract.artifactValidationCommand) {
+    violations.push(`${externalReadinessPath}: evidenceRunner.artifactValidationCommand must match runner contract`);
   }
 }
 

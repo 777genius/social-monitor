@@ -8,6 +8,7 @@
   "planCommand": "npm run beta:evidence:plan",
   "jsonPlanCommand": "npm run --silent beta:evidence:plan:json",
   "preflightCommand": "npm run beta:evidence:preflight",
+  "artifactValidationCommand": "npm run beta:evidence:validate",
   "executeCommand": "npm run beta:evidence:run -- --execute",
   "runnerFile": "scripts/external-beta-evidence-runner.mjs",
   "checkFile": "scripts/check-external-beta-evidence-runner.mjs",
@@ -25,6 +26,7 @@
     ],
     "defaultActionWithoutExecute": "print_plan_only",
     "manualArtifactJobsFailExecute": true,
+    "artifactValidationSkipsLiveRunners": true,
     "secretValuesMustStayOutOfArtifacts": true
   },
   "jobs": [

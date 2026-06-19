@@ -18,7 +18,8 @@
     "checkCommand": "npm run check:external-beta-evidence-runner",
     "planCommand": "npm run beta:evidence:plan",
     "jsonPlanCommand": "npm run --silent beta:evidence:plan:json",
-    "preflightCommand": "npm run beta:evidence:preflight"
+    "preflightCommand": "npm run beta:evidence:preflight",
+    "artifactValidationCommand": "npm run beta:evidence:validate"
   },
   "capacityEnvelope": {
     "ringId": "private-beta-1",

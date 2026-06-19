@@ -1,12 +1,18 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
 const args = process.argv.slice(2);
 const execute = args.includes('--execute');
+const validateArtifacts = args.includes('--validate-artifacts');
 const requireEnv = args.includes('--require-env');
 const json = args.includes('--json');
+if (execute && validateArtifacts) {
+  console.error('Choose either --execute or --validate-artifacts, not both.');
+  process.exit(1);
+}
+
 const selection = readSelectedJobSelection(args);
 if (selection.errors.length > 0) {
   console.error('Invalid external beta evidence job selection:');
@@ -34,7 +40,7 @@ if (jobs.length === 0) {
   process.exit(1);
 }
 
-if (!execute) {
+if (!execute && !validateArtifacts) {
   const plan = buildPlan(jobs);
   if (json) {
     printJsonPlan(plan);
@@ -43,6 +49,24 @@ if (!execute) {
   }
   if (requireEnv && plan.missingEnvCount > 0) {
     process.exit(1);
+  }
+  process.exit(0);
+}
+
+if (validateArtifacts) {
+  const validationViolations = artifactValidationViolations(jobs);
+  if (validationViolations.length > 0) {
+    console.error('Refusing to validate external beta evidence artifacts. Resolve all preflight violations first:');
+    for (const violation of validationViolations) {
+      console.error(`- ${violation}`);
+    }
+    process.exit(1);
+  }
+
+  for (const job of jobs) {
+    for (const command of job.validationCommands) {
+      runCommand(command, `${job.jobId}: artifact validation`);
+    }
   }
   process.exit(0);
 }
@@ -74,7 +98,7 @@ for (const job of jobs) {
 function buildPlan(planJobs) {
   const plan = {
     runnerId: contract.runnerId,
-    mode: execute ? 'execute' : 'plan_only',
+    mode: execute ? 'execute' : validateArtifacts ? 'validate_artifacts' : 'plan_only',
     jobCount: planJobs.length,
     localContractJobCount: 0,
     liveCommandJobCount: 0,
@@ -238,6 +262,35 @@ function executableJobViolations(candidateJobs) {
     }
     if (job.runPolicy === 'manual_artifact_then_validator') {
       violations.push(`${job.jobId}: manual artifact job cannot be executed by this runner`);
+    }
+  }
+  return violations;
+}
+
+function artifactValidationViolations(candidateJobs) {
+  const violations = [];
+  for (const job of candidateJobs) {
+    const missingEnv = missingRequiredEnv(job);
+    const missingEnvSet = new Set(missingEnv);
+    if (missingEnv.length > 0) {
+      violations.push(`${job.jobId}: missing required env ${missingEnv.join(', ')}`);
+    }
+
+    for (const artifact of job.outputArtifacts ?? []) {
+      if (artifact.env === undefined) {
+        continue;
+      }
+      if (missingEnvSet.has(artifact.env)) {
+        continue;
+      }
+      const artifactValue = process.env[artifact.env]?.trim();
+      if (artifactValue === undefined || artifactValue === '') {
+        violations.push(`${job.jobId}: output artifact env ${artifact.env} is empty`);
+        continue;
+      }
+      if (artifact.env.endsWith('_PATH') && !existsSync(artifactValue)) {
+        violations.push(`${job.jobId}: output artifact env ${artifact.env} must point to an existing file path`);
+      }
     }
   }
   return violations;

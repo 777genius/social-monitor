@@ -72,7 +72,13 @@ if (typeof evidenceRunner !== 'object' || evidenceRunner === null) {
   if (!existsSync(evidenceRunner.contract ?? '')) {
     violations.push(`${contractPath}: evidenceRunner.contract must reference an existing contract`);
   }
-  for (const field of ['checkCommand', 'planCommand', 'jsonPlanCommand', 'preflightCommand']) {
+  for (const field of [
+    'checkCommand',
+    'planCommand',
+    'jsonPlanCommand',
+    'preflightCommand',
+    'artifactValidationCommand',
+  ]) {
     const scriptName = scriptNameFromNpmCommand(evidenceRunner[field]);
     if (scriptName === null || !scripts[scriptName]) {
       violations.push(`${contractPath}: evidenceRunner.${field} must reference an existing npm script`);
