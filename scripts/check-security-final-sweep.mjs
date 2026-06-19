@@ -635,9 +635,10 @@ function isIsoDateString(value) {
 function validateNoSensitivePatterns(content, label) {
   for (const pattern of forbiddenArtifactValuePatterns) {
     pattern.regex.lastIndex = 0;
-    for (const match of content.matchAll(pattern.regex)) {
+    if (pattern.regex.test(content)) {
       violations.push(`${label} must not contain sensitive ${pattern.label}`);
     }
+    pattern.regex.lastIndex = 0;
   }
 }
 

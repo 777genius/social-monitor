@@ -879,9 +879,10 @@ function validateGeneratedAtCoversSampleWindow(artifact, path) {
 function validateSerializedPatterns(content, label) {
   for (const pattern of forbiddenSerializedPatterns) {
     pattern.regex.lastIndex = 0;
-    for (const match of content.matchAll(pattern.regex)) {
+    if (pattern.regex.test(content)) {
       violations.push(`${label} must not contain sensitive ${pattern.label}`);
     }
+    pattern.regex.lastIndex = 0;
   }
 }
 
