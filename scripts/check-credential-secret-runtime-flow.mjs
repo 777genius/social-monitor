@@ -19,6 +19,7 @@ const scripts = packageJson.scripts ?? {};
 const violations = [];
 const sourceCredentialRotationEvidencePath = process.env.SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH;
 const webhookSecretRotationEvidencePath = process.env.WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH;
+const stagingSecretStoreId = process.env.STAGING_SECRET_STORE_ID?.trim();
 
 const requiredSecretClasses = new Set([
   'source-credentials',
@@ -41,6 +42,18 @@ const requiredEnvRefs = new Set([
 ]);
 const sourceCredentialRotationFormat = 'source-credential-rotation-redacted-v1';
 const webhookSecretRotationFormat = 'webhook-secret-rotation-redacted-v1';
+const envArtifactValidationRules = new Map([
+  ['SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH', {
+    schemaKey: 'sourceCredentialRotation',
+    expectedFormat: sourceCredentialRotationFormat,
+    expectedSecretClass: 'source-credentials',
+  }],
+  ['WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH', {
+    schemaKey: 'webhookSecretRotation',
+    expectedFormat: webhookSecretRotationFormat,
+    expectedSecretClass: 'webhook-signing-secrets',
+  }],
+]);
 const requiredRotationOperations = {
   sourceCredentialRotation: new Set([
     'decrypt-with-current-key',
@@ -169,6 +182,12 @@ if (
       schemaKey: 'sourceCredentialRotation',
       expectedFormat: sourceCredentialRotationFormat,
       expectedSecretClass: 'source-credentials',
+      expectedEvidence: {
+        secretStoreId: requireEnvWhenRotationArtifactIsPresent(
+          'SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH',
+          'STAGING_SECRET_STORE_ID',
+        ),
+      },
     },
   );
 }
@@ -184,6 +203,12 @@ if (
       schemaKey: 'webhookSecretRotation',
       expectedFormat: webhookSecretRotationFormat,
       expectedSecretClass: 'webhook-signing-secrets',
+      expectedEvidence: {
+        secretStoreId: requireEnvWhenRotationArtifactIsPresent(
+          'WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH',
+          'STAGING_SECRET_STORE_ID',
+        ),
+      },
     },
   );
 }
@@ -381,6 +406,7 @@ function validateRotationArtifactSchemas(schemas) {
   ) {
     violations.push(`${contractPath}: rotationArtifactSchemas.exitCondition must mention both rotation evidence env paths`);
   }
+  validateEnvArtifactValidation(schemas.envArtifactValidation);
 }
 
 function validateRotationSchema(schema, schemaKey, expectedFormat) {
@@ -458,7 +484,7 @@ function validateArtifactEnvironment(environment, path, options) {
   const expected = options.expectedEvidence;
   if (expected !== undefined) {
     for (const field of ['secretStoreId', 'sampledAt']) {
-      if (environment[field] !== expected[field]) {
+      if (expected[field] !== undefined && environment[field] !== expected[field]) {
         violations.push(`${path}: environment.${field} must match rotationEvidence.${field}`);
       }
     }
@@ -553,6 +579,18 @@ function validateSafeEvidence(safeEvidence, label, operationId) {
   if (operationId === 'old-key-rejected-after-rotation' && safeEvidence.signatureVerified !== false) {
     violations.push(`${label}: old-key-rejected-after-rotation must have signatureVerified=false`);
   }
+  if (['decrypt-with-current-key', 'reencrypt-with-new-key-id', 'preview-redaction-proof'].includes(operationId)) {
+    for (const field of ['credentialRecordId', 'provider']) {
+      if (typeof safeEvidence[field] !== 'string' || safeEvidence[field].trim().length === 0) {
+        violations.push(`${label}: ${operationId} safeEvidence.${field} must be a non-empty string`);
+      }
+    }
+  }
+  if (['new-key-signs', 'old-key-rejected-after-rotation', 'delivery-preview-redaction-proof'].includes(operationId)) {
+    if (typeof safeEvidence.webhookEndpointId !== 'string' || safeEvidence.webhookEndpointId.trim().length === 0) {
+      violations.push(`${label}: ${operationId} safeEvidence.webhookEndpointId must be a non-empty string`);
+    }
+  }
 }
 
 function validateArtifactRollup(rollup, path) {
@@ -611,6 +649,55 @@ function validateBaselineWiring() {
       violations.push(`${baselinePath}: trackedArtifacts must include ${path}`);
     }
   }
+}
+
+function validateEnvArtifactValidation(rules) {
+  if (!Array.isArray(rules)) {
+    violations.push(`${contractPath}: rotationArtifactSchemas.envArtifactValidation must be an array`);
+    return;
+  }
+
+  const seen = new Set();
+  for (const [index, rule] of rules.entries()) {
+    const label = `rotationArtifactSchemas.envArtifactValidation[${index}]`;
+    if (rule === null || typeof rule !== 'object' || Array.isArray(rule)) {
+      violations.push(`${contractPath}: ${label} must be an object`);
+      continue;
+    }
+    const expected = envArtifactValidationRules.get(rule.envVar);
+    if (expected === undefined) {
+      violations.push(`${contractPath}: ${label}.envVar is unsupported`);
+      continue;
+    }
+    seen.add(rule.envVar);
+    if (rule.artifactFormat !== expected.expectedFormat) {
+      violations.push(`${contractPath}: ${label}.artifactFormat must be ${expected.expectedFormat}`);
+    }
+    if (rule.secretClass !== expected.expectedSecretClass) {
+      violations.push(`${contractPath}: ${label}.secretClass must be ${expected.expectedSecretClass}`);
+    }
+    if (!rule.requiredEnv?.includes('STAGING_SECRET_STORE_ID')) {
+      violations.push(`${contractPath}: ${label}.requiredEnv must include STAGING_SECRET_STORE_ID`);
+    }
+    if (rule.requiredForExternalBeta !== true) {
+      violations.push(`${contractPath}: ${label}.requiredForExternalBeta must be true`);
+    }
+  }
+
+  for (const envVar of envArtifactValidationRules.keys()) {
+    if (!seen.has(envVar)) {
+      violations.push(`${contractPath}: rotationArtifactSchemas.envArtifactValidation must include ${envVar}`);
+    }
+  }
+}
+
+function requireEnvWhenRotationArtifactIsPresent(artifactEnvVar, requiredEnvVar) {
+  if (requiredEnvVar === 'STAGING_SECRET_STORE_ID' && (stagingSecretStoreId === undefined || stagingSecretStoreId.length === 0)) {
+    violations.push(`${artifactEnvVar} requires ${requiredEnvVar}`);
+    return undefined;
+  }
+
+  return process.env[requiredEnvVar]?.trim();
 }
 
 function requireExistingPath(path, label) {
