@@ -44,6 +44,27 @@
       "qualitySignals",
       "hardeningAction"
     ],
+    "requiredSourceFields": [
+      "kind",
+      "environmentId",
+      "sampleWindow",
+      "operator",
+      "sampleCount",
+      "collectionMethod",
+      "redactedBy",
+      "approvedBy"
+    ],
+    "allowedRealSourceKinds": [
+      "internal_dogfood",
+      "private_beta"
+    ],
+    "forbiddenRealSourceFragments": [
+      "example",
+      "fixture",
+      "synthetic",
+      "mock",
+      "test"
+    ],
     "rollupRequirements": [
       "sampleCount matches source.sampleCount and samples.length",
       "categoryCounts matches sample categories",

@@ -6,13 +6,17 @@
   "evidenceMode": "redacted_beta_samples",
   "generatedAt": "2026-06-18T00:00:00.000Z",
   "source": {
+    "kind": "example_redacted_dogfood",
     "environmentId": "internal-dogfood-redacted-example",
     "sampleWindow": {
       "startedAt": "2026-06-17T00:00:00.000Z",
       "endedAt": "2026-06-18T00:00:00.000Z"
     },
     "operator": "summary-owner",
-    "sampleCount": 3
+    "sampleCount": 3,
+    "collectionMethod": "Synthetic example shaped like a summary feedback API export; not live evidence.",
+    "redactedBy": "summary-owner",
+    "approvedBy": "security-owner"
   },
   "redaction": {
     "rawProviderPayloadsIncluded": false,

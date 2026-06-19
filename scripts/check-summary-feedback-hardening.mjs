@@ -49,6 +49,24 @@ const allowedSampleClassifications = new Set([
   'deferred_idea',
 ]);
 const allowedSampleSeverities = new Set(['blocker', 'accepted_gap', 'opportunity', 'watch']);
+const allowedRealSampleSourceKinds = new Set(['internal_dogfood', 'private_beta']);
+const requiredSampleSourceFields = new Set([
+  'kind',
+  'environmentId',
+  'sampleWindow',
+  'operator',
+  'sampleCount',
+  'collectionMethod',
+  'redactedBy',
+  'approvedBy',
+]);
+const forbiddenRealSourceFragments = [
+  'example',
+  'fixture',
+  'synthetic',
+  'mock',
+  'test',
+];
 const requiredInvariantIds = new Set([
   'claims-and-citations-grounded',
   'summary-evidence-citations-valid',
@@ -330,6 +348,21 @@ function validateRedactedSampleContentSchema(schema) {
     requiredRedactedSampleFields,
     'redactedSampleContentSchema.requiredSampleFields',
   );
+  requireSetCoverage(
+    new Set(schema.requiredSourceFields ?? []),
+    requiredSampleSourceFields,
+    'redactedSampleContentSchema.requiredSourceFields',
+  );
+  requireSetCoverage(
+    new Set(schema.allowedRealSourceKinds ?? []),
+    allowedRealSampleSourceKinds,
+    'redactedSampleContentSchema.allowedRealSourceKinds',
+  );
+  requireSetCoverage(
+    new Set(schema.forbiddenRealSourceFragments ?? []),
+    new Set(forbiddenRealSourceFragments),
+    'redactedSampleContentSchema.forbiddenRealSourceFragments',
+  );
   const rollupRequirements = schema.rollupRequirements ?? [];
   for (const fragment of requiredRollupRequirementFragments) {
     if (!Array.isArray(rollupRequirements) || !rollupRequirements.some((requirement) => String(requirement).includes(fragment))) {
@@ -478,13 +511,21 @@ function validateSampleSource(source, path, options) {
     violations.push(`${path}: source must be an object`);
     return;
   }
-  for (const field of ['environmentId', 'operator']) {
+  for (const field of ['kind', 'environmentId', 'operator', 'collectionMethod', 'redactedBy', 'approvedBy']) {
     if (typeof source[field] !== 'string' || source[field].trim().length === 0) {
       violations.push(`${path}: source.${field} must be a non-empty string`);
     }
   }
-  if (options.allowExample !== true && source.environmentId?.includes('example')) {
-    violations.push(`${path}: real sample source.environmentId must not be an example environment`);
+  if (options.allowExample !== true) {
+    if (!allowedRealSampleSourceKinds.has(source.kind)) {
+      violations.push(`${path}: real sample source.kind must be one of ${[...allowedRealSampleSourceKinds].join(', ')}`);
+    }
+    for (const field of ['kind', 'environmentId', 'operator', 'collectionMethod', 'redactedBy', 'approvedBy']) {
+      validateRealSourceString(source[field], `${path}: source.${field}`);
+    }
+    if (typeof source.collectionMethod === 'string' && source.collectionMethod.trim().length < 20) {
+      violations.push(`${path}: source.collectionMethod must describe the real export path`);
+    }
   }
   if (!Number.isInteger(source.sampleCount) || source.sampleCount <= 0) {
     violations.push(`${path}: source.sampleCount must be a positive integer`);
@@ -493,6 +534,19 @@ function validateSampleSource(source, path, options) {
     violations.push(`${path}: source.sampleWindow must include ISO startedAt and endedAt`);
   } else if (Date.parse(source.sampleWindow.startedAt) >= Date.parse(source.sampleWindow.endedAt)) {
     violations.push(`${path}: source.sampleWindow.startedAt must be before endedAt`);
+  }
+}
+
+function validateRealSourceString(value, label) {
+  if (typeof value !== 'string') {
+    return;
+  }
+
+  const normalized = value.toLowerCase();
+  for (const fragment of forbiddenRealSourceFragments) {
+    if (normalized.includes(fragment)) {
+      violations.push(`${label} must not contain "${fragment}" for real feedback artifacts`);
+    }
   }
 }
 
