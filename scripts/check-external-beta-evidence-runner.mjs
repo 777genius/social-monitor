@@ -72,6 +72,14 @@ const requiredJobEnvNames = new Map([
       'PUBLIC_ERROR_EXPORT_PATH',
     ],
   ],
+  [
+    'credential-secret-rotation-drill',
+    [
+      'STAGING_SECRET_STORE_ID',
+      'SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH',
+      'WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH',
+    ],
+  ],
 ]);
 const requiredJobOutputArtifacts = new Map([
   [
@@ -91,6 +99,14 @@ const requiredJobOutputArtifacts = new Map([
     'security-final-sweep-staging',
     [
       { kind: 'env', ref: 'SECURITY_FINAL_SWEEP_ARTIFACT_PATH', format: 'security-final-sweep-staging-artifact-v1' },
+    ],
+  ],
+  [
+    'credential-secret-rotation-drill',
+    [
+      { kind: 'path', ref: 'ops/security/credential-secret-runtime-flow.json', format: 'credential-secret-runtime-flow-v1' },
+      { kind: 'env', ref: 'SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH', format: 'source-credential-rotation-redacted-v1' },
+      { kind: 'env', ref: 'WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH', format: 'webhook-secret-rotation-redacted-v1' },
     ],
   ],
 ]);

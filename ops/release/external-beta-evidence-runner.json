@@ -208,6 +208,14 @@
         {
           "path": "ops/security/credential-secret-runtime-flow.json",
           "format": "credential-secret-runtime-flow-v1"
+        },
+        {
+          "env": "SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH",
+          "format": "source-credential-rotation-redacted-v1"
+        },
+        {
+          "env": "WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH",
+          "format": "webhook-secret-rotation-redacted-v1"
         }
       ],
       "exitCondition": "Source credentials, webhook secrets, OIDC config, DB and RabbitMQ secrets use approved runtime secret boundaries with rotation evidence."

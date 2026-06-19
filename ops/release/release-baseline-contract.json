@@ -84,6 +84,14 @@
       "path": "ops/security/credential-secret-runtime-flow.json"
     },
     {
+      "artifactId": "source-credential-rotation-redacted-example",
+      "path": "ops/security/fixtures/source-credential-rotation-redacted-examples.json"
+    },
+    {
+      "artifactId": "webhook-secret-rotation-redacted-example",
+      "path": "ops/security/fixtures/webhook-secret-rotation-redacted-examples.json"
+    },
+    {
       "artifactId": "security-final-sweep",
       "path": "ops/security/security-final-sweep-evidence.json"
     },
