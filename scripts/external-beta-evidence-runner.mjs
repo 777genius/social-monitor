@@ -219,6 +219,7 @@ function buildPlan(planJobs) {
     externalEvidenceEnvReadinessPercent: 0,
     manualArtifactReadyForValidationJobCount: 0,
     blockedMissingRequiredEnvJobCount: 0,
+    blockedInvalidInputJobCount: 0,
     uniqueMissingEnv: [],
     uniqueMissingOptionalEnv: [],
     jobs: [],
@@ -227,7 +228,8 @@ function buildPlan(planJobs) {
   for (const job of planJobs) {
     const missingEnv = missingRequiredEnv(job);
     const missingOptionalEnv = missingOptionalEnvNames(job);
-    const executionReadiness = jobExecutionReadiness(job, missingEnv);
+    const preflightViolations = jobPreflightViolations(job, new Set(missingEnv));
+    const executionReadiness = jobExecutionReadiness(job, missingEnv, preflightViolations);
     plan.readinessCounts[executionReadiness] = (plan.readinessCounts[executionReadiness] ?? 0) + 1;
     plan.jobs.push({
       jobId: job.jobId,
@@ -243,6 +245,7 @@ function buildPlan(planJobs) {
       optionalEnv: job.optionalEnv,
       missingEnv,
       missingOptionalEnv,
+      preflightViolations,
       outputArtifacts: job.outputArtifacts,
       exitCondition: job.exitCondition,
     });
@@ -253,13 +256,13 @@ function buildPlan(planJobs) {
     }
     if (job.runPolicy === 'live_command') {
       plan.liveCommandJobCount += 1;
-      if (missingEnv.length === 0) {
+      if (executionReadiness === 'live_command_executable') {
         plan.executableLiveJobCount += 1;
       }
     }
     if (job.runPolicy === 'manual_artifact_then_validator') {
       plan.manualArtifactJobCount += 1;
-      if (missingEnv.length === 0) {
+      if (executionReadiness === 'manual_artifact_required') {
         plan.manualArtifactReadyForValidationJobCount += 1;
       }
     }
@@ -268,6 +271,9 @@ function buildPlan(planJobs) {
     }
     if (executionReadiness === 'blocked_missing_required_env') {
       plan.blockedMissingRequiredEnvJobCount += 1;
+    }
+    if (executionReadiness === 'blocked_invalid_env') {
+      plan.blockedInvalidInputJobCount += 1;
     }
   }
   plan.uniqueMissingEnv = [...new Set(plan.jobs.flatMap((job) => job.missingEnv))].sort();
@@ -305,6 +311,7 @@ function printPlan(plan) {
     console.log(`  optionalEnv: ${job.optionalEnv.length === 0 ? 'none' : job.optionalEnv.join(', ')}`);
     console.log(`  missingEnv: ${job.missingEnv.length === 0 ? 'none' : job.missingEnv.join(', ')}`);
     console.log(`  missingOptionalEnv: ${job.missingOptionalEnv.length === 0 ? 'none' : job.missingOptionalEnv.join(', ')}`);
+    console.log(`  preflightViolations: ${job.preflightViolations.length === 0 ? 'none' : job.preflightViolations.join(' | ')}`);
     console.log(`  outputArtifacts: ${formatOutputArtifacts(job)}`);
     console.log(`  exit: ${job.exitCondition}`);
   }
@@ -327,6 +334,7 @@ function printSummary(plan) {
   );
   console.log(`External beta blocker jobs: ${plan.externalBlockerJobCount}`);
   console.log(`Blocked by missing required env: ${plan.blockedMissingRequiredEnvJobCount}`);
+  console.log(`Blocked by invalid env/path: ${plan.blockedInvalidInputJobCount}`);
   console.log(`Missing required env: ${plan.missingEnvCount} occurrences, ${plan.uniqueMissingEnv.length} unique`);
   console.log(`Missing optional env: ${plan.missingOptionalEnvCount} occurrences, ${plan.uniqueMissingOptionalEnv.length} unique`);
   console.log('');
@@ -366,6 +374,7 @@ function printHandoff(plan) {
     `Current external evidence env readiness: ${plan.executableLiveJobCount + plan.manualArtifactReadyForValidationJobCount}/${plan.liveCommandJobCount + plan.manualArtifactJobCount} live/manual jobs (${plan.externalEvidenceEnvReadinessPercent}%)`,
   );
   console.log(`Blocked by missing required env: ${plan.blockedMissingRequiredEnvJobCount}`);
+  console.log(`Blocked by invalid env/path: ${plan.blockedInvalidInputJobCount}`);
   if (plan.uniqueMissingEnv.length > 0) {
     console.log('');
     console.log('Required env still needed:');
@@ -386,6 +395,7 @@ function printHandoff(plan) {
     console.log(`   Required env: ${job.requiredEnv.length === 0 ? 'none' : job.requiredEnv.join(', ')}`);
     console.log(`   Missing env: ${job.missingEnv.length === 0 ? 'none' : job.missingEnv.join(', ')}`);
     console.log(`   Optional env: ${job.optionalEnv.length === 0 ? 'none' : job.optionalEnv.join(', ')}`);
+    console.log(`   Preflight violations: ${job.preflightViolations.length === 0 ? 'none' : job.preflightViolations.join(' | ')}`);
     console.log(`   Artifact contract: ${formatHandoffArtifacts(job)}`);
     console.log(`   Runner: ${handoffRunner(job)}`);
     console.log(`   Validators: ${job.validationCommands.join(' && ')}`);
@@ -447,9 +457,12 @@ function missingOptionalEnvNames(job) {
   return job.optionalEnv.filter((envName) => process.env[envName]?.trim() === undefined || process.env[envName]?.trim() === '');
 }
 
-function jobExecutionReadiness(job, missingEnv) {
+function jobExecutionReadiness(job, missingEnv, preflightViolations) {
   if (missingEnv.length > 0) {
     return 'blocked_missing_required_env';
+  }
+  if (preflightViolations.length > 0) {
+    return 'blocked_invalid_env';
   }
   if (job.runPolicy === 'manual_artifact_then_validator') {
     return 'manual_artifact_required';
@@ -479,12 +492,17 @@ function executableJobViolations(candidateJobs) {
 function planPreflightViolations(candidateJobs) {
   const violations = [];
   for (const job of candidateJobs) {
-    const missingEnvSet = new Set(missingRequiredEnv(job));
-    validateEvidenceValueEnv(job, missingEnvSet, violations, {
-      enabled: contract.executionSafety?.preflightRequiresEnvValueValidation === true,
-    });
-    validatePlannedEvidencePathEnv(job, missingEnvSet, violations);
+    violations.push(...jobPreflightViolations(job, new Set(missingRequiredEnv(job))));
   }
+  return violations;
+}
+
+function jobPreflightViolations(job, missingEnvSet) {
+  const violations = [];
+  validateEvidenceValueEnv(job, missingEnvSet, violations, {
+    enabled: contract.executionSafety?.preflightRequiresEnvValueValidation === true,
+  });
+  validatePlannedEvidencePathEnv(job, missingEnvSet, violations);
   return violations;
 }
 
