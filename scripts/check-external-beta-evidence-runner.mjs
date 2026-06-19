@@ -744,26 +744,85 @@ function runRunnerNegativeSmoke(artifactPath) {
 }
 
 function validateRunnerPreflightNegativeSmokes() {
-  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-preflight-negative-'));
-  const artifactPath = join(tempDirectory, 'durable-backend-e2e.json');
-  try {
-    const result = runRunnerSecretReferencePreflightNegativeSmoke(artifactPath);
-    if (result.exitCode === 0) {
-      violations.push(`${contract.runnerFile}: runner preflight negative smoke must reject raw OIDC_TEST_TOKEN_REF secret values`);
-      return;
-    }
-    for (const expectedOutput of ['OIDC_TEST_TOKEN_REF', 'non-placeholder secret reference']) {
-      if (!result.output.includes(expectedOutput)) {
-        violations.push(`${contract.runnerFile}: runner preflight negative smoke for OIDC_TEST_TOKEN_REF must report "${expectedOutput}"`);
+  const scenarios = [
+    {
+      label: 'raw OIDC_TEST_TOKEN_REF secret value',
+      jobId: 'durable-backend-e2e-loop',
+      expectedOutput: ['OIDC_TEST_TOKEN_REF', 'non-placeholder secret reference'],
+      env: (tempDirectory) => durableBackendE2ePreflightEnv(tempDirectory, {
+        OIDC_TEST_TOKEN_REF: 'bearer raw-secret-reference-should-fail',
+      }),
+    },
+    {
+      label: 'mutable backend image digest',
+      jobId: 'durable-backend-e2e-loop',
+      expectedOutput: ['BACKEND_IMAGE_DIGEST', 'immutable sha256 image digest'],
+      env: (tempDirectory) => durableBackendE2ePreflightEnv(tempDirectory, {
+        BACKEND_IMAGE_DIGEST: 'sha256:not-a-real-digest',
+      }),
+    },
+    {
+      label: 'local API base URL',
+      jobId: 'durable-backend-e2e-loop',
+      expectedOutput: ['API_BASE_URL', 'must not use local'],
+      env: (tempDirectory) => durableBackendE2ePreflightEnv(tempDirectory, {
+        API_BASE_URL: 'https://localhost/internal',
+      }),
+    },
+    {
+      label: 'workspace evidence artifact path',
+      jobId: 'durable-backend-e2e-loop',
+      expectedOutput: ['DURABLE_BACKEND_E2E_ARTIFACT_PATH', 'inside the git workspace'],
+      env: (tempDirectory) => durableBackendE2ePreflightEnv(tempDirectory, {
+        DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(process.cwd(), 'durable-backend-e2e.json'),
+      }),
+    },
+    {
+      label: 'invalid Postgres URL',
+      jobId: 'postgres-restore-migration-drill',
+      expectedOutput: ['DATABASE_URL', 'valid PostgreSQL URL'],
+      env: (tempDirectory) => postgresRestorePreflightEnv(tempDirectory, {
+        DATABASE_URL: 'https://db.staging.social-monitor.invalid',
+      }),
+    },
+    {
+      label: 'invalid RabbitMQ URL',
+      jobId: 'rabbitmq-staging-reliability-drill',
+      expectedOutput: ['RABBITMQ_URL', 'valid RabbitMQ URL'],
+      env: (tempDirectory) => rabbitmqDrillPreflightEnv(tempDirectory, {
+        RABBITMQ_URL: 'https://rabbitmq.staging.social-monitor.invalid',
+      }),
+    },
+    {
+      label: 'placeholder Reddit access token',
+      jobId: 'live-reddit-oauth',
+      expectedOutput: ['REDDIT_ACCESS_TOKEN', 'non-placeholder secret value'],
+      env: (tempDirectory) => redditOAuthPreflightEnv(tempDirectory, {
+        REDDIT_ACCESS_TOKEN: 'placeholder',
+      }),
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-preflight-negative-'));
+    try {
+      const result = runRunnerPreflightNegativeSmoke(scenario.jobId, scenario.env(tempDirectory));
+      if (result.exitCode === 0) {
+        violations.push(`${contract.runnerFile}: runner preflight negative smoke must reject ${scenario.label}`);
+        continue;
       }
+      for (const expectedOutput of scenario.expectedOutput) {
+        if (!result.output.includes(expectedOutput)) {
+          violations.push(`${contract.runnerFile}: runner preflight negative smoke for ${scenario.label} must report "${expectedOutput}"`);
+        }
+      }
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
     }
-  } finally {
-    rmSync(tempDirectory, { recursive: true, force: true });
   }
 }
 
-function runRunnerSecretReferencePreflightNegativeSmoke(artifactPath) {
-  const imageDigest = `sha256:${'b'.repeat(64)}`;
+function runRunnerPreflightNegativeSmoke(jobId, env) {
   try {
     execFileSync(
       process.execPath,
@@ -771,16 +830,12 @@ function runRunnerSecretReferencePreflightNegativeSmoke(artifactPath) {
         contract.runnerFile,
         '--require-env',
         '--job',
-        'durable-backend-e2e-loop',
+        jobId,
       ],
       {
         env: {
           PATH: process.env.PATH ?? '',
-          API_BASE_URL: 'https://api.staging.social-monitor.invalid',
-          BACKEND_IMAGE_DIGEST: imageDigest,
-          DURABLE_BACKEND_E2E_ARTIFACT_PATH: artifactPath,
-          OIDC_TEST_TOKEN_REF: 'bearer raw-secret-reference-should-fail',
-          STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+          ...env,
         },
         encoding: 'utf8',
         stdio: 'pipe',
@@ -793,6 +848,48 @@ function runRunnerSecretReferencePreflightNegativeSmoke(artifactPath) {
       output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
     };
   }
+}
+
+function durableBackendE2ePreflightEnv(tempDirectory, overrides = {}) {
+  return {
+    API_BASE_URL: 'https://api.staging.social-monitor.invalid',
+    BACKEND_IMAGE_DIGEST: `sha256:${'b'.repeat(64)}`,
+    DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(tempDirectory, 'durable-backend-e2e.json'),
+    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+    ...overrides,
+  };
+}
+
+function postgresRestorePreflightEnv(tempDirectory, overrides = {}) {
+  return {
+    BACKEND_IMAGE_DIGEST: `sha256:${'c'.repeat(64)}`,
+    DATABASE_URL: 'postgresql://release:...@db.staging.social-monitor.invalid:5432/social_monitor',
+    POSTGRES_RESTORE_DRILL_ARTIFACT_PATH: join(tempDirectory, 'postgres-restore-drill.json'),
+    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+    ...overrides,
+  };
+}
+
+function rabbitmqDrillPreflightEnv(tempDirectory, overrides = {}) {
+  return {
+    BACKEND_IMAGE_DIGEST: `sha256:${'d'.repeat(64)}`,
+    RABBITMQ_STAGING_DRILL_ARTIFACT_PATH: join(tempDirectory, 'rabbitmq-staging-drill.json'),
+    RABBITMQ_URL: 'amqps://release:...@rabbitmq.staging.social-monitor.invalid:5671',
+    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+    ...overrides,
+  };
+}
+
+function redditOAuthPreflightEnv(tempDirectory, overrides = {}) {
+  return {
+    BACKEND_IMAGE_DIGEST: `sha256:${'e'.repeat(64)}`,
+    REDDIT_ACCESS_TOKEN: 'synthetic-reddit-token-value',
+    REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: join(tempDirectory, 'reddit-credential-lifecycle.json'),
+    REDDIT_LIVE_EVIDENCE_PATH: join(tempDirectory, 'reddit-live-evidence.json'),
+    SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
+    SOURCE_LIVE_OPERATOR: 'source-operator-1',
+    ...overrides,
+  };
 }
 
 function liveOpenConnectorsArtifact() {
