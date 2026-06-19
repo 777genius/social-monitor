@@ -1,4 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
@@ -269,6 +272,7 @@ validateSafety();
 validateArtifactFreshnessPolicy();
 validateArtifactExamples();
 validateRunnerImplementation();
+validateRunnerNegativeSmokes();
 validateJobs();
 validateEnvExample();
 validateWiring();
@@ -645,6 +649,123 @@ function validateRunnerImplementation() {
       violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);
     }
   }
+}
+
+function validateRunnerNegativeSmokes() {
+  const scenarios = [
+    {
+      label: 'fixture provenance',
+      expectedOutput: 'fixture provenance',
+      artifactPatch: {
+        fixtureOnly: true,
+        source: {
+          evidenceKind: 'fixture_example',
+        },
+      },
+    },
+    {
+      label: 'unredacted sensitive key',
+      expectedOutput: 'unredacted sensitive key',
+      artifactPatch: {
+        diagnostics: {
+          password: 'not-redacted-secret-value',
+        },
+      },
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-negative-'));
+    const artifactPath = join(tempDirectory, 'live-open-connectors.json');
+    try {
+      writeFileSync(
+        artifactPath,
+        `${JSON.stringify({
+          ...liveOpenConnectorsArtifact(),
+          ...scenario.artifactPatch,
+        }, null, 2)}\n`,
+        { mode: 0o600 },
+      );
+
+      const result = runRunnerNegativeSmoke(artifactPath);
+      if (result.exitCode === 0) {
+        violations.push(`${contract.runnerFile}: runner negative smoke must reject ${scenario.label}`);
+        continue;
+      }
+      if (!result.output.includes(scenario.expectedOutput)) {
+        violations.push(`${contract.runnerFile}: runner negative smoke for ${scenario.label} must report "${scenario.expectedOutput}"`);
+      }
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+function runRunnerNegativeSmoke(artifactPath) {
+  const imageDigest = `sha256:${'a'.repeat(64)}`;
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        contract.runnerFile,
+        '--validate-artifacts',
+        '--require-env',
+        '--job',
+        'live-open-connectors',
+      ],
+      {
+        env: {
+          PATH: process.env.PATH ?? '',
+          BACKEND_IMAGE_DIGEST: imageDigest,
+          LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: artifactPath,
+          SOURCE_LIVE_ENVIRONMENT_ID: 'source-prod-alpha',
+          SOURCE_LIVE_OPERATOR: 'release-operator-1',
+        },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    );
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function liveOpenConnectorsArtifact() {
+  const now = new Date().toISOString();
+  const imageDigest = `sha256:${'a'.repeat(64)}`;
+  return {
+    schemaVersion: 1,
+    format: 'source-live-provider-evidence-v1',
+    artifactId: 'live-open-connectors-evidence-v1',
+    sampledAt: now,
+    environment: {
+      environmentId: 'source-prod-alpha',
+      imageDigest,
+      operator: 'release-operator-1',
+      sampledAt: now,
+    },
+    providerResults: [
+      {
+        providerKey: 'hacker-news',
+        status: 'passed',
+        sampledAt: now,
+      },
+      {
+        providerKey: 'rss',
+        status: 'passed',
+        sampledAt: now,
+      },
+      {
+        providerKey: 'github',
+        status: 'passed',
+        sampledAt: now,
+      },
+    ],
+  };
 }
 
 function validateJobs() {
