@@ -662,6 +662,7 @@ function validateRunnerImplementation() {
 }
 
 function validateRunnerNegativeSmokes() {
+  const wrongImageDigest = `sha256:${'c'.repeat(64)}`;
   const scenarios = [
     {
       label: 'fixture provenance',
@@ -682,18 +683,98 @@ function validateRunnerNegativeSmokes() {
         },
       },
     },
+    {
+      label: 'wrong artifact id',
+      expectedOutput: 'must use artifactId live-open-connectors-evidence-v1',
+      artifactPatch: {
+        artifactId: 'wrong-live-open-connectors-evidence',
+      },
+    },
+    {
+      label: 'missing provider key',
+      expectedOutput: 'must include providerKey github',
+      artifact: (base) => ({
+        ...base,
+        providerResults: base.providerResults.filter((result) => result.providerKey !== 'github'),
+      }),
+    },
+    {
+      label: 'unexpected provider key',
+      expectedOutput: 'must not include providerKey mastodon',
+      artifact: (base) => ({
+        ...base,
+        providerResults: [
+          ...base.providerResults,
+          {
+            providerKey: 'mastodon',
+            status: 'passed',
+            sampledAt: base.sampledAt,
+          },
+        ],
+      }),
+    },
+    {
+      label: 'stale artifact timestamp',
+      expectedOutput: 'older than',
+      artifact: (base) => ({
+        ...base,
+        sampledAt: '2000-01-01T00:00:00.000Z',
+        environment: {
+          ...base.environment,
+          sampledAt: '2000-01-01T00:00:00.000Z',
+        },
+        providerResults: base.providerResults.map((result) => ({
+          ...result,
+          sampledAt: '2000-01-01T00:00:00.000Z',
+        })),
+      }),
+    },
+    {
+      label: 'future artifact timestamp',
+      expectedOutput: 'must not be in the future',
+      artifact: (base) => {
+        const futureTimestamp = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        return {
+          ...base,
+          sampledAt: futureTimestamp,
+          environment: {
+            ...base.environment,
+            sampledAt: futureTimestamp,
+          },
+          providerResults: base.providerResults.map((result) => ({
+            ...result,
+            sampledAt: futureTimestamp,
+          })),
+        };
+      },
+    },
+    {
+      label: 'environment image digest mismatch',
+      expectedOutput: 'imageDigest must match BACKEND_IMAGE_DIGEST',
+      artifact: (base) => ({
+        ...base,
+        environment: {
+          ...base.environment,
+          imageDigest: wrongImageDigest,
+        },
+      }),
+    },
   ];
 
   for (const scenario of scenarios) {
     const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-negative-'));
     const artifactPath = join(tempDirectory, 'live-open-connectors.json');
+    const baseArtifact = liveOpenConnectorsArtifact();
+    const artifact = typeof scenario.artifact === 'function'
+      ? scenario.artifact(baseArtifact)
+      : {
+        ...baseArtifact,
+        ...scenario.artifactPatch,
+      };
     try {
       writeFileSync(
         artifactPath,
-        `${JSON.stringify({
-          ...liveOpenConnectorsArtifact(),
-          ...scenario.artifactPatch,
-        }, null, 2)}\n`,
+        `${JSON.stringify(artifact, null, 2)}\n`,
         { mode: 0o600 },
       );
 
