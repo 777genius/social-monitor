@@ -607,7 +607,25 @@ function validateEvidenceValueEnv(job, missingEnvSet, violations, options = {}) 
       continue;
     }
     if (envName === 'API_BASE_URL') {
-      validateApiBaseUrlEnv(job, envName, value, violations);
+      validateHttpsEvidenceUrlEnv(job, envName, value, violations);
+      continue;
+    }
+    if (postgresUrlEnvNames().has(envName)) {
+      validateTypedUrlEnv(job, envName, value, {
+        expectedDescription: 'valid PostgreSQL URL',
+        protocols: ['postgres:', 'postgresql:'],
+      }, violations);
+      continue;
+    }
+    if (rabbitmqUrlEnvNames().has(envName)) {
+      validateTypedUrlEnv(job, envName, value, {
+        expectedDescription: 'valid RabbitMQ URL',
+        protocols: ['amqp:', 'amqps:'],
+      }, violations);
+      continue;
+    }
+    if (httpsEvidenceUrlEnvNames().has(envName)) {
+      validateHttpsEvidenceUrlEnv(job, envName, value, violations);
       continue;
     }
     if (realEvidenceIdentityEnvNames().has(envName) && isFixtureLikeEnvValue(value)) {
@@ -693,21 +711,45 @@ function validatePlannedEvidencePathEnv(job, missingEnvSet, violations) {
   }
 }
 
-function validateApiBaseUrlEnv(job, envName, value, violations) {
+function validateHttpsEvidenceUrlEnv(job, envName, value, violations) {
+  validateTypedUrlEnv(job, envName, value, {
+    expectedDescription: 'valid https URL',
+    protocols: ['https:'],
+  }, violations);
+}
+
+function validateTypedUrlEnv(job, envName, value, options, violations) {
   let parsed;
   try {
     parsed = new URL(value);
   } catch {
-    violations.push(`${job.jobId}: env ${envName} must be a valid https URL`);
+    violations.push(`${job.jobId}: env ${envName} must be a ${options.expectedDescription}`);
     return;
   }
-  if (parsed.protocol !== 'https:') {
-    violations.push(`${job.jobId}: env ${envName} must be a valid https URL`);
+  if (!options.protocols.includes(parsed.protocol)) {
+    violations.push(`${job.jobId}: env ${envName} must be a ${options.expectedDescription}`);
     return;
   }
   if (isFixtureLikeEnvValue(parsed.hostname)) {
     violations.push(`${job.jobId}: env ${envName} must not use local, fixture, example, mock or test hostnames`);
   }
+}
+
+function postgresUrlEnvNames() {
+  return new Set(['DATABASE_URL']);
+}
+
+function rabbitmqUrlEnvNames() {
+  return new Set(['RABBITMQ_URL']);
+}
+
+function httpsEvidenceUrlEnvNames() {
+  return new Set([
+    'JWKS_URL',
+    'OIDC_ISSUER',
+    'RABBITMQ_MANAGEMENT_URL',
+    'WEBHOOK_TEST_ENDPOINT',
+  ]);
 }
 
 function realEvidenceIdentityEnvNames() {
