@@ -274,6 +274,7 @@ validateArtifactFreshnessPolicy();
 validateArtifactExamples();
 validateRunnerImplementation();
 validateRunnerNegativeSmokes();
+validateRunnerPreflightNegativeSmokes();
 validateJobs();
 validateEnvExample();
 validateWiring();
@@ -728,6 +729,58 @@ function runRunnerNegativeSmoke(artifactPath) {
           LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: artifactPath,
           SOURCE_LIVE_ENVIRONMENT_ID: 'source-prod-alpha',
           SOURCE_LIVE_OPERATOR: 'release-operator-1',
+        },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    );
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function validateRunnerPreflightNegativeSmokes() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-preflight-negative-'));
+  const artifactPath = join(tempDirectory, 'durable-backend-e2e.json');
+  try {
+    const result = runRunnerSecretReferencePreflightNegativeSmoke(artifactPath);
+    if (result.exitCode === 0) {
+      violations.push(`${contract.runnerFile}: runner preflight negative smoke must reject raw OIDC_TEST_TOKEN_REF secret values`);
+      return;
+    }
+    for (const expectedOutput of ['OIDC_TEST_TOKEN_REF', 'non-placeholder secret reference']) {
+      if (!result.output.includes(expectedOutput)) {
+        violations.push(`${contract.runnerFile}: runner preflight negative smoke for OIDC_TEST_TOKEN_REF must report "${expectedOutput}"`);
+      }
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function runRunnerSecretReferencePreflightNegativeSmoke(artifactPath) {
+  const imageDigest = `sha256:${'b'.repeat(64)}`;
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        contract.runnerFile,
+        '--require-env',
+        '--job',
+        'durable-backend-e2e-loop',
+      ],
+      {
+        env: {
+          PATH: process.env.PATH ?? '',
+          API_BASE_URL: 'https://api.staging.social-monitor.invalid',
+          BACKEND_IMAGE_DIGEST: imageDigest,
+          DURABLE_BACKEND_E2E_ARTIFACT_PATH: artifactPath,
+          OIDC_TEST_TOKEN_REF: 'bearer raw-secret-reference-should-fail',
+          STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
         },
         encoding: 'utf8',
         stdio: 'pipe',
