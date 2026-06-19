@@ -407,6 +407,7 @@ function artifactValidationViolations(candidateJobs) {
       if (artifactFormat !== artifact.format) {
         violations.push(`${job.jobId}: output artifact env ${artifact.env} must use format ${artifact.format}`);
       }
+      validateArtifactEnvConsistency(content, job, artifact.env, violations);
     }
   }
   return violations;
@@ -509,6 +510,79 @@ function readJsonArtifact(path, jobId, envName, violations) {
 function validateArtifactRedaction(content, jobId, envName, violations) {
   validateArtifactLiteralRedaction(JSON.stringify(content), jobId, `output artifact env ${envName}`, violations);
   validateArtifactStructuredRedaction(content, jobId, `output artifact env ${envName}`, violations);
+}
+
+function validateArtifactEnvConsistency(content, job, artifactEnv, violations) {
+  for (const rule of artifactEnvConsistencyRules()) {
+    if (!(job.requiredEnv ?? []).includes(rule.envName) && !(job.optionalEnv ?? []).includes(rule.envName)) {
+      continue;
+    }
+
+    const expected = process.env[rule.envName]?.trim();
+    if (expected === undefined || expected === '') {
+      continue;
+    }
+
+    const observedValues = observedArtifactStringValues(content, rule.paths);
+    if (observedValues.length === 0) {
+      continue;
+    }
+
+    for (const observed of observedValues) {
+      if (observed !== expected) {
+        violations.push(`${job.jobId}: output artifact env ${artifactEnv} ${rule.label} must match ${rule.envName}`);
+      }
+    }
+  }
+}
+
+function artifactEnvConsistencyRules() {
+  return [
+    {
+      envName: 'STAGING_ENVIRONMENT_ID',
+      label: 'environmentId',
+      paths: [['environmentId'], ['environment', 'environmentId']],
+    },
+    {
+      envName: 'SOURCE_LIVE_ENVIRONMENT_ID',
+      label: 'environmentId',
+      paths: [['environmentId'], ['environment', 'environmentId']],
+    },
+    {
+      envName: 'BACKEND_IMAGE_DIGEST',
+      label: 'imageDigest',
+      paths: [['imageDigest'], ['environment', 'imageDigest']],
+    },
+    {
+      envName: 'API_BASE_URL',
+      label: 'apiBaseUrl',
+      paths: [['apiBaseUrl'], ['environment', 'apiBaseUrl']],
+    },
+    {
+      envName: 'SOURCE_LIVE_OPERATOR',
+      label: 'operator',
+      paths: [['operator'], ['environment', 'operator']],
+    },
+    {
+      envName: 'STAGING_SECRET_STORE_ID',
+      label: 'secretStoreId',
+      paths: [['secretStoreId'], ['environment', 'secretStoreId']],
+    },
+  ];
+}
+
+function observedArtifactStringValues(content, paths) {
+  const values = [];
+  for (const path of paths) {
+    let cursor = content;
+    for (const segment of path) {
+      cursor = cursor?.[segment];
+    }
+    if (typeof cursor === 'string' && cursor.trim().length > 0) {
+      values.push(cursor.trim());
+    }
+  }
+  return [...new Set(values)];
 }
 
 function validateArtifactLiteralRedaction(content, jobId, label, violations) {
