@@ -29,7 +29,7 @@ const trackedFiles = execFileSync('git', ['ls-files'], { encoding: 'utf8' })
 
 const textFilePattern = /\.(cjs|conf|env|example|json|js|md|mjs|prisma|sh|sql|ts|tsx|txt|yaml|yml)$/i;
 const privateKeyPattern = /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----/;
-const envSecretPattern = /(?:^|\n)\s*([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PRIVATE_KEY|API_KEY|ACCESS_KEY)[A-Z0-9_]*)\s*=\s*([^\s#]+)/g;
+const envSecretPattern = /(?:^|\n)[^\S\n]*([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PRIVATE_KEY|API_KEY|ACCESS_KEY)[A-Z0-9_]*)[^\S\n]*=[^\S\n]*([^\s#]+)/g;
 const bearerPattern = /Bearer\s+([A-Za-z0-9._~+/=-]+)/g;
 const generatedKeyPattern = /\b((?:smk|whsec)_[A-Za-z0-9._${}-]+)\b/g;
 const credentialUrlPattern = /\b(?:postgresql|postgres|mysql|redis|amqp):\/\/[^:\s/@]+:([^@\s]+)@/g;
@@ -68,6 +68,13 @@ for (const value of [
   if (isAllowedValue(value)) {
     violations.push(`${allowlistPath}: synthetic non-placeholder secret "${value}" must not be allowed`);
   }
+}
+
+if ([...'EMPTY_TOKEN=\nNEXT_KEY=\n'.matchAll(envSecretPattern)].length > 0) {
+  violations.push(`${allowlistPath}: empty secret-like env vars must not consume the next line as a value`);
+}
+if ([...'EMPTY_TOKEN=prod.token\n'.matchAll(envSecretPattern)].length !== 1) {
+  violations.push(`${allowlistPath}: populated secret-like env vars must be scanned on the same line`);
 }
 
 const report = (file, reason, value) => {

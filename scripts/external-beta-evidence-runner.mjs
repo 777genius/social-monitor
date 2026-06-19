@@ -290,10 +290,34 @@ function artifactValidationViolations(candidateJobs) {
       }
       if (artifact.env.endsWith('_PATH') && !existsSync(artifactValue)) {
         violations.push(`${job.jobId}: output artifact env ${artifact.env} must point to an existing file path`);
+        continue;
+      }
+
+      const content = readJsonArtifact(artifactValue, job.jobId, artifact.env, violations);
+      if (content === undefined) {
+        continue;
+      }
+      const artifactFormat = content.format ?? content.artifactFormat;
+      if (artifactFormat !== artifact.format) {
+        violations.push(`${job.jobId}: output artifact env ${artifact.env} must use format ${artifact.format}`);
       }
     }
   }
   return violations;
+}
+
+function readJsonArtifact(path, jobId, envName, violations) {
+  try {
+    const content = JSON.parse(readFileSync(path, 'utf8'));
+    if (typeof content !== 'object' || content === null || Array.isArray(content)) {
+      violations.push(`${jobId}: output artifact env ${envName} must point to a JSON object artifact`);
+      return undefined;
+    }
+    return content;
+  } catch {
+    violations.push(`${jobId}: output artifact env ${envName} must point to a valid JSON artifact`);
+    return undefined;
+  }
 }
 
 function formatOutputArtifacts(job) {

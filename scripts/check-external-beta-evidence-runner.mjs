@@ -307,6 +307,10 @@ function validateRunnerImplementation() {
     'artifactValidationViolations',
     'Refusing to validate external beta evidence artifacts',
     'output artifact env',
+    'readJsonArtifact',
+    'valid JSON artifact',
+    'artifactFormat',
+    'must use format',
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);
