@@ -348,6 +348,7 @@ function printHandoff(plan) {
   console.log(`- Preflight env: ${contract.preflightCommand}`);
   console.log(`- Validate artifacts: ${contract.artifactValidationCommand}`);
   console.log(`- Live execution requires: ${contract.executionSafety.liveExecutionRequires.join(' + ')}`);
+  console.log(`- Evidence path max size: ${formatBytes(evidencePathMaxBytes())}`);
   console.log('- Do not use fixture, example, git-tracked or secret-bearing files as evidence artifacts.');
   console.log('- Artifact paths are printed by env name only. Env values are never printed by this handoff.');
   console.log('');
@@ -552,6 +553,11 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
       invalidPathEnv.add(envName);
       continue;
     }
+    if (isOversizedEvidenceFile(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} must not exceed ${evidencePathMaxBytes()} bytes`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
     if (isFixtureLikeArtifactPath(value)) {
       violations.push(`${job.jobId}: evidence path env ${envName} must not point to fixture or example evidence`);
       invalidPathEnv.add(envName);
@@ -574,6 +580,11 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
     }
     if (requiresRegularEvidenceFiles() && !isRegularEvidenceFile(realPath)) {
       violations.push(`${job.jobId}: evidence path env ${envName} realpath must point to a regular file`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
+    if (isOversizedEvidenceFile(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must not exceed ${evidencePathMaxBytes()} bytes`);
       invalidPathEnv.add(envName);
       continue;
     }
@@ -616,6 +627,29 @@ function isRegularEvidenceFile(path) {
   } catch {
     return false;
   }
+}
+
+function isOversizedEvidenceFile(path) {
+  const maxBytes = evidencePathMaxBytes();
+  if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
+    return false;
+  }
+  try {
+    return statSync(path).size > maxBytes;
+  } catch {
+    return false;
+  }
+}
+
+function evidencePathMaxBytes() {
+  return Number(contract.executionSafety?.evidencePathEnvMaxBytes ?? 0);
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return 'unbounded';
+  }
+  return `${bytes} bytes`;
 }
 
 function readEvidenceRealPath(path, jobId, envName, violations) {

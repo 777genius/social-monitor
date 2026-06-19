@@ -33,6 +33,7 @@
     "secretValuesMustStayOutOfArtifacts": true,
     "evidencePathEnvRequiresAbsolutePath": true,
     "evidencePathEnvRequiresRegularFile": true,
+    "evidencePathEnvMaxBytes": 26214400,
     "outputArtifactPathEnvRequiresJsonExtension": true
   },
   "artifactFreshness": {

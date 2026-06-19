@@ -288,6 +288,9 @@ function validateSafety() {
   if (safety.evidencePathEnvRequiresRegularFile !== true) {
     violations.push(`${contractPath}: executionSafety.evidencePathEnvRequiresRegularFile must be true`);
   }
+  if (!Number.isFinite(safety.evidencePathEnvMaxBytes) || safety.evidencePathEnvMaxBytes <= 0) {
+    violations.push(`${contractPath}: executionSafety.evidencePathEnvMaxBytes must be positive`);
+  }
   if (safety.outputArtifactPathEnvRequiresJsonExtension !== true) {
     violations.push(`${contractPath}: executionSafety.outputArtifactPathEnvRequiresJsonExtension must be true`);
   }
@@ -450,6 +453,10 @@ function validateRunnerImplementation() {
     'statSync',
     'must point to a regular file',
     'realpath must point to a regular file',
+    'evidencePathEnvMaxBytes',
+    'isOversizedEvidenceFile',
+    'must not exceed',
+    'Evidence path max size',
     'outputArtifactPathEnvRequiresJsonExtension',
     'isJsonEvidencePath',
     'path must end with .json',
