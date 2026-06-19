@@ -125,5 +125,32 @@
         "exitCondition": "Summary window freshness gate stays release-blocking when newer feed evidence exists."
       }
     }
-  ]
+  ],
+  "rollup": {
+    "sampleCount": 3,
+    "categoryCounts": {
+      "wrong_fact": 1,
+      "bad_citation": 1,
+      "missing_source": 1
+    },
+    "classificationCounts": {
+      "blocker": 2,
+      "evidence_based_opportunity": 1
+    },
+    "severityCounts": {
+      "blocker": 2,
+      "opportunity": 1
+    },
+    "actionTypeCounts": {
+      "eval_fixture": 1,
+      "validator_change": 1,
+      "runbook_action": 1
+    },
+    "releaseBlockingSamples": 3,
+    "evalFixtureEligibleSamples": 3,
+    "blockerSampleIds": [
+      "redacted-feedback-wrong-fact-001",
+      "redacted-feedback-bad-citation-001"
+    ]
+  }
 }

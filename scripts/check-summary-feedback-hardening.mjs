@@ -103,6 +103,42 @@ const requiredSampleSignals = new Set([
   'costChecked',
   'staleMarkerChecked',
 ]);
+const requiredTopLevelSampleArtifactFields = new Set([
+  'schemaVersion',
+  'artifactFormat',
+  'scope',
+  'frontendPolicy',
+  'evidenceMode',
+  'generatedAt',
+  'source',
+  'redaction',
+  'samples',
+  'rollup',
+]);
+const requiredRedactedSampleFields = new Set([
+  'feedbackId',
+  'category',
+  'classification',
+  'severity',
+  'triageOwner',
+  'eligibleForEvalFixture',
+  'releaseBlocking',
+  'summaryEvidence',
+  'sanitizedSignal',
+  'redactedComment',
+  'qualitySignals',
+  'hardeningAction',
+]);
+const requiredRollupRequirementFragments = [
+  'sampleCount',
+  'categoryCounts',
+  'classificationCounts',
+  'severityCounts',
+  'actionTypeCounts',
+  'releaseBlockingSamples',
+  'evalFixtureEligibleSamples',
+  'blockerSampleIds',
+];
 
 if (evidence.schemaVersion !== 1) {
   violations.push(`${evidencePath}: schemaVersion must be 1`);
@@ -285,6 +321,23 @@ function validateRedactedSampleContentSchema(schema) {
   }
 
   requireSetCoverage(
+    new Set(schema.requiredTopLevelFields ?? []),
+    requiredTopLevelSampleArtifactFields,
+    'redactedSampleContentSchema.requiredTopLevelFields',
+  );
+  requireSetCoverage(
+    new Set(schema.requiredSampleFields ?? []),
+    requiredRedactedSampleFields,
+    'redactedSampleContentSchema.requiredSampleFields',
+  );
+  const rollupRequirements = schema.rollupRequirements ?? [];
+  for (const fragment of requiredRollupRequirementFragments) {
+    if (!Array.isArray(rollupRequirements) || !rollupRequirements.some((requirement) => String(requirement).includes(fragment))) {
+      violations.push(`${evidencePath}: redactedSampleContentSchema.rollupRequirements must include ${fragment}`);
+    }
+  }
+
+  requireSetCoverage(
     new Set(schema.allowedCategories ?? []),
     allowedSampleCategories,
     'redactedSampleContentSchema.allowedCategories',
@@ -337,6 +390,12 @@ function validateRedactedSampleArtifactPath(path, label, options) {
 }
 
 function validateRedactedSampleArtifact(artifact, path, options) {
+  for (const field of requiredTopLevelSampleArtifactFields) {
+    if (!(field in artifact)) {
+      violations.push(`${path}: missing top-level field ${field}`);
+    }
+  }
+
   if (artifact.schemaVersion !== 1) {
     violations.push(`${path}: schemaVersion must be 1`);
   }
@@ -372,9 +431,35 @@ function validateRedactedSampleArtifact(artifact, path, options) {
 
   const sampleIds = new Set();
   const blockerIdsFromSamples = new Set();
+  const rollupInput = {
+    categoryCounts: new Map(),
+    classificationCounts: new Map(),
+    severityCounts: new Map(),
+    actionTypeCounts: new Map(),
+    releaseBlockingSamples: 0,
+    evalFixtureEligibleSamples: 0,
+  };
   for (const [index, sample] of artifact.samples.entries()) {
     const sampleLabel = `${path}: samples[${index}]`;
     validateRedactedSample(sample, sampleLabel, sampleIds);
+    if (typeof sample.category === 'string') {
+      incrementCount(rollupInput.categoryCounts, sample.category);
+    }
+    if (typeof sample.classification === 'string') {
+      incrementCount(rollupInput.classificationCounts, sample.classification);
+    }
+    if (typeof sample.severity === 'string') {
+      incrementCount(rollupInput.severityCounts, sample.severity);
+    }
+    if (typeof sample.hardeningAction?.actionType === 'string') {
+      incrementCount(rollupInput.actionTypeCounts, sample.hardeningAction.actionType);
+    }
+    if (sample.releaseBlocking === true) {
+      rollupInput.releaseBlockingSamples += 1;
+    }
+    if (sample.eligibleForEvalFixture === true) {
+      rollupInput.evalFixtureEligibleSamples += 1;
+    }
     if (sample.classification === 'blocker') {
       blockerIdsFromSamples.add(sample.feedbackId);
     }
@@ -384,6 +469,7 @@ function validateRedactedSampleArtifact(artifact, path, options) {
     violations.push(`${path}: example artifact must include at least one blocker sample`);
   }
 
+  validateSampleRollup(artifact.rollup, path, artifact.samples.length, blockerIdsFromSamples, rollupInput);
   validateSerializedArtifact(artifact, path);
 }
 
@@ -405,6 +491,8 @@ function validateSampleSource(source, path, options) {
   }
   if (!isIsoDateString(source.sampleWindow?.startedAt) || !isIsoDateString(source.sampleWindow?.endedAt)) {
     violations.push(`${path}: source.sampleWindow must include ISO startedAt and endedAt`);
+  } else if (Date.parse(source.sampleWindow.startedAt) >= Date.parse(source.sampleWindow.endedAt)) {
+    violations.push(`${path}: source.sampleWindow.startedAt must be before endedAt`);
   }
 }
 
@@ -423,6 +511,69 @@ function validateSampleRedaction(redaction, path) {
   if (typeof redaction.method !== 'string' || redaction.method.trim().length < 20) {
     violations.push(`${path}: redaction.method must describe how comments and identifiers were redacted`);
   }
+}
+
+function validateSampleRollup(rollup, path, sampleCount, blockerIdsFromSamples, rollupInput) {
+  if (rollup === null || typeof rollup !== 'object' || Array.isArray(rollup)) {
+    violations.push(`${path}: rollup must be an object`);
+    return;
+  }
+
+  if (rollup.sampleCount !== sampleCount) {
+    violations.push(`${path}: rollup.sampleCount must match samples.length`);
+  }
+  validateCountObject(rollup.categoryCounts, rollupInput.categoryCounts, `${path}: rollup.categoryCounts`);
+  validateCountObject(rollup.classificationCounts, rollupInput.classificationCounts, `${path}: rollup.classificationCounts`);
+  validateCountObject(rollup.severityCounts, rollupInput.severityCounts, `${path}: rollup.severityCounts`);
+  validateCountObject(rollup.actionTypeCounts, rollupInput.actionTypeCounts, `${path}: rollup.actionTypeCounts`);
+
+  if (rollup.releaseBlockingSamples !== rollupInput.releaseBlockingSamples) {
+    violations.push(`${path}: rollup.releaseBlockingSamples must match releaseBlocking samples`);
+  }
+  if (rollup.evalFixtureEligibleSamples !== rollupInput.evalFixtureEligibleSamples) {
+    violations.push(`${path}: rollup.evalFixtureEligibleSamples must match eligibleForEvalFixture samples`);
+  }
+
+  if (!Array.isArray(rollup.blockerSampleIds)) {
+    violations.push(`${path}: rollup.blockerSampleIds must be an array`);
+  } else {
+    const actualBlockerIds = new Set(rollup.blockerSampleIds);
+    if (actualBlockerIds.size !== rollup.blockerSampleIds.length) {
+      violations.push(`${path}: rollup.blockerSampleIds must not contain duplicates`);
+    }
+    for (const blockerId of blockerIdsFromSamples) {
+      if (!actualBlockerIds.has(blockerId)) {
+        violations.push(`${path}: rollup.blockerSampleIds missing "${blockerId}"`);
+      }
+    }
+    for (const blockerId of actualBlockerIds) {
+      if (!blockerIdsFromSamples.has(blockerId)) {
+        violations.push(`${path}: rollup.blockerSampleIds contains non-blocker sample "${blockerId}"`);
+      }
+    }
+  }
+}
+
+function validateCountObject(actual, expected, label) {
+  if (actual === null || typeof actual !== 'object' || Array.isArray(actual)) {
+    violations.push(`${label} must be an object`);
+    return;
+  }
+
+  for (const [key, expectedCount] of expected.entries()) {
+    if (actual[key] !== expectedCount) {
+      violations.push(`${label}.${key} must be ${expectedCount}`);
+    }
+  }
+  for (const key of Object.keys(actual)) {
+    if (!expected.has(key)) {
+      violations.push(`${label}.${key} is not present in samples`);
+    }
+  }
+}
+
+function incrementCount(counts, key) {
+  counts.set(key, (counts.get(key) ?? 0) + 1);
 }
 
 function validateRedactedSample(sample, sampleLabel, sampleIds) {

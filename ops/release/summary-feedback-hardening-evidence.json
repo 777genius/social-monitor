@@ -18,6 +18,42 @@
     "exampleArtifact": "ops/release/fixtures/redacted-summary-feedback-samples-examples.json",
     "minimumSamples": 2,
     "requiredEvidenceMode": "redacted_beta_samples",
+    "requiredTopLevelFields": [
+      "schemaVersion",
+      "artifactFormat",
+      "scope",
+      "frontendPolicy",
+      "evidenceMode",
+      "generatedAt",
+      "source",
+      "redaction",
+      "samples",
+      "rollup"
+    ],
+    "requiredSampleFields": [
+      "feedbackId",
+      "category",
+      "classification",
+      "severity",
+      "triageOwner",
+      "eligibleForEvalFixture",
+      "releaseBlocking",
+      "summaryEvidence",
+      "sanitizedSignal",
+      "redactedComment",
+      "qualitySignals",
+      "hardeningAction"
+    ],
+    "rollupRequirements": [
+      "sampleCount matches source.sampleCount and samples.length",
+      "categoryCounts matches sample categories",
+      "classificationCounts matches sample classifications",
+      "severityCounts matches sample severities",
+      "actionTypeCounts matches sample hardening actions",
+      "releaseBlockingSamples matches releaseBlocking sample count",
+      "evalFixtureEligibleSamples matches eligibleForEvalFixture sample count",
+      "blockerSampleIds matches blocker sample ids"
+    ],
     "allowedCategories": [
       "wrong_fact",
       "missing_source",
