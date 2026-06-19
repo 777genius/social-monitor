@@ -234,6 +234,7 @@ validateCommand(contract.checkCommand, `${contractPath}: checkCommand`);
 validateCommand(contract.planCommand, `${contractPath}: planCommand`);
 validateCommand(contract.jsonPlanCommand, `${contractPath}: jsonPlanCommand`);
 validateCommand(contract.summaryCommand, `${contractPath}: summaryCommand`);
+validateCommand(contract.handoffCommand, `${contractPath}: handoffCommand`);
 validateCommand(contract.preflightCommand, `${contractPath}: preflightCommand`);
 validateCommand(contract.artifactValidationCommand, `${contractPath}: artifactValidationCommand`);
 validateCommand(contract.executeCommand, `${contractPath}: executeCommand`);
@@ -392,6 +393,12 @@ function validateRunnerImplementation() {
     'post-run violations',
     'printJsonPlan',
     'printSummary',
+    'printHandoff',
+    'External Beta Evidence Handoff',
+    'handoffAction',
+    'formatHandoffArtifacts',
+    'artifactExamplePathByFormat',
+    'Artifact paths are printed by env name only',
     'contractClosurePercent',
     'externalEvidenceEnvReadinessPercent',
     'readinessCounts',
@@ -753,6 +760,7 @@ function validateWiring() {
   const planScript = scriptNameFromCommand(contract.planCommand);
   const jsonPlanScript = scriptNameFromCommand(contract.jsonPlanCommand);
   const summaryScript = scriptNameFromCommand(contract.summaryCommand);
+  const handoffScript = scriptNameFromCommand(contract.handoffCommand);
   const preflightScript = scriptNameFromCommand(contract.preflightCommand);
   const artifactValidationScript = scriptNameFromCommand(contract.artifactValidationCommand);
   const executeScript = scriptNameFromCommand(contract.executeCommand);
@@ -762,6 +770,7 @@ function validateWiring() {
     planScript,
     jsonPlanScript,
     summaryScript,
+    handoffScript,
     preflightScript,
     artifactValidationScript,
     executeScript,
@@ -776,6 +785,9 @@ function validateWiring() {
   if (!String(packageScripts[summaryScript] ?? '').includes('--summary')) {
     violations.push(`${packagePath}: ${summaryScript} must pass --summary`);
   }
+  if (!String(packageScripts[handoffScript] ?? '').includes('--handoff')) {
+    violations.push(`${packagePath}: ${handoffScript} must pass --handoff`);
+  }
   if (!String(packageScripts[preflightScript] ?? '').includes('--require-env')) {
     violations.push(`${packagePath}: ${preflightScript} must pass --require-env`);
   }
@@ -788,7 +800,15 @@ function validateWiring() {
   if (!backendScripts.has(checkScript)) {
     violations.push(`${backendSafePath}: backendScripts must include ${checkScript}`);
   }
-  for (const scriptName of [planScript, jsonPlanScript, summaryScript, preflightScript, artifactValidationScript, executeScript]) {
+  for (const scriptName of [
+    planScript,
+    jsonPlanScript,
+    summaryScript,
+    handoffScript,
+    preflightScript,
+    artifactValidationScript,
+    executeScript,
+  ]) {
     if (backendScripts.has(scriptName)) {
       violations.push(`${backendSafePath}: backend-safe verify must not run ${scriptName}`);
     }
@@ -819,6 +839,9 @@ function validateWiring() {
   }
   if (evidenceRunner.summaryCommand !== contract.summaryCommand) {
     violations.push(`${externalReadinessPath}: evidenceRunner.summaryCommand must match runner contract`);
+  }
+  if (evidenceRunner.handoffCommand !== contract.handoffCommand) {
+    violations.push(`${externalReadinessPath}: evidenceRunner.handoffCommand must match runner contract`);
   }
   if (evidenceRunner.preflightCommand !== contract.preflightCommand) {
     violations.push(`${externalReadinessPath}: evidenceRunner.preflightCommand must match runner contract`);

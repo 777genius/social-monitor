@@ -62,12 +62,17 @@ const validateArtifacts = args.includes('--validate-artifacts');
 const requireEnv = args.includes('--require-env');
 const json = args.includes('--json');
 const summary = args.includes('--summary');
+const handoff = args.includes('--handoff');
 if (execute && validateArtifacts) {
   console.error('Choose either --execute or --validate-artifacts, not both.');
   process.exit(1);
 }
 if (summary && (execute || validateArtifacts || json)) {
   console.error('Use --summary by itself, without --execute, --validate-artifacts or --json.');
+  process.exit(1);
+}
+if (handoff && (execute || validateArtifacts || json || summary)) {
+  console.error('Use --handoff without --execute, --validate-artifacts, --summary or --json.');
   process.exit(1);
 }
 
@@ -100,7 +105,9 @@ if (jobs.length === 0) {
 
 if (!execute && !validateArtifacts) {
   const plan = buildPlan(jobs);
-  if (summary) {
+  if (handoff) {
+    printHandoff(plan);
+  } else if (summary) {
     printSummary(plan);
   } else if (json) {
     printJsonPlan(plan);
@@ -305,6 +312,56 @@ function printSummary(plan) {
     for (const envName of plan.uniqueMissingEnv) {
       console.log(`  ${envName}`);
     }
+  }
+}
+
+function printHandoff(plan) {
+  console.log(`# External Beta Evidence Handoff (${contract.runnerId})`);
+  console.log('');
+  console.log(`Scope: ${contract.scope}`);
+  console.log(`Frontend policy: ${contract.frontendPolicy}`);
+  console.log(`Default mode: ${contract.defaultMode}`);
+  console.log(`Env template: ${contract.envExample}`);
+  console.log('');
+  console.log('Safety gates:');
+  console.log(`- Inspect plan: ${contract.planCommand}`);
+  console.log(`- Inspect summary: ${contract.summaryCommand}`);
+  console.log(`- Preflight env: ${contract.preflightCommand}`);
+  console.log(`- Validate artifacts: ${contract.artifactValidationCommand}`);
+  console.log(`- Live execution requires: ${contract.executionSafety.liveExecutionRequires.join(' + ')}`);
+  console.log('- Do not use fixture, example, git-tracked or secret-bearing files as evidence artifacts.');
+  console.log('- Artifact paths are printed by env name only. Env values are never printed by this handoff.');
+  console.log('');
+  console.log(`Current closure: ${plan.localContractJobCount}/${plan.jobCount} local-contract jobs (${plan.contractClosurePercent}%)`);
+  console.log(
+    `Current external evidence env readiness: ${plan.executableLiveJobCount + plan.manualArtifactReadyForValidationJobCount}/${plan.liveCommandJobCount + plan.manualArtifactJobCount} live/manual jobs (${plan.externalEvidenceEnvReadinessPercent}%)`,
+  );
+  console.log(`Blocked by missing required env: ${plan.blockedMissingRequiredEnvJobCount}`);
+  if (plan.uniqueMissingEnv.length > 0) {
+    console.log('');
+    console.log('Required env still needed:');
+    for (const envName of plan.uniqueMissingEnv) {
+      console.log(`- ${envName}`);
+    }
+  }
+  console.log('');
+  console.log('Job handoff checklist:');
+  for (const [index, job] of plan.jobs.entries()) {
+    console.log('');
+    console.log(`${index + 1}. ${job.jobId}`);
+    console.log(`   Owner: ${job.owner}`);
+    console.log(`   Group: ${job.evidenceGroupId}`);
+    console.log(`   Mode: ${job.mode}`);
+    console.log(`   Run policy: ${job.runPolicy}`);
+    console.log(`   Readiness: ${job.executionReadiness}`);
+    console.log(`   Required env: ${job.requiredEnv.length === 0 ? 'none' : job.requiredEnv.join(', ')}`);
+    console.log(`   Missing env: ${job.missingEnv.length === 0 ? 'none' : job.missingEnv.join(', ')}`);
+    console.log(`   Optional env: ${job.optionalEnv.length === 0 ? 'none' : job.optionalEnv.join(', ')}`);
+    console.log(`   Artifact contract: ${formatHandoffArtifacts(job)}`);
+    console.log(`   Runner: ${handoffRunner(job)}`);
+    console.log(`   Validators: ${job.validationCommands.join(' && ')}`);
+    console.log(`   Operator action: ${handoffAction(job)}`);
+    console.log(`   Exit: ${job.exitCondition}`);
   }
 }
 
@@ -778,6 +835,41 @@ function formatOutputArtifacts(job) {
       return `${location} (${artifact.format})`;
     })
     .join(', ');
+}
+
+function formatHandoffArtifacts(job) {
+  return job.outputArtifacts
+    .map((artifact) => {
+      const location = artifact.path ?? `<env:${artifact.env}>`;
+      const examplePath = artifactExamplePathByFormat().get(artifact.format);
+      const example = examplePath === undefined ? 'no example registered' : `example: ${examplePath}`;
+      return `${location} (${artifact.format}; ${example})`;
+    })
+    .join(', ');
+}
+
+function handoffAction(job) {
+  if (job.runPolicy === 'local_contract') {
+    return `run validators: ${job.validationCommands.join(' && ')}`;
+  }
+  if (job.runPolicy === 'live_command') {
+    return `set required env, run ${job.runnerCommand}, then run ${contract.artifactValidationCommand} -- --job ${job.jobId}`;
+  }
+  return `collect real redacted artifact files, set artifact path env, then run ${contract.artifactValidationCommand} -- --job ${job.jobId}`;
+}
+
+function handoffRunner(job) {
+  if (job.runnerCommand !== null) {
+    return job.runnerCommand;
+  }
+  if (job.runPolicy === 'local_contract') {
+    return 'validators only';
+  }
+  return 'manual evidence collection, then artifact validation';
+}
+
+function artifactExamplePathByFormat() {
+  return new Map((contract.artifactExamples ?? []).map((example) => [example.format, example.path]));
 }
 
 function runCommand(command, label) {

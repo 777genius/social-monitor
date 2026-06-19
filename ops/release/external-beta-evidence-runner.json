@@ -8,6 +8,7 @@
   "planCommand": "npm run beta:evidence:plan",
   "jsonPlanCommand": "npm run --silent beta:evidence:plan:json",
   "summaryCommand": "npm run beta:evidence:summary",
+  "handoffCommand": "npm run beta:evidence:handoff",
   "preflightCommand": "npm run beta:evidence:preflight",
   "artifactValidationCommand": "npm run beta:evidence:validate",
   "executeCommand": "npm run beta:evidence:run -- --execute",

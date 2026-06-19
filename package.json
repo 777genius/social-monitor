@@ -119,6 +119,7 @@
     "beta:evidence:plan": "node scripts/external-beta-evidence-runner.mjs --plan",
     "beta:evidence:plan:json": "node scripts/external-beta-evidence-runner.mjs --plan --json",
     "beta:evidence:summary": "node scripts/external-beta-evidence-runner.mjs --summary",
+    "beta:evidence:handoff": "node scripts/external-beta-evidence-runner.mjs --handoff",
     "beta:evidence:preflight": "node scripts/external-beta-evidence-runner.mjs --plan --require-env",
     "beta:evidence:validate": "node scripts/external-beta-evidence-runner.mjs --validate-artifacts --require-env",
     "beta:evidence:run": "node scripts/external-beta-evidence-runner.mjs",
