@@ -315,6 +315,8 @@ function validateRunnerImplementation() {
     'isFixtureLikeArtifactPath',
     'must not point to fixture or example evidence',
     'schemaVersion 1',
+    'validateRequiredPathEnv',
+    'required path env',
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);

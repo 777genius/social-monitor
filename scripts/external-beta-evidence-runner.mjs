@@ -276,12 +276,13 @@ function artifactValidationViolations(candidateJobs) {
     if (missingEnv.length > 0) {
       violations.push(`${job.jobId}: missing required env ${missingEnv.join(', ')}`);
     }
+    const invalidPathEnv = validateRequiredPathEnv(job, missingEnvSet, violations);
 
     for (const artifact of job.outputArtifacts ?? []) {
       if (artifact.env === undefined) {
         continue;
       }
-      if (missingEnvSet.has(artifact.env)) {
+      if (missingEnvSet.has(artifact.env) || invalidPathEnv.has(artifact.env)) {
         continue;
       }
       const artifactValue = process.env[artifact.env]?.trim();
@@ -312,6 +313,32 @@ function artifactValidationViolations(candidateJobs) {
     }
   }
   return violations;
+}
+
+function validateRequiredPathEnv(job, missingEnvSet, violations) {
+  const invalidPathEnv = new Set();
+
+  for (const envName of job.requiredEnv ?? []) {
+    if (!envName.endsWith('_PATH') || missingEnvSet.has(envName)) {
+      continue;
+    }
+
+    const value = process.env[envName]?.trim();
+    if (value === undefined || value === '') {
+      continue;
+    }
+    if (!existsSync(value)) {
+      violations.push(`${job.jobId}: required path env ${envName} must point to an existing file path`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
+    if (isFixtureLikeArtifactPath(value)) {
+      violations.push(`${job.jobId}: required path env ${envName} must not point to fixture or example evidence`);
+      invalidPathEnv.add(envName);
+    }
+  }
+
+  return invalidPathEnv;
 }
 
 function isFixtureLikeArtifactPath(path) {
