@@ -211,6 +211,8 @@ function validateStagingRuntimeEvidenceSchema(schema) {
     SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
     DATABASE_URL_KIND: 'postgresql',
     RABBITMQ_URL_KIND: 'amqp',
+    RABBITMQ_QUEUE_TYPE: 'quorum',
+    RABBITMQ_QUEUE_DELIVERY_LIMIT: '20',
     SOCIAL_MONITOR_USER_AUTH_MODE: 'oidc-jwt',
   })) {
     if (shared[selector] !== expected) {
@@ -476,7 +478,9 @@ function requireEnvWhenArtifactIsPresent(name) {
 }
 
 function isIsoDateString(value) {
-  return typeof value === 'string' && !Number.isNaN(Date.parse(value)) && value.includes('T');
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && !Number.isNaN(Date.parse(value));
 }
 
 function isHttpUrlWithoutCredentials(value) {

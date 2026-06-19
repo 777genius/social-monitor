@@ -24,6 +24,8 @@
         "SOCIAL_MONITOR_RUNTIME_PROFILE": "beta",
         "DATABASE_URL_KIND": "postgresql",
         "RABBITMQ_URL_KIND": "amqp",
+        "RABBITMQ_QUEUE_TYPE": "quorum",
+        "RABBITMQ_QUEUE_DELIVERY_LIMIT": "20",
         "SOCIAL_MONITOR_USER_AUTH_MODE": "oidc-jwt"
       },
       "serviceSelectors": {
@@ -50,6 +52,8 @@
         "SOCIAL_MONITOR_RUNTIME_PROFILE": "beta",
         "DATABASE_URL_KIND": "postgresql",
         "RABBITMQ_URL_KIND": "amqp",
+        "RABBITMQ_QUEUE_TYPE": "quorum",
+        "RABBITMQ_QUEUE_DELIVERY_LIMIT": "20",
         "SOCIAL_MONITOR_USER_AUTH_MODE": "oidc-jwt"
       },
       "serviceSelectors": {
@@ -74,6 +78,8 @@
         "SOCIAL_MONITOR_RUNTIME_PROFILE": "beta",
         "DATABASE_URL_KIND": "postgresql",
         "RABBITMQ_URL_KIND": "amqp",
+        "RABBITMQ_QUEUE_TYPE": "quorum",
+        "RABBITMQ_QUEUE_DELIVERY_LIMIT": "20",
         "SOCIAL_MONITOR_USER_AUTH_MODE": "oidc-jwt"
       },
       "serviceSelectors": {
@@ -96,6 +102,8 @@
         "SOCIAL_MONITOR_RUNTIME_PROFILE": "beta",
         "DATABASE_URL_KIND": "postgresql",
         "RABBITMQ_URL_KIND": "amqp",
+        "RABBITMQ_QUEUE_TYPE": "quorum",
+        "RABBITMQ_QUEUE_DELIVERY_LIMIT": "20",
         "SOCIAL_MONITOR_USER_AUTH_MODE": "oidc-jwt"
       },
       "serviceSelectors": {
@@ -119,6 +127,8 @@
         "SOCIAL_MONITOR_RUNTIME_PROFILE": "beta",
         "DATABASE_URL_KIND": "postgresql",
         "RABBITMQ_URL_KIND": "amqp",
+        "RABBITMQ_QUEUE_TYPE": "quorum",
+        "RABBITMQ_QUEUE_DELIVERY_LIMIT": "20",
         "SOCIAL_MONITOR_USER_AUTH_MODE": "oidc-jwt"
       },
       "serviceSelectors": {
