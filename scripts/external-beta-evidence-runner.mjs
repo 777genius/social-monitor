@@ -14,6 +14,22 @@ const forbiddenArtifactValueFragments = [
   'postgresql://',
   'amqp://',
   'amqps://',
+  'redis://',
+  'rediss://',
+  'mysql://',
+  'mongodb://',
+  'mongodb+srv://',
+  'github_pat_',
+  'ghp_',
+  'glpat-',
+  'xoxb-',
+  'xoxp-',
+  'xapp-',
+  'akia',
+  'aws_access_key_id',
+  'aws_secret_access_key',
+  'sk-proj-',
+  'sk-live-',
   'smk_',
   'whsec_',
 ];
@@ -23,9 +39,17 @@ const forbiddenArtifactKeyNames = new Set([
   'token',
   'secret',
   'password',
+  'apikey',
+  'apitoken',
+  'idtoken',
+  'jwttoken',
+  'sessiontoken',
   'accesstoken',
   'refreshtoken',
   'clientsecret',
+  'credentialvalue',
+  'secretvalue',
+  'signingsecret',
   'privatekey',
   'secretkey',
   'redditaccesstoken',
@@ -659,6 +683,9 @@ function isRedactedArtifactValue(value) {
   }
 
   const normalized = value.trim().toLowerCase();
+  if (normalized.includes('not-redacted') || normalized.includes('not redacted') || normalized.includes('unredacted')) {
+    return false;
+  }
   return normalized.length === 0
     || normalized.includes('redacted')
     || normalized.includes('masked')
