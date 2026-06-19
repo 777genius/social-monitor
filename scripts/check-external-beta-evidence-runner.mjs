@@ -62,6 +62,26 @@ const requiredJobEnvNames = new Map([
       'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH',
     ],
   ],
+  [
+    'live-open-connectors',
+    [
+      'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH',
+      'SOURCE_LIVE_ENVIRONMENT_ID',
+      'BACKEND_IMAGE_DIGEST',
+      'SOURCE_LIVE_OPERATOR',
+    ],
+  ],
+  [
+    'live-reddit-oauth',
+    [
+      'REDDIT_ACCESS_TOKEN',
+      'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH',
+      'REDDIT_LIVE_EVIDENCE_PATH',
+      'SOURCE_LIVE_ENVIRONMENT_ID',
+      'BACKEND_IMAGE_DIGEST',
+      'SOURCE_LIVE_OPERATOR',
+    ],
+  ],
   ['summary-real-feedback-import', ['SUMMARY_REAL_FEEDBACK_SAMPLES_PATH']],
   [
     'security-final-sweep-staging',
@@ -80,6 +100,42 @@ const requiredJobEnvNames = new Map([
       'WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH',
     ],
   ],
+  [
+    'rabbitmq-staging-reliability-drill',
+    [
+      'RABBITMQ_URL',
+      'STAGING_ENVIRONMENT_ID',
+      'BACKEND_IMAGE_DIGEST',
+      'RABBITMQ_STAGING_DRILL_ARTIFACT_PATH',
+    ],
+  ],
+  [
+    'postgres-restore-migration-drill',
+    [
+      'DATABASE_URL',
+      'STAGING_ENVIRONMENT_ID',
+      'BACKEND_IMAGE_DIGEST',
+      'POSTGRES_RESTORE_DRILL_ARTIFACT_PATH',
+    ],
+  ],
+  [
+    'durable-backend-e2e-loop',
+    [
+      'API_BASE_URL',
+      'STAGING_ENVIRONMENT_ID',
+      'BACKEND_IMAGE_DIGEST',
+      'DURABLE_BACKEND_E2E_ARTIFACT_PATH',
+    ],
+  ],
+  [
+    'release-deploy-smoke',
+    [
+      'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH',
+      'STAGING_ENVIRONMENT_ID',
+      'BACKEND_IMAGE_DIGEST',
+      'API_BASE_URL',
+    ],
+  ],
 ]);
 const requiredJobOutputArtifacts = new Map([
   [
@@ -87,6 +143,19 @@ const requiredJobOutputArtifacts = new Map([
     [
       { kind: 'path', ref: 'ops/release/durable-runtime-proof.json', format: 'durable-runtime-proof-contract-v1' },
       { kind: 'env', ref: 'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH', format: 'durable-runtime-selector-artifact-v1' },
+    ],
+  ],
+  [
+    'live-open-connectors',
+    [
+      { kind: 'env', ref: 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', format: 'source-live-provider-evidence-v1' },
+    ],
+  ],
+  [
+    'live-reddit-oauth',
+    [
+      { kind: 'env', ref: 'REDDIT_LIVE_EVIDENCE_PATH', format: 'source-live-provider-evidence-v1' },
+      { kind: 'env', ref: 'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH', format: 'reddit-credential-lifecycle-redacted-v1' },
     ],
   ],
   [
@@ -107,6 +176,30 @@ const requiredJobOutputArtifacts = new Map([
       { kind: 'path', ref: 'ops/security/credential-secret-runtime-flow.json', format: 'credential-secret-runtime-flow-v1' },
       { kind: 'env', ref: 'SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH', format: 'source-credential-rotation-redacted-v1' },
       { kind: 'env', ref: 'WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH', format: 'webhook-secret-rotation-redacted-v1' },
+    ],
+  ],
+  [
+    'rabbitmq-staging-reliability-drill',
+    [
+      { kind: 'env', ref: 'RABBITMQ_STAGING_DRILL_ARTIFACT_PATH', format: 'staging-reliability-artifact-v1' },
+    ],
+  ],
+  [
+    'postgres-restore-migration-drill',
+    [
+      { kind: 'env', ref: 'POSTGRES_RESTORE_DRILL_ARTIFACT_PATH', format: 'staging-reliability-artifact-v1' },
+    ],
+  ],
+  [
+    'durable-backend-e2e-loop',
+    [
+      { kind: 'env', ref: 'DURABLE_BACKEND_E2E_ARTIFACT_PATH', format: 'staging-reliability-artifact-v1' },
+    ],
+  ],
+  [
+    'release-deploy-smoke',
+    [
+      { kind: 'env', ref: 'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH', format: 'release-deploy-smoke-artifact-v1' },
     ],
   ],
 ]);
@@ -131,6 +224,7 @@ for (const field of ['runnerFile', 'checkFile']) {
 
 validateCommand(contract.checkCommand, `${contractPath}: checkCommand`);
 validateCommand(contract.planCommand, `${contractPath}: planCommand`);
+validateCommand(contract.preflightCommand, `${contractPath}: preflightCommand`);
 validateCommand(contract.executeCommand, `${contractPath}: executeCommand`);
 validateSafety();
 validateJobs();
@@ -378,18 +472,24 @@ function validateJobScopeSafety(job, label) {
 function validateWiring() {
   const checkScript = scriptNameFromCommand(contract.checkCommand);
   const planScript = scriptNameFromCommand(contract.planCommand);
+  const preflightScript = scriptNameFromCommand(contract.preflightCommand);
   const executeScript = scriptNameFromCommand(contract.executeCommand);
 
-  for (const scriptName of [checkScript, planScript, executeScript]) {
+  for (const scriptName of [checkScript, planScript, preflightScript, executeScript]) {
     if (!packageScripts[scriptName]) {
       violations.push(`${packagePath}: missing npm script "${scriptName}"`);
     }
   }
+  if (!String(packageScripts[preflightScript] ?? '').includes('--require-env')) {
+    violations.push(`${packagePath}: ${preflightScript} must pass --require-env`);
+  }
   if (!backendScripts.has(checkScript)) {
     violations.push(`${backendSafePath}: backendScripts must include ${checkScript}`);
   }
-  if (backendScripts.has(planScript) || backendScripts.has(executeScript)) {
-    violations.push(`${backendSafePath}: backend-safe verify must not run evidence plan/execute scripts`);
+  for (const scriptName of [planScript, preflightScript, executeScript]) {
+    if (backendScripts.has(scriptName)) {
+      violations.push(`${backendSafePath}: backend-safe verify must not run ${scriptName}`);
+    }
   }
   if (!baselineScripts.has(checkScript)) {
     violations.push(`${baselinePath}: requiredGreenScripts must include ${checkScript}`);
@@ -411,6 +511,9 @@ function validateWiring() {
   }
   if (evidenceRunner.planCommand !== contract.planCommand) {
     violations.push(`${externalReadinessPath}: evidenceRunner.planCommand must match runner contract`);
+  }
+  if (evidenceRunner.preflightCommand !== contract.preflightCommand) {
+    violations.push(`${externalReadinessPath}: evidenceRunner.preflightCommand must match runner contract`);
   }
 }
 

@@ -16,7 +16,8 @@
   "evidenceRunner": {
     "contract": "ops/release/external-beta-evidence-runner.json",
     "checkCommand": "npm run check:external-beta-evidence-runner",
-    "planCommand": "npm run beta:evidence:plan"
+    "planCommand": "npm run beta:evidence:plan",
+    "preflightCommand": "npm run beta:evidence:preflight"
   },
   "capacityEnvelope": {
     "ringId": "private-beta-1",

@@ -6,6 +6,7 @@
   "defaultMode": "plan_only",
   "checkCommand": "npm run check:external-beta-evidence-runner",
   "planCommand": "npm run beta:evidence:plan",
+  "preflightCommand": "npm run beta:evidence:preflight",
   "executeCommand": "npm run beta:evidence:run -- --execute",
   "runnerFile": "scripts/external-beta-evidence-runner.mjs",
   "checkFile": "scripts/check-external-beta-evidence-runner.mjs",
