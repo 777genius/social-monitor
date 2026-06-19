@@ -121,6 +121,7 @@
         "job_type": "scan",
         "worker": "ingestion-worker"
       },
+      "safeDiagnosticFields": ["provider_key", "source_binding_id", "failure_class", "correlation_id"],
       "safeDiagnosticQuestion": "Are scan failures caused by provider availability?"
     },
     {
@@ -132,6 +133,7 @@
         "job_type": "scan",
         "worker": "ingestion-worker"
       },
+      "safeDiagnosticFields": ["provider_key", "source_binding_id", "failure_class", "correlation_id"],
       "safeDiagnosticQuestion": "Are scan failures caused by provider rate limits?"
     },
     {
@@ -150,6 +152,7 @@
       "labels": {
         "queue": "scan-dlq"
       },
+      "safeDiagnosticFields": ["scan_id", "source_binding_id", "failure_class", "correlation_id"],
       "safeDiagnosticQuestion": "Do failed scans require manual triage?"
     },
     {
@@ -160,6 +163,7 @@
         "model": "summary-fake-v1",
         "provider": "deterministic-local"
       },
+      "safeDiagnosticFields": ["provider", "model", "tenant_id", "workspace_id", "correlation_id"],
       "safeDiagnosticQuestion": "Is summary model spend growing faster than expected?"
     },
     {
@@ -182,6 +186,7 @@
         "resource_type": "digest",
         "retryable": "true"
       },
+      "safeDiagnosticFields": ["attempt_id", "channel", "resource_type", "correlation_id"],
       "safeDiagnosticQuestion": "Are webhook delivery failures increasing?"
     }
   ]

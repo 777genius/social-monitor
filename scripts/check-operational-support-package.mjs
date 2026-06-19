@@ -58,6 +58,7 @@ if (contract.externalBetaStatus !== 'contract_ready_pending_staging_evidence') {
 
 validateArtifacts();
 validateSupportApi();
+validateSupportEvidenceRequirements();
 validateTriageFlows();
 validateRequiredGateCommands();
 requireWiring();
@@ -120,6 +121,15 @@ function validateSupportApi() {
   }
 }
 
+function validateSupportEvidenceRequirements() {
+  const requirements = contract.supportEvidenceRequirements ?? [];
+  for (const fragment of ['dashboard panel', 'alert', 'forbidden diagnostic fields']) {
+    if (!Array.isArray(requirements) || !requirements.some((requirement) => String(requirement).toLowerCase().includes(fragment))) {
+      violations.push(`${contractPath}: supportEvidenceRequirements must mention ${fragment}`);
+    }
+  }
+}
+
 function validateTriageFlows() {
   const alertById = new Map((alerts.alerts ?? []).map((alert) => [alert.alertId, alert]));
   const panelById = new Map((dashboard.panels ?? []).map((panel) => [panel.panelId, panel]));
@@ -161,6 +171,7 @@ function validateTriageFlows() {
       if (typeof alert.userVisibleState !== 'string' || alert.userVisibleState.trim().length === 0) {
         violations.push(`${contract.alertArtifact}: alert "${flow.alertId}" must expose userVisibleState`);
       }
+      validateDiagnosticFieldAttachment(alert.safeDiagnosticFields, flow, `${contract.alertArtifact}: alert "${flow.alertId}"`);
     }
 
     if (panel === undefined) {
@@ -170,6 +181,8 @@ function validateTriageFlows() {
       panel.safeDiagnosticQuestion.trim().length === 0
     ) {
       violations.push(`${contract.dashboardArtifact}: panel "${flow.dashboardPanelId}" must define safeDiagnosticQuestion`);
+    } else {
+      validateDiagnosticFieldAttachment(panel.safeDiagnosticFields, flow, `${contract.dashboardArtifact}: panel "${flow.dashboardPanelId}"`);
     }
 
     if (drill === undefined) {
@@ -200,21 +213,40 @@ function validateTriageFlows() {
 }
 
 function validateSafeDiagnosticFields(flow) {
-  const forbidden = new Set(contract.forbiddenDiagnosticFields ?? []);
-
   if (!Array.isArray(flow.safeDiagnosticFields) || flow.safeDiagnosticFields.length === 0) {
     violations.push(`${contractPath}: flow "${flow.flowId}" must define safeDiagnosticFields`);
     return;
   }
 
-  for (const field of flow.safeDiagnosticFields) {
+  validateSafeDiagnosticFieldList(flow.safeDiagnosticFields, `${contractPath}: flow "${flow.flowId}"`);
+}
+
+function validateDiagnosticFieldAttachment(fields, flow, label) {
+  if (!Array.isArray(fields) || fields.length === 0) {
+    violations.push(`${label} must define safeDiagnosticFields`);
+    return;
+  }
+
+  validateSafeDiagnosticFieldList(fields, label);
+  const attachedFields = new Set(fields);
+  for (const field of flow.safeDiagnosticFields ?? []) {
+    if (!attachedFields.has(field)) {
+      violations.push(`${label} safeDiagnosticFields missing "${field}" from flow "${flow.flowId}"`);
+    }
+  }
+}
+
+function validateSafeDiagnosticFieldList(fields, label) {
+  const forbidden = new Set(contract.forbiddenDiagnosticFields ?? []);
+
+  for (const field of fields) {
     const normalized = String(field).toLowerCase();
     if (!/^[a-z0-9_]+$/.test(normalized)) {
-      violations.push(`${contractPath}: unsafe diagnostic field "${field}" in flow "${flow.flowId}"`);
+      violations.push(`${label}: unsafe diagnostic field "${field}"`);
     }
     for (const forbiddenField of forbidden) {
       if (normalized.includes(String(forbiddenField).toLowerCase())) {
-        violations.push(`${contractPath}: flow "${flow.flowId}" contains forbidden diagnostic field "${field}"`);
+        violations.push(`${label}: contains forbidden diagnostic field "${field}"`);
       }
     }
   }

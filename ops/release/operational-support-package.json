@@ -14,6 +14,11 @@
     "/beta/launch-support/known-limitations",
     "/beta/launch-support/post-mvp-backlog"
   ],
+  "supportEvidenceRequirements": [
+    "Every required triage flow repeats its safeDiagnosticFields on the linked dashboard panel.",
+    "Every required triage flow repeats its safeDiagnosticFields on the linked alert.",
+    "Safe diagnostic fields must not include forbidden diagnostic fields, raw provider payloads, URLs, tokens, prompts, credentials or webhook secrets."
+  ],
   "requiredTriageFlows": [
     {
       "flowId": "dlq-triage",

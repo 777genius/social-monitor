@@ -66,6 +66,7 @@
       "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#dlq-triage",
       "userVisibleState": "scan_degraded",
       "firstMitigation": "classify_dead_letter_before_replay_or_suppression",
+      "safeDiagnosticFields": ["scan_id", "source_binding_id", "failure_class", "correlation_id"],
       "page": false
     },
     {
@@ -149,6 +150,7 @@
       "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#provider-failure-triage",
       "userVisibleState": "scan_degraded",
       "firstMitigation": "check_provider_health_before_replaying_scans",
+      "safeDiagnosticFields": ["provider_key", "source_binding_id", "failure_class", "correlation_id"],
       "page": false
     },
     {
@@ -166,6 +168,7 @@
       "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#provider-failure-triage",
       "userVisibleState": "scan_degraded",
       "firstMitigation": "reduce_scan_frequency_before_adding_workers",
+      "safeDiagnosticFields": ["provider_key", "source_binding_id", "failure_class", "correlation_id"],
       "page": false
     },
     {
@@ -182,6 +185,7 @@
       "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#summary-cost-triage",
       "userVisibleState": "summary_degraded",
       "firstMitigation": "check_model_route_and_quota_before_retrying_summaries",
+      "safeDiagnosticFields": ["provider", "model", "tenant_id", "workspace_id", "correlation_id"],
       "page": false
     },
     {
@@ -199,6 +203,7 @@
       "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#delivery-failure-triage",
       "userVisibleState": "delivery_degraded",
       "firstMitigation": "check_webhook_endpoint_status_before_replaying_delivery_attempts",
+      "safeDiagnosticFields": ["attempt_id", "channel", "resource_type", "correlation_id"],
       "page": false
     }
   ]
