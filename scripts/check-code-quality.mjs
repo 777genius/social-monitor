@@ -37,6 +37,9 @@ const forbiddenLocalEvidenceProvenancePatterns = [
   /\bfixtureArtifactEvidenceKind\b/,
   /\bforbiddenRealProvenanceFragments\b/,
   /\bfunction\s+validateRealProvenanceString\b/,
+  /\bfunction\s+validateRealSourceString\b/,
+  /\benvironmentId\?\.includes\('example'\)/,
+  /\bsecretStoreId\?\.includes\('example'\)/,
 ];
 
 const prismaWritePattern =
@@ -274,6 +277,12 @@ for (const file of globSync('scripts/check-*.mjs')) {
   const source = readFileSync(file, 'utf8');
   if (source.includes('provenanceRequirements') && !source.includes(evidenceProvenanceHelperImport)) {
     addViolation(file, 'evidence provenance validators must use scripts/lib/evidence-provenance.mjs instead of local copies');
+  }
+  if (
+    source.includes('validateEvidenceArtifactProvenance') &&
+    !source.includes('validateRealEvidenceIdentityStrings')
+  ) {
+    addViolation(file, 'evidence artifact provenance validators must also use validateRealEvidenceIdentityStrings for real artifact identity fields');
   }
   for (const pattern of forbiddenLocalEvidenceProvenancePatterns) {
     if (pattern.test(source)) {
