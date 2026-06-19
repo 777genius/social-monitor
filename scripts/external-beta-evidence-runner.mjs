@@ -76,29 +76,59 @@ function buildPlan(planJobs) {
     runnerId: contract.runnerId,
     mode: execute ? 'execute' : 'plan_only',
     jobCount: planJobs.length,
+    localContractJobCount: 0,
+    liveCommandJobCount: 0,
+    manualArtifactJobCount: 0,
+    executableLiveJobCount: 0,
+    externalBlockerJobCount: 0,
     missingEnvCount: 0,
+    missingOptionalEnvCount: 0,
     uniqueMissingEnv: [],
+    uniqueMissingOptionalEnv: [],
     jobs: [],
   };
 
   for (const job of planJobs) {
     const missingEnv = missingRequiredEnv(job);
+    const missingOptionalEnv = missingOptionalEnvNames(job);
+    const executionReadiness = jobExecutionReadiness(job, missingEnv);
     plan.jobs.push({
       jobId: job.jobId,
       evidenceGroupId: job.evidenceGroupId,
       mode: job.mode,
       runPolicy: job.runPolicy,
       owner: job.owner,
+      blocksExternalBeta: job.blocksExternalBeta,
+      executionReadiness,
       runnerCommand: job.runnerCommand,
       validationCommands: job.validationCommands,
       requiredEnv: job.requiredEnv,
+      optionalEnv: job.optionalEnv,
       missingEnv,
+      missingOptionalEnv,
       outputArtifacts: job.outputArtifacts,
       exitCondition: job.exitCondition,
     });
     plan.missingEnvCount += missingEnv.length;
+    plan.missingOptionalEnvCount += missingOptionalEnv.length;
+    if (job.runPolicy === 'local_contract') {
+      plan.localContractJobCount += 1;
+    }
+    if (job.runPolicy === 'live_command') {
+      plan.liveCommandJobCount += 1;
+      if (missingEnv.length === 0) {
+        plan.executableLiveJobCount += 1;
+      }
+    }
+    if (job.runPolicy === 'manual_artifact_then_validator') {
+      plan.manualArtifactJobCount += 1;
+    }
+    if (job.blocksExternalBeta === true) {
+      plan.externalBlockerJobCount += 1;
+    }
   }
   plan.uniqueMissingEnv = [...new Set(plan.jobs.flatMap((job) => job.missingEnv))].sort();
+  plan.uniqueMissingOptionalEnv = [...new Set(plan.jobs.flatMap((job) => job.missingOptionalEnv))].sort();
 
   return plan;
 }
@@ -107,6 +137,11 @@ function printPlan(plan) {
   console.log(`External beta evidence plan (${contract.runnerId})`);
   console.log(`Mode: ${plan.mode}`);
   console.log(`Jobs: ${plan.jobCount}`);
+  console.log(
+    `Run policies: local=${plan.localContractJobCount}, live=${plan.liveCommandJobCount}, manual=${plan.manualArtifactJobCount}`,
+  );
+  console.log(`Executable live jobs: ${plan.executableLiveJobCount}`);
+  console.log(`External beta blocker jobs: ${plan.externalBlockerJobCount}`);
 
   for (const job of plan.jobs) {
     console.log('');
@@ -114,11 +149,14 @@ function printPlan(plan) {
     console.log(`  group: ${job.evidenceGroupId}`);
     console.log(`  mode: ${job.mode}`);
     console.log(`  runPolicy: ${job.runPolicy}`);
+    console.log(`  readiness: ${job.executionReadiness}`);
     console.log(`  owner: ${job.owner}`);
     console.log(`  runner: ${job.runnerCommand ?? 'manual artifact / validators only'}`);
     console.log(`  validators: ${job.validationCommands.join(' && ')}`);
     console.log(`  requiredEnv: ${job.requiredEnv.length === 0 ? 'none' : job.requiredEnv.join(', ')}`);
+    console.log(`  optionalEnv: ${job.optionalEnv.length === 0 ? 'none' : job.optionalEnv.join(', ')}`);
     console.log(`  missingEnv: ${job.missingEnv.length === 0 ? 'none' : job.missingEnv.join(', ')}`);
+    console.log(`  missingOptionalEnv: ${job.missingOptionalEnv.length === 0 ? 'none' : job.missingOptionalEnv.join(', ')}`);
     console.log(`  outputArtifacts: ${formatOutputArtifacts(job)}`);
     console.log(`  exit: ${job.exitCondition}`);
   }
@@ -126,6 +164,9 @@ function printPlan(plan) {
   if (plan.missingEnvCount > 0) {
     console.log('');
     console.log(`Missing required env count: ${plan.missingEnvCount}`);
+  }
+  if (plan.missingOptionalEnvCount > 0) {
+    console.log(`Missing optional env count: ${plan.missingOptionalEnvCount}`);
   }
 }
 
@@ -169,6 +210,23 @@ function isMissingSelectionValue(value) {
 
 function missingRequiredEnv(job) {
   return job.requiredEnv.filter((envName) => process.env[envName]?.trim() === undefined || process.env[envName]?.trim() === '');
+}
+
+function missingOptionalEnvNames(job) {
+  return job.optionalEnv.filter((envName) => process.env[envName]?.trim() === undefined || process.env[envName]?.trim() === '');
+}
+
+function jobExecutionReadiness(job, missingEnv) {
+  if (missingEnv.length > 0) {
+    return 'blocked_missing_required_env';
+  }
+  if (job.runPolicy === 'manual_artifact_then_validator') {
+    return 'manual_artifact_required';
+  }
+  if (job.runPolicy === 'live_command') {
+    return 'live_command_executable';
+  }
+  return 'local_contract_ready';
 }
 
 function executableJobViolations(candidateJobs) {

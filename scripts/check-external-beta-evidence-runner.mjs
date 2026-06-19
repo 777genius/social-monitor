@@ -289,6 +289,12 @@ function validateRunnerImplementation() {
     'readSelectedJobSelection',
     'Invalid external beta evidence job selection:',
     '--jobs requires at least one job id',
+    'missingOptionalEnvCount',
+    'uniqueMissingOptionalEnv',
+    'jobExecutionReadiness',
+    'blocked_missing_required_env',
+    'manualArtifactJobCount',
+    'executableLiveJobCount',
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);
