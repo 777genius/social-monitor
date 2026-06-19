@@ -172,6 +172,15 @@ function validateHandoffShape() {
   if (handoff.envTemplate !== dryRun.envExample) {
     violations.push(`${dryRunPath}: JSON handoff envTemplate must match dry-run envExample`);
   }
+  if (handoff.inputMatrix?.matrixId !== 'external-beta-evidence-input-matrix-v1') {
+    violations.push(`${dryRunPath}: JSON handoff must expose external beta evidence input matrix id`);
+  }
+  if (handoff.inputMatrix?.secretValuePolicy !== 'never_commit_values') {
+    violations.push(`${dryRunPath}: JSON handoff input matrix must preserve secret value policy`);
+  }
+  if (handoff.inputMatrix?.artifactPathPolicy !== 'absolute_json_non_workspace_non_fixture_path') {
+    violations.push(`${dryRunPath}: JSON handoff input matrix must preserve artifact path policy`);
+  }
   if (handoff.safety?.handoffJsonCommand !== dryRun.handoffJsonCommand) {
     violations.push(`${dryRunPath}: JSON handoff must expose the dry-run JSON handoff command`);
   }
@@ -223,6 +232,24 @@ function validateHandoffShape() {
     }
     if (!Array.isArray(handoffJob.outputArtifacts) || handoffJob.outputArtifacts.length === 0) {
       violations.push(`${dryRunPath}: JSON handoff ${jobId} must include outputArtifacts`);
+    }
+    assertSameSet(
+      handoffJob.requiredInputs?.map((input) => input.env) ?? [],
+      handoffJob.requiredEnv ?? [],
+      `${dryRunPath}: JSON handoff ${jobId} requiredInputs`,
+    );
+    assertSameSet(
+      handoffJob.optionalInputs?.map((input) => input.env) ?? [],
+      handoffJob.optionalEnv ?? [],
+      `${dryRunPath}: JSON handoff ${jobId} optionalInputs`,
+    );
+    for (const input of [...(handoffJob.requiredInputs ?? []), ...(handoffJob.optionalInputs ?? [])]) {
+      if (typeof input.inputClass !== 'string' || input.inputClass === 'unclassified') {
+        violations.push(`${dryRunPath}: JSON handoff ${jobId} input ${input.env} must include matrix inputClass`);
+      }
+      if (typeof input.description !== 'string' || input.description.trim().length === 0) {
+        violations.push(`${dryRunPath}: JSON handoff ${jobId} input ${input.env} must include matrix description`);
+      }
     }
     for (const artifact of handoffJob.outputArtifacts ?? []) {
       if (artifact.env !== null && !String(artifact.location).startsWith('<env:')) {

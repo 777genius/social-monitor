@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 
 const matrixPath = 'ops/release/external-beta-evidence-input-matrix.json';
@@ -21,10 +22,12 @@ const backendOps = readJson(backendOpsPath);
 const envExampleSource = readFileSync(envExamplePath, 'utf8');
 const packageScripts = packageJson.scripts ?? {};
 const violations = [];
+const handoff = readHandoffJson();
 
 validateMatrixContract();
 validateClassifications();
 validateEnvExample();
+validateHandoffEnrichment();
 validateWiring();
 
 if (violations.length > 0) {
@@ -36,6 +39,20 @@ console.log('External beta evidence input matrix OK');
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function readHandoffJson() {
+  const output = execFileSync(
+    process.execPath,
+    ['scripts/external-beta-evidence-runner.mjs', '--handoff-json'],
+    {
+      encoding: 'utf8',
+      env: {
+        PATH: process.env.PATH ?? '',
+      },
+    },
+  );
+  return JSON.parse(output);
 }
 
 function validateMatrixContract() {
@@ -133,6 +150,46 @@ function validateEnvExample() {
   }
 }
 
+function validateHandoffEnrichment() {
+  const classificationByEnv = inputClassByEnv();
+
+  if (handoff.inputMatrix?.matrixId !== matrix.matrixId) {
+    violations.push(`${matrixPath}: handoff JSON must expose matrixId ${matrix.matrixId}`);
+  }
+  if (handoff.inputMatrix?.secretValuePolicy !== matrix.secretValuePolicy) {
+    violations.push(`${matrixPath}: handoff JSON must expose secretValuePolicy ${matrix.secretValuePolicy}`);
+  }
+  if (handoff.inputMatrix?.artifactPathPolicy !== matrix.artifactPathPolicy) {
+    violations.push(`${matrixPath}: handoff JSON must expose artifactPathPolicy ${matrix.artifactPathPolicy}`);
+  }
+
+  for (const job of handoff.jobs ?? []) {
+    assertSameSet(
+      job.requiredInputs?.map((input) => input.env) ?? [],
+      job.requiredEnv ?? [],
+      `${matrixPath}: ${job.jobId} handoff requiredInputs`,
+    );
+    assertSameSet(
+      job.optionalInputs?.map((input) => input.env) ?? [],
+      job.optionalEnv ?? [],
+      `${matrixPath}: ${job.jobId} handoff optionalInputs`,
+    );
+
+    for (const input of [...(job.requiredInputs ?? []), ...(job.optionalInputs ?? [])]) {
+      const expectedClass = classificationByEnv.get(input.env);
+      if (input.inputClass !== expectedClass) {
+        violations.push(`${matrixPath}: ${job.jobId} handoff input ${input.env} must use inputClass ${expectedClass}`);
+      }
+      if (typeof input.description !== 'string' || input.description.trim().length === 0) {
+        violations.push(`${matrixPath}: ${job.jobId} handoff input ${input.env} must include input class description`);
+      }
+      if (input.inputClass === 'artifact_path' && !Array.isArray(input.artifacts)) {
+        violations.push(`${matrixPath}: ${job.jobId} handoff artifact input ${input.env} must include artifacts array`);
+      }
+    }
+  }
+}
+
 function validateWiring() {
   const backendScripts = new Set(backendSafe.backendScripts ?? []);
   const baselineScripts = new Set(baseline.requiredGreenScripts ?? []);
@@ -172,6 +229,16 @@ function validateWiring() {
   if (!externalDomain.artifacts?.includes(matrixPath)) {
     violations.push(`${backendOpsPath}: external-beta-evidence domain must include ${matrixPath}`);
   }
+}
+
+function inputClassByEnv() {
+  const classifications = new Map();
+  for (const inputClass of matrix.inputClasses ?? []) {
+    for (const envName of inputClass.env ?? []) {
+      classifications.set(envName, inputClass.inputClass);
+    }
+  }
+  return classifications;
 }
 
 function runnerEnvNames() {

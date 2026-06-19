@@ -4,7 +4,9 @@ import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { URL } from 'node:url';
 
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
+const inputMatrixPath = 'ops/release/external-beta-evidence-input-matrix.json';
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
+const inputMatrix = JSON.parse(readFileSync(inputMatrixPath, 'utf8'));
 const forbiddenEvidencePathFragments = ['/fixtures/', '\\fixtures\\', '.example.', '-examples', '_examples', '/example-', '\\example-'];
 const forbiddenArtifactValueFragments = [
   'bearer ',
@@ -426,6 +428,12 @@ function buildHandoff(plan) {
     frontendPolicy: contract.frontendPolicy,
     defaultMode: contract.defaultMode,
     envTemplate: contract.envExample,
+    inputMatrix: {
+      matrixId: inputMatrix.matrixId,
+      checkCommand: inputMatrix.checkCommand,
+      secretValuePolicy: inputMatrix.secretValuePolicy,
+      artifactPathPolicy: inputMatrix.artifactPathPolicy,
+    },
     safety: {
       inspectPlanCommand: contract.planCommand,
       inspectSummaryCommand: contract.summaryCommand,
@@ -467,12 +475,42 @@ function buildHandoff(plan) {
       optionalEnv: job.optionalEnv,
       missingEnv: job.missingEnv,
       missingOptionalEnv: job.missingOptionalEnv,
+      requiredInputs: buildHandoffInputs(job, job.requiredEnv, job.missingEnv),
+      optionalInputs: buildHandoffInputs(job, job.optionalEnv, job.missingOptionalEnv),
       preflightViolations: job.preflightViolations,
       outputArtifacts: buildHandoffArtifactContracts(job),
       operatorAction: handoffAction(job),
       exitCondition: job.exitCondition,
     })),
   };
+}
+
+function buildHandoffInputs(job, envNames, missingEnvNames) {
+  const missingEnv = new Set(missingEnvNames ?? []);
+  return (envNames ?? []).map((envName) => {
+    const metadata = inputMetadataByEnv().get(envName) ?? {};
+    return {
+      env: envName,
+      inputClass: metadata.inputClass ?? 'unclassified',
+      description: metadata.description ?? null,
+      missing: missingEnv.has(envName),
+      artifacts: buildHandoffEnvArtifacts(job, envName),
+    };
+  });
+}
+
+function buildHandoffEnvArtifacts(job, envName) {
+  return (job.outputArtifacts ?? [])
+    .filter((artifact) => artifact.env === envName)
+    .map((artifact) => {
+      const examplePath = artifactExamplePathByFormat().get(artifact.format) ?? null;
+      return {
+        format: artifact.format,
+        examplePath,
+        expectedArtifactId: artifact.expectedArtifactId ?? null,
+        expectedProviderKeys: artifact.expectedProviderKeys ?? [],
+      };
+    });
 }
 
 function buildHandoffArtifactContracts(job) {
@@ -1632,6 +1670,19 @@ function handoffRunner(job) {
 
 function artifactExamplePathByFormat() {
   return new Map((contract.artifactExamples ?? []).map((example) => [example.format, example.path]));
+}
+
+function inputMetadataByEnv() {
+  const metadata = new Map();
+  for (const inputClass of inputMatrix.inputClasses ?? []) {
+    for (const envName of inputClass.env ?? []) {
+      metadata.set(envName, {
+        inputClass: inputClass.inputClass,
+        description: inputClass.description,
+      });
+    }
+  }
+  return metadata;
 }
 
 function runCommand(command, label) {
