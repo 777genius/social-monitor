@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
+const forbiddenEvidencePathFragments = ['/fixtures/', '\\fixtures\\', '.example.', '-examples', '_examples', '/example-', '\\example-'];
 const args = process.argv.slice(2);
 const execute = args.includes('--execute');
 const validateArtifacts = args.includes('--validate-artifacts');
@@ -292,10 +293,17 @@ function artifactValidationViolations(candidateJobs) {
         violations.push(`${job.jobId}: output artifact env ${artifact.env} must point to an existing file path`);
         continue;
       }
+      if (isFixtureLikeArtifactPath(artifactValue)) {
+        violations.push(`${job.jobId}: output artifact env ${artifact.env} must not point to fixture or example evidence`);
+        continue;
+      }
 
       const content = readJsonArtifact(artifactValue, job.jobId, artifact.env, violations);
       if (content === undefined) {
         continue;
+      }
+      if (content.schemaVersion !== 1) {
+        violations.push(`${job.jobId}: output artifact env ${artifact.env} must use schemaVersion 1`);
       }
       const artifactFormat = content.format ?? content.artifactFormat;
       if (artifactFormat !== artifact.format) {
@@ -304,6 +312,11 @@ function artifactValidationViolations(candidateJobs) {
     }
   }
   return violations;
+}
+
+function isFixtureLikeArtifactPath(path) {
+  const normalized = path.toLowerCase();
+  return forbiddenEvidencePathFragments.some((fragment) => normalized.includes(fragment));
 }
 
 function readJsonArtifact(path, jobId, envName, violations) {

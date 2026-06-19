@@ -311,6 +311,10 @@ function validateRunnerImplementation() {
     'valid JSON artifact',
     'artifactFormat',
     'must use format',
+    'forbiddenEvidencePathFragments',
+    'isFixtureLikeArtifactPath',
+    'must not point to fixture or example evidence',
+    'schemaVersion 1',
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);
