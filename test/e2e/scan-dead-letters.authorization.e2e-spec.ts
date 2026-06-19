@@ -5,13 +5,14 @@ import {
   type KeyObject,
 } from 'node:crypto';
 
-import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { InMemoryScanFailureQueueAdapter } from '@social-monitor/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { createApiGatewayE2eApp } from './support/api-gateway-e2e-app';
 
 const issuer = 'https://auth.example.test';
 const audience = 'social-monitor-api';
@@ -45,14 +46,7 @@ describe('Scan dead-letter authorization (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleRef.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app = createApiGatewayE2eApp(moduleRef);
     await app.init();
   });
 

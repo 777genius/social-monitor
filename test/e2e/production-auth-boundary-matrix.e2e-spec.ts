@@ -5,7 +5,7 @@ import {
   type KeyObject,
 } from 'node:crypto';
 
-import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwksUserAccessTokenVerifier } from '@social-monitor/identity/adapters/authorization/jwks-user-access-token.verifier';
 import { StaticWorkspaceAuthorizationPolicy } from '@social-monitor/identity/adapters/authorization/static-workspace-authorization-policy';
@@ -31,7 +31,7 @@ import { ListTopicsUseCase } from '@social-monitor/monitoring/features/list-topi
 import { TopicController } from '@social-monitor/monitoring/interfaces/rest/topic.controller';
 import request from 'supertest';
 
-import { DomainErrorFilter } from '../../apps/api-gateway/src/domain-error.filter';
+import { createApiGatewayE2eApp } from './support/api-gateway-e2e-app';
 
 const issuer = 'https://auth.example.test';
 const audience = 'social-monitor-api';
@@ -246,15 +246,7 @@ const createHarness = async (params: {
     ],
   }).compile();
 
-  const app = moduleRef.createNestApplication();
-  app.useGlobalFilters(new DomainErrorFilter());
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  const app = createApiGatewayE2eApp(moduleRef);
   await app.init();
 
   return {

@@ -12,6 +12,12 @@ const userTokenVerifier = readFileSync('libs/identity/adapters/authorization/jwk
 const membershipPort = readFileSync('libs/identity/ports/user-workspace-membership-verifier.port.ts', 'utf8');
 const membershipPrisma = readFileSync('libs/identity/adapters/persistence/prisma/prisma-user-workspace-membership.verifier.ts', 'utf8');
 const usageAuditPort = readFileSync('libs/usage/ports/public-api-audit-log.port.ts', 'utf8');
+const apiGatewayE2eApp = readFileSync('test/e2e/support/api-gateway-e2e-app.ts', 'utf8');
+const userJwtAuthBoundaryE2e = readFileSync('test/e2e/user-jwt-auth-boundary.e2e-spec.ts', 'utf8');
+const apiKeysUserJwtManagementE2e = readFileSync('test/e2e/api-keys.user-jwt-management.e2e-spec.ts', 'utf8');
+const scanDeadLettersAuthorizationE2e = readFileSync('test/e2e/scan-dead-letters.authorization.e2e-spec.ts', 'utf8');
+const usageAuditEventsListE2e = readFileSync('test/e2e/usage-audit-events.list.e2e-spec.ts', 'utf8');
+const productionAuthBoundaryMatrixE2e = readFileSync('test/e2e/production-auth-boundary-matrix.e2e-spec.ts', 'utf8');
 const envExample = readFileSync('.env.example', 'utf8');
 const compose = readFileSync('docker-compose.yml', 'utf8');
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
@@ -179,6 +185,28 @@ for (const marker of [
 
 if (!usageAuditPort.includes("'user'")) {
   violations.push('usage audit actor types must include user for JWT-backed public API requests');
+}
+
+for (const marker of [
+  'createApiGatewayE2eApp',
+  'DomainErrorFilter',
+  'createApiGatewayValidationPipe',
+]) {
+  if (!apiGatewayE2eApp.includes(marker)) {
+    violations.push(`API gateway e2e app helper missing marker "${marker}"`);
+  }
+}
+
+for (const [label, source] of [
+  ['user JWT auth boundary e2e', userJwtAuthBoundaryE2e],
+  ['API key user JWT management e2e', apiKeysUserJwtManagementE2e],
+  ['scan dead-letter authorization e2e', scanDeadLettersAuthorizationE2e],
+  ['usage audit events list e2e', usageAuditEventsListE2e],
+  ['production auth boundary matrix e2e', productionAuthBoundaryMatrixE2e],
+]) {
+  if (!source.includes('createApiGatewayE2eApp')) {
+    violations.push(`${label} must use shared API gateway e2e app bootstrap`);
+  }
 }
 
 if (!String(packageJson.scripts?.verify ?? '').includes('check:auth-boundary')) {

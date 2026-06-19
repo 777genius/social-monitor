@@ -5,13 +5,14 @@ import {
   type KeyObject,
 } from 'node:crypto';
 
-import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/in-memory-public-api-audit-log';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { createApiGatewayE2eApp } from './support/api-gateway-e2e-app';
 
 const issuer = 'https://auth.example.test';
 const audience = 'social-monitor-api';
@@ -47,14 +48,7 @@ describe('API key user JWT management boundary (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleRef.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app = createApiGatewayE2eApp(moduleRef);
     await app.init();
   });
 
