@@ -23,6 +23,17 @@ const violations = [];
 const gateScript = 'check:staging-reliability-evidence';
 const gateCommand = `npm run ${gateScript}`;
 const gateId = 'staging-reliability-evidence';
+const stagingArtifactFormat = 'staging-reliability-artifact-v1';
+const stagingArtifactEvidenceKind = 'staging_drill';
+const fixtureArtifactEvidenceKind = 'fixture_example';
+const requiredArtifactProvenanceFields = new Set(['evidenceKind', 'collectionMethod', 'runner', 'fixtureOnly']);
+const forbiddenRealProvenanceFragments = [
+  'example',
+  'fixture',
+  'synthetic',
+  'mock',
+  'test',
+];
 const allowedStatuses = new Set(['pending_staging_evidence', 'passed']);
 const requiredArtifactIds = new Set([
   'rabbitmq-staging-drill-output',
@@ -433,8 +444,8 @@ function validatePassedArtifactContentSchema() {
   if (schema.schemaVersion !== 1) {
     violations.push(`${evidencePath}: passedArtifactContentSchema.schemaVersion must be 1`);
   }
-  if (schema.format !== 'staging-reliability-artifact-v1') {
-    violations.push(`${evidencePath}: passedArtifactContentSchema.format must be staging-reliability-artifact-v1`);
+  if (schema.format !== stagingArtifactFormat) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.format must be ${stagingArtifactFormat}`);
   }
   if (typeof schema.exampleArtifactPath !== 'string' || schema.exampleArtifactPath.trim().length === 0) {
     violations.push(`${evidencePath}: passedArtifactContentSchema.exampleArtifactPath must reference fixture examples`);
@@ -452,6 +463,7 @@ function validatePassedArtifactContentSchema() {
     'operator',
     'startedAt',
     'completedAt',
+    'provenance',
     'redaction',
     'signalResults',
   ]) {
@@ -475,7 +487,31 @@ function validatePassedArtifactContentSchema() {
   if (!Array.isArray(schema.signalResultRequirements) || schema.signalResultRequirements.length < 4) {
     violations.push(`${evidencePath}: passedArtifactContentSchema.signalResultRequirements must describe signal coverage`);
   }
+  validateProvenanceRequirements(schema.provenanceRequirements);
   validateEnvArtifactValidation(schema.envArtifactValidation);
+}
+
+function validateProvenanceRequirements(requirements) {
+  if (!isRecord(requirements)) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.provenanceRequirements is required`);
+    return;
+  }
+  if (requirements.evidenceKind !== stagingArtifactEvidenceKind) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.provenanceRequirements.evidenceKind must be ${stagingArtifactEvidenceKind}`);
+  }
+  if (requirements.fixtureOnly !== false) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.provenanceRequirements.fixtureOnly must be false`);
+  }
+  requireSetCoverage(
+    new Set(requirements.requiredFields ?? []),
+    requiredArtifactProvenanceFields,
+    'passedArtifactContentSchema.provenanceRequirements.requiredFields',
+  );
+  requireSetCoverage(
+    new Set(requirements.forbiddenRealFragments ?? []),
+    new Set(forbiddenRealProvenanceFragments),
+    'passedArtifactContentSchema.provenanceRequirements.forbiddenRealFragments',
+  );
 }
 
 function requirePassedArtifact(artifact) {
@@ -507,6 +543,7 @@ function validatePassedArtifactContent(artifact, signals) {
   }
 
   validateArtifactContentEnvelope(content, artifact.path, artifact.artifactId);
+  validateArtifactProvenance(content.provenance, artifact.path, { allowFixture: false });
   for (const field of ['artifactId', 'environmentId', 'imageDigest', 'operator', 'startedAt', 'completedAt']) {
     if (content[field] !== artifact[field]) {
       violations.push(`${artifact.path}: ${field} must match ${evidencePath} artifact metadata`);
@@ -556,6 +593,7 @@ function validateExampleArtifactFixtures(signalsByArtifactId) {
 
     const artifactLabel = `${examplePath}#${artifactId}`;
     validateArtifactContentEnvelope(example, artifactLabel, artifactId);
+    validateArtifactProvenance(example.provenance, artifactLabel, { allowFixture: true });
     validateRedaction(example, artifactLabel);
     validateSignalResults(
       example,
@@ -569,8 +607,8 @@ function validateArtifactContentEnvelope(content, artifactPath, artifactId) {
   if (content.schemaVersion !== 1) {
     violations.push(`${artifactPath}: schemaVersion must be 1`);
   }
-  if (content.format !== 'staging-reliability-artifact-v1') {
-    violations.push(`${artifactPath}: format must be staging-reliability-artifact-v1`);
+  if (content.format !== stagingArtifactFormat) {
+    violations.push(`${artifactPath}: format must be ${stagingArtifactFormat}`);
   }
   if (content.artifactId !== artifactId) {
     violations.push(`${artifactPath}: artifactId must be ${artifactId}`);
@@ -593,6 +631,57 @@ function validateArtifactContentEnvelope(content, artifactPath, artifactId) {
   }
 }
 
+function validateArtifactProvenance(provenance, artifactPath, options) {
+  if (!isRecord(provenance)) {
+    violations.push(`${artifactPath}: provenance must be an object`);
+    return;
+  }
+
+  for (const field of requiredArtifactProvenanceFields) {
+    if (!(field in provenance)) {
+      violations.push(`${artifactPath}: provenance.${field} is required`);
+    }
+  }
+  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
+    if (typeof provenance[field] !== 'string' || provenance[field].trim().length === 0) {
+      violations.push(`${artifactPath}: provenance.${field} must be a non-empty string`);
+    }
+  }
+
+  if (options.allowFixture === true) {
+    if (provenance.evidenceKind !== fixtureArtifactEvidenceKind) {
+      violations.push(`${artifactPath}: fixture provenance.evidenceKind must be ${fixtureArtifactEvidenceKind}`);
+    }
+    if (provenance.fixtureOnly !== true) {
+      violations.push(`${artifactPath}: fixture provenance.fixtureOnly must be true`);
+    }
+    return;
+  }
+
+  if (provenance.evidenceKind !== stagingArtifactEvidenceKind) {
+    violations.push(`${artifactPath}: provenance.evidenceKind must be ${stagingArtifactEvidenceKind}`);
+  }
+  if (provenance.fixtureOnly !== false) {
+    violations.push(`${artifactPath}: provenance.fixtureOnly must be false for staging evidence`);
+  }
+  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
+    validateRealProvenanceString(provenance[field], `${artifactPath}: provenance.${field}`);
+  }
+}
+
+function validateRealProvenanceString(value, label) {
+  if (typeof value !== 'string') {
+    return;
+  }
+
+  const normalized = value.toLowerCase();
+  for (const fragment of forbiddenRealProvenanceFragments) {
+    if (normalized.includes(fragment)) {
+      violations.push(`${label} must not contain "${fragment}" for staging evidence artifacts`);
+    }
+  }
+}
+
 function validateEnvironmentArtifacts(signalsByArtifactId) {
   for (const [artifactId, config] of requiredEnvArtifacts.entries()) {
     const artifactPath = readOptionalEnv(config.envVar);
@@ -611,6 +700,7 @@ function validateEnvironmentArtifacts(signalsByArtifactId) {
 
     const artifactLabel = `${config.envVar} (${artifactPath})`;
     validateArtifactContentEnvelope(content, artifactLabel, artifactId);
+    validateArtifactProvenance(content.provenance, artifactLabel, { allowFixture: false });
     validateEnvArtifactMetadata(content, config, artifactLabel);
     validateRedaction(content, artifactLabel);
     validateSignalResults(
@@ -670,8 +760,8 @@ function validateEnvArtifactValidation(validationRules) {
     if (rule.envVar !== expected.envVar) {
       violations.push(`${evidencePath}: ${label}.envVar must be ${expected.envVar}`);
     }
-    if (rule.format !== 'staging-reliability-artifact-v1') {
-      violations.push(`${evidencePath}: ${label}.format must be staging-reliability-artifact-v1`);
+    if (rule.format !== stagingArtifactFormat) {
+      violations.push(`${evidencePath}: ${label}.format must be ${stagingArtifactFormat}`);
     }
     for (const envVar of expected.requiredEnv) {
       if (!rule.requiredEnv?.includes(envVar)) {
@@ -683,6 +773,14 @@ function validateEnvArtifactValidation(validationRules) {
   for (const artifactId of requiredEnvArtifacts.keys()) {
     if (!seenRules.has(artifactId)) {
       violations.push(`${evidencePath}: envArtifactValidation must include ${artifactId}`);
+    }
+  }
+}
+
+function requireSetCoverage(actual, expected, label) {
+  for (const expectedValue of expected) {
+    if (!actual.has(expectedValue)) {
+      violations.push(`${evidencePath}: ${label} must include ${expectedValue}`);
     }
   }
 }

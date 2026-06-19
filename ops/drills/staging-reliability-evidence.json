@@ -18,9 +18,27 @@
       "operator",
       "startedAt",
       "completedAt",
+      "provenance",
       "redaction",
       "signalResults"
     ],
+    "provenanceRequirements": {
+      "evidenceKind": "staging_drill",
+      "fixtureOnly": false,
+      "requiredFields": [
+        "evidenceKind",
+        "collectionMethod",
+        "runner",
+        "fixtureOnly"
+      ],
+      "forbiddenRealFragments": [
+        "example",
+        "fixture",
+        "synthetic",
+        "mock",
+        "test"
+      ]
+    },
     "redactionRequirements": [
       "secretsIncluded=false",
       "rawProviderPayloadsIncluded=false",

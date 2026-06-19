@@ -12,6 +12,12 @@
       "operator": "ops-owner-example",
       "startedAt": "2026-06-18T00:00:00.000Z",
       "completedAt": "2026-06-18T00:10:00.000Z",
+      "provenance": {
+        "evidenceKind": "fixture_example",
+        "collectionMethod": "Synthetic fixture example for RabbitMQ staging drill schema validation.",
+        "runner": "ops/drills/fixtures/staging-reliability-artifact-examples.json",
+        "fixtureOnly": true
+      },
       "redaction": {
         "secretsIncluded": false,
         "rawProviderPayloadsIncluded": false,
@@ -156,6 +162,12 @@
       "operator": "ops-owner-example",
       "startedAt": "2026-06-18T00:20:00.000Z",
       "completedAt": "2026-06-18T00:40:00.000Z",
+      "provenance": {
+        "evidenceKind": "fixture_example",
+        "collectionMethod": "Synthetic fixture example for Postgres restore drill schema validation.",
+        "runner": "ops/drills/fixtures/staging-reliability-artifact-examples.json",
+        "fixtureOnly": true
+      },
       "redaction": {
         "secretsIncluded": false,
         "rawProviderPayloadsIncluded": false,
@@ -286,6 +298,12 @@
       "operator": "backend-lead-example",
       "startedAt": "2026-06-18T01:00:00.000Z",
       "completedAt": "2026-06-18T01:12:00.000Z",
+      "provenance": {
+        "evidenceKind": "fixture_example",
+        "collectionMethod": "Synthetic fixture example for durable backend e2e schema validation.",
+        "runner": "ops/drills/fixtures/staging-reliability-artifact-examples.json",
+        "fixtureOnly": true
+      },
       "redaction": {
         "secretsIncluded": false,
         "rawProviderPayloadsIncluded": false,
