@@ -309,6 +309,9 @@ function validateSafety() {
   if (safety.secretValuesMustStayOutOfArtifacts !== true) {
     violations.push(`${contractPath}: executionSafety.secretValuesMustStayOutOfArtifacts must be true`);
   }
+  if (safety.criticalEnvValuesMustBeTyped !== true) {
+    violations.push(`${contractPath}: executionSafety.criticalEnvValuesMustBeTyped must be true`);
+  }
   if (safety.evidencePathEnvRequiresAbsolutePath !== true) {
     violations.push(`${contractPath}: executionSafety.evidencePathEnvRequiresAbsolutePath must be true`);
   }
@@ -459,6 +462,12 @@ function validateRunnerImplementation() {
     'validateArtifacts',
     'artifactValidationViolations',
     'Refusing to validate external beta evidence artifacts',
+    'validateEvidenceValueEnv',
+    'criticalEnvValuesMustBeTyped',
+    'immutable sha256 image digest',
+    'valid https URL',
+    'realEvidenceIdentityEnvNames',
+    'isFixtureLikeEnvValue',
     'output artifact env',
     'readJsonArtifact',
     'valid JSON artifact',

@@ -31,6 +31,7 @@
     "manualArtifactJobsFailExecute": true,
     "artifactValidationSkipsLiveRunners": true,
     "secretValuesMustStayOutOfArtifacts": true,
+    "criticalEnvValuesMustBeTyped": true,
     "evidencePathEnvRequiresAbsolutePath": true,
     "evidencePathEnvRequiresRegularFile": true,
     "evidencePathEnvMaxBytes": 26214400,

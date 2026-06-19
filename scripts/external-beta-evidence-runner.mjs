@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, relative } from 'node:path';
+import { URL } from 'node:url';
 
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
@@ -458,6 +459,7 @@ function executableJobViolations(candidateJobs) {
     if (missingEnv.length > 0) {
       violations.push(`${job.jobId}: missing required env ${missingEnv.join(', ')}`);
     }
+    validateEvidenceValueEnv(job, new Set(missingEnv), violations);
     if (job.runPolicy === 'manual_artifact_then_validator') {
       violations.push(`${job.jobId}: manual artifact job cannot be executed by this runner`);
     }
@@ -473,6 +475,7 @@ function artifactValidationViolations(candidateJobs) {
     if (missingEnv.length > 0) {
       violations.push(`${job.jobId}: missing required env ${missingEnv.join(', ')}`);
     }
+    validateEvidenceValueEnv(job, missingEnvSet, violations);
     const invalidPathEnv = validateEvidencePathEnv(job, missingEnvSet, violations);
 
     for (const artifact of job.outputArtifacts ?? []) {
@@ -515,6 +518,78 @@ function artifactValidationViolations(candidateJobs) {
     }
   }
   return violations;
+}
+
+function validateEvidenceValueEnv(job, missingEnvSet, violations) {
+  if (contract.executionSafety?.criticalEnvValuesMustBeTyped !== true) {
+    return;
+  }
+
+  const envNames = new Set([...(job.requiredEnv ?? []), ...(job.optionalEnv ?? [])]);
+  for (const envName of envNames) {
+    if (missingEnvSet.has(envName) || envName.endsWith('_PATH')) {
+      continue;
+    }
+
+    const value = process.env[envName]?.trim();
+    if (value === undefined || value === '') {
+      continue;
+    }
+
+    if (envName === 'BACKEND_IMAGE_DIGEST' && !/^sha256:[0-9a-f]{64}$/.test(value)) {
+      violations.push(`${job.jobId}: env ${envName} must be an immutable sha256 image digest`);
+      continue;
+    }
+    if (envName === 'API_BASE_URL') {
+      validateApiBaseUrlEnv(job, envName, value, violations);
+      continue;
+    }
+    if (realEvidenceIdentityEnvNames().has(envName) && isFixtureLikeEnvValue(value)) {
+      violations.push(`${job.jobId}: env ${envName} must not use local, fixture, example, mock or test identifiers`);
+    }
+  }
+}
+
+function validateApiBaseUrlEnv(job, envName, value, violations) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    violations.push(`${job.jobId}: env ${envName} must be a valid https URL`);
+    return;
+  }
+  if (parsed.protocol !== 'https:') {
+    violations.push(`${job.jobId}: env ${envName} must be a valid https URL`);
+    return;
+  }
+  if (isFixtureLikeEnvValue(parsed.hostname)) {
+    violations.push(`${job.jobId}: env ${envName} must not use local, fixture, example, mock or test hostnames`);
+  }
+}
+
+function realEvidenceIdentityEnvNames() {
+  return new Set([
+    'STAGING_ENVIRONMENT_ID',
+    'SOURCE_LIVE_ENVIRONMENT_ID',
+    'SOURCE_LIVE_OPERATOR',
+    'STAGING_SECRET_STORE_ID',
+  ]);
+}
+
+function isFixtureLikeEnvValue(value) {
+  const normalized = String(value).toLowerCase();
+  if (
+    normalized === 'localhost'
+    || normalized === '0.0.0.0'
+    || normalized === '::1'
+    || normalized === '[::1]'
+    || normalized.startsWith('127.')
+  ) {
+    return true;
+  }
+  return normalized.split(/[^a-z0-9]+/).some((segment) => {
+    return ['local', 'localhost', 'fixture', 'example', 'synthetic', 'mock', 'test'].includes(segment);
+  });
 }
 
 function validateEvidencePathEnv(job, missingEnvSet, violations) {
