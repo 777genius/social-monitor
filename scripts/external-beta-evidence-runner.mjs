@@ -134,7 +134,15 @@ if (!execute && !validateArtifacts) {
   } else {
     printPlan(plan);
   }
-  if (requireEnv && plan.missingEnvCount > 0) {
+  const preflightViolations = requireEnv ? planPreflightViolations(jobs) : [];
+  if (preflightViolations.length > 0) {
+    console.error('');
+    console.error('Refusing external beta evidence preflight. Resolve all preflight violations first:');
+    for (const violation of preflightViolations) {
+      console.error(`- ${violation}`);
+    }
+  }
+  if (requireEnv && (plan.missingEnvCount > 0 || preflightViolations.length > 0)) {
     process.exit(1);
   }
   process.exit(0);
@@ -468,6 +476,18 @@ function executableJobViolations(candidateJobs) {
   return violations;
 }
 
+function planPreflightViolations(candidateJobs) {
+  const violations = [];
+  for (const job of candidateJobs) {
+    const missingEnvSet = new Set(missingRequiredEnv(job));
+    validateEvidenceValueEnv(job, missingEnvSet, violations, {
+      enabled: contract.executionSafety?.preflightRequiresEnvValueValidation === true,
+    });
+    validatePlannedEvidencePathEnv(job, missingEnvSet, violations);
+  }
+  return violations;
+}
+
 function artifactValidationViolations(candidateJobs) {
   const violations = [];
   for (const job of candidateJobs) {
@@ -565,8 +585,9 @@ function validateExecutableOutputArtifactPathEnv(job, missingEnvSet, violations)
   }
 }
 
-function validateEvidenceValueEnv(job, missingEnvSet, violations) {
-  if (contract.executionSafety?.criticalEnvValuesMustBeTyped !== true) {
+function validateEvidenceValueEnv(job, missingEnvSet, violations, options = {}) {
+  const enabled = options.enabled ?? contract.executionSafety?.criticalEnvValuesMustBeTyped === true;
+  if (!enabled) {
     return;
   }
 
@@ -591,6 +612,83 @@ function validateEvidenceValueEnv(job, missingEnvSet, violations) {
     }
     if (realEvidenceIdentityEnvNames().has(envName) && isFixtureLikeEnvValue(value)) {
       violations.push(`${job.jobId}: env ${envName} must not use local, fixture, example, mock or test identifiers`);
+    }
+  }
+}
+
+function validatePlannedEvidencePathEnv(job, missingEnvSet, violations) {
+  if (contract.executionSafety?.preflightRequiresEvidencePathValidation !== true) {
+    return;
+  }
+
+  const pathEnvNames = new Set([...(job.requiredEnv ?? []), ...(job.optionalEnv ?? [])]);
+  for (const envName of pathEnvNames) {
+    if (!envName.endsWith('_PATH') || missingEnvSet.has(envName)) {
+      continue;
+    }
+
+    const value = process.env[envName]?.trim();
+    if (value === undefined || value === '') {
+      continue;
+    }
+    if (!isAbsolute(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} must be an absolute file path before preflight`);
+      continue;
+    }
+    if (requiresJsonEvidencePathEnv() && !isJsonEvidencePath(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} path must end with .json before preflight`);
+      continue;
+    }
+    if (isFixtureLikeArtifactPath(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} must not point to fixture or example evidence before preflight`);
+      continue;
+    }
+    if (isForbiddenWorkspaceEvidencePath(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} must not be inside the git workspace before preflight`);
+      continue;
+    }
+    if (!existsSync(value)) {
+      continue;
+    }
+    if (requiresRegularEvidenceFiles() && !isRegularEvidenceFile(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} must point to a regular file before preflight`);
+      continue;
+    }
+    if (isOversizedEvidenceFile(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} must not exceed ${evidencePathMaxBytes()} bytes before preflight`);
+      continue;
+    }
+    if (isGitTrackedPath(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} must not point to a git-tracked file before preflight`);
+      continue;
+    }
+
+    const realPath = readEvidenceRealPath(value, job.jobId, envName, violations);
+    if (realPath === undefined) {
+      continue;
+    }
+    if (requiresJsonEvidencePathEnv() && !isJsonEvidencePath(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must end with .json before preflight`);
+      continue;
+    }
+    if (requiresRegularEvidenceFiles() && !isRegularEvidenceFile(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must point to a regular file before preflight`);
+      continue;
+    }
+    if (isOversizedEvidenceFile(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must not exceed ${evidencePathMaxBytes()} bytes before preflight`);
+      continue;
+    }
+    if (isFixtureLikeArtifactPath(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must not point to fixture or example evidence before preflight`);
+      continue;
+    }
+    if (isForbiddenWorkspaceEvidencePath(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must not be inside the git workspace before preflight`);
+      continue;
+    }
+    if (isGitTrackedPath(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must not point to a git-tracked file before preflight`);
     }
   }
 }

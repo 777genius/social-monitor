@@ -31,6 +31,8 @@
     "manualArtifactJobsFailExecute": true,
     "artifactValidationSkipsLiveRunners": true,
     "liveExecutionValidatesOutputPathsBeforeRun": true,
+    "preflightRequiresEnvValueValidation": true,
+    "preflightRequiresEvidencePathValidation": true,
     "secretValuesMustStayOutOfArtifacts": true,
     "criticalEnvValuesMustBeTyped": true,
     "evidencePathEnvRequiresAbsolutePath": true,

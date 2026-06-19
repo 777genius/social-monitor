@@ -309,6 +309,12 @@ function validateSafety() {
   if (safety.liveExecutionValidatesOutputPathsBeforeRun !== true) {
     violations.push(`${contractPath}: executionSafety.liveExecutionValidatesOutputPathsBeforeRun must be true`);
   }
+  if (safety.preflightRequiresEnvValueValidation !== true) {
+    violations.push(`${contractPath}: executionSafety.preflightRequiresEnvValueValidation must be true`);
+  }
+  if (safety.preflightRequiresEvidencePathValidation !== true) {
+    violations.push(`${contractPath}: executionSafety.preflightRequiresEvidencePathValidation must be true`);
+  }
   if (safety.secretValuesMustStayOutOfArtifacts !== true) {
     violations.push(`${contractPath}: executionSafety.secretValuesMustStayOutOfArtifacts must be true`);
   }
@@ -474,6 +480,12 @@ function validateRunnerImplementation() {
     'validateArtifacts',
     'artifactValidationViolations',
     'Refusing to validate external beta evidence artifacts',
+    'planPreflightViolations',
+    'Refusing external beta evidence preflight',
+    'preflightRequiresEnvValueValidation',
+    'preflightRequiresEvidencePathValidation',
+    'validatePlannedEvidencePathEnv',
+    'before preflight',
     'validateExecutableOutputArtifactPathEnv',
     'liveExecutionValidatesOutputPathsBeforeRun',
     'before live execution',
