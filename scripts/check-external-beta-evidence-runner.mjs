@@ -273,6 +273,7 @@ validateSafety();
 validateArtifactFreshnessPolicy();
 validateArtifactExamples();
 validateRunnerImplementation();
+validateRunnerPositiveArtifactSmoke();
 validateRunnerNegativeSmokes();
 validateRunnerPreflightNegativeSmokes();
 validateRunnerPreflightPositiveSmoke();
@@ -792,7 +793,30 @@ function validateRunnerNegativeSmokes() {
   }
 }
 
+function validateRunnerPositiveArtifactSmoke() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-positive-'));
+  const artifactPath = join(tempDirectory, 'live-open-connectors.json');
+  try {
+    writeFileSync(
+      artifactPath,
+      `${JSON.stringify(liveOpenConnectorsArtifact(), null, 2)}\n`,
+      { mode: 0o600 },
+    );
+
+    const result = runRunnerArtifactSmoke(artifactPath);
+    if (result.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner positive artifact smoke must accept valid live-open-connectors evidence: ${smokeOutputSnippet(result.output)}`);
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
 function runRunnerNegativeSmoke(artifactPath) {
+  return runRunnerArtifactSmoke(artifactPath);
+}
+
+function runRunnerArtifactSmoke(artifactPath) {
   const imageDigest = `sha256:${'a'.repeat(64)}`;
   try {
     execFileSync(
@@ -1057,7 +1081,22 @@ function liveOpenConnectorsArtifact() {
     schemaVersion: 1,
     format: 'source-live-provider-evidence-v1',
     artifactId: 'live-open-connectors-evidence-v1',
+    environmentId: 'source-prod-alpha',
+    imageDigest,
+    operator: 'release-operator-1',
     sampledAt: now,
+    provenance: {
+      evidenceKind: 'live_network',
+      collectionMethod: 'live provider smoke captured on staging beta environment',
+      runner: 'scripts/check-live-open-connectors.ts',
+      fixtureOnly: false,
+    },
+    redaction: {
+      secretsIncluded: false,
+      rawProviderPayloadsIncluded: false,
+      credentialValuesIncluded: false,
+      privateNetworkUrlsIncluded: false,
+    },
     environment: {
       environmentId: 'source-prod-alpha',
       imageDigest,
@@ -1068,17 +1107,101 @@ function liveOpenConnectorsArtifact() {
       {
         providerKey: 'hacker-news',
         status: 'passed',
-        sampledAt: now,
+        signalResults: [
+          {
+            signalId: 'hn-live-http-smoke',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'Redacted live Hacker News listing and search returned normalized numeric ids.',
+              listingStoryCount: 2,
+              searchStoryCount: 2,
+              stableNumericIds: true,
+              normalizedIdsSampled: true,
+            },
+          },
+          {
+            signalId: 'hn-rate-limit-evidence',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'Request budget and provider rate limited degradation signal were recorded.',
+              timeoutMs: 10000,
+              maxListingStories: 2,
+              maxSearchStories: 2,
+              degradationSignalRecorded: true,
+            },
+          },
+        ],
       },
       {
         providerKey: 'rss',
         status: 'passed',
-        sampledAt: now,
+        signalResults: [
+          {
+            signalId: 'rss-allowlisted-live-feeds',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'Redacted allowlisted RSS feeds returned normalized readable items.',
+              feedCount: 2,
+              itemCount: 4,
+              allowlistMatched: true,
+              normalizedItemsObserved: true,
+            },
+          },
+          {
+            signalId: 'rss-http-cache-evidence',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'HTTP cache validators were observed on repeated RSS reads.',
+              cacheValidatorFeedCount: 1,
+              validatorsObserved: ['etag', 'last-modified'],
+              conditionalReadObserved: true,
+            },
+          },
+          {
+            signalId: 'rss-ssrf-proof',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'Private and loopback targets were rejected before fetch.',
+              rejectedProbeCount: 4,
+              blockedTargetClasses: ['loopback', 'localhost', 'metadata-service', 'file'],
+              rejectedBeforeFetch: true,
+            },
+          },
+        ],
       },
       {
         providerKey: 'github',
         status: 'passed',
-        sampledAt: now,
+        signalResults: [
+          {
+            signalId: 'github-live-api-smoke',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'Redacted live GitHub API search returned normalized issue items.',
+              issueCount: 1,
+              canonicalUrlsObserved: true,
+              pullRequestsExcluded: true,
+              authMode: 'anonymous',
+            },
+          },
+          {
+            signalId: 'github-rate-limit-budget',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'GitHub core and search rate limit budget were recorded without credential values.',
+              coreRemaining: 100,
+              searchRemaining: 10,
+              budgetObserved: true,
+            },
+          },
+        ],
       },
     ],
   };
