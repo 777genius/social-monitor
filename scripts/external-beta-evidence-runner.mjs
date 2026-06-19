@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { isAbsolute, relative } from 'node:path';
 
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
@@ -434,6 +435,11 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
       invalidPathEnv.add(envName);
       continue;
     }
+    if (isGitTrackedPath(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} must not point to a git-tracked file`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
 
     const violationCount = violations.length;
     validateEvidencePathFileContent(value, job.jobId, envName, violations);
@@ -470,6 +476,20 @@ function isFixtureLikeArtifactPath(path) {
 
 function isFixtureLikePathSegment(segment) {
   return segment.includes('fixture') || segment.includes('example');
+}
+
+function isGitTrackedPath(path) {
+  const pathspec = isAbsolute(path) ? relative(process.cwd(), path) : path;
+  if (pathspec.startsWith('..')) {
+    return false;
+  }
+
+  try {
+    execFileSync('git', ['ls-files', '--error-unmatch', '--', pathspec], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function readJsonArtifact(path, jobId, envName, violations) {
