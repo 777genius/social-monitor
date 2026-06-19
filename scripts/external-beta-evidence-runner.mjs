@@ -498,6 +498,11 @@ function artifactValidationViolations(candidateJobs) {
 function validateEvidencePathEnv(job, missingEnvSet, violations) {
   const invalidPathEnv = new Set();
   const pathEnvNames = new Set([...(job.requiredEnv ?? []), ...(job.optionalEnv ?? [])]);
+  const outputArtifactPathEnvNames = new Set(
+    (job.outputArtifacts ?? [])
+      .map((artifact) => artifact.env)
+      .filter((envName) => envName !== undefined && envName.endsWith('_PATH')),
+  );
 
   for (const envName of pathEnvNames) {
     if (!envName.endsWith('_PATH') || missingEnvSet.has(envName)) {
@@ -510,6 +515,11 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
     }
     if (!isAbsolute(value)) {
       violations.push(`${job.jobId}: evidence path env ${envName} must be an absolute file path`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
+    if (requiresJsonOutputArtifactPaths() && outputArtifactPathEnvNames.has(envName) && !isJsonEvidencePath(value)) {
+      violations.push(`${job.jobId}: output artifact env ${envName} path must end with .json`);
       invalidPathEnv.add(envName);
       continue;
     }
@@ -533,6 +543,11 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
       invalidPathEnv.add(envName);
       continue;
     }
+    if (requiresJsonOutputArtifactPaths() && outputArtifactPathEnvNames.has(envName) && !isJsonEvidencePath(realPath)) {
+      violations.push(`${job.jobId}: output artifact env ${envName} realpath must end with .json`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
     if (isFixtureLikeArtifactPath(realPath)) {
       violations.push(`${job.jobId}: evidence path env ${envName} realpath must not point to fixture or example evidence`);
       invalidPathEnv.add(envName);
@@ -552,6 +567,14 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
   }
 
   return invalidPathEnv;
+}
+
+function isJsonEvidencePath(path) {
+  return path.toLowerCase().endsWith('.json');
+}
+
+function requiresJsonOutputArtifactPaths() {
+  return contract.executionSafety?.outputArtifactPathEnvRequiresJsonExtension === true;
 }
 
 function readEvidenceRealPath(path, jobId, envName, violations) {

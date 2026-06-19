@@ -285,6 +285,9 @@ function validateSafety() {
   if (safety.evidencePathEnvRequiresAbsolutePath !== true) {
     violations.push(`${contractPath}: executionSafety.evidencePathEnvRequiresAbsolutePath must be true`);
   }
+  if (safety.outputArtifactPathEnvRequiresJsonExtension !== true) {
+    violations.push(`${contractPath}: executionSafety.outputArtifactPathEnvRequiresJsonExtension must be true`);
+  }
   for (const forbidden of forbiddenFragments) {
     if (!safety.forbiddenTargets?.includes(forbidden)) {
       violations.push(`${contractPath}: executionSafety.forbiddenTargets must include ${forbidden}`);
@@ -439,6 +442,10 @@ function validateRunnerImplementation() {
     'validateEvidencePathEnv',
     'evidence path env',
     'absolute file path',
+    'outputArtifactPathEnvRequiresJsonExtension',
+    'isJsonEvidencePath',
+    'path must end with .json',
+    'realpath must end with .json',
     'readEvidenceRealPath',
     'realpathSync',
     'realpath must not point to fixture or example evidence',

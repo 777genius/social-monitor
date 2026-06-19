@@ -31,7 +31,8 @@
     "manualArtifactJobsFailExecute": true,
     "artifactValidationSkipsLiveRunners": true,
     "secretValuesMustStayOutOfArtifacts": true,
-    "evidencePathEnvRequiresAbsolutePath": true
+    "evidencePathEnvRequiresAbsolutePath": true,
+    "outputArtifactPathEnvRequiresJsonExtension": true
   },
   "artifactFreshness": {
     "maxArtifactAgeHours": 168,
