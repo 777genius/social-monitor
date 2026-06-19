@@ -76,6 +76,7 @@ if (typeof evidenceRunner !== 'object' || evidenceRunner === null) {
     'checkCommand',
     'planCommand',
     'jsonPlanCommand',
+    'summaryCommand',
     'preflightCommand',
     'artifactValidationCommand',
   ]) {

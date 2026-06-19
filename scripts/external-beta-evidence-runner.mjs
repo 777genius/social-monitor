@@ -36,8 +36,13 @@ const execute = args.includes('--execute');
 const validateArtifacts = args.includes('--validate-artifacts');
 const requireEnv = args.includes('--require-env');
 const json = args.includes('--json');
+const summary = args.includes('--summary');
 if (execute && validateArtifacts) {
   console.error('Choose either --execute or --validate-artifacts, not both.');
+  process.exit(1);
+}
+if (summary && (execute || validateArtifacts || json)) {
+  console.error('Use --summary by itself, without --execute, --validate-artifacts or --json.');
   process.exit(1);
 }
 
@@ -70,7 +75,9 @@ if (jobs.length === 0) {
 
 if (!execute && !validateArtifacts) {
   const plan = buildPlan(jobs);
-  if (json) {
+  if (summary) {
+    printSummary(plan);
+  } else if (json) {
     printJsonPlan(plan);
   } else {
     printPlan(plan);
@@ -147,6 +154,11 @@ function buildPlan(planJobs) {
     externalBlockerJobCount: 0,
     missingEnvCount: 0,
     missingOptionalEnvCount: 0,
+    readinessCounts: {},
+    contractClosurePercent: 0,
+    externalEvidenceEnvReadinessPercent: 0,
+    manualArtifactReadyForValidationJobCount: 0,
+    blockedMissingRequiredEnvJobCount: 0,
     uniqueMissingEnv: [],
     uniqueMissingOptionalEnv: [],
     jobs: [],
@@ -156,6 +168,7 @@ function buildPlan(planJobs) {
     const missingEnv = missingRequiredEnv(job);
     const missingOptionalEnv = missingOptionalEnvNames(job);
     const executionReadiness = jobExecutionReadiness(job, missingEnv);
+    plan.readinessCounts[executionReadiness] = (plan.readinessCounts[executionReadiness] ?? 0) + 1;
     plan.jobs.push({
       jobId: job.jobId,
       evidenceGroupId: job.evidenceGroupId,
@@ -186,13 +199,24 @@ function buildPlan(planJobs) {
     }
     if (job.runPolicy === 'manual_artifact_then_validator') {
       plan.manualArtifactJobCount += 1;
+      if (missingEnv.length === 0) {
+        plan.manualArtifactReadyForValidationJobCount += 1;
+      }
     }
     if (job.blocksExternalBeta === true) {
       plan.externalBlockerJobCount += 1;
     }
+    if (executionReadiness === 'blocked_missing_required_env') {
+      plan.blockedMissingRequiredEnvJobCount += 1;
+    }
   }
   plan.uniqueMissingEnv = [...new Set(plan.jobs.flatMap((job) => job.missingEnv))].sort();
   plan.uniqueMissingOptionalEnv = [...new Set(plan.jobs.flatMap((job) => job.missingOptionalEnv))].sort();
+  plan.contractClosurePercent = percent(plan.localContractJobCount, plan.jobCount);
+  plan.externalEvidenceEnvReadinessPercent = percent(
+    plan.executableLiveJobCount + plan.manualArtifactReadyForValidationJobCount,
+    plan.liveCommandJobCount + plan.manualArtifactJobCount,
+  );
 
   return plan;
 }
@@ -234,8 +258,40 @@ function printPlan(plan) {
   }
 }
 
+function printSummary(plan) {
+  console.log(`External beta evidence summary (${contract.runnerId})`);
+  console.log(`Jobs: ${plan.jobCount}`);
+  console.log(`Contract closure: ${plan.localContractJobCount}/${plan.jobCount} jobs (${plan.contractClosurePercent}%)`);
+  console.log(
+    `External evidence env readiness: ${plan.executableLiveJobCount + plan.manualArtifactReadyForValidationJobCount}/${plan.liveCommandJobCount + plan.manualArtifactJobCount} live/manual jobs (${plan.externalEvidenceEnvReadinessPercent}%)`,
+  );
+  console.log(`External beta blocker jobs: ${plan.externalBlockerJobCount}`);
+  console.log(`Blocked by missing required env: ${plan.blockedMissingRequiredEnvJobCount}`);
+  console.log(`Missing required env: ${plan.missingEnvCount} occurrences, ${plan.uniqueMissingEnv.length} unique`);
+  console.log(`Missing optional env: ${plan.missingOptionalEnvCount} occurrences, ${plan.uniqueMissingOptionalEnv.length} unique`);
+  console.log('');
+  console.log('Readiness counts:');
+  for (const [readiness, count] of Object.entries(plan.readinessCounts).sort(([left], [right]) => left.localeCompare(right))) {
+    console.log(`  ${readiness}: ${count}`);
+  }
+  if (plan.uniqueMissingEnv.length > 0) {
+    console.log('');
+    console.log('Required env still needed:');
+    for (const envName of plan.uniqueMissingEnv) {
+      console.log(`  ${envName}`);
+    }
+  }
+}
+
 function printJsonPlan(plan) {
   console.log(JSON.stringify(plan, null, 2));
+}
+
+function percent(numerator, denominator) {
+  if (denominator <= 0) {
+    return 0;
+  }
+  return Math.round((numerator / denominator) * 100);
 }
 
 function readSelectedJobSelection(argv) {

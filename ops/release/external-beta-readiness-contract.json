@@ -18,6 +18,7 @@
     "checkCommand": "npm run check:external-beta-evidence-runner",
     "planCommand": "npm run beta:evidence:plan",
     "jsonPlanCommand": "npm run --silent beta:evidence:plan:json",
+    "summaryCommand": "npm run beta:evidence:summary",
     "preflightCommand": "npm run beta:evidence:preflight",
     "artifactValidationCommand": "npm run beta:evidence:validate"
   },

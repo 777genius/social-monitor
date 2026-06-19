@@ -233,6 +233,7 @@ for (const field of ['runnerFile', 'checkFile', 'envExample']) {
 validateCommand(contract.checkCommand, `${contractPath}: checkCommand`);
 validateCommand(contract.planCommand, `${contractPath}: planCommand`);
 validateCommand(contract.jsonPlanCommand, `${contractPath}: jsonPlanCommand`);
+validateCommand(contract.summaryCommand, `${contractPath}: summaryCommand`);
 validateCommand(contract.preflightCommand, `${contractPath}: preflightCommand`);
 validateCommand(contract.artifactValidationCommand, `${contractPath}: artifactValidationCommand`);
 validateCommand(contract.executeCommand, `${contractPath}: executeCommand`);
@@ -296,6 +297,12 @@ function validateRunnerImplementation() {
     'Refusing to validate generated external beta evidence artifacts',
     'post-run violations',
     'printJsonPlan',
+    'printSummary',
+    'contractClosurePercent',
+    'externalEvidenceEnvReadinessPercent',
+    'readinessCounts',
+    'manualArtifactReadyForValidationJobCount',
+    'blockedMissingRequiredEnvJobCount',
     'uniqueMissingEnv',
     'readSelectedJobSelection',
     'Invalid external beta evidence job selection:',
@@ -615,6 +622,7 @@ function validateWiring() {
   const checkScript = scriptNameFromCommand(contract.checkCommand);
   const planScript = scriptNameFromCommand(contract.planCommand);
   const jsonPlanScript = scriptNameFromCommand(contract.jsonPlanCommand);
+  const summaryScript = scriptNameFromCommand(contract.summaryCommand);
   const preflightScript = scriptNameFromCommand(contract.preflightCommand);
   const artifactValidationScript = scriptNameFromCommand(contract.artifactValidationCommand);
   const executeScript = scriptNameFromCommand(contract.executeCommand);
@@ -623,6 +631,7 @@ function validateWiring() {
     checkScript,
     planScript,
     jsonPlanScript,
+    summaryScript,
     preflightScript,
     artifactValidationScript,
     executeScript,
@@ -633,6 +642,9 @@ function validateWiring() {
   }
   if (!String(packageScripts[jsonPlanScript] ?? '').includes('--json')) {
     violations.push(`${packagePath}: ${jsonPlanScript} must pass --json`);
+  }
+  if (!String(packageScripts[summaryScript] ?? '').includes('--summary')) {
+    violations.push(`${packagePath}: ${summaryScript} must pass --summary`);
   }
   if (!String(packageScripts[preflightScript] ?? '').includes('--require-env')) {
     violations.push(`${packagePath}: ${preflightScript} must pass --require-env`);
@@ -646,7 +658,7 @@ function validateWiring() {
   if (!backendScripts.has(checkScript)) {
     violations.push(`${backendSafePath}: backendScripts must include ${checkScript}`);
   }
-  for (const scriptName of [planScript, jsonPlanScript, preflightScript, artifactValidationScript, executeScript]) {
+  for (const scriptName of [planScript, jsonPlanScript, summaryScript, preflightScript, artifactValidationScript, executeScript]) {
     if (backendScripts.has(scriptName)) {
       violations.push(`${backendSafePath}: backend-safe verify must not run ${scriptName}`);
     }
@@ -674,6 +686,9 @@ function validateWiring() {
   }
   if (evidenceRunner.jsonPlanCommand !== contract.jsonPlanCommand) {
     violations.push(`${externalReadinessPath}: evidenceRunner.jsonPlanCommand must match runner contract`);
+  }
+  if (evidenceRunner.summaryCommand !== contract.summaryCommand) {
+    violations.push(`${externalReadinessPath}: evidenceRunner.summaryCommand must match runner contract`);
   }
   if (evidenceRunner.preflightCommand !== contract.preflightCommand) {
     violations.push(`${externalReadinessPath}: evidenceRunner.preflightCommand must match runner contract`);
