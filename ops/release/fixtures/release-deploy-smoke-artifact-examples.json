@@ -17,6 +17,12 @@
       },
       "operator": "release-owner",
       "sampledAt": "2026-06-18T10:10:00.000Z",
+      "provenance": {
+        "evidenceKind": "fixture_example",
+        "collectionMethod": "Synthetic fixture example for release deploy smoke schema validation.",
+        "runner": "ops/release/fixtures/release-deploy-smoke-artifact-examples.json",
+        "fixtureOnly": true
+      },
       "redaction": {
         "secretsIncluded": false,
         "rawHeadersIncluded": false,

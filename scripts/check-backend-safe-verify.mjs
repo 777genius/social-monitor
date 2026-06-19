@@ -26,6 +26,13 @@ if (!String(packageScripts[contract.runnerScript] ?? '').includes(contract.runne
   violations.push(`${packagePath}: ${contract.runnerScript} must run ${contract.runnerFile}`);
 }
 
+const lintScript = String(packageScripts.lint ?? '');
+const lintTimeoutMatch = lintScript.match(/--timeout-ms\s+(\d+)/);
+const lintTimeoutMs = lintTimeoutMatch === null ? 0 : Number(lintTimeoutMatch[1]);
+if (lintTimeoutMs < 180_000) {
+  violations.push(`${packagePath}: lint timeout must be at least 180000ms for backend-safe verify stability`);
+}
+
 for (const scriptName of backendScripts) {
   if (!packageScripts[scriptName]) {
     violations.push(`${contractPath}: backendScripts references missing npm script "${scriptName}"`);

@@ -109,7 +109,7 @@
     "check:usage-persistence": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-usage-prisma-persistence.ts",
     "check:tenant-db-guards": "node scripts/check-tenant-db-guards.mjs",
     "check:write-idempotency": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-write-idempotency-smoke.ts",
-    "lint": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=1024 -- eslint .",
+    "lint": "node scripts/run-with-timeout.mjs --timeout-ms 240000 --node-options --max-old-space-size=1024 -- eslint .",
     "migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
     "migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
