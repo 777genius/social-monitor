@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { URL } from 'node:url';
 
 const artifactPath = 'ops/release/release-artifact-evidence.json';
 const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
@@ -20,6 +21,7 @@ const hasVerificationScript = (scriptName) =>
   verifyScript.includes(`npm run ${scriptName}`) || backendSafeScripts.has(scriptName);
 const violations = [];
 const deployArtifactFormat = 'release-deploy-smoke-artifact-v1';
+const releaseDeploySmokeArtifactPath = process.env.RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH?.trim();
 const allowedArtifactStatus = new Set(['pending_image_digest_and_deploy_smoke', 'passed']);
 const requiredSmokeEvidenceShapeBySmokeId = new Map([
   [
@@ -192,6 +194,7 @@ for (const smokeId of smokeIds) {
 }
 
 validateExampleDeployArtifact();
+validateEnvDeploySmokeArtifact(gitSha, migrationVersion);
 
 if (artifact.status === 'passed') {
   if (imageDigest === null) {
@@ -226,6 +229,7 @@ function validateDeployArtifactContentSchema() {
     'artifactId',
     'environmentId',
     'imageDigest',
+    'apiBaseUrl',
     'commitSha',
     'migrationVersion',
     'operator',
@@ -238,6 +242,7 @@ function validateDeployArtifactContentSchema() {
       violations.push(`${artifactPath}: deploySmokeArtifactContentSchema.requiredTopLevelFields must include ${field}`);
     }
   }
+  validateEnvArtifactValidation(schema.envArtifactValidation);
 
   const redaction = schema.redactionRequirements;
   if (typeof redaction !== 'object' || redaction === null) {
@@ -319,7 +324,7 @@ function validateDeployArtifactShape(deployArtifact, options) {
   if (deployArtifact.format !== deployArtifactFormat) {
     violations.push(`${label}: format must be ${deployArtifactFormat}`);
   }
-  for (const field of ['artifactId', 'environmentId', 'imageDigest', 'commitSha', 'operator', 'sampledAt']) {
+  for (const field of ['artifactId', 'environmentId', 'imageDigest', 'apiBaseUrl', 'commitSha', 'operator', 'sampledAt']) {
     if (typeof deployArtifact[field] !== 'string' || deployArtifact[field].trim().length === 0) {
       violations.push(`${label}: ${field} must be a non-empty string`);
     }
@@ -329,6 +334,9 @@ function validateDeployArtifactShape(deployArtifact, options) {
   }
   if (!/^[0-9a-f]{40}$/.test(String(deployArtifact.commitSha ?? ''))) {
     violations.push(`${label}: commitSha must be a full 40 character git sha`);
+  }
+  if (!isHttpUrlWithoutCredentials(deployArtifact.apiBaseUrl)) {
+    violations.push(`${label}: apiBaseUrl must be an http(s) URL without credentials`);
   }
 
   validateDeployArtifactRedaction(deployArtifact, label);
@@ -352,6 +360,9 @@ function validateDeployArtifactShape(deployArtifact, options) {
     }
     if (deployArtifact.commitSha !== options.expectedCommitSha) {
       violations.push(`${label}: commitSha must match current release commit`);
+    }
+    if (options.expectedApiBaseUrl !== undefined && deployArtifact.apiBaseUrl !== options.expectedApiBaseUrl) {
+      violations.push(`${label}: apiBaseUrl must match API_BASE_URL`);
     }
   }
 }
@@ -485,8 +496,65 @@ function validateDeployArtifactSmokeResults(deployArtifact, label, options) {
     }
   }
 
-  if (options.strict === true && !seenSmokeIds.has(options.expectedSmokeId)) {
+  if (options.strict === true && options.expectedSmokeId !== undefined && !seenSmokeIds.has(options.expectedSmokeId)) {
     violations.push(`${label}: must include smokeResult "${options.expectedSmokeId}"`);
+  }
+}
+
+function validateEnvDeploySmokeArtifact(gitSha, migrationVersion) {
+  if (releaseDeploySmokeArtifactPath === undefined || releaseDeploySmokeArtifactPath.length === 0) {
+    return;
+  }
+  if (!existsSync(releaseDeploySmokeArtifactPath)) {
+    violations.push('RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH must reference an existing deploy smoke artifact');
+    return;
+  }
+
+  const environmentId = requireEnvWhenDeployArtifactIsPresent('STAGING_ENVIRONMENT_ID');
+  const imageDigest = requireEnvWhenDeployArtifactIsPresent('BACKEND_IMAGE_DIGEST');
+  const apiBaseUrl = requireEnvWhenDeployArtifactIsPresent('API_BASE_URL');
+  const deployArtifact = JSON.parse(readFileSync(releaseDeploySmokeArtifactPath, 'utf8'));
+  validateDeployArtifactShape(deployArtifact, {
+    label: `RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH (${releaseDeploySmokeArtifactPath})`,
+    strict: true,
+    expectedEnvironmentId: environmentId,
+    expectedImageDigest: imageDigest,
+    expectedSampledAt: deployArtifact.sampledAt,
+    expectedCommitSha: gitSha,
+    expectedMigrationVersion: migrationVersion,
+    expectedReleaseImageDigest: imageDigest,
+    expectedApiBaseUrl: apiBaseUrl,
+  });
+}
+
+function requireEnvWhenDeployArtifactIsPresent(name) {
+  const value = process.env[name]?.trim();
+  if (value === undefined || value.length === 0) {
+    violations.push(`RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH requires ${name}`);
+    return undefined;
+  }
+
+  return value;
+}
+
+function validateEnvArtifactValidation(validationRules) {
+  if (!Array.isArray(validationRules)) {
+    violations.push(`${artifactPath}: deploySmokeArtifactContentSchema.envArtifactValidation must be an array`);
+    return;
+  }
+
+  const rule = validationRules.find((item) => item?.envVar === 'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH');
+  if (!isRecord(rule)) {
+    violations.push(`${artifactPath}: envArtifactValidation must include RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH`);
+    return;
+  }
+  if (rule.format !== deployArtifactFormat) {
+    violations.push(`${artifactPath}: RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH format must be ${deployArtifactFormat}`);
+  }
+  for (const envVar of ['STAGING_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'API_BASE_URL']) {
+    if (!rule.requiredEnv?.includes(envVar)) {
+      violations.push(`${artifactPath}: RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH requiredEnv must include ${envVar}`);
+    }
   }
 }
 
@@ -587,6 +655,19 @@ function isSupportedEvidenceType(fieldType) {
 
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isHttpUrlWithoutCredentials(value) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) && url.username === '' && url.password === '';
+  } catch {
+    return false;
+  }
 }
 
 if (!scripts['check:release-artifact-evidence']) {

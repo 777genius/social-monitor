@@ -9,6 +9,7 @@
       "artifactId": "backend-release-deploy-smoke-staging-beta-a",
       "environmentId": "staging-beta-a",
       "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000201",
+      "apiBaseUrl": "https://api.example.invalid",
       "commitSha": "0000000000000000000000000000000000000201",
       "migrationVersion": {
         "value": "20260618143000_baseline",

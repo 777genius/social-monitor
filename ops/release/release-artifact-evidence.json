@@ -27,6 +27,7 @@
       "artifactId",
       "environmentId",
       "imageDigest",
+      "apiBaseUrl",
       "commitSha",
       "migrationVersion",
       "operator",
@@ -57,9 +58,20 @@
         "artifact artifactDigests must match committed OpenAPI, event catalog and Prisma schema hashes",
         "artifact smokeResults must include every deploy smoke declared in the release contract",
         "artifact smokeResults.evidence must be a smoke-specific redacted object with required fields",
-        "artifact JSON must not include tokens, raw headers, raw payloads, DB URLs or broker URLs"
+      "artifact JSON must not include tokens, raw headers, raw payloads, DB URLs or broker URLs"
       ]
-    }
+    },
+    "envArtifactValidation": [
+      {
+        "envVar": "RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH",
+        "format": "release-deploy-smoke-artifact-v1",
+        "requiredEnv": [
+          "STAGING_ENVIRONMENT_ID",
+          "BACKEND_IMAGE_DIGEST",
+          "API_BASE_URL"
+        ]
+      }
+    ]
   },
   "artifactDigests": [
     {
