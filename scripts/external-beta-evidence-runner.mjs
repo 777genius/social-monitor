@@ -276,7 +276,7 @@ function artifactValidationViolations(candidateJobs) {
     if (missingEnv.length > 0) {
       violations.push(`${job.jobId}: missing required env ${missingEnv.join(', ')}`);
     }
-    const invalidPathEnv = validateRequiredPathEnv(job, missingEnvSet, violations);
+    const invalidPathEnv = validateEvidencePathEnv(job, missingEnvSet, violations);
 
     for (const artifact of job.outputArtifacts ?? []) {
       if (artifact.env === undefined) {
@@ -315,10 +315,11 @@ function artifactValidationViolations(candidateJobs) {
   return violations;
 }
 
-function validateRequiredPathEnv(job, missingEnvSet, violations) {
+function validateEvidencePathEnv(job, missingEnvSet, violations) {
   const invalidPathEnv = new Set();
+  const pathEnvNames = new Set([...(job.requiredEnv ?? []), ...(job.optionalEnv ?? [])]);
 
-  for (const envName of job.requiredEnv ?? []) {
+  for (const envName of pathEnvNames) {
     if (!envName.endsWith('_PATH') || missingEnvSet.has(envName)) {
       continue;
     }
@@ -328,12 +329,12 @@ function validateRequiredPathEnv(job, missingEnvSet, violations) {
       continue;
     }
     if (!existsSync(value)) {
-      violations.push(`${job.jobId}: required path env ${envName} must point to an existing file path`);
+      violations.push(`${job.jobId}: evidence path env ${envName} must point to an existing file path`);
       invalidPathEnv.add(envName);
       continue;
     }
     if (isFixtureLikeArtifactPath(value)) {
-      violations.push(`${job.jobId}: required path env ${envName} must not point to fixture or example evidence`);
+      violations.push(`${job.jobId}: evidence path env ${envName} must not point to fixture or example evidence`);
       invalidPathEnv.add(envName);
     }
   }
