@@ -319,9 +319,14 @@ function validateRunnerImplementation() {
     'evidence path env',
     'validateArtifactRedaction',
     'forbiddenArtifactValueFragments',
+    'forbiddenArtifactKeyNames',
     'sensitive literal fragment',
     'containsFixtureProvenance',
     'fixture provenance',
+    'unredactedSensitiveKeyPaths',
+    'unredacted sensitive key',
+    'normalizeArtifactKey',
+    'isRedactedArtifactValue',
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);

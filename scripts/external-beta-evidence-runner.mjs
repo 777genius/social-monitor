@@ -16,6 +16,21 @@ const forbiddenArtifactValueFragments = [
   'smk_',
   'whsec_',
 ];
+const forbiddenArtifactKeyNames = new Set([
+  'authorization',
+  'bearer',
+  'token',
+  'secret',
+  'password',
+  'accesstoken',
+  'refreshtoken',
+  'clientsecret',
+  'privatekey',
+  'secretkey',
+  'redditaccesstoken',
+  'databaseurl',
+  'rabbitmqurl',
+]);
 const args = process.argv.slice(2);
 const execute = args.includes('--execute');
 const validateArtifacts = args.includes('--validate-artifacts');
@@ -385,6 +400,10 @@ function validateArtifactRedaction(content, jobId, envName, violations) {
   if (containsFixtureProvenance(content)) {
     violations.push(`${jobId}: output artifact env ${envName} must not contain fixture provenance`);
   }
+
+  for (const keyPath of unredactedSensitiveKeyPaths(content)) {
+    violations.push(`${jobId}: output artifact env ${envName} must not contain unredacted sensitive key "${keyPath}"`);
+  }
 }
 
 function containsFixtureProvenance(value) {
@@ -400,6 +419,46 @@ function containsFixtureProvenance(value) {
   }
 
   return Object.values(value).some((item) => containsFixtureProvenance(item));
+}
+
+function unredactedSensitiveKeyPaths(value, path = []) {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => unredactedSensitiveKeyPaths(item, [...path, String(index)]));
+  }
+  if (typeof value !== 'object' || value === null) {
+    return [];
+  }
+
+  const findings = [];
+  for (const [key, child] of Object.entries(value)) {
+    const nextPath = [...path, key];
+    if (forbiddenArtifactKeyNames.has(normalizeArtifactKey(key)) && !isRedactedArtifactValue(child)) {
+      findings.push(nextPath.join('.'));
+    }
+    findings.push(...unredactedSensitiveKeyPaths(child, nextPath));
+  }
+  return findings;
+}
+
+function normalizeArtifactKey(key) {
+  return String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function isRedactedArtifactValue(value) {
+  if (value === null || value === false) {
+    return true;
+  }
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized.length === 0
+    || normalized.includes('redacted')
+    || normalized.includes('masked')
+    || normalized.includes('omitted')
+    || normalized.includes('absent')
+    || normalized.includes('unavailable');
 }
 
 function formatOutputArtifacts(job) {
