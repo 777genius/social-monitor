@@ -6,6 +6,7 @@ const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
 const args = process.argv.slice(2);
 const execute = args.includes('--execute');
 const requireEnv = args.includes('--require-env');
+const json = args.includes('--json');
 const selectedJobIds = readSelectedJobIds(args);
 const knownJobIds = new Set(contract.jobs.map((job) => job.jobId));
 const unknownJobIds = selectedJobIds.filter((jobId) => !knownJobIds.has(jobId));
@@ -25,8 +26,13 @@ if (jobs.length === 0) {
 }
 
 if (!execute) {
-  const missingEnvCount = printPlan(jobs);
-  if (requireEnv && missingEnvCount > 0) {
+  const plan = buildPlan(jobs);
+  if (json) {
+    printJsonPlan(plan);
+  } else {
+    printPlan(plan);
+  }
+  if (requireEnv && plan.missingEnvCount > 0) {
     process.exit(1);
   }
   process.exit(0);
@@ -56,15 +62,44 @@ for (const job of jobs) {
   }
 }
 
-function printPlan(planJobs) {
-  let missingEnvCount = 0;
-  console.log(`External beta evidence plan (${contract.runnerId})`);
-  console.log(`Mode: ${execute ? 'execute' : 'plan_only'}`);
-  console.log(`Jobs: ${planJobs.length}`);
+function buildPlan(planJobs) {
+  const plan = {
+    runnerId: contract.runnerId,
+    mode: execute ? 'execute' : 'plan_only',
+    jobCount: planJobs.length,
+    missingEnvCount: 0,
+    uniqueMissingEnv: [],
+    jobs: [],
+  };
 
   for (const job of planJobs) {
     const missingEnv = missingRequiredEnv(job);
-    missingEnvCount += missingEnv.length;
+    plan.jobs.push({
+      jobId: job.jobId,
+      evidenceGroupId: job.evidenceGroupId,
+      mode: job.mode,
+      runPolicy: job.runPolicy,
+      owner: job.owner,
+      runnerCommand: job.runnerCommand,
+      validationCommands: job.validationCommands,
+      requiredEnv: job.requiredEnv,
+      missingEnv,
+      outputArtifacts: job.outputArtifacts,
+      exitCondition: job.exitCondition,
+    });
+    plan.missingEnvCount += missingEnv.length;
+  }
+  plan.uniqueMissingEnv = [...new Set(plan.jobs.flatMap((job) => job.missingEnv))].sort();
+
+  return plan;
+}
+
+function printPlan(plan) {
+  console.log(`External beta evidence plan (${contract.runnerId})`);
+  console.log(`Mode: ${plan.mode}`);
+  console.log(`Jobs: ${plan.jobCount}`);
+
+  for (const job of plan.jobs) {
     console.log('');
     console.log(`${job.jobId}`);
     console.log(`  group: ${job.evidenceGroupId}`);
@@ -74,16 +109,19 @@ function printPlan(planJobs) {
     console.log(`  runner: ${job.runnerCommand ?? 'manual artifact / validators only'}`);
     console.log(`  validators: ${job.validationCommands.join(' && ')}`);
     console.log(`  requiredEnv: ${job.requiredEnv.length === 0 ? 'none' : job.requiredEnv.join(', ')}`);
-    console.log(`  missingEnv: ${missingEnv.length === 0 ? 'none' : missingEnv.join(', ')}`);
+    console.log(`  missingEnv: ${job.missingEnv.length === 0 ? 'none' : job.missingEnv.join(', ')}`);
     console.log(`  outputArtifacts: ${formatOutputArtifacts(job)}`);
     console.log(`  exit: ${job.exitCondition}`);
   }
 
-  if (missingEnvCount > 0) {
+  if (plan.missingEnvCount > 0) {
     console.log('');
-    console.log(`Missing required env count: ${missingEnvCount}`);
+    console.log(`Missing required env count: ${plan.missingEnvCount}`);
   }
-  return missingEnvCount;
+}
+
+function printJsonPlan(plan) {
+  console.log(JSON.stringify(plan, null, 2));
 }
 
 function readSelectedJobIds(argv) {

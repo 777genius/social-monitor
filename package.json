@@ -117,6 +117,7 @@
     "test": "node scripts/run-with-timeout.mjs --timeout-ms 600000 --node-options --max-old-space-size=1024 -- jest --config jest.config.ts --runInBand",
     "test:e2e": "node scripts/run-with-timeout.mjs --timeout-ms 480000 --node-options --max-old-space-size=1024 -- jest --config test/jest-e2e.config.ts --runInBand",
     "beta:evidence:plan": "node scripts/external-beta-evidence-runner.mjs --plan",
+    "beta:evidence:plan:json": "node scripts/external-beta-evidence-runner.mjs --plan --json",
     "beta:evidence:preflight": "node scripts/external-beta-evidence-runner.mjs --plan --require-env",
     "beta:evidence:run": "node scripts/external-beta-evidence-runner.mjs",
     "update:openapi": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --clean-env --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-openapi.ts --update",

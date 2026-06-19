@@ -225,6 +225,7 @@ for (const field of ['runnerFile', 'checkFile']) {
 
 validateCommand(contract.checkCommand, `${contractPath}: checkCommand`);
 validateCommand(contract.planCommand, `${contractPath}: planCommand`);
+validateCommand(contract.jsonPlanCommand, `${contractPath}: jsonPlanCommand`);
 validateCommand(contract.preflightCommand, `${contractPath}: preflightCommand`);
 validateCommand(contract.executeCommand, `${contractPath}: executeCommand`);
 validateSafety();
@@ -279,6 +280,8 @@ function validateRunnerImplementation() {
     'Known jobs:',
     'executableJobViolations',
     'Refusing to execute external beta evidence jobs. Resolve all preflight violations first:',
+    'printJsonPlan',
+    'uniqueMissingEnv',
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);
@@ -488,13 +491,17 @@ function validateJobScopeSafety(job, label) {
 function validateWiring() {
   const checkScript = scriptNameFromCommand(contract.checkCommand);
   const planScript = scriptNameFromCommand(contract.planCommand);
+  const jsonPlanScript = scriptNameFromCommand(contract.jsonPlanCommand);
   const preflightScript = scriptNameFromCommand(contract.preflightCommand);
   const executeScript = scriptNameFromCommand(contract.executeCommand);
 
-  for (const scriptName of [checkScript, planScript, preflightScript, executeScript]) {
+  for (const scriptName of [checkScript, planScript, jsonPlanScript, preflightScript, executeScript]) {
     if (!packageScripts[scriptName]) {
       violations.push(`${packagePath}: missing npm script "${scriptName}"`);
     }
+  }
+  if (!String(packageScripts[jsonPlanScript] ?? '').includes('--json')) {
+    violations.push(`${packagePath}: ${jsonPlanScript} must pass --json`);
   }
   if (!String(packageScripts[preflightScript] ?? '').includes('--require-env')) {
     violations.push(`${packagePath}: ${preflightScript} must pass --require-env`);
@@ -502,7 +509,7 @@ function validateWiring() {
   if (!backendScripts.has(checkScript)) {
     violations.push(`${backendSafePath}: backendScripts must include ${checkScript}`);
   }
-  for (const scriptName of [planScript, preflightScript, executeScript]) {
+  for (const scriptName of [planScript, jsonPlanScript, preflightScript, executeScript]) {
     if (backendScripts.has(scriptName)) {
       violations.push(`${backendSafePath}: backend-safe verify must not run ${scriptName}`);
     }
@@ -527,6 +534,9 @@ function validateWiring() {
   }
   if (evidenceRunner.planCommand !== contract.planCommand) {
     violations.push(`${externalReadinessPath}: evidenceRunner.planCommand must match runner contract`);
+  }
+  if (evidenceRunner.jsonPlanCommand !== contract.jsonPlanCommand) {
+    violations.push(`${externalReadinessPath}: evidenceRunner.jsonPlanCommand must match runner contract`);
   }
   if (evidenceRunner.preflightCommand !== contract.preflightCommand) {
     violations.push(`${externalReadinessPath}: evidenceRunner.preflightCommand must match runner contract`);
@@ -554,6 +564,6 @@ function validateCommand(command, label) {
 }
 
 function scriptNameFromCommand(command) {
-  const match = /^npm run ([^ ]+)/.exec(String(command ?? ''));
+  const match = /^npm run (?:--silent )?([^ ]+)/.exec(String(command ?? ''));
   return match?.[1] ?? null;
 }

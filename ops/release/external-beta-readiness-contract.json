@@ -17,6 +17,7 @@
     "contract": "ops/release/external-beta-evidence-runner.json",
     "checkCommand": "npm run check:external-beta-evidence-runner",
     "planCommand": "npm run beta:evidence:plan",
+    "jsonPlanCommand": "npm run --silent beta:evidence:plan:json",
     "preflightCommand": "npm run beta:evidence:preflight"
   },
   "capacityEnvelope": {

@@ -72,9 +72,9 @@ if (typeof evidenceRunner !== 'object' || evidenceRunner === null) {
   if (!existsSync(evidenceRunner.contract ?? '')) {
     violations.push(`${contractPath}: evidenceRunner.contract must reference an existing contract`);
   }
-  for (const field of ['checkCommand', 'planCommand', 'preflightCommand']) {
-    const scriptName = String(evidenceRunner[field] ?? '').replace(/^npm run /, '');
-    if (!String(evidenceRunner[field] ?? '').startsWith('npm run ') || !scripts[scriptName]) {
+  for (const field of ['checkCommand', 'planCommand', 'jsonPlanCommand', 'preflightCommand']) {
+    const scriptName = scriptNameFromNpmCommand(evidenceRunner[field]);
+    if (scriptName === null || !scripts[scriptName]) {
       violations.push(`${contractPath}: evidenceRunner.${field} must reference an existing npm script`);
     }
   }
@@ -184,3 +184,8 @@ if (violations.length > 0) {
 }
 
 console.log('External beta readiness contract OK');
+
+function scriptNameFromNpmCommand(command) {
+  const match = /^npm run (?:--silent )?([^ ]+)/.exec(String(command ?? ''));
+  return match?.[1] ?? null;
+}
