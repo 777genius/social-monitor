@@ -112,6 +112,10 @@
       "path": "ops/ingestion/fixtures/source-live-certification-artifact-examples.json"
     },
     {
+      "artifactId": "reddit-credential-lifecycle-redacted-example",
+      "path": "ops/ingestion/fixtures/reddit-credential-lifecycle-redacted.example.json"
+    },
+    {
       "artifactId": "staging-reliability-evidence",
       "path": "ops/drills/staging-reliability-evidence.json"
     },

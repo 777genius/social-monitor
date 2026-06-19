@@ -238,6 +238,7 @@ validateCommand(contract.preflightCommand, `${contractPath}: preflightCommand`);
 validateCommand(contract.artifactValidationCommand, `${contractPath}: artifactValidationCommand`);
 validateCommand(contract.executeCommand, `${contractPath}: executeCommand`);
 validateSafety();
+validateArtifactExamples();
 validateRunnerImplementation();
 validateJobs();
 validateEnvExample();
@@ -282,6 +283,64 @@ function validateSafety() {
   for (const forbidden of forbiddenFragments) {
     if (!safety.forbiddenTargets?.includes(forbidden)) {
       violations.push(`${contractPath}: executionSafety.forbiddenTargets must include ${forbidden}`);
+    }
+  }
+}
+
+function validateArtifactExamples() {
+  if (!Array.isArray(contract.artifactExamples) || contract.artifactExamples.length === 0) {
+    violations.push(`${contractPath}: artifactExamples must be a non-empty array`);
+    return;
+  }
+
+  const examplesByFormat = new Map();
+  for (const example of contract.artifactExamples) {
+    const label = `${contractPath}: artifact example "${example?.format ?? '<missing>'}"`;
+    if (typeof example?.format !== 'string' || example.format.trim().length === 0) {
+      violations.push(`${label}: format must be a non-empty string`);
+      continue;
+    }
+    if (typeof example.path !== 'string' || example.path.trim().length === 0) {
+      violations.push(`${label}: path must be a non-empty string`);
+      continue;
+    }
+    if (examplesByFormat.has(example.format)) {
+      violations.push(`${contractPath}: duplicate artifact example format "${example.format}"`);
+    }
+    examplesByFormat.set(example.format, example.path);
+
+    if (!existsSync(example.path)) {
+      violations.push(`${label}: path must exist: ${example.path}`);
+      continue;
+    }
+    if (!baselineArtifacts.has(example.path)) {
+      violations.push(`${baselinePath}: trackedArtifacts must include artifact example ${example.path}`);
+    }
+
+    const source = readFileSync(example.path, 'utf8');
+    if (!source.includes(example.format)) {
+      violations.push(`${label}: example file must mention format "${example.format}"`);
+    }
+    if (!source.includes('"fixtureOnly": true') && !source.includes('"evidenceKind": "fixture_example"')) {
+      violations.push(`${label}: example file must be marked as fixture-only`);
+    }
+  }
+
+  const envArtifactFormats = new Set(
+    contract.jobs
+      .flatMap((job) => job.outputArtifacts ?? [])
+      .filter((artifact) => artifact.env !== undefined)
+      .map((artifact) => artifact.format),
+  );
+
+  for (const format of envArtifactFormats) {
+    if (!examplesByFormat.has(format)) {
+      violations.push(`${contractPath}: artifactExamples must include env artifact format "${format}"`);
+    }
+  }
+  for (const format of examplesByFormat.keys()) {
+    if (!envArtifactFormats.has(format)) {
+      violations.push(`${contractPath}: artifactExamples contains unused format "${format}"`);
     }
   }
 }

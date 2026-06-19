@@ -31,6 +31,44 @@
     "artifactValidationSkipsLiveRunners": true,
     "secretValuesMustStayOutOfArtifacts": true
   },
+  "artifactExamples": [
+    {
+      "format": "durable-runtime-selector-artifact-v1",
+      "path": "ops/release/fixtures/durable-runtime-selector-artifact-examples.json"
+    },
+    {
+      "format": "source-live-provider-evidence-v1",
+      "path": "ops/ingestion/fixtures/source-live-certification-artifact-examples.json"
+    },
+    {
+      "format": "reddit-credential-lifecycle-redacted-v1",
+      "path": "ops/ingestion/fixtures/reddit-credential-lifecycle-redacted.example.json"
+    },
+    {
+      "format": "source-credential-rotation-redacted-v1",
+      "path": "ops/security/fixtures/source-credential-rotation-redacted-examples.json"
+    },
+    {
+      "format": "webhook-secret-rotation-redacted-v1",
+      "path": "ops/security/fixtures/webhook-secret-rotation-redacted-examples.json"
+    },
+    {
+      "format": "staging-reliability-artifact-v1",
+      "path": "ops/drills/fixtures/staging-reliability-artifact-examples.json"
+    },
+    {
+      "format": "redacted-summary-feedback-samples-v1",
+      "path": "ops/release/fixtures/redacted-summary-feedback-samples-examples.json"
+    },
+    {
+      "format": "release-deploy-smoke-artifact-v1",
+      "path": "ops/release/fixtures/release-deploy-smoke-artifact-examples.json"
+    },
+    {
+      "format": "security-final-sweep-staging-artifact-v1",
+      "path": "ops/security/fixtures/security-final-sweep-staging-artifact-examples.json"
+    }
+  ],
   "jobs": [
     {
       "jobId": "release-baseline-freeze",
