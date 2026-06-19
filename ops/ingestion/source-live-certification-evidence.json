@@ -91,9 +91,71 @@
       {
         "envVar": "REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH",
         "kind": "reddit-credential-lifecycle-redacted",
-        "sha256MustMatchSignal": "reddit-credential-lifecycle"
+        "format": "reddit-credential-lifecycle-redacted-v1",
+        "sha256MustMatchSignal": "reddit-credential-lifecycle",
+        "requiredEnv": [
+          "SOURCE_LIVE_ENVIRONMENT_ID",
+          "BACKEND_IMAGE_DIGEST",
+          "SOURCE_LIVE_OPERATOR"
+        ]
       }
-    ]
+    ],
+    "lifecycleArtifactSchema": {
+      "format": "reddit-credential-lifecycle-redacted-v1",
+      "exampleArtifactPath": "ops/ingestion/fixtures/reddit-credential-lifecycle-redacted.example.json",
+      "requiredTopLevelFields": [
+        "schemaVersion",
+        "format",
+        "artifactId",
+        "environmentId",
+        "imageDigest",
+        "operator",
+        "sampledAt",
+        "provenance",
+        "redaction",
+        "lifecycleOperations"
+      ],
+      "requiredEnv": [
+        "SOURCE_LIVE_ENVIRONMENT_ID",
+        "BACKEND_IMAGE_DIGEST",
+        "SOURCE_LIVE_OPERATOR"
+      ],
+      "provenanceRequirements": {
+        "evidenceKind": "credential_lifecycle",
+        "fixtureOnly": false,
+        "requiredFields": [
+          "evidenceKind",
+          "collectionMethod",
+          "runner",
+          "fixtureOnly"
+        ],
+        "forbiddenRealFragments": [
+          "example",
+          "fixture",
+          "synthetic",
+          "mock",
+          "test"
+        ]
+      },
+      "redactionRequirements": {
+        "secretsIncluded": false,
+        "rawProviderPayloadsIncluded": false,
+        "credentialValuesIncluded": false,
+        "privateNetworkUrlsIncluded": false
+      },
+      "requiredOperations": [
+        "create",
+        "rotate",
+        "revoke",
+        "redacted-preview"
+      ],
+      "matchingRules": [
+        "REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH must be a structured JSON artifact",
+        "environmentId, imageDigest and operator must match the promoted live evidence environment",
+        "artifact sha256 must match the reddit-credential-lifecycle signal in REDDIT_LIVE_EVIDENCE_PATH",
+        "lifecycle operations must prove create, rotate, revoke and redacted-preview without credential values"
+      ]
+    }
   },
   "liveProviderEvidence": [
     {

@@ -33,6 +33,9 @@ const gateId = 'source-live-certification-evidence';
 const liveStatusValues = new Set(['pending_live_evidence', 'passed']);
 const liveArtifactFormat = 'source-live-provider-evidence-v1';
 const liveArtifactEvidenceKind = 'live_network';
+const redditCredentialLifecycleFormat = 'reddit-credential-lifecycle-redacted-v1';
+const redditCredentialLifecycleEvidenceKind = 'credential_lifecycle';
+const requiredRedditLifecycleOperations = new Set(['create', 'rotate', 'revoke', 'redacted-preview']);
 const requiredProviderSignals = new Map([
   ['hacker-news', new Set(['hn-live-http-smoke', 'hn-rate-limit-evidence'])],
   ['rss', new Set(['rss-allowlisted-live-feeds', 'rss-http-cache-evidence', 'rss-ssrf-proof'])],
@@ -365,13 +368,18 @@ function validatePassedArtifactContentSchema() {
 
   validateProvenanceRequirements(schema.provenanceRequirements);
   validateEnvArtifactValidation(schema.envArtifactValidation);
+  validateRedditCredentialLifecycleSchema(schema.lifecycleArtifactSchema);
 }
 
-function validateProvenanceRequirements(requirements) {
+function validateProvenanceRequirements(
+  requirements,
+  label = 'passedArtifactContentSchema.provenanceRequirements',
+  expectedEvidenceKind = liveArtifactEvidenceKind,
+) {
   validateEvidenceProvenanceRequirements({
     requirements,
-    expectedEvidenceKind: liveArtifactEvidenceKind,
-    label: 'passedArtifactContentSchema.provenanceRequirements',
+    expectedEvidenceKind,
+    label,
     sourcePath: evidencePath,
     violations,
   });
@@ -579,10 +587,33 @@ function validateRedditCredentialLifecycleEnvArtifact() {
       violations.push(`REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: lifecycle artifact must not contain "${fragment}"`);
     }
   }
-  for (const marker of ['create', 'rotate', 'revoke', 'redacted']) {
-    if (!lower.includes(marker)) {
-      violations.push(`REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: lifecycle artifact must include ${marker} evidence`);
-    }
+
+  const expectedEnvironmentId = requireEnvWhenArtifactIsPresent(
+    'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH',
+    'SOURCE_LIVE_ENVIRONMENT_ID',
+  );
+  const expectedImageDigest = requireEnvWhenArtifactIsPresent(
+    'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH',
+    'BACKEND_IMAGE_DIGEST',
+  );
+  const expectedOperator = requireEnvWhenArtifactIsPresent(
+    'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH',
+    'SOURCE_LIVE_OPERATOR',
+  );
+
+  let lifecycleArtifact;
+  try {
+    lifecycleArtifact = JSON.parse(serialized);
+  } catch {
+    violations.push('REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: lifecycle artifact must be JSON');
+  }
+  if (lifecycleArtifact !== undefined) {
+    validateRedditCredentialLifecycleArtifact(lifecycleArtifact, {
+      label: `REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH (${lifecyclePath})`,
+      expectedEnvironmentId,
+      expectedImageDigest,
+      expectedOperator,
+    });
   }
 
   const lifecycleSha256 = createHash('sha256').update(serialized).digest('hex');
@@ -662,6 +693,68 @@ function validateArtifactProvenance(provenance, label, options) {
   });
 }
 
+function validateRedditCredentialLifecycleSchema(schema) {
+  const label = 'passedArtifactContentSchema.lifecycleArtifactSchema';
+  if (!isRecord(schema)) {
+    violations.push(`${evidencePath}: ${label} is required`);
+    return;
+  }
+  if (schema.format !== redditCredentialLifecycleFormat) {
+    violations.push(`${evidencePath}: ${label}.format must be ${redditCredentialLifecycleFormat}`);
+  }
+  requireExistingPath(schema.exampleArtifactPath, `${label}.exampleArtifactPath`);
+  requireFieldListCoverage(
+    schema.requiredTopLevelFields,
+    [
+      'schemaVersion',
+      'format',
+      'artifactId',
+      'environmentId',
+      'imageDigest',
+      'operator',
+      'sampledAt',
+      'provenance',
+      'redaction',
+      'lifecycleOperations',
+    ],
+    `${label}.requiredTopLevelFields`,
+  );
+  requireFieldListCoverage(
+    schema.requiredEnv,
+    ['SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'SOURCE_LIVE_OPERATOR'],
+    `${label}.requiredEnv`,
+  );
+  requireFieldListCoverage(schema.requiredOperations, [...requiredRedditLifecycleOperations], `${label}.requiredOperations`);
+  validateProvenanceRequirements(
+    schema.provenanceRequirements,
+    `${label}.provenanceRequirements`,
+    redditCredentialLifecycleEvidenceKind,
+  );
+
+  const redaction = schema.redactionRequirements;
+  if (!isRecord(redaction)) {
+    violations.push(`${evidencePath}: ${label}.redactionRequirements is required`);
+  } else {
+    for (const field of [
+      'secretsIncluded',
+      'rawProviderPayloadsIncluded',
+      'credentialValuesIncluded',
+      'privateNetworkUrlsIncluded',
+    ]) {
+      if (redaction[field] !== false) {
+        violations.push(`${evidencePath}: ${label}.redactionRequirements.${field} must be false`);
+      }
+    }
+  }
+
+  if (typeof schema.exampleArtifactPath === 'string' && existsSync(schema.exampleArtifactPath)) {
+    validateRedditCredentialLifecycleArtifact(readJson(schema.exampleArtifactPath), {
+      label: `${label}.exampleArtifactPath (${schema.exampleArtifactPath})`,
+      allowFixture: true,
+    });
+  }
+}
+
 function validateArtifactRedaction(artifact, label) {
   if (typeof artifact.redaction !== 'object' || artifact.redaction === null) {
     violations.push(`${label}: redaction object is required`);
@@ -676,6 +769,99 @@ function validateArtifactRedaction(artifact, label) {
   ]) {
     if (artifact.redaction[field] !== false) {
       violations.push(`${label}: redaction.${field} must be false`);
+    }
+  }
+}
+
+function validateRedditCredentialLifecycleArtifact(artifact, options) {
+  const label = options.label;
+
+  if (!isRecord(artifact)) {
+    violations.push(`${label}: artifact must be an object`);
+    return;
+  }
+  if (artifact.schemaVersion !== 1) {
+    violations.push(`${label}: schemaVersion must be 1`);
+  }
+  if (artifact.format !== redditCredentialLifecycleFormat) {
+    violations.push(`${label}: format must be ${redditCredentialLifecycleFormat}`);
+  }
+  for (const field of ['artifactId', 'environmentId', 'imageDigest', 'operator', 'sampledAt']) {
+    if (typeof artifact[field] !== 'string' || artifact[field].trim().length === 0) {
+      violations.push(`${label}: ${field} must be a non-empty string`);
+    }
+  }
+  if (!/^sha256:[0-9a-f]{64}$/.test(String(artifact.imageDigest ?? ''))) {
+    violations.push(`${label}: imageDigest must be immutable sha256 digest`);
+  }
+  if (options.expectedEnvironmentId !== undefined && artifact.environmentId !== options.expectedEnvironmentId) {
+    violations.push(`${label}: environmentId must match SOURCE_LIVE_ENVIRONMENT_ID`);
+  }
+  if (options.expectedImageDigest !== undefined && artifact.imageDigest !== options.expectedImageDigest) {
+    violations.push(`${label}: imageDigest must match BACKEND_IMAGE_DIGEST`);
+  }
+  if (options.expectedOperator !== undefined && artifact.operator !== options.expectedOperator) {
+    violations.push(`${label}: operator must match SOURCE_LIVE_OPERATOR`);
+  }
+
+  validateEvidenceArtifactProvenance({
+    provenance: artifact.provenance,
+    label,
+    expectedEvidenceKind: redditCredentialLifecycleEvidenceKind,
+    allowFixture: options.allowFixture === true,
+    violations,
+    realEvidenceLabel: 'reddit credential lifecycle artifacts',
+  });
+  validateArtifactRedaction(artifact, label);
+  validateNoSensitiveArtifactLiterals(artifact, label);
+  validateRedditCredentialLifecycleOperations(artifact.lifecycleOperations, label);
+}
+
+function validateRedditCredentialLifecycleOperations(operations, label) {
+  if (!Array.isArray(operations) || operations.length === 0) {
+    violations.push(`${label}: lifecycleOperations must be a non-empty array`);
+    return;
+  }
+
+  const observedOperations = new Set();
+  for (const [index, operation] of operations.entries()) {
+    const operationLabel = `${label}: lifecycleOperations[${index}]`;
+    if (!isRecord(operation)) {
+      violations.push(`${operationLabel} must be an object`);
+      continue;
+    }
+    if (typeof operation.operation !== 'string' || operation.operation.trim().length === 0) {
+      violations.push(`${operationLabel}.operation must be a non-empty string`);
+    } else {
+      observedOperations.add(operation.operation);
+      if (!requiredRedditLifecycleOperations.has(operation.operation)) {
+        violations.push(`${operationLabel}.operation is unsupported`);
+      }
+    }
+    if (operation.status !== 'passed') {
+      violations.push(`${operationLabel}.status must be passed`);
+    }
+    if (typeof operation.observedAt !== 'string' || operation.observedAt.trim().length === 0) {
+      violations.push(`${operationLabel}.observedAt must be a non-empty string`);
+    }
+    if (!isRecord(operation.evidence)) {
+      violations.push(`${operationLabel}.evidence must be an object`);
+    } else {
+      if (typeof operation.evidence.summary !== 'string' || operation.evidence.summary.trim().length === 0) {
+        violations.push(`${operationLabel}.evidence.summary must be a non-empty string`);
+      }
+      if (operation.evidence.secretValuesRedacted !== true) {
+        violations.push(`${operationLabel}.evidence.secretValuesRedacted must be true`);
+      }
+      if (operation.evidence.auditEventRecorded !== true) {
+        violations.push(`${operationLabel}.evidence.auditEventRecorded must be true`);
+      }
+    }
+  }
+
+  for (const operation of requiredRedditLifecycleOperations) {
+    if (!observedOperations.has(operation)) {
+      violations.push(`${label}: lifecycleOperations must include ${operation}`);
     }
   }
 }
@@ -901,6 +1087,15 @@ function requireProviderSetCoverage(actual, expected, label) {
   for (const providerKey of expected) {
     if (!actual.has(providerKey)) {
       violations.push(`${evidencePath}: ${label}.requiredProviders must include ${providerKey}`);
+    }
+  }
+}
+
+function requireFieldListCoverage(actualValues, expectedValues, label) {
+  const actual = new Set(actualValues ?? []);
+  for (const value of expectedValues) {
+    if (!actual.has(value)) {
+      violations.push(`${evidencePath}: ${label} must include ${value}`);
     }
   }
 }

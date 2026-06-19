@@ -21,12 +21,22 @@ const coveredSignalIds: readonly RedditLiveSignalId[] = [
 ];
 const missingTokenPolicy = 'fail_closed_without_reddit_access_token';
 const liveArtifactFormat = 'source-live-provider-evidence-v1';
+const credentialLifecycleArtifactFormat = 'reddit-credential-lifecycle-redacted-v1';
+const credentialLifecycleEvidenceKind = 'credential_lifecycle';
 const lifecycleEvidencePathEnv = 'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH';
 const liveEvidencePathEnv = 'REDDIT_LIVE_EVIDENCE_PATH';
 const environmentIdEnv = 'SOURCE_LIVE_ENVIRONMENT_ID';
 const imageDigestEnv = 'BACKEND_IMAGE_DIGEST';
 const operatorEnv = 'SOURCE_LIVE_OPERATOR';
 const timeoutMs = 10_000;
+const requiredCredentialLifecycleOperations = ['create', 'rotate', 'revoke', 'redacted-preview'] as const;
+const forbiddenCredentialLifecycleFragments = [
+  'access_token',
+  'refresh_token',
+  'bearer ',
+  'client_secret',
+  'reddit_access_token',
+];
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -255,19 +265,123 @@ const readCredentialLifecycleEvidence = (): {
 
   const serialized = readFileSync(path, 'utf8');
   const lower = serialized.toLowerCase();
-  for (const forbidden of ['access_token', 'refresh_token', 'bearer ', 'client_secret', 'reddit_access_token']) {
+  for (const forbidden of forbiddenCredentialLifecycleFragments) {
     assert(!lower.includes(forbidden), `${lifecycleEvidencePathEnv} must not contain secret fragment ${forbidden}`);
   }
-  for (const marker of ['create', 'rotate', 'revoke', 'redacted']) {
-    assert(lower.includes(marker), `${lifecycleEvidencePathEnv} must include ${marker} lifecycle evidence`);
-  }
+
+  const artifact = parseLifecycleArtifact(serialized);
+  const lifecycleOperations = readLifecycleOperations(artifact);
 
   return {
     sha256: createHash('sha256').update(serialized).digest('hex'),
     redactionChecked: true,
-    lifecycleOperations: ['create', 'rotate', 'revoke', 'redacted-preview'],
+    lifecycleOperations,
   };
 };
+
+const parseLifecycleArtifact = (serialized: string): Record<string, unknown> => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(serialized);
+  } catch {
+    throw new Error(`${lifecycleEvidencePathEnv} must be a JSON ${credentialLifecycleArtifactFormat} artifact`);
+  }
+  assert(isRecord(parsed), `${lifecycleEvidencePathEnv} must be a JSON object`);
+  assert(parsed.schemaVersion === 1, `${lifecycleEvidencePathEnv}.schemaVersion must be 1`);
+  assert(
+    parsed.format === credentialLifecycleArtifactFormat,
+    `${lifecycleEvidencePathEnv}.format must be ${credentialLifecycleArtifactFormat}`,
+  );
+
+  for (const field of ['artifactId', 'environmentId', 'imageDigest', 'operator', 'sampledAt']) {
+    assert(readString(parsed, field).trim().length > 0, `${lifecycleEvidencePathEnv}.${field} must be a non-empty string`);
+  }
+  assert(
+    /^sha256:[0-9a-f]{64}$/.test(readString(parsed, 'imageDigest')),
+    `${lifecycleEvidencePathEnv}.imageDigest must be an immutable sha256 digest`,
+  );
+
+  const provenance = readRecord(parsed, 'provenance');
+  assert(
+    provenance.evidenceKind === credentialLifecycleEvidenceKind,
+    `${lifecycleEvidencePathEnv}.provenance.evidenceKind must be ${credentialLifecycleEvidenceKind}`,
+  );
+  assert(provenance.fixtureOnly === false, `${lifecycleEvidencePathEnv}.provenance.fixtureOnly must be false`);
+  for (const field of ['collectionMethod', 'runner']) {
+    assert(
+      readString(provenance, field).trim().length > 0,
+      `${lifecycleEvidencePathEnv}.provenance.${field} must be a non-empty string`,
+    );
+  }
+
+  const redaction = readRecord(parsed, 'redaction');
+  for (const field of [
+    'secretsIncluded',
+    'rawProviderPayloadsIncluded',
+    'credentialValuesIncluded',
+    'privateNetworkUrlsIncluded',
+  ]) {
+    assert(redaction[field] === false, `${lifecycleEvidencePathEnv}.redaction.${field} must be false`);
+  }
+
+  return parsed;
+};
+
+const readLifecycleOperations = (artifact: Record<string, unknown>): readonly string[] => {
+  const operations = artifact.lifecycleOperations;
+  assert(Array.isArray(operations), `${lifecycleEvidencePathEnv}.lifecycleOperations must be an array`);
+
+  const observedOperations = new Set<string>();
+  for (const [index, operation] of operations.entries()) {
+    assert(isRecord(operation), `${lifecycleEvidencePathEnv}.lifecycleOperations[${index}] must be an object`);
+    const operationName = readString(operation, 'operation');
+    assert(operationName.length > 0, `${lifecycleEvidencePathEnv}.lifecycleOperations[${index}].operation must be set`);
+    assert(
+      (requiredCredentialLifecycleOperations as readonly string[]).includes(operationName),
+      `${lifecycleEvidencePathEnv}.lifecycleOperations[${index}].operation is unsupported`,
+    );
+    assert(operation.status === 'passed', `${lifecycleEvidencePathEnv}.lifecycleOperations[${index}].status must be passed`);
+    assert(
+      readString(operation, 'observedAt').length > 0,
+      `${lifecycleEvidencePathEnv}.lifecycleOperations[${index}].observedAt must be set`,
+    );
+    const evidence = readRecord(operation, 'evidence');
+    assert(
+      readString(evidence, 'summary').length > 0,
+      `${lifecycleEvidencePathEnv}.lifecycleOperations[${index}].evidence.summary must be set`,
+    );
+    assert(
+      evidence.secretValuesRedacted === true,
+      `${lifecycleEvidencePathEnv}.lifecycleOperations[${index}].evidence.secretValuesRedacted must be true`,
+    );
+    assert(
+      evidence.auditEventRecorded === true,
+      `${lifecycleEvidencePathEnv}.lifecycleOperations[${index}].evidence.auditEventRecorded must be true`,
+    );
+    observedOperations.add(operationName);
+  }
+
+  for (const operation of requiredCredentialLifecycleOperations) {
+    assert(observedOperations.has(operation), `${lifecycleEvidencePathEnv}.lifecycleOperations must include ${operation}`);
+  }
+
+  return [...observedOperations];
+};
+
+const readRecord = (record: Record<string, unknown>, field: string): Record<string, unknown> => {
+  const value = record[field];
+  assert(isRecord(value), `${lifecycleEvidencePathEnv}.${field} must be an object`);
+  return value;
+};
+
+const readString = (record: Record<string, unknown>, field: string): string => {
+  const value = record[field];
+  assert(typeof value === 'string', `${lifecycleEvidencePathEnv}.${field} must be a string`);
+  return value;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const readOptionalEnv = (name: string): string | undefined => {
   const value = process.env[name]?.trim();
