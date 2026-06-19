@@ -29,6 +29,9 @@ const gateScript = 'check:summary-feedback-hardening';
 const gateCommand = `npm run ${gateScript}`;
 const gateId = 'summary-feedback-hardening';
 const redactedSampleFormat = 'redacted-summary-feedback-samples-v1';
+const redactedSampleEvidenceKind = 'redacted_real_feedback_samples';
+const fixtureArtifactEvidenceKind = 'fixture_example';
+const requiredArtifactProvenanceFields = new Set(['evidenceKind', 'collectionMethod', 'runner', 'fixtureOnly']);
 const allowedActionTypes = new Set(['eval_fixture', 'validator_change', 'runbook_action']);
 const allowedActionStatuses = new Set(['fixture_covered_pending_real_sample', 'passed']);
 const allowedSampleCategories = new Set([
@@ -61,6 +64,13 @@ const requiredSampleSourceFields = new Set([
   'approvedBy',
 ]);
 const forbiddenRealSourceFragments = [
+  'example',
+  'fixture',
+  'synthetic',
+  'mock',
+  'test',
+];
+const forbiddenRealProvenanceFragments = [
   'example',
   'fixture',
   'synthetic',
@@ -126,6 +136,7 @@ const requiredTopLevelSampleArtifactFields = new Set([
   'artifactFormat',
   'scope',
   'frontendPolicy',
+  'provenance',
   'evidenceMode',
   'generatedAt',
   'source',
@@ -353,6 +364,7 @@ function validateRedactedSampleContentSchema(schema) {
     requiredSampleSourceFields,
     'redactedSampleContentSchema.requiredSourceFields',
   );
+  validateProvenanceRequirements(schema.provenanceRequirements);
   requireSetCoverage(
     new Set(schema.allowedRealSourceKinds ?? []),
     allowedRealSampleSourceKinds,
@@ -449,6 +461,7 @@ function validateRedactedSampleArtifact(artifact, path, options) {
     violations.push(`${path}: generatedAt must be an ISO timestamp`);
   }
   validateSampleSource(artifact.source, path, options);
+  validateArtifactProvenance(artifact.provenance, path, options);
   validateSampleRedaction(artifact.redaction, path);
 
   if (!Array.isArray(artifact.samples)) {
@@ -504,6 +517,80 @@ function validateRedactedSampleArtifact(artifact, path, options) {
 
   validateSampleRollup(artifact.rollup, path, artifact.samples.length, blockerIdsFromSamples, rollupInput);
   validateSerializedArtifact(artifact, path);
+}
+
+function validateProvenanceRequirements(requirements) {
+  if (requirements === null || typeof requirements !== 'object' || Array.isArray(requirements)) {
+    violations.push(`${evidencePath}: redactedSampleContentSchema.provenanceRequirements is required`);
+    return;
+  }
+  if (requirements.evidenceKind !== redactedSampleEvidenceKind) {
+    violations.push(`${evidencePath}: redactedSampleContentSchema.provenanceRequirements.evidenceKind must be ${redactedSampleEvidenceKind}`);
+  }
+  if (requirements.fixtureOnly !== false) {
+    violations.push(`${evidencePath}: redactedSampleContentSchema.provenanceRequirements.fixtureOnly must be false`);
+  }
+  requireSetCoverage(
+    new Set(requirements.requiredFields ?? []),
+    requiredArtifactProvenanceFields,
+    'redactedSampleContentSchema.provenanceRequirements.requiredFields',
+  );
+  requireSetCoverage(
+    new Set(requirements.forbiddenRealFragments ?? []),
+    new Set(forbiddenRealProvenanceFragments),
+    'redactedSampleContentSchema.provenanceRequirements.forbiddenRealFragments',
+  );
+}
+
+function validateArtifactProvenance(provenance, path, options) {
+  if (provenance === null || typeof provenance !== 'object' || Array.isArray(provenance)) {
+    violations.push(`${path}: provenance must be an object`);
+    return;
+  }
+
+  for (const field of requiredArtifactProvenanceFields) {
+    if (!(field in provenance)) {
+      violations.push(`${path}: provenance.${field} is required`);
+    }
+  }
+  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
+    if (typeof provenance[field] !== 'string' || provenance[field].trim().length === 0) {
+      violations.push(`${path}: provenance.${field} must be a non-empty string`);
+    }
+  }
+
+  if (options.allowExample === true) {
+    if (provenance.evidenceKind !== fixtureArtifactEvidenceKind) {
+      violations.push(`${path}: fixture provenance.evidenceKind must be ${fixtureArtifactEvidenceKind}`);
+    }
+    if (provenance.fixtureOnly !== true) {
+      violations.push(`${path}: fixture provenance.fixtureOnly must be true`);
+    }
+    return;
+  }
+
+  if (provenance.evidenceKind !== redactedSampleEvidenceKind) {
+    violations.push(`${path}: provenance.evidenceKind must be ${redactedSampleEvidenceKind}`);
+  }
+  if (provenance.fixtureOnly !== false) {
+    violations.push(`${path}: provenance.fixtureOnly must be false for real feedback artifacts`);
+  }
+  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
+    validateRealProvenanceString(provenance[field], `${path}: provenance.${field}`);
+  }
+}
+
+function validateRealProvenanceString(value, label) {
+  if (typeof value !== 'string') {
+    return;
+  }
+
+  const normalized = value.toLowerCase();
+  for (const fragment of forbiddenRealProvenanceFragments) {
+    if (normalized.includes(fragment)) {
+      violations.push(`${label} must not contain "${fragment}" for real feedback artifacts`);
+    }
+  }
 }
 
 function validateSampleSource(source, path, options) {

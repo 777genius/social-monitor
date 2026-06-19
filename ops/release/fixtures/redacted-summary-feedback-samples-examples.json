@@ -3,6 +3,12 @@
   "artifactFormat": "redacted-summary-feedback-samples-v1",
   "scope": "backend-only",
   "frontendPolicy": "deferred_contract_only",
+  "provenance": {
+    "evidenceKind": "fixture_example",
+    "collectionMethod": "Synthetic fixture example for summary feedback sample schema validation.",
+    "runner": "ops/release/fixtures/redacted-summary-feedback-samples-examples.json",
+    "fixtureOnly": true
+  },
   "evidenceMode": "redacted_beta_samples",
   "generatedAt": "2026-06-18T00:00:00.000Z",
   "source": {

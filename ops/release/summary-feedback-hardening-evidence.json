@@ -23,6 +23,7 @@
       "artifactFormat",
       "scope",
       "frontendPolicy",
+      "provenance",
       "evidenceMode",
       "generatedAt",
       "source",
@@ -54,6 +55,23 @@
       "redactedBy",
       "approvedBy"
     ],
+    "provenanceRequirements": {
+      "evidenceKind": "redacted_real_feedback_samples",
+      "fixtureOnly": false,
+      "requiredFields": [
+        "evidenceKind",
+        "collectionMethod",
+        "runner",
+        "fixtureOnly"
+      ],
+      "forbiddenRealFragments": [
+        "example",
+        "fixture",
+        "synthetic",
+        "mock",
+        "test"
+      ]
+    },
     "allowedRealSourceKinds": [
       "internal_dogfood",
       "private_beta"
