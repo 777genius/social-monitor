@@ -6,6 +6,7 @@
   "environment": {
     "environmentId": "staging-runtime-selector-example",
     "imageDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "apiBaseUrl": "https://api.example.invalid",
     "sampledAt": "2026-06-18T00:00:00.000Z",
     "operator": "backend-lead"
   },

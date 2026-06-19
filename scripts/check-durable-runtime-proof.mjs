@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { URL } from 'node:url';
 
 const proofPath = 'ops/release/durable-runtime-proof.json';
 const persistencePath = 'ops/release/persistence-readiness-contract.json';
@@ -97,7 +98,14 @@ if (
   validateDurableRuntimeSelectorArtifactPath(
     durableRuntimeSelectorArtifactPath,
     'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH',
-    { allowExample: false },
+    {
+      allowExample: false,
+      expectedEvidence: {
+        environmentId: requireEnvWhenArtifactIsPresent('STAGING_ENVIRONMENT_ID'),
+        imageDigest: requireEnvWhenArtifactIsPresent('BACKEND_IMAGE_DIGEST'),
+        apiBaseUrl: requireEnvWhenArtifactIsPresent('API_BASE_URL'),
+      },
+    },
   );
 }
 
@@ -158,7 +166,7 @@ function validateStagingRuntimeEvidence() {
   }
 
   if (staging.status === 'pending_staging_evidence') {
-    for (const field of ['artifactPath', 'environmentId', 'imageDigest', 'sampledAt']) {
+    for (const field of ['artifactPath', 'environmentId', 'imageDigest', 'apiBaseUrl', 'sampledAt']) {
       if (staging[field] !== null) {
         violations.push(`${proofPath}: pending stagingRuntimeEvidence must keep ${field}=null`);
       }
@@ -171,6 +179,9 @@ function validateStagingRuntimeEvidence() {
       if (typeof staging[field] !== 'string' || staging[field].trim().length === 0) {
         violations.push(`${proofPath}: passed stagingRuntimeEvidence must define ${field}`);
       }
+    }
+    if (!isHttpUrlWithoutCredentials(staging.apiBaseUrl)) {
+      violations.push(`${proofPath}: passed stagingRuntimeEvidence must define apiBaseUrl without credentials`);
     }
     if (!/^sha256:[0-9a-f]{64}$/.test(String(staging.imageDigest ?? ''))) {
       violations.push(`${proofPath}: passed stagingRuntimeEvidence must define immutable imageDigest`);
@@ -207,6 +218,12 @@ function validateStagingRuntimeEvidenceSchema(schema) {
       violations.push(`${proofPath}: stagingRuntimeEvidenceSchema.forbiddenSelectorValues must include ${forbidden}`);
     }
   }
+
+  requireSetCoverage(
+    new Set(schema.requiredRuntimeEnv ?? []),
+    new Set(['STAGING_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'API_BASE_URL', 'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH']),
+    'stagingRuntimeEvidenceSchema.requiredRuntimeEnv',
+  );
 
   if (
     typeof schema.exitCondition !== 'string'
@@ -259,7 +276,7 @@ function validateArtifactEnvironment(environment, path, options) {
     return;
   }
 
-  for (const field of ['environmentId', 'imageDigest', 'sampledAt', 'operator']) {
+  for (const field of ['environmentId', 'imageDigest', 'apiBaseUrl', 'sampledAt', 'operator']) {
     if (typeof environment[field] !== 'string' || environment[field].trim().length === 0) {
       violations.push(`${path}: environment.${field} must be a non-empty string`);
     }
@@ -270,14 +287,17 @@ function validateArtifactEnvironment(environment, path, options) {
   if (!isIsoDateString(environment.sampledAt)) {
     violations.push(`${path}: environment.sampledAt must be an ISO timestamp`);
   }
+  if (!isHttpUrlWithoutCredentials(environment.apiBaseUrl)) {
+    violations.push(`${path}: environment.apiBaseUrl must be an http(s) URL without credentials`);
+  }
   if (options.allowExample !== true && environment.environmentId?.includes('example')) {
     violations.push(`${path}: real runtime selector artifact environmentId must not be an example environment`);
   }
 
   const expected = options.expectedEvidence;
   if (expected !== undefined) {
-    for (const field of ['environmentId', 'imageDigest', 'sampledAt']) {
-      if (environment[field] !== expected[field]) {
+    for (const field of ['environmentId', 'imageDigest', 'apiBaseUrl', 'sampledAt']) {
+      if (expected[field] !== undefined && environment[field] !== expected[field]) {
         violations.push(`${path}: environment.${field} must match stagingRuntimeEvidence.${field}`);
       }
     }
@@ -410,6 +430,29 @@ function requireExistingPath(path, label) {
   }
 }
 
+function requireEnvWhenArtifactIsPresent(name) {
+  const value = process.env[name]?.trim();
+  if (value === undefined || value.length === 0) {
+    violations.push(`DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH requires ${name}`);
+    return undefined;
+  }
+
+  return value;
+}
+
 function isIsoDateString(value) {
   return typeof value === 'string' && !Number.isNaN(Date.parse(value)) && value.includes('T');
+}
+
+function isHttpUrlWithoutCredentials(value) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) && url.username === '' && url.password === '';
+  } catch {
+    return false;
+  }
 }
