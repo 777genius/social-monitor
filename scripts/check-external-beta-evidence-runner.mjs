@@ -276,6 +276,7 @@ validateArtifactExamples();
 validateRunnerImplementation();
 validateRunnerPositiveArtifactSmoke();
 validateRunnerPositiveRedditArtifactSmoke();
+validateRunnerNegativeRedditArtifactSmokes();
 validateRunnerNegativeSmokes();
 validateRunnerPreflightNegativeSmokes();
 validateRunnerPreflightPositiveSmoke();
@@ -816,19 +817,8 @@ function validateRunnerPositiveArtifactSmoke() {
 
 function validateRunnerPositiveRedditArtifactSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-reddit-positive-'));
-  const lifecyclePath = join(tempDirectory, 'reddit-credential-lifecycle.json');
-  const liveArtifactPath = join(tempDirectory, 'reddit-live-evidence.json');
   try {
-    const lifecycleArtifact = redditCredentialLifecycleArtifact();
-    const lifecycleContent = `${JSON.stringify(lifecycleArtifact, null, 2)}\n`;
-    const lifecycleSha256 = createHash('sha256').update(lifecycleContent).digest('hex');
-    writeFileSync(lifecyclePath, lifecycleContent, { mode: 0o600 });
-    writeFileSync(
-      liveArtifactPath,
-      `${JSON.stringify(liveRedditArtifact(lifecycleSha256), null, 2)}\n`,
-      { mode: 0o600 },
-    );
-
+    const { liveArtifactPath, lifecyclePath } = writeRedditArtifactPair(tempDirectory);
     const result = runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath);
     if (result.exitCode !== 0) {
       violations.push(`${contract.runnerFile}: runner positive Reddit artifact smoke must accept valid live Reddit evidence and lifecycle pair: ${smokeOutputSnippet(result.output)}`);
@@ -836,6 +826,79 @@ function validateRunnerPositiveRedditArtifactSmoke() {
   } finally {
     rmSync(tempDirectory, { recursive: true, force: true });
   }
+}
+
+function validateRunnerNegativeRedditArtifactSmokes() {
+  const scenarios = [
+    {
+      label: 'reddit lifecycle hash mismatch',
+      expectedOutput: 'sha256 must match reddit live evidence lifecycle signal',
+      lifecycleArtifactSha256: '0'.repeat(64),
+    },
+    {
+      label: 'reddit lifecycle unredacted sensitive key',
+      expectedOutput: 'unredacted sensitive key',
+      mutateLifecycle: (artifact) => {
+        artifact.diagnostics = {
+          password: 'not-redacted-secret-value',
+        };
+      },
+    },
+    {
+      label: 'reddit lifecycle missing redacted preview',
+      expectedOutput: 'lifecycleOperations must include redacted-preview',
+      mutateLifecycle: (artifact) => {
+        artifact.lifecycleOperations = artifact.lifecycleOperations.filter(
+          (operation) => operation.operation !== 'redacted-preview',
+        );
+      },
+    },
+    {
+      label: 'reddit live evidence missing provider',
+      expectedOutput: 'must include providerKey reddit',
+      mutateLive: (artifact) => {
+        artifact.providerResults = [];
+      },
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-reddit-negative-'));
+    try {
+      const { liveArtifactPath, lifecyclePath } = writeRedditArtifactPair(
+        tempDirectory,
+        scenario,
+      );
+      const result = runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath);
+      if (result.exitCode === 0) {
+        violations.push(`${contract.runnerFile}: runner negative Reddit smoke must reject ${scenario.label}`);
+        continue;
+      }
+      if (!result.output.includes(scenario.expectedOutput)) {
+        violations.push(`${contract.runnerFile}: runner negative Reddit smoke for ${scenario.label} must report "${scenario.expectedOutput}"`);
+      }
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+function writeRedditArtifactPair(tempDirectory, options = {}) {
+  const lifecyclePath = join(tempDirectory, 'reddit-credential-lifecycle.json');
+  const liveArtifactPath = join(tempDirectory, 'reddit-live-evidence.json');
+  const lifecycleArtifact = redditCredentialLifecycleArtifact();
+  options.mutateLifecycle?.(lifecycleArtifact);
+  const lifecycleContent = `${JSON.stringify(lifecycleArtifact, null, 2)}\n`;
+  const lifecycleSha256 = createHash('sha256').update(lifecycleContent).digest('hex');
+  const liveArtifact = liveRedditArtifact(options.lifecycleArtifactSha256 ?? lifecycleSha256);
+  options.mutateLive?.(liveArtifact, lifecycleSha256);
+  writeFileSync(lifecyclePath, lifecycleContent, { mode: 0o600 });
+  writeFileSync(
+    liveArtifactPath,
+    `${JSON.stringify(liveArtifact, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  return { liveArtifactPath, lifecyclePath, lifecycleSha256 };
 }
 
 function runRunnerNegativeSmoke(artifactPath) {
