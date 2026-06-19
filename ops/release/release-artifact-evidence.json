@@ -75,8 +75,9 @@
         "artifact migrationVersion must match the release evidence migrationVersion",
         "artifact artifactDigests must match committed OpenAPI, event catalog and Prisma schema hashes",
         "artifact smokeResults must include every deploy smoke declared in the release contract",
+        "artifact smokeResults observedAt and artifact sampledAt must use strict ISO-8601 timestamps",
         "artifact smokeResults.evidence must be a smoke-specific redacted object with required fields",
-      "artifact JSON must not include tokens, raw headers, raw payloads, DB URLs or broker URLs"
+        "artifact JSON must not include tokens, raw headers, raw payloads, DB URLs or broker URLs"
       ]
     },
     "envArtifactValidation": [

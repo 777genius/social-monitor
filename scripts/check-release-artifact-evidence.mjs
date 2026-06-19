@@ -71,17 +71,54 @@ const requiredSmokeEvidenceShapeBySmokeId = new Map([
 const forbiddenArtifactFragments = [
   'bearer ',
   'basic ',
+  'authorization',
+  'x-api-key',
   'access_token',
   'refresh_token',
+  'id_token',
+  'api_key',
+  'apikey',
   'private_key',
   'client_secret',
+  'password',
   'postgres://',
   'postgresql://',
   'amqp://',
   'amqps://',
+  'github_pat_',
+  'ghp_',
+  'glpat-',
+  'xoxb-',
+  'xoxp-',
+  'sk-proj-',
+  'sk-live-',
   'smk_',
   'whsec_',
 ];
+const forbiddenArtifactValuePatterns = [
+  {
+    label: 'query credential',
+    regex: /\b(?:access_token|refresh_token|id_token|api_key|apikey|client_secret|signature|sig)=([^&\s"']+)/gi,
+  },
+  {
+    label: 'header credential',
+    regex: /\b(?:authorization|x-api-key|x-amz-security-token):\s*([^,\s"'}]+)/gi,
+  },
+  {
+    label: 'jwt credential',
+    regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+  },
+];
+const requiredSmokeResultMatchingRules = new Set([
+  'artifact commitSha must match the release commit',
+  'artifact imageDigest must match imageDigest.value and every passed deploySmokeEvidence entry',
+  'artifact migrationVersion must match the release evidence migrationVersion',
+  'artifact artifactDigests must match committed OpenAPI, event catalog and Prisma schema hashes',
+  'artifact smokeResults must include every deploy smoke declared in the release contract',
+  'artifact smokeResults observedAt and artifact sampledAt must use strict ISO-8601 timestamps',
+  'artifact smokeResults.evidence must be a smoke-specific redacted object with required fields',
+  'artifact JSON must not include tokens, raw headers, raw payloads, DB URLs or broker URLs',
+]);
 
 if (artifact.schemaVersion !== 1) {
   violations.push(`${artifactPath}: schemaVersion must be 1`);
@@ -188,6 +225,8 @@ for (const smoke of artifact.deploySmokeEvidence ?? []) {
     }
     if (typeof smoke.sampledAt !== 'string' || smoke.sampledAt.trim().length === 0) {
       violations.push(`${artifactPath}: passed deploy smoke "${smoke.smokeId}" must define sampledAt`);
+    } else if (!isIsoDateString(smoke.sampledAt)) {
+      violations.push(`${artifactPath}: passed deploy smoke "${smoke.smokeId}" sampledAt must be an ISO timestamp`);
     }
     validatePassedDeploySmokeArtifact(smoke, gitSha, migrationVersion, artifact.imageDigest.value);
   }
@@ -281,6 +320,12 @@ function validateDeployArtifactContentSchema() {
         violations.push(`${artifactPath}: deploySmokeArtifactContentSchema.smokeResultRequirements.requiredFields must include ${field}`);
       }
     }
+    const matchingRules = new Set(smokeResult.matchingRules ?? []);
+    for (const rule of requiredSmokeResultMatchingRules) {
+      if (!matchingRules.has(rule)) {
+        violations.push(`${artifactPath}: deploySmokeArtifactContentSchema.smokeResultRequirements.matchingRules must include "${rule}"`);
+      }
+    }
   }
 }
 
@@ -357,6 +402,9 @@ function validateDeployArtifactShape(deployArtifact, options) {
   if (!isHttpUrlWithoutCredentials(deployArtifact.apiBaseUrl)) {
     violations.push(`${label}: apiBaseUrl must be an http(s) URL without credentials`);
   }
+  if (!isIsoDateString(deployArtifact.sampledAt)) {
+    violations.push(`${label}: sampledAt must be an ISO timestamp`);
+  }
   if (options.allowFixture !== true) {
     validateRealEvidenceIdentityStrings({
       source: deployArtifact,
@@ -427,13 +475,15 @@ function validateDeployArtifactRedaction(deployArtifact, label) {
 }
 
 function validateNoSensitiveDeployArtifactLiterals(deployArtifact, label) {
-  const serialized = JSON.stringify(deployArtifact).toLowerCase();
+  const serializedArtifact = JSON.stringify(deployArtifact);
+  const serialized = serializedArtifact.toLowerCase();
 
   for (const fragment of forbiddenArtifactFragments) {
     if (serialized.includes(fragment)) {
       violations.push(`${label}: artifact must not contain sensitive literal fragment "${fragment}"`);
     }
   }
+  validateNoSensitivePatterns(serializedArtifact, `${label}: artifact`);
 }
 
 function validateDeployArtifactMigration(deployArtifact, label, options) {
@@ -522,6 +572,8 @@ function validateDeployArtifactSmokeResults(deployArtifact, label, options) {
     }
     if (typeof result.observedAt !== 'string' || result.observedAt.trim().length === 0) {
       violations.push(`${label}: smokeResult "${result.smokeId}" must define observedAt`);
+    } else if (!isIsoDateString(result.observedAt)) {
+      violations.push(`${label}: smokeResult "${result.smokeId}" observedAt must be an ISO timestamp`);
     }
     if (!isRecord(result.evidence)) {
       violations.push(`${label}: smokeResult "${result.smokeId}" must define evidence object`);
@@ -538,6 +590,15 @@ function validateDeployArtifactSmokeResults(deployArtifact, label, options) {
 
   if (options.strict === true && options.expectedSmokeId !== undefined && !seenSmokeIds.has(options.expectedSmokeId)) {
     violations.push(`${label}: must include smokeResult "${options.expectedSmokeId}"`);
+  }
+}
+
+function validateNoSensitivePatterns(content, label) {
+  for (const pattern of forbiddenArtifactValuePatterns) {
+    pattern.regex.lastIndex = 0;
+    for (const match of content.matchAll(pattern.regex)) {
+      violations.push(`${label} must not contain sensitive ${pattern.label}`);
+    }
   }
 }
 
@@ -708,6 +769,12 @@ function isHttpUrlWithoutCredentials(value) {
   } catch {
     return false;
   }
+}
+
+function isIsoDateString(value) {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && !Number.isNaN(Date.parse(value));
 }
 
 if (!scripts['check:release-artifact-evidence']) {
