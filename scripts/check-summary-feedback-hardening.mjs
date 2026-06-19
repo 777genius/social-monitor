@@ -87,13 +87,56 @@ const requiredFeedbackFixtureIds = new Set([
 const forbiddenSerializedFragments = [
   'access_token',
   'refresh_token',
+  'id_token',
+  'api_key',
+  'apikey',
   'client_secret',
   'authorization',
   'cookie',
+  'private_key',
+  'postgres://',
+  'postgresql://',
+  'amqp://',
+  'amqps://',
   'raw_payload',
   'bearer ',
+  'basic ',
+  'github_pat_',
+  'ghp_',
+  'glpat-',
+  'xoxb-',
+  'xoxp-',
+  'sk-proj-',
+  'sk-live-',
+];
+const forbiddenSerializedPatterns = [
+  {
+    label: 'query credential',
+    regex: /\b(?:access_token|refresh_token|id_token|api_key|apikey|client_secret|signature|sig)=([^&\s"']+)/gi,
+  },
+  {
+    label: 'header credential',
+    regex: /\b(?:authorization|x-api-key|x-amz-security-token):\s*([^,\s"'}]+)/gi,
+  },
+  {
+    label: 'jwt credential',
+    regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+  },
 ];
 const forbiddenSampleKeys = new Set([
+  'apikey',
+  'api_key',
+  'apitoken',
+  'api_token',
+  'id_token',
+  'idtoken',
+  'jwttoken',
+  'jwt_token',
+  'sessiontoken',
+  'session_token',
+  'password',
+  'privatekey',
+  'private_key',
   'access_token',
   'accesstoken',
   'refresh_token',
@@ -470,6 +513,7 @@ function validateRedactedSampleArtifact(artifact, path, options) {
   if (artifact.source?.sampleCount !== artifact.samples.length) {
     violations.push(`${path}: source.sampleCount must match samples.length`);
   }
+  validateGeneratedAtCoversSampleWindow(artifact, path);
 
   const sampleIds = new Set();
   const blockerIdsFromSamples = new Set();
@@ -805,16 +849,48 @@ function scanForbiddenSampleKeys(value, label) {
 }
 
 function validateSerializedArtifact(artifact, path) {
-  const serializedArtifact = JSON.stringify(artifact).toLowerCase();
+  const rawSerializedArtifact = JSON.stringify(artifact);
+  const serializedArtifact = rawSerializedArtifact.toLowerCase();
   for (const fragment of forbiddenSerializedFragments) {
     if (serializedArtifact.includes(fragment)) {
       violations.push(`${path}: redacted sample artifact must not contain "${fragment}"`);
     }
   }
+  validateSerializedPatterns(rawSerializedArtifact, `${path}: redacted sample artifact`);
 }
 
 function isIsoDateString(value) {
-  return typeof value === 'string' && !Number.isNaN(Date.parse(value)) && value.includes('T');
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && !Number.isNaN(Date.parse(value));
+}
+
+function validateGeneratedAtCoversSampleWindow(artifact, path) {
+  const generatedAtMs = parseIsoTimestampMs(artifact.generatedAt);
+  const endedAtMs = parseIsoTimestampMs(artifact.source?.sampleWindow?.endedAt);
+  if (generatedAtMs === undefined || endedAtMs === undefined) {
+    return;
+  }
+  if (generatedAtMs < endedAtMs) {
+    violations.push(`${path}: generatedAt must be greater than or equal to source.sampleWindow.endedAt`);
+  }
+}
+
+function validateSerializedPatterns(content, label) {
+  for (const pattern of forbiddenSerializedPatterns) {
+    pattern.regex.lastIndex = 0;
+    for (const match of content.matchAll(pattern.regex)) {
+      violations.push(`${label} must not contain sensitive ${pattern.label}`);
+    }
+  }
+}
+
+function parseIsoTimestampMs(value) {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? undefined : parsed;
 }
 
 function validateAction(action, coveredIds, field) {
