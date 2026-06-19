@@ -364,10 +364,34 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
     if (isFixtureLikeArtifactPath(value)) {
       violations.push(`${job.jobId}: evidence path env ${envName} must not point to fixture or example evidence`);
       invalidPathEnv.add(envName);
+      continue;
+    }
+
+    const violationCount = violations.length;
+    validateEvidencePathFileContent(value, job.jobId, envName, violations);
+    if (violations.length > violationCount) {
+      invalidPathEnv.add(envName);
     }
   }
 
   return invalidPathEnv;
+}
+
+function validateEvidencePathFileContent(path, jobId, envName, violations) {
+  let content;
+  try {
+    content = readFileSync(path, 'utf8');
+  } catch {
+    violations.push(`${jobId}: evidence path env ${envName} must be readable`);
+    return;
+  }
+
+  validateArtifactLiteralRedaction(content, jobId, `evidence path env ${envName}`, violations);
+
+  const parsed = parseJsonOrNull(content);
+  if (parsed !== null && typeof parsed === 'object') {
+    validateArtifactStructuredRedaction(parsed, jobId, `evidence path env ${envName}`, violations);
+  }
 }
 
 function isFixtureLikeArtifactPath(path) {
@@ -395,19 +419,34 @@ function readJsonArtifact(path, jobId, envName, violations) {
 }
 
 function validateArtifactRedaction(content, jobId, envName, violations) {
-  const serialized = JSON.stringify(content).toLowerCase();
+  validateArtifactLiteralRedaction(JSON.stringify(content), jobId, `output artifact env ${envName}`, violations);
+  validateArtifactStructuredRedaction(content, jobId, `output artifact env ${envName}`, violations);
+}
+
+function validateArtifactLiteralRedaction(content, jobId, label, violations) {
+  const serialized = content.toLowerCase();
   for (const fragment of forbiddenArtifactValueFragments) {
     if (serialized.includes(fragment)) {
-      violations.push(`${jobId}: output artifact env ${envName} must not contain sensitive literal fragment "${fragment}"`);
+      violations.push(`${jobId}: ${label} must not contain sensitive literal fragment "${fragment}"`);
     }
   }
+}
 
+function validateArtifactStructuredRedaction(content, jobId, label, violations) {
   if (containsFixtureProvenance(content)) {
-    violations.push(`${jobId}: output artifact env ${envName} must not contain fixture provenance`);
+    violations.push(`${jobId}: ${label} must not contain fixture provenance`);
   }
 
   for (const keyPath of unredactedSensitiveKeyPaths(content)) {
-    violations.push(`${jobId}: output artifact env ${envName} must not contain unredacted sensitive key "${keyPath}"`);
+    violations.push(`${jobId}: ${label} must not contain unredacted sensitive key "${keyPath}"`);
+  }
+}
+
+function parseJsonOrNull(content) {
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null;
   }
 }
 
