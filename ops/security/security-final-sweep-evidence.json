@@ -51,6 +51,23 @@
         "redactedOnly": true
       }
     ],
+    "provenanceRequirements": {
+      "evidenceKind": "staging_security_final_sweep",
+      "fixtureOnly": false,
+      "requiredFields": [
+        "evidenceKind",
+        "collectionMethod",
+        "runner",
+        "fixtureOnly"
+      ],
+      "forbiddenRealFragments": [
+        "example",
+        "fixture",
+        "synthetic",
+        "mock",
+        "test"
+      ]
+    },
     "requiredRedactionFlags": {
       "secretValuesIncluded": false,
       "credentialUrlsIncluded": false,

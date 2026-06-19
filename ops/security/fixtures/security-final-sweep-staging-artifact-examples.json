@@ -3,6 +3,12 @@
   "artifactFormat": "security-final-sweep-staging-artifact-v1",
   "scope": "backend-only",
   "frontendPolicy": "deferred_contract_only",
+  "provenance": {
+    "evidenceKind": "fixture_example",
+    "collectionMethod": "Synthetic fixture example for security final sweep schema validation.",
+    "runner": "ops/security/fixtures/security-final-sweep-staging-artifact-examples.json",
+    "fixtureOnly": true
+  },
   "environment": {
     "environmentId": "staging-redaction-example",
     "imageDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

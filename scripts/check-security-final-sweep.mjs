@@ -24,6 +24,9 @@ const gateScript = 'check:security-final-sweep';
 const gateCommand = `npm run ${gateScript}`;
 const gateId = 'security-final-sweep';
 const securityFinalSweepArtifactFormat = 'security-final-sweep-staging-artifact-v1';
+const securityFinalSweepEvidenceKind = 'staging_security_final_sweep';
+const fixtureArtifactEvidenceKind = 'fixture_example';
+const requiredArtifactProvenanceFields = new Set(['evidenceKind', 'collectionMethod', 'runner', 'fixtureOnly']);
 const requiredCheckIds = new Set([
   'secret-scan',
   'dependency-audit',
@@ -58,6 +61,13 @@ const forbiddenArtifactFragments = [
   ...forbiddenEvidenceFragments,
   'client_secret',
   'secret_key',
+];
+const forbiddenRealProvenanceFragments = [
+  'example',
+  'fixture',
+  'synthetic',
+  'mock',
+  'test',
 ];
 const forbiddenArtifactKeys = new Set([
   'accesstoken',
@@ -159,6 +169,7 @@ function validateDeploySampleContentSchema(schema) {
     'deploySampleContentSchema.requiredLeakClasses',
   );
   validateRequiredSourceExports(schema.requiredSourceExports);
+  validateProvenanceRequirements(schema.provenanceRequirements);
 
   for (const [field, expected] of Object.entries(requiredArtifactRedactionFlags)) {
     if (schema.requiredRedactionFlags?.[field] !== expected) {
@@ -172,6 +183,29 @@ function validateDeploySampleContentSchema(schema) {
   ) {
     violations.push(`${evidencePath}: deploySampleContentSchema.exitCondition must mention ${securityFinalSweepArtifactFormat}`);
   }
+}
+
+function validateProvenanceRequirements(requirements) {
+  if (requirements === null || typeof requirements !== 'object' || Array.isArray(requirements)) {
+    violations.push(`${evidencePath}: deploySampleContentSchema.provenanceRequirements is required`);
+    return;
+  }
+  if (requirements.evidenceKind !== securityFinalSweepEvidenceKind) {
+    violations.push(`${evidencePath}: deploySampleContentSchema.provenanceRequirements.evidenceKind must be ${securityFinalSweepEvidenceKind}`);
+  }
+  if (requirements.fixtureOnly !== false) {
+    violations.push(`${evidencePath}: deploySampleContentSchema.provenanceRequirements.fixtureOnly must be false`);
+  }
+  requireSetCoverage(
+    new Set(requirements.requiredFields ?? []),
+    requiredArtifactProvenanceFields,
+    'deploySampleContentSchema.provenanceRequirements.requiredFields',
+  );
+  requireSetCoverage(
+    new Set(requirements.forbiddenRealFragments ?? []),
+    new Set(forbiddenRealProvenanceFragments),
+    'deploySampleContentSchema.provenanceRequirements.forbiddenRealFragments',
+  );
 }
 
 function requireSetCoverage(actual, expected, label) {
@@ -206,6 +240,7 @@ function validateSecurityFinalSweepArtifact(artifact, path, options) {
     violations.push(`${path}: frontendPolicy must be deferred_contract_only`);
   }
 
+  validateArtifactProvenance(artifact.provenance, path, options);
   validateArtifactEnvironment(artifact.environment, path, options);
   validateArtifactRedaction(artifact.redaction, path);
   const sourceExports = validateArtifactSourceExports(artifact.sourceExports, path, options);
@@ -213,6 +248,57 @@ function validateSecurityFinalSweepArtifact(artifact, path, options) {
   validateArtifactReview(artifact.review, path);
   scanForbiddenArtifactKeys(artifact, path);
   validateNoSensitiveArtifactLiterals(artifact, path);
+}
+
+function validateArtifactProvenance(provenance, path, options) {
+  if (provenance === null || typeof provenance !== 'object' || Array.isArray(provenance)) {
+    violations.push(`${path}: provenance must be an object`);
+    return;
+  }
+
+  for (const field of requiredArtifactProvenanceFields) {
+    if (!(field in provenance)) {
+      violations.push(`${path}: provenance.${field} is required`);
+    }
+  }
+  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
+    if (typeof provenance[field] !== 'string' || provenance[field].trim().length === 0) {
+      violations.push(`${path}: provenance.${field} must be a non-empty string`);
+    }
+  }
+
+  if (options.allowExample === true) {
+    if (provenance.evidenceKind !== fixtureArtifactEvidenceKind) {
+      violations.push(`${path}: fixture provenance.evidenceKind must be ${fixtureArtifactEvidenceKind}`);
+    }
+    if (provenance.fixtureOnly !== true) {
+      violations.push(`${path}: fixture provenance.fixtureOnly must be true`);
+    }
+    return;
+  }
+
+  if (provenance.evidenceKind !== securityFinalSweepEvidenceKind) {
+    violations.push(`${path}: provenance.evidenceKind must be ${securityFinalSweepEvidenceKind}`);
+  }
+  if (provenance.fixtureOnly !== false) {
+    violations.push(`${path}: provenance.fixtureOnly must be false for security final sweep evidence`);
+  }
+  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
+    validateRealProvenanceString(provenance[field], `${path}: provenance.${field}`);
+  }
+}
+
+function validateRealProvenanceString(value, label) {
+  if (typeof value !== 'string') {
+    return;
+  }
+
+  const normalized = value.toLowerCase();
+  for (const fragment of forbiddenRealProvenanceFragments) {
+    if (normalized.includes(fragment)) {
+      violations.push(`${label} must not contain "${fragment}" for security final sweep artifacts`);
+    }
+  }
 }
 
 function validateArtifactEnvironment(environment, path, options) {
