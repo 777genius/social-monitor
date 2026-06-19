@@ -70,6 +70,11 @@ const forbiddenArtifactKeyNames = new Set([
   'databaseurl',
   'rabbitmqurl',
 ]);
+const forbiddenArtifactKeyPatterns = [
+  /(?:raw|plain|plaintext|cleartext).*(?:token|secret|password|credential|apikey|clientsecret|privatekey|signingsecret)/,
+  /(?:token|secret|password|credential|apikey|clientsecret|privatekey|signingsecret).*(?:raw|plain|plaintext|cleartext|value)$/,
+  /(?:access|refresh|id|jwt|session)token(?:raw|plain|plaintext|cleartext|value)$/,
+];
 const args = process.argv.slice(2);
 const execute = args.includes('--execute');
 const validateArtifacts = args.includes('--validate-artifacts');
@@ -877,12 +882,18 @@ function unredactedSensitiveKeyPaths(value, path = []) {
   const findings = [];
   for (const [key, child] of Object.entries(value)) {
     const nextPath = [...path, key];
-    if (forbiddenArtifactKeyNames.has(normalizeArtifactKey(key)) && !isRedactedArtifactValue(child)) {
+    if (isForbiddenArtifactKey(key) && !isRedactedArtifactValue(child)) {
       findings.push(nextPath.join('.'));
     }
     findings.push(...unredactedSensitiveKeyPaths(child, nextPath));
   }
   return findings;
+}
+
+function isForbiddenArtifactKey(key) {
+  const normalized = normalizeArtifactKey(key);
+  return forbiddenArtifactKeyNames.has(normalized)
+    || forbiddenArtifactKeyPatterns.some((pattern) => pattern.test(normalized));
 }
 
 function normalizeArtifactKey(key) {
