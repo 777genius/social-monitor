@@ -551,6 +551,10 @@ function validateExecutableOutputArtifactPathEnv(job, missingEnvSet, violations)
       violations.push(`${job.jobId}: output artifact env ${envName} must not point to fixture or example evidence before live execution`);
       continue;
     }
+    if (isForbiddenWorkspaceEvidencePath(value)) {
+      violations.push(`${job.jobId}: output artifact env ${envName} must not be inside the git workspace before live execution`);
+      continue;
+    }
     if (existsSync(value) && requiresRegularEvidenceFiles() && !isRegularEvidenceFile(value)) {
       violations.push(`${job.jobId}: output artifact env ${envName} must point to a regular file before live execution`);
       continue;
@@ -676,6 +680,11 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
       invalidPathEnv.add(envName);
       continue;
     }
+    if (isForbiddenWorkspaceEvidencePath(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} must not be inside the git workspace`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
     if (isGitTrackedPath(value)) {
       violations.push(`${job.jobId}: evidence path env ${envName} must not point to a git-tracked file`);
       invalidPathEnv.add(envName);
@@ -703,6 +712,11 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
     }
     if (isFixtureLikeArtifactPath(realPath)) {
       violations.push(`${job.jobId}: evidence path env ${envName} realpath must not point to fixture or example evidence`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
+    if (isForbiddenWorkspaceEvidencePath(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must not be inside the git workspace`);
       invalidPathEnv.add(envName);
       continue;
     }
@@ -736,6 +750,10 @@ function requiresJsonEvidencePathEnv() {
 
 function requiresJsonEvidencePathContent() {
   return contract.executionSafety?.evidencePathEnvRequiresJsonContent === true;
+}
+
+function forbidsWorkspaceEvidencePaths() {
+  return contract.executionSafety?.evidencePathEnvForbidsWorkspacePath === true;
 }
 
 function requiresRegularEvidenceFiles() {
@@ -817,6 +835,15 @@ function isFixtureLikeArtifactPath(path) {
 
 function isFixtureLikePathSegment(segment) {
   return segment.includes('fixture') || segment.includes('example');
+}
+
+function isForbiddenWorkspaceEvidencePath(path) {
+  if (!forbidsWorkspaceEvidencePaths()) {
+    return false;
+  }
+
+  const relativePath = relative(process.cwd(), path);
+  return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath));
 }
 
 function isGitTrackedPath(path) {

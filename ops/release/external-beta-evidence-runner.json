@@ -38,6 +38,7 @@
     "evidencePathEnvMaxBytes": 26214400,
     "evidencePathEnvRequiresJsonExtension": true,
     "evidencePathEnvRequiresJsonContent": true,
+    "evidencePathEnvForbidsWorkspacePath": true,
     "outputArtifactPathEnvRequiresJsonExtension": true
   },
   "artifactFreshness": {

@@ -330,6 +330,9 @@ function validateSafety() {
   if (safety.evidencePathEnvRequiresJsonContent !== true) {
     violations.push(`${contractPath}: executionSafety.evidencePathEnvRequiresJsonContent must be true`);
   }
+  if (safety.evidencePathEnvForbidsWorkspacePath !== true) {
+    violations.push(`${contractPath}: executionSafety.evidencePathEnvForbidsWorkspacePath must be true`);
+  }
   if (safety.outputArtifactPathEnvRequiresJsonExtension !== true) {
     violations.push(`${contractPath}: executionSafety.outputArtifactPathEnvRequiresJsonExtension must be true`);
   }
@@ -507,8 +510,12 @@ function validateRunnerImplementation() {
     'Evidence path max size',
     'evidencePathEnvRequiresJsonExtension',
     'evidencePathEnvRequiresJsonContent',
+    'evidencePathEnvForbidsWorkspacePath',
     'requiresJsonEvidencePathEnv',
     'requiresJsonEvidencePathContent',
+    'forbidsWorkspaceEvidencePaths',
+    'isForbiddenWorkspaceEvidencePath',
+    'inside the git workspace',
     'outputArtifactPathEnvRequiresJsonExtension',
     'isJsonEvidencePath',
     'path must end with .json',
