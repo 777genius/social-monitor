@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -274,6 +275,7 @@ validateArtifactFreshnessPolicy();
 validateArtifactExamples();
 validateRunnerImplementation();
 validateRunnerPositiveArtifactSmoke();
+validateRunnerPositiveRedditArtifactSmoke();
 validateRunnerNegativeSmokes();
 validateRunnerPreflightNegativeSmokes();
 validateRunnerPreflightPositiveSmoke();
@@ -812,6 +814,30 @@ function validateRunnerPositiveArtifactSmoke() {
   }
 }
 
+function validateRunnerPositiveRedditArtifactSmoke() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-reddit-positive-'));
+  const lifecyclePath = join(tempDirectory, 'reddit-credential-lifecycle.json');
+  const liveArtifactPath = join(tempDirectory, 'reddit-live-evidence.json');
+  try {
+    const lifecycleArtifact = redditCredentialLifecycleArtifact();
+    const lifecycleContent = `${JSON.stringify(lifecycleArtifact, null, 2)}\n`;
+    const lifecycleSha256 = createHash('sha256').update(lifecycleContent).digest('hex');
+    writeFileSync(lifecyclePath, lifecycleContent, { mode: 0o600 });
+    writeFileSync(
+      liveArtifactPath,
+      `${JSON.stringify(liveRedditArtifact(lifecycleSha256), null, 2)}\n`,
+      { mode: 0o600 },
+    );
+
+    const result = runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath);
+    if (result.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner positive Reddit artifact smoke must accept valid live Reddit evidence and lifecycle pair: ${smokeOutputSnippet(result.output)}`);
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
 function runRunnerNegativeSmoke(artifactPath) {
   return runRunnerArtifactSmoke(artifactPath);
 }
@@ -835,6 +861,41 @@ function runRunnerArtifactSmoke(artifactPath) {
           LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: artifactPath,
           SOURCE_LIVE_ENVIRONMENT_ID: 'source-prod-alpha',
           SOURCE_LIVE_OPERATOR: 'release-operator-1',
+        },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    );
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath) {
+  const imageDigest = `sha256:${'b'.repeat(64)}`;
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        contract.runnerFile,
+        '--validate-artifacts',
+        '--require-env',
+        '--job',
+        'live-reddit-oauth',
+      ],
+      {
+        env: {
+          PATH: process.env.PATH ?? '',
+          BACKEND_IMAGE_DIGEST: imageDigest,
+          REDDIT_ACCESS_TOKEN: 'reddit-live-value-1234567890',
+          REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: lifecyclePath,
+          REDDIT_LIVE_EVIDENCE_PATH: liveArtifactPath,
+          SOURCE_LIVE_ENVIRONMENT_ID: 'source-reddit-alpha',
+          SOURCE_LIVE_OPERATOR: 'source-operator-1',
         },
         encoding: 'utf8',
         stdio: 'pipe',
@@ -1199,6 +1260,139 @@ function liveOpenConnectorsArtifact() {
               coreRemaining: 100,
               searchRemaining: 10,
               budgetObserved: true,
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function redditCredentialLifecycleArtifact() {
+  const now = new Date().toISOString();
+  const imageDigest = `sha256:${'b'.repeat(64)}`;
+  return {
+    schemaVersion: 1,
+    format: 'reddit-credential-lifecycle-redacted-v1',
+    artifactId: 'reddit-credential-lifecycle-redacted-positive-smoke',
+    environmentId: 'source-reddit-alpha',
+    imageDigest,
+    operator: 'source-operator-1',
+    sampledAt: now,
+    provenance: {
+      evidenceKind: 'credential_lifecycle',
+      collectionMethod: 'credential lifecycle captured through staging secret boundary',
+      runner: 'scripts/check-live-reddit-oauth.ts',
+      fixtureOnly: false,
+    },
+    redaction: {
+      secretsIncluded: false,
+      rawProviderPayloadsIncluded: false,
+      credentialValuesIncluded: false,
+      privateNetworkUrlsIncluded: false,
+    },
+    lifecycleOperations: [
+      redditCredentialLifecycleOperation('create', now, 'Credential create recorded through the approved secret boundary.'),
+      redditCredentialLifecycleOperation('rotate', now, 'Credential rotation replaced the active reference without exposing values.'),
+      redditCredentialLifecycleOperation('revoke', now, 'Credential revoke disabled the previous reference and recorded audit evidence.'),
+      redditCredentialLifecycleOperation('redacted-preview', now, 'Credential preview exposed only redacted metadata for operator review.'),
+    ],
+  };
+}
+
+function redditCredentialLifecycleOperation(operation, observedAt, summary) {
+  return {
+    operation,
+    status: 'passed',
+    observedAt,
+    evidence: {
+      summary,
+      secretValuesRedacted: true,
+      auditEventRecorded: true,
+    },
+  };
+}
+
+function liveRedditArtifact(lifecycleArtifactSha256) {
+  const now = new Date().toISOString();
+  const imageDigest = `sha256:${'b'.repeat(64)}`;
+  return {
+    schemaVersion: 1,
+    format: 'source-live-provider-evidence-v1',
+    artifactId: 'live-reddit-oauth-evidence-v1',
+    environmentId: 'source-reddit-alpha',
+    imageDigest,
+    operator: 'source-operator-1',
+    sampledAt: now,
+    provenance: {
+      evidenceKind: 'live_network',
+      collectionMethod: 'live Reddit OAuth smoke captured on staging beta environment',
+      runner: 'scripts/check-live-reddit-oauth.ts',
+      fixtureOnly: false,
+    },
+    redaction: {
+      secretsIncluded: false,
+      rawProviderPayloadsIncluded: false,
+      credentialValuesIncluded: false,
+      privateNetworkUrlsIncluded: false,
+    },
+    environment: {
+      environmentId: 'source-reddit-alpha',
+      imageDigest,
+      operator: 'source-operator-1',
+      sampledAt: now,
+    },
+    providerResults: [
+      {
+        providerKey: 'reddit',
+        status: 'passed',
+        signalResults: [
+          {
+            signalId: 'reddit-tenant-oauth-smoke',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'Tenant-owned Reddit OAuth credential returned normalized listing items.',
+              subreddit: 'programming',
+              listing: 'hot',
+              itemCount: 3,
+              canonicalUrlsObserved: true,
+              warningCount: 0,
+            },
+          },
+          {
+            signalId: 'reddit-auth-failure',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'Invalid Reddit OAuth credential failed closed with classified auth failure.',
+              status: 'failed_closed',
+              failedClosed: true,
+            },
+          },
+          {
+            signalId: 'reddit-rate-limit-budget',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'Reddit rate limit headers were observed and recorded without token values.',
+              headersObserved: true,
+              observedHeaderNames: [
+                'x-ratelimit-remaining',
+                'x-ratelimit-used',
+                'x-ratelimit-reset',
+              ],
+            },
+          },
+          {
+            signalId: 'reddit-credential-lifecycle',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'Credential create, rotate, revoke and redacted preview lifecycle artifact was hashed.',
+              lifecycleArtifactSha256,
+              redactionChecked: true,
+              lifecycleOperations: ['create', 'rotate', 'revoke', 'redacted-preview'],
             },
           },
         ],
