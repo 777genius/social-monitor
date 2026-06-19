@@ -21,6 +21,45 @@ const hasVerificationScript = (scriptName) =>
 const violations = [];
 const deployArtifactFormat = 'release-deploy-smoke-artifact-v1';
 const allowedArtifactStatus = new Set(['pending_image_digest_and_deploy_smoke', 'passed']);
+const requiredSmokeEvidenceShapeBySmokeId = new Map([
+  [
+    'api-health',
+    [
+      ['summary', 'non_empty_string'],
+      ['healthStatus', 'success_http_status'],
+      ['healthzStatus', 'success_http_status'],
+      ['imageDigestMatched', 'boolean_true'],
+    ],
+  ],
+  [
+    'openapi-contract',
+    [
+      ['summary', 'non_empty_string'],
+      ['snapshotMatched', 'boolean_true'],
+      ['deployedOpenApiSha256', 'sha256_hex'],
+      ['committedOpenApiSha256', 'sha256_hex'],
+    ],
+  ],
+  [
+    'migration-version',
+    [
+      ['summary', 'non_empty_string'],
+      ['migrationMatched', 'boolean_true'],
+      ['deployedMigrationValue', 'non_empty_string'],
+      ['releaseMigrationValue', 'non_empty_string'],
+    ],
+  ],
+  [
+    'worker-pause-resume',
+    [
+      ['summary', 'non_empty_string'],
+      ['pauseSucceeded', 'boolean_true'],
+      ['resumeSucceeded', 'boolean_true'],
+      ['duplicateEffectsObserved', 'boolean_false'],
+      ['pausedWorkerServices', 'non_empty_string_array'],
+    ],
+  ],
+]);
 const forbiddenArtifactFragments = [
   'bearer ',
   'basic ',
@@ -106,6 +145,7 @@ for (const item of artifact.artifactDigests ?? []) {
 }
 
 const smokeIds = new Set((releaseContract.deploySmokeChecks ?? []).map((smoke) => smoke.smokeId));
+validateSmokeEvidenceSchemaMap(smokeIds);
 const evidenceSmokeIds = new Set();
 let hasPendingDeploySmoke = false;
 for (const smoke of artifact.deploySmokeEvidence ?? []) {
@@ -429,10 +469,13 @@ function validateDeployArtifactSmokeResults(deployArtifact, label, options) {
     if (result.status !== 'passed') {
       violations.push(`${label}: smokeResult "${result.smokeId}" must have status=passed`);
     }
-    for (const field of ['observedAt', 'evidence']) {
-      if (typeof result[field] !== 'string' || result[field].trim().length === 0) {
-        violations.push(`${label}: smokeResult "${result.smokeId}" must define ${field}`);
-      }
+    if (typeof result.observedAt !== 'string' || result.observedAt.trim().length === 0) {
+      violations.push(`${label}: smokeResult "${result.smokeId}" must define observedAt`);
+    }
+    if (!isRecord(result.evidence)) {
+      violations.push(`${label}: smokeResult "${result.smokeId}" must define evidence object`);
+    } else {
+      validateSmokeEvidenceShape(label, result);
     }
   }
 
@@ -445,6 +488,105 @@ function validateDeployArtifactSmokeResults(deployArtifact, label, options) {
   if (options.strict === true && !seenSmokeIds.has(options.expectedSmokeId)) {
     violations.push(`${label}: must include smokeResult "${options.expectedSmokeId}"`);
   }
+}
+
+function validateSmokeEvidenceSchemaMap(smokeIds) {
+  for (const smokeId of smokeIds) {
+    const shape = requiredSmokeEvidenceShapeBySmokeId.get(smokeId);
+    if (!Array.isArray(shape) || shape.length === 0) {
+      violations.push(`${artifactPath}: missing smoke-specific evidence schema for "${smokeId}"`);
+      continue;
+    }
+
+    const seenFields = new Set();
+    for (const [fieldPath, fieldType] of shape) {
+      if (typeof fieldPath !== 'string' || fieldPath.trim().length === 0) {
+        violations.push(`${artifactPath}: evidence schema for "${smokeId}" has an empty field path`);
+      }
+      if (seenFields.has(fieldPath)) {
+        violations.push(`${artifactPath}: evidence schema for "${smokeId}" duplicates field "${fieldPath}"`);
+      }
+      seenFields.add(fieldPath);
+      if (!isSupportedEvidenceType(fieldType)) {
+        violations.push(`${artifactPath}: evidence schema for "${smokeId}" uses unsupported type "${fieldType}"`);
+      }
+    }
+  }
+
+  for (const smokeId of requiredSmokeEvidenceShapeBySmokeId.keys()) {
+    if (!smokeIds.has(smokeId)) {
+      violations.push(`${artifactPath}: evidence schema references unsupported smoke "${smokeId}"`);
+    }
+  }
+}
+
+function validateSmokeEvidenceShape(label, result) {
+  const shape = requiredSmokeEvidenceShapeBySmokeId.get(result.smokeId);
+  if (shape === undefined) {
+    violations.push(`${label}: smokeResult "${result.smokeId}" has no evidence schema`);
+    return;
+  }
+
+  for (const [fieldPath, fieldType] of shape) {
+    const value = getPath(result.evidence, fieldPath);
+    if (value === undefined) {
+      violations.push(`${label}: smokeResult "${result.smokeId}" evidence must include ${fieldPath}`);
+      continue;
+    }
+    if (!matchesEvidenceType(value, fieldType)) {
+      violations.push(`${label}: smokeResult "${result.smokeId}" evidence.${fieldPath} must be ${fieldType}`);
+    }
+  }
+}
+
+function getPath(value, path) {
+  let current = value;
+  for (const segment of path.split('.')) {
+    if (!isRecord(current) || !(segment in current)) {
+      return undefined;
+    }
+    current = current[segment];
+  }
+
+  return current;
+}
+
+function matchesEvidenceType(value, fieldType) {
+  switch (fieldType) {
+    case 'non_empty_string':
+      return typeof value === 'string' && value.trim().length > 0;
+    case 'success_http_status':
+      return Number.isInteger(value) && value >= 200 && value < 300;
+    case 'boolean_true':
+      return value === true;
+    case 'boolean_false':
+      return value === false;
+    case 'sha256_hex':
+      return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+    case 'non_empty_string_array':
+      return (
+        Array.isArray(value) &&
+        value.length > 0 &&
+        value.every((item) => typeof item === 'string' && item.trim().length > 0)
+      );
+    default:
+      return false;
+  }
+}
+
+function isSupportedEvidenceType(fieldType) {
+  return new Set([
+    'non_empty_string',
+    'success_http_status',
+    'boolean_true',
+    'boolean_false',
+    'sha256_hex',
+    'non_empty_string_array',
+  ]).has(fieldType);
+}
+
+function isRecord(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 if (!scripts['check:release-artifact-evidence']) {

@@ -48,7 +48,12 @@
           "smokeId": "api-health",
           "status": "passed",
           "observedAt": "2026-06-18T10:10:01.000Z",
-          "evidence": "GET /health and GET /healthz returned healthy on the promoted backend image.",
+          "evidence": {
+            "summary": "GET /health and GET /healthz returned healthy on the promoted backend image.",
+            "healthStatus": 200,
+            "healthzStatus": 200,
+            "imageDigestMatched": true
+          },
           "metrics": {
             "healthStatus": 200,
             "healthzStatus": 200
@@ -58,7 +63,12 @@
           "smokeId": "openapi-contract",
           "status": "passed",
           "observedAt": "2026-06-18T10:10:02.000Z",
-          "evidence": "Deployed REST contract hash matched the committed OpenAPI snapshot.",
+          "evidence": {
+            "summary": "Deployed REST contract hash matched the committed OpenAPI snapshot.",
+            "snapshotMatched": true,
+            "deployedOpenApiSha256": "0000000000000000000000000000000000000000000000000000000000000202",
+            "committedOpenApiSha256": "0000000000000000000000000000000000000000000000000000000000000202"
+          },
           "metrics": {
             "snapshotMatched": true
           }
@@ -67,7 +77,12 @@
           "smokeId": "migration-version",
           "status": "passed",
           "observedAt": "2026-06-18T10:10:03.000Z",
-          "evidence": "Deployed database migration version matched the release evidence migration.",
+          "evidence": {
+            "summary": "Deployed database migration version matched the release evidence migration.",
+            "migrationMatched": true,
+            "deployedMigrationValue": "20260618143000_baseline",
+            "releaseMigrationValue": "20260618143000_baseline"
+          },
           "metrics": {
             "migrationMatched": true
           }
@@ -76,7 +91,18 @@
           "smokeId": "worker-pause-resume",
           "status": "passed",
           "observedAt": "2026-06-18T10:10:04.000Z",
-          "evidence": "Workers paused for restore validation and resumed without duplicate scan/feed/summary/delivery effects.",
+          "evidence": {
+            "summary": "Workers paused for restore validation and resumed without duplicate scan/feed/summary/delivery effects.",
+            "pauseSucceeded": true,
+            "resumeSucceeded": true,
+            "duplicateEffectsObserved": false,
+            "pausedWorkerServices": [
+              "ingestion-worker",
+              "intelligence-worker",
+              "delivery-service",
+              "event-relay"
+            ]
+          },
           "metrics": {
             "pauseSucceeded": true,
             "resumeSucceeded": true,
