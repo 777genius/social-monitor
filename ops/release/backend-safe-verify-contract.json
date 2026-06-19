@@ -36,6 +36,7 @@
     "check:credential-secret-runtime-flow",
     "check:backend-ops-readiness",
     "check:backend-mvp-completion-audit",
+    "check:backend-mvp-status",
     "check:backend-safe-verify",
     "check:external-beta-readiness",
     "check:external-beta-evidence-runner",

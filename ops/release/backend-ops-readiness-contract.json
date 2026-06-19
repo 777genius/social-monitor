@@ -190,6 +190,7 @@
       "gates": [
         "check:release-baseline",
         "check:backend-safe-verify",
+        "check:backend-mvp-status",
         "check:durable-runtime-proof",
         "check:external-beta-readiness",
         "check:capacity-envelope-beta-ring-decision",
@@ -199,6 +200,7 @@
       "releaseGateIds": [
         "release-baseline",
         "backend-safe-verify-contract",
+        "backend-mvp-status",
         "durable-runtime-proof",
         "external-beta-readiness",
         "capacity-envelope-beta-ring-decision",
@@ -208,6 +210,7 @@
       "artifacts": [
         "ops/release/release-baseline-contract.json",
         "ops/release/backend-safe-verify-contract.json",
+        "ops/release/backend-mvp-status-contract.json",
         "ops/release/durable-runtime-proof.json",
         "ops/release/external-beta-readiness-contract.json",
         "ops/release/capacity-envelope-beta-ring-decision.json",

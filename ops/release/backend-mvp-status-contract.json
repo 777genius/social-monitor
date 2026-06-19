@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "statusModelId": "backend-mvp-status-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "sourceAudit": "ops/release/backend-mvp-completion-audit.json",
+  "sourceExternalReadiness": "ops/release/external-beta-readiness-contract.json",
+  "sourceEvidenceRunner": "ops/release/external-beta-evidence-runner.json",
+  "sourceEvidenceDryRun": "ops/release/external-beta-evidence-dry-run.json",
+  "checkCommand": "npm run check:backend-mvp-status",
+  "statusJsonCommand": "npm run --silent backend:mvp:status:json",
+  "releaseGateId": "backend-mvp-status",
+  "forbidSubjectiveOverallPercent": true,
+  "strictExternalBetaReadyRequires": [
+    "backend MVP completion audit is complete",
+    "external beta decision is go",
+    "every blocking backend MVP requirement is passed",
+    "external beta evidence runner has no blocker jobs",
+    "live/manual evidence readiness is 100 percent"
+  ],
+  "requiredStatusFields": [
+    "strictExternalBetaReady",
+    "strictExternalBetaExitPercent",
+    "contractClosurePercent",
+    "externalEvidenceEnvReadinessPercent",
+    "blockingRequirementCount",
+    "passedBlockingRequirementCount",
+    "externalBlockerJobCount",
+    "missingRequiredEnv"
+  ],
+  "minimumRequirementCount": 14,
+  "minimumEvidenceJobCount": 15,
+  "holdDecisionRequiresBlockers": true,
+  "cleanEnvMustRemainBlocked": true,
+  "secretValuePolicy": "env_names_only"
+}

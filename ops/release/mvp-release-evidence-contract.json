@@ -100,6 +100,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "backend-mvp-status",
+      "command": "npm run check:backend-mvp-status",
+      "blocksRelease": true
+    },
+    {
       "gateId": "no-go-cleanup",
       "command": "npm run check:no-go-cleanup",
       "blocksRelease": true

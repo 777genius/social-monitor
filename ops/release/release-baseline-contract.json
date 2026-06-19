@@ -19,6 +19,7 @@
     "check:summary-feedback-hardening",
     "check:backend-ops-readiness",
     "check:backend-mvp-completion-audit",
+    "check:backend-mvp-status",
     "check:external-beta-evidence-runner",
     "check:external-beta-evidence-dry-run",
     "check:operational-support-package",
@@ -63,6 +64,10 @@
     {
       "artifactId": "backend-mvp-completion-audit",
       "path": "ops/release/backend-mvp-completion-audit.json"
+    },
+    {
+      "artifactId": "backend-mvp-status",
+      "path": "ops/release/backend-mvp-status-contract.json"
     },
     {
       "artifactId": "external-beta-evidence-runner",
