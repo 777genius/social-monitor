@@ -646,9 +646,29 @@ function validateEvidenceValueEnv(job, missingEnvSet, violations, options = {}) 
       validateHttpsEvidenceUrlEnv(job, envName, value, violations);
       continue;
     }
+    if (tokenEvidenceEnvNames().has(envName)) {
+      validateSecretTokenEnv(job, envName, value, violations);
+      continue;
+    }
+    if (secretReferenceEnvNames().has(envName)) {
+      validateSecretReferenceEnv(job, envName, value, violations);
+      continue;
+    }
     if (realEvidenceIdentityEnvNames().has(envName) && isFixtureLikeEnvValue(value)) {
       violations.push(`${job.jobId}: env ${envName} must not use local, fixture, example, mock or test identifiers`);
     }
+  }
+}
+
+function validateSecretTokenEnv(job, envName, value, violations) {
+  if (isPlaceholderSecretValue(value) || value.length < 20 || /\s/.test(value)) {
+    violations.push(`${job.jobId}: env ${envName} must be a non-placeholder secret value`);
+  }
+}
+
+function validateSecretReferenceEnv(job, envName, value, violations) {
+  if (isPlaceholderSecretValue(value) || value.length < 8 || isRawSecretValueReference(value)) {
+    violations.push(`${job.jobId}: env ${envName} must be a non-placeholder secret reference, not a raw secret value`);
   }
 }
 
@@ -770,6 +790,14 @@ function httpsEvidenceUrlEnvNames() {
   ]);
 }
 
+function tokenEvidenceEnvNames() {
+  return new Set(['GITHUB_ACCESS_TOKEN', 'REDDIT_ACCESS_TOKEN']);
+}
+
+function secretReferenceEnvNames() {
+  return new Set(['DATABASE_URL_SECRET_REF', 'OIDC_CONFIG_SECRET_REF', 'RABBITMQ_URL_SECRET_REF']);
+}
+
 function realEvidenceIdentityEnvNames() {
   return new Set([
     'STAGING_ENVIRONMENT_ID',
@@ -793,6 +821,41 @@ function isFixtureLikeEnvValue(value) {
   return normalized.split(/[^a-z0-9]+/).some((segment) => {
     return ['local', 'localhost', 'fixture', 'example', 'synthetic', 'mock', 'test'].includes(segment);
   });
+}
+
+function isPlaceholderSecretValue(value) {
+  const normalized = String(value).trim().toLowerCase();
+  if (isFixtureLikeEnvValue(normalized)) {
+    return true;
+  }
+  return [
+    'changeme',
+    'change-me',
+    'dummy',
+    'placeholder',
+    'redacted',
+    'secret',
+    'token',
+    'todo',
+    'undefined',
+  ].includes(normalized);
+}
+
+function isRawSecretValueReference(value) {
+  const normalized = String(value).trim().toLowerCase();
+  return [
+    'bearer ',
+    'basic ',
+    'postgres://',
+    'postgresql://',
+    'amqp://',
+    'amqps://',
+    'github_pat_',
+    'ghp_',
+    'sk-proj-',
+    'sk-live-',
+    'whsec_',
+  ].some((fragment) => normalized.startsWith(fragment) || normalized.includes(fragment));
 }
 
 function validateEvidencePathEnv(job, missingEnvSet, violations) {
