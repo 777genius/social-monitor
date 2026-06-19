@@ -44,6 +44,23 @@
       "API_BASE_URL",
       "DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH"
     ],
+    "provenanceRequirements": {
+      "evidenceKind": "staging_runtime_selector",
+      "fixtureOnly": false,
+      "requiredFields": [
+        "evidenceKind",
+        "collectionMethod",
+        "runner",
+        "fixtureOnly"
+      ],
+      "forbiddenRealFragments": [
+        "example",
+        "fixture",
+        "synthetic",
+        "mock",
+        "test"
+      ]
+    },
     "exitCondition": "DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH must validate against durable-runtime-selector-artifact-v1 before external beta go."
   },
   "requiredComposeMarkers": [

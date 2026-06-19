@@ -19,6 +19,16 @@ const hasVerificationScript = (scriptName) =>
   verifyScript.includes(`npm run ${scriptName}`) || backendSafeScripts.has(scriptName);
 const violations = [];
 const durableRuntimeSelectorArtifactFormat = 'durable-runtime-selector-artifact-v1';
+const durableRuntimeEvidenceKind = 'staging_runtime_selector';
+const fixtureArtifactEvidenceKind = 'fixture_example';
+const requiredArtifactProvenanceFields = new Set(['evidenceKind', 'collectionMethod', 'runner', 'fixtureOnly']);
+const forbiddenRealProvenanceFragments = [
+  'example',
+  'fixture',
+  'synthetic',
+  'mock',
+  'test',
+];
 const requiredServiceSelectorValues = new Map([
   ['api-gateway', {
     MONITORING_PERSISTENCE: 'prisma',
@@ -224,6 +234,7 @@ function validateStagingRuntimeEvidenceSchema(schema) {
     new Set(['STAGING_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'API_BASE_URL', 'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH']),
     'stagingRuntimeEvidenceSchema.requiredRuntimeEnv',
   );
+  validateProvenanceRequirements(schema.provenanceRequirements);
 
   if (
     typeof schema.exitCondition !== 'string'
@@ -231,6 +242,29 @@ function validateStagingRuntimeEvidenceSchema(schema) {
   ) {
     violations.push(`${proofPath}: stagingRuntimeEvidenceSchema.exitCondition must mention ${durableRuntimeSelectorArtifactFormat}`);
   }
+}
+
+function validateProvenanceRequirements(requirements) {
+  if (requirements === null || typeof requirements !== 'object' || Array.isArray(requirements)) {
+    violations.push(`${proofPath}: stagingRuntimeEvidenceSchema.provenanceRequirements is required`);
+    return;
+  }
+  if (requirements.evidenceKind !== durableRuntimeEvidenceKind) {
+    violations.push(`${proofPath}: stagingRuntimeEvidenceSchema.provenanceRequirements.evidenceKind must be ${durableRuntimeEvidenceKind}`);
+  }
+  if (requirements.fixtureOnly !== false) {
+    violations.push(`${proofPath}: stagingRuntimeEvidenceSchema.provenanceRequirements.fixtureOnly must be false`);
+  }
+  requireSetCoverage(
+    new Set(requirements.requiredFields ?? []),
+    requiredArtifactProvenanceFields,
+    'stagingRuntimeEvidenceSchema.provenanceRequirements.requiredFields',
+  );
+  requireSetCoverage(
+    new Set(requirements.forbiddenRealFragments ?? []),
+    new Set(forbiddenRealProvenanceFragments),
+    'stagingRuntimeEvidenceSchema.provenanceRequirements.forbiddenRealFragments',
+  );
 }
 
 function requireSetCoverage(actual, expected, label) {
@@ -265,9 +299,61 @@ function validateDurableRuntimeSelectorArtifact(artifact, path, options) {
     violations.push(`${path}: frontendPolicy must be deferred_contract_only`);
   }
 
+  validateArtifactProvenance(artifact.provenance, path, options);
   validateArtifactEnvironment(artifact.environment, path, options);
   validateArtifactServices(artifact.services, path);
   validateArtifactRollup(artifact.rollup, path);
+}
+
+function validateArtifactProvenance(provenance, path, options) {
+  if (provenance === null || typeof provenance !== 'object' || Array.isArray(provenance)) {
+    violations.push(`${path}: provenance must be an object`);
+    return;
+  }
+
+  for (const field of requiredArtifactProvenanceFields) {
+    if (!(field in provenance)) {
+      violations.push(`${path}: provenance.${field} is required`);
+    }
+  }
+  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
+    if (typeof provenance[field] !== 'string' || provenance[field].trim().length === 0) {
+      violations.push(`${path}: provenance.${field} must be a non-empty string`);
+    }
+  }
+
+  if (options.allowExample === true) {
+    if (provenance.evidenceKind !== fixtureArtifactEvidenceKind) {
+      violations.push(`${path}: fixture provenance.evidenceKind must be ${fixtureArtifactEvidenceKind}`);
+    }
+    if (provenance.fixtureOnly !== true) {
+      violations.push(`${path}: fixture provenance.fixtureOnly must be true`);
+    }
+    return;
+  }
+
+  if (provenance.evidenceKind !== durableRuntimeEvidenceKind) {
+    violations.push(`${path}: provenance.evidenceKind must be ${durableRuntimeEvidenceKind}`);
+  }
+  if (provenance.fixtureOnly !== false) {
+    violations.push(`${path}: provenance.fixtureOnly must be false for runtime selector evidence`);
+  }
+  for (const field of ['evidenceKind', 'collectionMethod', 'runner']) {
+    validateRealProvenanceString(provenance[field], `${path}: provenance.${field}`);
+  }
+}
+
+function validateRealProvenanceString(value, label) {
+  if (typeof value !== 'string') {
+    return;
+  }
+
+  const normalized = value.toLowerCase();
+  for (const fragment of forbiddenRealProvenanceFragments) {
+    if (normalized.includes(fragment)) {
+      violations.push(`${label} must not contain "${fragment}" for runtime selector artifacts`);
+    }
+  }
 }
 
 function validateArtifactEnvironment(environment, path, options) {

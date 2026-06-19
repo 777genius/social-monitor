@@ -3,6 +3,12 @@
   "artifactFormat": "durable-runtime-selector-artifact-v1",
   "scope": "backend-only",
   "frontendPolicy": "deferred_contract_only",
+  "provenance": {
+    "evidenceKind": "fixture_example",
+    "collectionMethod": "Synthetic fixture example for durable runtime selector schema validation.",
+    "runner": "ops/release/fixtures/durable-runtime-selector-artifact-examples.json",
+    "fixtureOnly": true
+  },
   "environment": {
     "environmentId": "staging-runtime-selector-example",
     "imageDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
