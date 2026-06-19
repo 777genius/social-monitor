@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative } from 'node:path';
 
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
@@ -466,15 +466,39 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
       invalidPathEnv.add(envName);
       continue;
     }
+    const realPath = readEvidenceRealPath(value, job.jobId, envName, violations);
+    if (realPath === undefined) {
+      invalidPathEnv.add(envName);
+      continue;
+    }
+    if (isFixtureLikeArtifactPath(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must not point to fixture or example evidence`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
+    if (isGitTrackedPath(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must not point to a git-tracked file`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
 
     const violationCount = violations.length;
-    validateEvidencePathFileContent(value, job.jobId, envName, violations);
+    validateEvidencePathFileContent(realPath, job.jobId, envName, violations);
     if (violations.length > violationCount) {
       invalidPathEnv.add(envName);
     }
   }
 
   return invalidPathEnv;
+}
+
+function readEvidenceRealPath(path, jobId, envName, violations) {
+  try {
+    return realpathSync(path);
+  } catch {
+    violations.push(`${jobId}: evidence path env ${envName} realpath must be readable`);
+    return undefined;
+  }
 }
 
 function validateEvidencePathFileContent(path, jobId, envName, violations) {
