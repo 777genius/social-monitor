@@ -282,6 +282,9 @@ function validateRunnerImplementation() {
     'Refusing to execute external beta evidence jobs. Resolve all preflight violations first:',
     'printJsonPlan',
     'uniqueMissingEnv',
+    'readSelectedJobSelection',
+    'Invalid external beta evidence job selection:',
+    '--jobs requires at least one job id',
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);

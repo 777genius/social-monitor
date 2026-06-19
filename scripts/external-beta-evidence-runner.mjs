@@ -7,7 +7,16 @@ const args = process.argv.slice(2);
 const execute = args.includes('--execute');
 const requireEnv = args.includes('--require-env');
 const json = args.includes('--json');
-const selectedJobIds = readSelectedJobIds(args);
+const selection = readSelectedJobSelection(args);
+if (selection.errors.length > 0) {
+  console.error('Invalid external beta evidence job selection:');
+  for (const error of selection.errors) {
+    console.error(`- ${error}`);
+  }
+  process.exit(1);
+}
+
+const selectedJobIds = selection.jobIds;
 const knownJobIds = new Set(contract.jobs.map((job) => job.jobId));
 const unknownJobIds = selectedJobIds.filter((jobId) => !knownJobIds.has(jobId));
 if (unknownJobIds.length > 0) {
@@ -124,18 +133,38 @@ function printJsonPlan(plan) {
   console.log(JSON.stringify(plan, null, 2));
 }
 
-function readSelectedJobIds(argv) {
-  const selected = [];
+function readSelectedJobSelection(argv) {
+  const jobIds = [];
+  const errors = [];
   for (let index = 0; index < argv.length; index += 1) {
-    if (argv[index] === '--job' && argv[index + 1]) {
-      selected.push(argv[index + 1]);
+    if (argv[index] === '--job') {
+      const value = argv[index + 1];
+      if (isMissingSelectionValue(value)) {
+        errors.push('--job requires a non-empty job id value');
+        continue;
+      }
+      jobIds.push(value.trim());
       index += 1;
-    } else if (argv[index] === '--jobs' && argv[index + 1]) {
-      selected.push(...argv[index + 1].split(',').map((jobId) => jobId.trim()).filter(Boolean));
+    } else if (argv[index] === '--jobs') {
+      const value = argv[index + 1];
+      if (isMissingSelectionValue(value)) {
+        errors.push('--jobs requires a non-empty comma-separated job id list');
+        continue;
+      }
+      const values = value.split(',').map((jobId) => jobId.trim()).filter(Boolean);
+      if (values.length === 0) {
+        errors.push('--jobs requires at least one job id');
+        continue;
+      }
+      jobIds.push(...values);
       index += 1;
     }
   }
-  return selected;
+  return { jobIds, errors };
+}
+
+function isMissingSelectionValue(value) {
+  return value === undefined || value.trim() === '' || value.startsWith('--');
 }
 
 function missingRequiredEnv(job) {
