@@ -432,6 +432,7 @@ function artifactValidationViolations(candidateJobs) {
         violations.push(`${job.jobId}: output artifact env ${artifact.env} must use format ${artifact.format}`);
       }
       validateArtifactEnvConsistency(content, job, artifact.env, violations);
+      validateArtifactFreshness(content, job, artifact.env, artifact.format, violations);
     }
   }
   return violations;
@@ -560,6 +561,43 @@ function validateArtifactEnvConsistency(content, job, artifactEnv, violations) {
   }
 }
 
+function validateArtifactFreshness(content, job, artifactEnv, artifactFormat, violations) {
+  const freshness = contract.artifactFreshness;
+  if (typeof freshness !== 'object' || freshness === null) {
+    return;
+  }
+
+  const timestampPaths = Array.isArray(freshness.timestampPaths) ? freshness.timestampPaths : [];
+  const timestamps = observedArtifactTimestampValues(content, timestampPaths);
+  const requiredTimestampFormats = new Set(freshness.requiredTimestampFormats ?? []);
+  if (requiredTimestampFormats.has(artifactFormat) && timestamps.length === 0) {
+    violations.push(`${job.jobId}: output artifact env ${artifactEnv} must include a release evidence timestamp`);
+    return;
+  }
+
+  const maxAgeMs = Number(freshness.maxArtifactAgeHours) * 60 * 60 * 1000;
+  const maxFutureSkewMs = Number(freshness.maxArtifactFutureSkewMinutes) * 60 * 1000;
+  if (!Number.isFinite(maxAgeMs) || maxAgeMs <= 0 || !Number.isFinite(maxFutureSkewMs) || maxFutureSkewMs < 0) {
+    violations.push(`${job.jobId}: artifact freshness policy is invalid`);
+    return;
+  }
+
+  const now = Date.now();
+  for (const timestamp of timestamps) {
+    const observedAtMs = Date.parse(timestamp.value);
+    if (!Number.isFinite(observedAtMs)) {
+      violations.push(`${job.jobId}: output artifact env ${artifactEnv} timestamp ${timestamp.path} must be ISO-8601`);
+      continue;
+    }
+    if (observedAtMs > now + maxFutureSkewMs) {
+      violations.push(`${job.jobId}: output artifact env ${artifactEnv} timestamp ${timestamp.path} must not be in the future`);
+    }
+    if (observedAtMs < now - maxAgeMs) {
+      violations.push(`${job.jobId}: output artifact env ${artifactEnv} timestamp ${timestamp.path} is older than ${freshness.maxArtifactAgeHours} hours`);
+    }
+  }
+}
+
 function artifactEnvConsistencyRules() {
   return [
     {
@@ -593,6 +631,21 @@ function artifactEnvConsistencyRules() {
       paths: [['secretStoreId'], ['environment', 'secretStoreId']],
     },
   ];
+}
+
+function observedArtifactTimestampValues(content, paths) {
+  const values = [];
+  for (const path of paths) {
+    const segments = String(path).split('.');
+    let cursor = content;
+    for (const segment of segments) {
+      cursor = cursor?.[segment];
+    }
+    if (typeof cursor === 'string' && cursor.trim().length > 0) {
+      values.push({ path, value: cursor.trim() });
+    }
+  }
+  return values;
 }
 
 function observedArtifactStringValues(content, paths) {

@@ -238,6 +238,7 @@ validateCommand(contract.preflightCommand, `${contractPath}: preflightCommand`);
 validateCommand(contract.artifactValidationCommand, `${contractPath}: artifactValidationCommand`);
 validateCommand(contract.executeCommand, `${contractPath}: executeCommand`);
 validateSafety();
+validateArtifactFreshnessPolicy();
 validateArtifactExamples();
 validateRunnerImplementation();
 validateJobs();
@@ -283,6 +284,40 @@ function validateSafety() {
   for (const forbidden of forbiddenFragments) {
     if (!safety.forbiddenTargets?.includes(forbidden)) {
       violations.push(`${contractPath}: executionSafety.forbiddenTargets must include ${forbidden}`);
+    }
+  }
+}
+
+function validateArtifactFreshnessPolicy() {
+  const freshness = contract.artifactFreshness;
+  if (typeof freshness !== 'object' || freshness === null) {
+    violations.push(`${contractPath}: artifactFreshness is required`);
+    return;
+  }
+  if (!Number.isFinite(freshness.maxArtifactAgeHours) || freshness.maxArtifactAgeHours <= 0) {
+    violations.push(`${contractPath}: artifactFreshness.maxArtifactAgeHours must be positive`);
+  }
+  if (!Number.isFinite(freshness.maxArtifactFutureSkewMinutes) || freshness.maxArtifactFutureSkewMinutes < 0) {
+    violations.push(`${contractPath}: artifactFreshness.maxArtifactFutureSkewMinutes must be non-negative`);
+  }
+
+  const timestampPaths = new Set(freshness.timestampPaths ?? []);
+  for (const timestampPath of ['sampledAt', 'generatedAt', 'completedAt', 'environment.sampledAt', 'source.sampleWindow.endedAt']) {
+    if (!timestampPaths.has(timestampPath)) {
+      violations.push(`${contractPath}: artifactFreshness.timestampPaths must include ${timestampPath}`);
+    }
+  }
+
+  const requiredTimestampFormats = new Set(freshness.requiredTimestampFormats ?? []);
+  const envArtifactFormats = new Set(
+    contract.jobs
+      .flatMap((job) => job.outputArtifacts ?? [])
+      .filter((artifact) => artifact.env !== undefined)
+      .map((artifact) => artifact.format),
+  );
+  for (const format of envArtifactFormats) {
+    if (!requiredTimestampFormats.has(format)) {
+      violations.push(`${contractPath}: artifactFreshness.requiredTimestampFormats must include ${format}`);
     }
   }
 }
@@ -394,6 +429,14 @@ function validateRunnerImplementation() {
     'must be readable',
     'validateArtifactRedaction',
     'validateArtifactEnvConsistency',
+    'validateArtifactFreshness',
+    'artifactFreshness',
+    'maxArtifactAgeHours',
+    'maxArtifactFutureSkewMinutes',
+    'observedArtifactTimestampValues',
+    'release evidence timestamp',
+    'older than',
+    'must not be in the future',
     'artifactEnvConsistencyRules',
     'observedArtifactStringValues',
     'must match ${rule.envName}',

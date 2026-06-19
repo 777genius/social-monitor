@@ -31,6 +31,28 @@
     "artifactValidationSkipsLiveRunners": true,
     "secretValuesMustStayOutOfArtifacts": true
   },
+  "artifactFreshness": {
+    "maxArtifactAgeHours": 168,
+    "maxArtifactFutureSkewMinutes": 10,
+    "timestampPaths": [
+      "sampledAt",
+      "generatedAt",
+      "completedAt",
+      "environment.sampledAt",
+      "source.sampleWindow.endedAt"
+    ],
+    "requiredTimestampFormats": [
+      "durable-runtime-selector-artifact-v1",
+      "source-live-provider-evidence-v1",
+      "reddit-credential-lifecycle-redacted-v1",
+      "source-credential-rotation-redacted-v1",
+      "webhook-secret-rotation-redacted-v1",
+      "staging-reliability-artifact-v1",
+      "redacted-summary-feedback-samples-v1",
+      "release-deploy-smoke-artifact-v1",
+      "security-final-sweep-staging-artifact-v1"
+    ]
+  },
   "artifactExamples": [
     {
       "format": "durable-runtime-selector-artifact-v1",
