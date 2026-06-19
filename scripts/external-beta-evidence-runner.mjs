@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, relative } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { URL } from 'node:url';
 
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
@@ -203,6 +203,7 @@ function validateGeneratedArtifacts(job) {
 }
 
 function buildPlan(planJobs) {
+  const duplicatePreflightViolationsByJob = duplicateEvidencePathViolationsByJob(planJobs);
   const plan = {
     runnerId: contract.runnerId,
     mode: execute ? 'execute' : validateArtifacts ? 'validate_artifacts' : 'plan_only',
@@ -228,7 +229,10 @@ function buildPlan(planJobs) {
   for (const job of planJobs) {
     const missingEnv = missingRequiredEnv(job);
     const missingOptionalEnv = missingOptionalEnvNames(job);
-    const preflightViolations = jobPreflightViolations(job, new Set(missingEnv));
+    const preflightViolations = [
+      ...jobPreflightViolations(job, new Set(missingEnv)),
+      ...(duplicatePreflightViolationsByJob.get(job.jobId) ?? []),
+    ];
     const executionReadiness = jobExecutionReadiness(job, missingEnv, preflightViolations);
     plan.readinessCounts[executionReadiness] = (plan.readinessCounts[executionReadiness] ?? 0) + 1;
     plan.jobs.push({
@@ -475,6 +479,7 @@ function jobExecutionReadiness(job, missingEnv, preflightViolations) {
 
 function executableJobViolations(candidateJobs) {
   const violations = [];
+  violations.push(...duplicateEvidencePathViolations(candidateJobs));
   for (const job of candidateJobs) {
     const missingEnv = missingRequiredEnv(job);
     if (missingEnv.length > 0) {
@@ -491,6 +496,7 @@ function executableJobViolations(candidateJobs) {
 
 function planPreflightViolations(candidateJobs) {
   const violations = [];
+  violations.push(...duplicateEvidencePathViolations(candidateJobs));
   for (const job of candidateJobs) {
     violations.push(...jobPreflightViolations(job, new Set(missingRequiredEnv(job))));
   }
@@ -508,6 +514,7 @@ function jobPreflightViolations(job, missingEnvSet) {
 
 function artifactValidationViolations(candidateJobs) {
   const violations = [];
+  violations.push(...duplicateEvidencePathViolations(candidateJobs));
   for (const job of candidateJobs) {
     const missingEnv = missingRequiredEnv(job);
     const missingEnvSet = new Set(missingEnv);
@@ -557,6 +564,66 @@ function artifactValidationViolations(candidateJobs) {
     }
   }
   return violations;
+}
+
+function duplicateEvidencePathViolations(candidateJobs) {
+  return [...duplicateEvidencePathViolationsByJob(candidateJobs).values()].flat();
+}
+
+function duplicateEvidencePathViolationsByJob(candidateJobs) {
+  const violationsByJob = new Map();
+  if (contract.executionSafety?.evidencePathEnvForbidsDuplicatePaths !== true) {
+    return violationsByJob;
+  }
+
+  const entriesByPath = new Map();
+  for (const job of candidateJobs) {
+    for (const artifact of job.outputArtifacts ?? []) {
+      const envName = artifact.env;
+      if (envName === undefined || !envName.endsWith('_PATH')) {
+        continue;
+      }
+      const value = process.env[envName]?.trim();
+      if (value === undefined || value === '') {
+        continue;
+      }
+
+      const duplicateKey = evidencePathDuplicateKey(value);
+      const entries = entriesByPath.get(duplicateKey) ?? [];
+      entries.push({ jobId: job.jobId, envName });
+      entriesByPath.set(duplicateKey, entries);
+    }
+  }
+
+  for (const entries of entriesByPath.values()) {
+    if (entries.length < 2) {
+      continue;
+    }
+    for (const entry of entries) {
+      const violations = violationsByJob.get(entry.jobId) ?? [];
+      violations.push(`${entry.jobId}: evidence path env ${entry.envName} must not duplicate another evidence artifact path in this run`);
+      violationsByJob.set(entry.jobId, violations);
+    }
+  }
+
+  return violationsByJob;
+}
+
+function evidencePathDuplicateKey(path) {
+  if (existsSync(path)) {
+    try {
+      return realpathSync(path);
+    } catch {
+      return resolve(path);
+    }
+  }
+
+  const parentDirectory = dirname(path);
+  try {
+    return resolve(realpathSync(parentDirectory), basename(path));
+  } catch {
+    return resolve(path);
+  }
 }
 
 function validateExecutableOutputArtifactPathEnv(job, missingEnvSet, violations) {

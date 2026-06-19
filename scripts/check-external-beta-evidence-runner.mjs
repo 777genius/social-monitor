@@ -342,6 +342,9 @@ function validateSafety() {
   if (safety.evidencePathEnvRequiresWritableParent !== true) {
     violations.push(`${contractPath}: executionSafety.evidencePathEnvRequiresWritableParent must be true`);
   }
+  if (safety.evidencePathEnvForbidsDuplicatePaths !== true) {
+    violations.push(`${contractPath}: executionSafety.evidencePathEnvForbidsDuplicatePaths must be true`);
+  }
   if (safety.outputArtifactPathEnvRequiresJsonExtension !== true) {
     violations.push(`${contractPath}: executionSafety.outputArtifactPathEnvRequiresJsonExtension must be true`);
   }
@@ -549,6 +552,7 @@ function validateRunnerImplementation() {
     'evidencePathEnvRequiresJsonContent',
     'evidencePathEnvForbidsWorkspacePath',
     'evidencePathEnvRequiresWritableParent',
+    'evidencePathEnvForbidsDuplicatePaths',
     'requiresJsonEvidencePathEnv',
     'requiresJsonEvidencePathContent',
     'forbidsWorkspaceEvidencePaths',
@@ -559,6 +563,10 @@ function validateRunnerImplementation() {
     'parent directory must exist',
     'parent directory must be writable',
     'parent directory must not be inside the git workspace',
+    'duplicateEvidencePathViolations',
+    'duplicateEvidencePathViolationsByJob',
+    'evidencePathDuplicateKey',
+    'must not duplicate another evidence artifact path in this run',
     'outputArtifactPathEnvRequiresJsonExtension',
     'isJsonEvidencePath',
     'path must end with .json',

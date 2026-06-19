@@ -42,6 +42,7 @@
     "evidencePathEnvRequiresJsonContent": true,
     "evidencePathEnvForbidsWorkspacePath": true,
     "evidencePathEnvRequiresWritableParent": true,
+    "evidencePathEnvForbidsDuplicatePaths": true,
     "outputArtifactPathEnvRequiresJsonExtension": true
   },
   "artifactFreshness": {
