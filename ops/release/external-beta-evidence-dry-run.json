@@ -12,6 +12,7 @@
   "checkCommand": "npm run check:external-beta-evidence-dry-run",
   "planJsonCommand": "npm run --silent beta:evidence:plan:json",
   "handoffCommand": "npm run beta:evidence:handoff",
+  "handoffJsonCommand": "npm run --silent beta:evidence:handoff:json",
   "summaryCommand": "npm run beta:evidence:summary",
   "preflightCommand": "npm run beta:evidence:preflight",
   "artifactValidationCommand": "npm run beta:evidence:validate",

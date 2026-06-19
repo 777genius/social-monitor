@@ -265,6 +265,7 @@ validateCommand(contract.planCommand, `${contractPath}: planCommand`);
 validateCommand(contract.jsonPlanCommand, `${contractPath}: jsonPlanCommand`);
 validateCommand(contract.summaryCommand, `${contractPath}: summaryCommand`);
 validateCommand(contract.handoffCommand, `${contractPath}: handoffCommand`);
+validateCommand(contract.handoffJsonCommand, `${contractPath}: handoffJsonCommand`);
 validateCommand(contract.preflightCommand, `${contractPath}: preflightCommand`);
 validateCommand(contract.artifactValidationCommand, `${contractPath}: artifactValidationCommand`);
 validateCommand(contract.executeCommand, `${contractPath}: executeCommand`);
@@ -467,6 +468,9 @@ function validateRunnerImplementation() {
     'printJsonPlan',
     'printSummary',
     'printHandoff',
+    'printJsonHandoff',
+    'buildHandoff',
+    'buildHandoffArtifactContracts',
     'External Beta Evidence Handoff',
     'handoffAction',
     'formatHandoffArtifacts',
@@ -1099,6 +1103,7 @@ function validateWiring() {
   const jsonPlanScript = scriptNameFromCommand(contract.jsonPlanCommand);
   const summaryScript = scriptNameFromCommand(contract.summaryCommand);
   const handoffScript = scriptNameFromCommand(contract.handoffCommand);
+  const handoffJsonScript = scriptNameFromCommand(contract.handoffJsonCommand);
   const preflightScript = scriptNameFromCommand(contract.preflightCommand);
   const artifactValidationScript = scriptNameFromCommand(contract.artifactValidationCommand);
   const executeScript = scriptNameFromCommand(contract.executeCommand);
@@ -1109,6 +1114,7 @@ function validateWiring() {
     jsonPlanScript,
     summaryScript,
     handoffScript,
+    handoffJsonScript,
     preflightScript,
     artifactValidationScript,
     executeScript,
@@ -1125,6 +1131,9 @@ function validateWiring() {
   }
   if (!String(packageScripts[handoffScript] ?? '').includes('--handoff')) {
     violations.push(`${packagePath}: ${handoffScript} must pass --handoff`);
+  }
+  if (!String(packageScripts[handoffJsonScript] ?? '').includes('--handoff-json')) {
+    violations.push(`${packagePath}: ${handoffJsonScript} must pass --handoff-json`);
   }
   if (!String(packageScripts[preflightScript] ?? '').includes('--require-env')) {
     violations.push(`${packagePath}: ${preflightScript} must pass --require-env`);
@@ -1143,6 +1152,7 @@ function validateWiring() {
     jsonPlanScript,
     summaryScript,
     handoffScript,
+    handoffJsonScript,
     preflightScript,
     artifactValidationScript,
     executeScript,
@@ -1180,6 +1190,9 @@ function validateWiring() {
   }
   if (evidenceRunner.handoffCommand !== contract.handoffCommand) {
     violations.push(`${externalReadinessPath}: evidenceRunner.handoffCommand must match runner contract`);
+  }
+  if (evidenceRunner.handoffJsonCommand !== contract.handoffJsonCommand) {
+    violations.push(`${externalReadinessPath}: evidenceRunner.handoffJsonCommand must match runner contract`);
   }
   if (evidenceRunner.preflightCommand !== contract.preflightCommand) {
     violations.push(`${externalReadinessPath}: evidenceRunner.preflightCommand must match runner contract`);

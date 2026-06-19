@@ -83,16 +83,21 @@ const requireEnv = args.includes('--require-env');
 const json = args.includes('--json');
 const summary = args.includes('--summary');
 const handoff = args.includes('--handoff');
+const handoffJson = args.includes('--handoff-json');
 if (execute && validateArtifacts) {
   console.error('Choose either --execute or --validate-artifacts, not both.');
   process.exit(1);
 }
-if (summary && (execute || validateArtifacts || json)) {
-  console.error('Use --summary by itself, without --execute, --validate-artifacts or --json.');
+if (summary && (execute || validateArtifacts || json || handoff || handoffJson)) {
+  console.error('Use --summary by itself, without --execute, --validate-artifacts, --handoff, --handoff-json or --json.');
   process.exit(1);
 }
-if (handoff && (execute || validateArtifacts || json || summary)) {
-  console.error('Use --handoff without --execute, --validate-artifacts, --summary or --json.');
+if (handoff && (execute || validateArtifacts || json || summary || handoffJson)) {
+  console.error('Use --handoff without --execute, --validate-artifacts, --summary, --handoff-json or --json.');
+  process.exit(1);
+}
+if (handoffJson && (execute || validateArtifacts || json || summary || handoff)) {
+  console.error('Use --handoff-json without --execute, --validate-artifacts, --summary, --handoff or --json.');
   process.exit(1);
 }
 
@@ -127,6 +132,8 @@ if (!execute && !validateArtifacts) {
   const plan = buildPlan(jobs);
   if (handoff) {
     printHandoff(plan);
+  } else if (handoffJson) {
+    printJsonHandoff(plan);
   } else if (summary) {
     printSummary(plan);
   } else if (json) {
@@ -406,6 +413,81 @@ function printHandoff(plan) {
     console.log(`   Operator action: ${handoffAction(job)}`);
     console.log(`   Exit: ${job.exitCondition}`);
   }
+}
+
+function printJsonHandoff(plan) {
+  console.log(JSON.stringify(buildHandoff(plan), null, 2));
+}
+
+function buildHandoff(plan) {
+  return {
+    runnerId: contract.runnerId,
+    scope: contract.scope,
+    frontendPolicy: contract.frontendPolicy,
+    defaultMode: contract.defaultMode,
+    envTemplate: contract.envExample,
+    safety: {
+      inspectPlanCommand: contract.planCommand,
+      inspectSummaryCommand: contract.summaryCommand,
+      handoffCommand: contract.handoffCommand,
+      handoffJsonCommand: contract.handoffJsonCommand,
+      preflightCommand: contract.preflightCommand,
+      artifactValidationCommand: contract.artifactValidationCommand,
+      liveExecutionRequires: contract.executionSafety.liveExecutionRequires,
+      evidencePathMaxBytes: evidencePathMaxBytes(),
+      envValuePolicy: 'names_only',
+      evidencePathPolicy: 'no_fixture_example_git_tracked_or_secret_bearing_files',
+    },
+    readiness: {
+      localContractJobs: plan.localContractJobCount,
+      totalJobs: plan.jobCount,
+      contractClosurePercent: plan.contractClosurePercent,
+      externalEvidenceReadyJobs: plan.executableLiveJobCount + plan.manualArtifactReadyForValidationJobCount,
+      externalEvidenceTotalJobs: plan.liveCommandJobCount + plan.manualArtifactJobCount,
+      externalEvidenceEnvReadinessPercent: plan.externalEvidenceEnvReadinessPercent,
+      externalBlockerJobCount: plan.externalBlockerJobCount,
+      blockedMissingRequiredEnvJobCount: plan.blockedMissingRequiredEnvJobCount,
+      blockedInvalidInputJobCount: plan.blockedInvalidInputJobCount,
+      readinessCounts: plan.readinessCounts,
+      uniqueMissingEnv: plan.uniqueMissingEnv,
+      uniqueMissingOptionalEnv: plan.uniqueMissingOptionalEnv,
+    },
+    jobs: plan.jobs.map((job) => ({
+      jobId: job.jobId,
+      evidenceGroupId: job.evidenceGroupId,
+      mode: job.mode,
+      runPolicy: job.runPolicy,
+      owner: job.owner,
+      blocksExternalBeta: job.blocksExternalBeta,
+      executionReadiness: job.executionReadiness,
+      runnerCommand: job.runnerCommand,
+      runnerDescription: handoffRunner(job),
+      validationCommands: job.validationCommands,
+      requiredEnv: job.requiredEnv,
+      optionalEnv: job.optionalEnv,
+      missingEnv: job.missingEnv,
+      missingOptionalEnv: job.missingOptionalEnv,
+      preflightViolations: job.preflightViolations,
+      outputArtifacts: buildHandoffArtifactContracts(job),
+      operatorAction: handoffAction(job),
+      exitCondition: job.exitCondition,
+    })),
+  };
+}
+
+function buildHandoffArtifactContracts(job) {
+  return job.outputArtifacts.map((artifact) => {
+    const examplePath = artifactExamplePathByFormat().get(artifact.format) ?? null;
+    return {
+      path: artifact.path ?? null,
+      env: artifact.env ?? null,
+      location: artifact.path ?? `<env:${artifact.env}>`,
+      format: artifact.format,
+      examplePath,
+      expectedArtifactId: artifact.expectedArtifactId ?? null,
+      expectedProviderKeys: artifact.expectedProviderKeys ?? [],
+    };
+  });
 }
 
 function printJsonPlan(plan) {

@@ -20,10 +20,12 @@ const baselineScripts = new Set(baseline.requiredGreenScripts ?? []);
 const baselineArtifacts = new Set((baseline.trackedArtifacts ?? []).map((artifact) => artifact.path));
 const violations = [];
 
-const plan = readPlanWithCleanEnv();
+const plan = readRunnerJsonWithCleanEnv(['--plan', '--json']);
+const handoff = readRunnerJsonWithCleanEnv(['--handoff-json']);
 
 validateDryRunContract();
 validatePlanShape();
+validateHandoffShape();
 validateRunnerSafety();
 validateReadinessLinkage();
 validateArtifactCoverage();
@@ -41,10 +43,10 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-function readPlanWithCleanEnv() {
+function readRunnerJsonWithCleanEnv(args) {
   const output = execFileSync(
     process.execPath,
-    ['scripts/external-beta-evidence-runner.mjs', '--plan', '--json'],
+    ['scripts/external-beta-evidence-runner.mjs', ...args],
     {
       encoding: 'utf8',
       env: {
@@ -84,6 +86,7 @@ function validateDryRunContract() {
   const commandPairs = [
     ['planJsonCommand', 'jsonPlanCommand'],
     ['handoffCommand', 'handoffCommand'],
+    ['handoffJsonCommand', 'handoffJsonCommand'],
     ['summaryCommand', 'summaryCommand'],
     ['preflightCommand', 'preflightCommand'],
     ['artifactValidationCommand', 'artifactValidationCommand'],
@@ -156,6 +159,82 @@ function validatePlanShape() {
   }
 }
 
+function validateHandoffShape() {
+  if (handoff.runnerId !== runner.runnerId) {
+    violations.push(`${dryRunPath}: JSON handoff runnerId must match ${runnerPath}`);
+  }
+  if (handoff.scope !== dryRun.scope) {
+    violations.push(`${dryRunPath}: JSON handoff scope must match dry-run scope`);
+  }
+  if (handoff.frontendPolicy !== dryRun.frontendPolicy) {
+    violations.push(`${dryRunPath}: JSON handoff frontendPolicy must match dry-run frontendPolicy`);
+  }
+  if (handoff.envTemplate !== dryRun.envExample) {
+    violations.push(`${dryRunPath}: JSON handoff envTemplate must match dry-run envExample`);
+  }
+  if (handoff.safety?.handoffJsonCommand !== dryRun.handoffJsonCommand) {
+    violations.push(`${dryRunPath}: JSON handoff must expose the dry-run JSON handoff command`);
+  }
+  if (handoff.safety?.envValuePolicy !== 'names_only') {
+    violations.push(`${dryRunPath}: JSON handoff safety.envValuePolicy must be names_only`);
+  }
+  if (handoff.safety?.evidencePathPolicy !== 'no_fixture_example_git_tracked_or_secret_bearing_files') {
+    violations.push(`${dryRunPath}: JSON handoff must preserve evidence path safety policy`);
+  }
+
+  const readiness = handoff.readiness ?? {};
+  const expectedReadiness = {
+    localContractJobs: plan.localContractJobCount,
+    totalJobs: plan.jobCount,
+    contractClosurePercent: plan.contractClosurePercent,
+    externalEvidenceReadyJobs: plan.executableLiveJobCount + plan.manualArtifactReadyForValidationJobCount,
+    externalEvidenceTotalJobs: plan.liveCommandJobCount + plan.manualArtifactJobCount,
+    externalEvidenceEnvReadinessPercent: plan.externalEvidenceEnvReadinessPercent,
+    externalBlockerJobCount: plan.externalBlockerJobCount,
+    blockedMissingRequiredEnvJobCount: plan.blockedMissingRequiredEnvJobCount,
+    blockedInvalidInputJobCount: plan.blockedInvalidInputJobCount,
+  };
+  for (const [field, expectedValue] of Object.entries(expectedReadiness)) {
+    if (readiness[field] !== expectedValue) {
+      violations.push(`${dryRunPath}: JSON handoff readiness.${field} must be ${expectedValue}, got ${readiness[field]}`);
+    }
+  }
+  assertSameSet(readiness.uniqueMissingEnv ?? [], plan.uniqueMissingEnv ?? [], `${dryRunPath}: JSON handoff uniqueMissingEnv`);
+  assertSameSet(
+    readiness.uniqueMissingOptionalEnv ?? [],
+    plan.uniqueMissingOptionalEnv ?? [],
+    `${dryRunPath}: JSON handoff uniqueMissingOptionalEnv`,
+  );
+
+  assertSameSet(handoff.jobs?.map((job) => job.jobId) ?? [], dryRun.requiredJobIds ?? [], `${dryRunPath}: JSON handoff jobs`);
+  const handoffJobsById = new Map((handoff.jobs ?? []).map((job) => [job.jobId, job]));
+  const planJobsById = new Map((plan.jobs ?? []).map((job) => [job.jobId, job]));
+  for (const jobId of dryRun.requiredJobIds ?? []) {
+    const handoffJob = handoffJobsById.get(jobId);
+    const planJob = planJobsById.get(jobId);
+    if (handoffJob === undefined || planJob === undefined) {
+      continue;
+    }
+    if (handoffJob.executionReadiness !== planJob.executionReadiness) {
+      violations.push(`${dryRunPath}: JSON handoff ${jobId} readiness must match plan`);
+    }
+    if (handoffJob.operatorAction?.length <= 0) {
+      violations.push(`${dryRunPath}: JSON handoff ${jobId} must include operatorAction`);
+    }
+    if (!Array.isArray(handoffJob.outputArtifacts) || handoffJob.outputArtifacts.length === 0) {
+      violations.push(`${dryRunPath}: JSON handoff ${jobId} must include outputArtifacts`);
+    }
+    for (const artifact of handoffJob.outputArtifacts ?? []) {
+      if (artifact.env !== null && !String(artifact.location).startsWith('<env:')) {
+        violations.push(`${dryRunPath}: JSON handoff ${jobId} env artifact must use env-only location`);
+      }
+      if (artifact.env !== null && artifact.examplePath === null) {
+        violations.push(`${dryRunPath}: JSON handoff ${jobId} env artifact ${artifact.env} must include fixture example path`);
+      }
+    }
+  }
+}
+
 function validateRunnerSafety() {
   const safety = runner.executionSafety ?? {};
   for (const forbiddenTarget of dryRun.forbiddenTargets ?? []) {
@@ -168,6 +247,7 @@ function validateRunnerSafety() {
     dryRun.checkCommand,
     dryRun.planJsonCommand,
     dryRun.handoffCommand,
+    dryRun.handoffJsonCommand,
     dryRun.summaryCommand,
     dryRun.preflightCommand,
     dryRun.artifactValidationCommand,
@@ -209,6 +289,9 @@ function validateReadinessLinkage() {
   }
   if (readinessRunner.jsonPlanCommand !== dryRun.planJsonCommand) {
     violations.push(`${readinessPath}: evidenceRunner.jsonPlanCommand must match dry-run plan command`);
+  }
+  if (readinessRunner.handoffJsonCommand !== dryRun.handoffJsonCommand) {
+    violations.push(`${readinessPath}: evidenceRunner.handoffJsonCommand must match dry-run JSON handoff command`);
   }
 }
 
