@@ -4,6 +4,18 @@ import { existsSync, readFileSync } from 'node:fs';
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
 const forbiddenEvidencePathFragments = ['/fixtures/', '\\fixtures\\', '.example.', '-examples', '_examples', '/example-', '\\example-'];
+const forbiddenArtifactValueFragments = [
+  'bearer ',
+  'basic ',
+  'private_key',
+  'client_secret=',
+  'postgres://',
+  'postgresql://',
+  'amqp://',
+  'amqps://',
+  'smk_',
+  'whsec_',
+];
 const args = process.argv.slice(2);
 const execute = args.includes('--execute');
 const validateArtifacts = args.includes('--validate-artifacts');
@@ -303,6 +315,7 @@ function artifactValidationViolations(candidateJobs) {
       if (content === undefined) {
         continue;
       }
+      validateArtifactRedaction(content, job.jobId, artifact.env, violations);
       if (content.schemaVersion !== 1) {
         violations.push(`${job.jobId}: output artifact env ${artifact.env} must use schemaVersion 1`);
       }
@@ -359,6 +372,34 @@ function readJsonArtifact(path, jobId, envName, violations) {
     violations.push(`${jobId}: output artifact env ${envName} must point to a valid JSON artifact`);
     return undefined;
   }
+}
+
+function validateArtifactRedaction(content, jobId, envName, violations) {
+  const serialized = JSON.stringify(content).toLowerCase();
+  for (const fragment of forbiddenArtifactValueFragments) {
+    if (serialized.includes(fragment)) {
+      violations.push(`${jobId}: output artifact env ${envName} must not contain sensitive literal fragment "${fragment}"`);
+    }
+  }
+
+  if (containsFixtureProvenance(content)) {
+    violations.push(`${jobId}: output artifact env ${envName} must not contain fixture provenance`);
+  }
+}
+
+function containsFixtureProvenance(value) {
+  if (Array.isArray(value)) {
+    return value.some((item) => containsFixtureProvenance(item));
+  }
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  if (value.fixtureOnly === true || value.evidenceKind === 'fixture_example') {
+    return true;
+  }
+
+  return Object.values(value).some((item) => containsFixtureProvenance(item));
 }
 
 function formatOutputArtifacts(job) {

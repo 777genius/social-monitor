@@ -317,6 +317,11 @@ function validateRunnerImplementation() {
     'schemaVersion 1',
     'validateEvidencePathEnv',
     'evidence path env',
+    'validateArtifactRedaction',
+    'forbiddenArtifactValueFragments',
+    'sensitive literal fragment',
+    'containsFixtureProvenance',
+    'fixture provenance',
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);
