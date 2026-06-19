@@ -274,6 +274,8 @@ validateSafety();
 validateArtifactFreshnessPolicy();
 validateArtifactExamples();
 validateRunnerImplementation();
+validateRunnerPositiveDurableRuntimeArtifactSmoke();
+validateRunnerNegativeDurableRuntimeArtifactSmokes();
 validateRunnerPositiveArtifactSmoke();
 validateRunnerPositiveRedditArtifactSmoke();
 validateRunnerNegativeRedditArtifactSmokes();
@@ -815,6 +817,121 @@ function validateRunnerPositiveArtifactSmoke() {
   }
 }
 
+function validateRunnerPositiveDurableRuntimeArtifactSmoke() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-durable-positive-'));
+  try {
+    const artifactPath = writeDurableRuntimeSelectorArtifact(tempDirectory);
+    const result = runRunnerDurableRuntimeArtifactSmoke(artifactPath);
+    if (result.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner positive durable runtime artifact smoke must accept a valid runtime selector artifact: ${smokeOutputSnippet(result.output)}`);
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function validateRunnerNegativeDurableRuntimeArtifactSmokes() {
+  const scenarios = [
+    {
+      label: 'durable runtime fixture provenance',
+      expectedOutput: 'fixture provenance',
+      mutateArtifact: (artifact) => {
+        artifact.provenance = {
+          evidenceKind: 'fixture_example',
+          collectionMethod: 'Synthetic fixture example for durable runtime selector schema validation.',
+          runner: 'ops/release/fixtures/durable-runtime-selector-artifact-examples.json',
+          fixtureOnly: true,
+        };
+      },
+    },
+    {
+      label: 'durable runtime in-memory selector',
+      expectedOutput: 'must not be in-memory',
+      mutateArtifact: (artifact) => {
+        const service = artifact.services.find((item) => item.serviceId === 'api-gateway');
+        service.serviceSelectors.MONITORING_PERSISTENCE = 'in-memory';
+      },
+    },
+    {
+      label: 'durable runtime missing event relay',
+      expectedOutput: 'services must include event-relay',
+      mutateArtifact: (artifact) => {
+        artifact.services = artifact.services.filter((service) => service.serviceId !== 'event-relay');
+      },
+    },
+    {
+      label: 'durable runtime forbidden rollup',
+      expectedOutput: 'rollup.forbiddenSelectorsFound must be false',
+      mutateArtifact: (artifact) => {
+        artifact.rollup.forbiddenSelectorsFound = true;
+      },
+    },
+    {
+      label: 'durable runtime image digest mismatch',
+      expectedOutput: 'imageDigest must match BACKEND_IMAGE_DIGEST',
+      mutateArtifact: (artifact) => {
+        artifact.environment.imageDigest = `sha256:${'e'.repeat(64)}`;
+      },
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-durable-negative-'));
+    try {
+      const artifactPath = writeDurableRuntimeSelectorArtifact(tempDirectory, scenario);
+      const result = runRunnerDurableRuntimeArtifactSmoke(artifactPath);
+      if (result.exitCode === 0) {
+        violations.push(`${contract.runnerFile}: runner negative durable runtime smoke must reject ${scenario.label}`);
+        continue;
+      }
+      if (!result.output.includes(scenario.expectedOutput)) {
+        violations.push(`${contract.runnerFile}: runner negative durable runtime smoke for ${scenario.label} must report "${scenario.expectedOutput}"`);
+      }
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+function writeDurableRuntimeSelectorArtifact(tempDirectory, options = {}) {
+  const artifactPath = join(tempDirectory, 'durable-runtime-selector.json');
+  const artifact = durableRuntimeSelectorArtifact();
+  options.mutateArtifact?.(artifact);
+  writeFileSync(
+    artifactPath,
+    `${JSON.stringify(artifact, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  return artifactPath;
+}
+
+function durableRuntimeSelectorArtifact() {
+  const artifact = readJson('ops/release/fixtures/durable-runtime-selector-artifact-examples.json');
+  const now = new Date().toISOString();
+  const imageDigest = `sha256:${'d'.repeat(64)}`;
+  artifact.provenance = {
+    evidenceKind: 'staging_runtime_selector',
+    collectionMethod: 'Runtime selector snapshot captured from beta staging deployment.',
+    runner: 'scripts/capture-durable-runtime-selector.ts',
+    fixtureOnly: false,
+  };
+  artifact.environment = {
+    environmentId: 'staging-alpha-1',
+    imageDigest,
+    apiBaseUrl: 'https://api.staging.social-monitor.invalid',
+    sampledAt: now,
+    operator: 'release-operator-1',
+  };
+  artifact.services = artifact.services.map((service) => ({
+    ...service,
+    healthCheck: {
+      ...service.healthCheck,
+      checkedAt: now,
+    },
+  }));
+  return artifact;
+}
+
 function validateRunnerPositiveRedditArtifactSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-reddit-positive-'));
   try {
@@ -903,6 +1020,39 @@ function writeRedditArtifactPair(tempDirectory, options = {}) {
 
 function runRunnerNegativeSmoke(artifactPath) {
   return runRunnerArtifactSmoke(artifactPath);
+}
+
+function runRunnerDurableRuntimeArtifactSmoke(artifactPath) {
+  const imageDigest = `sha256:${'d'.repeat(64)}`;
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        contract.runnerFile,
+        '--validate-artifacts',
+        '--require-env',
+        '--job',
+        'durable-runtime-staging-proof',
+      ],
+      {
+        env: {
+          PATH: process.env.PATH ?? '',
+          API_BASE_URL: 'https://api.staging.social-monitor.invalid',
+          BACKEND_IMAGE_DIGEST: imageDigest,
+          DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: artifactPath,
+          STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+        },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    );
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
 }
 
 function runRunnerArtifactSmoke(artifactPath) {
