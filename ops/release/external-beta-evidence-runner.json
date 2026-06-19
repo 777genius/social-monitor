@@ -321,7 +321,8 @@
       "outputArtifacts": [
         {
           "env": "RABBITMQ_STAGING_DRILL_ARTIFACT_PATH",
-          "format": "staging-reliability-artifact-v1"
+          "format": "staging-reliability-artifact-v1",
+          "expectedArtifactId": "rabbitmq-staging-drill-output"
         }
       ],
       "exitCondition": "Real RabbitMQ staging drill proves confirms, persistent publish, ack/nack, DLX, quorum delivery limit, restart recovery, lag metrics and event relay retry."
@@ -354,7 +355,8 @@
       "outputArtifacts": [
         {
           "env": "POSTGRES_RESTORE_DRILL_ARTIFACT_PATH",
-          "format": "staging-reliability-artifact-v1"
+          "format": "staging-reliability-artifact-v1",
+          "expectedArtifactId": "postgres-restore-drill-output"
         }
       ],
       "exitCondition": "Backup/restore proves RPO/RTO, validation queries, migration version and outbox/inbox/idempotency state after resume."
@@ -387,7 +389,8 @@
       "outputArtifacts": [
         {
           "env": "DURABLE_BACKEND_E2E_ARTIFACT_PATH",
-          "format": "staging-reliability-artifact-v1"
+          "format": "staging-reliability-artifact-v1",
+          "expectedArtifactId": "durable-backend-e2e-output"
         }
       ],
       "exitCondition": "Topic to source binding to scheduled scan to feed to summary to feedback to digest/webhook/realtime to audit passes on durable runtime with tenant isolation."

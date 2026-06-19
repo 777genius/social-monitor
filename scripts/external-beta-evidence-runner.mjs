@@ -508,6 +508,7 @@ function artifactValidationViolations(candidateJobs) {
       if (artifactFormat !== artifact.format) {
         violations.push(`${job.jobId}: output artifact env ${artifact.env} must use format ${artifact.format}`);
       }
+      validateArtifactIdentity(content, job, artifact, violations);
       validateArtifactEnvConsistency(content, job, artifact.env, violations);
       validateArtifactFreshness(content, job, artifact.env, artifact.format, violations);
     }
@@ -719,6 +720,20 @@ function readJsonArtifact(path, jobId, envName, violations) {
 function validateArtifactRedaction(content, jobId, envName, violations) {
   validateArtifactLiteralRedaction(JSON.stringify(content), jobId, `output artifact env ${envName}`, violations);
   validateArtifactStructuredRedaction(content, jobId, `output artifact env ${envName}`, violations);
+}
+
+function validateArtifactIdentity(content, job, artifact, violations) {
+  const expectedArtifactId = artifact.expectedArtifactId;
+  if (expectedArtifactId === undefined) {
+    return;
+  }
+  if (typeof expectedArtifactId !== 'string' || expectedArtifactId.trim().length === 0) {
+    violations.push(`${job.jobId}: output artifact env ${artifact.env} has invalid expectedArtifactId`);
+    return;
+  }
+  if (content.artifactId !== expectedArtifactId) {
+    violations.push(`${job.jobId}: output artifact env ${artifact.env} must use artifactId ${expectedArtifactId}`);
+  }
 }
 
 function validateArtifactEnvConsistency(content, job, artifactEnv, violations) {

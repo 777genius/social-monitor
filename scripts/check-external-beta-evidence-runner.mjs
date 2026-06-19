@@ -189,19 +189,34 @@ const requiredJobOutputArtifacts = new Map([
   [
     'rabbitmq-staging-reliability-drill',
     [
-      { kind: 'env', ref: 'RABBITMQ_STAGING_DRILL_ARTIFACT_PATH', format: 'staging-reliability-artifact-v1' },
+      {
+        kind: 'env',
+        ref: 'RABBITMQ_STAGING_DRILL_ARTIFACT_PATH',
+        format: 'staging-reliability-artifact-v1',
+        expectedArtifactId: 'rabbitmq-staging-drill-output',
+      },
     ],
   ],
   [
     'postgres-restore-migration-drill',
     [
-      { kind: 'env', ref: 'POSTGRES_RESTORE_DRILL_ARTIFACT_PATH', format: 'staging-reliability-artifact-v1' },
+      {
+        kind: 'env',
+        ref: 'POSTGRES_RESTORE_DRILL_ARTIFACT_PATH',
+        format: 'staging-reliability-artifact-v1',
+        expectedArtifactId: 'postgres-restore-drill-output',
+      },
     ],
   ],
   [
     'durable-backend-e2e-loop',
     [
-      { kind: 'env', ref: 'DURABLE_BACKEND_E2E_ARTIFACT_PATH', format: 'staging-reliability-artifact-v1' },
+      {
+        kind: 'env',
+        ref: 'DURABLE_BACKEND_E2E_ARTIFACT_PATH',
+        format: 'staging-reliability-artifact-v1',
+        expectedArtifactId: 'durable-backend-e2e-output',
+      },
     ],
   ],
   [
@@ -468,6 +483,9 @@ function validateRunnerImplementation() {
     'validateEvidencePathFileContent',
     'must be readable',
     'validateArtifactRedaction',
+    'validateArtifactIdentity',
+    'expectedArtifactId',
+    'must use artifactId',
     'validateArtifactEnvConsistency',
     'validateArtifactFreshness',
     'artifactFreshness',
@@ -727,6 +745,19 @@ function validateJobArtifacts(job, label) {
     if (artifact.env !== undefined && !envNames.has(artifact.env)) {
       violations.push(`${label}: output artifact env "${artifact.env}" must be listed in requiredEnv or optionalEnv`);
     }
+    if (
+      artifact.expectedArtifactId !== undefined
+      && (typeof artifact.expectedArtifactId !== 'string' || artifact.expectedArtifactId.trim().length === 0)
+    ) {
+      violations.push(`${label}: output artifact expectedArtifactId must be a non-empty string`);
+    }
+    if (
+      artifact.env !== undefined
+      && artifact.format === 'staging-reliability-artifact-v1'
+      && typeof artifact.expectedArtifactId !== 'string'
+    ) {
+      violations.push(`${label}: staging reliability output artifact env "${artifact.env}" must define expectedArtifactId`);
+    }
     if (artifact.env !== undefined) {
       validateArtifactValidatorCoverage(job, artifact, label);
     }
@@ -768,11 +799,16 @@ function validateRequiredJobEvidence(job, label) {
       const refMatches = requiredArtifact.kind === 'path'
         ? artifact.path === requiredArtifact.ref
         : artifact.env === requiredArtifact.ref;
-      return refMatches && artifact.format === requiredArtifact.format;
+      const artifactIdMatches = requiredArtifact.expectedArtifactId === undefined
+        || artifact.expectedArtifactId === requiredArtifact.expectedArtifactId;
+      return refMatches && artifact.format === requiredArtifact.format && artifactIdMatches;
     });
     if (!hasArtifact) {
+      const artifactIdSuffix = requiredArtifact.expectedArtifactId === undefined
+        ? ''
+        : ` and expectedArtifactId "${requiredArtifact.expectedArtifactId}"`;
       violations.push(
-        `${label}: outputArtifacts must include ${requiredArtifact.kind} "${requiredArtifact.ref}" with format "${requiredArtifact.format}"`,
+        `${label}: outputArtifacts must include ${requiredArtifact.kind} "${requiredArtifact.ref}" with format "${requiredArtifact.format}"${artifactIdSuffix}`,
       );
     }
   }
