@@ -62,10 +62,51 @@ const forbiddenEvidenceFragments = [
 ];
 const forbiddenArtifactFragments = [
   ...forbiddenEvidenceFragments,
+  'authorization',
+  'x-api-key',
+  'api_key',
+  'apikey',
+  'id_token',
+  'github_pat_',
+  'ghp_',
+  'glpat-',
+  'xoxb-',
+  'xoxp-',
+  'sk-proj-',
+  'sk-live-',
   'client_secret',
+  'password',
   'secret_key',
 ];
+const forbiddenArtifactValuePatterns = [
+  {
+    label: 'query credential',
+    regex: /\b(?:access_token|refresh_token|id_token|api_key|apikey|client_secret|signature|sig)=([^&\s"']+)/gi,
+  },
+  {
+    label: 'header credential',
+    regex: /\b(?:authorization|x-api-key|x-amz-security-token):\s*([^,\s"'}]+)/gi,
+  },
+  {
+    label: 'jwt credential',
+    regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+  },
+];
 const forbiddenArtifactKeys = new Set([
+  'authorization',
+  'bearer',
+  'token',
+  'apikey',
+  'api_key',
+  'apitoken',
+  'api_token',
+  'idtoken',
+  'id_token',
+  'jwttoken',
+  'jwt_token',
+  'sessiontoken',
+  'session_token',
+  'password',
   'accesstoken',
   'access_token',
   'refreshtoken',
@@ -85,6 +126,10 @@ const forbiddenArtifactKeys = new Set([
   'rawsourcetext',
   'credentialurl',
   'credentialurls',
+  'databaseurl',
+  'database_url',
+  'rabbitmqurl',
+  'rabbitmq_url',
 ]);
 const requiredArtifactRedactionFlags = {
   secretValuesIncluded: false,
@@ -380,6 +425,12 @@ function validateNoSensitiveExportLiterals(content, exportLabel) {
       violations.push(`${exportLabel}: export file must not contain sensitive literal fragment "${fragment}"`);
     }
   }
+  validateNoSensitivePatterns(content, `${exportLabel}: export file`);
+
+  const parsed = parseJsonContent(content);
+  if (parsed !== undefined) {
+    scanForbiddenArtifactKeys(parsed, `${exportLabel}: export file`);
+  }
 }
 
 function validateArtifactSurfaces(surfaces, path, sourceExports) {
@@ -565,16 +616,37 @@ function scanForbiddenArtifactKeys(value, label) {
 }
 
 function validateNoSensitiveArtifactLiterals(artifact, path) {
-  const serialized = JSON.stringify(artifact).toLowerCase();
+  const serializedArtifact = JSON.stringify(artifact);
+  const serialized = serializedArtifact.toLowerCase();
   for (const fragment of forbiddenArtifactFragments) {
     if (serialized.includes(fragment)) {
       violations.push(`${path}: artifact must not contain sensitive literal fragment "${fragment}"`);
     }
   }
+  validateNoSensitivePatterns(serializedArtifact, `${path}: artifact`);
 }
 
 function isIsoDateString(value) {
-  return typeof value === 'string' && !Number.isNaN(Date.parse(value)) && value.includes('T');
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && !Number.isNaN(Date.parse(value));
+}
+
+function validateNoSensitivePatterns(content, label) {
+  for (const pattern of forbiddenArtifactValuePatterns) {
+    pattern.regex.lastIndex = 0;
+    for (const match of content.matchAll(pattern.regex)) {
+      violations.push(`${label} must not contain sensitive ${pattern.label}`);
+    }
+  }
+}
+
+function parseJsonContent(content) {
+  try {
+    return JSON.parse(content);
+  } catch {
+    return undefined;
+  }
 }
 
 function validateDeploySampleEvidence() {
