@@ -7,6 +7,14 @@ const args = process.argv.slice(2);
 const execute = args.includes('--execute');
 const requireEnv = args.includes('--require-env');
 const selectedJobIds = readSelectedJobIds(args);
+const knownJobIds = new Set(contract.jobs.map((job) => job.jobId));
+const unknownJobIds = selectedJobIds.filter((jobId) => !knownJobIds.has(jobId));
+if (unknownJobIds.length > 0) {
+  console.error(`Unknown external beta evidence job id(s): ${unknownJobIds.join(', ')}`);
+  console.error(`Known jobs: ${[...knownJobIds].join(', ')}`);
+  process.exit(1);
+}
+
 const jobs = selectedJobIds.length === 0
   ? contract.jobs
   : contract.jobs.filter((job) => selectedJobIds.includes(job.jobId));

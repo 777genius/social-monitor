@@ -13,6 +13,7 @@ const audit = readJson(auditPath);
 const backendSafe = readJson(backendSafePath);
 const baseline = readJson(baselinePath);
 const packageJson = readJson(packagePath);
+const runnerSource = readFileSync(contract.runnerFile, 'utf8');
 const packageScripts = packageJson.scripts ?? {};
 const backendScripts = new Set(backendSafe.backendScripts ?? []);
 const baselineScripts = new Set(baseline.requiredGreenScripts ?? []);
@@ -227,6 +228,7 @@ validateCommand(contract.planCommand, `${contractPath}: planCommand`);
 validateCommand(contract.preflightCommand, `${contractPath}: preflightCommand`);
 validateCommand(contract.executeCommand, `${contractPath}: executeCommand`);
 validateSafety();
+validateRunnerImplementation();
 validateJobs();
 validateWiring();
 validateNoSensitiveLiterals();
@@ -266,6 +268,18 @@ function validateSafety() {
   for (const forbidden of forbiddenFragments) {
     if (!safety.forbiddenTargets?.includes(forbidden)) {
       violations.push(`${contractPath}: executionSafety.forbiddenTargets must include ${forbidden}`);
+    }
+  }
+}
+
+function validateRunnerImplementation() {
+  for (const marker of [
+    'unknownJobIds',
+    'Unknown external beta evidence job id(s)',
+    'Known jobs:',
+  ]) {
+    if (!runnerSource.includes(marker)) {
+      violations.push(`${contract.runnerFile}: runner must fail fast on unknown selected job ids`);
     }
   }
 }
