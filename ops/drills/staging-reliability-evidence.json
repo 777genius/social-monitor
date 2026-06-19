@@ -33,6 +33,36 @@
       "every signal result has observedAt and non-empty evidence",
       "every signal result evidence is an object matching signal-specific required fields",
       "artifact metadata matches the release evidence row"
+    ],
+    "envArtifactValidation": [
+      {
+        "artifactId": "rabbitmq-staging-drill-output",
+        "envVar": "RABBITMQ_STAGING_DRILL_ARTIFACT_PATH",
+        "format": "staging-reliability-artifact-v1",
+        "requiredEnv": [
+          "STAGING_ENVIRONMENT_ID",
+          "BACKEND_IMAGE_DIGEST"
+        ]
+      },
+      {
+        "artifactId": "postgres-restore-drill-output",
+        "envVar": "POSTGRES_RESTORE_DRILL_ARTIFACT_PATH",
+        "format": "staging-reliability-artifact-v1",
+        "requiredEnv": [
+          "STAGING_ENVIRONMENT_ID",
+          "BACKEND_IMAGE_DIGEST"
+        ]
+      },
+      {
+        "artifactId": "durable-backend-e2e-output",
+        "envVar": "DURABLE_BACKEND_E2E_ARTIFACT_PATH",
+        "format": "staging-reliability-artifact-v1",
+        "requiredEnv": [
+          "STAGING_ENVIRONMENT_ID",
+          "BACKEND_IMAGE_DIGEST",
+          "API_BASE_URL"
+        ]
+      }
     ]
   },
   "stagingEvidenceArtifacts": [

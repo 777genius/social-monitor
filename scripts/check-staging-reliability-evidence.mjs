@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import { URL } from 'node:url';
 
 const evidencePath = 'ops/drills/staging-reliability-evidence.json';
 const packagePath = 'package.json';
@@ -27,6 +28,20 @@ const requiredArtifactIds = new Set([
   'rabbitmq-staging-drill-output',
   'postgres-restore-drill-output',
   'durable-backend-e2e-output',
+]);
+const requiredEnvArtifacts = new Map([
+  ['rabbitmq-staging-drill-output', {
+    envVar: 'RABBITMQ_STAGING_DRILL_ARTIFACT_PATH',
+    requiredEnv: ['STAGING_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST'],
+  }],
+  ['postgres-restore-drill-output', {
+    envVar: 'POSTGRES_RESTORE_DRILL_ARTIFACT_PATH',
+    requiredEnv: ['STAGING_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST'],
+  }],
+  ['durable-backend-e2e-output', {
+    envVar: 'DURABLE_BACKEND_E2E_ARTIFACT_PATH',
+    requiredEnv: ['STAGING_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'API_BASE_URL'],
+  }],
 ]);
 const requiredSignalIds = new Set([
   'rabbitmq-publisher-confirms',
@@ -372,6 +387,7 @@ for (const signalId of requiredSignalIds) {
 }
 
 validateExampleArtifactFixtures(signalsByArtifactId);
+validateEnvironmentArtifacts(signalsByArtifactId);
 
 for (const [artifactId, signals] of signalsByArtifactId.entries()) {
   const artifact = artifactById.get(artifactId);
@@ -459,6 +475,7 @@ function validatePassedArtifactContentSchema() {
   if (!Array.isArray(schema.signalResultRequirements) || schema.signalResultRequirements.length < 4) {
     violations.push(`${evidencePath}: passedArtifactContentSchema.signalResultRequirements must describe signal coverage`);
   }
+  validateEnvArtifactValidation(schema.envArtifactValidation);
 }
 
 function requirePassedArtifact(artifact) {
@@ -567,6 +584,105 @@ function validateArtifactContentEnvelope(content, artifactPath, artifactId) {
   for (const field of ['operator', 'startedAt', 'completedAt']) {
     if (typeof content[field] !== 'string' || content[field].trim().length === 0) {
       violations.push(`${artifactPath}: ${field} must be non-empty`);
+    }
+  }
+  for (const field of ['startedAt', 'completedAt']) {
+    if (!matchesEvidenceType(content[field], 'iso_timestamp')) {
+      violations.push(`${artifactPath}: ${field} must be an ISO timestamp`);
+    }
+  }
+}
+
+function validateEnvironmentArtifacts(signalsByArtifactId) {
+  for (const [artifactId, config] of requiredEnvArtifacts.entries()) {
+    const artifactPath = readOptionalEnv(config.envVar);
+    if (artifactPath === undefined) {
+      continue;
+    }
+    if (!existsSync(artifactPath)) {
+      violations.push(`${config.envVar}: must reference an existing staging reliability artifact`);
+      continue;
+    }
+
+    const content = readArtifactContent({ path: artifactPath });
+    if (content === undefined) {
+      continue;
+    }
+
+    const artifactLabel = `${config.envVar} (${artifactPath})`;
+    validateArtifactContentEnvelope(content, artifactLabel, artifactId);
+    validateEnvArtifactMetadata(content, config, artifactLabel);
+    validateRedaction(content, artifactLabel);
+    validateSignalResults(
+      content,
+      { artifactId, path: artifactLabel },
+      signalsByArtifactId.get(artifactId) ?? [],
+    );
+  }
+}
+
+function validateEnvArtifactMetadata(content, config, artifactLabel) {
+  for (const envVar of config.requiredEnv) {
+    const expected = readOptionalEnv(envVar);
+    if (expected === undefined) {
+      violations.push(`${config.envVar}: requires ${envVar}`);
+      continue;
+    }
+    if (envVar === 'STAGING_ENVIRONMENT_ID' && content.environmentId !== expected) {
+      violations.push(`${artifactLabel}: environmentId must match STAGING_ENVIRONMENT_ID`);
+    }
+    if (envVar === 'BACKEND_IMAGE_DIGEST' && content.imageDigest !== expected) {
+      violations.push(`${artifactLabel}: imageDigest must match BACKEND_IMAGE_DIGEST`);
+    }
+    if (envVar === 'API_BASE_URL') {
+      if (content.apiBaseUrl !== expected) {
+        violations.push(`${artifactLabel}: apiBaseUrl must match API_BASE_URL`);
+      }
+      if (!isHttpUrlWithoutCredentials(content.apiBaseUrl)) {
+        violations.push(`${artifactLabel}: apiBaseUrl must be an http(s) URL without credentials`);
+      }
+    }
+  }
+  if (String(content.environmentId ?? '').includes('example')) {
+    violations.push(`${artifactLabel}: real staging artifact environmentId must not be example-like`);
+  }
+}
+
+function validateEnvArtifactValidation(validationRules) {
+  if (!Array.isArray(validationRules)) {
+    violations.push(`${evidencePath}: passedArtifactContentSchema.envArtifactValidation must be an array`);
+    return;
+  }
+
+  const seenRules = new Set();
+  for (const [index, rule] of validationRules.entries()) {
+    const label = `passedArtifactContentSchema.envArtifactValidation[${index}]`;
+    if (!isRecord(rule)) {
+      violations.push(`${evidencePath}: ${label} must be an object`);
+      continue;
+    }
+    const expected = requiredEnvArtifacts.get(rule.artifactId);
+    if (expected === undefined) {
+      violations.push(`${evidencePath}: ${label}.artifactId is unsupported`);
+      continue;
+    }
+    seenRules.add(rule.artifactId);
+    if (rule.envVar !== expected.envVar) {
+      violations.push(`${evidencePath}: ${label}.envVar must be ${expected.envVar}`);
+    }
+    if (rule.format !== 'staging-reliability-artifact-v1') {
+      violations.push(`${evidencePath}: ${label}.format must be staging-reliability-artifact-v1`);
+    }
+    for (const envVar of expected.requiredEnv) {
+      if (!rule.requiredEnv?.includes(envVar)) {
+        violations.push(`${evidencePath}: ${label}.requiredEnv must include ${envVar}`);
+      }
+    }
+  }
+
+  for (const artifactId of requiredEnvArtifacts.keys()) {
+    if (!seenRules.has(artifactId)) {
+      violations.push(`${evidencePath}: envArtifactValidation must include ${artifactId}`);
     }
   }
 }
@@ -781,6 +897,24 @@ function isSupportedEvidenceType(fieldType) {
 
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readOptionalEnv(name) {
+  const value = process.env[name]?.trim();
+  return value === undefined || value.length === 0 ? undefined : value;
+}
+
+function isHttpUrlWithoutCredentials(value) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) && url.username === '' && url.password === '';
+  } catch {
+    return false;
+  }
 }
 
 function requirePackageWiring() {
