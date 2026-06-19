@@ -525,6 +525,22 @@ function validateJobArtifacts(job, label) {
     if (artifact.env !== undefined && !envNames.has(artifact.env)) {
       violations.push(`${label}: output artifact env "${artifact.env}" must be listed in requiredEnv or optionalEnv`);
     }
+    if (artifact.env !== undefined) {
+      validateArtifactValidatorCoverage(job, artifact, label);
+    }
+  }
+}
+
+function validateArtifactValidatorCoverage(job, artifact, label) {
+  const matchingValidator = job.validationCommands.some((command) => {
+    const source = validationCommandSource(command);
+    return source.includes(artifact.env) && source.includes(artifact.format);
+  });
+
+  if (!matchingValidator) {
+    violations.push(
+      `${label}: output artifact env "${artifact.env}" must be read by a validation command that checks format "${artifact.format}"`,
+    );
   }
 }
 
@@ -666,6 +682,20 @@ function validateCommand(command, label) {
   if (!packageScripts[scriptName]) {
     violations.push(`${label}: references missing npm script "${scriptName}"`);
   }
+}
+
+function validationCommandSource(command) {
+  const scriptName = scriptNameFromCommand(command);
+  if (scriptName === null) {
+    return '';
+  }
+
+  const script = String(packageScripts[scriptName] ?? '');
+  const referencedFiles = [...new Set([...script.matchAll(/\bscripts\/[^\s&|;]+?\.(?:mjs|js|ts)\b/g)].map((match) => match[0]))];
+  return referencedFiles
+    .filter((file) => existsSync(file))
+    .map((file) => readFileSync(file, 'utf8'))
+    .join('\n');
 }
 
 function scriptNameFromCommand(command) {
