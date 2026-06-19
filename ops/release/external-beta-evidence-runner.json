@@ -30,6 +30,7 @@
     "defaultActionWithoutExecute": "print_plan_only",
     "manualArtifactJobsFailExecute": true,
     "artifactValidationSkipsLiveRunners": true,
+    "liveExecutionValidatesOutputPathsBeforeRun": true,
     "secretValuesMustStayOutOfArtifacts": true,
     "criticalEnvValuesMustBeTyped": true,
     "evidencePathEnvRequiresAbsolutePath": true,

@@ -460,6 +460,7 @@ function executableJobViolations(candidateJobs) {
       violations.push(`${job.jobId}: missing required env ${missingEnv.join(', ')}`);
     }
     validateEvidenceValueEnv(job, new Set(missingEnv), violations);
+    validateExecutableOutputArtifactPathEnv(job, new Set(missingEnv), violations);
     if (job.runPolicy === 'manual_artifact_then_validator') {
       violations.push(`${job.jobId}: manual artifact job cannot be executed by this runner`);
     }
@@ -518,6 +519,46 @@ function artifactValidationViolations(candidateJobs) {
     }
   }
   return violations;
+}
+
+function validateExecutableOutputArtifactPathEnv(job, missingEnvSet, violations) {
+  if (contract.executionSafety?.liveExecutionValidatesOutputPathsBeforeRun !== true) {
+    return;
+  }
+  if (job.runPolicy !== 'live_command') {
+    return;
+  }
+
+  for (const artifact of job.outputArtifacts ?? []) {
+    const envName = artifact.env;
+    if (envName === undefined || !envName.endsWith('_PATH') || missingEnvSet.has(envName)) {
+      continue;
+    }
+
+    const value = process.env[envName]?.trim();
+    if (value === undefined || value === '') {
+      continue;
+    }
+    if (!isAbsolute(value)) {
+      violations.push(`${job.jobId}: output artifact env ${envName} must be an absolute file path before live execution`);
+      continue;
+    }
+    if (requiresJsonEvidencePathEnv() && !isJsonEvidencePath(value)) {
+      violations.push(`${job.jobId}: output artifact env ${envName} path must end with .json before live execution`);
+      continue;
+    }
+    if (isFixtureLikeArtifactPath(value)) {
+      violations.push(`${job.jobId}: output artifact env ${envName} must not point to fixture or example evidence before live execution`);
+      continue;
+    }
+    if (existsSync(value) && requiresRegularEvidenceFiles() && !isRegularEvidenceFile(value)) {
+      violations.push(`${job.jobId}: output artifact env ${envName} must point to a regular file before live execution`);
+      continue;
+    }
+    if (existsSync(value) && isGitTrackedPath(value)) {
+      violations.push(`${job.jobId}: output artifact env ${envName} must not point to a git-tracked file before live execution`);
+    }
+  }
 }
 
 function validateEvidenceValueEnv(job, missingEnvSet, violations) {
