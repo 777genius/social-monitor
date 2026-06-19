@@ -83,21 +83,70 @@ const requiredRotationRedactionFlags = {
   rawWebhookPayloadsIncluded: false,
   piiIncluded: false,
 };
+const requiredOperationFields = new Set([
+  'operationId',
+  'status',
+  'secretClass',
+  'keyIdBefore',
+  'keyIdAfter',
+  'observedAt',
+  'safeEvidence',
+]);
 const forbiddenArtifactFragments = [
   'bearer ',
   'basic ',
+  'authorization',
   'access_token',
   'refresh_token',
+  'id_token',
+  'api_key',
+  'apikey',
   'client_secret',
   'private_key',
+  'password',
   'postgresql://',
   'postgres://',
   'amqp://',
   'amqps://',
+  'github_pat_',
+  'ghp_',
+  'glpat-',
+  'xoxb-',
+  'xoxp-',
+  'sk-proj-',
+  'sk-live-',
   'smk_',
   'whsec_',
 ];
+const forbiddenArtifactValuePatterns = [
+  {
+    label: 'query credential',
+    regex: /\b(?:access_token|refresh_token|id_token|api_key|apikey|client_secret|signature|sig)=([^&\s"']+)/gi,
+  },
+  {
+    label: 'header credential',
+    regex: /\b(?:authorization|x-api-key|x-amz-security-token):\s*([^,\s"'}]+)/gi,
+  },
+  {
+    label: 'jwt credential',
+    regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+  },
+];
 const forbiddenArtifactKeys = new Set([
+  'authorization',
+  'bearer',
+  'token',
+  'apikey',
+  'api_key',
+  'apitoken',
+  'api_token',
+  'idtoken',
+  'id_token',
+  'jwttoken',
+  'jwt_token',
+  'sessiontoken',
+  'session_token',
+  'password',
   'accesstoken',
   'access_token',
   'refreshtoken',
@@ -114,6 +163,10 @@ const forbiddenArtifactKeys = new Set([
   'secret_value',
   'credentialurl',
   'credential_url',
+  'databaseurl',
+  'database_url',
+  'rabbitmqurl',
+  'rabbitmq_url',
 ]);
 
 if (contract.schemaVersion !== 1) {
@@ -436,6 +489,19 @@ function validateRotationSchema(schema, schemaKey, expectedFormat) {
       violations.push(`${contractPath}: rotationArtifactSchemas.${schemaKey}.requiredOperations must include ${operationId}`);
     }
   }
+  requireSetCoverage(
+    new Set(schema.requiredOperationFields ?? []),
+    requiredOperationFields,
+    `rotationArtifactSchemas.${schemaKey}.requiredOperationFields`,
+  );
+}
+
+function requireSetCoverage(actual, expected, label) {
+  for (const expectedValue of expected) {
+    if (!actual.has(expectedValue)) {
+      violations.push(`${contractPath}: ${label} must include ${expectedValue}`);
+    }
+  }
 }
 
 function validateRotationArtifactPath(path, label, options) {
@@ -581,6 +647,9 @@ function validateArtifactOperation(operation, label, operationIds, options) {
   if (operation.status !== 'passed') {
     violations.push(`${label}: status must be passed`);
   }
+  if (!isIsoDateString(operation.observedAt)) {
+    violations.push(`${label}: observedAt must be an ISO timestamp`);
+  }
   if (operation.secretClass !== options.expectedSecretClass) {
     violations.push(`${label}: secretClass must be ${options.expectedSecretClass}`);
   }
@@ -668,10 +737,21 @@ function scanForbiddenArtifactKeys(value, label) {
 }
 
 function validateNoSensitiveArtifactLiterals(artifact, path) {
-  const serialized = JSON.stringify(artifact).toLowerCase();
+  const rawSerializedArtifact = JSON.stringify(artifact);
+  const serialized = rawSerializedArtifact.toLowerCase();
   for (const fragment of forbiddenArtifactFragments) {
     if (serialized.includes(fragment)) {
       violations.push(`${path}: artifact must not contain sensitive literal fragment "${fragment}"`);
+    }
+  }
+  validateNoSensitivePatterns(rawSerializedArtifact, `${path}: artifact`);
+}
+
+function validateNoSensitivePatterns(content, label) {
+  for (const pattern of forbiddenArtifactValuePatterns) {
+    pattern.regex.lastIndex = 0;
+    for (const match of content.matchAll(pattern.regex)) {
+      violations.push(`${label} must not contain sensitive ${pattern.label}`);
     }
   }
 }
@@ -745,5 +825,7 @@ function requireExistingPath(path, label) {
 }
 
 function isIsoDateString(value) {
-  return typeof value === 'string' && !Number.isNaN(Date.parse(value)) && value.includes('T');
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && !Number.isNaN(Date.parse(value));
 }
