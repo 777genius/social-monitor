@@ -74,6 +74,7 @@ if (contract.decisionRecord !== betaDecisionPath) {
 validateCapacityEnvelope();
 validatePolicyAndDecision();
 validateGoPrerequisites();
+validateLoadCostGuardrails();
 requireWiring();
 
 if (violations.length > 0) {
@@ -198,6 +199,52 @@ function validateGoPrerequisites() {
   }
   if (hasPendingPrerequisite && betaDecision.decision !== 'hold') {
     violations.push(`${betaDecisionPath}: pending go prerequisites require decision=hold`);
+  }
+}
+
+function validateLoadCostGuardrails() {
+  const guardrails = contract.loadCostGuardrails;
+  if (typeof guardrails !== 'object' || guardrails === null) {
+    violations.push(`${contractPath}: loadCostGuardrails must be defined`);
+    return;
+  }
+
+  if (guardrails.script !== 'scripts/check-load-cost.mjs') {
+    violations.push(`${contractPath}: loadCostGuardrails.script must be scripts/check-load-cost.mjs`);
+  }
+  if (!existsSync(guardrails.script ?? '')) {
+    violations.push(`${contractPath}: loadCostGuardrails.script must reference an existing script`);
+    return;
+  }
+
+  const derivedFromLimits = new Set(guardrails.derivedFromLimits ?? []);
+  for (const field of [
+    'maxManualScansPerWorkspacePerHour',
+    'maxSummaryRequestsPerWorkspacePerHour',
+    'maxDeliveryAttemptsPerWorkspacePerHour',
+  ]) {
+    if (!derivedFromLimits.has(field)) {
+      violations.push(`${contractPath}: loadCostGuardrails.derivedFromLimits missing "${field}"`);
+    }
+  }
+  if (guardrails.mustRejectNoisyTenant !== true) {
+    violations.push(`${contractPath}: loadCostGuardrails.mustRejectNoisyTenant must be true`);
+  }
+  if (guardrails.mustKeepQuietTenantAllowed !== true) {
+    violations.push(`${contractPath}: loadCostGuardrails.mustKeepQuietTenantAllowed must be true`);
+  }
+
+  const scriptSource = readFileSync(guardrails.script, 'utf8');
+  if (!scriptSource.includes(contractPath)) {
+    violations.push(`${guardrails.script}: load/cost script must read ${contractPath}`);
+  }
+  for (const field of derivedFromLimits) {
+    if (!requiredLimitFields.has(field)) {
+      violations.push(`${contractPath}: loadCostGuardrails references unsupported limit "${field}"`);
+    }
+    if (!scriptSource.includes(field)) {
+      violations.push(`${guardrails.script}: load/cost script must reference limit "${field}"`);
+    }
   }
 }
 

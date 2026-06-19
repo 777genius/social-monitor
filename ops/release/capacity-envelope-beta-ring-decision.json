@@ -77,6 +77,16 @@
     "enable_deferred_sources",
     "change_decision_to_go_without_passed_prerequisites"
   ],
+  "loadCostGuardrails": {
+    "script": "scripts/check-load-cost.mjs",
+    "derivedFromLimits": [
+      "maxManualScansPerWorkspacePerHour",
+      "maxSummaryRequestsPerWorkspacePerHour",
+      "maxDeliveryAttemptsPerWorkspacePerHour"
+    ],
+    "mustRejectNoisyTenant": true,
+    "mustKeepQuietTenantAllowed": true
+  },
   "externalBetaExitCriteria": [
     "Capacity limits are present for tenants, workspaces, topics, bindings, scan interval, queue lag, summary cost and delivery attempts.",
     "Beta ring decision remains hold while any go prerequisite is not passed.",

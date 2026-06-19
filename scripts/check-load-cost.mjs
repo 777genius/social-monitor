@@ -1,5 +1,6 @@
 import { performance } from 'node:perf_hooks';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 require('ts-node/register');
@@ -13,6 +14,14 @@ const useCase = new ReserveUsageQuotaUseCase(
   new InMemoryUsageQuotaLedger(),
   new FixedClock(new Date('2026-06-06T12:15:05.000Z')),
 );
+const capacityContractPath = 'ops/release/capacity-envelope-beta-ring-decision.json';
+const capacityContract = JSON.parse(readFileSync(capacityContractPath, 'utf8'));
+const capacityLimits = capacityContract.limits ?? {};
+const manualScanLimit = positiveIntegerLimit('maxManualScansPerWorkspacePerHour');
+const summaryRequestLimit = positiveIntegerLimit('maxSummaryRequestsPerWorkspacePerHour');
+const deliveryAttemptLimit = positiveIntegerLimit('maxDeliveryAttemptsPerWorkspacePerHour');
+const summaryQuotaUnit = 5;
+const quietScanAttempts = Math.min(10, manualScanLimit);
 
 const scenarios = [
   {
@@ -21,9 +30,9 @@ const scenarios = [
     workspaceId: workspaceId('workspace-load-noisy'),
     operation: 'scan_request.manual',
     amount: 1,
-    limit: 50,
-    attempts: 75,
-    expectedAllowed: 50,
+    limit: manualScanLimit,
+    attempts: manualScanLimit + 25,
+    expectedAllowed: manualScanLimit,
     expectedRejected: 25,
   },
   {
@@ -32,9 +41,9 @@ const scenarios = [
     workspaceId: workspaceId('workspace-load-quiet'),
     operation: 'scan_request.manual',
     amount: 1,
-    limit: 50,
-    attempts: 10,
-    expectedAllowed: 10,
+    limit: manualScanLimit,
+    attempts: quietScanAttempts,
+    expectedAllowed: quietScanAttempts,
     expectedRejected: 0,
   },
   {
@@ -42,10 +51,21 @@ const scenarios = [
     tenantId: tenantId('tenant-load-summary'),
     workspaceId: workspaceId('workspace-load-summary'),
     operation: 'summary.generate',
-    amount: 5,
-    limit: 100,
-    attempts: 25,
-    expectedAllowed: 20,
+    amount: summaryQuotaUnit,
+    limit: summaryRequestLimit * summaryQuotaUnit,
+    attempts: summaryRequestLimit + 5,
+    expectedAllowed: summaryRequestLimit,
+    expectedRejected: 5,
+  },
+  {
+    name: 'delivery-attempt-budget',
+    tenantId: tenantId('tenant-load-delivery'),
+    workspaceId: workspaceId('workspace-load-delivery'),
+    operation: 'delivery.attempt',
+    amount: 1,
+    limit: deliveryAttemptLimit,
+    attempts: deliveryAttemptLimit + 5,
+    expectedAllowed: deliveryAttemptLimit,
     expectedRejected: 5,
   },
 ];
@@ -117,4 +137,14 @@ function percentile(values, percentileRank) {
   const index = Math.ceil((percentileRank / 100) * sorted.length) - 1;
 
   return sorted[Math.max(index, 0)] ?? 0;
+}
+
+function positiveIntegerLimit(field) {
+  const value = capacityLimits[field];
+  if (!Number.isInteger(value) || value <= 0) {
+    console.error(`${capacityContractPath}: limits.${field} must be a positive integer`);
+    process.exit(1);
+  }
+
+  return value;
 }
