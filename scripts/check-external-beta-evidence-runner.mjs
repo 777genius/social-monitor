@@ -156,13 +156,25 @@ const requiredJobOutputArtifacts = new Map([
   [
     'live-open-connectors',
     [
-      { kind: 'env', ref: 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', format: 'source-live-provider-evidence-v1' },
+      {
+        kind: 'env',
+        ref: 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH',
+        format: 'source-live-provider-evidence-v1',
+        expectedArtifactId: 'live-open-connectors-evidence-v1',
+        expectedProviderKeys: ['hacker-news', 'rss', 'github'],
+      },
     ],
   ],
   [
     'live-reddit-oauth',
     [
-      { kind: 'env', ref: 'REDDIT_LIVE_EVIDENCE_PATH', format: 'source-live-provider-evidence-v1' },
+      {
+        kind: 'env',
+        ref: 'REDDIT_LIVE_EVIDENCE_PATH',
+        format: 'source-live-provider-evidence-v1',
+        expectedArtifactId: 'live-reddit-oauth-evidence-v1',
+        expectedProviderKeys: ['reddit'],
+      },
       { kind: 'env', ref: 'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH', format: 'reddit-credential-lifecycle-redacted-v1' },
     ],
   ],
@@ -486,6 +498,10 @@ function validateRunnerImplementation() {
     'validateArtifactIdentity',
     'expectedArtifactId',
     'must use artifactId',
+    'validateArtifactProviderKeys',
+    'expectedProviderKeys',
+    'must include providerKey',
+    'must not include providerKey',
     'validateArtifactEnvConsistency',
     'validateArtifactFreshness',
     'artifactFreshness',
@@ -758,6 +774,7 @@ function validateJobArtifacts(job, label) {
     ) {
       violations.push(`${label}: staging reliability output artifact env "${artifact.env}" must define expectedArtifactId`);
     }
+    validateExpectedProviderKeys(artifact, label);
     if (artifact.env !== undefined) {
       validateArtifactValidatorCoverage(job, artifact, label);
     }
@@ -801,17 +818,55 @@ function validateRequiredJobEvidence(job, label) {
         : artifact.env === requiredArtifact.ref;
       const artifactIdMatches = requiredArtifact.expectedArtifactId === undefined
         || artifact.expectedArtifactId === requiredArtifact.expectedArtifactId;
-      return refMatches && artifact.format === requiredArtifact.format && artifactIdMatches;
+      const providerKeysMatch = requiredArtifact.expectedProviderKeys === undefined
+        || providerKeysEqual(artifact.expectedProviderKeys, requiredArtifact.expectedProviderKeys);
+      return refMatches && artifact.format === requiredArtifact.format && artifactIdMatches && providerKeysMatch;
     });
     if (!hasArtifact) {
       const artifactIdSuffix = requiredArtifact.expectedArtifactId === undefined
         ? ''
         : ` and expectedArtifactId "${requiredArtifact.expectedArtifactId}"`;
+      const providerKeysSuffix = requiredArtifact.expectedProviderKeys === undefined
+        ? ''
+        : ` and expectedProviderKeys "${requiredArtifact.expectedProviderKeys.join(', ')}"`;
       violations.push(
-        `${label}: outputArtifacts must include ${requiredArtifact.kind} "${requiredArtifact.ref}" with format "${requiredArtifact.format}"${artifactIdSuffix}`,
+        `${label}: outputArtifacts must include ${requiredArtifact.kind} "${requiredArtifact.ref}" with format "${requiredArtifact.format}"${artifactIdSuffix}${providerKeysSuffix}`,
       );
     }
   }
+}
+
+function validateExpectedProviderKeys(artifact, label) {
+  if (
+    artifact.env !== undefined
+    && artifact.format === 'source-live-provider-evidence-v1'
+    && artifact.expectedProviderKeys === undefined
+  ) {
+    violations.push(`${label}: source live output artifact env "${artifact.env}" must define expectedProviderKeys`);
+    return;
+  }
+  if (artifact.expectedProviderKeys === undefined) {
+    return;
+  }
+  if (
+    !Array.isArray(artifact.expectedProviderKeys)
+    || artifact.expectedProviderKeys.length === 0
+    || artifact.expectedProviderKeys.some((providerKey) => typeof providerKey !== 'string' || providerKey.trim().length === 0)
+  ) {
+    violations.push(`${label}: output artifact expectedProviderKeys must be non-empty strings`);
+    return;
+  }
+  if (new Set(artifact.expectedProviderKeys).size !== artifact.expectedProviderKeys.length) {
+    violations.push(`${label}: output artifact expectedProviderKeys must not contain duplicates`);
+  }
+}
+
+function providerKeysEqual(actual, expected) {
+  if (!Array.isArray(actual) || actual.length !== expected.length) {
+    return false;
+  }
+  const actualKeys = new Set(actual);
+  return expected.every((providerKey) => actualKeys.has(providerKey));
 }
 
 function validateJobScopeSafety(job, label) {

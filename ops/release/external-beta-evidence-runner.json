@@ -209,7 +209,13 @@
       "outputArtifacts": [
         {
           "env": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
-          "format": "source-live-provider-evidence-v1"
+          "format": "source-live-provider-evidence-v1",
+          "expectedArtifactId": "live-open-connectors-evidence-v1",
+          "expectedProviderKeys": [
+            "hacker-news",
+            "rss",
+            "github"
+          ]
         }
       ],
       "exitCondition": "HN, RSS and GitHub live smoke, cache, SSRF and rate-limit evidence is attached for the promoted backend image."
@@ -242,7 +248,11 @@
       "outputArtifacts": [
         {
           "env": "REDDIT_LIVE_EVIDENCE_PATH",
-          "format": "source-live-provider-evidence-v1"
+          "format": "source-live-provider-evidence-v1",
+          "expectedArtifactId": "live-reddit-oauth-evidence-v1",
+          "expectedProviderKeys": [
+            "reddit"
+          ]
         },
         {
           "env": "REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH",
