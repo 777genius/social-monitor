@@ -49,6 +49,201 @@ const requiredSignalIds = new Set([
   'backend-loop-tenant-isolation',
   'backend-loop-idempotency',
 ]);
+const requiredEvidenceShapeBySignalId = new Map([
+  [
+    'rabbitmq-publisher-confirms',
+    [
+      ['summary', 'non_empty_string'],
+      ['queueName', 'non_empty_string'],
+      ['messageId', 'non_empty_string'],
+      ['confirmAckAt', 'iso_timestamp'],
+      ['publishMode', 'non_empty_string'],
+      ['brokerUrlRedacted', 'boolean_true'],
+      ['imageDigestMatched', 'boolean_true'],
+    ],
+  ],
+  [
+    'rabbitmq-persistent-publish',
+    [
+      ['summary', 'non_empty_string'],
+      ['queueName', 'non_empty_string'],
+      ['messageId', 'non_empty_string'],
+      ['deliveryMode', 'non_empty_string'],
+      ['restartObserved', 'boolean_true'],
+      ['recoveredMessageId', 'non_empty_string'],
+    ],
+  ],
+  [
+    'rabbitmq-consumer-ack',
+    [
+      ['summary', 'non_empty_string'],
+      ['messageId', 'non_empty_string'],
+      ['ackAt', 'iso_timestamp'],
+      ['scanAttemptId', 'non_empty_string'],
+      ['duplicateSideEffectsObserved', 'boolean_false'],
+    ],
+  ],
+  [
+    'rabbitmq-consumer-nack-retry',
+    [
+      ['summary', 'non_empty_string'],
+      ['messageId', 'non_empty_string'],
+      ['nackAt', 'iso_timestamp'],
+      ['redeliveryCount', 'positive_integer'],
+      ['finalStatus', 'non_empty_string'],
+      ['correlationIdPreserved', 'boolean_true'],
+    ],
+  ],
+  [
+    'rabbitmq-poison-message-dlx',
+    [
+      ['summary', 'non_empty_string'],
+      ['dlxExchange', 'non_empty_string'],
+      ['deadLetterRoutingKey', 'non_empty_string'],
+      ['deliveryAttemptId', 'non_empty_string'],
+      ['deadLetteredAt', 'iso_timestamp'],
+    ],
+  ],
+  [
+    'rabbitmq-quorum-delivery-limit',
+    [
+      ['summary', 'non_empty_string'],
+      ['queueNames', 'non_empty_string_array'],
+      ['queueType', 'non_empty_string'],
+      ['deliveryLimit', 'positive_integer'],
+    ],
+  ],
+  [
+    'rabbitmq-worker-restart-recovery',
+    [
+      ['summary', 'non_empty_string'],
+      ['workerService', 'non_empty_string'],
+      ['restartWindow', 'non_empty_string'],
+      ['recoveredMessageId', 'non_empty_string'],
+      ['idempotentResultId', 'non_empty_string'],
+    ],
+  ],
+  [
+    'rabbitmq-queue-lag-metrics',
+    [
+      ['summary', 'non_empty_string'],
+      ['metricNames', 'non_empty_string_array'],
+      ['workerLabels', 'non_empty_string_array'],
+      ['maxLagSamples', 'non_empty_object'],
+    ],
+  ],
+  [
+    'rabbitmq-event-relay-retry',
+    [
+      ['summary', 'non_empty_string'],
+      ['outboxEventId', 'non_empty_string'],
+      ['retryCount', 'positive_integer'],
+      ['finalDeliveryResult', 'non_empty_string'],
+      ['idempotencyPreserved', 'boolean_true'],
+    ],
+  ],
+  [
+    'postgres-backup-created',
+    [
+      ['summary', 'non_empty_string'],
+      ['backupId', 'non_empty_string'],
+      ['schemaVersion', 'non_empty_string'],
+      ['includedTableCount', 'positive_integer'],
+      ['operationalTablesIncluded', 'boolean_true'],
+    ],
+  ],
+  [
+    'postgres-restore-rpo-rto',
+    [
+      ['summary', 'non_empty_string'],
+      ['restoreStartedAt', 'iso_timestamp'],
+      ['restoreCompletedAt', 'iso_timestamp'],
+      ['rpoMinutes', 'positive_integer'],
+      ['rtoMinutes', 'positive_integer'],
+    ],
+  ],
+  [
+    'postgres-migration-version',
+    [
+      ['summary', 'non_empty_string'],
+      ['releaseCommitSha', 'non_empty_string'],
+      ['appliedMigrationIds', 'non_empty_string_array'],
+      ['schemaChecksumMatched', 'boolean_true'],
+    ],
+  ],
+  [
+    'postgres-validation-queries',
+    [
+      ['summary', 'non_empty_string'],
+      ['queryNames', 'non_empty_string_array'],
+      ['checkedTableGroups', 'non_empty_string_array'],
+      ['failedQueryCount', 'non_negative_integer'],
+    ],
+  ],
+  [
+    'postgres-outbox-inbox-idempotency',
+    [
+      ['summary', 'non_empty_string'],
+      ['beforeCounts', 'non_empty_object'],
+      ['afterCounts', 'non_empty_object'],
+      ['countsMatched', 'boolean_true'],
+    ],
+  ],
+  [
+    'postgres-worker-pause-resume',
+    [
+      ['summary', 'non_empty_string'],
+      ['pauseCommandId', 'non_empty_string'],
+      ['resumeCommandId', 'non_empty_string'],
+      ['workAcceptedDuringValidation', 'boolean_false'],
+    ],
+  ],
+  [
+    'postgres-no-duplicate-side-effects',
+    [
+      ['summary', 'non_empty_string'],
+      ['idempotencyKeys', 'non_empty_string_array'],
+      ['stableCountsAfterResume', 'non_empty_object'],
+      ['duplicateSideEffectsObserved', 'boolean_false'],
+    ],
+  ],
+  [
+    'backend-loop-topic-to-delivery-audit',
+    [
+      ['summary', 'non_empty_string'],
+      ['topicId', 'non_empty_string'],
+      ['sourceBindingId', 'non_empty_string'],
+      ['scanId', 'non_empty_string'],
+      ['feedItemIds', 'non_empty_string_array'],
+      ['summaryId', 'non_empty_string'],
+      ['feedbackId', 'non_empty_string'],
+      ['digestId', 'non_empty_string'],
+      ['webhookDeliveryAttemptId', 'non_empty_string'],
+      ['realtimeEventId', 'non_empty_string'],
+      ['auditEventIds', 'non_empty_string_array'],
+    ],
+  ],
+  [
+    'backend-loop-tenant-isolation',
+    [
+      ['summary', 'non_empty_string'],
+      ['negativeChecks', 'non_empty_object_array'],
+      ['wrongTenantStatus', 'positive_integer'],
+      ['wrongWorkspaceStatus', 'positive_integer'],
+      ['leakageObserved', 'boolean_false'],
+    ],
+  ],
+  [
+    'backend-loop-idempotency',
+    [
+      ['summary', 'non_empty_string'],
+      ['idempotencyKeys', 'non_empty_string_array'],
+      ['responseIds', 'non_empty_string_array'],
+      ['stableDurableCounts', 'non_empty_object'],
+      ['duplicateSideEffectsObserved', 'boolean_false'],
+    ],
+  ],
+]);
 const requiredDomains = new Set(['rabbitmq', 'postgres', 'durable-backend-e2e']);
 const requiredExternalGroups = [
   'rabbitmq-staging-reliability-drill',
@@ -83,6 +278,7 @@ if (evidence.goRequiresAllSignalsPassed !== true) {
 }
 
 validatePassedArtifactContentSchema();
+validateSignalEvidenceSchemaMap();
 
 const artifactById = new Map();
 for (const artifact of evidence.stagingEvidenceArtifacts ?? []) {
@@ -451,6 +647,8 @@ function validateSignalResults(content, artifact, signals) {
     }
     if (!hasNonEmptyEvidence(result.evidence)) {
       violations.push(`${artifact.path}: signal result "${result.signalId}" must include non-empty evidence`);
+    } else {
+      validateSignalEvidenceShape(artifact.path, result);
     }
   }
 
@@ -473,6 +671,112 @@ function hasNonEmptyEvidence(evidenceValue) {
   }
 
   return false;
+}
+
+function validateSignalEvidenceSchemaMap() {
+  for (const signalId of requiredSignalIds) {
+    const shape = requiredEvidenceShapeBySignalId.get(signalId);
+    if (!Array.isArray(shape) || shape.length === 0) {
+      violations.push(`${evidencePath}: missing signal-specific evidence schema for "${signalId}"`);
+      continue;
+    }
+
+    const seenFields = new Set();
+    for (const [fieldPath, fieldType] of shape) {
+      if (typeof fieldPath !== 'string' || fieldPath.trim().length === 0) {
+        violations.push(`${evidencePath}: evidence schema for "${signalId}" has an empty field path`);
+      }
+      if (seenFields.has(fieldPath)) {
+        violations.push(`${evidencePath}: evidence schema for "${signalId}" duplicates field "${fieldPath}"`);
+      }
+      seenFields.add(fieldPath);
+      if (!isSupportedEvidenceType(fieldType)) {
+        violations.push(`${evidencePath}: evidence schema for "${signalId}" uses unsupported type "${fieldType}"`);
+      }
+    }
+  }
+
+  for (const signalId of requiredEvidenceShapeBySignalId.keys()) {
+    if (!requiredSignalIds.has(signalId)) {
+      violations.push(`${evidencePath}: evidence schema references unsupported signal "${signalId}"`);
+    }
+  }
+}
+
+function validateSignalEvidenceShape(artifactPath, result) {
+  const shape = requiredEvidenceShapeBySignalId.get(result.signalId);
+  if (shape === undefined) {
+    violations.push(`${artifactPath}: signal result "${result.signalId}" has no evidence schema`);
+    return;
+  }
+  if (!isRecord(result.evidence)) {
+    violations.push(`${artifactPath}: signal result "${result.signalId}" evidence must be an object`);
+    return;
+  }
+
+  for (const [fieldPath, fieldType] of shape) {
+    const value = getPath(result.evidence, fieldPath);
+    if (value === undefined) {
+      violations.push(`${artifactPath}: signal result "${result.signalId}" evidence must include ${fieldPath}`);
+      continue;
+    }
+    if (!matchesEvidenceType(value, fieldType)) {
+      violations.push(
+        `${artifactPath}: signal result "${result.signalId}" evidence.${fieldPath} must be ${fieldType}`,
+      );
+    }
+  }
+}
+
+function getPath(value, path) {
+  let current = value;
+  for (const segment of path.split('.')) {
+    if (!isRecord(current) || !(segment in current)) {
+      return undefined;
+    }
+    current = current[segment];
+  }
+
+  return current;
+}
+
+function matchesEvidenceType(value, fieldType) {
+  switch (fieldType) {
+    case 'non_empty_string':
+      return typeof value === 'string' && value.trim().length > 0;
+    case 'iso_timestamp':
+      return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+    case 'boolean_true':
+      return value === true;
+    case 'boolean_false':
+      return value === false;
+    case 'positive_integer':
+      return Number.isInteger(value) && value > 0;
+    case 'non_negative_integer':
+      return Number.isInteger(value) && value >= 0;
+    case 'non_empty_string_array':
+      return Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === 'string' && item.trim().length > 0);
+    case 'non_empty_object':
+      return isRecord(value) && Object.keys(value).length > 0;
+    case 'non_empty_object_array':
+      return Array.isArray(value) && value.length > 0 && value.every((item) => isRecord(item) && Object.keys(item).length > 0);
+    default:
+      return false;
+  }
+}
+
+function isSupportedEvidenceType(fieldType) {
+  return new Set([
+    'non_empty_string',
+    'iso_timestamp',
+    'boolean_true',
+    'boolean_false',
+    'positive_integer',
+    'non_negative_integer',
+    'non_empty_string_array',
+    'non_empty_object',
+    'non_empty_object_array',
+  ]).has(fieldType);
 }
 
 function isRecord(value) {

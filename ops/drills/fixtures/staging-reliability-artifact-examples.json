@@ -23,55 +23,127 @@
           "signalId": "rabbitmq-publisher-confirms",
           "status": "passed",
           "observedAt": "2026-06-18T00:01:00.000Z",
-          "evidence": { "summary": "redacted publisher confirm ack observed" }
+          "evidence": {
+            "summary": "redacted publisher confirm ack observed",
+            "queueName": "scan.commands.staging",
+            "messageId": "msg-rabbitmq-confirm-example",
+            "confirmAckAt": "2026-06-18T00:01:05.000Z",
+            "publishMode": "confirm-channel",
+            "brokerUrlRedacted": true,
+            "imageDigestMatched": true
+          }
         },
         {
           "signalId": "rabbitmq-persistent-publish",
           "status": "passed",
           "observedAt": "2026-06-18T00:02:00.000Z",
-          "evidence": { "summary": "redacted persistent message survived restart" }
+          "evidence": {
+            "summary": "redacted persistent message survived restart",
+            "queueName": "scan.commands.staging",
+            "messageId": "msg-rabbitmq-persistent-example",
+            "deliveryMode": "persistent",
+            "restartObserved": true,
+            "recoveredMessageId": "msg-rabbitmq-persistent-example"
+          }
         },
         {
           "signalId": "rabbitmq-consumer-ack",
           "status": "passed",
           "observedAt": "2026-06-18T00:03:00.000Z",
-          "evidence": { "summary": "redacted ack removed command without duplicate side effects" }
+          "evidence": {
+            "summary": "redacted ack removed command without duplicate side effects",
+            "messageId": "msg-rabbitmq-ack-example",
+            "ackAt": "2026-06-18T00:03:04.000Z",
+            "scanAttemptId": "scan-attempt-ack-example",
+            "duplicateSideEffectsObserved": false
+          }
         },
         {
           "signalId": "rabbitmq-consumer-nack-retry",
           "status": "passed",
           "observedAt": "2026-06-18T00:04:00.000Z",
-          "evidence": { "summary": "redacted nack retry kept correlation metadata" }
+          "evidence": {
+            "summary": "redacted nack retry kept correlation metadata",
+            "messageId": "msg-rabbitmq-nack-example",
+            "nackAt": "2026-06-18T00:04:03.000Z",
+            "redeliveryCount": 1,
+            "finalStatus": "acked-after-retry",
+            "correlationIdPreserved": true
+          }
         },
         {
           "signalId": "rabbitmq-poison-message-dlx",
           "status": "passed",
           "observedAt": "2026-06-18T00:05:00.000Z",
-          "evidence": { "summary": "redacted poison command reached DLX" }
+          "evidence": {
+            "summary": "redacted poison command reached DLX",
+            "dlxExchange": "delivery.commands.dlx",
+            "deadLetterRoutingKey": "delivery.attempt.send.dead",
+            "deliveryAttemptId": "delivery-attempt-poison-example",
+            "deadLetteredAt": "2026-06-18T00:05:06.000Z"
+          }
         },
         {
           "signalId": "rabbitmq-quorum-delivery-limit",
           "status": "passed",
           "observedAt": "2026-06-18T00:06:00.000Z",
-          "evidence": { "summary": "redacted quorum queue delivery limit observed" }
+          "evidence": {
+            "summary": "redacted quorum queue delivery limit observed",
+            "queueNames": [
+              "scan.commands.staging",
+              "summary.jobs.staging",
+              "delivery.attempts.staging"
+            ],
+            "queueType": "quorum",
+            "deliveryLimit": 20
+          }
         },
         {
           "signalId": "rabbitmq-worker-restart-recovery",
           "status": "passed",
           "observedAt": "2026-06-18T00:07:00.000Z",
-          "evidence": { "summary": "redacted worker restart recovered unacked work" }
+          "evidence": {
+            "summary": "redacted worker restart recovered unacked work",
+            "workerService": "ingestion-worker",
+            "restartWindow": "2026-06-18T00:06:30.000Z/2026-06-18T00:07:00.000Z",
+            "recoveredMessageId": "msg-rabbitmq-restart-example",
+            "idempotentResultId": "scan-attempt-restart-example"
+          }
         },
         {
           "signalId": "rabbitmq-queue-lag-metrics",
           "status": "passed",
           "observedAt": "2026-06-18T00:08:00.000Z",
-          "evidence": { "summary": "redacted queue lag metric samples observed" }
+          "evidence": {
+            "summary": "redacted queue lag metric samples observed",
+            "metricNames": [
+              "scan_queue_lag",
+              "summary_queue_lag",
+              "delivery_queue_lag"
+            ],
+            "workerLabels": [
+              "ingestion-worker",
+              "intelligence-worker",
+              "delivery-service"
+            ],
+            "maxLagSamples": {
+              "scan": 3,
+              "summary": 2,
+              "delivery": 1
+            }
+          }
         },
         {
           "signalId": "rabbitmq-event-relay-retry",
           "status": "passed",
           "observedAt": "2026-06-18T00:09:00.000Z",
-          "evidence": { "summary": "redacted event relay retry preserved outbox idempotency" }
+          "evidence": {
+            "summary": "redacted event relay retry preserved outbox idempotency",
+            "outboxEventId": "outbox-event-relay-example",
+            "retryCount": 1,
+            "finalDeliveryResult": "published",
+            "idempotencyPreserved": true
+          }
         }
       ]
     },
@@ -95,43 +167,113 @@
           "signalId": "postgres-backup-created",
           "status": "passed",
           "observedAt": "2026-06-18T00:21:00.000Z",
-          "evidence": { "summary": "redacted backup id and mapped table count observed" }
+          "evidence": {
+            "summary": "redacted backup id and mapped table count observed",
+            "backupId": "backup-staging-example",
+            "schemaVersion": "20260618002000",
+            "includedTableCount": 28,
+            "operationalTablesIncluded": true
+          }
         },
         {
           "signalId": "postgres-restore-rpo-rto",
           "status": "passed",
           "observedAt": "2026-06-18T00:24:00.000Z",
-          "evidence": { "summary": "redacted restore timing stayed inside RPO/RTO" }
+          "evidence": {
+            "summary": "redacted restore timing stayed inside RPO/RTO",
+            "restoreStartedAt": "2026-06-18T00:22:00.000Z",
+            "restoreCompletedAt": "2026-06-18T00:24:00.000Z",
+            "rpoMinutes": 5,
+            "rtoMinutes": 2
+          }
         },
         {
           "signalId": "postgres-migration-version",
           "status": "passed",
           "observedAt": "2026-06-18T00:27:00.000Z",
-          "evidence": { "summary": "redacted migration identifiers matched release commit" }
+          "evidence": {
+            "summary": "redacted migration identifiers matched release commit",
+            "releaseCommitSha": "0000000000000000000000000000000000000000",
+            "appliedMigrationIds": [
+              "20260618002000_beta_release"
+            ],
+            "schemaChecksumMatched": true
+          }
         },
         {
           "signalId": "postgres-validation-queries",
           "status": "passed",
           "observedAt": "2026-06-18T00:30:00.000Z",
-          "evidence": { "summary": "redacted validation query names and counts passed" }
+          "evidence": {
+            "summary": "redacted validation query names and counts passed",
+            "queryNames": [
+              "tenant_count",
+              "workspace_count",
+              "job_count",
+              "delivery_count",
+              "audit_count",
+              "quota_count"
+            ],
+            "checkedTableGroups": [
+              "tenancy",
+              "ingestion",
+              "summary",
+              "delivery",
+              "audit",
+              "usage"
+            ],
+            "failedQueryCount": 0
+          }
         },
         {
           "signalId": "postgres-outbox-inbox-idempotency",
           "status": "passed",
           "observedAt": "2026-06-18T00:33:00.000Z",
-          "evidence": { "summary": "redacted outbox inbox idempotency counts matched before and after restore" }
+          "evidence": {
+            "summary": "redacted outbox inbox idempotency counts matched before and after restore",
+            "beforeCounts": {
+              "outbox": 12,
+              "inbox": 7,
+              "idempotency": 19
+            },
+            "afterCounts": {
+              "outbox": 12,
+              "inbox": 7,
+              "idempotency": 19
+            },
+            "countsMatched": true
+          }
         },
         {
           "signalId": "postgres-worker-pause-resume",
           "status": "passed",
           "observedAt": "2026-06-18T00:36:00.000Z",
-          "evidence": { "summary": "redacted worker pause and resume window observed" }
+          "evidence": {
+            "summary": "redacted worker pause and resume window observed",
+            "pauseCommandId": "pause-workers-example",
+            "resumeCommandId": "resume-workers-example",
+            "workAcceptedDuringValidation": false
+          }
         },
         {
           "signalId": "postgres-no-duplicate-side-effects",
           "status": "passed",
           "observedAt": "2026-06-18T00:39:00.000Z",
-          "evidence": { "summary": "redacted durable counts stayed stable after resume" }
+          "evidence": {
+            "summary": "redacted durable counts stayed stable after resume",
+            "idempotencyKeys": [
+              "scan:example",
+              "summary:example",
+              "delivery:example"
+            ],
+            "stableCountsAfterResume": {
+              "scanAttempts": 4,
+              "feedItems": 11,
+              "summaries": 3,
+              "deliveryAttempts": 2
+            },
+            "duplicateSideEffectsObserved": false
+          }
         }
       ]
     },
@@ -155,19 +297,77 @@
           "signalId": "backend-loop-topic-to-delivery-audit",
           "status": "passed",
           "observedAt": "2026-06-18T01:04:00.000Z",
-          "evidence": { "summary": "redacted topic to source to scan to feed to summary to delivery to audit loop observed" }
+          "evidence": {
+            "summary": "redacted topic to source to scan to feed to summary to delivery to audit loop observed",
+            "topicId": "topic-e2e-example",
+            "sourceBindingId": "source-binding-e2e-example",
+            "scanId": "scan-e2e-example",
+            "feedItemIds": [
+              "feed-item-e2e-example-1",
+              "feed-item-e2e-example-2"
+            ],
+            "summaryId": "summary-e2e-example",
+            "feedbackId": "feedback-e2e-example",
+            "digestId": "digest-e2e-example",
+            "webhookDeliveryAttemptId": "delivery-attempt-e2e-example",
+            "realtimeEventId": "realtime-event-e2e-example",
+            "auditEventIds": [
+              "audit-event-e2e-example-1",
+              "audit-event-e2e-example-2"
+            ]
+          }
         },
         {
           "signalId": "backend-loop-tenant-isolation",
           "status": "passed",
           "observedAt": "2026-06-18T01:08:00.000Z",
-          "evidence": { "summary": "redacted wrong tenant and workspace checks denied access" }
+          "evidence": {
+            "summary": "redacted wrong tenant and workspace checks denied access",
+            "negativeChecks": [
+              {
+                "surface": "feed",
+                "expectedStatus": 403
+              },
+              {
+                "surface": "summary",
+                "expectedStatus": 403
+              },
+              {
+                "surface": "audit",
+                "expectedStatus": 403
+              }
+            ],
+            "wrongTenantStatus": 403,
+            "wrongWorkspaceStatus": 403,
+            "leakageObserved": false
+          }
         },
         {
           "signalId": "backend-loop-idempotency",
           "status": "passed",
           "observedAt": "2026-06-18T01:11:00.000Z",
-          "evidence": { "summary": "redacted idempotency keys reused without duplicate side effects" }
+          "evidence": {
+            "summary": "redacted idempotency keys reused without duplicate side effects",
+            "idempotencyKeys": [
+              "topic:e2e-example",
+              "scan:e2e-example",
+              "summary:e2e-example",
+              "delivery:e2e-example"
+            ],
+            "responseIds": [
+              "topic-e2e-example",
+              "scan-e2e-example",
+              "summary-e2e-example",
+              "delivery-attempt-e2e-example"
+            ],
+            "stableDurableCounts": {
+              "topics": 1,
+              "scanAttempts": 1,
+              "summaries": 1,
+              "deliveryAttempts": 1
+            },
+            "duplicateSideEffectsObserved": false
+          }
         }
       ]
     }
