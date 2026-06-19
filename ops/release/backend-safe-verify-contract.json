@@ -39,6 +39,7 @@
     "check:backend-safe-verify",
     "check:external-beta-readiness",
     "check:external-beta-evidence-runner",
+    "check:external-beta-evidence-dry-run",
     "check:no-go-cleanup",
     "check:release-artifact-evidence",
     "check:observability",
