@@ -278,6 +278,8 @@ validateRunnerPositiveDurableRuntimeArtifactSmoke();
 validateRunnerNegativeDurableRuntimeArtifactSmokes();
 validateRunnerPositiveCredentialRotationArtifactSmoke();
 validateRunnerNegativeCredentialRotationArtifactSmokes();
+validateRunnerPositiveSecurityFinalSweepArtifactSmoke();
+validateRunnerNegativeSecurityFinalSweepArtifactSmokes();
 validateRunnerPositiveArtifactSmoke();
 validateRunnerPositiveRedditArtifactSmoke();
 validateRunnerNegativeRedditArtifactSmokes();
@@ -1075,6 +1077,253 @@ function applyCredentialRotationRealEvidence(artifact, provenance) {
   }));
 }
 
+function validateRunnerPositiveSecurityFinalSweepArtifactSmoke() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-security-positive-'));
+  try {
+    const { artifactPath, exportPaths } = writeSecurityFinalSweepArtifact(tempDirectory);
+    const result = runRunnerSecurityFinalSweepArtifactSmoke(artifactPath, exportPaths);
+    if (result.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner positive security final sweep artifact smoke must accept valid redacted export evidence: ${smokeOutputSnippet(result.output)}`);
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function validateRunnerNegativeSecurityFinalSweepArtifactSmokes() {
+  const scenarios = [
+    {
+      label: 'security sweep fixture provenance',
+      expectedOutput: 'fixture provenance',
+      mutateArtifact: (artifact) => {
+        artifact.provenance = {
+          evidenceKind: 'fixture_example',
+          collectionMethod: 'Synthetic fixture example for security final sweep schema validation.',
+          runner: 'ops/security/fixtures/security-final-sweep-staging-artifact-examples.json',
+          fixtureOnly: true,
+        };
+      },
+    },
+    {
+      label: 'security sweep missing public error export',
+      expectedOutput: 'sourceExports must include public-errors',
+      mutateArtifact: (artifact) => {
+        artifact.sourceExports = artifact.sourceExports.filter(
+          (sourceExport) => sourceExport.surfaceId !== 'public-errors',
+        );
+      },
+    },
+    {
+      label: 'security sweep mismatched export digest',
+      expectedOutput: 'sha256 must match the export file content',
+      mutateArtifact: (artifact) => {
+        const logExport = artifact.sourceExports.find((sourceExport) => sourceExport.surfaceId === 'logs');
+        logExport.sha256 = '0'.repeat(64);
+      },
+    },
+    {
+      label: 'security sweep unsafe diagnostic field',
+      expectedOutput: 'unsafe diagnostic field',
+      mutateArtifact: (artifact) => {
+        const logsSurface = artifact.surfaces.find((surface) => surface.surfaceId === 'logs');
+        logsSurface.safeDiagnosticFields.push(['to', 'ken'].join(''));
+      },
+    },
+    {
+      label: 'security sweep export sensitive literal',
+      expectedOutput: 'LOG_EXPORT_PATH must not contain sensitive literal fragment',
+      mutateExports: (exportsBySurface) => {
+        exportsBySurface.logs.records.push({
+          requestId: 'req-leak-1',
+          message: ['bearer', ' leaked-value'].join(''),
+        });
+      },
+    },
+    {
+      label: 'security sweep raw source redaction flag',
+      expectedOutput: 'redaction.rawSourceTextIncluded must be false',
+      mutateArtifact: (artifact) => {
+        artifact.redaction.rawSourceTextIncluded = true;
+      },
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-security-negative-'));
+    try {
+      const { artifactPath, exportPaths } = writeSecurityFinalSweepArtifact(
+        tempDirectory,
+        scenario,
+      );
+      const result = runRunnerSecurityFinalSweepArtifactSmoke(artifactPath, exportPaths);
+      if (result.exitCode === 0) {
+        violations.push(`${contract.runnerFile}: runner negative security final sweep smoke must reject ${scenario.label}`);
+        continue;
+      }
+      if (!result.output.includes(scenario.expectedOutput)) {
+        violations.push(`${contract.runnerFile}: runner negative security final sweep smoke for ${scenario.label} must report "${scenario.expectedOutput}"`);
+      }
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+function writeSecurityFinalSweepArtifact(tempDirectory, options = {}) {
+  const exportDocuments = securityFinalSweepExportDocuments();
+  options.mutateExports?.(exportDocuments);
+  const exportPaths = writeSecurityFinalSweepExports(tempDirectory, exportDocuments);
+  const artifactPath = join(tempDirectory, 'security-final-sweep.json');
+  const artifact = securityFinalSweepArtifact(exportPaths);
+  options.mutateArtifact?.(artifact, exportPaths);
+  writeFileSync(
+    artifactPath,
+    `${JSON.stringify(artifact, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  return { artifactPath, exportPaths };
+}
+
+function securityFinalSweepExportDocuments() {
+  return {
+    logs: {
+      records: [
+        {
+          requestId: 'req-sec-1',
+          tenantId: 'tenant-alpha-1',
+          workspaceId: 'workspace-alpha-1',
+          service: 'api-gateway',
+          operation: 'create-topic',
+          status: 'ok',
+        },
+        {
+          requestId: 'req-sec-2',
+          tenantId: 'tenant-alpha-1',
+          workspaceId: 'workspace-alpha-1',
+          service: 'ingestion-worker',
+          operation: 'scan-complete',
+          status: 'ok',
+        },
+      ],
+    },
+    metrics: {
+      records: [
+        {
+          metricName: 'queue_lag_seconds',
+          tenantId: 'tenant-alpha-1',
+          workspaceId: 'workspace-alpha-1',
+          service: 'delivery-service',
+          status: 'ok',
+        },
+        {
+          metricName: 'summary_cost_units',
+          tenantId: 'tenant-alpha-1',
+          workspaceId: 'workspace-alpha-1',
+          service: 'intelligence-worker',
+          status: 'ok',
+        },
+      ],
+    },
+    publicErrors: {
+      records: [
+        {
+          requestId: 'req-sec-3',
+          statusCode: 401,
+          errorCode: 'workspace_access_denied',
+          operation: 'list-feed',
+        },
+        {
+          requestId: 'req-sec-4',
+          statusCode: 429,
+          errorCode: 'rate_limit_exceeded',
+          operation: 'create-scan',
+        },
+      ],
+    },
+  };
+}
+
+function writeSecurityFinalSweepExports(tempDirectory, exportDocuments) {
+  return {
+    logs: writeSecurityFinalSweepExport(tempDirectory, 'logs-export.json', exportDocuments.logs),
+    metrics: writeSecurityFinalSweepExport(tempDirectory, 'metrics-export.json', exportDocuments.metrics),
+    publicErrors: writeSecurityFinalSweepExport(
+      tempDirectory,
+      'public-errors-export.json',
+      exportDocuments.publicErrors,
+    ),
+  };
+}
+
+function writeSecurityFinalSweepExport(tempDirectory, filename, document) {
+  const path = join(tempDirectory, filename);
+  const content = `${JSON.stringify(document, null, 2)}\n`;
+  writeFileSync(path, content, { mode: 0o600 });
+  return {
+    path,
+    sha256: createHash('sha256').update(content).digest('hex'),
+    sampleCount: document.records.length,
+  };
+}
+
+function securityFinalSweepArtifact(exportPaths) {
+  const artifact = readJson('ops/security/fixtures/security-final-sweep-staging-artifact-examples.json');
+  const now = new Date().toISOString();
+  artifact.provenance = {
+    evidenceKind: 'staging_security_final_sweep',
+    collectionMethod: 'Deploy log metric and public error samples captured from staging backend release.',
+    runner: 'scripts/capture-security-final-sweep.ts',
+    fixtureOnly: false,
+  };
+  artifact.environment = {
+    environmentId: 'staging-security-alpha-1',
+    imageDigest: `sha256:${'f'.repeat(64)}`,
+    sampledAt: now,
+    operator: 'security-owner-1',
+  };
+  artifact.sourceExports = [
+    securityFinalSweepSourceExport('logs', 'LOG_EXPORT_PATH', exportPaths.logs, now),
+    securityFinalSweepSourceExport('metrics', 'METRICS_EXPORT_PATH', exportPaths.metrics, now),
+    securityFinalSweepSourceExport(
+      'public-errors',
+      'PUBLIC_ERROR_EXPORT_PATH',
+      exportPaths.publicErrors,
+      now,
+    ),
+  ];
+  updateSecurityFinalSweepSurface(artifact, 'logs', exportPaths.logs.sampleCount);
+  updateSecurityFinalSweepSurface(artifact, 'metrics', exportPaths.metrics.sampleCount);
+  updateSecurityFinalSweepSurface(artifact, 'public-errors', exportPaths.publicErrors.sampleCount);
+  updateSecurityFinalSweepSurface(artifact, 'audit-metadata', 2);
+  artifact.review = {
+    reviewer: 'security-owner-1',
+    decision: 'passed',
+    notes: 'Staging redaction review completed for logs, metrics, public errors and audit metadata.',
+  };
+  return artifact;
+}
+
+function securityFinalSweepSourceExport(surfaceId, envVar, exportFile, collectedAt) {
+  return {
+    surfaceId,
+    envVar,
+    path: exportFile.path,
+    sha256: exportFile.sha256,
+    sampleCount: exportFile.sampleCount,
+    redactedOnly: true,
+    sanitized: true,
+    collectedAt,
+  };
+}
+
+function updateSecurityFinalSweepSurface(artifact, surfaceId, sampleCount) {
+  const surface = artifact.surfaces.find((item) => item.surfaceId === surfaceId);
+  surface.sampleCount = sampleCount;
+  for (const result of surface.leakClassResults) {
+    result.sampleCount = sampleCount;
+  }
+}
+
 function validateRunnerPositiveRedditArtifactSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-reddit-positive-'));
   try {
@@ -1163,6 +1412,38 @@ function writeRedditArtifactPair(tempDirectory, options = {}) {
 
 function runRunnerNegativeSmoke(artifactPath) {
   return runRunnerArtifactSmoke(artifactPath);
+}
+
+function runRunnerSecurityFinalSweepArtifactSmoke(artifactPath, exportPaths) {
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        contract.runnerFile,
+        '--validate-artifacts',
+        '--require-env',
+        '--job',
+        'security-final-sweep-staging',
+      ],
+      {
+        env: {
+          PATH: process.env.PATH ?? '',
+          LOG_EXPORT_PATH: exportPaths.logs.path,
+          METRICS_EXPORT_PATH: exportPaths.metrics.path,
+          PUBLIC_ERROR_EXPORT_PATH: exportPaths.publicErrors.path,
+          SECURITY_FINAL_SWEEP_ARTIFACT_PATH: artifactPath,
+        },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    );
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
 }
 
 function runRunnerCredentialRotationArtifactSmoke(sourceArtifactPath, webhookArtifactPath) {
