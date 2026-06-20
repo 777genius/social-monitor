@@ -255,6 +255,7 @@ function buildPlan(planJobs) {
       runnerCommand: job.runnerCommand,
       validationCommands: job.validationCommands,
       requiredEnv: job.requiredEnv,
+      requiredEnvAlternatives: job.requiredEnvAlternatives ?? [],
       optionalEnv: job.optionalEnv,
       missingEnv,
       missingOptionalEnv,
@@ -321,6 +322,7 @@ function printPlan(plan) {
     console.log(`  runner: ${job.runnerCommand ?? 'manual artifact / validators only'}`);
     console.log(`  validators: ${job.validationCommands.join(' && ')}`);
     console.log(`  requiredEnv: ${job.requiredEnv.length === 0 ? 'none' : job.requiredEnv.join(', ')}`);
+    console.log(`  requiredEnvAlternatives: ${formatRequiredEnvAlternatives(job)}`);
     console.log(`  optionalEnv: ${job.optionalEnv.length === 0 ? 'none' : job.optionalEnv.join(', ')}`);
     console.log(`  missingEnv: ${job.missingEnv.length === 0 ? 'none' : job.missingEnv.join(', ')}`);
     console.log(`  missingOptionalEnv: ${job.missingOptionalEnv.length === 0 ? 'none' : job.missingOptionalEnv.join(', ')}`);
@@ -472,6 +474,7 @@ function buildHandoff(plan) {
       runnerDescription: handoffRunner(job),
       validationCommands: job.validationCommands,
       requiredEnv: job.requiredEnv,
+      requiredEnvAlternatives: job.requiredEnvAlternatives ?? [],
       optionalEnv: job.optionalEnv,
       missingEnv: job.missingEnv,
       missingOptionalEnv: job.missingOptionalEnv,
@@ -574,11 +577,29 @@ function isMissingSelectionValue(value) {
 }
 
 function missingRequiredEnv(job) {
-  return job.requiredEnv.filter((envName) => process.env[envName]?.trim() === undefined || process.env[envName]?.trim() === '');
+  const missingEnv = job.requiredEnv.filter((envName) => !hasEnv(envName));
+  const alternativeEnvNames = new Set((job.requiredEnvAlternatives ?? []).flatMap((alternative) => alternative.env ?? []));
+  if (alternativeEnvNames.size === 0 || !hasSatisfiedRequiredEnvAlternative(job)) {
+    return missingEnv;
+  }
+
+  return missingEnv.filter((envName) => !alternativeEnvNames.has(envName));
 }
 
 function missingOptionalEnvNames(job) {
   return job.optionalEnv.filter((envName) => process.env[envName]?.trim() === undefined || process.env[envName]?.trim() === '');
+}
+
+function hasSatisfiedRequiredEnvAlternative(job) {
+  return (job.requiredEnvAlternatives ?? []).some((alternative) => {
+    const envNames = alternative.env ?? [];
+    return envNames.length > 0 && envNames.every((envName) => hasEnv(envName));
+  });
+}
+
+function hasEnv(envName) {
+  const value = process.env[envName]?.trim();
+  return value !== undefined && value !== '';
 }
 
 function jobExecutionReadiness(job, missingEnv, preflightViolations) {
@@ -984,7 +1005,12 @@ function httpsEvidenceUrlEnvNames() {
 }
 
 function tokenEvidenceEnvNames() {
-  return new Set(['GITHUB_ACCESS_TOKEN', 'REDDIT_ACCESS_TOKEN']);
+  return new Set([
+    'GITHUB_ACCESS_TOKEN',
+    'REDDIT_ACCESS_TOKEN',
+    'REDDIT_CLIENT_SECRET',
+    'REDDIT_REFRESH_TOKEN',
+  ]);
 }
 
 function secretReferenceEnvNames() {
@@ -1637,6 +1663,22 @@ function formatOutputArtifacts(job) {
       return `${location} (${artifact.format})`;
     })
     .join(', ');
+}
+
+function formatRequiredEnvAlternatives(job) {
+  const alternatives = job.requiredEnvAlternatives ?? [];
+  if (alternatives.length === 0) {
+    return 'none';
+  }
+
+  return alternatives
+    .map((alternative) => {
+      const label = typeof alternative.label === 'string' && alternative.label.trim().length > 0
+        ? `${alternative.label}: `
+        : '';
+      return `${label}${(alternative.env ?? []).join(' + ')}`;
+    })
+    .join(' | ');
 }
 
 function formatHandoffArtifacts(job) {

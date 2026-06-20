@@ -16,7 +16,8 @@
     "check:mobile-client-contract",
     "check:flutter-client-contract",
     "check:live-open-connectors",
-    "check:live-reddit-oauth"
+    "check:live-reddit-oauth",
+    "capture:live-reddit-oauth"
   ],
   "backendScripts": [
     "lint",

@@ -147,7 +147,7 @@ Implemented MVP path:
 - `HttpRedditClient` uses `https://oauth.reddit.com` with a bearer token and explicit `user-agent`.
 - `FixtureRedditClient` powers deterministic certification and does not use network.
 - `npm run check:source-certification` is the blocking release gate for fixture behavior, cursor contract, item identity, unsupported query rejection and error classification.
-- `npm run check:live-reddit-oauth` is an optional operator smoke. It skips cleanly when `REDDIT_ACCESS_TOKEN` is absent and verifies real OAuth scanning when a tenant-owned token is supplied.
+- `npm run capture:live-reddit-oauth` is the operator capture path for live Reddit evidence. It fails closed when tenant-owned OAuth credentials are absent, accepts either `REDDIT_ACCESS_TOKEN` or `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` + `REDDIT_REFRESH_TOKEN`, and writes only redacted evidence artifacts.
 
 Operational rule:
 

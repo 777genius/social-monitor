@@ -238,9 +238,19 @@
       "runPolicy": "live_command",
       "owner": "source-owner",
       "blocksExternalBeta": true,
-      "runnerCommand": "npm run check:live-reddit-oauth",
+      "runnerCommand": "npm run capture:live-reddit-oauth",
       "validationCommands": [
         "npm run check:source-live-certification-evidence"
+      ],
+      "requiredEnvAlternatives": [
+        {
+          "label": "reddit_access_token",
+          "env": ["REDDIT_ACCESS_TOKEN"]
+        },
+        {
+          "label": "reddit_refresh_token_flow",
+          "env": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_REFRESH_TOKEN"]
+        }
       ],
       "requiredEnv": [
         "REDDIT_ACCESS_TOKEN",
@@ -251,6 +261,9 @@
         "SOURCE_LIVE_OPERATOR"
       ],
       "optionalEnv": [
+        "REDDIT_CLIENT_ID",
+        "REDDIT_CLIENT_SECRET",
+        "REDDIT_REFRESH_TOKEN",
         "REDDIT_USER_AGENT",
         "REDDIT_SUBREDDIT",
         "REDDIT_LISTING"

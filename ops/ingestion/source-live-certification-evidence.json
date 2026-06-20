@@ -261,7 +261,7 @@
       "status": "pending_live_evidence",
       "requiredForExternalBeta": true,
       "owner": "source-owner",
-      "liveSmokeCommand": "npm run check:live-reddit-oauth",
+      "liveSmokeCommand": "npm run capture:live-reddit-oauth",
       "stagingArtifactPath": null,
       "environmentId": null,
       "imageDigest": null,

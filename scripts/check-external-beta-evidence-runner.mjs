@@ -147,7 +147,17 @@ const requiredJobEnvNames = new Map([
 ]);
 const requiredJobOptionalEnvNames = new Map([
   ['live-open-connectors', ['GITHUB_ACCESS_TOKEN']],
-  ['live-reddit-oauth', ['REDDIT_USER_AGENT', 'REDDIT_SUBREDDIT', 'REDDIT_LISTING']],
+  [
+    'live-reddit-oauth',
+    [
+      'REDDIT_CLIENT_ID',
+      'REDDIT_CLIENT_SECRET',
+      'REDDIT_REFRESH_TOKEN',
+      'REDDIT_USER_AGENT',
+      'REDDIT_SUBREDDIT',
+      'REDDIT_LISTING',
+    ],
+  ],
 ]);
 const requiredJobOutputArtifacts = new Map([
   [
@@ -2298,16 +2308,36 @@ function validateRunnerPreflightPositiveSmoke() {
   } finally {
     rmSync(tempDirectory, { recursive: true, force: true });
   }
+
+  const redditTempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-preflight-reddit-refresh-positive-'));
+  try {
+    const result = runRunnerPreflightPositiveSmoke(redditOAuthPreflightEnv(redditTempDirectory, {
+      REDDIT_ACCESS_TOKEN: '',
+      REDDIT_CLIENT_ID: 'reddit-client-id-prod-1',
+      REDDIT_CLIENT_SECRET: 'reddit-client-secret-value-1234567890',
+      REDDIT_REFRESH_TOKEN: 'reddit-refresh-token-value-1234567890',
+    }), 'live-reddit-oauth');
+    if (result.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner positive preflight smoke must accept Reddit refresh-token auth alternative: ${smokeOutputSnippet(result.output)}`);
+    }
+  } finally {
+    rmSync(redditTempDirectory, { recursive: true, force: true });
+  }
 }
 
-function runRunnerPreflightPositiveSmoke(env) {
+function runRunnerPreflightPositiveSmoke(env, jobId) {
+  const args = [
+    contract.runnerFile,
+    '--require-env',
+  ];
+  if (jobId !== undefined) {
+    args.push('--job', jobId);
+  }
+
   try {
     execFileSync(
       process.execPath,
-      [
-        contract.runnerFile,
-        '--require-env',
-      ],
+      args,
       {
         env: {
           PATH: process.env.PATH ?? '',

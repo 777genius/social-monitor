@@ -166,7 +166,7 @@ const expectedLiveCommands = new Map([
   ['hacker-news', 'npm run check:live-open-connectors'],
   ['rss', 'npm run check:live-open-connectors'],
   ['github', 'npm run check:live-open-connectors'],
-  ['reddit', 'npm run check:live-reddit-oauth'],
+  ['reddit', 'npm run capture:live-reddit-oauth'],
 ]);
 const forbiddenEvidenceFragments = [
   'bearer ',

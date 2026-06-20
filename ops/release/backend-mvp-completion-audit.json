@@ -102,7 +102,7 @@
         "npm run check:source-certification",
         "npm run check:source-live-certification-evidence"
       ],
-      "externalVerificationCommands": ["npm run check:live-open-connectors", "npm run check:live-reddit-oauth"],
+      "externalVerificationCommands": ["npm run check:live-open-connectors", "npm run capture:live-reddit-oauth"],
       "releaseGateIds": ["source-provider-certification", "source-live-certification-evidence"],
       "exitCondition": "HN, RSS, GitHub and Reddit have live smoke, auth, rate-limit and credential lifecycle evidence attached",
       "goCondition": "Telegram and X stay deferred while enabled external providers are live-certified"

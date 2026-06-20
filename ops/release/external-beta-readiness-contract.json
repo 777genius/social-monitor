@@ -89,7 +89,7 @@
         "npm run check:source-certification",
         "npm run check:source-live-certification-evidence",
         "npm run check:live-open-connectors",
-        "npm run check:live-reddit-oauth"
+        "npm run capture:live-reddit-oauth"
       ],
       "requiredArtifacts": [
         "ops/ingestion/source-provider-certification.json",

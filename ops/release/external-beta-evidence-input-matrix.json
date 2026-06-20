@@ -63,7 +63,9 @@
       "description": "Live provider secret value. Never commit; use only in operator shell or approved secret storage.",
       "env": [
         "GITHUB_ACCESS_TOKEN",
-        "REDDIT_ACCESS_TOKEN"
+        "REDDIT_ACCESS_TOKEN",
+        "REDDIT_CLIENT_SECRET",
+        "REDDIT_REFRESH_TOKEN"
       ]
     },
     {
@@ -97,6 +99,7 @@
       "inputClass": "provider_option",
       "description": "Non-secret live provider request option.",
       "env": [
+        "REDDIT_CLIENT_ID",
         "REDDIT_LISTING",
         "REDDIT_SUBREDDIT",
         "REDDIT_USER_AGENT"
