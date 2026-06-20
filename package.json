@@ -70,6 +70,7 @@
     "check:write-api-key-scope": "node scripts/run-with-timeout.mjs --timeout-ms 90000 --clean-env --copy-env SOURCE_CONFIG_ENCRYPTION_KEY --node-options --max-old-space-size=512 -- ts-node -r tsconfig-paths/register scripts/check-write-api-key-monitoring-scope-smoke.ts && node scripts/run-with-timeout.mjs --timeout-ms 90000 --clean-env --node-options --max-old-space-size=512 -- ts-node -r tsconfig-paths/register scripts/check-write-api-key-summary-scope-smoke.ts",
     "check:hn-smoke": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-hacker-news-ingestion-smoke.ts",
     "check:github-smoke": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-github-ingestion-smoke.ts",
+    "check:github-live-summary-smoke": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-github-live-summary-smoke.ts",
     "check:local-infra": "node scripts/check-local-infra.mjs",
     "check:load-cost": "node scripts/check-load-cost.mjs",
     "check:live-open-connectors": "node scripts/run-with-timeout.mjs --timeout-ms 45000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-live-open-connectors.ts",
