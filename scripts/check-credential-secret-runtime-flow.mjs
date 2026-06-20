@@ -853,9 +853,9 @@ function validateCaptureHandoff() {
 }
 
 function validateCaptureOutputPathGuards() {
-  const workspaceArtifactPath = resolve('source-credential-rotation-workspace-output.json');
-  const result = runCaptureExpectingFailure({
-    SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: workspaceArtifactPath,
+  const sourceWorkspaceArtifactPath = resolve('source-credential-rotation-workspace-output.json');
+  const sourceResult = runCaptureExpectingFailure({
+    SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: sourceWorkspaceArtifactPath,
     WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: '/tmp/social-monitor-webhook-secret-rotation-output.json',
     CREDENTIAL_SECRET_RUNTIME_FLOW_ENV_PATH: '/tmp/social-monitor-credential-secret-runtime-flow.env',
     STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
@@ -863,15 +863,32 @@ function validateCaptureOutputPathGuards() {
     STAGING_OPERATOR: 'security-owner-1',
   });
 
-  if (result.exitCode === 0) {
+  if (sourceResult.exitCode === 0) {
     violations.push(`${captureScriptPath}: capture must reject workspace SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH`);
-    return;
-  }
-  if (!result.output.includes('SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH must not write release evidence into the git workspace')) {
+  } else if (!sourceResult.output.includes('SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH must not write release evidence into the git workspace')) {
     violations.push(`${captureScriptPath}: workspace artifact path rejection must explain evidence path policy`);
   }
-  if (existsSync(workspaceArtifactPath)) {
-    violations.push(`${captureScriptPath}: workspace artifact path rejection must not create ${workspaceArtifactPath}`);
+  if (existsSync(sourceWorkspaceArtifactPath)) {
+    violations.push(`${captureScriptPath}: workspace artifact path rejection must not create ${sourceWorkspaceArtifactPath}`);
+  }
+
+  const webhookWorkspaceArtifactPath = resolve('webhook-secret-rotation-workspace-output.json');
+  const webhookResult = runCaptureExpectingFailure({
+    SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: '/tmp/social-monitor-source-credential-rotation-output.json',
+    WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: webhookWorkspaceArtifactPath,
+    CREDENTIAL_SECRET_RUNTIME_FLOW_ENV_PATH: '/tmp/social-monitor-credential-secret-runtime-flow.env',
+    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+    STAGING_SECRET_STORE_ID: 'staging-secret-store-1',
+    STAGING_OPERATOR: 'security-owner-1',
+  });
+
+  if (webhookResult.exitCode === 0) {
+    violations.push(`${captureScriptPath}: capture must reject workspace WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH`);
+  } else if (!webhookResult.output.includes('WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH must not write release evidence into the git workspace')) {
+    violations.push(`${captureScriptPath}: workspace webhook artifact path rejection must explain evidence path policy`);
+  }
+  if (existsSync(webhookWorkspaceArtifactPath)) {
+    violations.push(`${captureScriptPath}: workspace webhook artifact path rejection must not create ${webhookWorkspaceArtifactPath}`);
   }
 }
 

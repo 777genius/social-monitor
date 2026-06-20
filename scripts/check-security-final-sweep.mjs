@@ -800,7 +800,7 @@ function validateCaptureHandoff() {
 
 function validateCaptureOutputPathGuards() {
   const workspaceArtifactPath = resolve('security-final-sweep-workspace-output.json');
-  const result = runCaptureExpectingFailure({
+  const artifactResult = runCaptureExpectingFailure({
     SECURITY_FINAL_SWEEP_ARTIFACT_PATH: workspaceArtifactPath,
     LOG_EXPORT_PATH: '/tmp/social-monitor-security-final-sweep-log-output.json',
     METRICS_EXPORT_PATH: '/tmp/social-monitor-security-final-sweep-metrics-output.json',
@@ -811,15 +811,57 @@ function validateCaptureOutputPathGuards() {
     BACKEND_IMAGE_DIGEST: `sha256:${'e'.repeat(64)}`,
   });
 
-  if (result.exitCode === 0) {
+  if (artifactResult.exitCode === 0) {
     violations.push(`${captureScriptPath}: capture must reject workspace SECURITY_FINAL_SWEEP_ARTIFACT_PATH`);
-    return;
-  }
-  if (!result.output.includes('SECURITY_FINAL_SWEEP_ARTIFACT_PATH must not write release evidence into the git workspace')) {
+  } else if (!artifactResult.output.includes('SECURITY_FINAL_SWEEP_ARTIFACT_PATH must not write release evidence into the git workspace')) {
     violations.push(`${captureScriptPath}: workspace artifact path rejection must explain evidence path policy`);
   }
   if (existsSync(workspaceArtifactPath)) {
     violations.push(`${captureScriptPath}: workspace artifact path rejection must not create ${workspaceArtifactPath}`);
+  }
+
+  validateSecurityCaptureOutputPathGuard({
+    envName: 'LOG_EXPORT_PATH',
+    workspacePath: resolve('security-final-sweep-log-workspace-output.json'),
+    expectedMessage: 'LOG_EXPORT_PATH must not write release evidence into the git workspace',
+  });
+  validateSecurityCaptureOutputPathGuard({
+    envName: 'METRICS_EXPORT_PATH',
+    workspacePath: resolve('security-final-sweep-metrics-workspace-output.json'),
+    expectedMessage: 'METRICS_EXPORT_PATH must not write release evidence into the git workspace',
+  });
+  validateSecurityCaptureOutputPathGuard({
+    envName: 'PUBLIC_ERROR_EXPORT_PATH',
+    workspacePath: resolve('security-final-sweep-public-errors-workspace-output.json'),
+    expectedMessage: 'PUBLIC_ERROR_EXPORT_PATH must not write release evidence into the git workspace',
+  });
+}
+
+function validateSecurityCaptureOutputPathGuard({ envName, workspacePath, expectedMessage }) {
+  const result = runCaptureExpectingFailure({
+    SECURITY_FINAL_SWEEP_ARTIFACT_PATH: '/tmp/social-monitor-security-final-sweep-output.json',
+    LOG_EXPORT_PATH: envName === 'LOG_EXPORT_PATH'
+      ? workspacePath
+      : '/tmp/social-monitor-security-final-sweep-log-output.json',
+    METRICS_EXPORT_PATH: envName === 'METRICS_EXPORT_PATH'
+      ? workspacePath
+      : '/tmp/social-monitor-security-final-sweep-metrics-output.json',
+    PUBLIC_ERROR_EXPORT_PATH: envName === 'PUBLIC_ERROR_EXPORT_PATH'
+      ? workspacePath
+      : '/tmp/social-monitor-security-final-sweep-public-errors-output.json',
+    SECURITY_FINAL_SWEEP_ENV_PATH: '/tmp/social-monitor-security-final-sweep.env',
+    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+    STAGING_OPERATOR: 'security-owner-1',
+    BACKEND_IMAGE_DIGEST: `sha256:${'e'.repeat(64)}`,
+  });
+
+  if (result.exitCode === 0) {
+    violations.push(`${captureScriptPath}: capture must reject workspace ${envName}`);
+  } else if (!result.output.includes(expectedMessage)) {
+    violations.push(`${captureScriptPath}: workspace ${envName} rejection must explain evidence path policy`);
+  }
+  if (existsSync(workspacePath)) {
+    violations.push(`${captureScriptPath}: workspace ${envName} rejection must not create ${workspacePath}`);
   }
 }
 
