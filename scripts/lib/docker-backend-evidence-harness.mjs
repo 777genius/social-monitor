@@ -251,6 +251,14 @@ function dockerVolumeStorageFailure({ cwd, bytes, timeoutMs, phase }) {
     timeoutMs,
   });
   if (volumeProbe.ok) {
+    const postgresProbe = probeDockerPostgresInitdbWritable({
+      cwd,
+      timeoutMs,
+    });
+    if (!postgresProbe.ok) {
+      return `Docker Postgres initdb probe failed ${phase}: ${postgresProbe.message}`;
+    }
+
     return undefined;
   }
 
@@ -324,6 +332,88 @@ function probeDockerVolumeWritable({ cwd, bytes, timeoutMs }) {
       return {
         ok: false,
         message: `${commandFailureMessage(probe, `Docker volume write probe could not write ${formatBytes(bytes)}`)}. Docker reported this before Postgres initdb could run; free Docker Desktop storage or prune unused Docker volumes/images.`,
+      };
+    }
+
+    return { ok: true };
+  } finally {
+    cleanup();
+  }
+}
+
+function probeDockerPostgresInitdbWritable({ cwd, timeoutMs }) {
+  const volumeName = `social-monitor-backend-evidence-postgres-preflight-${process.pid}-${Date.now().toString(36)}`;
+  const containerName = `${volumeName}-initdb`;
+  const script = [
+    'set -eu',
+    'mkdir -p "$PGDATA"',
+    'chown -R postgres:postgres /var/lib/postgresql',
+    'gosu postgres initdb -D "$PGDATA" --data-checksums',
+  ].join('\n');
+
+  const cleanup = () => {
+    spawnSync('docker', ['rm', '-f', containerName], {
+      cwd,
+      encoding: 'utf8',
+      timeout: timeoutMs,
+    });
+    spawnSync('docker', ['volume', 'rm', '-f', volumeName], {
+      cwd,
+      encoding: 'utf8',
+      timeout: timeoutMs,
+    });
+  };
+
+  try {
+    const created = spawnSync('docker', ['volume', 'create', volumeName], {
+      cwd,
+      encoding: 'utf8',
+      timeout: timeoutMs,
+    });
+    if (created.error) {
+      return {
+        ok: false,
+        message: created.error.code === 'ETIMEDOUT'
+          ? `docker volume create did not respond within ${timeoutMs}ms`
+          : created.error.message,
+      };
+    }
+    if (created.status !== 0) {
+      return {
+        ok: false,
+        message: commandFailureMessage(created, 'docker volume create'),
+      };
+    }
+
+    const probe = spawnSync('docker', [
+      'run',
+      '--rm',
+      '--name',
+      containerName,
+      '-v',
+      `${volumeName}:/var/lib/postgresql`,
+      '--entrypoint',
+      'sh',
+      DOCKER_VOLUME_PROBE_IMAGE,
+      '-ec',
+      script,
+    ], {
+      cwd,
+      encoding: 'utf8',
+      timeout: timeoutMs,
+    });
+    if (probe.error) {
+      return {
+        ok: false,
+        message: probe.error.code === 'ETIMEDOUT'
+          ? `Postgres initdb probe did not complete within ${timeoutMs}ms`
+          : probe.error.message,
+      };
+    }
+    if (probe.status !== 0) {
+      return {
+        ok: false,
+        message: `${commandFailureMessage(probe, 'Postgres initdb probe')}. Docker reported this before compose startup; free Docker Desktop storage or prune unused Docker volumes/images.`,
       };
     }
 
