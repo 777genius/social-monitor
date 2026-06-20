@@ -2014,6 +2014,20 @@ function validateRunnerNegativeRedditArtifactSmokes() {
       },
     },
     {
+      label: 'reddit lifecycle non ISO observedAt',
+      expectedOutput: 'lifecycleOperations[0].observedAt must be an ISO timestamp',
+      mutateLifecycle: (artifact) => {
+        artifact.lifecycleOperations[0].observedAt = 'not-a-timestamp';
+      },
+    },
+    {
+      label: 'reddit live signal non ISO observedAt',
+      expectedOutput: 'signalResult "reddit-tenant-oauth-smoke" observedAt must be an ISO timestamp',
+      mutateLive: (artifact) => {
+        artifact.providerResults[0].signalResults[0].observedAt = 'not-a-timestamp';
+      },
+    },
+    {
       label: 'reddit live evidence missing provider',
       expectedOutput: 'must include providerKey reddit',
       mutateLive: (artifact) => {

@@ -807,6 +807,9 @@ function validateLiveProviderArtifact(artifact, options) {
   if (!/^sha256:[0-9a-f]{64}$/.test(String(artifact.imageDigest ?? ''))) {
     violations.push(`${label}: imageDigest must be immutable sha256 digest`);
   }
+  if (!isIsoDateString(artifact.sampledAt)) {
+    violations.push(`${label}: sampledAt must be an ISO timestamp`);
+  }
   if (options.allowFixture !== true) {
     validateRealEvidenceIdentityStrings({
       source: artifact,
@@ -947,6 +950,9 @@ function validateRedditCredentialLifecycleArtifact(artifact, options) {
   if (!/^sha256:[0-9a-f]{64}$/.test(String(artifact.imageDigest ?? ''))) {
     violations.push(`${label}: imageDigest must be immutable sha256 digest`);
   }
+  if (!isIsoDateString(artifact.sampledAt)) {
+    violations.push(`${label}: sampledAt must be an ISO timestamp`);
+  }
   if (options.allowFixture !== true) {
     validateRealEvidenceIdentityStrings({
       source: artifact,
@@ -1005,6 +1011,8 @@ function validateRedditCredentialLifecycleOperations(operations, label) {
     }
     if (typeof operation.observedAt !== 'string' || operation.observedAt.trim().length === 0) {
       violations.push(`${operationLabel}.observedAt must be a non-empty string`);
+    } else if (!isIsoDateString(operation.observedAt)) {
+      violations.push(`${operationLabel}.observedAt must be an ISO timestamp`);
     }
     if (!isRecord(operation.evidence)) {
       violations.push(`${operationLabel}.evidence must be an object`);
@@ -1097,6 +1105,8 @@ function validateArtifactSignalResults(providerResult, label) {
     }
     if (typeof signal.observedAt !== 'string' || signal.observedAt.trim().length === 0) {
       violations.push(`${label}: signalResult "${signal.signalId}" must define observedAt`);
+    } else if (!isIsoDateString(signal.observedAt)) {
+      violations.push(`${label}: signalResult "${signal.signalId}" observedAt must be an ISO timestamp`);
     }
     if (!isRecord(signal.evidence)) {
       violations.push(`${label}: signalResult "${signal.signalId}" must define evidence object`);
@@ -1381,6 +1391,12 @@ function isSupportedEvidenceType(fieldType) {
 
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isIsoDateString(value) {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && !Number.isNaN(Date.parse(value));
 }
 
 function validateCommand(command, label) {
