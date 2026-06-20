@@ -1,11 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
   validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
+import { readPrivateEvidenceJsonFile } from './lib/evidence-env-file.mjs';
 
 const contractPath = 'ops/security/credential-secret-runtime-flow.json';
 const packagePath = 'package.json';
@@ -18,6 +21,7 @@ const captureScriptPath = 'scripts/capture-credential-secret-runtime-flow.mjs';
 const runtimeFlowScriptPath = 'scripts/check-credential-secret-runtime-flow.ts';
 const sourceConfigProtectorPath = 'libs/monitoring/adapters/security/aes-gcm-source-binding-config-protector.ts';
 const sourceConfigProtectorSmokePath = 'scripts/check-source-config-protector-smoke.ts';
+const currentScriptPath = fileURLToPath(import.meta.url);
 
 const contract = readJson(contractPath);
 const packageJson = readJson(packagePath);
@@ -198,6 +202,7 @@ if (contract.externalBetaStatus !== 'hold_until_runtime_secret_store_and_rotatio
 validateRotationEvidence();
 validateCaptureHandoff();
 validateCaptureOutputPathGuards();
+validateDirectArtifactPathGuards();
 const rotationArtifactSchemas = contract.rotationArtifactSchemas ?? {};
 validateRotationArtifactSchemas(rotationArtifactSchemas);
 validateRotationArtifactPath(
@@ -226,6 +231,7 @@ if (contract.rotationEvidence?.status === 'passed') {
     'rotationEvidence.sourceCredentialArtifactPath',
     {
       allowExample: false,
+      requirePrivateExternalPath: true,
       schemaKey: 'sourceCredentialRotation',
       expectedFormat: sourceCredentialRotationFormat,
       expectedSecretClass: 'source-credentials',
@@ -237,6 +243,7 @@ if (contract.rotationEvidence?.status === 'passed') {
     'rotationEvidence.webhookSecretArtifactPath',
     {
       allowExample: false,
+      requirePrivateExternalPath: true,
       schemaKey: 'webhookSecretRotation',
       expectedFormat: webhookSecretRotationFormat,
       expectedSecretClass: 'webhook-signing-secrets',
@@ -253,6 +260,7 @@ if (
     'SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH',
     {
       allowExample: false,
+      requirePrivateExternalPath: true,
       schemaKey: 'sourceCredentialRotation',
       expectedFormat: sourceCredentialRotationFormat,
       expectedSecretClass: 'source-credentials',
@@ -274,6 +282,7 @@ if (
     'WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH',
     {
       allowExample: false,
+      requirePrivateExternalPath: true,
       schemaKey: 'webhookSecretRotation',
       expectedFormat: webhookSecretRotationFormat,
       expectedSecretClass: 'webhook-signing-secrets',
@@ -433,7 +442,14 @@ function readJson(path) {
 }
 
 function readRotationArtifact(path) {
-  const rawContent = readFileSync(path, 'utf8');
+  return readRotationArtifactContent(readFileSync(path, 'utf8'), path);
+}
+
+function readPrivateRotationArtifact(path, label) {
+  return readRotationArtifactContent(readPrivateEvidenceJsonFile(path, label), path);
+}
+
+function readRotationArtifactContent(rawContent, path) {
   validateNoSensitiveArtifactContent(rawContent, path);
   return JSON.parse(rawContent);
 }
@@ -567,12 +583,24 @@ function requireSetCoverage(actual, expected, label) {
 }
 
 function validateRotationArtifactPath(path, label, options) {
-  requireExistingPath(path, label);
-  if (typeof path !== 'string' || path.trim().length === 0 || !existsSync(path)) {
+  if (typeof path !== 'string' || path.trim().length === 0) {
+    violations.push(`${contractPath}: ${label} must reference an existing path`);
+    return;
+  }
+  if (options.requirePrivateExternalPath !== true && !existsSync(path)) {
+    violations.push(`${contractPath}: ${label} must reference an existing path`);
     return;
   }
 
-  const artifact = readRotationArtifact(path);
+  let artifact;
+  try {
+    artifact = options.requirePrivateExternalPath === true
+      ? readPrivateRotationArtifact(path, label)
+      : readRotationArtifact(path);
+  } catch (error) {
+    violations.push(error instanceof Error ? error.message : String(error));
+    return;
+  }
   validateRotationArtifact(artifact, path, options);
 }
 
@@ -857,6 +885,17 @@ function validateCaptureHandoff() {
   if (!captureScriptSource.includes('must not use local, fixture, example, mock or test identifiers')) {
     violations.push(`${captureScriptPath}: credential secret capture must reject non-beta evidence identity values`);
   }
+
+  const selfSource = readText(currentScriptPath);
+  for (const marker of [
+    'readPrivateEvidenceJsonFile',
+    'validateDirectArtifactPathGuards',
+    '0600-style private file permissions',
+  ]) {
+    if (!selfSource.includes(marker)) {
+      violations.push(`${currentScriptPath}: direct credential artifact env path guard must include ${marker}`);
+    }
+  }
 }
 
 function validateCaptureOutputPathGuards() {
@@ -904,6 +943,70 @@ function runCaptureExpectingFailure(env) {
     execFileSync(process.execPath, [captureScriptPath], {
       env: {
         ...process.env,
+        ...env,
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function validateDirectArtifactPathGuards() {
+  if (process.env.CREDENTIAL_SECRET_DIRECT_PATH_GUARD_TEST === '1') {
+    return;
+  }
+
+  const requiredEnv = {
+    STAGING_SECRET_STORE_ID: 'staging-secret-store-1',
+  };
+
+  for (const envName of ['SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH', 'WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH']) {
+    const workspaceArtifactPath = resolve(`${envName.toLowerCase().replaceAll('_', '-')}-direct-workspace-output.json`);
+    const workspaceResult = runSelfExpectingFailure({
+      ...requiredEnv,
+      [envName]: workspaceArtifactPath,
+    });
+    if (workspaceResult.exitCode === 0) {
+      violations.push(`check:credential-secret-runtime-flow must reject workspace ${envName}`);
+    } else if (!workspaceResult.output.includes(`${envName} must not write release evidence into the git workspace`)) {
+      violations.push(`check:credential-secret-runtime-flow workspace ${envName} rejection must explain evidence path policy`);
+    }
+    if (existsSync(workspaceArtifactPath)) {
+      violations.push(`check:credential-secret-runtime-flow workspace ${envName} rejection must not create ${workspaceArtifactPath}`);
+    }
+
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'credential-secret-direct-'));
+    try {
+      const publicArtifactPath = join(tempDirectory, 'credential-secret-rotation.json');
+      writeFileSync(publicArtifactPath, '{}\n', { mode: 0o600 });
+      chmodSync(publicArtifactPath, 0o644);
+      const publicModeResult = runSelfExpectingFailure({
+        ...requiredEnv,
+        [envName]: publicArtifactPath,
+      });
+      if (publicModeResult.exitCode === 0) {
+        violations.push(`check:credential-secret-runtime-flow must reject public ${envName} permissions`);
+      } else if (!publicModeResult.output.includes(`${envName} must use 0600-style private file permissions`)) {
+        violations.push(`check:credential-secret-runtime-flow public ${envName} rejection must explain private file mode policy`);
+      }
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+function runSelfExpectingFailure(env) {
+  try {
+    execFileSync(process.execPath, [currentScriptPath], {
+      env: {
+        ...process.env,
+        CREDENTIAL_SECRET_DIRECT_PATH_GUARD_TEST: '1',
         ...env,
       },
       encoding: 'utf8',
