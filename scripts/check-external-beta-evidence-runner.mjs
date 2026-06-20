@@ -530,6 +530,8 @@ function validateRunnerImplementation() {
     'buildHandoffArtifactContracts',
     'buildHandoffInputs',
     'buildHandoffEnvArtifacts',
+    'runnerDescription',
+    'operatorAction',
     'inputMetadataByEnv',
     'external-beta-evidence-input-matrix.json',
     'External Beta Evidence Handoff',
@@ -3263,6 +3265,18 @@ function validateJobBasics(job, label) {
   }
   if (job.blocksExternalBeta !== true) {
     violations.push(`${label}: blocksExternalBeta must be true`);
+  }
+  for (const optionalField of ['runnerDescription', 'operatorAction']) {
+    if (job[optionalField] !== undefined && (typeof job[optionalField] !== 'string' || job[optionalField].trim().length === 0)) {
+      violations.push(`${label}: ${optionalField} must be a non-empty string when set`);
+    }
+  }
+  if (job.jobId === 'summary-real-feedback-import') {
+    for (const field of ['runnerDescription', 'operatorAction', 'exitCondition']) {
+      if (!String(job[field] ?? '').includes('export:summary-feedback-samples')) {
+        violations.push(`${label}: ${field} must reference export:summary-feedback-samples`);
+      }
+    }
   }
 
   const group = externalGroups.get(job.evidenceGroupId);

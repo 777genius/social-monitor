@@ -451,6 +451,8 @@
       "owner": "summary-owner",
       "blocksExternalBeta": true,
       "runnerCommand": null,
+      "runnerDescription": "npm run export:summary-feedback-samples, then npm run capture:summary-feedback-samples",
+      "operatorAction": "set DB and summary feedback export env, run npm run export:summary-feedback-samples, load SUMMARY_FEEDBACK_EXPORT_ENV_PATH, run npm run capture:summary-feedback-samples, then run npm run beta:evidence:validate -- --job summary-real-feedback-import",
       "validationCommands": [
         "npm run check:beta-feedback-report",
         "npm run check:summary-evals",
@@ -472,7 +474,7 @@
           "format": "redacted-summary-feedback-samples-v1"
         }
       ],
-      "exitCondition": "Redacted internal dogfood or beta samples captured by npm run capture:summary-feedback-samples replace fixture-only feedback report and every blocker is mapped to an eval, validator or runbook action."
+      "exitCondition": "Redacted internal dogfood or beta samples exported by npm run export:summary-feedback-samples and captured by npm run capture:summary-feedback-samples replace fixture-only feedback report and every blocker is mapped to an eval, validator or runbook action."
     },
     {
       "jobId": "operational-support-package",

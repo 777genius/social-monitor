@@ -283,6 +283,8 @@ function buildPlan(planJobs) {
       blocksExternalBeta: job.blocksExternalBeta,
       executionReadiness,
       runnerCommand: job.runnerCommand,
+      runnerDescription: job.runnerDescription,
+      operatorAction: job.operatorAction,
       validationCommands: job.validationCommands,
       requiredEnv: job.requiredEnv,
       requiredEnvAlternatives: job.requiredEnvAlternatives ?? [],
@@ -1947,6 +1949,9 @@ function formatHandoffArtifacts(job) {
 }
 
 function handoffAction(job) {
+  if (typeof job.operatorAction === 'string' && job.operatorAction.trim().length > 0) {
+    return job.operatorAction;
+  }
   if (job.runPolicy === 'local_contract') {
     return `run validators: ${job.validationCommands.join(' && ')}`;
   }
@@ -1957,6 +1962,9 @@ function handoffAction(job) {
 }
 
 function handoffRunner(job) {
+  if (typeof job.runnerDescription === 'string' && job.runnerDescription.trim().length > 0) {
+    return job.runnerDescription;
+  }
   if (job.runnerCommand !== null) {
     return job.runnerCommand;
   }
