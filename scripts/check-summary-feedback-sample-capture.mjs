@@ -13,6 +13,7 @@ try {
   validatePositiveCapture();
   validateWorkspaceInputRejected();
   validateFixtureArtifactInputRejected();
+  validateCopiedFixtureSamplesRejected();
   validatePublicInputRejected();
   validateWorkspaceEnvFileRejected();
 } finally {
@@ -28,7 +29,7 @@ console.log('Summary feedback sample capture OK');
 
 function validateCaptureScriptGuards() {
   const captureSource = readFileSync(captureScript, 'utf8');
-  for (const marker of ['mode: 0o600', 'chmodSync', '.tmp.json']) {
+  for (const marker of ['mode: 0o600', 'chmodSync', '.tmp.json', 'must not reuse fixture sample id', 'must not copy fixture sample signal text']) {
     if (!captureSource.includes(marker)) {
       violations.push(`${captureScript}: capture must include ${marker}`);
     }
@@ -39,10 +40,10 @@ function validatePositiveCapture() {
   const inputPath = join(tempDirectory, 'redacted-summary-feedback-input.json');
   const outputPath = join(tempDirectory, 'summary-real-feedback-samples.json');
   const envFilePath = join(tempDirectory, 'summary-feedback-samples.env');
-  const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
+  const samples = redactedDogfoodSamples();
   const now = Date.now();
   writeFileSync(inputPath, `${JSON.stringify({
-    samples: fixture.samples,
+    samples,
     sampleWindow: {
       startedAt: new Date(now - 26 * 60 * 60 * 1000).toISOString(),
       endedAt: new Date(now - 2 * 60 * 1000).toISOString(),
@@ -74,7 +75,7 @@ function validatePositiveCapture() {
   if (artifact.provenance?.fixtureOnly !== false) {
     violations.push(`${captureScript}: positive smoke output provenance.fixtureOnly must be false`);
   }
-  if (artifact.rollup?.sampleCount !== fixture.samples.length) {
+  if (artifact.rollup?.sampleCount !== samples.length) {
     violations.push(`${captureScript}: positive smoke output rollup.sampleCount must match input samples`);
   }
 
@@ -148,6 +149,41 @@ function validateFixtureArtifactInputRejected() {
   }
 }
 
+function validateCopiedFixtureSamplesRejected() {
+  const inputPath = join(tempDirectory, 'copied-fixture-samples-input.json');
+  const outputPath = join(tempDirectory, 'copied-fixture-samples-should-not-write.json');
+  const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
+  writeFileSync(inputPath, `${JSON.stringify({
+    samples: fixture.samples,
+    sampleWindow: {
+      startedAt: '2026-06-18T00:00:00.000Z',
+      endedAt: '2026-06-19T00:00:00.000Z',
+    },
+  }, null, 2)}\n`, { mode: 0o600 });
+
+  const result = runCaptureExpectingFailure({
+    SUMMARY_FEEDBACK_REDACTED_INPUT_PATH: inputPath,
+    SUMMARY_REAL_FEEDBACK_SAMPLES_PATH: outputPath,
+    SUMMARY_FEEDBACK_SOURCE_KIND: 'internal_dogfood',
+    SUMMARY_FEEDBACK_ENVIRONMENT_ID: 'summary-dogfood-alpha-1',
+    SUMMARY_FEEDBACK_OPERATOR: 'summary-owner-1',
+    SUMMARY_FEEDBACK_REDACTED_BY: 'summary-owner-1',
+    SUMMARY_FEEDBACK_APPROVED_BY: 'security-owner-1',
+    SUMMARY_FEEDBACK_COLLECTION_METHOD: 'Redacted internal dogfood export collected from summary feedback API review queue.',
+  });
+
+  if (result.exitCode === 0) {
+    violations.push(`${captureScript}: negative smoke must reject copied fixture samples without fixture provenance`);
+    return;
+  }
+  if (existsSync(outputPath)) {
+    violations.push(`${captureScript}: negative smoke must not write output artifact when copied fixture samples are rejected`);
+  }
+  if (!result.output.includes('must not reuse fixture sample id')) {
+    violations.push(`${captureScript}: negative smoke must explain copied fixture sample rejection`);
+  }
+}
+
 function validatePublicInputRejected() {
   const inputPath = join(tempDirectory, 'public-redacted-summary-feedback-input.json');
   const outputPath = join(tempDirectory, 'public-input-should-not-write.json');
@@ -218,6 +254,45 @@ function validateWorkspaceEnvFileRejected() {
   if (!result.output.includes('Evidence env file path must not be inside the git workspace')) {
     violations.push(`${captureScript}: negative smoke must explain workspace env handoff rejection`);
   }
+}
+
+function redactedDogfoodSamples() {
+  const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
+  const replacements = [
+    {
+      suffix: '001',
+      sanitizedSignal: 'Internal dogfood review found a summary claim that outran the cited approval state.',
+      redactedComment: 'Reviewer noted that the redacted item showed a pending state while the summary used approved wording.',
+    },
+    {
+      suffix: '002',
+      sanitizedSignal: 'Internal dogfood review found a citation attached to the wrong supporting metric.',
+      redactedComment: 'Reviewer noted that the citation described context but did not prove the redacted metric.',
+    },
+    {
+      suffix: '003',
+      sanitizedSignal: 'Internal dogfood review found a newer in-window item omitted from the summary.',
+      redactedComment: 'Reviewer noted that an in-window item with relevant evidence was absent from the final summary.',
+    },
+  ];
+
+  return fixture.samples.map((sample, index) => {
+    const replacement = replacements[index] ?? replacements[0];
+    return {
+      ...sample,
+      feedbackId: `dogfood-feedback-summary-${replacement.suffix}`,
+      summaryEvidence: {
+        ...sample.summaryEvidence,
+        summaryId: `dogfood-summary-${replacement.suffix}`,
+        topicId: 'dogfood-topic-summary-001',
+        citationId: `dogfood-citation-${replacement.suffix}`,
+        feedItemId: `dogfood-feed-item-${replacement.suffix}`,
+        sourceItemId: `dogfood-source-item-${replacement.suffix}`,
+      },
+      sanitizedSignal: replacement.sanitizedSignal,
+      redactedComment: replacement.redactedComment,
+    };
+  });
 }
 
 function runCaptureExpectingFailure(env) {

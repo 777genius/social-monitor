@@ -19,6 +19,7 @@ const envFilePath =
   process.env.SUMMARY_FEEDBACK_SAMPLES_ENV_PATH?.trim() ||
   join(resolve(artifactDir), 'summary-feedback-samples.env');
 const redactedSampleFormat = 'redacted-summary-feedback-samples-v1';
+const fixtureExamplePath = 'ops/release/fixtures/redacted-summary-feedback-samples-examples.json';
 const forbiddenPathFragments = ['/fixtures/', '\\fixtures\\', '.example.', '-examples', '_examples'];
 
 async function main() {
@@ -157,6 +158,7 @@ function readInputSource(inputPath) {
   if (!Array.isArray(samples) || samples.length === 0) {
     throw new Error(`${inputPathEnv} must contain a non-empty samples array`);
   }
+  assertInputSamplesDoNotCopyFixtureExamples(samples);
 
   return {
     ...(isRecord(parsed) ? parsed : {}),
@@ -191,6 +193,53 @@ function assertInputIsNotFixtureEvidence(parsed) {
       }
     }
   }
+}
+
+function assertInputSamplesDoNotCopyFixtureExamples(samples) {
+  const knownFixtureSamples = readFixtureSampleGuards();
+  for (const [index, sample] of samples.entries()) {
+    if (!isRecord(sample)) {
+      continue;
+    }
+    const feedbackId = stringOrUndefined(sample.feedbackId);
+    if (feedbackId !== undefined && knownFixtureSamples.feedbackIds.has(feedbackId)) {
+      throw new Error(`${inputPathEnv} samples[${index}].feedbackId must not reuse fixture sample id "${feedbackId}"`);
+    }
+
+    const fingerprint = sampleSignalFingerprint(sample);
+    if (fingerprint !== undefined && knownFixtureSamples.signalFingerprints.has(fingerprint)) {
+      throw new Error(`${inputPathEnv} samples[${index}] must not copy fixture sample signal text`);
+    }
+  }
+}
+
+function readFixtureSampleGuards() {
+  const fixture = JSON.parse(readFileSync(fixtureExamplePath, 'utf8'));
+  const feedbackIds = new Set();
+  const signalFingerprints = new Set();
+  for (const sample of fixture.samples ?? []) {
+    const feedbackId = stringOrUndefined(sample.feedbackId);
+    if (feedbackId !== undefined) {
+      feedbackIds.add(feedbackId);
+    }
+    const fingerprint = sampleSignalFingerprint(sample);
+    if (fingerprint !== undefined) {
+      signalFingerprints.add(fingerprint);
+    }
+  }
+
+  return { feedbackIds, signalFingerprints };
+}
+
+function sampleSignalFingerprint(sample) {
+  const category = stringOrUndefined(sample.category);
+  const signal = stringOrUndefined(sample.sanitizedSignal);
+  const comment = stringOrUndefined(sample.redactedComment);
+  if (category === undefined || signal === undefined || comment === undefined) {
+    return undefined;
+  }
+
+  return JSON.stringify([category.trim(), signal.trim(), comment.trim()]);
 }
 
 function readSampleWindow(source) {

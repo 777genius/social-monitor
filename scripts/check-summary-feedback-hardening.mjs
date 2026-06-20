@@ -179,6 +179,10 @@ const requiredSampleSignals = new Set([
   'costChecked',
   'staleMarkerChecked',
 ]);
+const requiredRealSampleGuardFragments = [
+  'must not reuse fixture sample ids',
+  'must not copy fixture sample signal text',
+];
 const requiredTopLevelSampleArtifactFields = new Set([
   'schemaVersion',
   'artifactFormat',
@@ -274,6 +278,7 @@ if (feedback.evidenceMode === 'redacted_beta_samples' && redactedSampleEvidence.
 }
 
 const redactedSampleSchema = evidence.redactedSampleContentSchema ?? {};
+const knownFixtureSampleGuards = readKnownFixtureSampleGuards(redactedSampleSchema.exampleArtifact);
 
 const findingsById = new Map((feedback.findings ?? []).map((finding) => [finding.feedbackId, finding]));
 const blockerIds = new Set((feedback.findings ?? [])
@@ -443,6 +448,11 @@ function validateRedactedSampleContentSchema(schema) {
       violations.push(`${evidencePath}: redactedSampleContentSchema.rollupRequirements must include ${fragment}`);
     }
   }
+  for (const fragment of requiredRealSampleGuardFragments) {
+    if (!Array.isArray(schema.realSampleGuards) || !schema.realSampleGuards.some((guard) => String(guard).includes(fragment))) {
+      violations.push(`${evidencePath}: redactedSampleContentSchema.realSampleGuards must include "${fragment}"`);
+    }
+  }
 
   requireSetCoverage(
     new Set(schema.allowedCategories ?? []),
@@ -563,6 +573,9 @@ function validateRedactedSampleArtifact(artifact, path, options) {
   for (const [index, sample] of artifact.samples.entries()) {
     const sampleLabel = `${path}: samples[${index}]`;
     validateRedactedSample(sample, sampleLabel, sampleIds);
+    if (options.allowExample !== true) {
+      validateRealSampleDoesNotCopyFixtureExample(sample, sampleLabel);
+    }
     if (typeof sample.category === 'string') {
       incrementCount(rollupInput.categoryCounts, sample.category);
     }
@@ -773,6 +786,18 @@ function validateRedactedSample(sample, sampleLabel, sampleIds) {
   validateSampleHardeningAction(sample, sampleLabel);
 }
 
+function validateRealSampleDoesNotCopyFixtureExample(sample, sampleLabel) {
+  const feedbackId = typeof sample.feedbackId === 'string' ? sample.feedbackId.trim() : '';
+  if (knownFixtureSampleGuards.feedbackIds.has(feedbackId)) {
+    violations.push(`${sampleLabel}: real feedback sample must not reuse fixture sample id "${feedbackId}"`);
+  }
+
+  const fingerprint = sampleSignalFingerprint(sample);
+  if (fingerprint !== undefined && knownFixtureSampleGuards.signalFingerprints.has(fingerprint)) {
+    violations.push(`${sampleLabel}: real feedback sample must not copy fixture sample signal text`);
+  }
+}
+
 function validateSummaryEvidence(summaryEvidence, category, sampleLabel) {
   if (summaryEvidence === null || typeof summaryEvidence !== 'object' || Array.isArray(summaryEvidence)) {
     violations.push(`${sampleLabel}: summaryEvidence must be an object`);
@@ -895,6 +920,46 @@ function validateSerializedArtifactContent(content, path) {
     }
   }
   validateSerializedPatterns(content, `${path}: redacted sample artifact`);
+}
+
+function readKnownFixtureSampleGuards(examplePath) {
+  if (typeof examplePath !== 'string' || examplePath.trim().length === 0 || !existsSync(examplePath)) {
+    return { feedbackIds: new Set(), signalFingerprints: new Set() };
+  }
+
+  const fixture = readJson(examplePath);
+  const feedbackIds = new Set();
+  const signalFingerprints = new Set();
+  for (const sample of fixture.samples ?? []) {
+    if (typeof sample.feedbackId === 'string' && sample.feedbackId.trim().length > 0) {
+      feedbackIds.add(sample.feedbackId.trim());
+    }
+    const fingerprint = sampleSignalFingerprint(sample);
+    if (fingerprint !== undefined) {
+      signalFingerprints.add(fingerprint);
+    }
+  }
+
+  return { feedbackIds, signalFingerprints };
+}
+
+function sampleSignalFingerprint(sample) {
+  if (sample === null || typeof sample !== 'object' || Array.isArray(sample)) {
+    return undefined;
+  }
+  if (
+    typeof sample.category !== 'string' ||
+    typeof sample.sanitizedSignal !== 'string' ||
+    typeof sample.redactedComment !== 'string'
+  ) {
+    return undefined;
+  }
+
+  return JSON.stringify([
+    sample.category.trim(),
+    sample.sanitizedSignal.trim(),
+    sample.redactedComment.trim(),
+  ]);
 }
 
 function isIsoDateString(value) {

@@ -83,6 +83,10 @@
       "mock",
       "test"
     ],
+    "realSampleGuards": [
+      "real feedback samples must not reuse fixture sample ids",
+      "real feedback samples must not copy fixture sample signal text"
+    ],
     "rollupRequirements": [
       "sampleCount matches source.sampleCount and samples.length",
       "categoryCounts matches sample categories",

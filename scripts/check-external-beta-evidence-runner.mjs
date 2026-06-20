@@ -1304,6 +1304,22 @@ function validateRunnerPositiveSummaryFeedbackArtifactSmoke() {
 function validateRunnerNegativeSummaryFeedbackArtifactSmokes() {
   const scenarios = [
     {
+      label: 'summary feedback fixture sample id',
+      expectedOutput: 'real feedback sample must not reuse fixture sample id',
+      mutateArtifact: (artifact) => {
+        artifact.samples[0].feedbackId = 'redacted-feedback-wrong-fact-001';
+        artifact.rollup.blockerSampleIds[0] = 'redacted-feedback-wrong-fact-001';
+      },
+    },
+    {
+      label: 'summary feedback fixture sample signal text',
+      expectedOutput: 'real feedback sample must not copy fixture sample signal text',
+      mutateArtifact: (artifact) => {
+        artifact.samples[0].sanitizedSignal = 'Summary asserted a decision that was not supported by the cited redacted item.';
+        artifact.samples[0].redactedComment = 'The cited source only says review is pending, but the summary says it was approved.';
+      },
+    },
+    {
       label: 'summary feedback fixture provenance',
       expectedOutput: 'must not contain fixture provenance',
       mutateArtifact: (artifact) => {
@@ -1355,11 +1371,11 @@ function validateRunnerNegativeSummaryFeedbackArtifactSmokes() {
       label: 'summary feedback raw duplicate-key credential hidden by JSON parser',
       expectedOutput: 'sensitive literal fragment "bearer "',
       artifactContent: (artifact) => `${JSON.stringify(artifact, null, 2)}\n`.replace(
-        '"redactedComment": "The cited source only says review is pending, but the summary says it was approved."',
+        '"redactedComment": "Reviewer noted that the redacted item showed a pending state while the summary used approved wording."',
         [
           '"redactedComment": "',
           ['Bearer', ' raw-summary-feedback-token-hidden-by-duplicate-key'].join(''),
-          '",\n      "redactedComment": "The cited source only says review is pending, but the summary says it was approved."',
+          '",\n      "redactedComment": "Reviewer noted that the redacted item showed a pending state while the summary used approved wording."',
         ].join(''),
       ),
     },
@@ -1405,6 +1421,7 @@ function summaryFeedbackSamplesArtifact() {
   const sampleWindowEndedAt = new Date(now - 2 * 60 * 1000).toISOString();
   const sampleWindowStartedAt = new Date(now - 26 * 60 * 60 * 1000).toISOString();
 
+  replaceSummaryFeedbackFixtureSamples(artifact);
   artifact.provenance = {
     evidenceKind: 'redacted_real_feedback_samples',
     collectionMethod: 'Redacted internal dogfood feedback export captured from summary review queue.',
@@ -1431,6 +1448,47 @@ function summaryFeedbackSamplesArtifact() {
   };
 
   return artifact;
+}
+
+function replaceSummaryFeedbackFixtureSamples(artifact) {
+  const replacements = [
+    {
+      suffix: '001',
+      sanitizedSignal: 'Internal dogfood review found a summary claim that outran the cited approval state.',
+      redactedComment: 'Reviewer noted that the redacted item showed a pending state while the summary used approved wording.',
+    },
+    {
+      suffix: '002',
+      sanitizedSignal: 'Internal dogfood review found a citation attached to the wrong supporting metric.',
+      redactedComment: 'Reviewer noted that the citation described context but did not prove the redacted metric.',
+    },
+    {
+      suffix: '003',
+      sanitizedSignal: 'Internal dogfood review found a newer in-window item omitted from the summary.',
+      redactedComment: 'Reviewer noted that an in-window item with relevant evidence was absent from the final summary.',
+    },
+  ];
+
+  artifact.samples = artifact.samples.map((sample, index) => {
+    const replacement = replacements[index] ?? replacements[0];
+    return {
+      ...sample,
+      feedbackId: `dogfood-feedback-summary-${replacement.suffix}`,
+      summaryEvidence: {
+        ...sample.summaryEvidence,
+        summaryId: `dogfood-summary-${replacement.suffix}`,
+        topicId: 'dogfood-topic-summary-001',
+        citationId: `dogfood-citation-${replacement.suffix}`,
+        feedItemId: `dogfood-feed-item-${replacement.suffix}`,
+        sourceItemId: `dogfood-source-item-${replacement.suffix}`,
+      },
+      sanitizedSignal: replacement.sanitizedSignal,
+      redactedComment: replacement.redactedComment,
+    };
+  });
+  artifact.rollup.blockerSampleIds = artifact.samples
+    .filter((sample) => sample.classification === 'blocker')
+    .map((sample) => sample.feedbackId);
 }
 
 function validateRunnerPositiveReleaseDeployArtifactSmoke() {
