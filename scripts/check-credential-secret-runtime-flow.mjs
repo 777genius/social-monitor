@@ -424,6 +424,12 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
+function readRotationArtifact(path) {
+  const rawContent = readFileSync(path, 'utf8');
+  validateNoSensitiveArtifactContent(rawContent, path);
+  return JSON.parse(rawContent);
+}
+
 function readText(path) {
   return readFileSync(path, 'utf8');
 }
@@ -558,7 +564,7 @@ function validateRotationArtifactPath(path, label, options) {
     return;
   }
 
-  const artifact = readJson(path);
+  const artifact = readRotationArtifact(path);
   validateRotationArtifact(artifact, path, options);
 }
 
@@ -785,14 +791,17 @@ function scanForbiddenArtifactKeys(value, label) {
 }
 
 function validateNoSensitiveArtifactLiterals(artifact, path) {
-  const rawSerializedArtifact = JSON.stringify(artifact);
-  const serialized = rawSerializedArtifact.toLowerCase();
+  validateNoSensitiveArtifactContent(JSON.stringify(artifact), path);
+}
+
+function validateNoSensitiveArtifactContent(content, path) {
+  const serialized = content.toLowerCase();
   for (const fragment of forbiddenArtifactFragments) {
     if (serialized.includes(fragment)) {
       violations.push(`${path}: artifact must not contain sensitive literal fragment "${fragment}"`);
     }
   }
-  validateNoSensitivePatterns(rawSerializedArtifact, `${path}: artifact`);
+  validateNoSensitivePatterns(content, `${path}: artifact`);
 }
 
 function validateNoSensitivePatterns(content, label) {

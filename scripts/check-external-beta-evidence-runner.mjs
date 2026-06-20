@@ -1542,6 +1542,18 @@ function validateRunnerNegativeCredentialRotationArtifactSmokes() {
         artifact.environment.secretStoreId = 'secret-store-staging-other-1';
       },
     },
+    {
+      label: 'source rotation raw duplicate-key credential hidden by JSON parser',
+      expectedOutput: 'sensitive literal fragment "bearer "',
+      sourceContent: (artifact) => `${JSON.stringify(artifact, null, 2)}\n`.replace(
+        '"plaintextObserved": false',
+        [
+          '"plaintextObserved": false,\n        "authorization": "',
+          ['Bearer', ' raw-rotation-token-hidden-by-duplicate-key'].join(''),
+          '",\n        "authorization": "redacted"',
+        ].join(''),
+      ),
+    },
   ];
 
   for (const scenario of scenarios) {
@@ -1574,12 +1586,16 @@ function writeCredentialRotationArtifactPair(tempDirectory, options = {}) {
   options.mutateWebhook?.(webhookArtifact);
   writeFileSync(
     sourceArtifactPath,
-    `${JSON.stringify(sourceArtifact, null, 2)}\n`,
+    typeof options.sourceContent === 'function'
+      ? options.sourceContent(sourceArtifact)
+      : `${JSON.stringify(sourceArtifact, null, 2)}\n`,
     { mode: 0o600 },
   );
   writeFileSync(
     webhookArtifactPath,
-    `${JSON.stringify(webhookArtifact, null, 2)}\n`,
+    typeof options.webhookContent === 'function'
+      ? options.webhookContent(webhookArtifact)
+      : `${JSON.stringify(webhookArtifact, null, 2)}\n`,
     { mode: 0o600 },
   );
   return { sourceArtifactPath, webhookArtifactPath };
