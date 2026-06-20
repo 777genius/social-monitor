@@ -1,9 +1,13 @@
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
-import { CryptoIdGenerator, SystemClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { CryptoIdGenerator, FixedClock, type IdGenerator, SystemClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 
 import { InMemoryFeedProjectionAdapter } from '../apps/ingestion-worker/src/adapters/feed/in-memory-feed-projection.adapter';
+import { InMemoryScanCommandQueueReader } from '../apps/ingestion-worker/src/scan-command-queue-reader';
+import { ScanQueueDrainLoop } from '../apps/ingestion-worker/src/scan-queue-drain-loop';
+import { ScanSchedulerLoop } from '../apps/ingestion-worker/src/scan-scheduler-loop';
 import { InMemoryScanLeaseAdapter } from '../libs/ingestion/adapters/lease/in-memory-scan-lease.adapter';
 import { InMemoryScanAttemptRepository } from '../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
 import { InMemoryScanCursorRepository } from '../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
@@ -24,6 +28,14 @@ import type {
   SourceConfigReaderPort,
   SourceRuntimeConfig,
 } from '../libs/ingestion/ports';
+import { InMemoryScanJobRepository } from '../libs/monitoring/adapters/persistence/in-memory-scan-job.repository';
+import { InMemoryScanPolicyRepository } from '../libs/monitoring/adapters/persistence/in-memory-scan-policy.repository';
+import { InMemorySourceBindingRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-binding.repository';
+import { InMemoryScanQueueAdapter } from '../libs/monitoring/adapters/queue/in-memory-scan-queue.adapter';
+import { ScanPolicy, SourceBinding } from '../libs/monitoring/domain';
+import { RecordScanExecutionUseCase } from '../libs/monitoring/features/record-scan-execution/record-scan-execution.use-case';
+import { ScheduleDueScansUseCase } from '../libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case';
+import { ScheduleDueScansCommandHandler } from '../libs/monitoring/interfaces/queue/schedule-due-scans-command.handler';
 
 class SmokeScanExecutionReporter implements ScanExecutionReporterPort {
   succeeded: ReportScanSucceededCommand | undefined;
@@ -38,11 +50,54 @@ class SmokeScanExecutionReporter implements ScanExecutionReporterPort {
   }
 }
 
+class MonitoringScanExecutionReporter implements ScanExecutionReporterPort {
+  constructor(private readonly recordScanExecution: RecordScanExecutionUseCase) {}
+
+  async reportSucceeded(command: ReportScanSucceededCommand): Promise<void> {
+    const result = await this.recordScanExecution.execute({
+      ...command,
+      status: 'succeeded',
+    });
+    if (!result.ok) {
+      throw reportScanExecutionError(result.error, command.scanJobId, 'succeeded');
+    }
+  }
+
+  async reportFailed(command: ReportScanFailedCommand): Promise<void> {
+    const result = await this.recordScanExecution.execute({
+      ...command,
+      status: 'failed',
+      failureReason: command.failureReason,
+    });
+    if (!result.ok) {
+      throw reportScanExecutionError(result.error, command.scanJobId, 'failed');
+    }
+  }
+}
+
+const reportScanExecutionError = (error: unknown, scanJobId: string, status: string): Error => {
+  const message = error instanceof Error ? error.message : JSON.stringify(error);
+
+  return new Error(`GitHub scheduled smoke could not record ${status} scan job ${scanJobId}: ${message}`);
+};
+
 class StaticSourceConfigReader implements SourceConfigReaderPort {
   async readConfig(): Promise<SourceRuntimeConfig> {
     return {
       maxItems: 1,
     };
+  }
+}
+
+class SequenceIdGenerator implements IdGenerator {
+  private nextId = 1;
+
+  constructor(private readonly prefix: string) {}
+
+  generate(): string {
+    const id = `${this.prefix}-${this.nextId}`;
+    this.nextId += 1;
+    return id;
   }
 }
 
@@ -169,10 +224,280 @@ const run = async (): Promise<void> => {
     assert(scanExecutionReporter.succeeded !== undefined, 'GitHub scan success report is required');
     assert(scanExecutionReporter.failed === undefined, 'GitHub smoke must not report scan failure');
 
+    await proveScheduledGitHubCollection({
+      tenant,
+      workspace,
+      provider,
+    });
+
     console.log('GitHub ingestion smoke OK');
   } finally {
     await runtime.onApplicationShutdown('github-smoke-complete');
   }
+};
+
+const proveScheduledGitHubCollection = async ({
+  tenant,
+  workspace,
+  provider,
+}: {
+  readonly tenant: ReturnType<typeof tenantId>;
+  readonly workspace: ReturnType<typeof workspaceId>;
+  readonly provider: GitHubSourceProvider;
+}): Promise<void> => {
+  const bindings = new InMemorySourceBindingRepository();
+  const policies = new InMemoryScanPolicyRepository();
+  const jobs = new InMemoryScanJobRepository();
+  const queuePublisher = new InMemoryQueuePublisher();
+  const queueReader = new InMemoryScanCommandQueueReader(queuePublisher);
+  const metrics = new InMemoryMetricsRecorder();
+  const feedItems = new InMemoryFeedItemReadRepository();
+  const sourceItems = new InMemorySourceItemRepository();
+  const scanAttempts = new InMemoryScanAttemptRepository();
+  const scanCursors = new InMemoryScanCursorRepository();
+  const scanFailures = new InMemoryScanFailureQueueAdapter(metrics);
+  const scanLeases = new InMemoryScanLeaseAdapter();
+  const bindingId = 'github-binding-scheduled-smoke';
+  const policyId = 'github-policy-scheduled-smoke';
+  const topicId = 'topic-github-scheduled-smoke';
+
+  await bindings.save(SourceBinding.create({
+    id: bindingId,
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId,
+    providerKey: 'github',
+    capabilityProfileVersion: 1,
+    config: {
+      mode: 'search',
+      query: 'social monitoring repo:777genius/social-monitor',
+    },
+    createdAt: new Date('2026-06-06T09:00:00.000Z'),
+  }));
+  await policies.save(ScanPolicy.create({
+    id: policyId,
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: bindingId,
+    intervalSeconds: 300,
+    freshnessSeconds: 900,
+    retryBudget: 2,
+    nextRunAt: new Date('2026-06-06T09:59:00.000Z'),
+    createdAt: new Date('2026-06-06T09:00:00.000Z'),
+  }));
+
+  await runScheduledGitHubTick({
+    triggerTime: new Date('2026-06-06T10:00:00.000Z'),
+    tenant,
+    workspace,
+    provider,
+    bindings,
+    policies,
+    jobs,
+    queuePublisher,
+    queueReader,
+    metrics,
+    feedItems,
+    sourceItems,
+    scanAttempts,
+    scanCursors,
+    scanFailures,
+    scanLeases,
+    expectedFeedCount: 1,
+    expectedNextRunAt: '2026-06-06T10:04:00.000Z',
+    signal: 'github-scheduled-smoke-first',
+  });
+
+  const firstCursor = await scanCursors.findBySourceBinding({
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: bindingId,
+  });
+  assert(firstCursor?.cursor === '1', `expected scheduled GitHub cursor "1", got ${JSON.stringify(firstCursor)}`);
+
+  await runScheduledGitHubTick({
+    triggerTime: new Date('2026-06-06T10:05:00.000Z'),
+    tenant,
+    workspace,
+    provider,
+    bindings,
+    policies,
+    jobs,
+    queuePublisher,
+    queueReader,
+    metrics,
+    feedItems,
+    sourceItems,
+    scanAttempts,
+    scanCursors,
+    scanFailures,
+    scanLeases,
+    expectedFeedCount: 2,
+    expectedNextRunAt: '2026-06-06T10:09:00.000Z',
+    signal: 'github-scheduled-smoke-second',
+  });
+
+  const feed = await feedItems.list({
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId,
+    limit: 10,
+  });
+  const titles = feed.items.map((item) => item.toSnapshot().title).sort();
+  assert(
+    titles.join('|') === 'Document GitHub source limitations|Improve social monitoring scan reliability',
+    `scheduled GitHub loop produced unexpected feed titles: ${titles.join('|')}`,
+  );
+};
+
+const runScheduledGitHubTick = async ({
+  triggerTime,
+  tenant,
+  workspace,
+  provider,
+  bindings,
+  policies,
+  jobs,
+  queuePublisher,
+  queueReader,
+  metrics,
+  feedItems,
+  sourceItems,
+  scanAttempts,
+  scanCursors,
+  scanFailures,
+  scanLeases,
+  expectedFeedCount,
+  expectedNextRunAt,
+  signal,
+}: {
+  readonly triggerTime: Date;
+  readonly tenant: ReturnType<typeof tenantId>;
+  readonly workspace: ReturnType<typeof workspaceId>;
+  readonly provider: GitHubSourceProvider;
+  readonly bindings: InMemorySourceBindingRepository;
+  readonly policies: InMemoryScanPolicyRepository;
+  readonly jobs: InMemoryScanJobRepository;
+  readonly queuePublisher: InMemoryQueuePublisher;
+  readonly queueReader: InMemoryScanCommandQueueReader;
+  readonly metrics: InMemoryMetricsRecorder;
+  readonly feedItems: InMemoryFeedItemReadRepository;
+  readonly sourceItems: InMemorySourceItemRepository;
+  readonly scanAttempts: InMemoryScanAttemptRepository;
+  readonly scanCursors: InMemoryScanCursorRepository;
+  readonly scanFailures: InMemoryScanFailureQueueAdapter;
+  readonly scanLeases: InMemoryScanLeaseAdapter;
+  readonly expectedFeedCount: number;
+  readonly expectedNextRunAt: string;
+  readonly signal: string;
+}): Promise<void> => {
+  const schedulerRuntime = new WorkerRuntime({ serviceName: 'ingestion-worker' });
+  schedulerRuntime.onModuleInit();
+  const scheduleLoop = new ScanSchedulerLoop(
+    new ScheduleDueScansCommandHandler(
+      new ScheduleDueScansUseCase(
+        bindings,
+        policies,
+        jobs,
+        new InMemoryScanQueueAdapter(queuePublisher, metrics),
+        new SequenceIdGenerator(`${signal}-job`),
+        new FixedClock(triggerTime),
+      ),
+      metrics,
+      schedulerRuntime,
+    ),
+    {
+      enabled: true,
+      intervalMs: 60_000,
+      limit: 10,
+      runOnStart: true,
+      tenantId: tenant,
+      workspaceId: workspace,
+    },
+  );
+  await scheduleLoop.onModuleInit();
+  await scheduleLoop.onApplicationShutdown(`${signal}-schedule-complete`);
+  await schedulerRuntime.onApplicationShutdown(`${signal}-schedule-complete`);
+
+  assert(queuePublisher.all().length === 1, `${signal}: expected one queued GitHub scan`);
+  assert(queuePublisher.all()[0]?.payload.providerKey === 'github', `${signal}: queued scan must target GitHub`);
+
+  const drainRuntime = new WorkerRuntime({ serviceName: 'ingestion-worker' });
+  drainRuntime.onModuleInit();
+  const handler = new ExecuteScanCommandHandler(
+    new ExecuteScanUseCase(
+      new RegistrySourceFetcherAdapter(
+        new InMemorySourceProviderRegistry([provider], sourceReadinessProfiles),
+        new StaticSourceConfigReader(),
+      ),
+      sourceItems,
+      new InMemoryFeedProjectionAdapter(feedItems),
+      scanAttempts,
+      scanCursors,
+      new MonitoringScanExecutionReporter(new RecordScanExecutionUseCase(jobs)),
+      scanFailures,
+      scanLeases,
+      new SequenceIdGenerator(`${signal}-item`),
+      new FixedClock(new Date(triggerTime.getTime() + 1000)),
+    ),
+    metrics,
+    drainRuntime,
+  );
+  const drainLoop = new ScanQueueDrainLoop(
+    queueReader,
+    handler,
+    scanFailures,
+    {
+      enabled: true,
+      intervalMs: 60_000,
+      limit: 10,
+      runOnStart: true,
+    },
+    metrics,
+    new FixedClock(new Date(triggerTime.getTime() + 1000)),
+  );
+  try {
+    await drainLoop.onModuleInit();
+    await drainLoop.onApplicationShutdown(`${signal}-drain-complete`);
+  } finally {
+    await drainRuntime.onApplicationShutdown(`${signal}-drain-complete`);
+  }
+
+  assert(queuePublisher.all().length === 0, `${signal}: drain loop must empty scheduled GitHub queue`);
+  assert(
+    scanFailures.deadLettered().length === 0,
+    `${signal}: scheduled GitHub drain dead-lettered ${JSON.stringify(scanFailures.deadLettered())}`,
+  );
+  assert(
+    scanFailures.retries().length === 0,
+    `${signal}: scheduled GitHub drain enqueued retries ${JSON.stringify(scanFailures.retries())}`,
+  );
+
+  const policy = await policies.findBySourceBinding({
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: 'github-binding-scheduled-smoke',
+  });
+  assert(
+    policy?.toSnapshot().nextRunAt.toISOString() === expectedNextRunAt,
+    `${signal}: expected nextRunAt ${expectedNextRunAt}, got ${policy?.toSnapshot().nextRunAt.toISOString()}`,
+  );
+
+  const feed = await feedItems.list({
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId: 'topic-github-scheduled-smoke',
+    limit: 10,
+  });
+  assert(feed.items.length === expectedFeedCount, `${signal}: expected ${expectedFeedCount} GitHub feed items, got ${feed.items.length}`);
+  assert(
+    metrics.counterValue('scan_jobs_total', {
+      job_type: 'scan',
+      status: 'succeeded',
+      worker: 'ingestion-worker',
+    }) >= expectedFeedCount,
+    `${signal}: scheduled GitHub drain must record succeeded scan metric`,
+  );
 };
 
 void run().catch((error) => {
