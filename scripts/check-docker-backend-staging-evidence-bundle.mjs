@@ -123,6 +123,9 @@ function validateStaticWiring() {
   if (!captureSource.includes('writeEvidenceEnvFile')) {
     violations.push(`${captureScriptPath}: bundle capture must use writeEvidenceEnvFile`);
   }
+  if (!captureSource.includes('mode: 0o600')) {
+    violations.push(`${captureScriptPath}: bundle capture must write bundle evidence with private file permissions`);
+  }
   if (!captureSource.includes("check:docker-backend-staging-evidence-bundle")) {
     violations.push(`${captureScriptPath}: bundle capture must self-validate the generated Docker bundle`);
   }
@@ -152,6 +155,7 @@ function validateBundleFile(path, options) {
 
 function validateBundle(path, options) {
   validateArtifactPath(path, 'bundle path', { allowWorkspace: false });
+  validatePrivateFileMode(path, 'bundle path');
   const bundle = readJson(path);
   validateBundleDocument(bundle, path, options);
 }
@@ -290,6 +294,7 @@ function validateArtifactSummary(summary, label) {
     violations.push(`${label}: ${summary.artifactId}.path must exist`);
     return;
   }
+  validatePrivateFileMode(summary.path, `${label}: ${summary.artifactId}.path`);
   const artifact = readJson(summary.path);
   const actualFormat = artifact.format ?? artifact.artifactFormat;
   if (summary.format !== actualFormat) {
@@ -305,6 +310,16 @@ function validateArtifactSummary(summary, label) {
   validateArtifactRedaction(artifact, `${label}: ${summary.artifactId}`);
   if (summary.artifactId === 'durable-runtime-selector') {
     validateDurableRuntimeArtifact(artifact, label);
+  }
+}
+
+function validatePrivateFileMode(path, label) {
+  if (!fileExists(path)) {
+    return;
+  }
+  const mode = statSync(path).mode & 0o077;
+  if (mode !== 0) {
+    violations.push(`${label}: evidence file must use 0600-style permissions`);
   }
 }
 

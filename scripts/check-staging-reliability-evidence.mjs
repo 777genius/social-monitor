@@ -16,6 +16,7 @@ const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json
 const baselinePath = 'ops/release/release-baseline-contract.json';
 const dockerStagingReliabilityCapturePath = 'scripts/capture-docker-staging-reliability-evidence.mjs';
 const dockerDurableBackendE2eCapturePath = 'scripts/capture-docker-durable-backend-e2e-loop.mjs';
+const durableBackendE2eCapturePath = 'scripts/capture-durable-backend-e2e-loop.ts';
 
 const evidence = readJson(evidencePath);
 const packageJson = readJson(packagePath);
@@ -1083,6 +1084,9 @@ function requirePackageWiring() {
   if (!String(scripts['capture:docker-durable-backend-e2e-loop'] ?? '').includes(dockerDurableBackendE2eCapturePath)) {
     violations.push(`${packagePath}: capture:docker-durable-backend-e2e-loop must run ${dockerDurableBackendE2eCapturePath}`);
   }
+  if (!String(scripts['capture:durable-backend-e2e-loop'] ?? '').includes(durableBackendE2eCapturePath)) {
+    violations.push(`${packagePath}: capture:durable-backend-e2e-loop must run ${durableBackendE2eCapturePath}`);
+  }
 
   if (!new Set(backendSafe.backendScripts ?? []).has(gateScript)) {
     violations.push(`${backendSafePath}: backend-safe verify must include ${gateScript}`);
@@ -1119,6 +1123,16 @@ function requireCaptureScriptWiring() {
   ]) {
     if (!e2eCaptureSource.includes(marker)) {
       violations.push(`${dockerDurableBackendE2eCapturePath}: capture must include ${marker}`);
+    }
+  }
+
+  const durableBackendE2eCaptureSource = readFileSync(durableBackendE2eCapturePath, 'utf8');
+  for (const marker of [
+    'DURABLE_BACKEND_E2E_ARTIFACT_PATH',
+    'mode: 0o600',
+  ]) {
+    if (!durableBackendE2eCaptureSource.includes(marker)) {
+      violations.push(`${durableBackendE2eCapturePath}: capture must include ${marker}`);
     }
   }
 }

@@ -129,7 +129,7 @@ async function main(): Promise<void> {
     };
 
     mkdirSync(dirname(config.outputPath), { recursive: true });
-    writeFileSync(config.outputPath, `${JSON.stringify(artifact, null, 2)}\n`);
+    writeFileSync(config.outputPath, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
     console.log(config.outputPath);
   } finally {
     await pool.end();

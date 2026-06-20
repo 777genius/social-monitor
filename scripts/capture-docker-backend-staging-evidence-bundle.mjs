@@ -177,7 +177,7 @@ function writeBundleSummary({ bundlePath, envFilePath, context, artifactPaths })
     artifacts,
   };
 
-  writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`);
+  writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`, { mode: 0o600 });
 }
 
 function writeBundleEnvFile({ envFilePath, env, artifactPaths }) {
