@@ -2,18 +2,24 @@ import { execFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import amqp from 'amqplib';
+import { shellQuote, validateEvidenceEnvFilePath, writeEvidenceEnvFile } from './lib/evidence-env-file.mjs';
 
 const artifactDir = process.env.STAGING_RELIABILITY_ARTIFACT_DIR ?? '/tmp/social-monitor-evidence';
+const artifactRoot = resolve(artifactDir);
 const environmentId = process.env.STAGING_ENVIRONMENT_ID ?? 'docker-alpha-1';
 const operator = process.env.STAGING_OPERATOR ?? 'backend-ops-1';
 const imageDigest = process.env.BACKEND_IMAGE_DIGEST ?? inspectImageDigest('social-monitor-local-api');
 const rabbitUrl = process.env.RABBITMQ_URL ?? 'amqp://social_monitor:social_monitor_local_password@127.0.0.1:15673';
+const envFilePath =
+  process.env.STAGING_RELIABILITY_ENV_PATH ??
+  join(artifactRoot, 'staging-reliability.env');
+const envFileTarget = validateEvidenceEnvFilePath(envFilePath);
 const runId = `docker-${Date.now().toString(36)}`;
 
-mkdirSync(artifactDir, { recursive: true });
+mkdirSync(artifactRoot, { recursive: true });
 
 let rabbitArtifact;
 let postgresArtifact;
@@ -27,13 +33,28 @@ try {
 }
 
 if (rabbitArtifact !== undefined && postgresArtifact !== undefined) {
-  const rabbitPath = join(artifactDir, 'rabbitmq-staging-drill.json');
-  const postgresPath = join(artifactDir, 'postgres-restore-drill.json');
+  const rabbitPath = join(artifactRoot, 'rabbitmq-staging-drill.json');
+  const postgresPath = join(artifactRoot, 'postgres-restore-drill.json');
   writeArtifact(rabbitPath, rabbitArtifact);
   writeArtifact(postgresPath, postgresArtifact);
 
+  writeEvidenceEnvFile(envFileTarget, [
+    ['RABBITMQ_STAGING_DRILL_ARTIFACT_PATH', rabbitPath],
+    ['POSTGRES_RESTORE_DRILL_ARTIFACT_PATH', postgresPath],
+    ['STAGING_ENVIRONMENT_ID', environmentId],
+    ['BACKEND_IMAGE_DIGEST', imageDigest],
+    ['STAGING_OPERATOR', operator],
+  ], {
+    usageLines: [
+      'Usage:',
+      `set -a; . ${shellQuote(envFileTarget)}; set +a`,
+      'npm run beta:evidence:validate -- --jobs rabbitmq-staging-reliability-drill,postgres-restore-migration-drill',
+    ],
+  });
+
   console.log(`RABBITMQ_STAGING_DRILL_ARTIFACT_PATH=${rabbitPath}`);
   console.log(`POSTGRES_RESTORE_DRILL_ARTIFACT_PATH=${postgresPath}`);
+  console.log(`STAGING_RELIABILITY_ENV_PATH=${envFileTarget}`);
 }
 
 async function captureRabbitMqArtifact() {
@@ -505,7 +526,7 @@ function psql(containerId, database, sql) {
 }
 
 function writeArtifact(path, artifact) {
-  writeFileSync(path, `${JSON.stringify(artifact, null, 2)}\n`);
+  writeFileSync(path, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
 }
 
 function composeContainerId(service) {

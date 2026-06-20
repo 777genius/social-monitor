@@ -14,6 +14,7 @@ const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
 const backendOpsPath = 'ops/release/backend-ops-readiness-contract.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
+const dockerStagingReliabilityCapturePath = 'scripts/capture-docker-staging-reliability-evidence.mjs';
 
 const evidence = readJson(evidencePath);
 const packageJson = readJson(packagePath);
@@ -465,6 +466,7 @@ requireReleaseWiring();
 requireBackendOpsWiring();
 requireExternalReadinessWiring();
 requireBaselineWiring();
+requireCaptureScriptWiring();
 
 if (violations.length > 0) {
   console.error(violations.join('\n'));
@@ -1074,9 +1076,30 @@ function requirePackageWiring() {
   if (!scripts[gateScript]) {
     violations.push(`${packagePath}: missing ${gateScript}`);
   }
+  if (!String(scripts['capture:docker-staging-reliability-evidence'] ?? '').includes(dockerStagingReliabilityCapturePath)) {
+    violations.push(`${packagePath}: capture:docker-staging-reliability-evidence must run ${dockerStagingReliabilityCapturePath}`);
+  }
 
   if (!new Set(backendSafe.backendScripts ?? []).has(gateScript)) {
     violations.push(`${backendSafePath}: backend-safe verify must include ${gateScript}`);
+  }
+}
+
+function requireCaptureScriptWiring() {
+  const captureSource = readFileSync(dockerStagingReliabilityCapturePath, 'utf8');
+  for (const marker of [
+    'writeEvidenceEnvFile',
+    'validateEvidenceEnvFilePath',
+    'STAGING_RELIABILITY_ENV_PATH',
+    'RABBITMQ_STAGING_DRILL_ARTIFACT_PATH',
+    'POSTGRES_RESTORE_DRILL_ARTIFACT_PATH',
+    'STAGING_ENVIRONMENT_ID',
+    'BACKEND_IMAGE_DIGEST',
+    'mode: 0o600',
+  ]) {
+    if (!captureSource.includes(marker)) {
+      violations.push(`${dockerStagingReliabilityCapturePath}: capture must include ${marker}`);
+    }
   }
 }
 
