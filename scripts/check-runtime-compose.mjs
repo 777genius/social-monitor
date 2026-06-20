@@ -21,8 +21,12 @@ if (migrateBlock.length === 0) {
     violations.push('migrate must build the API image variant used for Prisma migration commands');
   }
 
-  if (!migrateBlock.includes('command: ["npm", "run", "migrate:deploy"]')) {
+  if (!migrateBlock.includes('npm run migrate:deploy')) {
     violations.push('migrate must run npm run migrate:deploy before app services start');
+  }
+
+  if (!migrateBlock.includes('npm run seed')) {
+    violations.push('migrate must seed durable source catalog entries after migrations');
   }
 
   if (!migrateBlock.includes('postgres:') || !migrateBlock.includes('condition: service_healthy')) {

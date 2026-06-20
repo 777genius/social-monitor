@@ -137,7 +137,7 @@ services:
       NODE_ENV: development
       SOCIAL_MONITOR_RUNTIME_PROFILE: beta
       DATABASE_URL: postgresql://social_monitor:social_monitor_local_password@postgres:5432/social_monitor
-    command: ["npm", "run", "migrate:deploy"]
+    command: ["sh", "-c", "npm run migrate:deploy && npm run seed"]
     depends_on:
       postgres:
         condition: service_healthy
