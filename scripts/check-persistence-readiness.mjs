@@ -67,6 +67,20 @@ for (const moduleContract of contract.runtimeModules ?? []) {
   if (!Array.isArray(moduleContract.inMemoryStateAdapters) || moduleContract.inMemoryStateAdapters.length === 0) {
     violations.push(`${contractPath}: runtime module "${moduleContract.moduleFile}" must list inMemoryStateAdapters`);
   }
+
+  if (moduleFile === 'libs/delivery/interfaces/rest/delivery-rest.module.ts') {
+    const plan = String(moduleContract.durableReplacementPlan ?? '');
+    if (!plan.includes('DELIVERY_ENABLED_CHANNELS=webhook')) {
+      violations.push(
+        `${contractPath}: delivery durableReplacementPlan must require DELIVERY_ENABLED_CHANNELS=webhook for beta runtime`,
+      );
+    }
+    if (!plan.includes('email/in_app delivery cannot look successful')) {
+      violations.push(
+        `${contractPath}: delivery durableReplacementPlan must document fake email/in_app delivery risk`,
+      );
+    }
+  }
 }
 
 for (const moduleFile of runtimeModuleFiles) {

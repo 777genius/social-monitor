@@ -1,22 +1,27 @@
 import { DomainError, err, ok, type Result } from '@social-monitor/shared-kernel';
 
-import { type DeliveryChannel } from '../../domain';
 import type { NotificationPreferenceManagementPort } from '../../ports';
+import {
+  allDeliveryChannels,
+  type DeliveryChannelPolicy,
+  isDeliveryChannelSupported,
+} from '../../domain';
 import { presentNotificationPreference } from '../shared/notification-preference-presenter';
 import type { SetNotificationPreferenceCommand } from './set-notification-preference.command';
 import type { SetNotificationPreferenceResult } from './set-notification-preference.result';
 
 type SetNotificationPreferenceFailure = DomainError | Error;
 
-const deliveryChannels = new Set<DeliveryChannel>(['in_app', 'email', 'webhook']);
-
 export class SetNotificationPreferenceUseCase {
-  constructor(private readonly preferences: NotificationPreferenceManagementPort) {}
+  constructor(
+    private readonly preferences: NotificationPreferenceManagementPort,
+    private readonly supportedChannels: DeliveryChannelPolicy = allDeliveryChannels,
+  ) {}
 
   async execute(
     command: SetNotificationPreferenceCommand,
   ): Promise<Result<SetNotificationPreferenceResult, SetNotificationPreferenceFailure>> {
-    const validation = validate(command);
+    const validation = validate(command, this.supportedChannels);
 
     if (validation !== null) {
       return err(validation);
@@ -42,14 +47,18 @@ export class SetNotificationPreferenceUseCase {
   }
 }
 
-const validate = (command: SetNotificationPreferenceCommand): DomainError | null => {
+const validate = (
+  command: SetNotificationPreferenceCommand,
+  supportedChannels: DeliveryChannelPolicy,
+): DomainError | null => {
   if (command.recipientKey.trim().length === 0) {
     return new DomainError('validation.failed', 'Notification preference recipientKey must be non-empty');
   }
 
-  if (!deliveryChannels.has(command.channel)) {
+  if (!isDeliveryChannelSupported(command.channel, supportedChannels)) {
     return new DomainError('validation.failed', 'Notification preference channel is not supported', {
       channel: command.channel,
+      supportedChannels,
     });
   }
 

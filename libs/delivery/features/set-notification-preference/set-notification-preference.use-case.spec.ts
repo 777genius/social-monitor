@@ -102,9 +102,9 @@ describe('SetNotificationPreferenceUseCase', () => {
       ok: false,
       error: expect.objectContaining({
         code: 'validation.failed',
-        details: {
+        details: expect.objectContaining({
           channel: 'sms',
-        },
+        }),
       }),
     });
 
@@ -119,6 +119,27 @@ describe('SetNotificationPreferenceUseCase', () => {
       ok: false,
       error: expect.objectContaining({
         code: 'validation.failed',
+      }),
+    });
+  });
+
+  it('rejects channels outside the configured runtime policy', async () => {
+    await expect(
+      new SetNotificationPreferenceUseCase(new FakeNotificationPreferenceManagement(), ['webhook']).execute({
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        recipientKey: 'user-1',
+        channel: 'in_app',
+        allowed: true,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'validation.failed',
+        details: {
+          channel: 'in_app',
+          supportedChannels: ['webhook'],
+        },
       }),
     });
   });

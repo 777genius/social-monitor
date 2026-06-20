@@ -70,7 +70,7 @@
         "InMemoryWebhookSecretVault"
       ],
       "risk": "delivery attempts, digests, digest schedules, realtime replay events, webhook endpoints, encrypted webhook secrets, webhook replay nonce state, notification preferences and digest source reads can opt into Prisma but default local mode",
-      "durableReplacementPlan": "Delivery persistence can opt into Prisma with DELIVERY_PERSISTENCE=prisma; webhook secret durability additionally requires DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY. Prisma digest assembly reads persisted summary artifacts and feed items. Delivery attempt dispatch can opt into RabbitMQ command transport in delivery-service with DELIVERY_ATTEMPT_DISPATCH_TARGET=queue and DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq. Webhook delivery can opt into signed HTTP POST transport with DELIVERY_WEBHOOK_PROVIDER=http. Remaining blocker is real email transport and deployed shared-infra evidence."
+      "durableReplacementPlan": "Delivery persistence can opt into Prisma with DELIVERY_PERSISTENCE=prisma; webhook secret durability additionally requires DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY. Prisma digest assembly reads persisted summary artifacts and feed items. Delivery attempt dispatch can opt into RabbitMQ command transport in delivery-service with DELIVERY_ATTEMPT_DISPATCH_TARGET=queue and DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq. Webhook delivery can opt into signed HTTP POST transport with DELIVERY_WEBHOOK_PROVIDER=http, and beta runtime must use DELIVERY_ENABLED_CHANNELS=webhook so in-memory email/in_app delivery cannot look successful. Remaining blocker is real email transport and deployed shared-infra evidence."
     },
     {
       "moduleFile": "apps/delivery-service/src/delivery-service.module.ts",

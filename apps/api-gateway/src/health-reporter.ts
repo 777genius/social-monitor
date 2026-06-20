@@ -43,6 +43,7 @@ export type ReadinessResponse = HealthResponse & {
     };
     readonly providers: {
       readonly deliveryWebhook: string;
+      readonly deliveryEnabledChannels: string;
     };
   };
   readonly capabilities: {
@@ -121,6 +122,7 @@ export class ApiGatewayHealthReporter {
         },
         providers: {
           deliveryWebhook: this.envMode('DELIVERY_WEBHOOK_PROVIDER', 'in-memory'),
+          deliveryEnabledChannels: this.envMode('DELIVERY_ENABLED_CHANNELS', 'default'),
         },
       },
       capabilities: {

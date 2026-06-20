@@ -33,6 +33,7 @@ const requiredServiceSelectorValues = new Map([
     SUMMARY_PERSISTENCE: 'prisma',
     SUMMARY_JOB_QUEUE_MODE: 'rabbitmq',
     DELIVERY_PERSISTENCE: 'prisma',
+    DELIVERY_ENABLED_CHANNELS: 'webhook',
     DELIVERY_WEBHOOK_PROVIDER: 'http',
     IDENTITY_PERSISTENCE: 'prisma',
     USAGE_PERSISTENCE: 'prisma',
@@ -55,6 +56,7 @@ const requiredServiceSelectorValues = new Map([
   }],
   ['delivery-service', {
     DELIVERY_PERSISTENCE: 'prisma',
+    DELIVERY_ENABLED_CHANNELS: 'webhook',
     DELIVERY_WEBHOOK_PROVIDER: 'http',
     DELIVERY_ATTEMPT_DISPATCH_TARGET: 'queue',
     DELIVERY_ATTEMPT_DISPATCH_QUEUE: 'rabbitmq',
@@ -431,6 +433,9 @@ function rejectForbiddenSelectorValues(selectors, label) {
     }
     if (selector === 'EVENT_RELAY_LOOP' && normalizedValue === 'disabled') {
       violations.push(`${label}.${selector} must not disable event relay`);
+    }
+    if (selector === 'DELIVERY_ENABLED_CHANNELS' && /\b(?:email|in_app)\b/.test(normalizedValue)) {
+      violations.push(`${label}.${selector} must not enable fake email or in_app delivery in beta`);
     }
   }
 }

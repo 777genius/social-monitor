@@ -85,8 +85,45 @@ describe('CreateDigestScheduleUseCase', () => {
       ok: false,
       error: expect.objectContaining({
         code: 'validation.failed',
-        details: {
+        details: expect.objectContaining({
           channel: 'sms',
+        }),
+      }),
+    });
+    await expect(schedules.list({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+    })).resolves.toEqual({
+      schedules: [],
+      nextCursor: undefined,
+    });
+  });
+
+  it('rejects channels outside the configured runtime policy', async () => {
+    const schedules = new FakeDigestScheduleRepository();
+    const result = await new CreateDigestScheduleUseCase(
+      schedules,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
+      ['webhook'],
+    ).execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      recipientKey: 'user-1',
+      channel: 'email',
+      topicIds: ['topic-a'],
+      intervalSeconds: 3600,
+      includeNoSignal: false,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'validation.failed',
+        details: {
+          channel: 'email',
+          supportedChannels: ['webhook'],
         },
       }),
     });

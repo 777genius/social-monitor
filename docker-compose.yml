@@ -142,6 +142,7 @@ services:
       SUMMARY_PERSISTENCE: prisma
       SUMMARY_JOB_QUEUE_MODE: rabbitmq
       DELIVERY_PERSISTENCE: prisma
+      DELIVERY_ENABLED_CHANNELS: webhook
       DELIVERY_WEBHOOK_PROVIDER: http
       IDENTITY_PERSISTENCE: prisma
       USAGE_PERSISTENCE: prisma
@@ -189,6 +190,7 @@ services:
       DELIVERY_ATTEMPT_DISPATCH_QUEUE: rabbitmq
       DELIVERY_ATTEMPT_QUEUE_READER: rabbitmq
       DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP: enabled
+      DELIVERY_ENABLED_CHANNELS: webhook
       DELIVERY_WEBHOOK_PROVIDER: http
 
   event-relay:

@@ -99,6 +99,9 @@ const assertReadinessResponse = (
   if (typeof providers.deliveryWebhook !== 'string' || providers.deliveryWebhook.length === 0) {
     throw new Error(`${route} must expose delivery webhook provider mode`);
   }
+  if (typeof providers.deliveryEnabledChannels !== 'string' || providers.deliveryEnabledChannels.length === 0) {
+    throw new Error(`${route} must expose delivery enabled channel policy`);
+  }
 
   if (!Array.isArray(enabledBetaSources) || !enabledBetaSources.includes('reddit')) {
     throw new Error(`${route} must expose enabled beta source readiness`);

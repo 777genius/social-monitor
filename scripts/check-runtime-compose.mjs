@@ -68,6 +68,7 @@ for (const marker of [
   'INTELLIGENCE_SUMMARY_QUEUE_READER: rabbitmq',
   'DELIVERY_ATTEMPT_DISPATCH_QUEUE: rabbitmq',
   'DELIVERY_ATTEMPT_QUEUE_READER: rabbitmq',
+  'DELIVERY_ENABLED_CHANNELS: webhook',
   'DELIVERY_WEBHOOK_PROVIDER: http',
   'EVENT_RELAY_LOOP: enabled',
   'RABBITMQ_DEAD_LETTER_EXCHANGE: social-monitor.commands.dlx',
@@ -86,6 +87,7 @@ for (const marker of [
   'SUMMARY_JOB_QUEUE_MODE=',
   'INGESTION_SCAN_QUEUE_READER=',
   'INTELLIGENCE_SUMMARY_QUEUE_READER=',
+  'DELIVERY_ENABLED_CHANNELS=',
   'DELIVERY_ATTEMPT_QUEUE_READER=',
 ]) {
   if (!envExample.includes(marker)) {

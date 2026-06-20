@@ -7,7 +7,12 @@ import {
   type Result,
 } from '@social-monitor/shared-kernel';
 
-import { DigestSchedule, type DeliveryChannel } from '../../domain';
+import {
+  allDeliveryChannels,
+  DigestSchedule,
+  type DeliveryChannelPolicy,
+  isDeliveryChannelSupported,
+} from '../../domain';
 import type { DigestScheduleRepositoryPort } from '../../ports';
 import { presentDigestSchedule } from '../shared/digest-schedule-presenter';
 import type { CreateDigestScheduleCommand } from './create-digest-schedule.command';
@@ -15,19 +20,18 @@ import type { CreateDigestScheduleResult } from './create-digest-schedule.result
 
 type CreateDigestScheduleFailure = DomainError | Error;
 
-const deliveryChannels = new Set<DeliveryChannel>(['in_app', 'email', 'webhook']);
-
 export class CreateDigestScheduleUseCase {
   constructor(
     private readonly schedules: DigestScheduleRepositoryPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
+    private readonly supportedChannels: DeliveryChannelPolicy = allDeliveryChannels,
   ) {}
 
   async execute(
     command: CreateDigestScheduleCommand,
   ): Promise<Result<CreateDigestScheduleResult, CreateDigestScheduleFailure>> {
-    const validation = validate(command);
+    const validation = validate(command, this.supportedChannels);
 
     if (validation !== null) {
       return err(validation);
@@ -59,10 +63,14 @@ export class CreateDigestScheduleUseCase {
   }
 }
 
-const validate = (command: CreateDigestScheduleCommand): DomainError | null => {
-  if (!deliveryChannels.has(command.channel)) {
+const validate = (
+  command: CreateDigestScheduleCommand,
+  supportedChannels: DeliveryChannelPolicy,
+): DomainError | null => {
+  if (!isDeliveryChannelSupported(command.channel, supportedChannels)) {
     return new DomainError('validation.failed', 'Digest schedule channel is not supported', {
       channel: command.channel,
+      supportedChannels,
     });
   }
 

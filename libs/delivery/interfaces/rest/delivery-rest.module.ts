@@ -1,19 +1,14 @@
 import { Module } from '@nestjs/common';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
-import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
 import { ContractWebhookEventCatalogAdapter } from '../../adapters/events/contract-webhook-event-catalog.adapter';
-import { CircuitBreakerDeliveryProvider } from '../../adapters/notification/circuit-breaker-delivery.provider';
 import {
-  FetchWebhookHttpClient,
-  HttpWebhookDeliveryProvider,
   resolveHttpWebhookDeliveryProviderOptions,
+  type HttpWebhookDeliveryProviderOptions,
 } from '../../adapters/notification/http-webhook-delivery.provider';
-import { InMemoryDeliveryProvider } from '../../adapters/notification/in-memory-delivery.provider';
-import { MeteredDeliveryProvider } from '../../adapters/notification/metered-delivery.provider';
 import { InMemoryDeliveryAttemptRepository } from '../../adapters/persistence/in-memory-delivery-attempt.repository';
 import { InMemoryDigestScheduleRepository } from '../../adapters/persistence/in-memory-digest-schedule.repository';
 import { InMemoryDigestRepository } from '../../adapters/persistence/in-memory-digest.repository';
@@ -62,7 +57,9 @@ import { SendDeliveryAttemptUseCase } from '../../features/send-delivery-attempt
 import { SetNotificationPreferenceUseCase } from '../../features/set-notification-preference/set-notification-preference.use-case';
 import { SignWebhookPayloadUseCase } from '../../features/sign-webhook-payload/sign-webhook-payload.use-case';
 import { VerifyWebhookSignatureUseCase } from '../../features/verify-webhook-signature/verify-webhook-signature.use-case';
+import type { DeliveryChannel } from '../../domain';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
+import { createDeliveryProviders } from './delivery-provider-factory';
 import { DeliveryReadAuthorizer } from './delivery-read.authorizer';
 import { DigestSchedulesController } from './digest-schedules.controller';
 import {
@@ -70,6 +67,7 @@ import {
   DELIVERY_DIGEST_REPOSITORY,
   DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
   DELIVERY_DIGEST_SOURCE_READER,
+  DELIVERY_ENABLED_CHANNELS,
   DELIVERY_NOTIFICATION_PREFERENCE_MANAGER,
   DELIVERY_NOTIFICATION_PREFERENCE_READER,
   DELIVERY_PERSISTENCE_MODE,
@@ -79,7 +77,9 @@ import {
   DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
   DELIVERY_WEBHOOK_REPLAY_STORE,
   DELIVERY_WEBHOOK_SECRET_VAULT,
+  resolveDeliveryEnabledChannels,
   resolveDeliveryPersistenceMode,
+  resolveDeliveryWebhookProviderMode,
   type DeliveryPersistenceMode,
 } from './delivery-provider-tokens';
 import { DigestsController } from './digests.controller';
@@ -104,7 +104,9 @@ import type {
 } from '../../ports';
 
 export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
+const DELIVERY_HTTP_WEBHOOK_OPTIONS = Symbol('DELIVERY_HTTP_WEBHOOK_OPTIONS');
 const DELIVERY_WEBHOOK_EVENT_CATALOG = Symbol('DELIVERY_WEBHOOK_EVENT_CATALOG');
+const DELIVERY_WEBHOOK_PROVIDER_MODE = Symbol('DELIVERY_WEBHOOK_PROVIDER_MODE');
 
 @Module({
   imports: [IdentityRestModule, UsageRestModule],
@@ -120,6 +122,10 @@ const DELIVERY_WEBHOOK_EVENT_CATALOG = Symbol('DELIVERY_WEBHOOK_EVENT_CATALOG');
     {
       provide: DELIVERY_PERSISTENCE_MODE,
       useFactory: () => resolveDeliveryPersistenceMode(process.env),
+    },
+    {
+      provide: DELIVERY_ENABLED_CHANNELS,
+      useFactory: () => resolveDeliveryEnabledChannels(process.env),
     },
     {
       provide: DELIVERY_PRISMA_CLIENT,
@@ -141,6 +147,14 @@ const DELIVERY_WEBHOOK_EVENT_CATALOG = Symbol('DELIVERY_WEBHOOK_EVENT_CATALOG');
       provide: DELIVERY_WEBHOOK_EVENT_CATALOG,
       useClass: ContractWebhookEventCatalogAdapter,
     },
+    {
+      provide: DELIVERY_WEBHOOK_PROVIDER_MODE,
+      useFactory: () => resolveDeliveryWebhookProviderMode(process.env),
+    },
+    {
+      provide: DELIVERY_HTTP_WEBHOOK_OPTIONS,
+      useFactory: () => resolveHttpWebhookDeliveryProviderOptions(process.env),
+    },
     DeliveryReadAuthorizer,
     RealtimeEventsGateway,
     {
@@ -150,16 +164,26 @@ const DELIVERY_WEBHOOK_EVENT_CATALOG = Symbol('DELIVERY_WEBHOOK_EVENT_CATALOG');
     {
       provide: DELIVERY_PROVIDERS,
       useFactory: (
+        enabledChannels: readonly DeliveryChannel[],
+        webhookProviderMode: 'in-memory' | 'http',
+        webhookOptions: HttpWebhookDeliveryProviderOptions,
         metrics: InMemoryMetricsRecorder,
         endpoints: WebhookEndpointRepositoryPort,
         secrets: WebhookSecretVaultPort,
         eventCatalog: WebhookEventCatalogPort,
-      ) => [
-        createInMemoryDeliveryProvider('in_app', metrics),
-        createInMemoryDeliveryProvider('email', metrics),
-        createWebhookDeliveryProvider(metrics, endpoints, secrets, eventCatalog),
-      ],
+      ) => createDeliveryProviders(
+        enabledChannels,
+        webhookProviderMode,
+        webhookOptions,
+        metrics,
+        endpoints,
+        secrets,
+        eventCatalog,
+      ),
       inject: [
+        DELIVERY_ENABLED_CHANNELS,
+        DELIVERY_WEBHOOK_PROVIDER_MODE,
+        DELIVERY_HTTP_WEBHOOK_OPTIONS,
         InMemoryMetricsRecorder,
         DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
         DELIVERY_WEBHOOK_SECRET_VAULT,
@@ -320,9 +344,17 @@ const DELIVERY_WEBHOOK_EVENT_CATALOG = Symbol('DELIVERY_WEBHOOK_EVENT_CATALOG');
     },
     {
       provide: CreateDigestScheduleUseCase,
-      useFactory: (schedules: DigestScheduleRepositoryPort) =>
-        new CreateDigestScheduleUseCase(schedules, new CryptoIdGenerator(), new SystemClock()),
-      inject: [DELIVERY_DIGEST_SCHEDULE_REPOSITORY],
+      useFactory: (
+        schedules: DigestScheduleRepositoryPort,
+        enabledChannels: readonly DeliveryChannel[],
+      ) =>
+        new CreateDigestScheduleUseCase(
+          schedules,
+          new CryptoIdGenerator(),
+          new SystemClock(),
+          enabledChannels,
+        ),
+      inject: [DELIVERY_DIGEST_SCHEDULE_REPOSITORY, DELIVERY_ENABLED_CHANNELS],
     },
     {
       provide: GetDigestScheduleUseCase,
@@ -336,9 +368,11 @@ const DELIVERY_WEBHOOK_EVENT_CATALOG = Symbol('DELIVERY_WEBHOOK_EVENT_CATALOG');
     },
     {
       provide: SetNotificationPreferenceUseCase,
-      useFactory: (preferences: NotificationPreferenceManagementPort) =>
-        new SetNotificationPreferenceUseCase(preferences),
-      inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER],
+      useFactory: (
+        preferences: NotificationPreferenceManagementPort,
+        enabledChannels: readonly DeliveryChannel[],
+      ) => new SetNotificationPreferenceUseCase(preferences, enabledChannels),
+      inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER, DELIVERY_ENABLED_CHANNELS],
     },
     {
       provide: GetNotificationPreferenceUseCase,
@@ -507,61 +541,6 @@ const DELIVERY_WEBHOOK_EVENT_CATALOG = Symbol('DELIVERY_WEBHOOK_EVENT_CATALOG');
   ],
 })
 export class DeliveryRestModule {}
-
-const createInMemoryDeliveryProvider = (
-  channel: DeliveryProviderPort['channel'],
-  metrics: InMemoryMetricsRecorder,
-): DeliveryProviderPort =>
-  wrapDeliveryProvider(new InMemoryDeliveryProvider(channel), metrics);
-
-const createWebhookDeliveryProvider = (
-  metrics: InMemoryMetricsRecorder,
-  endpoints: WebhookEndpointRepositoryPort,
-  secrets: WebhookSecretVaultPort,
-  eventCatalog: WebhookEventCatalogPort,
-): DeliveryProviderPort => {
-  const mode = resolveDeliveryWebhookProviderMode(process.env);
-  const delegate = mode === 'http'
-    ? new HttpWebhookDeliveryProvider(
-        endpoints,
-        new SignWebhookPayloadUseCase(endpoints, secrets, eventCatalog),
-        new FetchWebhookHttpClient(),
-        new SystemClock(),
-        resolveHttpWebhookDeliveryProviderOptions(process.env),
-      )
-    : new InMemoryDeliveryProvider('webhook');
-
-  return wrapDeliveryProvider(delegate, metrics);
-};
-
-const wrapDeliveryProvider = (
-  provider: DeliveryProviderPort,
-  metrics: InMemoryMetricsRecorder,
-): DeliveryProviderPort =>
-  new MeteredDeliveryProvider(
-    new CircuitBreakerDeliveryProvider(provider, new SystemClock(), {
-      failureThreshold: 3,
-      cooldownSeconds: 60,
-    }),
-    metrics,
-  );
-
-export const resolveDeliveryWebhookProviderMode = (env: NodeJS.ProcessEnv): 'in-memory' | 'http' => {
-  const value = env.DELIVERY_WEBHOOK_PROVIDER ?? 'in-memory';
-
-  if (value === 'in-memory' || value === 'http') {
-    assertRuntimeProfileAllowsMode({
-      env,
-      settingName: 'DELIVERY_WEBHOOK_PROVIDER',
-      selectedMode: value,
-      durableModes: ['http'],
-    });
-
-    return value;
-  }
-
-  throw new Error('DELIVERY_WEBHOOK_PROVIDER must be "in-memory" or "http"');
-};
 
 const requirePrismaDeliveryClient = (client: PrismaDeliveryClient | null): PrismaDeliveryClient => {
   if (client === null) {

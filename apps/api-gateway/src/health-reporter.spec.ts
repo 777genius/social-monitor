@@ -80,6 +80,7 @@ describe('ApiGatewayHealthReporter', () => {
         DELIVERY_ATTEMPT_DISPATCH_QUEUE: 'rabbitmq',
         DELIVERY_ATTEMPT_QUEUE_READER: 'rabbitmq',
         DELIVERY_WEBHOOK_PROVIDER: 'http',
+        DELIVERY_ENABLED_CHANNELS: 'webhook',
       },
       new FixedClock(new Date('2026-01-02T03:04:05.000Z')),
       () => 3,
@@ -105,6 +106,7 @@ describe('ApiGatewayHealthReporter', () => {
         }),
         providers: {
           deliveryWebhook: 'http',
+          deliveryEnabledChannels: 'webhook',
         },
       }),
       capabilities: expect.objectContaining({

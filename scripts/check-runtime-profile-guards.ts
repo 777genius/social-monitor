@@ -16,8 +16,11 @@ import {
   resolveIntelligenceRabbitMqSummaryQueueReaderOptions,
   resolveIntelligenceSummaryQueueReaderMode,
 } from '../apps/intelligence-worker/src/intelligence-worker-provider-tokens';
-import { resolveDeliveryPersistenceMode } from '../libs/delivery/interfaces/rest/delivery-provider-tokens';
-import { resolveDeliveryWebhookProviderMode } from '../libs/delivery/interfaces/rest/delivery-rest.module';
+import {
+  resolveDeliveryEnabledChannels,
+  resolveDeliveryPersistenceMode,
+  resolveDeliveryWebhookProviderMode,
+} from '../libs/delivery/interfaces/rest/delivery-provider-tokens';
 import { resolveFeedPersistenceMode } from '../libs/feed/interfaces/rest/feed-provider-tokens';
 import {
   resolveIdentityPersistenceMode,
@@ -204,6 +207,18 @@ assertThrows(
 assert(
   resolveDeliveryPersistenceMode({ ...databaseEnv, DELIVERY_PERSISTENCE: 'prisma' }) === 'prisma',
   'delivery beta persistence',
+);
+assert(
+  resolveDeliveryEnabledChannels(betaEnv).join(',') === 'webhook',
+  'delivery beta enabled channels must default to webhook only',
+);
+assert(
+  resolveDeliveryEnabledChannels({ ...betaEnv, DELIVERY_ENABLED_CHANNELS: 'webhook' }).join(',') === 'webhook',
+  'delivery beta enabled channels must allow webhook',
+);
+assertThrows(
+  () => resolveDeliveryEnabledChannels({ ...betaEnv, DELIVERY_ENABLED_CHANNELS: 'email,webhook' }),
+  'DELIVERY_ENABLED_CHANNELS must reject fake email delivery in beta runtime',
 );
 assertThrows(
   () => resolveDeliveryWebhookProviderMode(betaEnv),
