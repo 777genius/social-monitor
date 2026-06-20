@@ -38,6 +38,7 @@
     "criticalEnvValuesMustBeTyped": true,
     "evidencePathEnvRequiresAbsolutePath": true,
     "evidencePathEnvRequiresRegularFile": true,
+    "evidencePathEnvRequiresPrivateFileMode": true,
     "evidencePathEnvMaxBytes": 26214400,
     "evidencePathEnvRequiresJsonExtension": true,
     "evidencePathEnvRequiresJsonContent": true,

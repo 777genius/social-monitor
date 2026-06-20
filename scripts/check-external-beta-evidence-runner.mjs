@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -360,6 +360,9 @@ function validateSafety() {
   if (safety.evidencePathEnvRequiresRegularFile !== true) {
     violations.push(`${contractPath}: executionSafety.evidencePathEnvRequiresRegularFile must be true`);
   }
+  if (safety.evidencePathEnvRequiresPrivateFileMode !== true) {
+    violations.push(`${contractPath}: executionSafety.evidencePathEnvRequiresPrivateFileMode must be true`);
+  }
   if (!Number.isFinite(safety.evidencePathEnvMaxBytes) || safety.evidencePathEnvMaxBytes <= 0) {
     violations.push(`${contractPath}: executionSafety.evidencePathEnvMaxBytes must be positive`);
   }
@@ -580,6 +583,10 @@ function validateRunnerImplementation() {
     'evidence path env',
     'absolute file path',
     'evidencePathEnvRequiresRegularFile',
+    'evidencePathEnvRequiresPrivateFileMode',
+    'requiresPrivateEvidenceFileMode',
+    'isPrivateEvidenceFile',
+    '0600-style private file permissions',
     'isRegularEvidenceFile',
     'statSync',
     'must point to a regular file',
@@ -805,6 +812,12 @@ function validateRunnerNegativeSmokes() {
         },
       }),
     },
+    {
+      label: 'world-readable evidence artifact',
+      expectedOutput: '0600-style private file permissions',
+      fileMode: 0o644,
+      artifact: (base) => base,
+    },
   ];
 
   for (const scenario of scenarios) {
@@ -825,6 +838,9 @@ function validateRunnerNegativeSmokes() {
           : `${JSON.stringify(artifact, null, 2)}\n`,
         { mode: 0o600 },
       );
+      if (scenario.fileMode !== undefined) {
+        chmodSync(artifactPath, scenario.fileMode);
+      }
 
       const result = runRunnerNegativeSmoke(artifactPath);
       if (result.exitCode === 0) {

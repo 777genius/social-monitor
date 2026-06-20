@@ -1145,6 +1145,11 @@ function validateEvidencePathEnv(job, missingEnvSet, violations) {
       invalidPathEnv.add(envName);
       continue;
     }
+    if (requiresPrivateEvidenceFileMode() && !isPrivateEvidenceFile(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must use 0600-style private file permissions`);
+      invalidPathEnv.add(envName);
+      continue;
+    }
     if (isOversizedEvidenceFile(realPath)) {
       violations.push(`${job.jobId}: evidence path env ${envName} realpath must not exceed ${evidencePathMaxBytes()} bytes`);
       invalidPathEnv.add(envName);
@@ -1200,9 +1205,21 @@ function requiresRegularEvidenceFiles() {
   return contract.executionSafety?.evidencePathEnvRequiresRegularFile === true;
 }
 
+function requiresPrivateEvidenceFileMode() {
+  return contract.executionSafety?.evidencePathEnvRequiresPrivateFileMode === true;
+}
+
 function isRegularEvidenceFile(path) {
   try {
     return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function isPrivateEvidenceFile(path) {
+  try {
+    return (statSync(path).mode & 0o077) === 0;
   } catch {
     return false;
   }
