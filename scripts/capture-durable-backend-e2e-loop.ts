@@ -1,4 +1,4 @@
-import { createCipheriv, createPrivateKey, randomBytes, randomUUID, sign as signJwt } from 'node:crypto';
+import { createPrivateKey, randomUUID, sign as signJwt } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -21,7 +21,6 @@ type RunnerConfig = {
   readonly keyId?: string;
   readonly accessToken?: string;
   readonly webhookUrl: string;
-  readonly webhookSecretEncryptionKey: string;
 };
 
 type RuntimeIds = {
@@ -30,8 +29,6 @@ type RuntimeIds = {
   readonly workspaceId: string;
   readonly userId: string;
   readonly membershipId: string;
-  readonly webhookEndpointId: string;
-  readonly webhookSecretKeyId: string;
 };
 
 type AuthContext = {
@@ -54,8 +51,6 @@ const ids: RuntimeIds = {
   workspaceId: randomUUID(),
   userId: randomUUID(),
   membershipId: randomUUID(),
-  webhookEndpointId: randomUUID(),
-  webhookSecretKeyId: `webhook-key-${randomUUID()}`,
 };
 const pool = new Pool({ connectionString: config.databaseUrl });
 const startedAt = nowIso();
@@ -68,73 +63,73 @@ void main().catch(async (error: unknown) => {
 
 async function main(): Promise<void> {
   try {
-  await assertReady();
-  await seedDurableIdentity(pool, ids);
-  await seedWebhookEndpoint(pool, ids, config);
+    await assertReady();
+    await seedDurableIdentity(pool, ids);
 
-  const auth: AuthContext = {
-    tenantId: ids.tenantId,
-    workspaceId: ids.workspaceId,
-    token: resolveAccessToken(config, ids),
-  };
-  const evidence = await executeBackendLoop(auth, ids);
-  const completedAt = nowIso();
-  const artifact = {
-    schemaVersion: 1,
-    format: 'staging-reliability-artifact-v1',
-    artifactId: 'durable-backend-e2e-output',
-    environmentId: config.environmentId,
-    imageDigest: config.imageDigest,
-    operator: config.operator,
-    apiBaseUrl: config.apiBaseUrl,
-    startedAt,
-    completedAt,
-    provenance: {
-      evidenceKind: 'staging_drill',
-      collectionMethod: 'Docker Compose durable backend e2e loop capture.',
-      runner: 'scripts/capture-durable-backend-e2e-loop.ts',
-      fixtureOnly: false,
-    },
-    redaction: {
-      secretsIncluded: false,
-      rawProviderPayloadsIncluded: false,
-      databaseUrlsIncluded: false,
-      brokerUrlsIncluded: false,
-    },
-    signalResults: [
-      signalResult('backend-loop-topic-to-delivery-audit', {
-        summary: 'topic source scan feed summary feedback digest webhook realtime audit loop observed on durable runtime',
-        topicId: evidence.topicId,
-        sourceBindingId: evidence.sourceBindingId,
-        scanId: evidence.scanId,
-        feedItemIds: evidence.feedItemIds,
-        summaryId: evidence.summaryId,
-        feedbackId: evidence.feedbackId,
-        digestId: evidence.digestId,
-        webhookDeliveryAttemptId: evidence.webhookDeliveryAttemptId,
-        realtimeEventId: evidence.realtimeEventId,
-        auditEventIds: evidence.auditEventIds,
-      }),
-      signalResult('backend-loop-tenant-isolation', {
-        summary: 'wrong tenant and wrong workspace checks denied durable data access',
-        negativeChecks: evidence.negativeChecks,
-        wrongTenantStatus: evidence.wrongTenantStatus,
-        wrongWorkspaceStatus: evidence.wrongWorkspaceStatus,
-        leakageObserved: false,
-      }),
-      signalResult('backend-loop-idempotency', {
-        summary: 'idempotency keys replayed without duplicate durable side effects',
-        idempotencyKeys: evidence.idempotencyKeys,
-        responseIds: evidence.responseIds,
-        stableDurableCounts: evidence.stableDurableCounts,
-        duplicateSideEffectsObserved: false,
-      }),
-    ] satisfies readonly SignalResult[],
-  };
+    const auth: AuthContext = {
+      tenantId: ids.tenantId,
+      workspaceId: ids.workspaceId,
+      token: resolveAccessToken(config, ids),
+    };
+    const evidence = await executeBackendLoop(auth, ids);
+    const completedAt = nowIso();
+    const artifact = {
+      schemaVersion: 1,
+      format: 'staging-reliability-artifact-v1',
+      artifactId: 'durable-backend-e2e-output',
+      environmentId: config.environmentId,
+      imageDigest: config.imageDigest,
+      operator: config.operator,
+      apiBaseUrl: config.apiBaseUrl,
+      startedAt,
+      completedAt,
+      provenance: {
+        evidenceKind: 'staging_drill',
+        collectionMethod: 'Docker Compose durable backend e2e loop capture.',
+        runner: 'scripts/capture-durable-backend-e2e-loop.ts',
+        fixtureOnly: false,
+      },
+      redaction: {
+        secretsIncluded: false,
+        rawProviderPayloadsIncluded: false,
+        databaseUrlsIncluded: false,
+        brokerUrlsIncluded: false,
+      },
+      signalResults: [
+        signalResult('backend-loop-topic-to-delivery-audit', {
+          summary: 'topic source scan feed summary feedback digest webhook realtime audit loop observed on durable runtime',
+          topicId: evidence.topicId,
+          sourceBindingId: evidence.sourceBindingId,
+          scanId: evidence.scanId,
+          feedItemIds: evidence.feedItemIds,
+          summaryId: evidence.summaryId,
+          feedbackId: evidence.feedbackId,
+          digestId: evidence.digestId,
+          webhookEndpointId: evidence.webhookEndpointId,
+          webhookDeliveryAttemptId: evidence.webhookDeliveryAttemptId,
+          realtimeEventId: evidence.realtimeEventId,
+          auditEventIds: evidence.auditEventIds,
+        }),
+        signalResult('backend-loop-tenant-isolation', {
+          summary: 'wrong tenant and wrong workspace checks denied durable data access',
+          negativeChecks: evidence.negativeChecks,
+          wrongTenantStatus: evidence.wrongTenantStatus,
+          wrongWorkspaceStatus: evidence.wrongWorkspaceStatus,
+          leakageObserved: false,
+        }),
+        signalResult('backend-loop-idempotency', {
+          summary: 'idempotency keys replayed without duplicate durable side effects',
+          idempotencyKeys: evidence.idempotencyKeys,
+          responseIds: evidence.responseIds,
+          stableDurableCounts: evidence.stableDurableCounts,
+          duplicateSideEffectsObserved: false,
+        }),
+      ] satisfies readonly SignalResult[],
+    };
 
-  mkdirSync(dirname(config.outputPath), { recursive: true });
-  writeFileSync(config.outputPath, `${JSON.stringify(artifact, null, 2)}\n`);
-  console.log(config.outputPath);
+    mkdirSync(dirname(config.outputPath), { recursive: true });
+    writeFileSync(config.outputPath, `${JSON.stringify(artifact, null, 2)}\n`);
+    console.log(config.outputPath);
   } finally {
     await pool.end();
   }
@@ -148,6 +143,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
   readonly summaryId: string;
   readonly feedbackId: string;
   readonly digestId: string;
+  readonly webhookEndpointId: string;
   readonly webhookDeliveryAttemptId: string;
   readonly realtimeEventId: string;
   readonly auditEventIds: readonly string[];
@@ -273,10 +269,20 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
   });
   const feedbackId = readString(feedback, 'feedbackId');
 
+  const webhook = await requestJson<JsonRecord>('POST', '/delivery/webhook-endpoints', {
+    headers,
+    body: {
+      url: config.webhookUrl,
+      eventTypes: ['digest.ready.v1'],
+    },
+  });
+  const webhookEndpoint = readRecord(webhook, 'endpoint');
+  const webhookEndpointId = readString(webhookEndpoint, 'id');
+
   await requestJson<JsonRecord>('POST', '/delivery/digest-schedules', {
     headers,
     body: {
-      recipientKey: runtimeIds.webhookEndpointId,
+      recipientKey: webhookEndpointId,
       channel: 'webhook',
       topicIds: [topicId],
       intervalSeconds: 60,
@@ -291,7 +297,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
     (page) => {
       const attempts = readObjectArray(page, 'attempts');
       return attempts.find((attempt) =>
-        readString(attempt, 'recipientKey') === runtimeIds.webhookEndpointId &&
+        readString(attempt, 'recipientKey') === webhookEndpointId &&
         readString(attempt, 'resourceType') === 'digest' &&
         readString(attempt, 'state') !== 'queued'
       );
@@ -370,6 +376,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
     summaryId,
     feedbackId,
     digestId,
+    webhookEndpointId,
     webhookDeliveryAttemptId,
     realtimeEventId,
     auditEventIds,
@@ -437,66 +444,6 @@ async function seedDurableIdentity(db: Pool, runtimeIds: RuntimeIds): Promise<vo
           on conflict (tenant_id, workspace_id, user_id) do update set role = 'OWNER', updated_at = excluded.updated_at
         `,
         [runtimeIds.membershipId, runtimeIds.tenantId, runtimeIds.workspaceId, runtimeIds.userId],
-      );
-      await client.query('commit');
-    } catch (error) {
-      await client.query('rollback');
-      throw error;
-    }
-  });
-}
-
-async function seedWebhookEndpoint(db: Pool, runtimeIds: RuntimeIds, runnerConfig: RunnerConfig): Promise<void> {
-  const signingSecret = `delivery-signing-${randomUUID()}-${randomUUID()}`;
-  const encrypted = encryptSecret(signingSecret, decodeBase64UrlKey(runnerConfig.webhookSecretEncryptionKey));
-  await withClient(db, async (client) => {
-    await client.query('begin');
-    try {
-      await client.query(
-        `
-          insert into webhook_secrets (id, algorithm, ciphertext, iv, auth_tag, created_at, updated_at)
-          values ($1, 'aes-256-gcm', $2, $3, $4, now(), now())
-          on conflict (id) do update set
-            algorithm = excluded.algorithm,
-            ciphertext = excluded.ciphertext,
-            iv = excluded.iv,
-            auth_tag = excluded.auth_tag,
-            updated_at = excluded.updated_at
-        `,
-        [runtimeIds.webhookSecretKeyId, encrypted.ciphertext, encrypted.iv, encrypted.authTag],
-      );
-      await client.query(
-        `
-          insert into webhook_endpoints (
-            id,
-            tenant_id,
-            workspace_id,
-            url,
-            event_types,
-            status,
-            secret_key_id,
-            secret_preview,
-            created_at,
-            updated_at
-          )
-          values ($1, $2, $3, $4, $5, 'ENABLED', $6, $7, now(), now())
-          on conflict (id) do update set
-            url = excluded.url,
-            event_types = excluded.event_types,
-            status = excluded.status,
-            secret_key_id = excluded.secret_key_id,
-            secret_preview = excluded.secret_preview,
-            updated_at = excluded.updated_at
-        `,
-        [
-          runtimeIds.webhookEndpointId,
-          runtimeIds.tenantId,
-          runtimeIds.workspaceId,
-          runnerConfig.webhookUrl,
-          ['digest.ready.v1'],
-          runtimeIds.webhookSecretKeyId,
-          signingSecret.slice(-8),
-        ],
       );
       await client.query('commit');
     } catch (error) {
@@ -692,29 +639,6 @@ function signalResult(signalId: string, evidence: JsonRecord): SignalResult {
   };
 }
 
-function encryptSecret(secret: string, key: Buffer): { readonly ciphertext: string; readonly iv: string; readonly authTag: string } {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', key, iv);
-  const ciphertext = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
-
-  return {
-    ciphertext: ciphertext.toString('base64url'),
-    iv: iv.toString('base64url'),
-    authTag: cipher.getAuthTag().toString('base64url'),
-  };
-}
-
-function decodeBase64UrlKey(value: string): Buffer {
-  const normalized = value.trim().replaceAll('-', '+').replaceAll('_', '/');
-  const padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), '=');
-  const key = Buffer.from(padded, 'base64');
-  if (key.byteLength !== 32) {
-    throw new Error('DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY must decode to 32 bytes');
-  }
-
-  return key;
-}
-
 function loadConfig(): RunnerConfig {
   const apiBaseUrl = requireEnv('API_BASE_URL');
   const configValue: RunnerConfig = {
@@ -730,8 +654,6 @@ function loadConfig(): RunnerConfig {
     keyId: emptyToUndefined(process.env.DURABLE_BACKEND_E2E_JWT_KID),
     accessToken: emptyToUndefined(process.env.DURABLE_BACKEND_E2E_ACCESS_TOKEN),
     webhookUrl: process.env.DURABLE_BACKEND_E2E_WEBHOOK_URL ?? 'https://httpbingo.org/post',
-    webhookSecretEncryptionKey:
-      process.env.DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY ?? 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
   };
 
   if (!/^https?:\/\//.test(configValue.apiBaseUrl)) {
