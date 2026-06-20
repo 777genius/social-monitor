@@ -44,6 +44,7 @@
     "check:external-beta-evidence-dry-run",
     "check:external-beta-evidence-inputs",
     "check:evidence-env-file",
+    "check:docker-backend-staging-evidence-bundle",
     "check:no-go-cleanup",
     "check:release-artifact-evidence",
     "check:observability",

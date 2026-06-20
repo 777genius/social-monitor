@@ -51,6 +51,7 @@
     "capture:durable-backend-e2e-loop": "node scripts/run-with-timeout.mjs --timeout-ms 300000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/capture-durable-backend-e2e-loop.ts",
     "capture:docker-durable-backend-e2e-loop": "node scripts/capture-docker-durable-backend-e2e-loop.mjs",
     "capture:docker-backend-staging-evidence-bundle": "node scripts/capture-docker-backend-staging-evidence-bundle.mjs",
+    "check:docker-backend-staging-evidence-bundle": "node scripts/check-docker-backend-staging-evidence-bundle.mjs",
     "check:events": "node scripts/check-event-contracts.mjs",
     "check:evidence-env-file": "node scripts/check-evidence-env-file.mjs",
     "check:external-beta-readiness": "node scripts/check-external-beta-readiness.mjs",

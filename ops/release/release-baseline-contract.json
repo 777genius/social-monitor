@@ -23,6 +23,7 @@
     "check:external-beta-evidence-runner",
     "check:external-beta-evidence-dry-run",
     "check:external-beta-evidence-inputs",
+    "check:docker-backend-staging-evidence-bundle",
     "check:operational-support-package",
     "check:capacity-envelope-beta-ring-decision",
     "check:no-go-cleanup",
