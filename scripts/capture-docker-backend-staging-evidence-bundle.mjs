@@ -123,6 +123,7 @@ await withDockerBackendEvidenceStack({
       bundlePath,
     },
   });
+  runNpmScript('check:docker-backend-staging-evidence-bundle', env);
 
   console.log(`DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH=${durableRuntimePath}`);
   console.log(`RABBITMQ_STAGING_DRILL_ARTIFACT_PATH=${rabbitmqPath}`);
@@ -205,8 +206,10 @@ function writeBundleEnvFile({ envFilePath, env, artifactPaths }) {
     usageLines: [
       'Usage:',
       `set -a; . ${shellQuote(envFilePath)}; set +a`,
-      'npm run beta:evidence:validate -- --jobs durable-runtime-staging-proof,credential-secret-rotation-drill,rabbitmq-staging-reliability-drill,postgres-restore-migration-drill,durable-backend-e2e-loop,release-deploy-smoke,security-final-sweep-staging',
-      'This file intentionally does not include live source, Reddit, or summary feedback evidence paths.',
+      'npm run check:docker-backend-staging-evidence-bundle',
+      'npm run check:durable-runtime-proof && npm run check:staging-reliability-evidence && npm run check:credential-secret-runtime-flow && npm run check:security-final-sweep && npm run check:release-artifact-evidence',
+      'This local Docker handoff intentionally does not include live source, Reddit, or summary feedback evidence paths.',
+      'Do not use this local Docker env as full external beta validate input: local http, Postgres and RabbitMQ URLs must stay rejected by production evidence preflight.',
     ],
   });
 }

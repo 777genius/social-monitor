@@ -14,9 +14,24 @@ const checkCommand = `npm run ${checkScriptName}`;
 const expectedBundleFormat = 'docker-backend-staging-evidence-bundle-v1';
 const expectedArtifactIds = new Map([
   ['durable-runtime-selector', { env: 'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH', format: 'durable-runtime-selector-artifact-v1' }],
-  ['rabbitmq-staging-drill-output', { env: 'RABBITMQ_STAGING_DRILL_ARTIFACT_PATH', format: 'staging-reliability-artifact-v1', minSignalCount: 1 }],
-  ['postgres-restore-drill-output', { env: 'POSTGRES_RESTORE_DRILL_ARTIFACT_PATH', format: 'staging-reliability-artifact-v1', minSignalCount: 1 }],
-  ['durable-backend-e2e-output', { env: 'DURABLE_BACKEND_E2E_ARTIFACT_PATH', format: 'staging-reliability-artifact-v1', minSignalCount: 1 }],
+  ['rabbitmq-staging-drill-output', {
+    env: 'RABBITMQ_STAGING_DRILL_ARTIFACT_PATH',
+    format: 'staging-reliability-artifact-v1',
+    expectedArtifactId: 'rabbitmq-staging-drill-output',
+    minSignalCount: 1,
+  }],
+  ['postgres-restore-drill-output', {
+    env: 'POSTGRES_RESTORE_DRILL_ARTIFACT_PATH',
+    format: 'staging-reliability-artifact-v1',
+    expectedArtifactId: 'postgres-restore-drill-output',
+    minSignalCount: 1,
+  }],
+  ['durable-backend-e2e-output', {
+    env: 'DURABLE_BACKEND_E2E_ARTIFACT_PATH',
+    format: 'staging-reliability-artifact-v1',
+    expectedArtifactId: 'durable-backend-e2e-output',
+    minSignalCount: 1,
+  }],
   ['source-credential-rotation', { env: 'SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH', format: 'source-credential-rotation-redacted-v1', minOperationCount: 1 }],
   ['webhook-secret-rotation', { env: 'WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH', format: 'webhook-secret-rotation-redacted-v1', minOperationCount: 1 }],
   ['security-final-sweep', { env: 'SECURITY_FINAL_SWEEP_ARTIFACT_PATH', format: 'security-final-sweep-staging-artifact-v1', minSurfaceCount: 4, minSourceExportCount: 3 }],
@@ -107,6 +122,9 @@ function validateStaticWiring() {
   }
   if (!captureSource.includes('writeEvidenceEnvFile')) {
     violations.push(`${captureScriptPath}: bundle capture must use writeEvidenceEnvFile`);
+  }
+  if (!captureSource.includes("check:docker-backend-staging-evidence-bundle")) {
+    violations.push(`${captureScriptPath}: bundle capture must self-validate the generated Docker bundle`);
   }
 }
 
@@ -280,8 +298,8 @@ function validateArtifactSummary(summary, label) {
   if (summary.format !== definition.format) {
     violations.push(`${label}: ${summary.artifactId}.format must be ${definition.format}`);
   }
-  if (artifact.artifactId !== undefined && artifact.artifactId !== summary.artifactId) {
-    violations.push(`${label}: ${summary.artifactId}.artifactId must match artifact file artifactId`);
+  if (artifact.artifactId !== undefined && definition.expectedArtifactId !== undefined && artifact.artifactId !== definition.expectedArtifactId) {
+    violations.push(`${label}: ${summary.artifactId}.artifactId must match ${definition.expectedArtifactId}`);
   }
   validateCounts(summary, artifact, definition, label);
   validateArtifactRedaction(artifact, `${label}: ${summary.artifactId}`);

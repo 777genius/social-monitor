@@ -13,6 +13,7 @@ const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
 const backendOpsPath = 'ops/release/backend-ops-readiness-contract.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
+const captureScriptPath = 'scripts/capture-security-final-sweep.mjs';
 
 const evidence = readJson(evidencePath);
 const packageJson = readJson(packagePath);
@@ -21,6 +22,7 @@ const releaseContract = readJson(releaseContractPath);
 const backendOps = readJson(backendOpsPath);
 const externalReadiness = readJson(externalReadinessPath);
 const baseline = readJson(baselinePath);
+const captureScriptSource = readFileSync(captureScriptPath, 'utf8');
 const scripts = packageJson.scripts ?? {};
 const violations = [];
 const securityFinalSweepArtifactPath = process.env.SECURITY_FINAL_SWEEP_ARTIFACT_PATH;
@@ -181,6 +183,7 @@ if (securityFinalSweepArtifactPath !== undefined && securityFinalSweepArtifactPa
 validateRequiredChecks();
 validateLeakClasses();
 validateNoSensitiveEvidenceLiterals();
+validateCaptureHandoff();
 requireWiring();
 
 if (violations.length > 0) {
@@ -769,6 +772,24 @@ function validateNoSensitiveEvidenceLiterals() {
     if (serialized.includes(fragment)) {
       violations.push(`${evidencePath}: evidence must not contain sensitive literal fragment "${fragment}"`);
     }
+  }
+}
+
+function validateCaptureHandoff() {
+  for (const marker of [
+    'writeEvidenceEnvFile',
+    'SECURITY_FINAL_SWEEP_ENV_PATH',
+    'SECURITY_FINAL_SWEEP_ARTIFACT_PATH',
+    'LOG_EXPORT_PATH',
+    'METRICS_EXPORT_PATH',
+    'PUBLIC_ERROR_EXPORT_PATH',
+  ]) {
+    if (!captureScriptSource.includes(marker)) {
+      violations.push(`${captureScriptPath}: security final sweep env handoff must include ${marker}`);
+    }
+  }
+  if (!captureScriptSource.includes('must not use local, fixture, example, mock or test identifiers')) {
+    violations.push(`${captureScriptPath}: security final sweep capture must reject non-beta evidence identity values`);
   }
 }
 

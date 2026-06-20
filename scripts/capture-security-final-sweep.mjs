@@ -1,22 +1,29 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+
+import { shellQuote, writeEvidenceEnvFile } from './lib/evidence-env-file.mjs';
 
 const artifactDir =
   process.env.SECURITY_FINAL_SWEEP_ARTIFACT_DIR ??
   process.env.BACKEND_STAGING_EVIDENCE_ARTIFACT_DIR ??
   '/tmp/social-monitor-evidence';
-const logExportPath = process.env.LOG_EXPORT_PATH ?? join(artifactDir, 'security-logs-export.json');
-const metricsExportPath = process.env.METRICS_EXPORT_PATH ?? join(artifactDir, 'security-metrics-export.json');
-const publicErrorExportPath = process.env.PUBLIC_ERROR_EXPORT_PATH ?? join(artifactDir, 'security-public-errors-export.json');
+const logExportPath = process.env.LOG_EXPORT_PATH ?? join(resolve(artifactDir), 'security-logs-export.json');
+const metricsExportPath = process.env.METRICS_EXPORT_PATH ?? join(resolve(artifactDir), 'security-metrics-export.json');
+const publicErrorExportPath = process.env.PUBLIC_ERROR_EXPORT_PATH ?? join(resolve(artifactDir), 'security-public-errors-export.json');
 const securityFinalSweepPath =
   process.env.SECURITY_FINAL_SWEEP_ARTIFACT_PATH ??
-  join(artifactDir, 'security-final-sweep.json');
+  join(resolve(artifactDir), 'security-final-sweep.json');
+const envFilePath =
+  process.env.SECURITY_FINAL_SWEEP_ENV_PATH ??
+  join(resolve(artifactDir), 'security-final-sweep.env');
+const identityEnvNames = ['STAGING_ENVIRONMENT_ID', 'STAGING_OPERATOR'];
+const forbiddenIdentityFragments = ['local', 'fixture', 'example', 'mock', 'test'];
 const sampledAt = new Date().toISOString();
-const environmentId = process.env.STAGING_ENVIRONMENT_ID ?? 'security-final-sweep-drill';
+const environmentId = evidenceIdentity('STAGING_ENVIRONMENT_ID', 'security-final-sweep-drill');
 const imageDigest = process.env.BACKEND_IMAGE_DIGEST ?? `sha256:${'e'.repeat(64)}`;
-const operator = process.env.STAGING_OPERATOR ?? 'security-owner';
+const operator = evidenceIdentity('STAGING_OPERATOR', 'security-owner');
 
 mkdirSync(artifactDir, { recursive: true });
 
@@ -160,10 +167,25 @@ execFileSync('node', ['scripts/check-security-final-sweep.mjs'], {
   stdio: 'inherit',
 });
 
+writeEvidenceEnvFile(envFilePath, [
+  ['SECURITY_FINAL_SWEEP_ARTIFACT_PATH', securityFinalSweepPath],
+  ['LOG_EXPORT_PATH', logExportPath],
+  ['METRICS_EXPORT_PATH', metricsExportPath],
+  ['PUBLIC_ERROR_EXPORT_PATH', publicErrorExportPath],
+], {
+  usageLines: [
+    'Usage:',
+    `set -a; . ${shellQuote(envFilePath)}; set +a`,
+    'npm run beta:evidence:validate -- --job security-final-sweep-staging',
+    'This handoff includes security final sweep artifact paths only. It intentionally does not export STAGING_ENVIRONMENT_ID for other staging jobs.',
+  ],
+});
+
 console.log(`SECURITY_FINAL_SWEEP_ARTIFACT_PATH=${securityFinalSweepPath}`);
 console.log(`LOG_EXPORT_PATH=${logExportPath}`);
 console.log(`METRICS_EXPORT_PATH=${metricsExportPath}`);
 console.log(`PUBLIC_ERROR_EXPORT_PATH=${publicErrorExportPath}`);
+console.log(`SECURITY_FINAL_SWEEP_ENV_PATH=${envFilePath}`);
 
 function writeExport(path, document) {
   const content = `${JSON.stringify(document, null, 2)}\n`;
@@ -209,4 +231,18 @@ function leakClassResult(leakClass, sampleCount) {
     found: false,
     sampleCount,
   };
+}
+
+function evidenceIdentity(name, fallback) {
+  const value = process.env[name]?.trim() ?? fallback;
+  if (identityEnvNames.includes(name) && isForbiddenEvidenceIdentity(value)) {
+    throw new Error(`${name} must not use local, fixture, example, mock or test identifiers`);
+  }
+
+  return value;
+}
+
+function isForbiddenEvidenceIdentity(value) {
+  const normalized = value.toLowerCase();
+  return forbiddenIdentityFragments.some((fragment) => normalized.includes(fragment));
 }

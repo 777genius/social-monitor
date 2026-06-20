@@ -12,6 +12,7 @@ const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
 const backendOpsPath = 'ops/release/backend-ops-readiness-contract.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
+const captureScriptPath = 'scripts/capture-credential-secret-runtime-flow.mjs';
 const sourceConfigProtectorPath = 'libs/monitoring/adapters/security/aes-gcm-source-binding-config-protector.ts';
 const sourceConfigProtectorSmokePath = 'scripts/check-source-config-protector-smoke.ts';
 
@@ -22,6 +23,7 @@ const releaseContract = readJson(releaseContractPath);
 const backendOps = readJson(backendOpsPath);
 const externalReadiness = readJson(externalReadinessPath);
 const baseline = readJson(baselinePath);
+const captureScriptSource = readText(captureScriptPath);
 const sourceConfigProtectorSource = readText(sourceConfigProtectorPath);
 const sourceConfigProtectorSmokeSource = readText(sourceConfigProtectorSmokePath);
 const scripts = packageJson.scripts ?? {};
@@ -190,6 +192,7 @@ if (contract.externalBetaStatus !== 'hold_until_runtime_secret_store_and_rotatio
 }
 
 validateRotationEvidence();
+validateCaptureHandoff();
 const rotationArtifactSchemas = contract.rotationArtifactSchemas ?? {};
 validateRotationArtifactSchemas(rotationArtifactSchemas);
 validateRotationArtifactPath(
@@ -824,6 +827,23 @@ function validateBaselineWiring() {
     if (!artifactPaths.has(path)) {
       violations.push(`${baselinePath}: trackedArtifacts must include ${path}`);
     }
+  }
+}
+
+function validateCaptureHandoff() {
+  for (const marker of [
+    'writeEvidenceEnvFile',
+    'CREDENTIAL_SECRET_RUNTIME_FLOW_ENV_PATH',
+    'SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH',
+    'WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH',
+    'STAGING_SECRET_STORE_ID',
+  ]) {
+    if (!captureScriptSource.includes(marker)) {
+      violations.push(`${captureScriptPath}: credential secret capture env handoff must include ${marker}`);
+    }
+  }
+  if (!captureScriptSource.includes('must not use local, fixture, example, mock or test identifiers')) {
+    violations.push(`${captureScriptPath}: credential secret capture must reject non-beta evidence identity values`);
   }
 }
 
