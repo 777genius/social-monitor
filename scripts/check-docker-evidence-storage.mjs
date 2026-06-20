@@ -7,6 +7,7 @@ const args = new Set(process.argv.slice(2));
 const reportOnly = args.has('--report-only');
 const skipPreflight = args.has('--skip-preflight');
 const dockerTimeoutMs = positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_DOCKER_TIMEOUT_MS', 5_000);
+const storageMode = process.env.DOCKER_BACKEND_EVIDENCE_STORAGE_MODE?.trim() || 'docker-volume';
 const rows = readDockerSystemDf();
 const hostFreeBytes = availableDiskBytes(process.cwd());
 const danglingVolumeCount = countDockerLines(['volume', 'ls', '--filter', 'dangling=true', '--format', '{{.Name}}']);
@@ -17,6 +18,7 @@ const preflight = skipPreflight ? { ok: true, skipped: true } : runPreflight();
 printReport({
   rows,
   hostFreeBytes,
+  storageMode,
   danglingVolumeCount,
   danglingImageCount,
   exitedContainerCount,
@@ -81,6 +83,7 @@ function printReport(report) {
   console.log([
     'Docker backend evidence storage report',
     `Host free at ${process.cwd()}: ${formatBytes(report.hostFreeBytes)}`,
+    `Docker evidence storage mode: ${report.storageMode}`,
     dockerRowLine('Images', imageRow),
     dockerRowLine('Containers', containerRow),
     dockerRowLine('Local Volumes', volumeRow),

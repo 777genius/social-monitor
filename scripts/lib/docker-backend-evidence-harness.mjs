@@ -1,8 +1,8 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { generateKeyPairSync, randomInt } from 'node:crypto';
-import { mkdtempSync, rmSync, statfsSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, statfsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 
 const DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS = 5_000;
 const DEFAULT_DOCKER_SOCKET_PING_TIMEOUT_MS = 3_000;
@@ -10,15 +10,23 @@ const DEFAULT_DOCKER_VOLUME_PROBE_TIMEOUT_MS = 20_000;
 const DEFAULT_MIN_FREE_BYTES = 8 * 1024 ** 3;
 const DEFAULT_DOCKER_VOLUME_PROBE_BYTES = 256 * 1024 ** 2;
 const DOCKER_VOLUME_PROBE_IMAGE = 'postgres:18.4-alpine';
+const DOCKER_EVIDENCE_STORAGE_MODE_ENV = 'DOCKER_BACKEND_EVIDENCE_STORAGE_MODE';
+const DOCKER_EVIDENCE_STORAGE_DOCKER_VOLUME_MODE = 'docker-volume';
+const DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE = 'host-bind';
+const DOCKER_EVIDENCE_HOST_STORAGE_DIR_ENV = 'DOCKER_BACKEND_EVIDENCE_HOST_STORAGE_DIR';
 
 export async function withDockerBackendEvidenceStack(options, callback) {
   const preflightCwd = options.preflightCwd ?? process.cwd();
-  assertDockerEvidencePrerequisites({ cwd: preflightCwd });
+  const storageMode = dockerEvidenceStorageMode();
+  assertDockerEvidencePrerequisites({ cwd: preflightCwd, storageMode });
 
   const runId = Date.now().toString(36);
   const projectName = process.env[options.projectEnvName] ?? `${options.projectPrefix}-${runId}`;
   const tempDir = mkdtempSync(join(tmpdir(), `${options.projectPrefix}-`));
   const overridePath = join(tempDir, 'compose.override.yml');
+  const hostStorageRoot = storageMode === DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE
+    ? prepareHostBindStorageRoot({ tempDir, projectName })
+    : undefined;
   const apiPort = process.env.API_PORT ?? String(randomPort());
   const postgresPort = process.env.POSTGRES_PORT ?? String(randomPort());
   const rabbitMqPort = process.env.RABBITMQ_PORT ?? String(randomPort());
@@ -49,6 +57,7 @@ export async function withDockerBackendEvidenceStack(options, callback) {
     jwksJson,
     sourceConfigEncryptionKey,
     webhookSecretEncryptionKey,
+    hostStorageRoot,
   }), 'utf8');
 
   const composeFile = ['docker-compose.yml', overridePath].join(delimiter);
@@ -73,9 +82,11 @@ export async function withDockerBackendEvidenceStack(options, callback) {
 
   try {
     docker([...composeBaseArgs, 'build'], { stdio: 'inherit' });
-    assertDockerVolumeStorageAvailable({
+    assertDockerStorageAvailable({
       cwd: preflightCwd,
       phase: 'after Docker image build',
+      storageMode,
+      hostStorageRoot,
     });
     docker([...composeBaseArgs, 'up', '--no-build', '-d'], { stdio: 'inherit' });
     const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
@@ -103,6 +114,7 @@ export async function withDockerBackendEvidenceStack(options, callback) {
       RABBITMQ_PORT: rabbitMqPort,
       RABBITMQ_MANAGEMENT_PORT: rabbitMqManagementPort,
       REDIS_PORT: redisPort,
+      DOCKER_BACKEND_EVIDENCE_STORAGE_MODE: storageMode,
     };
 
     await callback({
@@ -152,6 +164,7 @@ export function restartBackendServices(context, services = ['api', 'event-relay'
 
 export function assertDockerEvidencePrerequisites(options = {}) {
   const cwd = options.cwd ?? process.cwd();
+  const storageMode = options.storageMode ?? dockerEvidenceStorageMode();
   const dockerTimeoutMs =
     options.dockerTimeoutMs ?? positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_DOCKER_TIMEOUT_MS', DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS);
   const minFreeBytes =
@@ -200,14 +213,15 @@ export function assertDockerEvidencePrerequisites(options = {}) {
   }
 
   if (failures.length === 0) {
-    const volumeFailure = dockerVolumeStorageFailure({
+    const storageFailure = dockerStorageFailure({
       cwd,
       bytes: volumeProbeBytes,
       timeoutMs: volumeProbeTimeoutMs,
       phase: 'before Docker image build',
+      storageMode,
     });
-    if (volumeFailure !== undefined) {
-      failures.push(volumeFailure);
+    if (storageFailure !== undefined) {
+      failures.push(storageFailure);
     }
   }
 
@@ -220,7 +234,7 @@ export function assertDockerEvidencePrerequisites(options = {}) {
   }
 }
 
-function assertDockerVolumeStorageAvailable({ cwd, phase }) {
+function assertDockerStorageAvailable({ cwd, phase, storageMode, hostStorageRoot }) {
   const volumeProbeBytes = positiveIntegerEnv(
     'DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES',
     DEFAULT_DOCKER_VOLUME_PROBE_BYTES,
@@ -229,22 +243,39 @@ function assertDockerVolumeStorageAvailable({ cwd, phase }) {
     'DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_TIMEOUT_MS',
     DEFAULT_DOCKER_VOLUME_PROBE_TIMEOUT_MS,
   );
-  const volumeFailure = dockerVolumeStorageFailure({
+  const storageFailure = dockerStorageFailure({
     cwd,
     bytes: volumeProbeBytes,
     timeoutMs: volumeProbeTimeoutMs,
     phase,
+    storageMode,
+    hostStorageRoot,
   });
-  if (volumeFailure !== undefined) {
+  if (storageFailure !== undefined) {
     throw new Error([
       'Docker backend evidence storage check failed:',
-      `- ${volumeFailure}`,
-      'Free Docker Desktop storage or prune unused Docker data before capturing backend staging evidence.',
+      `- ${storageFailure}`,
+      storageMode === DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE
+        ? 'Free host disk space or choose another DOCKER_BACKEND_EVIDENCE_HOST_STORAGE_DIR before capturing backend staging evidence.'
+        : 'Free Docker Desktop storage or prune unused Docker data before capturing backend staging evidence.',
     ].join('\n'));
   }
 }
 
-function dockerVolumeStorageFailure({ cwd, bytes, timeoutMs, phase }) {
+function dockerStorageFailure({ cwd, bytes, timeoutMs, phase, storageMode, hostStorageRoot }) {
+  if (storageMode === DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE) {
+    const hostBindProbe = probeDockerHostBindPostgresInitdbWritable({
+      cwd,
+      timeoutMs,
+      hostStorageRoot,
+    });
+    if (!hostBindProbe.ok) {
+      return `Docker host-bind Postgres initdb probe failed ${phase}: ${hostBindProbe.message}`;
+    }
+
+    return undefined;
+  }
+
   const volumeProbe = probeDockerVolumeWritable({
     cwd,
     bytes,
@@ -263,6 +294,65 @@ function dockerVolumeStorageFailure({ cwd, bytes, timeoutMs, phase }) {
   }
 
   return `Docker volume write probe failed ${phase}: ${volumeProbe.message}`;
+}
+
+function probeDockerHostBindPostgresInitdbWritable({ cwd, timeoutMs, hostStorageRoot }) {
+  const probeRoot = hostStorageRoot === undefined
+    ? mkdtempSync(join(tmpdir(), 'social-monitor-backend-evidence-host-bind-preflight-'))
+    : join(hostStorageRoot, `.preflight-${process.pid}-${Date.now().toString(36)}`);
+  const postgresRoot = join(probeRoot, 'postgres');
+  const containerName = `social-monitor-backend-evidence-host-bind-preflight-${process.pid}-${Date.now().toString(36)}`;
+  const script = [
+    'set -eu',
+    'mkdir -p "$PGDATA"',
+    'chown -R postgres:postgres /var/lib/postgresql',
+    'gosu postgres initdb -D "$PGDATA" --data-checksums',
+  ].join('\n');
+
+  mkdirSync(postgresRoot, { recursive: true });
+
+  try {
+    const probe = spawnSync('docker', [
+      'run',
+      '--rm',
+      '--name',
+      containerName,
+      '-v',
+      `${postgresRoot}:/var/lib/postgresql`,
+      '--entrypoint',
+      'sh',
+      DOCKER_VOLUME_PROBE_IMAGE,
+      '-ec',
+      script,
+    ], {
+      cwd,
+      encoding: 'utf8',
+      timeout: timeoutMs,
+    });
+    if (probe.error) {
+      return {
+        ok: false,
+        message: probe.error.code === 'ETIMEDOUT'
+          ? `Postgres initdb host-bind probe did not complete within ${timeoutMs}ms`
+          : probe.error.message,
+      };
+    }
+    if (probe.status !== 0) {
+      return {
+        ok: false,
+        message: `${commandFailureMessage(probe, 'Postgres initdb host-bind probe')}. Host bind storage reported this before compose startup; free host disk space or choose another ${DOCKER_EVIDENCE_HOST_STORAGE_DIR_ENV}.`,
+      };
+    }
+
+    return { ok: true };
+  } finally {
+    spawnSync('docker', ['rm', '-f', containerName], {
+      cwd,
+      encoding: 'utf8',
+      timeout: timeoutMs,
+    });
+    rmSync(probeRoot, { recursive: true, force: true });
+  }
 }
 
 function probeDockerVolumeWritable({ cwd, bytes, timeoutMs }) {
@@ -488,6 +578,31 @@ function probeDockerApiSocket({ cwd, timeoutMs }) {
   return { ok: true };
 }
 
+function dockerEvidenceStorageMode() {
+  const raw = process.env[DOCKER_EVIDENCE_STORAGE_MODE_ENV]?.trim();
+  if (raw === undefined || raw.length === 0) {
+    return DOCKER_EVIDENCE_STORAGE_DOCKER_VOLUME_MODE;
+  }
+  if (raw === DOCKER_EVIDENCE_STORAGE_DOCKER_VOLUME_MODE || raw === DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE) {
+    return raw;
+  }
+
+  throw new Error(`${DOCKER_EVIDENCE_STORAGE_MODE_ENV} must be ${DOCKER_EVIDENCE_STORAGE_DOCKER_VOLUME_MODE} or ${DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE}`);
+}
+
+function prepareHostBindStorageRoot({ tempDir, projectName }) {
+  const baseRoot = process.env[DOCKER_EVIDENCE_HOST_STORAGE_DIR_ENV]?.trim();
+  const root = resolve(baseRoot && baseRoot.length > 0
+    ? join(baseRoot, projectName)
+    : join(tempDir, 'host-storage', projectName));
+
+  for (const service of ['postgres', 'redis', 'rabbitmq']) {
+    mkdirSync(join(root, service), { recursive: true });
+  }
+
+  return root;
+}
+
 function dockerApiSocketPath() {
   const dockerHost = process.env.DOCKER_HOST?.trim();
   if (dockerHost?.startsWith('unix://')) {
@@ -555,12 +670,37 @@ function buildComposeOverride(values) {
 
   return [
     'services:',
+    ...hostBindStorageServiceSections(values.hostStorageRoot),
     serviceEnvironment('api', commonEnvironment),
     serviceEnvironment('ingestion-worker', fastLoopEnvironment),
     serviceEnvironment('intelligence-worker', fastLoopEnvironment),
     serviceEnvironment('delivery-service', fastLoopEnvironment),
     serviceEnvironment('event-relay', fastLoopEnvironment),
     '',
+  ].join('\n');
+}
+
+function hostBindStorageServiceSections(hostStorageRoot) {
+  if (hostStorageRoot === undefined) {
+    return [];
+  }
+
+  return [
+    serviceVolumes('postgres', [[join(hostStorageRoot, 'postgres'), '/var/lib/postgresql']]),
+    serviceVolumes('redis', [[join(hostStorageRoot, 'redis'), '/data']]),
+    serviceVolumes('rabbitmq', [[join(hostStorageRoot, 'rabbitmq'), '/var/lib/rabbitmq']]),
+  ];
+}
+
+function serviceVolumes(service, entries) {
+  return [
+    `  ${service}:`,
+    '    volumes:',
+    ...entries.flatMap(([source, target]) => [
+      '      - type: bind',
+      `        source: ${JSON.stringify(source)}`,
+      `        target: ${JSON.stringify(target)}`,
+    ]),
   ].join('\n');
 }
 

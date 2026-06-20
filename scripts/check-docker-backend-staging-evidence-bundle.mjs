@@ -164,6 +164,17 @@ function validateStaticWiring() {
       violations.push(`${dockerHarnessPath}: Docker evidence volume storage preflight must include ${marker}`);
     }
   }
+  for (const marker of [
+    'DOCKER_BACKEND_EVIDENCE_STORAGE_MODE',
+    'DOCKER_BACKEND_EVIDENCE_HOST_STORAGE_DIR',
+    'host-bind',
+    'probeDockerHostBindPostgresInitdbWritable',
+    'serviceVolumes',
+  ]) {
+    if (!dockerHarnessSource.includes(marker)) {
+      violations.push(`${dockerHarnessPath}: Docker evidence host-bind storage fallback must include ${marker}`);
+    }
+  }
 }
 
 function validateCaptureOutputPathGuards() {
