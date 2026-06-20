@@ -147,6 +147,10 @@ const requiredArtifactRedactionFlags = {
   rawSourceTextIncluded: false,
   piiIncluded: false,
 };
+const requiredRealArtifactGuardFragments = [
+  'must not contain example, fixture, synthetic, mock or test markers',
+];
+const forbiddenRealArtifactMarkerPattern = /(?:^|[-_:.\s])(example|fixture|synthetic|mock|test)(?:$|[-_:.\s])/i;
 
 if (evidence.schemaVersion !== 1) {
   violations.push(`${evidencePath}: schemaVersion must be 1`);
@@ -236,6 +240,12 @@ function validateDeploySampleContentSchema(schema) {
   validateRequiredSourceExports(schema.requiredSourceExports);
   validateProvenanceRequirements(schema.provenanceRequirements);
 
+  for (const fragment of requiredRealArtifactGuardFragments) {
+    if (!Array.isArray(schema.realArtifactGuards) || !schema.realArtifactGuards.some((guard) => String(guard).includes(fragment))) {
+      violations.push(`${evidencePath}: deploySampleContentSchema.realArtifactGuards must include "${fragment}"`);
+    }
+  }
+
   for (const [field, expected] of Object.entries(requiredArtifactRedactionFlags)) {
     if (schema.requiredRedactionFlags?.[field] !== expected) {
       violations.push(`${evidencePath}: deploySampleContentSchema.requiredRedactionFlags.${field} must be ${expected}`);
@@ -310,6 +320,9 @@ function validateSecurityFinalSweepArtifact(artifact, path, options) {
   const sourceExports = validateArtifactSourceExports(artifact.sourceExports, path, options);
   validateArtifactSurfaces(artifact.surfaces, path, sourceExports);
   validateArtifactReview(artifact.review, path);
+  if (options.allowExample !== true) {
+    validateNoRealArtifactFixtureMarkers(artifact, path);
+  }
   scanForbiddenArtifactKeys(artifact, path);
   validateNoSensitiveArtifactLiterals(artifact, path);
 }
@@ -463,7 +476,11 @@ function validateSourceExportPath(sourceExport, exportLabel, expectedEnv, option
   if (sourceExport.sha256 !== digest) {
     violations.push(`${exportLabel}: sha256 must match the export file content`);
   }
-  validateNoSensitiveExportLiterals(content.toString('utf8'), exportLabel);
+  const exportContent = content.toString('utf8');
+  validateNoSensitiveExportLiterals(exportContent, exportLabel);
+  if (options.allowExample !== true) {
+    validateNoRealArtifactFixtureMarkers(parseJsonContent(exportContent) ?? exportContent, `${exportLabel}: export file`);
+  }
 }
 
 function validateNoSensitiveExportLiterals(content, exportLabel) {
@@ -675,6 +692,32 @@ function validateNoSensitiveArtifactContent(content, path) {
     }
   }
   validateNoSensitivePatterns(content, `${path}: artifact`);
+}
+
+function validateNoRealArtifactFixtureMarkers(value, label, path = []) {
+  if (typeof value === 'string') {
+    const marker = forbiddenRealArtifactMarkerPattern.exec(value);
+    if (marker !== null) {
+      const fieldPath = path.length === 0 ? '<root>' : path.join('.');
+      violations.push(`${label}: ${fieldPath} must not contain fixture marker "${marker[1]}"`);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      validateNoRealArtifactFixtureMarkers(item, label, [...path, `[${index}]`]);
+    }
+    return;
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return;
+  }
+
+  for (const [key, item] of Object.entries(value)) {
+    validateNoRealArtifactFixtureMarkers(item, label, [...path, key]);
+  }
 }
 
 function isIsoDateString(value) {

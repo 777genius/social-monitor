@@ -68,6 +68,9 @@
         "test"
       ]
     },
+    "realArtifactGuards": [
+      "real security final sweep artifact and export nested values must not contain example, fixture, synthetic, mock or test markers"
+    ],
     "requiredRedactionFlags": {
       "secretValuesIncluded": false,
       "credentialUrlsIncluded": false,

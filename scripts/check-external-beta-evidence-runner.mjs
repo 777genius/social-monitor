@@ -1878,6 +1878,13 @@ function validateRunnerNegativeSecurityFinalSweepArtifactSmokes() {
       },
     },
     {
+      label: 'security sweep nested fixture marker',
+      expectedOutput: 'must not contain fixture marker "example"',
+      mutateArtifact: (artifact) => {
+        artifact.surfaces[0].leakClassResults[0].sampleId = 'security-sweep-example-001';
+      },
+    },
+    {
       label: 'security sweep raw duplicate-key credential hidden by JSON parser',
       expectedOutput: 'sensitive literal fragment "bearer "',
       artifactContent: (artifact) => `${JSON.stringify(artifact, null, 2)}\n`.replace(
