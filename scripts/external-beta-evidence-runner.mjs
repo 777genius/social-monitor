@@ -50,6 +50,17 @@ const forbiddenArtifactValuePatterns = [
     regex: /\b(eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/g,
   },
 ];
+const forbiddenRealArtifactMarkerPattern = /(?:^|[-_:.\s])(example|fixture|synthetic|mock|test)(?:$|[-_:.\s])/i;
+const realArtifactMarkerGuardFormats = new Set([
+  'durable-runtime-selector-artifact-v1',
+  'staging-reliability-artifact-v1',
+  'source-credential-rotation-redacted-v1',
+  'webhook-secret-rotation-redacted-v1',
+  'security-final-sweep-staging-artifact-v1',
+  'source-live-provider-evidence-v1',
+  'reddit-credential-lifecycle-redacted-v1',
+  'release-deploy-smoke-artifact-v1',
+]);
 const forbiddenArtifactKeyNames = new Set([
   'authorization',
   'bearer',
@@ -1659,6 +1670,12 @@ function validateArtifactStructuredRedaction(content, jobId, label, violations) 
     violations.push(`${jobId}: ${label} must not contain fixture provenance`);
   }
 
+  if (requiresRealArtifactMarkerGuard(content)) {
+    for (const finding of fixtureMarkerFindings(content)) {
+      violations.push(`${jobId}: ${label} ${finding.path} must not contain fixture marker "${finding.marker}"`);
+    }
+  }
+
   for (const keyPath of unredactedSensitiveKeyPaths(content)) {
     violations.push(`${jobId}: ${label} must not contain unredacted sensitive key "${keyPath}"`);
   }
@@ -1689,6 +1706,37 @@ function containsFixtureProvenance(value) {
   }
 
   return Object.values(value).some((item) => containsFixtureProvenance(item));
+}
+
+function requiresRealArtifactMarkerGuard(content) {
+  if (typeof content !== 'object' || content === null) {
+    return false;
+  }
+  const format = content.artifactFormat ?? content.format;
+  return typeof format === 'string' && realArtifactMarkerGuardFormats.has(format);
+}
+
+function fixtureMarkerFindings(value, path = []) {
+  if (typeof value === 'string') {
+    const marker = forbiddenRealArtifactMarkerPattern.exec(value);
+    if (marker === null) {
+      return [];
+    }
+    return [{
+      marker: marker[1],
+      path: path.length === 0 ? '<root>' : path.join('.'),
+    }];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => fixtureMarkerFindings(item, [...path, String(index)]));
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return [];
+  }
+
+  return Object.entries(value).flatMap(([key, child]) => fixtureMarkerFindings(child, [...path, key]));
 }
 
 function unredactedSensitiveKeyPaths(value, path = []) {

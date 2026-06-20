@@ -61,6 +61,9 @@
         "test"
       ]
     },
+    "realArtifactGuards": [
+      "real source live provider artifact nested values must not contain example, fixture, synthetic, mock or test markers"
+    ],
     "redactionRequirements": {
       "secretsIncluded": false,
       "rawProviderPayloadsIncluded": false,
@@ -164,6 +167,9 @@
           "test"
         ]
       },
+      "realArtifactGuards": [
+        "real reddit credential lifecycle artifact nested values must not contain example, fixture, synthetic, mock or test markers"
+      ],
       "redactionRequirements": {
         "secretsIncluded": false,
         "rawProviderPayloadsIncluded": false,

@@ -191,6 +191,10 @@ const forbiddenEvidenceFragments = [
   'smk_',
   'whsec_',
 ];
+const requiredRealArtifactGuardFragments = [
+  'must not contain example, fixture, synthetic, mock or test markers',
+];
+const forbiddenRealArtifactMarkerPattern = /(?:^|[-_:.\s])(example|fixture|synthetic|mock|test)(?:$|[-_:.\s])/i;
 
 if (evidence.schemaVersion !== 1) {
   violations.push(`${evidencePath}: schemaVersion must be 1`);
@@ -613,6 +617,7 @@ function validatePassedArtifactContentSchema() {
 
   validateProvenanceRequirements(schema.provenanceRequirements);
   validateEnvArtifactValidation(schema.envArtifactValidation);
+  validateRealArtifactGuards(schema.realArtifactGuards, 'passedArtifactContentSchema.realArtifactGuards');
   validateRedditCredentialLifecycleSchema(schema.lifecycleArtifactSchema);
 }
 
@@ -955,6 +960,9 @@ function validateLiveProviderArtifact(artifact, options) {
 
   validateArtifactProvenance(artifact.provenance, label, options);
   validateArtifactRedaction(artifact, label);
+  if (options.allowFixture !== true) {
+    validateNoRealArtifactFixtureMarkers(artifact, label);
+  }
   validateNoSensitiveArtifactLiterals(artifact, label);
   validateProviderResults(artifact, options);
 }
@@ -1008,6 +1016,7 @@ function validateRedditCredentialLifecycleSchema(schema) {
     `${label}.provenanceRequirements`,
     redditCredentialLifecycleEvidenceKind,
   );
+  validateRealArtifactGuards(schema.realArtifactGuards, `${label}.realArtifactGuards`);
 
   const redaction = schema.redactionRequirements;
   if (!isRecord(redaction)) {
@@ -1109,6 +1118,9 @@ function validateRedditCredentialLifecycleArtifact(artifact, options) {
     realEvidenceLabel: 'reddit credential lifecycle artifacts',
   });
   validateArtifactRedaction(artifact, label);
+  if (options.allowFixture !== true) {
+    validateNoRealArtifactFixtureMarkers(artifact, label);
+  }
   validateNoSensitiveArtifactLiterals(artifact, label);
   validateRedditCredentialLifecycleOperations(artifact.lifecycleOperations, label);
 }
@@ -1175,6 +1187,40 @@ function validateNoSensitiveArtifactContent(content, label) {
     if (serialized.includes(fragment)) {
       violations.push(`${label}: artifact must not contain sensitive literal fragment "${fragment}"`);
     }
+  }
+}
+
+function validateRealArtifactGuards(guards, label) {
+  for (const fragment of requiredRealArtifactGuardFragments) {
+    if (!Array.isArray(guards) || !guards.some((guard) => String(guard).includes(fragment))) {
+      violations.push(`${evidencePath}: ${label} must include "${fragment}"`);
+    }
+  }
+}
+
+function validateNoRealArtifactFixtureMarkers(value, label, path = []) {
+  if (typeof value === 'string') {
+    const marker = forbiddenRealArtifactMarkerPattern.exec(value);
+    if (marker !== null) {
+      const fieldPath = path.length === 0 ? '<root>' : path.join('.');
+      violations.push(`${label}: ${fieldPath} must not contain fixture marker "${marker[1]}"`);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      validateNoRealArtifactFixtureMarkers(item, label, [...path, `[${index}]`]);
+    }
+    return;
+  }
+
+  if (!isRecord(value)) {
+    return;
+  }
+
+  for (const [key, item] of Object.entries(value)) {
+    validateNoRealArtifactFixtureMarkers(item, label, [...path, key]);
   }
 }
 

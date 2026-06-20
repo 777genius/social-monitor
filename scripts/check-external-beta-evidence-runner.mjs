@@ -700,6 +700,10 @@ function validateRunnerImplementation() {
     'not-redacted',
     'unredacted',
     'parseJsonEvidenceContent',
+    'realArtifactMarkerGuardFormats',
+    'requiresRealArtifactMarkerGuard',
+    'fixtureMarkerFindings',
+    'fixture marker',
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);
@@ -835,6 +839,15 @@ function validateRunnerNegativeSmokes() {
           commitSha: '0'.repeat(40),
         },
       }),
+    },
+    {
+      label: 'nested fixture marker',
+      expectedOutput: 'must not contain fixture marker "example"',
+      artifact: (base) => {
+        const artifact = JSON.parse(JSON.stringify(base));
+        artifact.providerResults[0].signalResults[0].evidence.sampleId = 'live-open-example-001';
+        return artifact;
+      },
     },
     {
       label: 'world-readable evidence artifact',
@@ -2155,6 +2168,20 @@ function validateRunnerNegativeRedditArtifactSmokes() {
       expectedOutput: 'commitSha must match BACKEND_GIT_COMMIT_SHA',
       mutateLive: (artifact) => {
         artifact.commitSha = '0'.repeat(40);
+      },
+    },
+    {
+      label: 'reddit live nested fixture marker',
+      expectedOutput: 'must not contain fixture marker "example"',
+      mutateLive: (artifact) => {
+        artifact.providerResults[0].signalResults[0].evidence.sampleId = 'reddit-live-example-001';
+      },
+    },
+    {
+      label: 'reddit lifecycle nested fixture marker',
+      expectedOutput: 'must not contain fixture marker "example"',
+      mutateLifecycle: (artifact) => {
+        artifact.lifecycleOperations[0].evidence.sampleId = 'reddit-lifecycle-example-001';
       },
     },
   ];
