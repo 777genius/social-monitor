@@ -17,6 +17,7 @@ const baselinePath = 'ops/release/release-baseline-contract.json';
 const liveOpenScriptPath = 'scripts/check-live-open-connectors.ts';
 const liveOpenCaptureScriptPath = 'scripts/capture-live-open-connectors.mjs';
 const redditLiveScriptPath = 'scripts/check-live-reddit-oauth.ts';
+const redditLiveCaptureScriptPath = 'scripts/capture-live-reddit-oauth.mjs';
 
 const evidence = readJson(evidencePath);
 const sourceCertification = readJson(sourceCertificationPath);
@@ -289,6 +290,7 @@ function validateLiveSmokeScripts() {
   const liveOpenScript = readFileSync(liveOpenScriptPath, 'utf8');
   const liveOpenCaptureScript = readFileSync(liveOpenCaptureScriptPath, 'utf8');
   const redditLiveScript = readFileSync(redditLiveScriptPath, 'utf8');
+  const redditLiveCaptureScript = readFileSync(redditLiveCaptureScriptPath, 'utf8');
 
   requireScriptSignals(liveOpenScriptPath, liveOpenScript, [
     ...requiredProviderSignals.get('hacker-news'),
@@ -316,6 +318,20 @@ function validateLiveSmokeScripts() {
   }
   if (!redditLiveScript.includes('REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH')) {
     violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must require credential lifecycle evidence`);
+  }
+  if (!redditLiveCaptureScript.includes('REDDIT_LIVE_EVIDENCE_ENV_PATH')) {
+    violations.push(`${redditLiveCaptureScriptPath}: live Reddit OAuth capture must write an evidence env handoff`);
+  }
+  for (const marker of ['writeEvidenceEnvFile', 'REDDIT_LIVE_EVIDENCE_PATH', 'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH', 'SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'SOURCE_LIVE_OPERATOR']) {
+    if (!redditLiveCaptureScript.includes(marker)) {
+      violations.push(`${redditLiveCaptureScriptPath}: live Reddit OAuth env handoff must include ${marker}`);
+    }
+  }
+  if (!redditLiveCaptureScript.includes('intentionally does not export secret values')) {
+    violations.push(`${redditLiveCaptureScriptPath}: live Reddit OAuth env handoff must document that OAuth credentials stay out of the handoff`);
+  }
+  if (!redditLiveCaptureScript.includes('must not use local, fixture, example, mock or test identifiers')) {
+    violations.push(`${redditLiveCaptureScriptPath}: live Reddit OAuth capture must reject non-beta evidence identity values`);
   }
   if (!redditLiveScript.includes('fail_closed_without_reddit_access_token')) {
     violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must fail closed when REDDIT_ACCESS_TOKEN is missing`);

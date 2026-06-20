@@ -1,8 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { existsSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { URLSearchParams } from 'node:url';
+
+import { shellQuote, validateEvidenceEnvFilePath, writeEvidenceEnvFile } from './lib/evidence-env-file.mjs';
 
 const artifactDir =
   process.env.SOURCE_LIVE_EVIDENCE_ARTIFACT_DIR ??
@@ -10,12 +12,18 @@ const artifactDir =
   '/tmp/social-monitor-evidence';
 const liveEvidencePath =
   process.env.REDDIT_LIVE_EVIDENCE_PATH ??
-  join(artifactDir, 'live-reddit-oauth.json');
+  join(resolve(artifactDir), 'live-reddit-oauth.json');
 const lifecycleEvidencePath =
   process.env.REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH ??
-  join(artifactDir, 'reddit-credential-lifecycle.json');
+  join(resolve(artifactDir), 'reddit-credential-lifecycle.json');
+const envFilePath =
+  process.env.REDDIT_LIVE_EVIDENCE_ENV_PATH ??
+  join(resolve(artifactDir), 'live-reddit-oauth.env');
+const identityEnvNames = ['SOURCE_LIVE_ENVIRONMENT_ID', 'SOURCE_LIVE_OPERATOR'];
+const forbiddenIdentityFragments = ['local', 'fixture', 'example', 'mock', 'test'];
 
 async function main() {
+  const envFileTarget = validateEvidenceEnvFilePath(envFilePath);
   const accessToken = await resolveRedditAccessToken();
   const env = {
     ...process.env,
@@ -57,8 +65,24 @@ async function main() {
     stdio: 'inherit',
   });
 
+  writeEvidenceEnvFile(envFileTarget, [
+    ['REDDIT_LIVE_EVIDENCE_PATH', liveEvidencePath],
+    ['REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH', lifecycleEvidencePath],
+    ['SOURCE_LIVE_ENVIRONMENT_ID', env.SOURCE_LIVE_ENVIRONMENT_ID],
+    ['BACKEND_IMAGE_DIGEST', env.BACKEND_IMAGE_DIGEST],
+    ['SOURCE_LIVE_OPERATOR', env.SOURCE_LIVE_OPERATOR],
+  ], {
+    usageLines: [
+      'Usage:',
+      `set -a; . ${shellQuote(envFileTarget)}; set +a`,
+      'Keep REDDIT_ACCESS_TOKEN or Reddit refresh-token credentials in the operator shell; this handoff intentionally does not export secret values.',
+      'npm run beta:evidence:validate -- --jobs live-reddit-oauth',
+    ],
+  });
+
   console.log(`REDDIT_LIVE_EVIDENCE_PATH=${liveEvidencePath}`);
   console.log(`REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH=${lifecycleEvidencePath}`);
+  console.log(`REDDIT_LIVE_EVIDENCE_ENV_PATH=${envFileTarget}`);
 }
 
 async function resolveRedditAccessToken() {
@@ -110,6 +134,9 @@ function requiredEnv(name) {
   if (value === undefined) {
     throw new Error(`${name} is required to capture live Reddit OAuth evidence`);
   }
+  if (identityEnvNames.includes(name) && isForbiddenEvidenceIdentity(value)) {
+    throw new Error(`${name} must not use local, fixture, example, mock or test identifiers`);
+  }
 
   return value;
 }
@@ -139,6 +166,11 @@ function positiveIntegerEnv(name, fallback) {
   }
 
   return value;
+}
+
+function isForbiddenEvidenceIdentity(value) {
+  const normalized = value.toLowerCase();
+  return forbiddenIdentityFragments.some((fragment) => normalized.includes(fragment));
 }
 
 void main().catch((error) => {
