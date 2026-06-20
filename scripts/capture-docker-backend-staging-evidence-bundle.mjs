@@ -30,6 +30,18 @@ const sourceCredentialRotationPath =
 const webhookSecretRotationPath =
   process.env.WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH ??
   join(artifactDir, 'webhook-secret-rotation.json');
+const securityFinalSweepPath =
+  process.env.SECURITY_FINAL_SWEEP_ARTIFACT_PATH ??
+  join(artifactDir, 'security-final-sweep.json');
+const logExportPath =
+  process.env.LOG_EXPORT_PATH ??
+  join(artifactDir, 'security-logs-export.json');
+const metricsExportPath =
+  process.env.METRICS_EXPORT_PATH ??
+  join(artifactDir, 'security-metrics-export.json');
+const publicErrorExportPath =
+  process.env.PUBLIC_ERROR_EXPORT_PATH ??
+  join(artifactDir, 'security-public-errors-export.json');
 const bundlePath =
   process.env.BACKEND_STAGING_EVIDENCE_BUNDLE_PATH ??
   join(artifactDir, 'backend-staging-evidence-bundle.json');
@@ -50,11 +62,16 @@ await withDockerBackendEvidenceStack({
     RABBITMQ_STAGING_DRILL_ARTIFACT_PATH: rabbitmqPath,
     SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: sourceCredentialRotationPath,
     WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: webhookSecretRotationPath,
+    SECURITY_FINAL_SWEEP_ARTIFACT_PATH: securityFinalSweepPath,
+    LOG_EXPORT_PATH: logExportPath,
+    METRICS_EXPORT_PATH: metricsExportPath,
+    PUBLIC_ERROR_EXPORT_PATH: publicErrorExportPath,
     STAGING_SECRET_STORE_ID: process.env.STAGING_SECRET_STORE_ID ?? `${context.environmentId}-secret-store`,
     STAGING_RELIABILITY_ARTIFACT_DIR: artifactDir,
   };
 
   runNpmScript('capture:credential-secret-runtime-flow', env);
+  runNpmScript('capture:security-final-sweep', env);
   runNodeScript('scripts/capture-docker-durable-runtime-proof.mjs', env);
   runNodeScript('scripts/capture-docker-staging-reliability-evidence.mjs', env);
 
@@ -74,6 +91,7 @@ await withDockerBackendEvidenceStack({
       durableBackendPath,
       sourceCredentialRotationPath,
       webhookSecretRotationPath,
+      securityFinalSweepPath,
     },
   });
 
@@ -83,6 +101,10 @@ await withDockerBackendEvidenceStack({
   console.log(`DURABLE_BACKEND_E2E_ARTIFACT_PATH=${durableBackendPath}`);
   console.log(`SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH=${sourceCredentialRotationPath}`);
   console.log(`WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH=${webhookSecretRotationPath}`);
+  console.log(`SECURITY_FINAL_SWEEP_ARTIFACT_PATH=${securityFinalSweepPath}`);
+  console.log(`LOG_EXPORT_PATH=${logExportPath}`);
+  console.log(`METRICS_EXPORT_PATH=${metricsExportPath}`);
+  console.log(`PUBLIC_ERROR_EXPORT_PATH=${publicErrorExportPath}`);
   console.log(`BACKEND_STAGING_EVIDENCE_BUNDLE_PATH=${bundlePath}`);
 });
 
@@ -94,6 +116,7 @@ function writeBundleSummary({ bundlePath, context, artifactPaths }) {
     artifactSummary('durable-backend-e2e-output', artifactPaths.durableBackendPath),
     artifactSummary('source-credential-rotation', artifactPaths.sourceCredentialRotationPath),
     artifactSummary('webhook-secret-rotation', artifactPaths.webhookSecretRotationPath),
+    artifactSummary('security-final-sweep', artifactPaths.securityFinalSweepPath),
   ];
   const bundle = {
     schemaVersion: 1,
@@ -127,6 +150,8 @@ function artifactSummary(artifactId, path) {
   const artifact = JSON.parse(readFileSync(path, 'utf8'));
   const signalResults = Array.isArray(artifact.signalResults) ? artifact.signalResults : [];
   const operations = Array.isArray(artifact.operations) ? artifact.operations : [];
+  const surfaces = Array.isArray(artifact.surfaces) ? artifact.surfaces : [];
+  const sourceExports = Array.isArray(artifact.sourceExports) ? artifact.sourceExports : [];
 
   return {
     artifactId,
@@ -136,5 +161,8 @@ function artifactSummary(artifactId, path) {
     signalCount: signalResults.length,
     operationIds: operations.map((operation) => operation.operationId).filter((operationId) => typeof operationId === 'string'),
     operationCount: operations.length,
+    surfaceIds: surfaces.map((surface) => surface.surfaceId).filter((surfaceId) => typeof surfaceId === 'string'),
+    surfaceCount: surfaces.length,
+    sourceExportCount: sourceExports.length,
   };
 }
