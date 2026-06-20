@@ -41,6 +41,7 @@
     "check:drills": "node scripts/check-drills.mjs",
     "check:durable-runtime-proof": "node scripts/check-durable-runtime-proof.mjs",
     "capture:docker-durable-runtime-proof": "node scripts/capture-docker-durable-runtime-proof.mjs",
+    "capture:docker-staging-reliability-evidence": "node scripts/capture-docker-staging-reliability-evidence.mjs",
     "check:events": "node scripts/check-event-contracts.mjs",
     "check:external-beta-readiness": "node scripts/check-external-beta-readiness.mjs",
     "check:external-beta-evidence-runner": "node scripts/check-external-beta-evidence-runner.mjs",
