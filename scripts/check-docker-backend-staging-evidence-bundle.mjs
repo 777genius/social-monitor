@@ -42,6 +42,7 @@ const expectedArtifactIds = new Map([
 const requiredEnvKeys = [
   'API_BASE_URL',
   'BACKEND_IMAGE_DIGEST',
+  'BACKEND_GIT_COMMIT_SHA',
   'DATABASE_URL',
   'RABBITMQ_URL',
   'RABBITMQ_MANAGEMENT_URL',
@@ -244,13 +245,18 @@ function validateBundleDocument(bundle, path, options) {
   if (bundle.frontendPolicy !== 'deferred_contract_only') {
     violations.push(`${label}: frontendPolicy must keep frontend deferred`);
   }
-  for (const field of ['environmentId', 'imageDigest', 'apiBaseUrl', 'operator', 'generatedAt']) {
+  for (const field of ['environmentId', 'imageDigest', 'commitSha', 'apiBaseUrl', 'operator', 'generatedAt']) {
     if (!nonEmptyString(bundle[field])) {
       violations.push(`${label}: ${field} must be a non-empty string`);
     }
   }
   if (!String(bundle.imageDigest ?? '').startsWith('sha256:')) {
     violations.push(`${label}: imageDigest must be an immutable sha256 image reference`);
+  }
+  if (!/^[0-9a-f]{40}$/.test(String(bundle.commitSha ?? ''))) {
+    violations.push(`${label}: commitSha must be a full 40 character git sha`);
+  } else if (options.realMode === true && bundle.commitSha !== currentGitCommitSha()) {
+    violations.push(`${label}: commitSha must match current git HEAD`);
   }
   validateTimestamp(bundle.generatedAt, `${label}: generatedAt`);
   validateProvenance(bundle.provenance, label);
@@ -463,6 +469,7 @@ function buildSyntheticBundle(tempDirectory) {
     frontendPolicy: 'deferred_contract_only',
     environmentId: 'docker-self-test',
     imageDigest: `sha256:${'1'.repeat(64)}`,
+    commitSha: '1'.repeat(40),
     apiBaseUrl: 'http://127.0.0.1:3100',
     operator: 'backend-ops-self-test',
     envFilePath,
@@ -618,6 +625,7 @@ function syntheticEnvValue(envKey, bundlePath, envFilePath, artifactPaths) {
   const values = {
     API_BASE_URL: 'http://127.0.0.1:3100',
     BACKEND_IMAGE_DIGEST: `sha256:${'1'.repeat(64)}`,
+    BACKEND_GIT_COMMIT_SHA: '1'.repeat(40),
     DATABASE_URL: 'postgresql://user:password@127.0.0.1:5432/social_monitor',
     RABBITMQ_URL: 'amqp://user:password@127.0.0.1:5672',
     RABBITMQ_MANAGEMENT_URL: 'http://127.0.0.1:15672',
@@ -667,6 +675,10 @@ function validateArtifactPath(path, label, options) {
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function currentGitCommitSha() {
+  return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 }
 
 function fileExists(path) {

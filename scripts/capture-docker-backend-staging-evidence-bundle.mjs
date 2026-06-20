@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { chmodSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
@@ -99,6 +100,7 @@ const bundleTarget = validateEvidenceJsonFilePath(
   'BACKEND_STAGING_EVIDENCE_BUNDLE_PATH',
 );
 const envFileTarget = validateEvidenceEnvFilePath(envFilePath);
+const commitSha = readGitCommitSha();
 
 await withDockerBackendEvidenceStack({
   projectEnvName: 'BACKEND_STAGING_EVIDENCE_COMPOSE_PROJECT',
@@ -139,6 +141,7 @@ await withDockerBackendEvidenceStack({
     bundlePath: bundleTarget,
     envFilePath: envFileTarget,
     context,
+    commitSha,
     artifactPaths: {
       durableRuntimePath: durableRuntimeTarget,
       rabbitmqPath: rabbitmqTarget,
@@ -153,6 +156,7 @@ await withDockerBackendEvidenceStack({
   writeBundleEnvFile({
     envFilePath: envFileTarget,
     env,
+    commitSha,
     artifactPaths: {
       durableRuntimePath: durableRuntimeTarget,
       rabbitmqPath: rabbitmqTarget,
@@ -185,7 +189,7 @@ await withDockerBackendEvidenceStack({
   console.log(`BACKEND_STAGING_EVIDENCE_ENV_PATH=${envFileTarget}`);
 });
 
-function writeBundleSummary({ bundlePath, envFilePath, context, artifactPaths }) {
+function writeBundleSummary({ bundlePath, envFilePath, context, commitSha, artifactPaths }) {
   const artifacts = [
     artifactSummary('durable-runtime-selector', artifactPaths.durableRuntimePath),
     artifactSummary('rabbitmq-staging-drill-output', artifactPaths.rabbitmqPath),
@@ -203,6 +207,7 @@ function writeBundleSummary({ bundlePath, envFilePath, context, artifactPaths })
     frontendPolicy: 'deferred_contract_only',
     environmentId: context.environmentId,
     imageDigest: context.imageDigest,
+    commitSha,
     apiBaseUrl: context.apiBaseUrl,
     operator: context.operator,
     envFilePath,
@@ -227,10 +232,11 @@ function writeBundleSummary({ bundlePath, envFilePath, context, artifactPaths })
   chmodSync(bundlePath, 0o600);
 }
 
-function writeBundleEnvFile({ envFilePath, env, artifactPaths }) {
+function writeBundleEnvFile({ envFilePath, env, commitSha, artifactPaths }) {
   writeEvidenceEnvFile(envFilePath, [
     ['API_BASE_URL', env.API_BASE_URL],
     ['BACKEND_IMAGE_DIGEST', env.BACKEND_IMAGE_DIGEST],
+    ['BACKEND_GIT_COMMIT_SHA', commitSha],
     ['DATABASE_URL', env.DATABASE_URL],
     ['RABBITMQ_URL', env.RABBITMQ_URL],
     ['RABBITMQ_MANAGEMENT_URL', env.RABBITMQ_MANAGEMENT_URL],
@@ -259,6 +265,14 @@ function writeBundleEnvFile({ envFilePath, env, artifactPaths }) {
       'Do not use this local Docker env as full external beta validate input: local http, Postgres and RabbitMQ URLs must stay rejected by production evidence preflight.',
     ],
   });
+}
+
+function readGitCommitSha() {
+  const value = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  if (!/^[0-9a-f]{40}$/.test(value)) {
+    throw new Error('git HEAD must resolve to a full commit SHA before capturing Docker backend evidence');
+  }
+  return value;
 }
 
 function artifactSummary(artifactId, path) {
