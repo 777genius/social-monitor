@@ -31,6 +31,7 @@ import { ListTopicsUseCase } from '@social-monitor/monitoring/features/list-topi
 import { TopicController } from '@social-monitor/monitoring/interfaces/rest/topic.controller';
 import request from 'supertest';
 
+import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { createApiGatewayE2eApp } from './support/api-gateway-e2e-app';
 
 const issuer = 'https://auth.example.test';
@@ -148,6 +149,73 @@ describe('Production auth boundary matrix (e2e)', () => {
       await harness.app.close();
     }
   });
+
+  it('authorizes webhook endpoint management with JWT durable membership in beta without workspace role headers', async () => {
+    const harness = await createWebhookHarness({
+      runtimeProfile: 'beta',
+      membership: {
+        tenantId: tenant,
+        workspaceId: workspace,
+        userId: userId('webhook-admin-user'),
+        roles: ['admin'],
+        source: 'durable',
+      },
+    });
+    const token = tokenFor({
+      subject: 'webhook-admin-user',
+      roles: ['admin'],
+    });
+
+    try {
+      const created = await request(harness.app.getHttpServer())
+        .post('/delivery/webhook-endpoints')
+        .set(jwtHeaders(token))
+        .send({
+          url: 'https://example.com/webhooks/beta-jwt',
+          eventTypes: ['digest.ready.v1'],
+        })
+        .expect(201);
+
+      expect(created.body).toMatchObject({
+        endpoint: {
+          tenantId: tenant,
+          workspaceId: workspace,
+          status: 'enabled',
+        },
+        signingSecret: expect.stringMatching(/^whsec_/),
+      });
+      expect(harness.membershipVerifier.verify).toHaveBeenCalledWith({
+        tenantId: tenant,
+        workspaceId: workspace,
+        userId: 'webhook-admin-user',
+        tokenRoles: ['admin'],
+      });
+
+      const audit = await request(harness.app.getHttpServer())
+        .get('/usage/audit-events')
+        .query({
+          actorType: 'user',
+          actorId: 'webhook-admin-user',
+          action: 'webhook_endpoint.created',
+          limit: 10,
+        })
+        .set(jwtHeaders(token))
+        .expect(200);
+
+      expect(audit.body.auditEvents).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          actorType: 'user',
+          actorId: 'webhook-admin-user',
+          action: 'webhook_endpoint.created',
+          outcome: 'succeeded',
+          resourceType: 'webhook_endpoint',
+          resourceId: created.body.endpoint.id,
+        }),
+      ]));
+    } finally {
+      await harness.app.close();
+    }
+  });
 });
 
 const createHarness = async (params: {
@@ -253,6 +321,46 @@ const createHarness = async (params: {
     app,
     createTopic,
     listTopics,
+    membershipVerifier,
+  };
+};
+
+const createWebhookHarness = async (params: {
+  readonly runtimeProfile: 'beta' | 'deterministic-test';
+  readonly membership: UserWorkspaceMembership | null;
+}): Promise<{
+  readonly app: INestApplication;
+  readonly membershipVerifier: { readonly verify: jest.Mock };
+}> => {
+  const membershipVerifier = {
+    verify: jest.fn().mockResolvedValue(params.membership),
+  };
+
+  const moduleBuilder = Test.createTestingModule({
+    imports: [AppModule],
+  })
+    .overrideProvider(USER_ACCESS_TOKEN_VERIFIER)
+    .useValue(new JwksUserAccessTokenVerifier({
+      issuer,
+      audience,
+      jwks,
+    }, new SystemClock()))
+    .overrideProvider(USER_WORKSPACE_MEMBERSHIP_VERIFIER)
+    .useValue(membershipVerifier)
+    .overrideProvider(WORKSPACE_ROLE_HEADER_ENV)
+    .useValue({
+      NODE_ENV: 'test',
+      SOCIAL_MONITOR_RUNTIME_PROFILE: params.runtimeProfile,
+      TRUSTED_WORKSPACE_ROLE_HEADER: 'enabled',
+    });
+
+  const moduleRef = await moduleBuilder.compile();
+
+  const app = createApiGatewayE2eApp(moduleRef);
+  await app.init();
+
+  return {
+    app,
     membershipVerifier,
   };
 };

@@ -711,18 +711,19 @@
         "operationId": "WebhookEndpointsController_list",
         "parameters": [
           {
+            "description": "Optional Bearer API key. Requires read:webhook_endpoints. If supplied, x-workspace-role is not required.",
             "in": "header",
             "name": "authorization",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
           },
           {
-            "description": "Comma-separated workspace roles. Webhook endpoint reads allow owner, admin, member or viewer.",
+            "description": "Comma-separated workspace roles. Webhook endpoint reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -758,18 +759,19 @@
         "operationId": "WebhookEndpointsController_create",
         "parameters": [
           {
+            "description": "Optional Bearer API key. Requires write:webhook_endpoints. If supplied, x-workspace-role is not required.",
             "in": "header",
             "name": "authorization",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
           },
           {
-            "description": "Comma-separated workspace roles. Webhook endpoint creation requires owner or admin.",
+            "description": "Comma-separated workspace roles. Webhook endpoint creation requires owner or admin. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -825,18 +827,19 @@
             }
           },
           {
+            "description": "Optional Bearer API key. Requires write:webhook_endpoints. If supplied, x-workspace-role is not required.",
             "in": "header",
             "name": "authorization",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
           },
           {
-            "description": "Comma-separated workspace roles. Webhook endpoint disable requires owner or admin.",
+            "description": "Comma-separated workspace roles. Webhook endpoint disable requires owner or admin. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -880,18 +883,19 @@
             }
           },
           {
+            "description": "Optional Bearer API key. Requires read:webhook_endpoints. If supplied, x-workspace-role is not required.",
             "in": "header",
             "name": "authorization",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
           },
           {
-            "description": "Comma-separated workspace roles. Webhook endpoint reads allow owner, admin, member or viewer.",
+            "description": "Comma-separated workspace roles. Webhook endpoint reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
             "in": "header",
             "name": "x-workspace-role",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }

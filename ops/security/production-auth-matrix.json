@@ -110,6 +110,7 @@
         "test/e2e/delivery-read-tenant-scope.e2e-spec.ts",
         "test/e2e/digest-schedules.management.e2e-spec.ts",
         "test/e2e/notification-preferences.rest.e2e-spec.ts",
+        "test/e2e/production-auth-boundary-matrix.e2e-spec.ts",
         "test/e2e/realtime-events.list.e2e-spec.ts",
         "test/e2e/webhook-endpoints.authorization.e2e-spec.ts",
         "test/e2e/webhook-endpoints.api-key-scope.e2e-spec.ts"

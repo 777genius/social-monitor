@@ -377,12 +377,13 @@ export const mobileApiOperations = [
     "pathParameters": [],
     "queryParameters": [],
     "requiredHeaders": [
-      "authorization",
       "x-tenant-id",
-      "x-workspace-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
       "x-workspace-role"
     ],
-    "optionalHeaders": [],
     "requiresTenantWorkspace": true,
     "supportsBearerApiKey": true,
     "usesDevOnlyWorkspaceRoleHeader": true,
@@ -402,12 +403,13 @@ export const mobileApiOperations = [
     "pathParameters": [],
     "queryParameters": [],
     "requiredHeaders": [
-      "authorization",
       "x-tenant-id",
-      "x-workspace-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
       "x-workspace-role"
     ],
-    "optionalHeaders": [],
     "requiresTenantWorkspace": true,
     "supportsBearerApiKey": true,
     "usesDevOnlyWorkspaceRoleHeader": true,
@@ -429,12 +431,13 @@ export const mobileApiOperations = [
     ],
     "queryParameters": [],
     "requiredHeaders": [
-      "authorization",
       "x-tenant-id",
-      "x-workspace-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
       "x-workspace-role"
     ],
-    "optionalHeaders": [],
     "requiresTenantWorkspace": true,
     "supportsBearerApiKey": true,
     "usesDevOnlyWorkspaceRoleHeader": true,
@@ -456,12 +459,13 @@ export const mobileApiOperations = [
     ],
     "queryParameters": [],
     "requiredHeaders": [
-      "authorization",
       "x-tenant-id",
-      "x-workspace-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
       "x-workspace-role"
     ],
-    "optionalHeaders": [],
     "requiresTenantWorkspace": true,
     "supportsBearerApiKey": true,
     "usesDevOnlyWorkspaceRoleHeader": true,

@@ -3,7 +3,9 @@ import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   ApiKeyRequestAuthorizer,
   type BearerRequestAuthorization,
+  hasBearerAuthorizationHeader,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
+import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
@@ -27,6 +29,10 @@ import {
   type ListWebhookEndpointsResponseDto,
 } from './webhook-endpoints.dto';
 
+type WebhookEndpointRequestAuthorization =
+  | BearerRequestAuthorization
+  | { readonly actorType: 'system'; readonly actorId: 'delivery.webhook-endpoints' };
+
 @ApiTags('webhook-endpoints')
 @Controller('delivery/webhook-endpoints')
 export class WebhookEndpointsController {
@@ -46,12 +52,10 @@ export class WebhookEndpointsController {
   @ApiOperation({ summary: 'Create an outbound webhook endpoint and return its signing secret once.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Webhook endpoint creation requires owner or admin.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:webhook_endpoints',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Webhook endpoint creation requires owner or admin.',
   })
-  @ApiHeader({ name: 'authorization', required: true })
   async create(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -63,8 +67,8 @@ export class WebhookEndpointsController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
-    this.authorizeWorkspaceRole({
+    const authorization = await this.authorizeWebhookEndpointManagement({
+      authorizationHeader,
       tenant,
       workspace,
       workspaceRoleHeader,
@@ -103,12 +107,10 @@ export class WebhookEndpointsController {
   @ApiOperation({ summary: 'List outbound webhook endpoints without exposing signing secrets.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Webhook endpoint reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:webhook_endpoints',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Webhook endpoint reads allow owner, admin, member or viewer.',
   })
-  @ApiHeader({ name: 'authorization', required: true })
   async list(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -121,8 +123,8 @@ export class WebhookEndpointsController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = await this.authorizeWebhookEndpointRead(authorizationHeader, tenant, workspace);
-    this.authorizeWorkspaceRole({
+    const authorization = await this.authorizeWebhookEndpointRead({
+      authorizationHeader,
       tenant,
       workspace,
       workspaceRoleHeader,
@@ -162,12 +164,10 @@ export class WebhookEndpointsController {
   @ApiOperation({ summary: 'Get an outbound webhook endpoint without exposing its signing secret.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Webhook endpoint reads allow owner, admin, member or viewer.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:webhook_endpoints',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Webhook endpoint reads allow owner, admin, member or viewer.',
   })
-  @ApiHeader({ name: 'authorization', required: true })
   async get(
     @Param('webhookEndpointId') webhookEndpointId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -179,8 +179,8 @@ export class WebhookEndpointsController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = await this.authorizeWebhookEndpointRead(authorizationHeader, tenant, workspace);
-    this.authorizeWorkspaceRole({
+    const authorization = await this.authorizeWebhookEndpointRead({
+      authorizationHeader,
       tenant,
       workspace,
       workspaceRoleHeader,
@@ -216,12 +216,10 @@ export class WebhookEndpointsController {
   @ApiOperation({ summary: 'Disable an outbound webhook endpoint without deleting audit history or secrets.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiHeader({
-    name: 'x-workspace-role',
-    required: true,
-    description: 'Comma-separated workspace roles. Webhook endpoint disable requires owner or admin.',
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:webhook_endpoints',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Webhook endpoint disable requires owner or admin.',
   })
-  @ApiHeader({ name: 'authorization', required: true })
   async disable(
     @Param('webhookEndpointId') webhookEndpointId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -233,8 +231,8 @@ export class WebhookEndpointsController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    const authorization = await this.authorizeWebhookEndpointManagement(authorizationHeader, tenant, workspace);
-    this.authorizeWorkspaceRole({
+    const authorization = await this.authorizeWebhookEndpointManagement({
+      authorizationHeader,
       tenant,
       workspace,
       workspaceRoleHeader,
@@ -266,31 +264,37 @@ export class WebhookEndpointsController {
     return result.value;
   }
 
-  private async authorizeWebhookEndpointRead(
-    authorizationHeader: string | undefined,
-    tenant: TenantId,
-    workspace: WorkspaceId,
-  ): Promise<BearerRequestAuthorization> {
+  private async authorizeWebhookEndpointRead(params: {
+    readonly authorizationHeader: string | undefined;
+    readonly tenant: TenantId;
+    readonly workspace: WorkspaceId;
+    readonly workspaceRoleHeader: string | undefined;
+    readonly action: 'webhook_endpoints.read';
+  }): Promise<WebhookEndpointRequestAuthorization> {
     return this.authorizeWebhookEndpointApiKey({
-      authorizationHeader,
-      tenant,
-      workspace,
+      authorizationHeader: params.authorizationHeader,
+      tenant: params.tenant,
+      workspace: params.workspace,
+      workspaceRoleHeader: params.workspaceRoleHeader,
       requiredScope: 'read:webhook_endpoints',
-      operation: 'webhook_endpoints.read',
+      action: params.action,
     });
   }
 
-  private async authorizeWebhookEndpointManagement(
-    authorizationHeader: string | undefined,
-    tenant: TenantId,
-    workspace: WorkspaceId,
-  ): Promise<BearerRequestAuthorization> {
+  private async authorizeWebhookEndpointManagement(params: {
+    readonly authorizationHeader: string | undefined;
+    readonly tenant: TenantId;
+    readonly workspace: WorkspaceId;
+    readonly workspaceRoleHeader: string | undefined;
+    readonly action: 'webhook_endpoints.create' | 'webhook_endpoints.disable';
+  }): Promise<WebhookEndpointRequestAuthorization> {
     return this.authorizeWebhookEndpointApiKey({
-      authorizationHeader,
-      tenant,
-      workspace,
+      authorizationHeader: params.authorizationHeader,
+      tenant: params.tenant,
+      workspace: params.workspace,
+      workspaceRoleHeader: params.workspaceRoleHeader,
       requiredScope: 'write:webhook_endpoints',
-      operation: 'webhook_endpoints.manage',
+      action: params.action,
     });
   }
 
@@ -298,16 +302,31 @@ export class WebhookEndpointsController {
     readonly authorizationHeader: string | undefined;
     readonly tenant: TenantId;
     readonly workspace: WorkspaceId;
+    readonly workspaceRoleHeader: string | undefined;
     readonly requiredScope: 'read:webhook_endpoints' | 'write:webhook_endpoints';
-    readonly operation: 'webhook_endpoints.read' | 'webhook_endpoints.manage';
-  }): Promise<BearerRequestAuthorization> {
-    return this.apiKeyRequestAuthorizer.authorize({
-      authorizationHeader: params.authorizationHeader,
-      tenantId: params.tenant,
-      workspaceId: params.workspace,
-      requiredScope: params.requiredScope,
-      operation: params.operation,
+    readonly action: WorkspaceAction;
+  }): Promise<WebhookEndpointRequestAuthorization> {
+    if (hasBearerAuthorizationHeader(params.authorizationHeader)) {
+      return this.apiKeyRequestAuthorizer.authorize({
+        authorizationHeader: params.authorizationHeader,
+        tenantId: params.tenant,
+        workspaceId: params.workspace,
+        requiredScope: params.requiredScope,
+        operation: params.action,
+      });
+    }
+
+    this.authorizeWorkspaceRole({
+      tenant: params.tenant,
+      workspace: params.workspace,
+      workspaceRoleHeader: params.workspaceRoleHeader,
+      action: params.action,
     });
+
+    return {
+      actorType: 'system',
+      actorId: 'delivery.webhook-endpoints',
+    };
   }
 
   private authorizeWorkspaceRole(params: {
