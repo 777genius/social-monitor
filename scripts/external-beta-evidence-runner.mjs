@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { URL } from 'node:url';
+import { parse as parseDotenv } from 'dotenv';
 
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
 const inputMatrixPath = 'ops/release/external-beta-evidence-input-matrix.json';
@@ -111,6 +112,23 @@ if (handoff && (execute || validateArtifacts || json || summary || handoffJson))
 }
 if (handoffJson && (execute || validateArtifacts || json || summary || handoff)) {
   console.error('Use --handoff-json without --execute, --validate-artifacts, --summary, --handoff or --json.');
+  process.exit(1);
+}
+
+const envFileSelection = readEnvFileSelection(args);
+if (envFileSelection.errors.length > 0) {
+  console.error('Invalid external beta evidence env file selection:');
+  for (const error of envFileSelection.errors) {
+    console.error(`- ${error}`);
+  }
+  process.exit(1);
+}
+const envFileViolations = loadExternalBetaEnvFiles(envFileSelection.paths);
+if (envFileViolations.length > 0) {
+  console.error('Invalid external beta evidence env file:');
+  for (const violation of envFileViolations) {
+    console.error(`- ${violation}`);
+  }
   process.exit(1);
 }
 
@@ -396,6 +414,7 @@ function printHandoff(plan) {
   console.log(`- Preflight env: ${contract.preflightCommand}`);
   console.log(`- Validate artifacts: ${contract.artifactValidationCommand}`);
   console.log(`- Import Docker bundle env: ${contract.dockerBundleImportCommand}`);
+  console.log('- Load env files: append --env-file /absolute/private.env; conflicting values fail closed.');
   console.log(`- Live execution requires: ${contract.executionSafety.liveExecutionRequires.join(' + ')}`);
   console.log(`- Evidence path max size: ${formatBytes(evidencePathMaxBytes())}`);
   console.log('- Do not use fixture, example, git-tracked or secret-bearing files as evidence artifacts.');
@@ -462,6 +481,8 @@ function buildHandoff(plan) {
       preflightCommand: contract.preflightCommand,
       artifactValidationCommand: contract.artifactValidationCommand,
       dockerBundleImportCommand: contract.dockerBundleImportCommand,
+      envFileArg: contract.executionSafety.envFileArg,
+      envFileConflictPolicy: contract.executionSafety.envFileConflictPolicy,
       liveExecutionRequires: contract.executionSafety.liveExecutionRequires,
       evidencePathMaxBytes: evidencePathMaxBytes(),
       envValuePolicy: 'names_only',
@@ -590,6 +611,105 @@ function readSelectedJobSelection(argv) {
     }
   }
   return { jobIds, errors };
+}
+
+function readEnvFileSelection(argv) {
+  const paths = [];
+  const errors = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] !== '--env-file') {
+      continue;
+    }
+
+    const value = argv[index + 1];
+    if (isMissingSelectionValue(value)) {
+      errors.push('--env-file requires a non-empty absolute env file path');
+      continue;
+    }
+    paths.push(value.trim());
+    index += 1;
+  }
+
+  return { paths, errors };
+}
+
+function loadExternalBetaEnvFiles(paths) {
+  const violations = [];
+  const loadedSources = new Map();
+  for (const path of paths) {
+    const label = `--env-file ${path}`;
+    validateExternalBetaEnvFilePath(path, label, violations);
+    if (violations.some((violation) => violation.startsWith(`${label}:`))) {
+      continue;
+    }
+
+    const parsed = parseDotenv(readFileSync(path, 'utf8'));
+    for (const [name, rawValue] of Object.entries(parsed)) {
+      if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) {
+        violations.push(`${label}: env name ${name} is not a valid uppercase env var name`);
+        continue;
+      }
+
+      const value = String(rawValue).trim();
+      if (value.length === 0) {
+        continue;
+      }
+      if (name === 'EXTERNAL_BETA_EVIDENCE_CONFIRM') {
+        violations.push(`${label}: EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell, not loaded from --env-file`);
+        continue;
+      }
+
+      const existingValue = process.env[name]?.trim();
+      if (existingValue !== undefined && existingValue.length > 0 && existingValue !== value) {
+        const existingSource = loadedSources.get(name) ?? 'the shell environment';
+        violations.push(`${label}: env ${name} conflicts with ${existingSource}; refusing to merge evidence from different runs`);
+        continue;
+      }
+
+      process.env[name] = value;
+      loadedSources.set(name, label);
+    }
+  }
+
+  return violations;
+}
+
+function validateExternalBetaEnvFilePath(path, label, violations) {
+  if (!isAbsolute(path)) {
+    violations.push(`${label}: path must be absolute`);
+    return;
+  }
+  if (!path.endsWith('.env')) {
+    violations.push(`${label}: path must end with .env`);
+    return;
+  }
+  if (isFixtureLikeArtifactPath(path)) {
+    violations.push(`${label}: path must not point to fixture or example evidence`);
+    return;
+  }
+  if (isForbiddenWorkspaceEvidencePath(path)) {
+    violations.push(`${label}: path must not be inside the git workspace`);
+    return;
+  }
+  if (!existsSync(path)) {
+    violations.push(`${label}: path must point to an existing env file`);
+    return;
+  }
+  if (!isRegularEvidenceFile(path)) {
+    violations.push(`${label}: path must point to a regular env file`);
+    return;
+  }
+  if (!isPrivateEvidenceFile(path)) {
+    violations.push(`${label}: path must use 0600-style private file permissions`);
+    return;
+  }
+  if (isOversizedEvidenceFile(path)) {
+    violations.push(`${label}: path must not exceed ${evidencePathMaxBytes()} bytes`);
+    return;
+  }
+  if (isGitTrackedPath(path)) {
+    violations.push(`${label}: path must not point to a git-tracked file`);
+  }
 }
 
 function isMissingSelectionValue(value) {

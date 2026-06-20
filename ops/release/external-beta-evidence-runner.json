@@ -46,7 +46,17 @@
     "evidencePathEnvForbidsWorkspacePath": true,
     "evidencePathEnvRequiresWritableParent": true,
     "evidencePathEnvForbidsDuplicatePaths": true,
-    "outputArtifactPathEnvRequiresJsonExtension": true
+    "outputArtifactPathEnvRequiresJsonExtension": true,
+    "envFileArg": "--env-file",
+    "envFileRequiresAbsolutePath": true,
+    "envFileRequiresEnvExtension": true,
+    "envFileRequiresRegularFile": true,
+    "envFileRequiresPrivateFileMode": true,
+    "envFileForbidsWorkspacePath": true,
+    "envFileForbidsFixturePath": true,
+    "envFileForbidsGitTrackedPath": true,
+    "envFileForbidsLiveExecutionConfirm": true,
+    "envFileConflictPolicy": "fail_on_conflicting_values"
   },
   "artifactFreshness": {
     "maxArtifactAgeHours": 168,

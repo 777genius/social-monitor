@@ -306,6 +306,7 @@ validateRunnerNegativeSmokes();
 validateRunnerPreflightNegativeSmokes();
 validateRunnerLocalRuntimePlanSmoke();
 validateRunnerOutputRedactionSmoke();
+validateRunnerEnvFileSmokes();
 validateRunnerPreflightPositiveSmoke();
 validateJobs();
 validateEnvExample();
@@ -388,6 +389,26 @@ function validateSafety() {
   }
   if (safety.outputArtifactPathEnvRequiresJsonExtension !== true) {
     violations.push(`${contractPath}: executionSafety.outputArtifactPathEnvRequiresJsonExtension must be true`);
+  }
+  if (safety.envFileArg !== '--env-file') {
+    violations.push(`${contractPath}: executionSafety.envFileArg must be --env-file`);
+  }
+  for (const [field, expected] of [
+    ['envFileRequiresAbsolutePath', true],
+    ['envFileRequiresEnvExtension', true],
+    ['envFileRequiresRegularFile', true],
+    ['envFileRequiresPrivateFileMode', true],
+    ['envFileForbidsWorkspacePath', true],
+    ['envFileForbidsFixturePath', true],
+    ['envFileForbidsGitTrackedPath', true],
+    ['envFileForbidsLiveExecutionConfirm', true],
+  ]) {
+    if (safety[field] !== expected) {
+      violations.push(`${contractPath}: executionSafety.${field} must be ${expected}`);
+    }
+  }
+  if (safety.envFileConflictPolicy !== 'fail_on_conflicting_values') {
+    violations.push(`${contractPath}: executionSafety.envFileConflictPolicy must be fail_on_conflicting_values`);
   }
   for (const forbidden of forbiddenFragments) {
     if (!safety.forbiddenTargets?.includes(forbidden)) {
@@ -530,6 +551,14 @@ function validateRunnerImplementation() {
     'readSelectedJobSelection',
     'Invalid external beta evidence job selection:',
     '--jobs requires at least one job id',
+    'readEnvFileSelection',
+    'Invalid external beta evidence env file selection:',
+    'loadExternalBetaEnvFiles',
+    'parseDotenv',
+    'EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell',
+    'conflicts with',
+    'refusing to merge evidence from different runs',
+    'Load env files: append --env-file',
     'missingOptionalEnvCount',
     'uniqueMissingOptionalEnv',
     'jobExecutionReadiness',
@@ -2533,6 +2562,52 @@ function validateRunnerOutputRedactionSmoke() {
   } finally {
     rmSync(tempDirectory, { recursive: true, force: true });
   }
+}
+
+function validateRunnerEnvFileSmokes() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-env-file-'));
+  try {
+    const envFilePath = join(tempDirectory, 'external-beta-evidence.env');
+    writeEnvFile(envFilePath, completeExternalEvidencePreflightEnv(tempDirectory));
+    const positiveResult = runRunnerOutputSmoke(['--summary', '--env-file', envFilePath], {});
+    if (positiveResult.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner env-file summary smoke must accept private env file: ${smokeOutputSnippet(positiveResult.output)}`);
+    } else if (!positiveResult.output.includes('External evidence env readiness: 10/10 live/manual jobs (100%)')) {
+      violations.push(`${contract.runnerFile}: runner env-file summary smoke must load required env values`);
+    }
+
+    const conflictPath = join(tempDirectory, 'conflicting-external-beta-evidence.env');
+    writeEnvFile(conflictPath, {
+      BACKEND_IMAGE_DIGEST: `sha256:${'0'.repeat(64)}`,
+    });
+    const conflictResult = runRunnerOutputSmoke(['--summary', '--env-file', envFilePath, '--env-file', conflictPath], {});
+    if (conflictResult.exitCode === 0) {
+      violations.push(`${contract.runnerFile}: runner env-file conflict smoke must reject conflicting values`);
+    } else if (!conflictResult.output.includes('conflicts with')) {
+      violations.push(`${contract.runnerFile}: runner env-file conflict smoke must explain conflicting values`);
+    }
+
+    const confirmationPath = join(tempDirectory, 'confirmation-external-beta-evidence.env');
+    writeEnvFile(confirmationPath, {
+      EXTERNAL_BETA_EVIDENCE_CONFIRM: 'run-live',
+    });
+    const confirmationResult = runRunnerOutputSmoke(['--summary', '--env-file', confirmationPath], {});
+    if (confirmationResult.exitCode === 0) {
+      violations.push(`${contract.runnerFile}: runner env-file confirmation smoke must reject live execution confirmation in env file`);
+    } else if (!confirmationResult.output.includes('EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell')) {
+      violations.push(`${contract.runnerFile}: runner env-file confirmation smoke must explain confirmation shell policy`);
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function writeEnvFile(path, env) {
+  const lines = Object.entries(env)
+    .filter(([, value]) => value !== undefined && value !== '')
+    .map(([name, value]) => `${name}='${String(value).replaceAll("'", "'\\''")}'`);
+  writeFileSync(path, `${lines.join('\n')}\n`, { mode: 0o600 });
+  chmodSync(path, 0o600);
 }
 
 function outputRedactionSecretValues() {
