@@ -13,6 +13,7 @@ const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
 const packagePath = 'package.json';
 const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
+const captureScriptPath = 'scripts/capture-release-deploy-smoke.mjs';
 const artifact = JSON.parse(readFileSync(artifactPath, 'utf8'));
 const releaseContract = JSON.parse(readFileSync(releaseContractPath, 'utf8'));
 const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
@@ -240,6 +241,7 @@ for (const smokeId of smokeIds) {
 
 validateExampleDeployArtifact();
 validateEnvDeploySmokeArtifact(gitSha, migrationVersion);
+validateCaptureScriptWiring();
 
 if (artifact.status === 'passed') {
   if (imageDigest === null) {
@@ -671,6 +673,39 @@ function validateEnvArtifactValidation(validationRules) {
   for (const envVar of ['STAGING_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'API_BASE_URL']) {
     if (!rule.requiredEnv?.includes(envVar)) {
       violations.push(`${artifactPath}: RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH requiredEnv must include ${envVar}`);
+    }
+  }
+}
+
+function validateCaptureScriptWiring() {
+  const captureScript = readFileSync(captureScriptPath, 'utf8');
+  if (!String(scripts['capture:release-deploy-smoke'] ?? '').includes(captureScriptPath)) {
+    violations.push(`${packagePath}: capture:release-deploy-smoke must run ${captureScriptPath}`);
+  }
+  for (const marker of [
+    'validateEvidenceEnvFilePath',
+    'writeEvidenceEnvFile',
+    'RELEASE_DEPLOY_SMOKE_ENV_PATH',
+    'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH',
+    'API_BASE_URL',
+    'BACKEND_IMAGE_DIGEST',
+    'STAGING_ENVIRONMENT_ID',
+  ]) {
+    if (!captureScript.includes(marker)) {
+      violations.push(`${captureScriptPath}: capture must include ${marker}`);
+    }
+  }
+  for (const marker of ['temporaryArtifactPath', 'renameSync', 'rmSync(temporaryArtifactPath']) {
+    if (!captureScript.includes(marker)) {
+      violations.push(`${captureScriptPath}: capture must validate deploy smoke artifacts atomically`);
+    }
+  }
+  for (const marker of [
+    'must not write release evidence into the git workspace',
+    'must not point to fixture or example paths',
+  ]) {
+    if (!captureScript.includes(marker)) {
+      violations.push(`${captureScriptPath}: capture must reject unsafe artifact paths`);
     }
   }
 }

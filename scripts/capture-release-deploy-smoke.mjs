@@ -1,8 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { URL } from 'node:url';
+
+import { shellQuote, validateEvidenceEnvFilePath, writeEvidenceEnvFile } from './lib/evidence-env-file.mjs';
 
 const artifactDir =
   process.env.RELEASE_DEPLOY_SMOKE_ARTIFACT_DIR ??
@@ -10,11 +12,16 @@ const artifactDir =
   '/tmp/social-monitor-evidence';
 const artifactPath =
   process.env.RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH ??
-  join(artifactDir, 'release-deploy-smoke.json');
+  join(resolve(artifactDir), 'release-deploy-smoke.json');
+const envFilePath =
+  process.env.RELEASE_DEPLOY_SMOKE_ENV_PATH ??
+  join(resolve(artifactDir), 'release-deploy-smoke.env');
 const apiBaseUrl = requiredEnv('API_BASE_URL');
 const imageDigest = requiredEnv('BACKEND_IMAGE_DIGEST');
 const environmentId = requiredEnv('STAGING_ENVIRONMENT_ID');
 const operator = process.env.STAGING_OPERATOR?.trim() || 'release-owner';
+const artifactTarget = resolveArtifactPath(artifactPath, 'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH');
+const envFileTarget = validateEvidenceEnvFilePath(envFilePath);
 const sampledAt = new Date().toISOString();
 const releaseEvidence = readJson('ops/release/release-artifact-evidence.json');
 const commitSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
@@ -101,21 +108,48 @@ const artifact = {
   ],
 };
 
-mkdirSync(artifactDir, { recursive: true });
-writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+mkdirSync(dirname(artifactTarget), { recursive: true });
+const temporaryArtifactPath = `${artifactTarget}.${process.pid}.${Date.now()}.tmp`;
 
-execFileSync('node', ['scripts/check-release-artifact-evidence.mjs'], {
-  env: {
-    ...process.env,
-    API_BASE_URL: apiBaseUrl,
-    BACKEND_IMAGE_DIGEST: imageDigest,
-    RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: artifactPath,
-    STAGING_ENVIRONMENT_ID: environmentId,
-  },
-  stdio: 'inherit',
+try {
+  writeFileSync(temporaryArtifactPath, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+  runReleaseArtifactValidator(temporaryArtifactPath);
+  renameSync(temporaryArtifactPath, artifactTarget);
+  runReleaseArtifactValidator(artifactTarget);
+} catch (error) {
+  rmSync(temporaryArtifactPath, { force: true });
+  throw error;
+}
+
+writeEvidenceEnvFile(envFileTarget, [
+  ['RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH', artifactTarget],
+  ['API_BASE_URL', apiBaseUrl],
+  ['BACKEND_IMAGE_DIGEST', imageDigest],
+  ['STAGING_ENVIRONMENT_ID', environmentId],
+  ['STAGING_OPERATOR', operator],
+], {
+  usageLines: [
+    'Usage:',
+    `set -a; . ${shellQuote(envFileTarget)}; set +a`,
+    'npm run beta:evidence:validate -- --jobs release-deploy-smoke',
+  ],
 });
 
-console.log(`RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH=${artifactPath}`);
+console.log(`RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH=${artifactTarget}`);
+console.log(`RELEASE_DEPLOY_SMOKE_ENV_PATH=${envFileTarget}`);
+
+function runReleaseArtifactValidator(path) {
+  execFileSync('node', ['scripts/check-release-artifact-evidence.mjs'], {
+    env: {
+      ...process.env,
+      API_BASE_URL: apiBaseUrl,
+      BACKEND_IMAGE_DIGEST: imageDigest,
+      RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: path,
+      STAGING_ENVIRONMENT_ID: environmentId,
+    },
+    stdio: 'inherit',
+  });
+}
 
 async function fetchStatus(path) {
   const response = await globalThis.fetch(new URL(path, apiBaseUrl));
@@ -184,6 +218,35 @@ function requiredEnv(name) {
   }
 
   return value;
+}
+
+function resolveArtifactPath(path, label) {
+  if (!isAbsolute(path)) {
+    throw new Error(`${label} must be an absolute JSON file path`);
+  }
+  const resolved = resolve(path);
+  if (!resolved.endsWith('.json')) {
+    throw new Error(`${label} must end with .json`);
+  }
+  if (isInsideWorkspace(resolved)) {
+    throw new Error(`${label} must not write release evidence into the git workspace`);
+  }
+  if (isFixtureLikePath(resolved)) {
+    throw new Error(`${label} must not point to fixture or example paths`);
+  }
+
+  return resolved;
+}
+
+function isInsideWorkspace(path) {
+  const workspace = resolve(process.cwd());
+  const relativePath = relative(workspace, path);
+  return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath));
+}
+
+function isFixtureLikePath(path) {
+  const normalized = path.replaceAll('\\', '/').toLowerCase();
+  return ['/fixtures/', '.example.', '-examples', '_examples'].some((fragment) => normalized.includes(fragment));
 }
 
 function assert(condition, message) {
