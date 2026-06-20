@@ -11,6 +11,7 @@ const persistencePath = 'ops/release/persistence-readiness-contract.json';
 const packagePath = 'package.json';
 const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
+const dockerDurableRuntimeCapturePath = 'scripts/capture-docker-durable-runtime-proof.mjs';
 const proof = JSON.parse(readFileSync(proofPath, 'utf8'));
 const persistence = JSON.parse(readFileSync(persistencePath, 'utf8'));
 const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
@@ -195,6 +196,7 @@ for (const requiredScript of ['check:durable-runtime-proof', 'check:persistence-
 }
 
 validateBaselineWiring();
+validateCaptureScriptWiring();
 
 if (violations.length > 0) {
   console.error(violations.join('\n'));
@@ -545,6 +547,35 @@ function validateBaselineWiring() {
   }
   if (!artifactPaths.has(proof.stagingRuntimeEvidenceSchema?.exampleArtifact)) {
     violations.push(`${baselinePath}: trackedArtifacts must include durable runtime selector artifact example`);
+  }
+}
+
+function validateCaptureScriptWiring() {
+  const captureSource = readFileSync(dockerDurableRuntimeCapturePath, 'utf8');
+  if (!String(scripts['capture:docker-durable-runtime-proof'] ?? '').includes(dockerDurableRuntimeCapturePath)) {
+    violations.push(`${packagePath}: capture:docker-durable-runtime-proof must run ${dockerDurableRuntimeCapturePath}`);
+  }
+  for (const marker of [
+    'writeEvidenceEnvFile',
+    'validateEvidenceEnvFilePath',
+    'DURABLE_RUNTIME_SELECTOR_ENV_PATH',
+    'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH',
+    'API_BASE_URL',
+    'STAGING_ENVIRONMENT_ID',
+    'BACKEND_IMAGE_DIGEST',
+    'mode: 0o600',
+  ]) {
+    if (!captureSource.includes(marker)) {
+      violations.push(`${dockerDurableRuntimeCapturePath}: capture must include ${marker}`);
+    }
+  }
+  for (const marker of [
+    'must not write release evidence into the git workspace',
+    'must not point to fixture or example paths',
+  ]) {
+    if (!captureSource.includes(marker)) {
+      violations.push(`${dockerDurableRuntimeCapturePath}: capture must reject unsafe artifact paths`);
+    }
   }
 }
 

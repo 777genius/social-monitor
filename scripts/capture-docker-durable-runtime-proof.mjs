@@ -2,8 +2,10 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { get as httpGet } from 'node:http';
 import { get as httpsGet } from 'node:https';
-import { dirname } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { URL } from 'node:url';
+
+import { shellQuote, validateEvidenceEnvFilePath, writeEvidenceEnvFile } from './lib/evidence-env-file.mjs';
 
 const serviceMap = new Map([
   ['api-gateway', 'api'],
@@ -72,6 +74,11 @@ const apiBaseUrl = process.env.API_BASE_URL ?? `http://127.0.0.1:${process.env.A
 const outputPath =
   process.env.DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH ??
   `/tmp/social-monitor-durable-runtime-selector-${Date.now()}.json`;
+const artifactTarget = resolveArtifactPath(outputPath, 'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH');
+const envFilePath =
+  process.env.DURABLE_RUNTIME_SELECTOR_ENV_PATH ??
+  join(dirname(artifactTarget), 'durable-runtime-selector.env');
+const envFileTarget = validateEvidenceEnvFilePath(envFilePath);
 const environmentId = process.env.STAGING_ENVIRONMENT_ID ?? 'docker-alpha-1';
 const operator = process.env.STAGING_OPERATOR ?? 'backend-ops-1';
 const imageDigest = process.env.BACKEND_IMAGE_DIGEST ?? inspectImageDigest('social-monitor-local-api');
@@ -129,9 +136,23 @@ const artifact = {
 };
 
 assertReadyPayloadMatchesArtifact(ready, artifact);
-mkdirSync(dirname(outputPath), { recursive: true });
-writeFileSync(outputPath, `${JSON.stringify(artifact, null, 2)}\n`);
-console.log(outputPath);
+mkdirSync(dirname(artifactTarget), { recursive: true });
+writeFileSync(artifactTarget, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+writeEvidenceEnvFile(envFileTarget, [
+  ['DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH', artifactTarget],
+  ['API_BASE_URL', apiBaseUrl],
+  ['STAGING_ENVIRONMENT_ID', environmentId],
+  ['BACKEND_IMAGE_DIGEST', imageDigest],
+  ['STAGING_OPERATOR', operator],
+], {
+  usageLines: [
+    'Usage:',
+    `set -a; . ${shellQuote(envFileTarget)}; set +a`,
+    'npm run beta:evidence:validate -- --jobs durable-runtime-proof',
+  ],
+});
+console.log(`DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH=${artifactTarget}`);
+console.log(`DURABLE_RUNTIME_SELECTOR_ENV_PATH=${envFileTarget}`);
 
 async function fetchReady(baseUrl) {
   const { statusCode, body } = await getJson(new URL('/ready', baseUrl));
@@ -323,4 +344,33 @@ function assertEqual(actual, expected, label) {
   if (actual !== expected) {
     throw new Error(`${label} must be ${expected}, received ${actual}`);
   }
+}
+
+function resolveArtifactPath(path, label) {
+  if (!isAbsolute(path)) {
+    throw new Error(`${label} must be an absolute JSON file path`);
+  }
+  const resolved = resolve(path);
+  if (!resolved.endsWith('.json')) {
+    throw new Error(`${label} must end with .json`);
+  }
+  if (isInsideWorkspace(resolved)) {
+    throw new Error(`${label} must not write release evidence into the git workspace`);
+  }
+  if (isFixtureLikePath(resolved)) {
+    throw new Error(`${label} must not point to fixture or example paths`);
+  }
+
+  return resolved;
+}
+
+function isInsideWorkspace(path) {
+  const workspace = resolve(process.cwd());
+  const relativePath = relative(workspace, path);
+  return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath));
+}
+
+function isFixtureLikePath(path) {
+  const normalized = path.replaceAll('\\', '/').toLowerCase();
+  return ['/fixtures/', '.example.', '-examples', '_examples'].some((fragment) => normalized.includes(fragment));
 }
