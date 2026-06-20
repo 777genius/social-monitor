@@ -15,6 +15,7 @@ const backendOpsPath = 'ops/release/backend-ops-readiness-contract.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
 const liveOpenScriptPath = 'scripts/check-live-open-connectors.ts';
+const liveOpenCaptureScriptPath = 'scripts/capture-live-open-connectors.mjs';
 const redditLiveScriptPath = 'scripts/check-live-reddit-oauth.ts';
 
 const evidence = readJson(evidencePath);
@@ -286,6 +287,7 @@ function validateSourceCertification() {
 
 function validateLiveSmokeScripts() {
   const liveOpenScript = readFileSync(liveOpenScriptPath, 'utf8');
+  const liveOpenCaptureScript = readFileSync(liveOpenCaptureScriptPath, 'utf8');
   const redditLiveScript = readFileSync(redditLiveScriptPath, 'utf8');
 
   requireScriptSignals(liveOpenScriptPath, liveOpenScript, [
@@ -297,6 +299,17 @@ function validateLiveSmokeScripts() {
 
   if (!liveOpenScript.includes('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH')) {
     violations.push(`${liveOpenScriptPath}: live open connector smoke must support redacted evidence artifact output`);
+  }
+  if (!liveOpenCaptureScript.includes('LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH')) {
+    violations.push(`${liveOpenCaptureScriptPath}: live open connector capture must write a credentialless evidence env handoff`);
+  }
+  for (const marker of ['writeEvidenceEnvFile', 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', 'SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'SOURCE_LIVE_OPERATOR']) {
+    if (!liveOpenCaptureScript.includes(marker)) {
+      violations.push(`${liveOpenCaptureScriptPath}: live open connector env handoff must include ${marker}`);
+    }
+  }
+  if (!liveOpenCaptureScript.includes('must not use local, fixture, example, mock or test identifiers')) {
+    violations.push(`${liveOpenCaptureScriptPath}: live open connector capture must reject non-beta evidence identity values`);
   }
   if (!redditLiveScript.includes('REDDIT_LIVE_EVIDENCE_PATH')) {
     violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must support redacted evidence artifact output`);
