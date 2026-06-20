@@ -42,6 +42,9 @@ const metricsExportPath =
 const publicErrorExportPath =
   process.env.PUBLIC_ERROR_EXPORT_PATH ??
   join(artifactDir, 'security-public-errors-export.json');
+const releaseDeploySmokePath =
+  process.env.RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH ??
+  join(artifactDir, 'release-deploy-smoke.json');
 const bundlePath =
   process.env.BACKEND_STAGING_EVIDENCE_BUNDLE_PATH ??
   join(artifactDir, 'backend-staging-evidence-bundle.json');
@@ -66,6 +69,7 @@ await withDockerBackendEvidenceStack({
     LOG_EXPORT_PATH: logExportPath,
     METRICS_EXPORT_PATH: metricsExportPath,
     PUBLIC_ERROR_EXPORT_PATH: publicErrorExportPath,
+    RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: releaseDeploySmokePath,
     STAGING_SECRET_STORE_ID: process.env.STAGING_SECRET_STORE_ID ?? `${context.environmentId}-secret-store`,
     STAGING_RELIABILITY_ARTIFACT_DIR: artifactDir,
   };
@@ -76,6 +80,7 @@ await withDockerBackendEvidenceStack({
   runNodeScript('scripts/capture-docker-staging-reliability-evidence.mjs', env);
 
   restartBackendServices(context);
+  runNpmScript('capture:release-deploy-smoke', env);
   runNpmScript('capture:durable-backend-e2e-loop', env);
 
   runNpmScript('check:durable-runtime-proof', env);
@@ -92,6 +97,7 @@ await withDockerBackendEvidenceStack({
       sourceCredentialRotationPath,
       webhookSecretRotationPath,
       securityFinalSweepPath,
+      releaseDeploySmokePath,
     },
   });
 
@@ -105,6 +111,7 @@ await withDockerBackendEvidenceStack({
   console.log(`LOG_EXPORT_PATH=${logExportPath}`);
   console.log(`METRICS_EXPORT_PATH=${metricsExportPath}`);
   console.log(`PUBLIC_ERROR_EXPORT_PATH=${publicErrorExportPath}`);
+  console.log(`RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH=${releaseDeploySmokePath}`);
   console.log(`BACKEND_STAGING_EVIDENCE_BUNDLE_PATH=${bundlePath}`);
 });
 
@@ -117,6 +124,7 @@ function writeBundleSummary({ bundlePath, context, artifactPaths }) {
     artifactSummary('source-credential-rotation', artifactPaths.sourceCredentialRotationPath),
     artifactSummary('webhook-secret-rotation', artifactPaths.webhookSecretRotationPath),
     artifactSummary('security-final-sweep', artifactPaths.securityFinalSweepPath),
+    artifactSummary('release-deploy-smoke', artifactPaths.releaseDeploySmokePath),
   ];
   const bundle = {
     schemaVersion: 1,
@@ -152,6 +160,7 @@ function artifactSummary(artifactId, path) {
   const operations = Array.isArray(artifact.operations) ? artifact.operations : [];
   const surfaces = Array.isArray(artifact.surfaces) ? artifact.surfaces : [];
   const sourceExports = Array.isArray(artifact.sourceExports) ? artifact.sourceExports : [];
+  const smokeResults = Array.isArray(artifact.smokeResults) ? artifact.smokeResults : [];
 
   return {
     artifactId,
@@ -164,5 +173,7 @@ function artifactSummary(artifactId, path) {
     surfaceIds: surfaces.map((surface) => surface.surfaceId).filter((surfaceId) => typeof surfaceId === 'string'),
     surfaceCount: surfaces.length,
     sourceExportCount: sourceExports.length,
+    smokeIds: smokeResults.map((result) => result.smokeId).filter((smokeId) => typeof smokeId === 'string'),
+    smokeCount: smokeResults.length,
   };
 }
