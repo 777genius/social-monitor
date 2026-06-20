@@ -229,6 +229,12 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
+function readEvidenceArtifact(path, label) {
+  const serialized = readFileSync(path, 'utf8');
+  validateNoSensitiveArtifactContent(serialized, label);
+  return JSON.parse(serialized);
+}
+
 function validateSourceCertification() {
   if (sourceCertification.fixtureMode !== 'deterministic_no_network') {
     violations.push(`${sourceCertificationPath}: fixture certification must remain deterministic_no_network`);
@@ -526,7 +532,10 @@ function validatePassedProviderArtifact(provider) {
     return;
   }
 
-  const artifact = readJson(provider.stagingArtifactPath);
+  const artifact = readEvidenceArtifact(
+    provider.stagingArtifactPath,
+    `provider "${provider.providerKey}" stagingArtifactPath`,
+  );
   validateLiveProviderArtifact(artifact, {
     label: `provider "${provider.providerKey}" stagingArtifactPath`,
     expectedEnvironmentId: provider.environmentId,
@@ -587,7 +596,7 @@ function validateLiveEvidenceEnvArtifact(envVar, requiredProviders) {
   const expectedEnvironmentId = requireEnvWhenArtifactIsPresent(envVar, 'SOURCE_LIVE_ENVIRONMENT_ID');
   const expectedImageDigest = requireEnvWhenArtifactIsPresent(envVar, 'BACKEND_IMAGE_DIGEST');
   const expectedOperator = requireEnvWhenArtifactIsPresent(envVar, 'SOURCE_LIVE_OPERATOR');
-  const artifact = readJson(artifactPath);
+  const artifact = readEvidenceArtifact(artifactPath, `${envVar} (${artifactPath})`);
   validateLiveProviderArtifact(artifact, {
     label: `${envVar} (${artifactPath})`,
     expectedEnvironmentId,
@@ -646,7 +655,7 @@ function validateRedditCredentialLifecycleEnvArtifact() {
   const lifecycleSha256 = createHash('sha256').update(serialized).digest('hex');
   const redditLivePath = readOptionalEnv('REDDIT_LIVE_EVIDENCE_PATH');
   if (redditLivePath !== undefined && existsSync(redditLivePath)) {
-    const redditArtifact = readJson(redditLivePath);
+    const redditArtifact = readEvidenceArtifact(redditLivePath, `REDDIT_LIVE_EVIDENCE_PATH (${redditLivePath})`);
     const lifecycleSignal = findSignalResult(redditArtifact, 'reddit', 'reddit-credential-lifecycle');
     if (lifecycleSignal?.evidence?.lifecycleArtifactSha256 !== lifecycleSha256) {
       violations.push('REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: sha256 must match reddit live evidence lifecycle signal');
@@ -912,7 +921,11 @@ function validateRedditCredentialLifecycleOperations(operations, label) {
 }
 
 function validateNoSensitiveArtifactLiterals(artifact, label) {
-  const serialized = JSON.stringify(artifact).toLowerCase();
+  validateNoSensitiveArtifactContent(JSON.stringify(artifact), label);
+}
+
+function validateNoSensitiveArtifactContent(content, label) {
+  const serialized = content.toLowerCase();
 
   for (const fragment of forbiddenEvidenceFragments) {
     if (serialized.includes(fragment)) {
