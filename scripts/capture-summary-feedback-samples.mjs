@@ -199,6 +199,9 @@ function resolveInputPath(path) {
   if (isFixtureLikePath(resolved)) {
     throw new Error(`${inputPathEnv} must not point to fixture or example files`);
   }
+  if (!hasPrivateFilePermissions(resolved)) {
+    throw new Error(`${inputPathEnv} must use 0600-style private file permissions`);
+  }
   return resolved;
 }
 
@@ -215,6 +218,10 @@ function isInsideWorkspace(path) {
 function isFixtureLikePath(path) {
   const normalized = path.replaceAll('\\', '/').toLowerCase();
   return forbiddenPathFragments.some((fragment) => normalized.includes(fragment.replaceAll('\\', '/').toLowerCase()));
+}
+
+function hasPrivateFilePermissions(path) {
+  return (statSync(path).mode & 0o077) === 0;
 }
 
 function readMetadata(envName, fallback) {
