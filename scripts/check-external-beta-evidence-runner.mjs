@@ -301,6 +301,7 @@ validateRunnerPositiveRedditArtifactSmoke();
 validateRunnerNegativeRedditArtifactSmokes();
 validateRunnerNegativeSmokes();
 validateRunnerPreflightNegativeSmokes();
+validateRunnerLocalRuntimePlanSmoke();
 validateRunnerPreflightPositiveSmoke();
 validateJobs();
 validateEnvExample();
@@ -517,6 +518,7 @@ function validateRunnerImplementation() {
     'manualArtifactReadyForValidationJobCount',
     'blockedMissingRequiredEnvJobCount',
     'blockedInvalidInputJobCount',
+    'blockedLocalRuntimeEnvJobCount',
     'uniqueMissingEnv',
     'readSelectedJobSelection',
     'Invalid external beta evidence job selection:',
@@ -526,6 +528,10 @@ function validateRunnerImplementation() {
     'jobExecutionReadiness',
     'blocked_missing_required_env',
     'blocked_invalid_env',
+    'blocked_local_runtime_env',
+    'hasOnlyLocalRuntimeEnvViolations',
+    'localRuntimeEnvNames',
+    'isLocalRuntimeEnvValue',
     'manualArtifactJobCount',
     'executableLiveJobCount',
     'validateArtifacts',
@@ -2297,6 +2303,68 @@ function runRunnerPreflightNegativeSmoke(jobId, env) {
     return {
       exitCode: typeof error.status === 'number' ? error.status : 1,
       output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function validateRunnerLocalRuntimePlanSmoke() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-local-runtime-plan-'));
+  try {
+    const result = runRunnerJsonPlanSmoke(
+      'durable-backend-e2e-loop',
+      durableBackendE2ePreflightEnv(tempDirectory, {
+        API_BASE_URL: 'http://127.0.0.1:3000',
+      }),
+    );
+    if (result.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner local runtime plan smoke must produce a JSON plan: ${smokeOutputSnippet(result.output)}`);
+      return;
+    }
+    const plan = result.plan;
+    const job = plan.jobs?.[0];
+    if (job?.executionReadiness !== 'blocked_local_runtime_env') {
+      violations.push(`${contract.runnerFile}: local Docker runtime evidence must be classified as blocked_local_runtime_env`);
+    }
+    if (plan.blockedLocalRuntimeEnvJobCount !== 1) {
+      violations.push(`${contract.runnerFile}: local runtime plan must count blockedLocalRuntimeEnvJobCount=1`);
+    }
+    if (plan.readinessCounts?.blocked_local_runtime_env !== 1) {
+      violations.push(`${contract.runnerFile}: local runtime plan must include blocked_local_runtime_env readiness count`);
+    }
+    if (plan.blockedInvalidInputJobCount !== 0) {
+      violations.push(`${contract.runnerFile}: local runtime plan must not count local runtime URLs as generic invalid input`);
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function runRunnerJsonPlanSmoke(jobId, env) {
+  try {
+    const output = execFileSync(
+      process.execPath,
+      [
+        contract.runnerFile,
+        '--plan',
+        '--json',
+        '--job',
+        jobId,
+      ],
+      {
+        env: {
+          PATH: process.env.PATH ?? '',
+          ...env,
+        },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    );
+    return { exitCode: 0, output, plan: JSON.parse(output) };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+      plan: undefined,
     };
   }
 }

@@ -230,6 +230,7 @@ function buildPlan(planJobs) {
     manualArtifactReadyForValidationJobCount: 0,
     blockedMissingRequiredEnvJobCount: 0,
     blockedInvalidInputJobCount: 0,
+    blockedLocalRuntimeEnvJobCount: 0,
     uniqueMissingEnv: [],
     uniqueMissingOptionalEnv: [],
     jobs: [],
@@ -288,6 +289,9 @@ function buildPlan(planJobs) {
     }
     if (executionReadiness === 'blocked_invalid_env') {
       plan.blockedInvalidInputJobCount += 1;
+    }
+    if (executionReadiness === 'blocked_local_runtime_env') {
+      plan.blockedLocalRuntimeEnvJobCount += 1;
     }
   }
   plan.uniqueMissingEnv = [...new Set(plan.jobs.flatMap((job) => job.missingEnv))].sort();
@@ -350,6 +354,7 @@ function printSummary(plan) {
   console.log(`External beta blocker jobs: ${plan.externalBlockerJobCount}`);
   console.log(`Blocked by missing required env: ${plan.blockedMissingRequiredEnvJobCount}`);
   console.log(`Blocked by invalid env/path: ${plan.blockedInvalidInputJobCount}`);
+  console.log(`Blocked by local runtime env: ${plan.blockedLocalRuntimeEnvJobCount}`);
   console.log(`Missing required env: ${plan.missingEnvCount} occurrences, ${plan.uniqueMissingEnv.length} unique`);
   console.log(`Missing optional env: ${plan.missingOptionalEnvCount} occurrences, ${plan.uniqueMissingOptionalEnv.length} unique`);
   console.log('');
@@ -458,6 +463,7 @@ function buildHandoff(plan) {
       externalBlockerJobCount: plan.externalBlockerJobCount,
       blockedMissingRequiredEnvJobCount: plan.blockedMissingRequiredEnvJobCount,
       blockedInvalidInputJobCount: plan.blockedInvalidInputJobCount,
+      blockedLocalRuntimeEnvJobCount: plan.blockedLocalRuntimeEnvJobCount,
       readinessCounts: plan.readinessCounts,
       uniqueMissingEnv: plan.uniqueMissingEnv,
       uniqueMissingOptionalEnv: plan.uniqueMissingOptionalEnv,
@@ -607,6 +613,9 @@ function jobExecutionReadiness(job, missingEnv, preflightViolations) {
     return 'blocked_missing_required_env';
   }
   if (preflightViolations.length > 0) {
+    if (hasOnlyLocalRuntimeEnvViolations(job, preflightViolations)) {
+      return 'blocked_local_runtime_env';
+    }
     return 'blocked_invalid_env';
   }
   if (job.runPolicy === 'manual_artifact_then_validator') {
@@ -616,6 +625,24 @@ function jobExecutionReadiness(job, missingEnv, preflightViolations) {
     return 'live_command_executable';
   }
   return 'local_contract_ready';
+}
+
+function hasOnlyLocalRuntimeEnvViolations(job, preflightViolations) {
+  if (!['staging_artifact', 'staging_deploy'].includes(job.mode)) {
+    return false;
+  }
+  return preflightViolations.length > 0 && preflightViolations.every((violation) => {
+    const envName = extractEnvNameFromPreflightViolation(violation);
+    if (envName === undefined || !localRuntimeEnvNames().has(envName)) {
+      return false;
+    }
+    const value = process.env[envName]?.trim();
+    return value !== undefined && isLocalRuntimeEnvValue(value);
+  });
+}
+
+function extractEnvNameFromPreflightViolation(violation) {
+  return /: env ([A-Z][A-Z0-9_]*) /.exec(violation)?.[1];
 }
 
 function executableJobViolations(candidateJobs) {
@@ -1005,6 +1032,24 @@ function postgresUrlEnvNames() {
 
 function rabbitmqUrlEnvNames() {
   return new Set(['RABBITMQ_URL']);
+}
+
+function localRuntimeEnvNames() {
+  return new Set(['API_BASE_URL', 'DATABASE_URL', 'RABBITMQ_URL', 'RABBITMQ_MANAGEMENT_URL']);
+}
+
+function isLocalRuntimeEnvValue(value) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  return isFixtureLikeEnvValue(hostname)
+    || hostname === 'host.docker.internal'
+    || hostname.endsWith('.localhost');
 }
 
 function httpsEvidenceUrlEnvNames() {
