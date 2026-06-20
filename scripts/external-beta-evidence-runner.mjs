@@ -1318,7 +1318,9 @@ function isGitTrackedPath(path) {
 
 function readJsonArtifact(path, jobId, envName, violations) {
   try {
-    const content = JSON.parse(readFileSync(path, 'utf8'));
+    const rawContent = readFileSync(path, 'utf8');
+    validateArtifactLiteralRedaction(rawContent, jobId, `output artifact env ${envName}`, violations);
+    const content = JSON.parse(rawContent);
     if (typeof content !== 'object' || content === null || Array.isArray(content)) {
       violations.push(`${jobId}: output artifact env ${envName} must point to a JSON object artifact`);
       return undefined;

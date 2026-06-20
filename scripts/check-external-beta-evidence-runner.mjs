@@ -700,6 +700,26 @@ function validateRunnerNegativeSmokes() {
       },
     },
     {
+      label: 'raw duplicate-key credential hidden by JSON parser',
+      expectedOutput: 'sensitive literal fragment "bearer "',
+      artifactContent: (base) => {
+        const artifact = {
+          ...base,
+          diagnostics: {
+            authorization: 'redacted',
+          },
+        };
+        return `${JSON.stringify(artifact, null, 2)}\n`.replace(
+          '"authorization": "redacted"',
+          [
+            '"authorization": "',
+            ['Bearer', ' raw-live-token-hidden-by-duplicate-key'].join(''),
+            '",\n    "authorization": "redacted"',
+          ].join(''),
+        );
+      },
+    },
+    {
       label: 'wrong artifact id',
       expectedOutput: 'must use artifactId live-open-connectors-evidence-v1',
       artifactPatch: {
@@ -790,7 +810,9 @@ function validateRunnerNegativeSmokes() {
     try {
       writeFileSync(
         artifactPath,
-        `${JSON.stringify(artifact, null, 2)}\n`,
+        typeof scenario.artifactContent === 'function'
+          ? scenario.artifactContent(artifact)
+          : `${JSON.stringify(artifact, null, 2)}\n`,
         { mode: 0o600 },
       );
 
