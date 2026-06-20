@@ -69,6 +69,10 @@ const forbiddenArtifactValuePatterns = [
     regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
   },
 ];
+const requiredRealArtifactGuardFragments = [
+  'must not contain example, fixture, synthetic, mock or test markers',
+];
+const forbiddenRealArtifactMarkerPattern = /(?:^|[-_:.\s])(example|fixture|synthetic|mock|test)(?:$|[-_:.\s])/i;
 const requiredServiceSelectorValues = new Map([
   ['api-gateway', {
     MONITORING_PERSISTENCE: 'prisma',
@@ -285,6 +289,11 @@ function validateStagingRuntimeEvidenceSchema(schema) {
     'stagingRuntimeEvidenceSchema.requiredRuntimeEnv',
   );
   validateProvenanceRequirements(schema.provenanceRequirements);
+  for (const fragment of requiredRealArtifactGuardFragments) {
+    if (!Array.isArray(schema.realArtifactGuards) || !schema.realArtifactGuards.some((guard) => String(guard).includes(fragment))) {
+      violations.push(`${proofPath}: stagingRuntimeEvidenceSchema.realArtifactGuards must include "${fragment}"`);
+    }
+  }
 
   if (
     typeof schema.exitCondition !== 'string'
@@ -367,6 +376,9 @@ function validateDurableRuntimeSelectorArtifact(artifact, path, options) {
   validateArtifactEnvironment(artifact.environment, path, options);
   validateArtifactServices(artifact.services, path);
   validateArtifactRollup(artifact.rollup, path);
+  if (options.allowExample !== true) {
+    validateNoRealArtifactFixtureMarkers(artifact, path);
+  }
   validateNoSensitiveArtifactContent(JSON.stringify(artifact), path);
 }
 
@@ -532,6 +544,32 @@ function validateNoSensitiveArtifactContent(content, path) {
     }
   }
   validateNoSensitivePatterns(content, `${path}: artifact`);
+}
+
+function validateNoRealArtifactFixtureMarkers(value, label, path = []) {
+  if (typeof value === 'string') {
+    const marker = forbiddenRealArtifactMarkerPattern.exec(value);
+    if (marker !== null) {
+      const fieldPath = path.length === 0 ? '<root>' : path.join('.');
+      violations.push(`${label}: ${fieldPath} must not contain fixture marker "${marker[1]}"`);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      validateNoRealArtifactFixtureMarkers(item, label, [...path, `[${index}]`]);
+    }
+    return;
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return;
+  }
+
+  for (const [key, item] of Object.entries(value)) {
+    validateNoRealArtifactFixtureMarkers(item, label, [...path, key]);
+  }
 }
 
 function validateNoSensitivePatterns(content, label) {

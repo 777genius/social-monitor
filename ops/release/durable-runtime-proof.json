@@ -64,6 +64,9 @@
         "test"
       ]
     },
+    "realArtifactGuards": [
+      "real durable runtime selector artifact nested values must not contain example, fixture, synthetic, mock or test markers"
+    ],
     "exitCondition": "DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH must validate against durable-runtime-selector-artifact-v1 before external beta go."
   },
   "requiredComposeMarkers": [

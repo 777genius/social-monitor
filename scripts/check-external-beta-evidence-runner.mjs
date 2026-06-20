@@ -956,6 +956,13 @@ function validateRunnerNegativeDurableRuntimeArtifactSmokes() {
       },
     },
     {
+      label: 'durable runtime nested fixture marker',
+      expectedOutput: 'must not contain fixture marker "example"',
+      mutateArtifact: (artifact) => {
+        artifact.services[0].healthCheck.probeId = 'runtime-selector-example-001';
+      },
+    },
+    {
       label: 'durable runtime raw duplicate-key credential hidden by JSON parser',
       expectedOutput: 'sensitive literal fragment "bearer "',
       artifactContent: (artifact) => `${JSON.stringify(artifact, null, 2)}\n`.replace(
