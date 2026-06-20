@@ -8,11 +8,11 @@
   "envExample": "ops/release/external-beta-evidence.env.example",
   "checkCommand": "npm run check:external-beta-evidence-inputs",
   "secretValuePolicy": "never_commit_values",
-  "artifactPathPolicy": "absolute_json_non_workspace_non_fixture_path",
+  "artifactPathPolicy": "absolute_json_private_0600_non_workspace_non_fixture_path",
   "inputClasses": [
     {
       "inputClass": "artifact_path",
-      "description": "Absolute JSON evidence file path. Values must not live in the git workspace and must not point at fixtures or examples.",
+      "description": "Absolute JSON evidence file path with 0600-style private file permissions. Values must not live in the git workspace and must not point at fixtures or examples.",
       "env": [
         "AUDIT_EVENT_EXPORT_PATH",
         "DURABLE_BACKEND_E2E_ARTIFACT_PATH",

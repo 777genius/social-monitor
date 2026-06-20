@@ -178,7 +178,7 @@ function validateHandoffShape() {
   if (handoff.inputMatrix?.secretValuePolicy !== 'never_commit_values') {
     violations.push(`${dryRunPath}: JSON handoff input matrix must preserve secret value policy`);
   }
-  if (handoff.inputMatrix?.artifactPathPolicy !== 'absolute_json_non_workspace_non_fixture_path') {
+  if (handoff.inputMatrix?.artifactPathPolicy !== 'absolute_json_private_0600_non_workspace_non_fixture_path') {
     violations.push(`${dryRunPath}: JSON handoff input matrix must preserve artifact path policy`);
   }
   if (handoff.safety?.handoffJsonCommand !== dryRun.handoffJsonCommand) {
@@ -187,7 +187,7 @@ function validateHandoffShape() {
   if (handoff.safety?.envValuePolicy !== 'names_only') {
     violations.push(`${dryRunPath}: JSON handoff safety.envValuePolicy must be names_only`);
   }
-  if (handoff.safety?.evidencePathPolicy !== 'no_fixture_example_git_tracked_or_secret_bearing_files') {
+  if (handoff.safety?.evidencePathPolicy !== 'absolute_json_private_0600_non_workspace_non_fixture_path') {
     violations.push(`${dryRunPath}: JSON handoff must preserve evidence path safety policy`);
   }
 

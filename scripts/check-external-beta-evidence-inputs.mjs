@@ -82,8 +82,8 @@ function validateMatrixContract() {
   if (matrix.secretValuePolicy !== 'never_commit_values') {
     violations.push(`${matrixPath}: secretValuePolicy must be never_commit_values`);
   }
-  if (matrix.artifactPathPolicy !== 'absolute_json_non_workspace_non_fixture_path') {
-    violations.push(`${matrixPath}: artifactPathPolicy must describe absolute JSON non-workspace evidence paths`);
+  if (matrix.artifactPathPolicy !== 'absolute_json_private_0600_non_workspace_non_fixture_path') {
+    violations.push(`${matrixPath}: artifactPathPolicy must describe absolute JSON private non-workspace evidence paths`);
   }
 }
 
@@ -161,6 +161,9 @@ function validateHandoffEnrichment() {
   }
   if (handoff.inputMatrix?.artifactPathPolicy !== matrix.artifactPathPolicy) {
     violations.push(`${matrixPath}: handoff JSON must expose artifactPathPolicy ${matrix.artifactPathPolicy}`);
+  }
+  if (handoff.safety?.evidencePathPolicy !== matrix.artifactPathPolicy) {
+    violations.push(`${matrixPath}: handoff JSON safety must expose evidencePathPolicy ${matrix.artifactPathPolicy}`);
   }
 
   for (const job of handoff.jobs ?? []) {

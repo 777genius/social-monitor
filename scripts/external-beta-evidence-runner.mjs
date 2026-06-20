@@ -446,7 +446,7 @@ function buildHandoff(plan) {
       liveExecutionRequires: contract.executionSafety.liveExecutionRequires,
       evidencePathMaxBytes: evidencePathMaxBytes(),
       envValuePolicy: 'names_only',
-      evidencePathPolicy: 'no_fixture_example_git_tracked_or_secret_bearing_files',
+      evidencePathPolicy: inputMatrix.artifactPathPolicy,
     },
     readiness: {
       localContractJobs: plan.localContractJobCount,
