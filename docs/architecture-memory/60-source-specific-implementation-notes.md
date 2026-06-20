@@ -71,9 +71,13 @@ Treat as highest-risk/cost source.
 Reference:
 
 - X API docs: https://docs.x.com/x-api
+- X API pricing: https://docs.x.com/x-api/getting-started/pricing
+- X API rate limits: https://docs.x.com/x-api/fundamentals/rate-limits
 
 Implementation notes:
 
+- minimum monitoring scopes are `tweet.read users.read`;
+- `offline.access` is only for background refresh-token flow;
 - no realtime promise until access/cost proven;
 - provider abstraction required;
 - budget guard required;
@@ -104,4 +108,3 @@ Implementation notes:
 3. X is cost-risk source behind provider abstraction.
 4. Telegram is permissioned, not public web scraping.
 5. Source constraints stay in adapters and source policy matrix.
-

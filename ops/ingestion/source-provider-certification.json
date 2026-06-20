@@ -151,7 +151,8 @@
       "state": "provider_only",
       "runtimeReadiness": "deferred",
       "liveBetaBlockers": [
-        "Paid API or approved vendor contract is required before enablement."
+        "Paid X API or approved vendor contract is required before enablement.",
+        "Read-only scopes, endpoint rate limits, retention policy and spend cap must be proven before beta binding."
       ],
       "acquisitionMode": "approved_paid_api_or_vendor"
     }

@@ -2,11 +2,13 @@
 
 ## Last Verified
 
-2026-06-04.
+2026-06-20.
 
 ## Sources
 
 - X API overview: https://docs.x.com/x-api/overview
+- X API pay-per-usage pricing: https://docs.x.com/x-api/getting-started/pricing
+- X API rate limits: https://docs.x.com/x-api/fundamentals/rate-limits
 - Twarc-Cloud docs: https://twarc-cloud.readthedocs.io/
 - Sorsa comparison of tweet collection approaches: https://api.sorsa.io/blog/download-all-tweets-from-user
 - BrowserAct 2026 Twitter scraping landscape article: https://www.browseract.com/blog/twitter-scraping-2026
@@ -16,7 +18,7 @@
 
 X/Twitter is one of the clearest examples of the post-API dilemma.
 
-Older open-source scraping tools like snscrape/twint-style approaches are widely reported as broken or unreliable in 2026. Twarc remains relevant where official API access exists. Browser automation/vendor scraping exists in the market, but it is not an appropriate default foundation for a reliable multi-tenant product.
+Older open-source scraping tools like snscrape/twint-style approaches are widely reported as broken or unreliable in 2026. Twarc remains relevant where official API access exists. X API access is now cost-managed through pay-per-usage credits and endpoint-specific limits, so product design must include budget and rate-limit proof before enabling X bindings. Browser automation/vendor scraping exists in the market, but it is not an appropriate default foundation for a reliable multi-tenant product.
 
 ## Option A - Official X API / Twarc-Style Collection
 
@@ -32,6 +34,7 @@ Cons:
 - paid access can be expensive
 - read limits can constrain monitoring
 - commercial use and retention must be reviewed
+- per-endpoint cost can change the viable scan interval
 
 Use for:
 
@@ -101,3 +104,4 @@ X/Twitter direct API or licensed vendor only; no scraper-first architecture
 
 X/Twitter source support must be gated by `SourceAccessContract` with explicit plan, quota, retention and cost metadata.
 
+Minimum direct API read-only scope starts at `tweet.read users.read`; add `offline.access` only when the product needs refresh tokens for background collection.

@@ -11,12 +11,23 @@ The product must not depend on X as a guaranteed cheap or stable source.
 - X Search Posts documentation: https://docs.x.com/x-api/posts/search/introduction
 - X recent search endpoint: https://docs.x.com/x-api/posts/recent-search
 - X query guide: https://docs.x.com/x-api/posts/search/integrate/build-a-query
-- X API v1.1 rate limits reference: https://developer.x.com/en/docs/x-api/v1/rate-limits
+- X API v2 rate limits reference: https://docs.x.com/x-api/fundamentals/rate-limits
+- X API pay-per-usage pricing: https://docs.x.com/x-api/getting-started/pricing
+- X OAuth 2.0 Authorization Code Flow with PKCE: https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code
+- X API v2 authentication mapping: https://docs.x.com/fundamentals/authentication/guides/v2-authentication-mapping
 - X limits help: https://help.x.com/en/rules-and-policies/x-limits
 
 ## V1 Scope
 
 V1 supports only read monitoring through approved API access.
+
+Minimum direct API read-only scopes:
+
+```text
+tweet.read users.read
+```
+
+Use `offline.access` only when refresh tokens are required for background scans.
 
 Potential capabilities:
 
@@ -80,6 +91,8 @@ Before enabling an X source binding:
 - query cost estimate fits budget
 - scan interval is above minimum
 - expected monthly reads are visible to tenant/admin
+- pay-per-usage credits and spend caps are configured
+- endpoint-level rate-limit headers are persisted
 - downgrade/fallback behavior is selected
 
 For personal MVP, keep X disabled until API economics are explicitly accepted.

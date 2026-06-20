@@ -2,7 +2,7 @@
 
 ## Last Verified
 
-2026-06-04.
+2026-06-20.
 
 ## Sources
 
@@ -10,6 +10,9 @@
 - X Recent Search: https://docs.x.com/x-api/posts/recent-search
 - X Search Operators: https://docs.x.com/x-api/posts/search/integrate/operators
 - X API Rate Limits: https://docs.x.com/x-api/fundamentals/rate-limits
+- X API Pay-Per-Usage Pricing: https://docs.x.com/x-api/getting-started/pricing
+- X OAuth 2.0 Authorization Code Flow with PKCE: https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code
+- X API v2 Authentication Mapping: https://docs.x.com/fundamentals/authentication/guides/v2-authentication-mapping
 - X Enterprise Search API: https://docs.x.com/x-api/enterprise-gnip-2.0/fundamentals/search-api
 - Brandwatch sources: https://social-media-management-help.brandwatch.com/hc/en-us/articles/4556945084701-Sources-for-Listen-Mentions
 
@@ -17,7 +20,15 @@
 
 X remains important but volatile and cost-sensitive.
 
-X documents recent search, full-archive search, filtered stream and rate limits. Enterprise social listening tools often advertise official X partner/firehose access.
+X documents recent search, full-archive search, filtered stream, OAuth 2.0 scopes, pay-per-usage pricing and endpoint-level rate limits. Enterprise social listening tools often advertise official X partner/firehose access.
+
+For monitoring-only MVP work, the default read-only OAuth 2.0 scope floor is:
+
+```text
+tweet.read users.read
+```
+
+Use `offline.access` only when refresh tokens are required for background scans.
 
 ## Option A - X API Recent Search
 
@@ -32,7 +43,7 @@ Cons:
 
 - limited history
 - endpoint/query limits
-- access tier and pricing risk
+- credit balance, per-endpoint cost and pricing risk
 - sampled/coverage constraints may apply by plan
 
 Use for:
@@ -53,6 +64,7 @@ Cons:
 - rule limits
 - reconnect/backfill complexity
 - still access-tier constrained
+- reconnects can multiply cost if backfill is not controlled
 
 Use for:
 
@@ -129,6 +141,8 @@ When enabled:
 - estimate cost before scan
 - use stream only for paid real-time tier
 - keep vendor adapter option open
+- capture rate-limit headers and spend ledger entries as release evidence
+- require explicit retention and deletion policy before storing normalized X items
 
 ## Architecture Rule
 
