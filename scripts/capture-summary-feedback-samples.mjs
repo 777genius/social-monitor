@@ -149,6 +149,8 @@ function readInputSource(inputPath) {
     throw new Error(`${inputPathEnv} must point to a JSON file with redacted summary feedback samples: ${error.message}`);
   }
 
+  assertInputIsNotFixtureEvidence(parsed);
+
   const samples = Array.isArray(parsed) ? parsed : parsed?.samples;
   if (!Array.isArray(samples) || samples.length === 0) {
     throw new Error(`${inputPathEnv} must contain a non-empty samples array`);
@@ -158,6 +160,35 @@ function readInputSource(inputPath) {
     ...(isRecord(parsed) ? parsed : {}),
     samples: JSON.parse(JSON.stringify(samples)),
   };
+}
+
+function assertInputIsNotFixtureEvidence(parsed) {
+  if (!isRecord(parsed)) {
+    return;
+  }
+
+  if (parsed.provenance?.fixtureOnly === true) {
+    throw new Error(`${inputPathEnv} must not use fixture provenance as real feedback input`);
+  }
+  if (parsed.provenance?.evidenceKind === 'fixture_example') {
+    throw new Error(`${inputPathEnv} must not use fixture_example evidence as real feedback input`);
+  }
+
+  const source = isRecord(parsed.source) ? parsed.source : undefined;
+  if (source !== undefined) {
+    for (const field of ['kind', 'environmentId', 'operator', 'collectionMethod', 'redactedBy', 'approvedBy']) {
+      const value = source[field];
+      if (typeof value !== 'string') {
+        continue;
+      }
+      const normalized = value.toLowerCase();
+      for (const fragment of ['example', 'fixture', 'synthetic', 'mock', 'test']) {
+        if (normalized.includes(fragment)) {
+          throw new Error(`${inputPathEnv} source.${field} must not contain "${fragment}" for real feedback input`);
+        }
+      }
+    }
+  }
 }
 
 function readSampleWindow(source) {

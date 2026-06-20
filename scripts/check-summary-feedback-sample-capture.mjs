@@ -11,6 +11,7 @@ const violations = [];
 try {
   validatePositiveCapture();
   validateWorkspaceInputRejected();
+  validateFixtureArtifactInputRejected();
   validatePublicInputRejected();
   validateWorkspaceEnvFileRejected();
 } finally {
@@ -105,6 +106,35 @@ function validateWorkspaceInputRejected() {
   }
   if (!result.output.includes('must not read redacted feedback input from the git workspace')) {
     violations.push(`${captureScript}: negative smoke must explain workspace input rejection`);
+  }
+}
+
+function validateFixtureArtifactInputRejected() {
+  const inputPath = join(tempDirectory, 'fixture-artifact-input.json');
+  const outputPath = join(tempDirectory, 'fixture-artifact-should-not-write.json');
+  const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
+  writeFileSync(inputPath, `${JSON.stringify(fixture, null, 2)}\n`, { mode: 0o600 });
+
+  const result = runCaptureExpectingFailure({
+    SUMMARY_FEEDBACK_REDACTED_INPUT_PATH: inputPath,
+    SUMMARY_REAL_FEEDBACK_SAMPLES_PATH: outputPath,
+    SUMMARY_FEEDBACK_SOURCE_KIND: 'internal_dogfood',
+    SUMMARY_FEEDBACK_ENVIRONMENT_ID: 'summary-dogfood-alpha-1',
+    SUMMARY_FEEDBACK_OPERATOR: 'summary-owner-1',
+    SUMMARY_FEEDBACK_REDACTED_BY: 'summary-owner-1',
+    SUMMARY_FEEDBACK_APPROVED_BY: 'security-owner-1',
+    SUMMARY_FEEDBACK_COLLECTION_METHOD: 'Redacted internal dogfood export collected from summary feedback API review queue.',
+  });
+
+  if (result.exitCode === 0) {
+    violations.push(`${captureScript}: negative smoke must reject copied fixture artifact input`);
+    return;
+  }
+  if (existsSync(outputPath)) {
+    violations.push(`${captureScript}: negative smoke must not write output artifact when fixture provenance is rejected`);
+  }
+  if (!result.output.includes('must not use fixture provenance as real feedback input')) {
+    violations.push(`${captureScript}: negative smoke must explain fixture provenance rejection`);
   }
 }
 
