@@ -152,6 +152,8 @@ function validateStaticWiring() {
     'DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES',
     'docker volume create',
     'Docker volume write probe failed',
+    'after Docker image build',
+    '--no-build',
     'before Postgres initdb could run',
     'postgres:18.4-alpine',
   ]) {

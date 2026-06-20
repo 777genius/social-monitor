@@ -8,11 +8,12 @@ const DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS = 5_000;
 const DEFAULT_DOCKER_SOCKET_PING_TIMEOUT_MS = 3_000;
 const DEFAULT_DOCKER_VOLUME_PROBE_TIMEOUT_MS = 20_000;
 const DEFAULT_MIN_FREE_BYTES = 8 * 1024 ** 3;
-const DEFAULT_DOCKER_VOLUME_PROBE_BYTES = 64 * 1024 ** 2;
+const DEFAULT_DOCKER_VOLUME_PROBE_BYTES = 256 * 1024 ** 2;
 const DOCKER_VOLUME_PROBE_IMAGE = 'postgres:18.4-alpine';
 
 export async function withDockerBackendEvidenceStack(options, callback) {
-  assertDockerEvidencePrerequisites({ cwd: options.preflightCwd ?? process.cwd() });
+  const preflightCwd = options.preflightCwd ?? process.cwd();
+  assertDockerEvidencePrerequisites({ cwd: preflightCwd });
 
   const runId = Date.now().toString(36);
   const projectName = process.env[options.projectEnvName] ?? `${options.projectPrefix}-${runId}`;
@@ -71,7 +72,12 @@ export async function withDockerBackendEvidenceStack(options, callback) {
   });
 
   try {
-    docker([...composeBaseArgs, 'up', '--build', '-d'], { stdio: 'inherit' });
+    docker([...composeBaseArgs, 'build'], { stdio: 'inherit' });
+    assertDockerVolumeStorageAvailable({
+      cwd: preflightCwd,
+      phase: 'after Docker image build',
+    });
+    docker([...composeBaseArgs, 'up', '--no-build', '-d'], { stdio: 'inherit' });
     const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
     waitForReady(apiBaseUrl);
     const imageDigest = inspectApiImageDigest({ docker, composeBaseArgs, composeEnv });
@@ -194,13 +200,14 @@ export function assertDockerEvidencePrerequisites(options = {}) {
   }
 
   if (failures.length === 0) {
-    const volumeProbe = probeDockerVolumeWritable({
+    const volumeFailure = dockerVolumeStorageFailure({
       cwd,
       bytes: volumeProbeBytes,
       timeoutMs: volumeProbeTimeoutMs,
+      phase: 'before Docker image build',
     });
-    if (!volumeProbe.ok) {
-      failures.push(`Docker volume write probe failed: ${volumeProbe.message}`);
+    if (volumeFailure !== undefined) {
+      failures.push(volumeFailure);
     }
   }
 
@@ -211,6 +218,43 @@ export function assertDockerEvidencePrerequisites(options = {}) {
       'Restart Docker Desktop, free disk space, prune unused Docker data, or set DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES / DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES for a controlled override.',
     ].join('\n'));
   }
+}
+
+function assertDockerVolumeStorageAvailable({ cwd, phase }) {
+  const volumeProbeBytes = positiveIntegerEnv(
+    'DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES',
+    DEFAULT_DOCKER_VOLUME_PROBE_BYTES,
+  );
+  const volumeProbeTimeoutMs = positiveIntegerEnv(
+    'DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_TIMEOUT_MS',
+    DEFAULT_DOCKER_VOLUME_PROBE_TIMEOUT_MS,
+  );
+  const volumeFailure = dockerVolumeStorageFailure({
+    cwd,
+    bytes: volumeProbeBytes,
+    timeoutMs: volumeProbeTimeoutMs,
+    phase,
+  });
+  if (volumeFailure !== undefined) {
+    throw new Error([
+      'Docker backend evidence storage check failed:',
+      `- ${volumeFailure}`,
+      'Free Docker Desktop storage or prune unused Docker data before capturing backend staging evidence.',
+    ].join('\n'));
+  }
+}
+
+function dockerVolumeStorageFailure({ cwd, bytes, timeoutMs, phase }) {
+  const volumeProbe = probeDockerVolumeWritable({
+    cwd,
+    bytes,
+    timeoutMs,
+  });
+  if (volumeProbe.ok) {
+    return undefined;
+  }
+
+  return `Docker volume write probe failed ${phase}: ${volumeProbe.message}`;
 }
 
 function probeDockerVolumeWritable({ cwd, bytes, timeoutMs }) {
