@@ -1,4 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
@@ -193,6 +195,7 @@ if (contract.externalBetaStatus !== 'hold_until_runtime_secret_store_and_rotatio
 
 validateRotationEvidence();
 validateCaptureHandoff();
+validateCaptureOutputPathGuards();
 const rotationArtifactSchemas = contract.rotationArtifactSchemas ?? {};
 validateRotationArtifactSchemas(rotationArtifactSchemas);
 validateRotationArtifactPath(
@@ -833,6 +836,8 @@ function validateBaselineWiring() {
 function validateCaptureHandoff() {
   for (const marker of [
     'writeEvidenceEnvFile',
+    'validateEvidenceEnvFilePath',
+    'validateEvidenceJsonFilePath',
     'CREDENTIAL_SECRET_RUNTIME_FLOW_ENV_PATH',
     'SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH',
     'WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH',
@@ -844,6 +849,48 @@ function validateCaptureHandoff() {
   }
   if (!captureScriptSource.includes('must not use local, fixture, example, mock or test identifiers')) {
     violations.push(`${captureScriptPath}: credential secret capture must reject non-beta evidence identity values`);
+  }
+}
+
+function validateCaptureOutputPathGuards() {
+  const workspaceArtifactPath = resolve('source-credential-rotation-workspace-output.json');
+  const result = runCaptureExpectingFailure({
+    SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: workspaceArtifactPath,
+    WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: '/tmp/social-monitor-webhook-secret-rotation-output.json',
+    CREDENTIAL_SECRET_RUNTIME_FLOW_ENV_PATH: '/tmp/social-monitor-credential-secret-runtime-flow.env',
+    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+    STAGING_SECRET_STORE_ID: 'staging-secret-store-1',
+    STAGING_OPERATOR: 'security-owner-1',
+  });
+
+  if (result.exitCode === 0) {
+    violations.push(`${captureScriptPath}: capture must reject workspace SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH`);
+    return;
+  }
+  if (!result.output.includes('SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH must not write release evidence into the git workspace')) {
+    violations.push(`${captureScriptPath}: workspace artifact path rejection must explain evidence path policy`);
+  }
+  if (existsSync(workspaceArtifactPath)) {
+    violations.push(`${captureScriptPath}: workspace artifact path rejection must not create ${workspaceArtifactPath}`);
+  }
+}
+
+function runCaptureExpectingFailure(env) {
+  try {
+    execFileSync(process.execPath, [captureScriptPath], {
+      env: {
+        ...process.env,
+        ...env,
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
   }
 }
 
