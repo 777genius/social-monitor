@@ -12,6 +12,7 @@
   "handoffJsonCommand": "npm run --silent beta:evidence:handoff:json",
   "preflightCommand": "npm run beta:evidence:preflight",
   "artifactValidationCommand": "npm run beta:evidence:validate",
+  "dockerBundleImportCommand": "npm run beta:evidence:import-docker-bundle",
   "executeCommand": "npm run beta:evidence:run -- --execute",
   "runnerFile": "scripts/external-beta-evidence-runner.mjs",
   "checkFile": "scripts/check-external-beta-evidence-runner.mjs",

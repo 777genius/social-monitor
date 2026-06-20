@@ -281,6 +281,7 @@ validateCommand(contract.handoffCommand, `${contractPath}: handoffCommand`);
 validateCommand(contract.handoffJsonCommand, `${contractPath}: handoffJsonCommand`);
 validateCommand(contract.preflightCommand, `${contractPath}: preflightCommand`);
 validateCommand(contract.artifactValidationCommand, `${contractPath}: artifactValidationCommand`);
+validateCommand(contract.dockerBundleImportCommand, `${contractPath}: dockerBundleImportCommand`);
 validateCommand(contract.executeCommand, `${contractPath}: executeCommand`);
 validateSafety();
 validateArtifactFreshnessPolicy();
@@ -515,6 +516,8 @@ function validateRunnerImplementation() {
     'formatHandoffArtifacts',
     'artifactExamplePathByFormat',
     'Artifact paths are printed by env name only',
+    'dockerBundleImportCommand',
+    'Import Docker bundle env',
     'contractClosurePercent',
     'externalEvidenceEnvReadinessPercent',
     'readinessCounts',

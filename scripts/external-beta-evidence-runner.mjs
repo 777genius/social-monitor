@@ -395,6 +395,7 @@ function printHandoff(plan) {
   console.log(`- Inspect summary: ${contract.summaryCommand}`);
   console.log(`- Preflight env: ${contract.preflightCommand}`);
   console.log(`- Validate artifacts: ${contract.artifactValidationCommand}`);
+  console.log(`- Import Docker bundle env: ${contract.dockerBundleImportCommand}`);
   console.log(`- Live execution requires: ${contract.executionSafety.liveExecutionRequires.join(' + ')}`);
   console.log(`- Evidence path max size: ${formatBytes(evidencePathMaxBytes())}`);
   console.log('- Do not use fixture, example, git-tracked or secret-bearing files as evidence artifacts.');
@@ -460,6 +461,7 @@ function buildHandoff(plan) {
       handoffJsonCommand: contract.handoffJsonCommand,
       preflightCommand: contract.preflightCommand,
       artifactValidationCommand: contract.artifactValidationCommand,
+      dockerBundleImportCommand: contract.dockerBundleImportCommand,
       liveExecutionRequires: contract.executionSafety.liveExecutionRequires,
       evidencePathMaxBytes: evidencePathMaxBytes(),
       envValuePolicy: 'names_only',

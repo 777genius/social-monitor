@@ -10,6 +10,7 @@ const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
 const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
 const captureScriptPath = 'scripts/capture-docker-backend-staging-evidence-bundle.mjs';
+const importScriptPath = 'scripts/import-docker-backend-staging-evidence-bundle.mjs';
 const dockerHarnessPath = 'scripts/lib/docker-backend-evidence-harness.mjs';
 const checkScriptName = 'check:docker-backend-staging-evidence-bundle';
 const checkCommand = `npm run ${checkScriptName}`;
@@ -91,6 +92,7 @@ function validateStaticWiring() {
   const baseline = readJson(baselinePath);
   const releaseContract = readJson(releaseContractPath);
   const captureSource = readFileSync(captureScriptPath, 'utf8');
+  const importSource = readFileSync(importScriptPath, 'utf8');
   const dockerHarnessSource = readFileSync(dockerHarnessPath, 'utf8');
   const packageScripts = packageJson.scripts ?? {};
   const backendScripts = new Set(backendSafe.backendScripts ?? []);
@@ -102,6 +104,9 @@ function validateStaticWiring() {
   }
   if (packageScripts['capture:docker-backend-staging-evidence-bundle'] !== 'node scripts/capture-docker-backend-staging-evidence-bundle.mjs') {
     violations.push(`${packagePath}: capture:docker-backend-staging-evidence-bundle must run ${captureScriptPath}`);
+  }
+  if (packageScripts['beta:evidence:import-docker-bundle'] !== 'node scripts/import-docker-backend-staging-evidence-bundle.mjs') {
+    violations.push(`${packagePath}: beta:evidence:import-docker-bundle must run ${importScriptPath}`);
   }
   if (!backendScripts.has(checkScriptName)) {
     violations.push(`${backendSafePath}: backendScripts must include ${checkScriptName}`);
@@ -141,6 +146,20 @@ function validateStaticWiring() {
   }
   if (!captureSource.includes("check:docker-backend-staging-evidence-bundle")) {
     violations.push(`${captureScriptPath}: bundle capture must self-validate the generated Docker bundle`);
+  }
+  for (const marker of [
+    'BACKEND_STAGING_EVIDENCE_BUNDLE_PATH',
+    'EXTERNAL_BETA_EVIDENCE_ENV_PATH',
+    'readPrivateEvidenceJsonFile',
+    'writeEvidenceEnvFile',
+    'check:docker-backend-staging-evidence-bundle',
+    'DATABASE_URL',
+    'RABBITMQ_URL',
+    'This import intentionally does not invent DATABASE_URL, RABBITMQ_URL',
+  ]) {
+    if (!importSource.includes(marker)) {
+      violations.push(`${importScriptPath}: Docker bundle import must include ${marker}`);
+    }
   }
   for (const marker of ['probeDockerApiSocket', '/_ping', 'Docker API socket check failed', 'DOCKER_HOST', 'unix://']) {
     if (!dockerHarnessSource.includes(marker)) {
