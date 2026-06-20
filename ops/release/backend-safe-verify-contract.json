@@ -115,6 +115,7 @@
     "check:summary-window",
     "check:summary-retry",
     "check:summary-feedback-hardening",
+    "check:summary-feedback-sample-capture",
     "check:backup-restore",
     "check:retention",
     "check:retention-plan",

@@ -458,7 +458,7 @@
           "format": "redacted-summary-feedback-samples-v1"
         }
       ],
-      "exitCondition": "Redacted internal dogfood or beta samples replace fixture-only feedback report and every blocker is mapped to an eval, validator or runbook action."
+      "exitCondition": "Redacted internal dogfood or beta samples captured by npm run capture:summary-feedback-samples replace fixture-only feedback report and every blocker is mapped to an eval, validator or runbook action."
     },
     {
       "jobId": "operational-support-package",

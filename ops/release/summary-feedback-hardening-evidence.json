@@ -11,7 +11,7 @@
     "requiredForExternalBeta": true,
     "owner": "product-owner",
     "artifactPath": null,
-    "exitCondition": "Replace deterministic feedback report with redacted internal dogfood or beta samples before external beta go."
+    "exitCondition": "Use npm run capture:summary-feedback-samples to replace deterministic feedback report with redacted internal dogfood or beta samples before external beta go."
   },
   "redactedSampleContentSchema": {
     "artifactFormat": "redacted-summary-feedback-samples-v1",
@@ -130,7 +130,7 @@
       "validator_change",
       "runbook_action"
     ],
-    "exitCondition": "SUMMARY_REAL_FEEDBACK_SAMPLES_PATH must validate against redacted-summary-feedback-samples-v1 before external beta go."
+    "exitCondition": "SUMMARY_REAL_FEEDBACK_SAMPLES_PATH produced by npm run capture:summary-feedback-samples must validate against redacted-summary-feedback-samples-v1 before external beta go."
   },
   "privacyGuardrails": {
     "rawProviderPayloadsIncluded": false,
@@ -210,7 +210,7 @@
   ],
   "externalBetaExitCriteria": [
     "Feedback report evidenceMode is redacted_beta_samples.",
-    "SUMMARY_REAL_FEEDBACK_SAMPLES_PATH validates against redacted-summary-feedback-samples-v1.",
+    "SUMMARY_REAL_FEEDBACK_SAMPLES_PATH produced by npm run capture:summary-feedback-samples validates against redacted-summary-feedback-samples-v1.",
     "Every blocker finding from real samples has an owner and one release-blocking eval fixture, validator change or runbook action.",
     "Claims, citations, summary cost and stale-window markers are covered by release-blocking gates."
   ]

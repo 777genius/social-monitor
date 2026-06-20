@@ -135,9 +135,12 @@ Other worker entrypoints are available:
     npm run check:runtime-compose # App-profile Docker Compose runtime contract
     npm run check:live-open-connectors # Optional network smoke for HN/RSS without API keys
     npm run capture:live-reddit-oauth # Optional Reddit OAuth capture with access-token or refresh-token env
+    npm run capture:summary-feedback-samples # Capture redacted dogfood/beta summary feedback evidence
     npm run verify             # Full local verification pipeline
 
 Live connector checks are intentionally separated from `npm run verify`: HN/RSS/GitHub public checks can run without credentials, while Reddit requires tenant-owned OAuth credentials. `capture:live-reddit-oauth` accepts either `REDDIT_ACCESS_TOKEN` or `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` + `REDDIT_REFRESH_TOKEN` and writes only redacted evidence artifacts. X/Twitter and Telegram remain deferred until an approved API/vendor or authorized channel path is available.
+
+Summary feedback capture expects an already-redacted JSON input outside the git workspace. Set `SUMMARY_FEEDBACK_REDACTED_INPUT_PATH`, `SUMMARY_REAL_FEEDBACK_SAMPLES_PATH`, `SUMMARY_FEEDBACK_SOURCE_KIND`, `SUMMARY_FEEDBACK_ENVIRONMENT_ID`, `SUMMARY_FEEDBACK_OPERATOR`, `SUMMARY_FEEDBACK_REDACTED_BY`, `SUMMARY_FEEDBACK_APPROVED_BY`, `SUMMARY_FEEDBACK_COLLECTION_METHOD`, and either input `sampleWindow` or `SUMMARY_FEEDBACK_WINDOW_STARTED_AT` / `SUMMARY_FEEDBACK_WINDOW_ENDED_AT`.
 
 ## Start With The Architecture Docs
 

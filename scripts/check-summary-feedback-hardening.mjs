@@ -33,6 +33,9 @@ const summaryRealFeedbackSamplesPath = process.env.SUMMARY_REAL_FEEDBACK_SAMPLES
 const gateScript = 'check:summary-feedback-hardening';
 const gateCommand = `npm run ${gateScript}`;
 const gateId = 'summary-feedback-hardening';
+const captureScript = 'capture:summary-feedback-samples';
+const captureScriptPath = 'scripts/capture-summary-feedback-samples.mjs';
+const captureCheckScript = 'check:summary-feedback-sample-capture';
 const redactedSampleFormat = 'redacted-summary-feedback-samples-v1';
 const redactedSampleEvidenceKind = 'redacted_real_feedback_samples';
 const allowedActionTypes = new Set(['eval_fixture', 'validator_change', 'runbook_action']);
@@ -973,8 +976,17 @@ function requireWiring() {
   if (!scripts[gateScript]) {
     violations.push(`${packagePath}: missing ${gateScript}`);
   }
+  if (!String(scripts[captureScript] ?? '').includes(captureScriptPath)) {
+    violations.push(`${packagePath}: ${captureScript} must run ${captureScriptPath}`);
+  }
+  if (!scripts[captureCheckScript]) {
+    violations.push(`${packagePath}: missing ${captureCheckScript}`);
+  }
   if (!backendScripts.has(gateScript)) {
     violations.push(`${backendSafePath}: backend-safe verify must include ${gateScript}`);
+  }
+  if (!backendScripts.has(captureCheckScript)) {
+    violations.push(`${backendSafePath}: backend-safe verify must include ${captureCheckScript}`);
   }
   if (!releaseGateIds.has(gateId)) {
     violations.push(`${releaseContractPath}: missing ${gateId} release gate`);
