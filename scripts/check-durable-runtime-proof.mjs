@@ -1,12 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath, URL } from 'node:url';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
   validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
-import { URL } from 'node:url';
+import { readPrivateEvidenceJsonFile } from './lib/evidence-env-file.mjs';
 
 const proofPath = 'ops/release/durable-runtime-proof.json';
 const persistencePath = 'ops/release/persistence-readiness-contract.json';
@@ -14,6 +16,7 @@ const packagePath = 'package.json';
 const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
 const dockerDurableRuntimeCapturePath = 'scripts/capture-docker-durable-runtime-proof.mjs';
+const currentScriptPath = fileURLToPath(import.meta.url);
 const proof = JSON.parse(readFileSync(proofPath, 'utf8'));
 const persistence = JSON.parse(readFileSync(persistencePath, 'utf8'));
 const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
@@ -151,6 +154,7 @@ if (
     'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH',
     {
       allowExample: false,
+      requirePrivateExternalPath: true,
       expectedEvidence: {
         environmentId: requireEnvWhenArtifactIsPresent('STAGING_ENVIRONMENT_ID'),
         imageDigest: requireEnvWhenArtifactIsPresent('BACKEND_IMAGE_DIGEST'),
@@ -200,6 +204,7 @@ for (const requiredScript of ['check:durable-runtime-proof', 'check:persistence-
 validateBaselineWiring();
 validateCaptureScriptWiring();
 validateCaptureOutputPathGuards();
+validateDirectArtifactPathGuards();
 
 if (violations.length > 0) {
   console.error(violations.join('\n'));
@@ -308,20 +313,32 @@ function requireSetCoverage(actual, expected, label) {
 }
 
 function validateDurableRuntimeSelectorArtifactPath(path, label, options) {
-  requireExistingPath(path, label);
-  if (typeof path !== 'string' || path.trim().length === 0 || !existsSync(path)) {
+  if (typeof path !== 'string' || path.trim().length === 0) {
+    violations.push(`${proofPath}: ${label} must reference an existing path`);
+    return;
+  }
+  if (options.requirePrivateExternalPath !== true && !existsSync(path)) {
+    violations.push(`${proofPath}: ${label} must reference an existing path`);
     return;
   }
 
-  const artifact = readDurableRuntimeSelectorArtifact(path);
+  const artifact = readDurableRuntimeSelectorArtifact(path, label, options);
   if (artifact === undefined) {
     return;
   }
   validateDurableRuntimeSelectorArtifact(artifact, path, options);
 }
 
-function readDurableRuntimeSelectorArtifact(path) {
-  const rawContent = readFileSync(path, 'utf8');
+function readDurableRuntimeSelectorArtifact(path, label, options) {
+  let rawContent;
+  try {
+    rawContent = options.requirePrivateExternalPath === true
+      ? readPrivateEvidenceJsonFile(path, label)
+      : readFileSync(path, 'utf8');
+  } catch (error) {
+    violations.push(error instanceof Error ? error.message : String(error));
+    return undefined;
+  }
   validateNoSensitiveArtifactContent(rawContent, path);
   try {
     return JSON.parse(rawContent);
@@ -574,6 +591,17 @@ function validateCaptureScriptWiring() {
       violations.push(`${dockerDurableRuntimeCapturePath}: capture must include ${marker}`);
     }
   }
+
+  const selfSource = readFileSync(currentScriptPath, 'utf8');
+  for (const marker of [
+    'readPrivateEvidenceJsonFile',
+    'requirePrivateExternalPath',
+    '0600-style private file permissions',
+  ]) {
+    if (!selfSource.includes(marker)) {
+      violations.push(`${currentScriptPath}: direct artifact env path guard must include ${marker}`);
+    }
+  }
 }
 
 function validateCaptureOutputPathGuards() {
@@ -598,6 +626,68 @@ function runCaptureExpectingFailure(env) {
     execFileSync(process.execPath, [dockerDurableRuntimeCapturePath], {
       env: {
         ...process.env,
+        ...env,
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function validateDirectArtifactPathGuards() {
+  if (process.env.DURABLE_RUNTIME_PROOF_DIRECT_PATH_GUARD_TEST === '1') {
+    return;
+  }
+
+  const workspaceArtifactPath = resolve('durable-runtime-selector-direct-workspace-output.json');
+  const workspaceResult = runSelfExpectingFailure({
+    DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: workspaceArtifactPath,
+    STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
+    BACKEND_IMAGE_DIGEST: `sha256:${'d'.repeat(64)}`,
+    API_BASE_URL: 'http://127.0.0.1:4000',
+  });
+  if (workspaceResult.exitCode === 0) {
+    violations.push('check:durable-runtime-proof must reject workspace DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH');
+  } else if (!workspaceResult.output.includes('DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH must not write release evidence into the git workspace')) {
+    violations.push('check:durable-runtime-proof workspace artifact rejection must explain evidence path policy');
+  }
+  if (existsSync(workspaceArtifactPath)) {
+    violations.push(`check:durable-runtime-proof workspace artifact rejection must not create ${workspaceArtifactPath}`);
+  }
+
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'durable-runtime-proof-direct-'));
+  try {
+    const publicArtifactPath = join(tempDirectory, 'durable-runtime-selector.json');
+    writeFileSync(publicArtifactPath, '{}\n', { mode: 0o600 });
+    chmodSync(publicArtifactPath, 0o644);
+    const publicModeResult = runSelfExpectingFailure({
+      DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: publicArtifactPath,
+      STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
+      BACKEND_IMAGE_DIGEST: `sha256:${'d'.repeat(64)}`,
+      API_BASE_URL: 'http://127.0.0.1:4000',
+    });
+    if (publicModeResult.exitCode === 0) {
+      violations.push('check:durable-runtime-proof must reject public artifact permissions');
+    } else if (!publicModeResult.output.includes('DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH must use 0600-style private file permissions')) {
+      violations.push('check:durable-runtime-proof public artifact rejection must explain private file mode policy');
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function runSelfExpectingFailure(env) {
+  try {
+    execFileSync(process.execPath, [currentScriptPath], {
+      env: {
+        ...process.env,
+        DURABLE_RUNTIME_PROOF_DIRECT_PATH_GUARD_TEST: '1',
         ...env,
       },
       encoding: 'utf8',

@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 const forbiddenPathFragments = ['/fixtures/', '\\fixtures\\', '.example.', '-examples', '_examples'];
@@ -62,6 +62,25 @@ export function validateEvidenceJsonFilePath(path, label) {
   }
 
   return resolvedPath;
+}
+
+export function readPrivateEvidenceJsonFile(path, label) {
+  const resolvedPath = validateEvidenceJsonFilePath(path, label);
+  let stats;
+  try {
+    stats = statSync(resolvedPath);
+  } catch {
+    throw new Error(`${label} must point to an existing regular file`);
+  }
+
+  if (!stats.isFile()) {
+    throw new Error(`${label} must point to an existing regular file`);
+  }
+  if ((stats.mode & 0o077) !== 0) {
+    throw new Error(`${label} must use 0600-style private file permissions`);
+  }
+
+  return readFileSync(resolvedPath, 'utf8');
 }
 
 export function shellQuote(value) {
