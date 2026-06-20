@@ -1,8 +1,43 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { resolveDeliveryEnabledChannels } from '@social-monitor/delivery/interfaces/rest/delivery-provider-tokens';
+import {
+  resolveDeliveryEnabledChannels,
+  resolveDeliveryPersistenceMode,
+  resolveDeliveryWebhookProviderMode,
+} from '@social-monitor/delivery/interfaces/rest/delivery-provider-tokens';
+import { resolveFeedPersistenceMode } from '@social-monitor/feed/interfaces/rest/feed-provider-tokens';
+import { resolveIdentityPersistenceMode } from '@social-monitor/identity/interfaces/rest/identity-provider-tokens';
+import { resolveIngestionSupportPersistenceMode } from '@social-monitor/ingestion/interfaces/rest/ingestion-provider-tokens';
 import type { SourceReadinessProfile } from '@social-monitor/ingestion/ports';
+import {
+  resolveMonitoringPersistenceMode,
+  resolveMonitoringScanQueueMode,
+} from '@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens';
 import { resolveRuntimeProfile } from '@social-monitor/platform-config';
 import type { Clock } from '@social-monitor/shared-kernel';
+import {
+  resolveSummaryJobQueueMode,
+  resolveSummaryPersistenceMode,
+} from '@social-monitor/summary/interfaces/rest/summary-provider-tokens';
+import { resolveUsagePersistenceMode } from '@social-monitor/usage/interfaces/rest/usage-provider-tokens';
+
+import {
+  resolveDeliveryAttemptDispatchLoopOptions,
+  resolveDeliveryAttemptDispatchQueueMode,
+  resolveDeliveryAttemptQueueDrainLoopOptions,
+  resolveDeliveryAttemptQueueReaderMode,
+  resolveDeliveryDigestSchedulerLoopOptions,
+} from '../../delivery-service/src/delivery-service-provider-tokens';
+import { resolveEventRelayLoopOptions } from '../../event-relay/src/event-relay-provider-tokens';
+import {
+  resolveIngestionScanQueueDrainLoopOptions,
+  resolveIngestionScanQueueReaderMode,
+  resolveIngestionScanSchedulerLoopOptions,
+} from '../../ingestion-worker/src/ingestion-worker-provider-tokens';
+import {
+  resolveIntelligenceSummaryJobLoopOptions,
+  resolveIntelligenceSummaryQueueDrainLoopOptions,
+  resolveIntelligenceSummaryQueueReaderMode,
+} from '../../intelligence-worker/src/intelligence-worker-provider-tokens';
 
 export type HealthResponse = {
   readonly status: 'ok';
@@ -95,34 +130,36 @@ export class ApiGatewayHealthReporter {
         nodeEnv: this.env.NODE_ENV ?? 'development',
         runtimeProfile: resolveRuntimeProfile(this.env),
         persistence: {
-          monitoring: this.envMode('MONITORING_PERSISTENCE', 'in-memory'),
-          feed: this.envMode('FEED_PERSISTENCE', 'in-memory'),
-          ingestionSupport: this.envMode('INGESTION_SUPPORT_PERSISTENCE', 'in-memory'),
-          summary: this.envMode('SUMMARY_PERSISTENCE', 'in-memory'),
-          delivery: this.envMode('DELIVERY_PERSISTENCE', 'in-memory'),
-          identity: this.envMode('IDENTITY_PERSISTENCE', 'in-memory'),
-          usage: this.envMode('USAGE_PERSISTENCE', 'in-memory'),
+          monitoring: resolveMonitoringPersistenceMode(this.env),
+          feed: resolveFeedPersistenceMode(this.env),
+          ingestionSupport: resolveIngestionSupportPersistenceMode(this.env),
+          summary: resolveSummaryPersistenceMode(this.env),
+          delivery: resolveDeliveryPersistenceMode(this.env),
+          identity: resolveIdentityPersistenceMode(this.env),
+          usage: resolveUsagePersistenceMode(this.env),
         },
         workerLoops: {
-          ingestionScanScheduler: this.loopMode('INGESTION_SCAN_SCHEDULER_LOOP'),
-          ingestionScanQueueDrain: this.loopMode('INGESTION_SCAN_QUEUE_DRAIN_LOOP'),
-          intelligenceSummaryJob: this.summaryJobLoopMode(),
-          intelligenceSummaryQueueDrain: this.summaryQueueDrainLoopMode(),
-          deliveryDigestScheduler: this.loopMode('DELIVERY_DIGEST_SCHEDULER_LOOP'),
-          deliveryAttemptDispatch: this.loopMode('DELIVERY_ATTEMPT_DISPATCH_LOOP'),
-          deliveryAttemptQueueDrain: this.deliveryAttemptQueueDrainLoopMode(),
-          eventRelay: this.loopMode('EVENT_RELAY_LOOP'),
+          ingestionScanScheduler: this.loopMode(resolveIngestionScanSchedulerLoopOptions(this.env).enabled),
+          ingestionScanQueueDrain: this.loopMode(resolveIngestionScanQueueDrainLoopOptions(this.env).enabled),
+          intelligenceSummaryJob: this.loopMode(resolveIntelligenceSummaryJobLoopOptions(this.env).enabled),
+          intelligenceSummaryQueueDrain: this.loopMode(
+            resolveIntelligenceSummaryQueueDrainLoopOptions(this.env).enabled,
+          ),
+          deliveryDigestScheduler: this.loopMode(resolveDeliveryDigestSchedulerLoopOptions(this.env).enabled),
+          deliveryAttemptDispatch: this.loopMode(resolveDeliveryAttemptDispatchLoopOptions(this.env).enabled),
+          deliveryAttemptQueueDrain: this.loopMode(resolveDeliveryAttemptQueueDrainLoopOptions(this.env).enabled),
+          eventRelay: this.loopMode(resolveEventRelayLoopOptions(this.env).enabled),
         },
         queues: {
-          monitoringScanPublisher: this.envMode('MONITORING_SCAN_QUEUE', 'in-memory'),
-          ingestionScanReader: this.envMode('INGESTION_SCAN_QUEUE_READER', 'in-memory'),
-          summaryJobPublisher: this.envMode('SUMMARY_JOB_QUEUE_MODE', 'in-memory'),
-          intelligenceSummaryReader: this.envMode('INTELLIGENCE_SUMMARY_QUEUE_READER', 'in-memory'),
-          deliveryAttemptPublisher: this.envMode('DELIVERY_ATTEMPT_DISPATCH_QUEUE', 'in-memory'),
-          deliveryAttemptReader: this.envMode('DELIVERY_ATTEMPT_QUEUE_READER', 'in-memory'),
+          monitoringScanPublisher: resolveMonitoringScanQueueMode(this.env),
+          ingestionScanReader: resolveIngestionScanQueueReaderMode(this.env),
+          summaryJobPublisher: resolveSummaryJobQueueMode(this.env),
+          intelligenceSummaryReader: resolveIntelligenceSummaryQueueReaderMode(this.env),
+          deliveryAttemptPublisher: resolveDeliveryAttemptDispatchQueueMode(this.env),
+          deliveryAttemptReader: resolveDeliveryAttemptQueueReaderMode(this.env),
         },
         providers: {
-          deliveryWebhook: this.envMode('DELIVERY_WEBHOOK_PROVIDER', 'in-memory'),
+          deliveryWebhook: resolveDeliveryWebhookProviderMode(this.env),
           deliveryEnabledChannels: resolveDeliveryEnabledChannels(this.env).join(','),
         },
       },
@@ -177,32 +214,7 @@ export class ApiGatewayHealthReporter {
     };
   }
 
-  private envMode(key: string, fallback: string): string {
-    return this.env[key] ?? fallback;
-  }
-
-  private loopMode(key: string): string {
-    return this.env[key] ?? (this.env.NODE_ENV === 'test' ? 'disabled' : 'enabled');
-  }
-
-  private summaryJobLoopMode(): string {
-    return this.env.INTELLIGENCE_SUMMARY_JOB_LOOP ??
-      (this.env.NODE_ENV === 'test' || this.env.INTELLIGENCE_SUMMARY_QUEUE_READER === 'rabbitmq'
-        ? 'disabled'
-        : 'enabled');
-  }
-
-  private summaryQueueDrainLoopMode(): string {
-    return this.env.INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP ??
-      (this.env.NODE_ENV !== 'test' && this.env.INTELLIGENCE_SUMMARY_QUEUE_READER === 'rabbitmq'
-        ? 'enabled'
-        : 'disabled');
-  }
-
-  private deliveryAttemptQueueDrainLoopMode(): string {
-    return this.env.DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP ??
-      (this.env.NODE_ENV !== 'test' && this.env.DELIVERY_ATTEMPT_QUEUE_READER === 'rabbitmq'
-        ? 'enabled'
-        : 'disabled');
+  private loopMode(enabled: boolean): 'enabled' | 'disabled' {
+    return enabled ? 'enabled' : 'disabled';
   }
 }

@@ -44,6 +44,27 @@ const readinessProfiles: readonly SourceReadinessProfile[] = [
   },
 ];
 
+const betaDurableEnv: NodeJS.ProcessEnv = {
+  NODE_ENV: 'production',
+  SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+  DATABASE_URL: 'postgresql://social-monitor.test/db',
+  RABBITMQ_URL: 'amqp://social-monitor.test',
+  MONITORING_PERSISTENCE: 'prisma',
+  FEED_PERSISTENCE: 'prisma',
+  INGESTION_SUPPORT_PERSISTENCE: 'prisma',
+  SUMMARY_PERSISTENCE: 'prisma',
+  DELIVERY_PERSISTENCE: 'prisma',
+  IDENTITY_PERSISTENCE: 'prisma',
+  USAGE_PERSISTENCE: 'prisma',
+  MONITORING_SCAN_QUEUE: 'rabbitmq',
+  INGESTION_SCAN_QUEUE_READER: 'rabbitmq',
+  SUMMARY_JOB_QUEUE_MODE: 'rabbitmq',
+  INTELLIGENCE_SUMMARY_QUEUE_READER: 'rabbitmq',
+  DELIVERY_ATTEMPT_DISPATCH_QUEUE: 'rabbitmq',
+  DELIVERY_ATTEMPT_QUEUE_READER: 'rabbitmq',
+  DELIVERY_WEBHOOK_PROVIDER: 'http',
+};
+
 describe('ApiGatewayHealthReporter', () => {
   it('builds deterministic health responses from injected clock and uptime reader', () => {
     const reporter = new ApiGatewayHealthReporter(
@@ -64,22 +85,7 @@ describe('ApiGatewayHealthReporter', () => {
   it('builds readiness metadata from injected environment without globals', () => {
     const reporter = new ApiGatewayHealthReporter(
       {
-        NODE_ENV: 'production',
-        SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
-        MONITORING_PERSISTENCE: 'prisma',
-        FEED_PERSISTENCE: 'prisma',
-        INGESTION_SUPPORT_PERSISTENCE: 'prisma',
-        SUMMARY_PERSISTENCE: 'prisma',
-        DELIVERY_PERSISTENCE: 'prisma',
-        IDENTITY_PERSISTENCE: 'prisma',
-        USAGE_PERSISTENCE: 'prisma',
-        MONITORING_SCAN_QUEUE: 'rabbitmq',
-        INGESTION_SCAN_QUEUE_READER: 'rabbitmq',
-        SUMMARY_JOB_QUEUE_MODE: 'rabbitmq',
-        INTELLIGENCE_SUMMARY_QUEUE_READER: 'rabbitmq',
-        DELIVERY_ATTEMPT_DISPATCH_QUEUE: 'rabbitmq',
-        DELIVERY_ATTEMPT_QUEUE_READER: 'rabbitmq',
-        DELIVERY_WEBHOOK_PROVIDER: 'http',
+        ...betaDurableEnv,
         DELIVERY_ENABLED_CHANNELS: 'webhook',
       },
       new FixedClock(new Date('2026-01-02T03:04:05.000Z')),
@@ -123,16 +129,30 @@ describe('ApiGatewayHealthReporter', () => {
 
   it('reports resolved beta delivery channels when the selector is omitted', () => {
     const reporter = new ApiGatewayHealthReporter(
-      {
-        NODE_ENV: 'production',
-        SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
-        DELIVERY_WEBHOOK_PROVIDER: 'http',
-      },
+      betaDurableEnv,
       new FixedClock(new Date('2026-01-02T03:04:05.000Z')),
       () => 3,
       readinessProfiles,
     );
 
     expect(reporter.ready().runtime.providers.deliveryEnabledChannels).toBe('webhook');
+  });
+
+  it('rejects beta readiness when durable selectors would fall back to in-memory', () => {
+    const reporter = new ApiGatewayHealthReporter(
+      {
+        NODE_ENV: 'production',
+        SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+        DATABASE_URL: 'postgresql://social-monitor.test/db',
+        RABBITMQ_URL: 'amqp://social-monitor.test',
+      },
+      new FixedClock(new Date('2026-01-02T03:04:05.000Z')),
+      () => 3,
+      readinessProfiles,
+    );
+
+    expect(() => reporter.ready()).toThrow(
+      'MONITORING_PERSISTENCE=in-memory is not allowed when SOCIAL_MONITOR_RUNTIME_PROFILE=beta',
+    );
   });
 });
