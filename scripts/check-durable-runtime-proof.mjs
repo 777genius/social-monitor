@@ -1,4 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
@@ -197,6 +199,7 @@ for (const requiredScript of ['check:durable-runtime-proof', 'check:persistence-
 
 validateBaselineWiring();
 validateCaptureScriptWiring();
+validateCaptureOutputPathGuards();
 
 if (violations.length > 0) {
   console.error(violations.join('\n'));
@@ -569,6 +572,42 @@ function validateCaptureScriptWiring() {
     if (!captureSource.includes(marker)) {
       violations.push(`${dockerDurableRuntimeCapturePath}: capture must include ${marker}`);
     }
+  }
+}
+
+function validateCaptureOutputPathGuards() {
+  const workspaceArtifactPath = resolve('durable-runtime-selector-workspace-output.json');
+  const result = runCaptureExpectingFailure({
+    DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: workspaceArtifactPath,
+    DURABLE_RUNTIME_SELECTOR_ENV_PATH: '/tmp/social-monitor-durable-runtime-selector.env',
+  });
+
+  if (result.exitCode === 0) {
+    violations.push(`${dockerDurableRuntimeCapturePath}: capture must reject workspace DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH`);
+  } else if (!result.output.includes('DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH must not write release evidence into the git workspace')) {
+    violations.push(`${dockerDurableRuntimeCapturePath}: workspace artifact path rejection must explain evidence path policy`);
+  }
+  if (existsSync(workspaceArtifactPath)) {
+    violations.push(`${dockerDurableRuntimeCapturePath}: workspace artifact path rejection must not create ${workspaceArtifactPath}`);
+  }
+}
+
+function runCaptureExpectingFailure(env) {
+  try {
+    execFileSync(process.execPath, [dockerDurableRuntimeCapturePath], {
+      env: {
+        ...process.env,
+        ...env,
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
   }
 }
 

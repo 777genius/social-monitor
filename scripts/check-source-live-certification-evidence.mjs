@@ -396,6 +396,25 @@ function validateCaptureOutputPathGuards() {
   if (existsSync(redditWorkspaceArtifactPath)) {
     violations.push(`${redditLiveCaptureScriptPath}: workspace artifact path rejection must not create ${redditWorkspaceArtifactPath}`);
   }
+
+  const redditLifecycleWorkspaceArtifactPath = resolve('reddit-credential-lifecycle-workspace-output.json');
+  const redditLifecycleResult = runCaptureExpectingFailure(redditLiveCaptureScriptPath, {
+    REDDIT_ACCESS_TOKEN: 'reddit-live-access-token-for-path-guard',
+    REDDIT_LIVE_EVIDENCE_PATH: '/tmp/social-monitor-live-reddit-oauth.json',
+    REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: redditLifecycleWorkspaceArtifactPath,
+    REDDIT_LIVE_EVIDENCE_ENV_PATH: '/tmp/social-monitor-live-reddit-oauth.env',
+    SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
+    BACKEND_IMAGE_DIGEST: `sha256:${'b'.repeat(64)}`,
+    SOURCE_LIVE_OPERATOR: 'source-owner-1',
+  });
+  if (redditLifecycleResult.exitCode === 0) {
+    violations.push(`${redditLiveCaptureScriptPath}: capture must reject workspace REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH`);
+  } else if (!redditLifecycleResult.output.includes('REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH must not write release evidence into the git workspace')) {
+    violations.push(`${redditLiveCaptureScriptPath}: workspace lifecycle artifact path rejection must explain evidence path policy`);
+  }
+  if (existsSync(redditLifecycleWorkspaceArtifactPath)) {
+    violations.push(`${redditLiveCaptureScriptPath}: workspace lifecycle artifact path rejection must not create ${redditLifecycleWorkspaceArtifactPath}`);
+  }
 }
 
 function runCaptureExpectingFailure(scriptPath, env) {

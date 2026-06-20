@@ -146,21 +146,36 @@ function validateStaticWiring() {
 }
 
 function validateCaptureOutputPathGuards() {
-  const workspaceBundlePath = resolve('backend-staging-evidence-bundle-workspace-output.json');
-  const result = runCaptureExpectingFailure({
-    BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: workspaceBundlePath,
-    BACKEND_STAGING_EVIDENCE_ENV_PATH: '/tmp/social-monitor-backend-staging-evidence.env',
-  });
+  const outputPathEnvNames = [
+    'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH',
+    'RABBITMQ_STAGING_DRILL_ARTIFACT_PATH',
+    'POSTGRES_RESTORE_DRILL_ARTIFACT_PATH',
+    'DURABLE_BACKEND_E2E_ARTIFACT_PATH',
+    'SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH',
+    'WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH',
+    'SECURITY_FINAL_SWEEP_ARTIFACT_PATH',
+    'LOG_EXPORT_PATH',
+    'METRICS_EXPORT_PATH',
+    'PUBLIC_ERROR_EXPORT_PATH',
+    'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH',
+    'BACKEND_STAGING_EVIDENCE_BUNDLE_PATH',
+  ];
 
-  if (result.exitCode === 0) {
-    violations.push(`${captureScriptPath}: capture must reject workspace BACKEND_STAGING_EVIDENCE_BUNDLE_PATH`);
-    return;
-  }
-  if (!result.output.includes('BACKEND_STAGING_EVIDENCE_BUNDLE_PATH must not write release evidence into the git workspace')) {
-    violations.push(`${captureScriptPath}: workspace bundle path rejection must explain evidence path policy`);
-  }
-  if (existsSync(workspaceBundlePath)) {
-    violations.push(`${captureScriptPath}: workspace bundle path rejection must not create ${workspaceBundlePath}`);
+  for (const envName of outputPathEnvNames) {
+    const workspacePath = resolve(`${envName.toLowerCase().replaceAll('_', '-')}-workspace-output.json`);
+    const result = runCaptureExpectingFailure({
+      [envName]: workspacePath,
+      BACKEND_STAGING_EVIDENCE_ENV_PATH: '/tmp/social-monitor-backend-staging-evidence.env',
+    });
+
+    if (result.exitCode === 0) {
+      violations.push(`${captureScriptPath}: capture must reject workspace ${envName}`);
+    } else if (!result.output.includes(`${envName} must not write release evidence into the git workspace`)) {
+      violations.push(`${captureScriptPath}: workspace ${envName} rejection must explain evidence path policy`);
+    }
+    if (existsSync(workspacePath)) {
+      violations.push(`${captureScriptPath}: workspace ${envName} rejection must not create ${workspacePath}`);
+    }
   }
 }
 
