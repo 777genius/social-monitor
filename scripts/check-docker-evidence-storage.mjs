@@ -6,7 +6,7 @@ import { assertDockerEvidencePrerequisites } from './lib/docker-backend-evidence
 const args = new Set(process.argv.slice(2));
 const reportOnly = args.has('--report-only');
 const skipPreflight = args.has('--skip-preflight');
-const dockerTimeoutMs = positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_DOCKER_TIMEOUT_MS', 5_000);
+const dockerTimeoutMs = positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_DOCKER_TIMEOUT_MS', 15_000);
 const storageMode = process.env.DOCKER_BACKEND_EVIDENCE_STORAGE_MODE?.trim() || 'docker-volume';
 const rows = readDockerSystemDf();
 const hostFreeBytes = availableDiskBytes(process.cwd());

@@ -81,7 +81,11 @@ export async function withDockerBackendEvidenceStack(options, callback) {
   });
 
   try {
-    docker([...composeBaseArgs, 'build'], { stdio: 'inherit' });
+    try {
+      docker([...composeBaseArgs, 'build'], { stdio: 'inherit' });
+    } catch (error) {
+      throw new Error(dockerComposeBuildFailureMessage(error, storageMode));
+    }
     assertDockerStorageAvailable({
       cwd: preflightCwd,
       phase: 'after Docker image build',
@@ -758,6 +762,37 @@ function shouldKeepStack(keepEnvNames) {
   }
 
   return keepEnvNames.some((name) => process.env[name] === '1');
+}
+
+function dockerComposeBuildFailureMessage(error, storageMode) {
+  const reason = error instanceof Error ? error.message : String(error);
+  return [
+    'Docker backend evidence image build failed.',
+    `Storage mode: ${storageMode}.`,
+    'If the build output above contains ENOSPC or "No space left on device", Docker Desktop image/build-layer storage is full.',
+    'Host-bind mode only moves Postgres/RabbitMQ/Redis service data to host storage; it cannot move Docker image layers or npm ci layers out of Docker Desktop storage.',
+    dockerSystemDfSnapshot(),
+    `Original failure: ${reason}`,
+  ].join('\n');
+}
+
+function dockerSystemDfSnapshot() {
+  const result = spawnSync('docker', ['system', 'df'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    timeout: DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS,
+  });
+  if (result.error !== undefined) {
+    return `Docker storage snapshot unavailable: ${result.error.message}`;
+  }
+  if (result.status !== 0) {
+    return `Docker storage snapshot unavailable: docker system df exited with status ${result.status ?? 'unknown'}`;
+  }
+
+  return [
+    'Docker storage snapshot:',
+    result.stdout.trim(),
+  ].join('\n');
 }
 
 function randomPort() {
