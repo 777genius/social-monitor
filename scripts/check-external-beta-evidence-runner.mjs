@@ -1705,6 +1705,13 @@ function validateRunnerNegativeCredentialRotationArtifactSmokes() {
       },
     },
     {
+      label: 'source rotation nested fixture marker',
+      expectedOutput: 'must not contain fixture marker "example"',
+      mutateSource: (artifact) => {
+        artifact.operations[0].safeEvidence.credentialRecordId = 'source-credential-example-001';
+      },
+    },
+    {
       label: 'source rotation raw duplicate-key credential hidden by JSON parser',
       expectedOutput: 'sensitive literal fragment "bearer "',
       sourceContent: (artifact) => `${JSON.stringify(artifact, null, 2)}\n`.replace(
