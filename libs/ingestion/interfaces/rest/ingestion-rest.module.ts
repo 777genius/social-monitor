@@ -18,6 +18,7 @@ import { RedditSourceProvider } from '../../adapters/source/reddit/reddit-source
 import { FixtureRssClient } from '../../adapters/source/rss/fixture-rss-client';
 import { RssSourceProvider } from '../../adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfiles } from '../../adapters/source/source-readiness-profiles';
+import { selectRuntimeSourceProviders } from '../../adapters/source/source-provider-runtime-scope';
 import { ListScanDeadLettersUseCase } from '../../features/list-scan-dead-letters/list-scan-dead-letters.use-case';
 import { ListSourceProfilesUseCase } from '../../features/list-source-profiles/list-source-profiles.use-case';
 import type { ScanFailureInspectionPort } from '../../ports';
@@ -101,7 +102,10 @@ import { SourceProfileController } from './source-profile.controller';
         rssProvider: RssSourceProvider,
       ) =>
         new InMemorySourceProviderRegistry(
-          [fakeProvider, githubProvider, hackerNewsProvider, redditProvider, rssProvider],
+          selectRuntimeSourceProviders(
+            [fakeProvider, githubProvider, hackerNewsProvider, redditProvider, rssProvider],
+            process.env,
+          ),
           sourceReadinessProfiles,
         ),
       inject: [

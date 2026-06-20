@@ -157,6 +157,11 @@ const requiredEvidenceShapeBySignalId = new Map([
   ],
 ]);
 const requiredDeferredProviders = new Set(['telegram', 'x-twitter']);
+const fixtureOnlyProviders = new Set(['fake-source']);
+const forbiddenExternalBetaBindingProviders = new Set([
+  ...fixtureOnlyProviders,
+  ...requiredDeferredProviders,
+]);
 const expectedLiveCommands = new Map([
   ['hacker-news', 'npm run check:live-open-connectors'],
   ['rss', 'npm run check:live-open-connectors'],
@@ -209,6 +214,7 @@ validateLiveProviderEvidence();
 validateExampleArtifacts();
 validateEnvironmentArtifacts();
 validateDeferredProviders();
+validateExternalBetaProviderScope();
 validateNoSensitiveEvidenceLiterals();
 requireWiring();
 
@@ -259,6 +265,16 @@ function validateSourceCertification() {
   const fakeSource = certified.get('fake-source');
   if (fakeSource !== undefined && fakeSource.liveBetaReady !== false) {
     violations.push(`${sourceCertificationPath}: fake-source must never claim live beta readiness`);
+  }
+  if (fakeSource === undefined) {
+    violations.push(`${sourceCertificationPath}: fake-source must remain certified as fixture-only evidence`);
+  } else {
+    if (fakeSource.readinessState !== 'certification_ready') {
+      violations.push(`${sourceCertificationPath}: fake-source readinessState must be certification_ready`);
+    }
+    if (fakeSource.runtimeReadiness !== 'fixture_ready') {
+      violations.push(`${sourceCertificationPath}: fake-source runtimeReadiness must be fixture_ready`);
+    }
   }
 }
 
@@ -1015,6 +1031,37 @@ function validateDeferredProviders() {
   }
 }
 
+function validateExternalBetaProviderScope() {
+  const scope = evidence.externalBetaProviderScope;
+  if (!isRecord(scope)) {
+    violations.push(`${evidencePath}: externalBetaProviderScope is required`);
+    return;
+  }
+
+  requireExactStringSet(
+    scope.requiredLiveProviders,
+    requiredProviderSignals.keys(),
+    'externalBetaProviderScope.requiredLiveProviders',
+  );
+  requireExactStringSet(
+    scope.forbiddenBindingProviders,
+    forbiddenExternalBetaBindingProviders,
+    'externalBetaProviderScope.forbiddenBindingProviders',
+  );
+  requireExactStringSet(
+    scope.fixtureOnlyProviders,
+    fixtureOnlyProviders,
+    'externalBetaProviderScope.fixtureOnlyProviders',
+  );
+
+  const liveProviders = new Set((evidence.liveProviderEvidence ?? []).map((provider) => provider.providerKey));
+  for (const providerKey of forbiddenExternalBetaBindingProviders) {
+    if (liveProviders.has(providerKey)) {
+      violations.push(`${evidencePath}: forbidden provider "${providerKey}" must not appear in liveProviderEvidence`);
+    }
+  }
+}
+
 function validateNoSensitiveEvidenceLiterals() {
   const serialized = JSON.stringify(evidence).toLowerCase();
 
@@ -1116,6 +1163,23 @@ function requireProviderSetCoverage(actual, expected, label) {
   for (const providerKey of expected) {
     if (!actual.has(providerKey)) {
       violations.push(`${evidencePath}: ${label}.requiredProviders must include ${providerKey}`);
+    }
+  }
+}
+
+function requireExactStringSet(actualValues, expectedValues, label) {
+  const actual = new Set(actualValues ?? []);
+  const expected = new Set(expectedValues);
+
+  for (const value of expected) {
+    if (!actual.has(value)) {
+      violations.push(`${evidencePath}: ${label} must include ${value}`);
+    }
+  }
+
+  for (const value of actual) {
+    if (!expected.has(value)) {
+      violations.push(`${evidencePath}: ${label} must not include ${value}`);
     }
   }
 }

@@ -1,3 +1,4 @@
+import { resolveRuntimeProfile } from '@social-monitor/platform-config';
 import { validateOutboundUrl } from '@social-monitor/shared-kernel';
 
 import type {
@@ -50,8 +51,27 @@ const sourceProfiles = new Map([
   [redditProfile.providerKey, redditProfile],
 ]);
 
+type FakeSourceCatalogAdapterOptions = {
+  readonly includeFixtureProviders?: boolean;
+};
+
+const fixtureProviderKeys = new Set(['fake-source']);
+
+export const shouldIncludeFixtureSourceCatalogEntries = (env: NodeJS.ProcessEnv): boolean =>
+  resolveRuntimeProfile(env) !== 'beta';
+
 export class FakeSourceCatalogAdapter implements SourceCatalogPort {
+  private readonly includeFixtureProviders: boolean;
+
+  constructor(options: FakeSourceCatalogAdapterOptions = {}) {
+    this.includeFixtureProviders = options.includeFixtureProviders ?? true;
+  }
+
   async getCapability(providerKey: string): Promise<SourceCapabilityProfile | null> {
+    if (!this.isProviderAvailable(providerKey)) {
+      return null;
+    }
+
     return sourceProfiles.get(providerKey) ?? null;
   }
 
@@ -59,7 +79,7 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
     providerKey: string,
     config: SourceBindingConfig,
   ): Promise<SourceBindingConfigValidationResult> {
-    if (!sourceProfiles.has(providerKey)) {
+    if (!this.isProviderAvailable(providerKey)) {
       return { ok: false, reason: `Unknown source provider: ${providerKey}` };
     }
 
@@ -143,6 +163,14 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
     return firstNonEmptyString(config.query, config.term) === undefined
       ? { ok: false, reason: 'Source binding config requires query or term.' }
       : { ok: true };
+  }
+
+  private isProviderAvailable(providerKey: string): boolean {
+    if (!sourceProfiles.has(providerKey)) {
+      return false;
+    }
+
+    return this.includeFixtureProviders || !fixtureProviderKeys.has(providerKey);
   }
 }
 

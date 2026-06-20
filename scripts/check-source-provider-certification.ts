@@ -22,6 +22,7 @@ import type {
   SourceProviderScanContext,
   SourceQuery,
   SourceQueryMode,
+  SourceReadinessState,
 } from '../libs/ingestion/ports';
 
 const outputPath = 'ops/ingestion/source-provider-certification.json';
@@ -32,6 +33,7 @@ type ProviderCase = {
   readonly validQuery: SourceQuery;
   readonly unsupportedQueryMode: SourceQueryMode;
   readonly expectedProviderKey: string;
+  readonly expectedReadinessState: SourceReadinessState;
   readonly expectedFailureKind: ProviderFailureKind;
   readonly contextConfig?: SourceRuntimeConfig;
 };
@@ -76,6 +78,7 @@ const cases: readonly ProviderCase[] = [
     validQuery: { mode: 'search', query: 'monitoring' },
     unsupportedQueryMode: 'thread',
     expectedProviderKey: 'fake-source',
+    expectedReadinessState: 'certification_ready',
     expectedFailureKind: 'unknown',
   },
   {
@@ -83,6 +86,7 @@ const cases: readonly ProviderCase[] = [
     validQuery: { mode: 'search', query: 'monitoring' },
     unsupportedQueryMode: 'thread',
     expectedProviderKey: 'hacker-news',
+    expectedReadinessState: 'enabled_beta',
     expectedFailureKind: 'unavailable',
   },
   {
@@ -90,6 +94,7 @@ const cases: readonly ProviderCase[] = [
     validQuery: { mode: 'search', query: 'social monitoring repo:777genius/social-monitor' },
     unsupportedQueryMode: 'thread',
     expectedProviderKey: 'github',
+    expectedReadinessState: 'enabled_beta',
     expectedFailureKind: 'unavailable',
     contextConfig: {
       maxItems: 1,
@@ -100,6 +105,7 @@ const cases: readonly ProviderCase[] = [
     validQuery: { mode: 'url', query: 'https://example.test/feed.xml' },
     unsupportedQueryMode: 'thread',
     expectedProviderKey: 'rss',
+    expectedReadinessState: 'enabled_beta',
     expectedFailureKind: 'unavailable',
   },
   {
@@ -107,6 +113,7 @@ const cases: readonly ProviderCase[] = [
     validQuery: { mode: 'listing', query: 'observability:hot' },
     unsupportedQueryMode: 'thread',
     expectedProviderKey: 'reddit',
+    expectedReadinessState: 'enabled_beta',
     expectedFailureKind: 'unavailable',
     contextConfig: {
       accessToken: 'fixture-reddit-token',
@@ -141,7 +148,7 @@ async function main(): Promise<void> {
     cases.map((providerCase) => certifyProvider(providerCase, readinessByProvider)),
   );
   const deferredProviders = sourceReadinessProfiles
-    .filter((profile) => profile.state !== 'enabled_beta')
+    .filter((profile) => profile.runtimeReadiness === 'deferred')
     .map((profile) => ({
       providerKey: profile.providerKey,
       state: profile.state,
@@ -197,7 +204,10 @@ async function certifyProvider(
   assert(provider.key() === providerCase.expectedProviderKey, `${providerCase.expectedProviderKey}: key mismatch`);
   assert(profile.providerKey === providerCase.expectedProviderKey, `${providerCase.expectedProviderKey}: profile key mismatch`);
   assert(readiness !== undefined, `${providerCase.expectedProviderKey}: missing source readiness profile`);
-  assert(readiness.state === 'enabled_beta', `${providerCase.expectedProviderKey}: readiness profile must be enabled_beta`);
+  assert(
+    readiness.state === providerCase.expectedReadinessState,
+    `${providerCase.expectedProviderKey}: readiness profile must be ${providerCase.expectedReadinessState}`,
+  );
   assert(
     readiness.runtimeReadiness === 'fixture_ready',
     `${providerCase.expectedProviderKey}: deterministic certification only proves fixture_ready runtime readiness`,

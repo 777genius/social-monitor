@@ -11,6 +11,7 @@ type SourceProviderCertificationReport = {
   readonly blockingPassed: boolean;
   readonly certifiedProviders: ReadonlyArray<{
     readonly providerKey: string;
+    readonly readinessState: string;
   }>;
   readonly deferredProviders: ReadonlyArray<{
     readonly providerKey: string;
@@ -62,7 +63,7 @@ describe('Beta launch support API (e2e)', () => {
       .map((profile) => profile.providerKey)
       .sort();
     const deferredSources = sourceReadinessProfiles
-      .filter((profile) => profile.state !== 'enabled_beta')
+      .filter((profile) => profile.runtimeReadiness === 'deferred')
       .map((profile) => profile.providerKey)
       .sort();
 
@@ -72,13 +73,17 @@ describe('Beta launch support API (e2e)', () => {
     const certification = loadSourceProviderCertificationReport();
     expect(certification.blockingPassed).toBe(true);
     expect(snapshot.supportedSources).toEqual(
-      certification.certifiedProviders.map((provider) => provider.providerKey).sort(),
+      certification.certifiedProviders
+        .filter((provider) => provider.readinessState === 'enabled_beta')
+        .map((provider) => provider.providerKey)
+        .sort(),
     );
     expect(snapshot.deferredSources).toEqual(
       certification.deferredProviders.map((provider) => provider.providerKey).sort(),
     );
 
     expect(snapshot.knownLimitations.map((entry) => entry.limitationId)).toEqual(expect.arrayContaining([
+      'fake-source-fixture-only',
       'frontend-deferred',
       'x-twitter-deferred',
       'telegram-manual-only',

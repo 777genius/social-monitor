@@ -44,6 +44,7 @@ import { RedditSourceProvider } from '@social-monitor/ingestion/adapters/source/
 import { HttpRssClient } from '@social-monitor/ingestion/adapters/source/rss/http-rss-client';
 import { RssSourceProvider } from '@social-monitor/ingestion/adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfiles } from '@social-monitor/ingestion/adapters/source/source-readiness-profiles';
+import { selectRuntimeSourceProviders } from '@social-monitor/ingestion/adapters/source/source-provider-runtime-scope';
 import { ExecuteScanUseCase } from '@social-monitor/ingestion/features/execute-scan/execute-scan.use-case';
 import { ExecuteScanCommandHandler } from '@social-monitor/ingestion/interfaces/queue/execute-scan-command.handler';
 import type { ScanExecutionReporterPort } from '@social-monitor/ingestion/ports';
@@ -179,7 +180,10 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         rssProvider: RssSourceProvider,
       ) =>
         new InMemorySourceProviderRegistry(
-          [fakeProvider, githubProvider, hackerNewsProvider, redditProvider, rssProvider],
+          selectRuntimeSourceProviders(
+            [fakeProvider, githubProvider, hackerNewsProvider, redditProvider, rssProvider],
+            process.env,
+          ),
           sourceReadinessProfiles,
         ),
       inject: [

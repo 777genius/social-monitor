@@ -75,7 +75,7 @@
           "kind": "e2e",
           "path": "test/e2e/source-profiles.list.e2e-spec.ts",
           "markers": [
-            "returns enabled fake provider and readiness-only future source profiles",
+            "returns beta providers, fixture-only fake provider and readiness-only future source profiles",
             "providerKey: 'x-twitter'",
             "providerKey: 'telegram'"
           ]

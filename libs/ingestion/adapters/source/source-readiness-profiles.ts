@@ -3,7 +3,7 @@ import type { SourceReadinessProfile } from '../../ports';
 export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   {
     providerKey: 'fake-source',
-    state: 'enabled_beta',
+    state: 'certification_ready',
     runtimeReadiness: 'fixture_ready',
     liveBetaBlockers: ['Synthetic provider is not a real external source.'],
     acquisitionMode: 'deterministic_local_adapter',

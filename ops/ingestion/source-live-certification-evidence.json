@@ -6,6 +6,27 @@
   "evidenceMode": "fixture_contract_with_live_evidence_required",
   "externalBetaStatus": "hold_until_live_provider_evidence",
   "sourceCertification": "ops/ingestion/source-provider-certification.json",
+  "externalBetaProviderScope": {
+    "requiredLiveProviders": [
+      "hacker-news",
+      "rss",
+      "github",
+      "reddit"
+    ],
+    "forbiddenBindingProviders": [
+      "fake-source",
+      "telegram",
+      "x-twitter"
+    ],
+    "fixtureOnlyProviders": [
+      "fake-source"
+    ],
+    "matchingRules": [
+      "external beta live provider evidence must only cover Hacker News, RSS, GitHub and Reddit",
+      "fake-source remains fixture-only and cannot be bound in beta runtime",
+      "Telegram and X/Twitter remain deferred and cannot be bound until their provider contracts are approved"
+    ]
+  },
   "passedArtifactContentSchema": {
     "schemaVersion": 1,
     "format": "source-live-provider-evidence-v1",
@@ -288,6 +309,6 @@
     "HN, RSS, GitHub and Reddit live evidence artifacts are attached for the promoted backend image.",
     "RSS SSRF proof and HTTP cache evidence are attached before any external beta feed binding is enabled.",
     "Reddit tenant OAuth lifecycle evidence proves create, rotate, revoke and redacted preview behavior.",
-    "Telegram and X/Twitter remain deferred and cannot appear in enabled beta provider bindings."
+    "Fake-source remains fixture-only, while Telegram and X/Twitter remain deferred and cannot appear in enabled beta provider bindings."
   ]
 }

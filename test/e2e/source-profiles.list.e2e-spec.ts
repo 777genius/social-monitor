@@ -29,7 +29,7 @@ describe('Source profiles list (e2e)', () => {
     await app.close();
   });
 
-  it('returns enabled fake provider and readiness-only future source profiles', async () => {
+  it('returns beta providers, fixture-only fake provider and readiness-only future source profiles', async () => {
     const response = await request(app.getHttpServer())
       .get('/sources/profiles')
       .expect(200);
@@ -39,7 +39,9 @@ describe('Source profiles list (e2e)', () => {
         expect.objectContaining({
           providerKey: 'fake-source',
           productionSafe: true,
-          readinessState: 'enabled_beta',
+          readinessState: 'certification_ready',
+          runtimeReadiness: 'fixture_ready',
+          liveBetaBlockers: expect.arrayContaining(['Synthetic provider is not a real external source.']),
           supportedQueryModes: expect.arrayContaining(['search']),
         }),
         expect.objectContaining({

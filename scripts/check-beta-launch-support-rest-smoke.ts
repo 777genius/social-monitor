@@ -22,6 +22,7 @@ type SourceProviderCertificationReport = {
   blockingPassed: boolean;
   certifiedProviders: Array<{
     providerKey: string;
+    readinessState: string;
   }>;
   deferredProviders: Array<{
     providerKey: string;
@@ -60,7 +61,7 @@ async function main(): Promise<void> {
       .map((profile) => profile.providerKey)
       .sort();
     const deferredSources = sourceReadinessProfiles
-      .filter((profile) => profile.state !== 'enabled_beta')
+      .filter((profile) => profile.runtimeReadiness === 'deferred')
       .map((profile) => profile.providerKey)
       .sort();
 
@@ -74,7 +75,10 @@ async function main(): Promise<void> {
     );
 
     const certification = loadSourceProviderCertificationReport();
-    const certifiedSourceKeys = certification.certifiedProviders.map((provider) => provider.providerKey).sort();
+    const certifiedSourceKeys = certification.certifiedProviders
+      .filter((provider) => provider.readinessState === 'enabled_beta')
+      .map((provider) => provider.providerKey)
+      .sort();
     const certifiedDeferredSourceKeys = certification.deferredProviders
       .map((provider) => provider.providerKey)
       .sort();
@@ -91,6 +95,7 @@ async function main(): Promise<void> {
 
     const limitationIds = new Set(snapshot.knownLimitations.map((entry) => entry.limitationId));
     for (const requiredLimitation of [
+      'fake-source-fixture-only',
       'frontend-deferred',
       'x-twitter-deferred',
       'telegram-manual-only',

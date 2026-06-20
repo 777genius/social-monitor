@@ -36,7 +36,10 @@ import { PrismaMonitoringOutboxAdapter } from '../../adapters/persistence/prisma
 import { UsageScanRequestQuotaAdapter } from '../../adapters/quota/usage-scan-request-quota.adapter';
 import { InMemoryScanQueueAdapter } from '../../adapters/queue/in-memory-scan-queue.adapter';
 import { AesGcmSourceBindingConfigProtector } from '../../adapters/security/aes-gcm-source-binding-config-protector';
-import { FakeSourceCatalogAdapter } from '../../adapters/source-catalog/fake-source-catalog.adapter';
+import {
+  FakeSourceCatalogAdapter,
+  shouldIncludeFixtureSourceCatalogEntries,
+} from '../../adapters/source-catalog/fake-source-catalog.adapter';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
@@ -196,7 +199,10 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
     },
     {
       provide: MONITORING_SOURCE_CATALOG,
-      useClass: FakeSourceCatalogAdapter,
+      useFactory: (): SourceCatalogPort =>
+        new FakeSourceCatalogAdapter({
+          includeFixtureProviders: shouldIncludeFixtureSourceCatalogEntries(process.env),
+        }),
     },
     {
       provide: MONITORING_CONFIG_PROTECTOR,

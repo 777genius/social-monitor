@@ -11,6 +11,8 @@ type SourceProfile = {
   readonly displayName?: string;
   readonly productionSafe: boolean;
   readonly readinessState: string;
+  readonly runtimeReadiness: string;
+  readonly liveBetaBlockers: readonly string[];
   readonly acquisitionMode: string;
   readonly supportedContentUnits: readonly string[];
   readonly supportedQueryModes: readonly string[];
@@ -69,10 +71,17 @@ async function main(): Promise<void> {
       'source profile REST response must be sorted by provider key for stable clients',
     );
 
-    requireSource(sources, 'fake-source');
+    const fake = requireSource(sources, 'fake-source');
     const github = requireSource(sources, 'github');
     requireSource(sources, 'hacker-news');
     requireSource(sources, 'rss');
+
+    assert(fake.readinessState === 'certification_ready', 'Fake source must be certification-only');
+    assert(fake.runtimeReadiness === 'fixture_ready', 'Fake source must stay fixture-ready only');
+    assert(
+      fake.liveBetaBlockers.some((blocker) => blocker.toLowerCase().includes('not a real external source')),
+      'Fake source must explain why it cannot unblock external beta',
+    );
 
     assert(github.displayName === 'GitHub', 'GitHub profile must expose display name');
     assert(github.productionSafe === true, 'GitHub profile must be marked production safe');

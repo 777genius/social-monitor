@@ -7,7 +7,7 @@
   "certifiedProviders": [
     {
       "providerKey": "fake-source",
-      "readinessState": "enabled_beta",
+      "readinessState": "certification_ready",
       "runtimeReadiness": "fixture_ready",
       "liveBetaReady": false,
       "liveBetaBlockers": [

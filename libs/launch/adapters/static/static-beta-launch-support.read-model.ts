@@ -6,9 +6,18 @@ const betaLaunchSupportSnapshot = {
   snapshotId: 'beta-launch-support-mvp-v1',
   publishedAt: '2026-06-16T00:00:00.000Z',
   launchMode: 'api_operator_beta',
-  supportedSources: ['fake-source', 'github', 'hacker-news', 'reddit', 'rss'],
+  supportedSources: ['github', 'hacker-news', 'reddit', 'rss'],
   deferredSources: ['telegram', 'x-twitter'],
   knownLimitations: [
+    {
+      limitationId: 'fake-source-fixture-only',
+      severity: 'notice',
+      title: 'Fake source is fixture-only',
+      userImpact: 'Fake source is available only for deterministic certification and cannot be bound in external beta.',
+      supportAction: 'Use Hacker News, RSS, GitHub or Reddit for beta source bindings.',
+      owner: 'source-owner',
+      revisitTrigger: 'Remove the fixture source from user-facing launch support once external beta evidence is attached.',
+    },
     {
       limitationId: 'frontend-deferred',
       severity: 'notice',

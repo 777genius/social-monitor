@@ -17,6 +17,8 @@ import { BindSourceUseCase } from '../libs/monitoring/features/bind-source/bind-
 import { CreateTopicUseCase } from '../libs/monitoring/features/create-topic/create-topic.use-case';
 import type { SourceBindingConfig, SourceBindingConfigProtectorPort } from '../libs/monitoring/ports';
 import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
+import { FakeSourceProvider } from '../libs/ingestion/adapters/source/fake-source.provider';
+import { selectRuntimeSourceProviders } from '../libs/ingestion/adapters/source/source-provider-runtime-scope';
 import { SummaryArtifact } from '../libs/summary/domain';
 import { InMemorySummaryArtifactRepository } from '../libs/summary/adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryFeedbackRepository } from '../libs/summary/adapters/persistence/in-memory-summary-feedback.repository';
@@ -29,6 +31,7 @@ const clock = new FixedClock(new Date('2026-06-06T00:00:00.000Z'));
 
 async function main(): Promise<void> {
   const ids = new SequenceIdGenerator('beta-policy');
+  proveFixtureProvidersStayOutOfBetaRuntimeRegistry();
   await proveUnsupportedSourceProfilesStayOutOfBindingCatalog();
   await proveUnsupportedBindingsAreRejected(ids);
   await proveUnsupportedSourceDemandIsCapturedAsFeedback(ids);
@@ -36,8 +39,20 @@ async function main(): Promise<void> {
   console.log('Beta scope source policy smoke OK');
 }
 
+function proveFixtureProvidersStayOutOfBetaRuntimeRegistry(): void {
+  const localProviders = selectRuntimeSourceProviders([new FakeSourceProvider()], {
+    SOCIAL_MONITOR_RUNTIME_PROFILE: 'local-dev',
+  });
+  const betaProviders = selectRuntimeSourceProviders([new FakeSourceProvider()], {
+    SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+  });
+
+  assert(localProviders.length === 1, 'fake-source must stay available for local deterministic runtime');
+  assert(betaProviders.length === 0, 'fake-source must not be registered in beta runtime');
+}
+
 async function proveUnsupportedSourceProfilesStayOutOfBindingCatalog(): Promise<void> {
-  const sourceCatalog = new FakeSourceCatalogAdapter();
+  const sourceCatalog = new FakeSourceCatalogAdapter({ includeFixtureProviders: false });
   const unsupportedProfiles = sourceReadinessProfiles.filter((profile) => profile.state !== 'enabled_beta');
 
   assert(unsupportedProfiles.length > 0, 'source readiness profiles must include deferred providers');
@@ -49,6 +64,12 @@ async function proveUnsupportedSourceProfilesStayOutOfBindingCatalog(): Promise<
       `${profile.providerKey} must not be available for beta binding while readiness state is ${profile.state}`,
     );
   }
+
+  const localFixtureCatalog = new FakeSourceCatalogAdapter();
+  assert(
+    (await localFixtureCatalog.getCapability('fake-source')) !== null,
+    'fake-source must remain available for deterministic local certification',
+  );
 }
 
 async function proveUnsupportedBindingsAreRejected(ids: IdGenerator): Promise<void> {
@@ -68,7 +89,7 @@ async function proveUnsupportedBindingsAreRejected(ids: IdGenerator): Promise<vo
   const bindSource = new BindSourceUseCase(
     topics,
     new InMemorySourceBindingRepository(),
-    new FakeSourceCatalogAdapter(),
+    new FakeSourceCatalogAdapter({ includeFixtureProviders: false }),
     outbox,
     idempotency,
     new PassThroughConfigProtector(),
