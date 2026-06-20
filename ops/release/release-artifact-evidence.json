@@ -90,6 +90,9 @@
           "API_BASE_URL"
         ]
       }
+    ],
+    "realArtifactGuards": [
+      "real release deploy smoke artifact nested values must not contain example, fixture, synthetic, mock or test markers"
     ]
   },
   "artifactDigests": [

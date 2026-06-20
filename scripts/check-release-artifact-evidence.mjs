@@ -124,6 +124,10 @@ const requiredSmokeResultMatchingRules = new Set([
   'artifact smokeResults.evidence must be a smoke-specific redacted object with required fields',
   'artifact JSON must not include tokens, raw headers, raw payloads, DB URLs or broker URLs',
 ]);
+const requiredRealArtifactGuardFragments = [
+  'must not contain example, fixture, synthetic, mock or test markers',
+];
+const forbiddenRealArtifactMarkerPattern = /(?:^|[-_:.\s])(example|fixture|synthetic|mock|test)(?:$|[-_:.\s])/i;
 
 if (artifact.schemaVersion !== 1) {
   violations.push(`${artifactPath}: schemaVersion must be 1`);
@@ -298,6 +302,11 @@ function validateDeployArtifactContentSchema() {
   }
   validateProvenanceRequirements(schema.provenanceRequirements);
   validateEnvArtifactValidation(schema.envArtifactValidation);
+  for (const fragment of requiredRealArtifactGuardFragments) {
+    if (!Array.isArray(schema.realArtifactGuards) || !schema.realArtifactGuards.some((guard) => String(guard).includes(fragment))) {
+      violations.push(`${artifactPath}: deploySmokeArtifactContentSchema.realArtifactGuards must include "${fragment}"`);
+    }
+  }
 
   const redaction = schema.redactionRequirements;
   if (typeof redaction !== 'object' || redaction === null) {
@@ -428,6 +437,9 @@ function validateDeployArtifactShape(deployArtifact, options) {
 
   validateDeployArtifactProvenance(deployArtifact.provenance, label, { allowFixture: options.allowFixture === true });
   validateDeployArtifactRedaction(deployArtifact, label);
+  if (options.allowFixture !== true) {
+    validateNoRealArtifactFixtureMarkers(deployArtifact, label);
+  }
   validateNoSensitiveDeployArtifactLiterals(deployArtifact, label);
   validateDeployArtifactMigration(deployArtifact, label, options);
   validateDeployArtifactDigests(deployArtifact, label, options);
@@ -510,6 +522,32 @@ function validateNoSensitiveDeployArtifactContent(content, label) {
     }
   }
   validateNoSensitivePatterns(content, `${label}: artifact`);
+}
+
+function validateNoRealArtifactFixtureMarkers(value, label, path = []) {
+  if (typeof value === 'string') {
+    const marker = forbiddenRealArtifactMarkerPattern.exec(value);
+    if (marker !== null) {
+      const fieldPath = path.length === 0 ? '<root>' : path.join('.');
+      violations.push(`${label}: ${fieldPath} must not contain fixture marker "${marker[1]}"`);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      validateNoRealArtifactFixtureMarkers(item, label, [...path, `[${index}]`]);
+    }
+    return;
+  }
+
+  if (!isRecord(value)) {
+    return;
+  }
+
+  for (const [key, item] of Object.entries(value)) {
+    validateNoRealArtifactFixtureMarkers(item, label, [...path, key]);
+  }
 }
 
 function validateDeployArtifactMigration(deployArtifact, label, options) {

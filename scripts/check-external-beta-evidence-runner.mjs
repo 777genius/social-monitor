@@ -1571,6 +1571,13 @@ function validateRunnerNegativeReleaseDeployArtifactSmokes() {
         artifact.redaction.rawHeadersIncluded = true;
       },
     },
+    {
+      label: 'release deploy nested fixture marker',
+      expectedOutput: 'must not contain fixture marker "example"',
+      mutateArtifact: (artifact) => {
+        artifact.smokeResults[0].evidence.sampleId = 'release-deploy-example-001';
+      },
+    },
   ];
 
   for (const scenario of scenarios) {
