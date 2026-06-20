@@ -587,6 +587,8 @@ function validateRunnerImplementation() {
     'requiresPrivateEvidenceFileMode',
     'isPrivateEvidenceFile',
     '0600-style private file permissions',
+    'before preflight',
+    'before live execution',
     'isRegularEvidenceFile',
     'statSync',
     'must point to a regular file',
@@ -2198,6 +2200,19 @@ function validateRunnerPreflightNegativeSmokes() {
       env: (tempDirectory) => durableBackendE2ePreflightEnv(tempDirectory, {
         DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(process.cwd(), 'durable-backend-e2e.json'),
       }),
+    },
+    {
+      label: 'world-readable preflight evidence artifact',
+      jobId: 'durable-backend-e2e-loop',
+      expectedOutput: ['DURABLE_BACKEND_E2E_ARTIFACT_PATH', '0600-style private file permissions before preflight'],
+      env: (tempDirectory) => {
+        const artifactPath = join(tempDirectory, 'durable-backend-e2e.json');
+        writeFileSync(artifactPath, '{}\n', { mode: 0o600 });
+        chmodSync(artifactPath, 0o644);
+        return durableBackendE2ePreflightEnv(tempDirectory, {
+          DURABLE_BACKEND_E2E_ARTIFACT_PATH: artifactPath,
+        });
+      },
     },
     {
       label: 'invalid Postgres URL',

@@ -808,6 +808,10 @@ function validateExecutableOutputArtifactPathEnv(job, missingEnvSet, violations)
       violations.push(`${job.jobId}: output artifact env ${envName} must point to a regular file before live execution`);
       continue;
     }
+    if (existsSync(value) && requiresPrivateEvidenceFileMode() && !isPrivateEvidenceFile(value)) {
+      violations.push(`${job.jobId}: output artifact env ${envName} must use 0600-style private file permissions before live execution`);
+      continue;
+    }
     if (existsSync(value) && isGitTrackedPath(value)) {
       violations.push(`${job.jobId}: output artifact env ${envName} must not point to a git-tracked file before live execution`);
     }
@@ -924,6 +928,10 @@ function validatePlannedEvidencePathEnv(job, missingEnvSet, violations) {
       violations.push(`${job.jobId}: evidence path env ${envName} must point to a regular file before preflight`);
       continue;
     }
+    if (requiresPrivateEvidenceFileMode() && !isPrivateEvidenceFile(value)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} must use 0600-style private file permissions before preflight`);
+      continue;
+    }
     if (isOversizedEvidenceFile(value)) {
       violations.push(`${job.jobId}: evidence path env ${envName} must not exceed ${evidencePathMaxBytes()} bytes before preflight`);
       continue;
@@ -943,6 +951,10 @@ function validatePlannedEvidencePathEnv(job, missingEnvSet, violations) {
     }
     if (requiresRegularEvidenceFiles() && !isRegularEvidenceFile(realPath)) {
       violations.push(`${job.jobId}: evidence path env ${envName} realpath must point to a regular file before preflight`);
+      continue;
+    }
+    if (requiresPrivateEvidenceFileMode() && !isPrivateEvidenceFile(realPath)) {
+      violations.push(`${job.jobId}: evidence path env ${envName} realpath must use 0600-style private file permissions before preflight`);
       continue;
     }
     if (isOversizedEvidenceFile(realPath)) {
