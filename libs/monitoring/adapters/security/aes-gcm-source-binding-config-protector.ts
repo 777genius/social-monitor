@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+import { resolveRuntimeProfile } from '@social-monitor/platform-config';
 import { isSensitiveKey } from '@social-monitor/shared-kernel';
 
 import type {
@@ -41,8 +42,8 @@ export class AesGcmSourceBindingConfigProtector implements SourceBindingConfigPr
     const raw = env.SOURCE_CONFIG_ENCRYPTION_KEY;
 
     if (raw === undefined || raw.trim().length === 0) {
-      if (env.NODE_ENV === 'production') {
-        throw new Error('SOURCE_CONFIG_ENCRYPTION_KEY is required in production');
+      if (resolveRuntimeProfile(env) === 'beta') {
+        throw new Error('SOURCE_CONFIG_ENCRYPTION_KEY is required when SOCIAL_MONITOR_RUNTIME_PROFILE=beta');
       }
 
       return AesGcmSourceBindingConfigProtector.withEphemeralDevelopmentKey();

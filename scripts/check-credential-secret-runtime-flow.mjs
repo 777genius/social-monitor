@@ -12,6 +12,8 @@ const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
 const backendOpsPath = 'ops/release/backend-ops-readiness-contract.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
+const sourceConfigProtectorPath = 'libs/monitoring/adapters/security/aes-gcm-source-binding-config-protector.ts';
+const sourceConfigProtectorSmokePath = 'scripts/check-source-config-protector-smoke.ts';
 
 const contract = readJson(contractPath);
 const packageJson = readJson(packagePath);
@@ -20,6 +22,8 @@ const releaseContract = readJson(releaseContractPath);
 const backendOps = readJson(backendOpsPath);
 const externalReadiness = readJson(externalReadinessPath);
 const baseline = readJson(baselinePath);
+const sourceConfigProtectorSource = readText(sourceConfigProtectorPath);
+const sourceConfigProtectorSmokeSource = readText(sourceConfigProtectorSmokePath);
 const scripts = packageJson.scripts ?? {};
 const violations = [];
 const sourceCredentialRotationEvidencePath = process.env.SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH;
@@ -300,6 +304,19 @@ for (const boundary of contract.approvedRuntimeBoundary ?? []) {
   for (const envRef of boundary.runtimeEnvRefs ?? []) {
     envRefs.add(envRef);
   }
+
+  if (boundary.secretClass === 'source-credentials') {
+    if (boundary.betaRuntimeRequiresPersistentKey !== true) {
+      violations.push(
+        `${contractPath}: source-credentials must set betaRuntimeRequiresPersistentKey=true`,
+      );
+    }
+    if (!String(boundary.approvedBoundary).includes('beta runtime fails closed')) {
+      violations.push(
+        `${contractPath}: source-credentials approvedBoundary must document beta runtime fail-closed behavior`,
+      );
+    }
+  }
 }
 
 for (const secretClass of requiredSecretClasses) {
@@ -393,6 +410,7 @@ if (externalGroup === undefined) {
   }
 }
 
+validateSourceConfigProtectorRuntimeBoundary();
 validateBaselineWiring();
 
 if (violations.length > 0) {
@@ -404,6 +422,36 @@ console.log('Credential secret runtime flow contract OK');
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function readText(path) {
+  return readFileSync(path, 'utf8');
+}
+
+function validateSourceConfigProtectorRuntimeBoundary() {
+  for (const requiredFragment of [
+    'resolveRuntimeProfile',
+    "resolveRuntimeProfile(env) === 'beta'",
+    'SOURCE_CONFIG_ENCRYPTION_KEY is required when SOCIAL_MONITOR_RUNTIME_PROFILE=beta',
+  ]) {
+    if (!sourceConfigProtectorSource.includes(requiredFragment)) {
+      violations.push(
+        `${sourceConfigProtectorPath}: source credential protector must fail closed without SOURCE_CONFIG_ENCRYPTION_KEY in beta runtime`,
+      );
+    }
+  }
+
+  for (const requiredFragment of [
+    "NODE_ENV: 'production'",
+    "NODE_ENV: 'staging'",
+    "SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta'",
+  ]) {
+    if (!sourceConfigProtectorSmokeSource.includes(requiredFragment)) {
+      violations.push(
+        `${sourceConfigProtectorSmokePath}: source config smoke must cover missing SOURCE_CONFIG_ENCRYPTION_KEY for production, staging and beta runtime`,
+      );
+    }
+  }
 }
 
 function validateRotationEvidence() {

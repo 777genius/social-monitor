@@ -63,4 +63,22 @@ describe('AesGcmSourceBindingConfigProtector', () => {
       ],
     });
   });
+
+  it('requires a persistent encryption key in beta runtime', () => {
+    expect(() =>
+      AesGcmSourceBindingConfigProtector.fromEnvironment({
+        SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+      }),
+    ).toThrow('SOURCE_CONFIG_ENCRYPTION_KEY is required when SOCIAL_MONITOR_RUNTIME_PROFILE=beta');
+    expect(() =>
+      AesGcmSourceBindingConfigProtector.fromEnvironment({
+        NODE_ENV: 'staging',
+      }),
+    ).toThrow('SOURCE_CONFIG_ENCRYPTION_KEY is required when SOCIAL_MONITOR_RUNTIME_PROFILE=beta');
+    expect(() =>
+      AesGcmSourceBindingConfigProtector.fromEnvironment({
+        NODE_ENV: 'test',
+      }),
+    ).not.toThrow();
+  });
 });

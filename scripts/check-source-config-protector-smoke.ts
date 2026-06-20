@@ -32,17 +32,23 @@ async function main(): Promise<void> {
   assert(nested?.refreshToken === 'raw-refresh-token', 'nested refresh token must decrypt');
   assert(nested.visible === 'safe-value', 'nested safe value must round-trip');
 
+  assertMissingKeyFails({ NODE_ENV: 'production' }, 'production');
+  assertMissingKeyFails({ NODE_ENV: 'staging' }, 'staging');
+  assertMissingKeyFails({ SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta' }, 'beta runtime profile');
+
+  console.log('Source config protector smoke OK');
+}
+
+function assertMissingKeyFails(env: NodeJS.ProcessEnv, label: string): void {
   try {
-    AesGcmSourceBindingConfigProtector.fromEnvironment({ NODE_ENV: 'production' });
-    throw new Error('production source config protector must require encryption key');
+    AesGcmSourceBindingConfigProtector.fromEnvironment(env);
+    throw new Error(`${label} source config protector must require encryption key`);
   } catch (error) {
     assert(
       error instanceof Error && error.message.includes('SOURCE_CONFIG_ENCRYPTION_KEY'),
-      'production source config protector must fail without encryption key',
+      `${label} source config protector must fail without encryption key`,
     );
   }
-
-  console.log('Source config protector smoke OK');
 }
 
 void main().catch((error) => {
