@@ -376,6 +376,12 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
+function readRedactedSampleArtifact(path) {
+  const rawContent = readFileSync(path, 'utf8');
+  validateSerializedArtifactContent(rawContent, path);
+  return JSON.parse(rawContent);
+}
+
 function validateRedactedSampleContentSchema(schema) {
   if (schema.artifactFormat !== redactedSampleFormat) {
     violations.push(`${evidencePath}: redactedSampleContentSchema.artifactFormat must be ${redactedSampleFormat}`);
@@ -469,7 +475,7 @@ function validateRedactedSampleArtifactPath(path, label, options) {
     return;
   }
 
-  const artifact = readJson(path);
+  const artifact = readRedactedSampleArtifact(path);
   validateRedactedSampleArtifact(artifact, path, options);
 }
 
@@ -849,14 +855,17 @@ function scanForbiddenSampleKeys(value, label) {
 }
 
 function validateSerializedArtifact(artifact, path) {
-  const rawSerializedArtifact = JSON.stringify(artifact);
-  const serializedArtifact = rawSerializedArtifact.toLowerCase();
+  validateSerializedArtifactContent(JSON.stringify(artifact), path);
+}
+
+function validateSerializedArtifactContent(content, path) {
+  const serializedArtifact = content.toLowerCase();
   for (const fragment of forbiddenSerializedFragments) {
     if (serializedArtifact.includes(fragment)) {
       violations.push(`${path}: redacted sample artifact must not contain "${fragment}"`);
     }
   }
-  validateSerializedPatterns(rawSerializedArtifact, `${path}: redacted sample artifact`);
+  validateSerializedPatterns(content, `${path}: redacted sample artifact`);
 }
 
 function isIsoDateString(value) {

@@ -1039,6 +1039,19 @@ function validateRunnerNegativeStagingReliabilityArtifactSmokes() {
         artifact.apiBaseUrl = 'https://api.other-staging.social-monitor.invalid';
       },
     },
+    {
+      label: 'staging reliability raw duplicate-key credential hidden by JSON parser',
+      artifactId: 'rabbitmq-staging-drill-output',
+      expectedOutput: 'sensitive literal fragment "bearer "',
+      artifactContent: (artifact) => `${JSON.stringify(artifact, null, 2)}\n`.replace(
+        '"summary": "redacted publisher confirm ack observed"',
+        [
+          '"summary": "',
+          ['Bearer', ' raw-staging-token-hidden-by-duplicate-key'].join(''),
+          '",\n            "summary": "redacted publisher confirm ack observed"',
+        ].join(''),
+      ),
+    },
   ];
 
   for (const scenario of scenarios) {
@@ -1064,9 +1077,12 @@ function writeStagingReliabilityArtifact(tempDirectory, config, options = {}) {
   const artifactPath = join(tempDirectory, `${config.artifactId}.json`);
   const artifact = stagingReliabilityArtifact(config);
   options.mutateArtifact?.(artifact);
+  const artifactContent = typeof options.artifactContent === 'function'
+    ? options.artifactContent(artifact, config)
+    : `${JSON.stringify(artifact, null, 2)}\n`;
   writeFileSync(
     artifactPath,
-    `${JSON.stringify(artifact, null, 2)}\n`,
+    artifactContent,
     { mode: 0o600 },
   );
   return artifactPath;
@@ -1270,6 +1286,18 @@ function validateRunnerNegativeSummaryFeedbackArtifactSmokes() {
         artifact.samples[0].summaryEvidence.authorization = 'redacted-header-name-only';
       },
     },
+    {
+      label: 'summary feedback raw duplicate-key credential hidden by JSON parser',
+      expectedOutput: 'sensitive literal fragment "bearer "',
+      artifactContent: (artifact) => `${JSON.stringify(artifact, null, 2)}\n`.replace(
+        '"redactedComment": "The cited source only says review is pending, but the summary says it was approved."',
+        [
+          '"redactedComment": "',
+          ['Bearer', ' raw-summary-feedback-token-hidden-by-duplicate-key'].join(''),
+          '",\n      "redactedComment": "The cited source only says review is pending, but the summary says it was approved."',
+        ].join(''),
+      ),
+    },
   ];
 
   for (const scenario of scenarios) {
@@ -1294,9 +1322,12 @@ function writeSummaryFeedbackSamplesArtifact(tempDirectory, options = {}) {
   const artifactPath = join(tempDirectory, 'summary-real-feedback-samples.json');
   const artifact = summaryFeedbackSamplesArtifact();
   options.mutateArtifact?.(artifact);
+  const artifactContent = typeof options.artifactContent === 'function'
+    ? options.artifactContent(artifact)
+    : `${JSON.stringify(artifact, null, 2)}\n`;
   writeFileSync(
     artifactPath,
-    `${JSON.stringify(artifact, null, 2)}\n`,
+    artifactContent,
     { mode: 0o600 },
   );
   return artifactPath;
@@ -1708,6 +1739,18 @@ function validateRunnerNegativeSecurityFinalSweepArtifactSmokes() {
         artifact.redaction.rawSourceTextIncluded = true;
       },
     },
+    {
+      label: 'security sweep raw duplicate-key credential hidden by JSON parser',
+      expectedOutput: 'sensitive literal fragment "bearer "',
+      artifactContent: (artifact) => `${JSON.stringify(artifact, null, 2)}\n`.replace(
+        '"operator": "security-owner-1"',
+        [
+          '"operator": "',
+          ['Bearer', ' raw-security-token-hidden-by-duplicate-key'].join(''),
+          '",\n    "operator": "security-owner-1"',
+        ].join(''),
+      ),
+    },
   ];
 
   for (const scenario of scenarios) {
@@ -1738,9 +1781,12 @@ function writeSecurityFinalSweepArtifact(tempDirectory, options = {}) {
   const artifactPath = join(tempDirectory, 'security-final-sweep.json');
   const artifact = securityFinalSweepArtifact(exportPaths);
   options.mutateArtifact?.(artifact, exportPaths);
+  const artifactContent = typeof options.artifactContent === 'function'
+    ? options.artifactContent(artifact, exportPaths)
+    : `${JSON.stringify(artifact, null, 2)}\n`;
   writeFileSync(
     artifactPath,
-    `${JSON.stringify(artifact, null, 2)}\n`,
+    artifactContent,
     { mode: 0o600 },
   );
   return { artifactPath, exportPaths };

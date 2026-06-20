@@ -194,6 +194,12 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
+function readSecurityFinalSweepArtifact(path) {
+  const rawContent = readFileSync(path, 'utf8');
+  validateNoSensitiveArtifactContent(rawContent, path);
+  return JSON.parse(rawContent);
+}
+
 function validateDeploySampleContentSchema(schema) {
   if (schema.artifactFormat !== securityFinalSweepArtifactFormat) {
     violations.push(`${evidencePath}: deploySampleContentSchema.artifactFormat must be ${securityFinalSweepArtifactFormat}`);
@@ -250,7 +256,7 @@ function validateSecurityFinalSweepArtifactPath(path, label, options) {
     return;
   }
 
-  const artifact = readJson(path);
+  const artifact = readSecurityFinalSweepArtifact(path);
   validateSecurityFinalSweepArtifact(artifact, path, options);
 }
 
@@ -616,14 +622,17 @@ function scanForbiddenArtifactKeys(value, label) {
 }
 
 function validateNoSensitiveArtifactLiterals(artifact, path) {
-  const serializedArtifact = JSON.stringify(artifact);
-  const serialized = serializedArtifact.toLowerCase();
+  validateNoSensitiveArtifactContent(JSON.stringify(artifact), path);
+}
+
+function validateNoSensitiveArtifactContent(content, path) {
+  const serialized = content.toLowerCase();
   for (const fragment of forbiddenArtifactFragments) {
     if (serialized.includes(fragment)) {
       violations.push(`${path}: artifact must not contain sensitive literal fragment "${fragment}"`);
     }
   }
-  validateNoSensitivePatterns(serializedArtifact, `${path}: artifact`);
+  validateNoSensitivePatterns(content, `${path}: artifact`);
 }
 
 function isIsoDateString(value) {

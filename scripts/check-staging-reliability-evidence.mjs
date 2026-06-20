@@ -289,6 +289,41 @@ const requiredSignalResultRequirementTexts = new Set([
   'artifact metadata matches the release evidence row',
   'real artifact environmentId and operator are not example, fixture, synthetic, mock or test identifiers',
 ]);
+const forbiddenArtifactFragments = [
+  'bearer ',
+  'basic ',
+  'authorization',
+  'x-api-key',
+  'api_key',
+  'apikey',
+  'access_token',
+  'refresh_token',
+  'id_token',
+  'client_secret',
+  'password',
+  'secret_key',
+  'private_key',
+  'postgres://',
+  'postgresql://',
+  'amqp://',
+  'amqps://',
+  'smk_',
+  'whsec_',
+];
+const forbiddenArtifactValuePatterns = [
+  {
+    label: 'query credential',
+    regex: /\b(?:access_token|refresh_token|id_token|api_key|apikey|client_secret|signature|sig)=([^&\s"']+)/gi,
+  },
+  {
+    label: 'header credential',
+    regex: /\b(?:authorization|x-api-key|x-amz-security-token):\s*([^,\s"'}]+)/gi,
+  },
+  {
+    label: 'jwt credential',
+    regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+  },
+];
 
 if (evidence.schemaVersion !== 1) {
   violations.push(`${evidencePath}: schemaVersion must be 1`);
@@ -761,7 +796,9 @@ function validateEnvArtifactValidation(validationRules) {
 
 function readArtifactContent(artifact) {
   try {
-    const content = JSON.parse(readFileSync(artifact.path, 'utf8'));
+    const rawContent = readFileSync(artifact.path, 'utf8');
+    validateNoSensitiveArtifactContent(rawContent, artifact.path);
+    const content = JSON.parse(rawContent);
     if (!isRecord(content)) {
       violations.push(`${artifact.path}: passed staging artifact must be a JSON object`);
       return undefined;
@@ -787,23 +824,26 @@ function validateRedaction(content, artifactPath) {
     }
   }
 
-  const serialized = JSON.stringify(content).toLowerCase();
-  for (const fragment of [
-    'bearer ',
-    'basic ',
-    'access_token',
-    'refresh_token',
-    'private_key',
-    'postgres://',
-    'postgresql://',
-    'amqp://',
-    'amqps://',
-    'smk_',
-    'whsec_',
-  ]) {
+  validateNoSensitiveArtifactContent(JSON.stringify(content), artifactPath);
+}
+
+function validateNoSensitiveArtifactContent(content, artifactPath) {
+  const serialized = content.toLowerCase();
+  for (const fragment of forbiddenArtifactFragments) {
     if (serialized.includes(fragment)) {
       violations.push(`${artifactPath}: passed staging artifact must not contain sensitive fragment "${fragment}"`);
     }
+  }
+  validateNoSensitivePatterns(content, `${artifactPath}: passed staging artifact`);
+}
+
+function validateNoSensitivePatterns(content, label) {
+  for (const pattern of forbiddenArtifactValuePatterns) {
+    pattern.regex.lastIndex = 0;
+    if (pattern.regex.test(content)) {
+      violations.push(`${label} must not contain sensitive ${pattern.label}`);
+    }
+    pattern.regex.lastIndex = 0;
   }
 }
 
