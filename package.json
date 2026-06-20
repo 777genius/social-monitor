@@ -52,6 +52,8 @@
     "capture:docker-durable-backend-e2e-loop": "node scripts/capture-docker-durable-backend-e2e-loop.mjs",
     "capture:docker-backend-staging-evidence-bundle": "node scripts/capture-docker-backend-staging-evidence-bundle.mjs",
     "check:docker-backend-staging-evidence-bundle": "node scripts/check-docker-backend-staging-evidence-bundle.mjs",
+    "check:docker-evidence-storage": "node scripts/check-docker-evidence-storage.mjs",
+    "check:docker-evidence-storage:report": "node scripts/check-docker-evidence-storage.mjs --report-only",
     "check:events": "node scripts/check-event-contracts.mjs",
     "check:evidence-env-file": "node scripts/check-evidence-env-file.mjs",
     "check:external-beta-readiness": "node scripts/check-external-beta-readiness.mjs",
