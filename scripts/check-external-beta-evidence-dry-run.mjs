@@ -202,6 +202,7 @@ function validateHandoffShape() {
     externalBlockerJobCount: plan.externalBlockerJobCount,
     blockedMissingRequiredEnvJobCount: plan.blockedMissingRequiredEnvJobCount,
     blockedInvalidInputJobCount: plan.blockedInvalidInputJobCount,
+    blockedLocalRuntimeEnvJobCount: plan.blockedLocalRuntimeEnvJobCount,
   };
   for (const [field, expectedValue] of Object.entries(expectedReadiness)) {
     if (readiness[field] !== expectedValue) {

@@ -35,6 +35,7 @@
     "manualArtifactReadyForValidationJobCount": 0,
     "blockedMissingRequiredEnvJobCount": 10,
     "blockedInvalidInputJobCount": 0,
+    "blockedLocalRuntimeEnvJobCount": 0,
     "contractClosurePercent": 33,
     "externalEvidenceEnvReadinessPercent": 0
   },

@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const contractPath = 'ops/release/backend-mvp-status-contract.json';
 const auditPath = 'ops/release/backend-mvp-completion-audit.json';
@@ -27,11 +29,14 @@ const packageJson = readJson(packagePath);
 const scripts = packageJson.scripts ?? {};
 const violations = [];
 
-const evidencePlan = readEvidencePlan({ cleanEnv: !jsonOutput });
-const status = buildStatus(evidencePlan);
+const cleanEvidencePlan = readEvidencePlan({ cleanEnv: true });
+const evidencePlan = jsonOutput ? readEvidencePlan({ cleanEnv: false }) : cleanEvidencePlan;
+const cleanStatus = buildStatus(cleanEvidencePlan);
+const status = jsonOutput ? buildStatus(evidencePlan) : cleanStatus;
 
 validateContract();
 validateStatus();
+validateLocalRuntimeStatusSmoke();
 validateWiring();
 
 if (violations.length > 0) {
@@ -53,12 +58,17 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-function readEvidencePlan({ cleanEnv }) {
-  const env = cleanEnv
+function readEvidencePlan({ cleanEnv, envOverride }) {
+  const env = envOverride !== undefined
     ? {
         PATH: process.env.PATH ?? '',
+        ...envOverride,
       }
-    : process.env;
+    : cleanEnv
+      ? {
+          PATH: process.env.PATH ?? '',
+        }
+      : process.env;
   const output = execFileSync(
     process.execPath,
     ['scripts/external-beta-evidence-runner.mjs', '--plan', '--json'],
@@ -110,6 +120,9 @@ function buildStatus(plan) {
     strictExternalBetaExitPercent: percent(passedBlockingRequirements.length, blockingRequirements.length),
     contractClosurePercent: plan.contractClosurePercent,
     externalEvidenceEnvReadinessPercent: plan.externalEvidenceEnvReadinessPercent,
+    blockedMissingRequiredEnvJobCount: plan.blockedMissingRequiredEnvJobCount,
+    blockedInvalidInputJobCount: plan.blockedInvalidInputJobCount,
+    blockedLocalRuntimeEnvJobCount: plan.blockedLocalRuntimeEnvJobCount ?? 0,
     requirementCount: requirements.length,
     blockingRequirementCount: blockingRequirements.length,
     passedBlockingRequirementCount: passedBlockingRequirements.length,
@@ -215,16 +228,46 @@ function validateStatus() {
   }
   if (contract.cleanEnvMustRemainBlocked === true) {
     assertSameSet(
-      status.missingRequiredEnv,
+      cleanStatus.missingRequiredEnv,
       evidenceDryRun.requiredMissingEnvWithoutCredentials ?? [],
       `${contractPath}: clean-env missingRequiredEnv`,
     );
-    if (status.externalEvidenceEnvReadinessPercent !== 0) {
+    if (cleanStatus.externalEvidenceEnvReadinessPercent !== 0) {
       violations.push(`${contractPath}: clean-env status must keep external evidence readiness at 0`);
     }
-    if (status.externalBlockerJobCount === 0) {
+    if (cleanStatus.externalBlockerJobCount === 0) {
       violations.push(`${contractPath}: clean-env status must expose external blocker jobs`);
     }
+  }
+}
+
+function validateLocalRuntimeStatusSmoke() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'backend-mvp-status-local-runtime-'));
+  try {
+    const localPlan = readEvidencePlan({
+      cleanEnv: false,
+      envOverride: {
+        API_BASE_URL: 'http://127.0.0.1:3000',
+        BACKEND_IMAGE_DIGEST: `sha256:${'a'.repeat(64)}`,
+        DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(tempDirectory, 'durable-backend-e2e.json'),
+        STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
+      },
+    });
+    const localStatus = buildStatus(localPlan);
+    if (localStatus.blockedLocalRuntimeEnvJobCount < 1) {
+      violations.push(`${contractPath}: local runtime status smoke must expose blockedLocalRuntimeEnvJobCount`);
+    }
+    if ((localStatus.evidenceReadinessCounts.blocked_local_runtime_env ?? 0) < 1) {
+      violations.push(`${contractPath}: local runtime status smoke must expose blocked_local_runtime_env readiness`);
+    }
+    if (localStatus.blockedInvalidInputJobCount !== 0) {
+      violations.push(`${contractPath}: local runtime status smoke must not classify local runtime env as generic invalid input`);
+    }
+    if (localStatus.strictExternalBetaReady !== false) {
+      violations.push(`${contractPath}: local runtime status smoke must not mark external beta ready`);
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
   }
 }
 
