@@ -344,7 +344,10 @@ function validatePassedDeploySmokeArtifact(smoke, gitSha, migrationVersion, rele
     return;
   }
 
-  const deployArtifact = JSON.parse(readFileSync(smoke.stagingArtifactPath, 'utf8'));
+  const deployArtifact = readDeployArtifact(
+    smoke.stagingArtifactPath,
+    `deploy smoke "${smoke.smokeId}" stagingArtifactPath`,
+  );
   validateDeployArtifactShape(deployArtifact, {
     label: `deploy smoke "${smoke.smokeId}" stagingArtifactPath`,
     strict: true,
@@ -444,6 +447,12 @@ function validateDeployArtifactShape(deployArtifact, options) {
   }
 }
 
+function readDeployArtifact(path, label) {
+  const rawContent = readFileSync(path, 'utf8');
+  validateNoSensitiveDeployArtifactContent(rawContent, label);
+  return JSON.parse(rawContent);
+}
+
 function validateDeployArtifactProvenance(provenance, label, options) {
   validateEvidenceArtifactProvenance({
     provenance,
@@ -475,15 +484,18 @@ function validateDeployArtifactRedaction(deployArtifact, label) {
 }
 
 function validateNoSensitiveDeployArtifactLiterals(deployArtifact, label) {
-  const serializedArtifact = JSON.stringify(deployArtifact);
-  const serialized = serializedArtifact.toLowerCase();
+  validateNoSensitiveDeployArtifactContent(JSON.stringify(deployArtifact), label);
+}
+
+function validateNoSensitiveDeployArtifactContent(content, label) {
+  const serialized = content.toLowerCase();
 
   for (const fragment of forbiddenArtifactFragments) {
     if (serialized.includes(fragment)) {
       violations.push(`${label}: artifact must not contain sensitive literal fragment "${fragment}"`);
     }
   }
-  validateNoSensitivePatterns(serializedArtifact, `${label}: artifact`);
+  validateNoSensitivePatterns(content, `${label}: artifact`);
 }
 
 function validateDeployArtifactMigration(deployArtifact, label, options) {
@@ -615,7 +627,10 @@ function validateEnvDeploySmokeArtifact(gitSha, migrationVersion) {
   const environmentId = requireEnvWhenDeployArtifactIsPresent('STAGING_ENVIRONMENT_ID');
   const imageDigest = requireEnvWhenDeployArtifactIsPresent('BACKEND_IMAGE_DIGEST');
   const apiBaseUrl = requireEnvWhenDeployArtifactIsPresent('API_BASE_URL');
-  const deployArtifact = JSON.parse(readFileSync(releaseDeploySmokeArtifactPath, 'utf8'));
+  const deployArtifact = readDeployArtifact(
+    releaseDeploySmokeArtifactPath,
+    `RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH (${releaseDeploySmokeArtifactPath})`,
+  );
   validateDeployArtifactShape(deployArtifact, {
     label: `RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH (${releaseDeploySmokeArtifactPath})`,
     strict: true,
