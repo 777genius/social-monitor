@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
@@ -360,10 +361,12 @@ function validateLiveSmokeScripts() {
   for (const marker of [
     'writeLiveEvidenceArtifactAtomically',
     'validateLiveEvidenceJsonFilePath',
+    'readLiveEvidenceArtifactFile',
     'renameSync',
     'temporaryEvidencePath',
     'mode: 0o600',
     'chmodSync',
+    '0600-style private file permissions',
     'must not write release evidence into the git workspace',
     'must not point to fixture or example paths',
   ]) {
@@ -382,6 +385,7 @@ function validateLiveSmokeScripts() {
     }
   }
   validateCaptureOutputPathGuards();
+  validateDirectRedditLifecyclePathGuards();
 }
 
 function validateCaptureOutputPathGuards() {
@@ -451,6 +455,77 @@ function runCaptureExpectingFailure(scriptPath, env) {
       encoding: 'utf8',
       stdio: 'pipe',
     });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function validateDirectRedditLifecyclePathGuards() {
+  const workspaceLifecycleArtifactPath = resolve('reddit-live-direct-lifecycle-workspace-output.json');
+  const workspaceResult = runLiveRedditSmokeExpectingFailure({
+    REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: workspaceLifecycleArtifactPath,
+  });
+  if (workspaceResult.exitCode === 0) {
+    violations.push(`${redditLiveScriptPath}: direct live smoke must reject workspace REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH`);
+  } else if (!workspaceResult.output.includes('REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH must not write release evidence into the git workspace')) {
+    violations.push(`${redditLiveScriptPath}: direct workspace lifecycle rejection must explain evidence path policy`);
+  }
+  if (existsSync(workspaceLifecycleArtifactPath)) {
+    violations.push(`${redditLiveScriptPath}: direct workspace lifecycle rejection must not create ${workspaceLifecycleArtifactPath}`);
+  }
+
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'reddit-live-direct-lifecycle-'));
+  try {
+    const publicLifecycleArtifactPath = join(tempDirectory, 'reddit-credential-lifecycle.json');
+    writeFileSync(publicLifecycleArtifactPath, '{}\n', { mode: 0o600 });
+    chmodSync(publicLifecycleArtifactPath, 0o644);
+    const publicModeResult = runLiveRedditSmokeExpectingFailure({
+      REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: publicLifecycleArtifactPath,
+    });
+    if (publicModeResult.exitCode === 0) {
+      violations.push(`${redditLiveScriptPath}: direct live smoke must reject public lifecycle artifact permissions`);
+    } else if (!publicModeResult.output.includes('REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH must use 0600-style private file permissions')) {
+      violations.push(`${redditLiveScriptPath}: direct public lifecycle rejection must explain private file mode policy`);
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function runLiveRedditSmokeExpectingFailure(env) {
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        'scripts/run-with-timeout.mjs',
+        '--timeout-ms',
+        '45000',
+        '--node-options',
+        '--max-old-space-size=1024',
+        '--',
+        'ts-node',
+        '-r',
+        'tsconfig-paths/register',
+        redditLiveScriptPath,
+      ],
+      {
+        env: {
+          ...process.env,
+          REDDIT_ACCESS_TOKEN: 'reddit-live-access-token-for-direct-path-guard',
+          REDDIT_LIVE_EVIDENCE_PATH: '/tmp/social-monitor-live-reddit-direct-path-guard.json',
+          SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
+          BACKEND_IMAGE_DIGEST: `sha256:${'c'.repeat(64)}`,
+          SOURCE_LIVE_OPERATOR: 'source-owner-1',
+          ...env,
+        },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    );
     return { exitCode: 0, output: '' };
   } catch (error) {
     return {

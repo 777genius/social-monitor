@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
 
 import { HttpRedditClient } from '../libs/ingestion/adapters/source/reddit/http-reddit-client';
 import { RedditSourceProvider } from '../libs/ingestion/adapters/source/reddit/reddit-source.provider';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import type { SourceProviderScanContext, SourceQuery } from '../libs/ingestion/ports';
-import { writeLiveEvidenceArtifactAtomically } from './lib/live-evidence-artifact';
+import { readLiveEvidenceArtifactFile, writeLiveEvidenceArtifactAtomically } from './lib/live-evidence-artifact';
 
 type RedditLiveSignalId =
   | 'reddit-tenant-oauth-smoke'
@@ -261,9 +260,8 @@ const readCredentialLifecycleEvidence = (): {
 } => {
   const path = readOptionalEnv(lifecycleEvidencePathEnv);
   assert(path !== undefined, `Live Reddit OAuth smoke requires ${lifecycleEvidencePathEnv} with redacted create/rotate/revoke evidence`);
-  assert(existsSync(path), `${lifecycleEvidencePathEnv} must reference an existing redacted evidence file`);
 
-  const serialized = readFileSync(path, 'utf8');
+  const serialized = readLiveEvidenceArtifactFile(path, lifecycleEvidencePathEnv);
   const lower = serialized.toLowerCase();
   for (const forbidden of forbiddenCredentialLifecycleFragments) {
     assert(!lower.includes(forbidden), `${lifecycleEvidencePathEnv} must not contain secret fragment ${forbidden}`);

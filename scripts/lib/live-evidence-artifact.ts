@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 const forbiddenPathFragments = ['/fixtures/', '\\fixtures\\', '.example.', '-examples', '_examples'];
@@ -45,6 +45,24 @@ export const validateLiveEvidenceJsonFilePath = (path: string, label: string): s
   return resolvedPath;
 };
 
+export const readLiveEvidenceArtifactFile = (path: string, label: string): string => {
+  const artifactPath = validateLiveEvidenceJsonFilePath(path, label);
+  let stat;
+  try {
+    stat = statSync(artifactPath);
+  } catch {
+    throw new Error(`${label} must point to an existing regular file`);
+  }
+  if (!stat.isFile()) {
+    throw new Error(`${label} must point to an existing regular file`);
+  }
+  if (!isPrivateEvidenceFile(stat.mode)) {
+    throw new Error(`${label} must use 0600-style private file permissions`);
+  }
+
+  return readFileSync(artifactPath, 'utf8');
+};
+
 const isInsideWorkspace = (path: string): boolean => {
   const workspace = resolve(process.cwd());
   const relativePath = relative(workspace, path);
@@ -57,3 +75,5 @@ const isFixtureLikePath = (path: string): boolean => {
     normalized.includes(fragment.replaceAll('\\', '/').toLowerCase()),
   );
 };
+
+const isPrivateEvidenceFile = (mode: number): boolean => (mode & 0o077) === 0;
