@@ -114,7 +114,7 @@ const artifact = {
 };
 
 mkdirSync(dirname(artifactTarget), { recursive: true });
-const temporaryArtifactPath = `${artifactTarget}.${process.pid}.${Date.now()}.tmp`;
+const temporaryArtifactPath = `${artifactTarget}.${process.pid}.${Date.now()}.tmp.json`;
 
 try {
   writeFileSync(temporaryArtifactPath, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
