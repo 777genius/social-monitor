@@ -1,5 +1,7 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
@@ -184,6 +186,7 @@ validateRequiredChecks();
 validateLeakClasses();
 validateNoSensitiveEvidenceLiterals();
 validateCaptureHandoff();
+validateCaptureOutputPathGuards();
 requireWiring();
 
 if (violations.length > 0) {
@@ -778,6 +781,8 @@ function validateNoSensitiveEvidenceLiterals() {
 function validateCaptureHandoff() {
   for (const marker of [
     'writeEvidenceEnvFile',
+    'validateEvidenceEnvFilePath',
+    'validateEvidenceJsonFilePath',
     'SECURITY_FINAL_SWEEP_ENV_PATH',
     'SECURITY_FINAL_SWEEP_ARTIFACT_PATH',
     'LOG_EXPORT_PATH',
@@ -790,6 +795,50 @@ function validateCaptureHandoff() {
   }
   if (!captureScriptSource.includes('must not use local, fixture, example, mock or test identifiers')) {
     violations.push(`${captureScriptPath}: security final sweep capture must reject non-beta evidence identity values`);
+  }
+}
+
+function validateCaptureOutputPathGuards() {
+  const workspaceArtifactPath = resolve('security-final-sweep-workspace-output.json');
+  const result = runCaptureExpectingFailure({
+    SECURITY_FINAL_SWEEP_ARTIFACT_PATH: workspaceArtifactPath,
+    LOG_EXPORT_PATH: '/tmp/social-monitor-security-final-sweep-log-output.json',
+    METRICS_EXPORT_PATH: '/tmp/social-monitor-security-final-sweep-metrics-output.json',
+    PUBLIC_ERROR_EXPORT_PATH: '/tmp/social-monitor-security-final-sweep-public-errors-output.json',
+    SECURITY_FINAL_SWEEP_ENV_PATH: '/tmp/social-monitor-security-final-sweep.env',
+    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+    STAGING_OPERATOR: 'security-owner-1',
+    BACKEND_IMAGE_DIGEST: `sha256:${'e'.repeat(64)}`,
+  });
+
+  if (result.exitCode === 0) {
+    violations.push(`${captureScriptPath}: capture must reject workspace SECURITY_FINAL_SWEEP_ARTIFACT_PATH`);
+    return;
+  }
+  if (!result.output.includes('SECURITY_FINAL_SWEEP_ARTIFACT_PATH must not write release evidence into the git workspace')) {
+    violations.push(`${captureScriptPath}: workspace artifact path rejection must explain evidence path policy`);
+  }
+  if (existsSync(workspaceArtifactPath)) {
+    violations.push(`${captureScriptPath}: workspace artifact path rejection must not create ${workspaceArtifactPath}`);
+  }
+}
+
+function runCaptureExpectingFailure(env) {
+  try {
+    execFileSync(process.execPath, [captureScriptPath], {
+      env: {
+        ...process.env,
+        ...env,
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
   }
 }
 

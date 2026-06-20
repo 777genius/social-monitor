@@ -1,9 +1,14 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
-import { shellQuote, writeEvidenceEnvFile } from './lib/evidence-env-file.mjs';
+import {
+  shellQuote,
+  validateEvidenceEnvFilePath,
+  validateEvidenceJsonFilePath,
+  writeEvidenceEnvFile,
+} from './lib/evidence-env-file.mjs';
 
 const artifactDir =
   process.env.SECURITY_FINAL_SWEEP_ARTIFACT_DIR ??
@@ -18,6 +23,14 @@ const securityFinalSweepPath =
 const envFilePath =
   process.env.SECURITY_FINAL_SWEEP_ENV_PATH ??
   join(resolve(artifactDir), 'security-final-sweep.env');
+const logExportTarget = validateEvidenceJsonFilePath(logExportPath, 'LOG_EXPORT_PATH');
+const metricsExportTarget = validateEvidenceJsonFilePath(metricsExportPath, 'METRICS_EXPORT_PATH');
+const publicErrorExportTarget = validateEvidenceJsonFilePath(publicErrorExportPath, 'PUBLIC_ERROR_EXPORT_PATH');
+const securityFinalSweepTarget = validateEvidenceJsonFilePath(
+  securityFinalSweepPath,
+  'SECURITY_FINAL_SWEEP_ARTIFACT_PATH',
+);
+const envFileTarget = validateEvidenceEnvFilePath(envFilePath);
 const identityEnvNames = ['STAGING_ENVIRONMENT_ID', 'STAGING_OPERATOR'];
 const forbiddenIdentityFragments = ['local', 'fixture', 'example', 'mock', 'test'];
 const sampledAt = new Date().toISOString();
@@ -28,7 +41,7 @@ const operator = evidenceIdentity('STAGING_OPERATOR', 'security-owner');
 mkdirSync(artifactDir, { recursive: true });
 
 const exportsBySurface = {
-  logs: writeExport(logExportPath, {
+  logs: writeExport(logExportTarget, {
     records: [
       {
         requestId: 'req-sec-1',
@@ -48,7 +61,7 @@ const exportsBySurface = {
       },
     ],
   }),
-  metrics: writeExport(metricsExportPath, {
+  metrics: writeExport(metricsExportTarget, {
     records: [
       {
         metricName: 'queue_lag_seconds',
@@ -66,7 +79,7 @@ const exportsBySurface = {
       },
     ],
   }),
-  publicErrors: writeExport(publicErrorExportPath, {
+  publicErrors: writeExport(publicErrorExportTarget, {
     records: [
       {
         requestId: 'req-sec-3',
@@ -153,41 +166,42 @@ const artifact = {
   },
 };
 
-writeFileSync(securityFinalSweepPath, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+writeFileSync(securityFinalSweepTarget, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
 
 const env = {
   ...process.env,
-  SECURITY_FINAL_SWEEP_ARTIFACT_PATH: securityFinalSweepPath,
-  LOG_EXPORT_PATH: logExportPath,
-  METRICS_EXPORT_PATH: metricsExportPath,
-  PUBLIC_ERROR_EXPORT_PATH: publicErrorExportPath,
+  SECURITY_FINAL_SWEEP_ARTIFACT_PATH: securityFinalSweepTarget,
+  LOG_EXPORT_PATH: logExportTarget,
+  METRICS_EXPORT_PATH: metricsExportTarget,
+  PUBLIC_ERROR_EXPORT_PATH: publicErrorExportTarget,
 };
 execFileSync('node', ['scripts/check-security-final-sweep.mjs'], {
   env,
   stdio: 'inherit',
 });
 
-writeEvidenceEnvFile(envFilePath, [
-  ['SECURITY_FINAL_SWEEP_ARTIFACT_PATH', securityFinalSweepPath],
-  ['LOG_EXPORT_PATH', logExportPath],
-  ['METRICS_EXPORT_PATH', metricsExportPath],
-  ['PUBLIC_ERROR_EXPORT_PATH', publicErrorExportPath],
+writeEvidenceEnvFile(envFileTarget, [
+  ['SECURITY_FINAL_SWEEP_ARTIFACT_PATH', securityFinalSweepTarget],
+  ['LOG_EXPORT_PATH', logExportTarget],
+  ['METRICS_EXPORT_PATH', metricsExportTarget],
+  ['PUBLIC_ERROR_EXPORT_PATH', publicErrorExportTarget],
 ], {
   usageLines: [
     'Usage:',
-    `set -a; . ${shellQuote(envFilePath)}; set +a`,
+    `set -a; . ${shellQuote(envFileTarget)}; set +a`,
     'npm run beta:evidence:validate -- --job security-final-sweep-staging',
     'This handoff includes security final sweep artifact paths only. It intentionally does not export STAGING_ENVIRONMENT_ID for other staging jobs.',
   ],
 });
 
-console.log(`SECURITY_FINAL_SWEEP_ARTIFACT_PATH=${securityFinalSweepPath}`);
-console.log(`LOG_EXPORT_PATH=${logExportPath}`);
-console.log(`METRICS_EXPORT_PATH=${metricsExportPath}`);
-console.log(`PUBLIC_ERROR_EXPORT_PATH=${publicErrorExportPath}`);
-console.log(`SECURITY_FINAL_SWEEP_ENV_PATH=${envFilePath}`);
+console.log(`SECURITY_FINAL_SWEEP_ARTIFACT_PATH=${securityFinalSweepTarget}`);
+console.log(`LOG_EXPORT_PATH=${logExportTarget}`);
+console.log(`METRICS_EXPORT_PATH=${metricsExportTarget}`);
+console.log(`PUBLIC_ERROR_EXPORT_PATH=${publicErrorExportTarget}`);
+console.log(`SECURITY_FINAL_SWEEP_ENV_PATH=${envFileTarget}`);
 
 function writeExport(path, document) {
+  mkdirSync(dirname(path), { recursive: true });
   const content = `${JSON.stringify(document, null, 2)}\n`;
   writeFileSync(path, content, { mode: 0o600 });
   return {
