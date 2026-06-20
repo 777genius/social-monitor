@@ -44,6 +44,17 @@ const allowedStatuses = new Set([
   'hold',
   'passed',
 ]);
+const requiredGoDecisionCriteriaFragments = new Set([
+  'durable runtime proof',
+  'live source provider certification',
+  'credential and secret runtime flow',
+  'RabbitMQ and Postgres staging drills',
+  'backend durable E2E loop',
+  'summary blocker feedback',
+  'security final sweep',
+  'release artifact evidence',
+  'capacity envelope and no-go cleanup',
+]);
 
 if (contract.schemaVersion !== 1) {
   violations.push(`${contractPath}: schemaVersion must be 1`);
@@ -64,6 +75,8 @@ if (contract.evidenceMode !== 'fixture_contract_with_external_evidence_required'
 if (!['hold', 'go', 'rework'].includes(contract.externalBetaDecision)) {
   violations.push(`${contractPath}: externalBetaDecision must be hold, go or rework`);
 }
+
+validateGoDecisionExitCriteria();
 
 const evidenceRunner = contract.evidenceRunner;
 if (typeof evidenceRunner !== 'object' || evidenceRunner === null) {
@@ -191,6 +204,20 @@ if (violations.length > 0) {
 }
 
 console.log('External beta readiness contract OK');
+
+function validateGoDecisionExitCriteria() {
+  if (!Array.isArray(contract.goDecisionExitCriteria) || contract.goDecisionExitCriteria.length === 0) {
+    violations.push(`${contractPath}: goDecisionExitCriteria must list every blocking go prerequisite`);
+    return;
+  }
+
+  const criteriaText = contract.goDecisionExitCriteria.join('\n').toLowerCase();
+  for (const fragment of requiredGoDecisionCriteriaFragments) {
+    if (!criteriaText.includes(fragment.toLowerCase())) {
+      violations.push(`${contractPath}: goDecisionExitCriteria must include "${fragment}"`);
+    }
+  }
+}
 
 function scriptNameFromNpmCommand(command) {
   const match = /^npm run (?:--silent )?([^ ]+)/.exec(String(command ?? ''));

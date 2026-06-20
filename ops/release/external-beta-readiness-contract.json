@@ -8,10 +8,13 @@
   "goDecisionExitCriteria": [
     "durable runtime proof has deployed staging evidence",
     "live source provider certification replaces fixture-only certification for enabled external providers",
+    "credential and secret runtime flow has approved secret boundary and rotation evidence",
     "RabbitMQ and Postgres staging drills have attached evidence",
     "backend durable E2E loop passes on promoted image digest",
     "summary blocker feedback is converted into eval fixtures, validator changes or runbook actions",
-    "release artifact evidence includes immutable image digest and deploy smoke output"
+    "security final sweep confirms logs, metrics, public errors and audit metadata contain no secrets or raw payloads",
+    "release artifact evidence includes immutable image digest and deploy smoke output",
+    "capacity envelope and no-go cleanup keep beta ring hold until every blocking evidence group is passed"
   ],
   "evidenceRunner": {
     "contract": "ops/release/external-beta-evidence-runner.json",
