@@ -1,10 +1,15 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { generateKeyPairSync, randomInt } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, statfsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
+const DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS = 5_000;
+const DEFAULT_MIN_FREE_BYTES = 8 * 1024 ** 3;
+
 export async function withDockerBackendEvidenceStack(options, callback) {
+  assertDockerEvidencePrerequisites({ cwd: options.preflightCwd ?? process.cwd() });
+
   const runId = Date.now().toString(36);
   const projectName = process.env[options.projectEnvName] ?? `${options.projectPrefix}-${runId}`;
   const tempDir = mkdtempSync(join(tmpdir(), `${options.projectPrefix}-`));
@@ -135,6 +140,47 @@ export function restartBackendServices(context, services = ['api', 'event-relay'
   context.waitForReady(context.apiBaseUrl);
 }
 
+export function assertDockerEvidencePrerequisites(options = {}) {
+  const cwd = options.cwd ?? process.cwd();
+  const dockerTimeoutMs =
+    options.dockerTimeoutMs ?? positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_DOCKER_TIMEOUT_MS', DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS);
+  const minFreeBytes =
+    options.minFreeBytes ?? positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES', DEFAULT_MIN_FREE_BYTES);
+  const failures = [];
+  const freeBytes = availableDiskBytes(cwd);
+
+  if (freeBytes < minFreeBytes) {
+    failures.push(
+      `only ${formatBytes(freeBytes)} free at ${cwd}; need at least ${formatBytes(minFreeBytes)} for Docker backend evidence`,
+    );
+  }
+
+  const dockerVersion = spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], {
+    cwd,
+    encoding: 'utf8',
+    timeout: dockerTimeoutMs,
+  });
+
+  if (dockerVersion.error) {
+    failures.push(dockerVersion.error.code === 'ETIMEDOUT'
+      ? `Docker daemon did not respond within ${dockerTimeoutMs}ms`
+      : `Docker daemon check failed: ${dockerVersion.error.message}`);
+  } else if (dockerVersion.status !== 0) {
+    const stderr = dockerVersion.stderr.trim();
+    failures.push(stderr.length > 0
+      ? `Docker daemon check failed: ${stderr}`
+      : `Docker daemon check exited with status ${dockerVersion.status ?? 'unknown'}`);
+  }
+
+  if (failures.length > 0) {
+    throw new Error([
+      'Docker backend evidence preflight failed:',
+      ...failures.map((failure) => `- ${failure}`),
+      'Restart Docker Desktop, free disk space, or set DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES for a controlled override.',
+    ].join('\n'));
+  }
+}
+
 function buildComposeOverride(values) {
   const commonEnvironment = [
     ['SOCIAL_MONITOR_OIDC_ISSUER', values.issuer],
@@ -223,4 +269,36 @@ function shouldKeepStack(keepEnvNames) {
 
 function randomPort() {
   return randomInt(20_000, 49_000);
+}
+
+function availableDiskBytes(cwd) {
+  const stats = statfsSync(cwd);
+  return Number(stats.bavail) * Number(stats.bsize);
+}
+
+function positiveIntegerEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw.length === 0) {
+    return fallback;
+  }
+
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+
+  return value;
+}
+
+function formatBytes(bytes) {
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
 }
