@@ -20,6 +20,7 @@ const liveOpenScriptPath = 'scripts/check-live-open-connectors.ts';
 const liveOpenCaptureScriptPath = 'scripts/capture-live-open-connectors.mjs';
 const redditLiveScriptPath = 'scripts/check-live-reddit-oauth.ts';
 const redditLiveCaptureScriptPath = 'scripts/capture-live-reddit-oauth.mjs';
+const liveEvidenceArtifactHelperPath = 'scripts/lib/live-evidence-artifact.ts';
 
 const evidence = readJson(evidencePath);
 const sourceCertification = readJson(sourceCertificationPath);
@@ -293,6 +294,7 @@ function validateLiveSmokeScripts() {
   const liveOpenCaptureScript = readFileSync(liveOpenCaptureScriptPath, 'utf8');
   const redditLiveScript = readFileSync(redditLiveScriptPath, 'utf8');
   const redditLiveCaptureScript = readFileSync(redditLiveCaptureScriptPath, 'utf8');
+  const liveEvidenceArtifactHelper = readFileSync(liveEvidenceArtifactHelperPath, 'utf8');
 
   requireScriptSignals(liveOpenScriptPath, liveOpenScript, [
     ...requiredProviderSignals.get('hacker-news'),
@@ -351,9 +353,31 @@ function validateLiveSmokeScripts() {
     [liveOpenScriptPath, liveOpenScript],
     [redditLiveScriptPath, redditLiveScript],
   ]) {
-    for (const marker of ['writeEvidenceArtifactAtomically', 'renameSync', 'temporaryEvidencePath', 'mode: 0o600']) {
+    if (!scriptSource.includes('writeLiveEvidenceArtifactAtomically')) {
+      violations.push(`${scriptPath}: live smoke script must use the shared private evidence artifact writer`);
+    }
+  }
+  for (const marker of [
+    'writeLiveEvidenceArtifactAtomically',
+    'validateLiveEvidenceJsonFilePath',
+    'renameSync',
+    'temporaryEvidencePath',
+    'mode: 0o600',
+    'chmodSync',
+    'must not write release evidence into the git workspace',
+    'must not point to fixture or example paths',
+  ]) {
+    if (!liveEvidenceArtifactHelper.includes(marker)) {
+      violations.push(`${liveEvidenceArtifactHelperPath}: live evidence artifact helper must include ${marker}`);
+    }
+  }
+  for (const [scriptPath, scriptSource] of [
+    [liveOpenCaptureScriptPath, liveOpenCaptureScript],
+    [redditLiveCaptureScriptPath, redditLiveCaptureScript],
+  ]) {
+    for (const marker of ['writeEvidenceEnvFile', 'validateEvidenceJsonFilePath']) {
       if (!scriptSource.includes(marker)) {
-        violations.push(`${scriptPath}: live smoke script must write evidence artifacts atomically with private temp files`);
+        violations.push(`${scriptPath}: live evidence capture script must include ${marker}`);
       }
     }
   }

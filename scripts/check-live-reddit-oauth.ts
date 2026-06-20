@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 
 import { HttpRedditClient } from '../libs/ingestion/adapters/source/reddit/http-reddit-client';
 import { RedditSourceProvider } from '../libs/ingestion/adapters/source/reddit/reddit-source.provider';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import type { SourceProviderScanContext, SourceQuery } from '../libs/ingestion/ports';
+import { writeLiveEvidenceArtifactAtomically } from './lib/live-evidence-artifact';
 
 type RedditLiveSignalId =
   | 'reddit-tenant-oauth-smoke'
@@ -421,24 +421,11 @@ const writeEvidenceIfRequested = (evidence: {
     providerResults: evidence.providerResults,
   };
 
-  writeEvidenceArtifactAtomically(evidencePath, `${JSON.stringify(artifact, null, 2)}\n`);
-};
-
-const writeEvidenceArtifactAtomically = (evidencePath: string, serializedArtifact: string): void => {
-  mkdirSync(dirname(evidencePath), { recursive: true });
-  const temporaryEvidencePath = `${evidencePath}.${process.pid}.${Date.now()}.tmp`;
-
-  try {
-    writeFileSync(temporaryEvidencePath, serializedArtifact, { mode: 0o600 });
-    renameSync(temporaryEvidencePath, evidencePath);
-  } catch (error) {
-    try {
-      unlinkSync(temporaryEvidencePath);
-    } catch {
-      // Best effort cleanup only; preserve the original write failure.
-    }
-    throw error;
-  }
+  writeLiveEvidenceArtifactAtomically(
+    evidencePath,
+    `${JSON.stringify(artifact, null, 2)}\n`,
+    liveEvidencePathEnv,
+  );
 };
 
 const readRequiredEnv = (name: string): string => {
