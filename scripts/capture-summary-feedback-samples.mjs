@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { shellQuote, validateEvidenceEnvFilePath, writeEvidenceEnvFile } from './lib/evidence-env-file.mjs';
 
 const artifactDir =
   process.env.SUMMARY_FEEDBACK_EVIDENCE_ARTIFACT_DIR ??
@@ -9,12 +10,16 @@ const artifactDir =
 const inputPathEnv = 'SUMMARY_FEEDBACK_REDACTED_INPUT_PATH';
 const outputPathEnv = 'SUMMARY_REAL_FEEDBACK_SAMPLES_PATH';
 const outputPath = process.env[outputPathEnv]?.trim() || join(artifactDir, 'summary-real-feedback-samples.json');
+const envFilePath =
+  process.env.SUMMARY_FEEDBACK_SAMPLES_ENV_PATH?.trim() ||
+  join(resolve(artifactDir), 'summary-feedback-samples.env');
 const redactedSampleFormat = 'redacted-summary-feedback-samples-v1';
 const forbiddenPathFragments = ['/fixtures/', '\\fixtures\\', '.example.', '-examples', '_examples'];
 
 async function main() {
   const inputPath = resolveInputPath(requiredEnv(inputPathEnv));
   const outputTarget = resolveOutputPath(outputPath);
+  const envFileTarget = validateEvidenceEnvFilePath(envFilePath);
   const source = readInputSource(inputPath);
   const artifact = buildArtifact(source);
 
@@ -31,7 +36,18 @@ async function main() {
     throw error;
   }
 
+  const writtenEnvFilePath = writeEvidenceEnvFile(envFileTarget, [
+    [outputPathEnv, outputTarget],
+  ], {
+    usageLines: [
+      'Load this file before validating summary-real-feedback-import evidence.',
+      `set -a; . ${shellQuote(envFileTarget)}; set +a`,
+      'Then run: npm run beta:evidence:validate -- --jobs summary-real-feedback-import',
+    ],
+  });
+
   console.log(`${outputPathEnv}=${outputTarget}`);
+  console.log(`SUMMARY_FEEDBACK_SAMPLES_ENV_PATH=${writtenEnvFilePath}`);
 }
 
 function buildArtifact(source) {
