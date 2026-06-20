@@ -1,6 +1,12 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, globSync, readFileSync } from 'node:fs';
 
+const prismaCommandEnv = {
+  ...process.env,
+  DATABASE_URL:
+    process.env.DATABASE_URL ?? 'postgresql://social_monitor:social_monitor_local_password@localhost:5432/social_monitor',
+};
+
 const commands = [
   {
     label: 'prisma validate',
@@ -33,11 +39,13 @@ for (const command of commands) {
     process.platform === 'win32'
       ? spawnSync(`npx ${command.args.join(' ')}`, {
           encoding: 'utf8',
+          env: prismaCommandEnv,
           shell: true,
           stdio: command.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
         })
       : spawnSync('npx', command.args, {
           encoding: 'utf8',
+          env: prismaCommandEnv,
           stdio: command.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
         });
 

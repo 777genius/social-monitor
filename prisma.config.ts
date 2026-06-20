@@ -1,8 +1,5 @@
 import 'dotenv/config';
-import { defineConfig } from 'prisma/config';
-
-const databaseUrl =
-  process.env.DATABASE_URL ?? 'postgresql://social_monitor:social_monitor_local_password@localhost:5432/social_monitor';
+import { defineConfig, env } from 'prisma/config';
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
@@ -11,6 +8,6 @@ export default defineConfig({
     seed: 'ts-node -r tsconfig-paths/register prisma/seed.ts',
   },
   datasource: {
-    url: databaseUrl,
+    url: env('DATABASE_URL'),
   },
 });

@@ -40,6 +40,7 @@
     "check:delivery-replay": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-delivery-replay-safety.ts",
     "check:drills": "node scripts/check-drills.mjs",
     "check:durable-runtime-proof": "node scripts/check-durable-runtime-proof.mjs",
+    "capture:docker-durable-runtime-proof": "node scripts/capture-docker-durable-runtime-proof.mjs",
     "check:events": "node scripts/check-event-contracts.mjs",
     "check:external-beta-readiness": "node scripts/check-external-beta-readiness.mjs",
     "check:external-beta-evidence-runner": "node scripts/check-external-beta-evidence-runner.mjs",
