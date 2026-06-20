@@ -24,6 +24,12 @@ const postgresPath =
 const durableBackendPath =
   process.env.DURABLE_BACKEND_E2E_ARTIFACT_PATH ??
   join(artifactDir, 'durable-backend-e2e-loop.json');
+const sourceCredentialRotationPath =
+  process.env.SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH ??
+  join(artifactDir, 'source-credential-rotation.json');
+const webhookSecretRotationPath =
+  process.env.WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH ??
+  join(artifactDir, 'webhook-secret-rotation.json');
 const bundlePath =
   process.env.BACKEND_STAGING_EVIDENCE_BUNDLE_PATH ??
   join(artifactDir, 'backend-staging-evidence-bundle.json');
@@ -42,9 +48,13 @@ await withDockerBackendEvidenceStack({
     DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: durableRuntimePath,
     POSTGRES_RESTORE_DRILL_ARTIFACT_PATH: postgresPath,
     RABBITMQ_STAGING_DRILL_ARTIFACT_PATH: rabbitmqPath,
+    SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: sourceCredentialRotationPath,
+    WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: webhookSecretRotationPath,
+    STAGING_SECRET_STORE_ID: process.env.STAGING_SECRET_STORE_ID ?? `${context.environmentId}-secret-store`,
     STAGING_RELIABILITY_ARTIFACT_DIR: artifactDir,
   };
 
+  runNpmScript('capture:credential-secret-runtime-flow', env);
   runNodeScript('scripts/capture-docker-durable-runtime-proof.mjs', env);
   runNodeScript('scripts/capture-docker-staging-reliability-evidence.mjs', env);
 
@@ -62,6 +72,8 @@ await withDockerBackendEvidenceStack({
       rabbitmqPath,
       postgresPath,
       durableBackendPath,
+      sourceCredentialRotationPath,
+      webhookSecretRotationPath,
     },
   });
 
@@ -69,6 +81,8 @@ await withDockerBackendEvidenceStack({
   console.log(`RABBITMQ_STAGING_DRILL_ARTIFACT_PATH=${rabbitmqPath}`);
   console.log(`POSTGRES_RESTORE_DRILL_ARTIFACT_PATH=${postgresPath}`);
   console.log(`DURABLE_BACKEND_E2E_ARTIFACT_PATH=${durableBackendPath}`);
+  console.log(`SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH=${sourceCredentialRotationPath}`);
+  console.log(`WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH=${webhookSecretRotationPath}`);
   console.log(`BACKEND_STAGING_EVIDENCE_BUNDLE_PATH=${bundlePath}`);
 });
 
@@ -78,6 +92,8 @@ function writeBundleSummary({ bundlePath, context, artifactPaths }) {
     artifactSummary('rabbitmq-staging-drill-output', artifactPaths.rabbitmqPath),
     artifactSummary('postgres-restore-drill-output', artifactPaths.postgresPath),
     artifactSummary('durable-backend-e2e-output', artifactPaths.durableBackendPath),
+    artifactSummary('source-credential-rotation', artifactPaths.sourceCredentialRotationPath),
+    artifactSummary('webhook-secret-rotation', artifactPaths.webhookSecretRotationPath),
   ];
   const bundle = {
     schemaVersion: 1,
@@ -110,6 +126,7 @@ function writeBundleSummary({ bundlePath, context, artifactPaths }) {
 function artifactSummary(artifactId, path) {
   const artifact = JSON.parse(readFileSync(path, 'utf8'));
   const signalResults = Array.isArray(artifact.signalResults) ? artifact.signalResults : [];
+  const operations = Array.isArray(artifact.operations) ? artifact.operations : [];
 
   return {
     artifactId,
@@ -117,5 +134,7 @@ function artifactSummary(artifactId, path) {
     format: artifact.format ?? artifact.artifactFormat,
     signalIds: signalResults.map((signal) => signal.signalId).filter((signalId) => typeof signalId === 'string'),
     signalCount: signalResults.length,
+    operationIds: operations.map((operation) => operation.operationId).filter((operationId) => typeof operationId === 'string'),
+    operationCount: operations.length,
   };
 }

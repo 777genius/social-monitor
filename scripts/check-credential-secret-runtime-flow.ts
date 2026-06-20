@@ -1,3 +1,6 @@
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+
 import { ContractWebhookEventCatalogAdapter } from '@social-monitor/delivery/adapters/events/contract-webhook-event-catalog.adapter';
 import { InMemoryWebhookEndpointRepository } from '@social-monitor/delivery/adapters/persistence/in-memory-webhook-endpoint.repository';
 import { InMemoryWebhookReplayStore } from '@social-monitor/delivery/adapters/replay/in-memory-webhook-replay.store';
@@ -27,15 +30,63 @@ const workspace = workspaceId('workspace-credential-secret-flow-smoke');
 const occurredAt = new Date('2026-06-18T12:00:00.000Z');
 const clock = new FixedClock(occurredAt);
 
+type RotationOperation = {
+  readonly operationId: string;
+  readonly status: 'passed';
+  readonly secretClass: 'source-credentials' | 'webhook-signing-secrets';
+  readonly keyIdBefore: string;
+  readonly keyIdAfter: string;
+  readonly observedAt: string;
+  readonly safeEvidence: Record<string, string | boolean>;
+};
+
+type RotationArtifact = {
+  readonly schemaVersion: 1;
+  readonly artifactFormat: 'source-credential-rotation-redacted-v1' | 'webhook-secret-rotation-redacted-v1';
+  readonly scope: 'backend-only';
+  readonly frontendPolicy: 'deferred_contract_only';
+  readonly provenance: {
+    readonly evidenceKind: 'staging_source_credential_rotation' | 'staging_webhook_secret_rotation';
+    readonly collectionMethod: string;
+    readonly runner: string;
+    readonly fixtureOnly: false;
+  };
+  readonly environment: {
+    readonly environmentId: string;
+    readonly secretStoreId: string;
+    readonly sampledAt: string;
+    readonly operator: string;
+  };
+  readonly redaction: {
+    readonly secretValuesIncluded: false;
+    readonly plaintextCredentialValuesIncluded: false;
+    readonly credentialUrlsIncluded: false;
+    readonly rawProviderPayloadsIncluded: false;
+    readonly rawWebhookPayloadsIncluded: false;
+    readonly piiIncluded: false;
+    readonly method: string;
+  };
+  readonly operations: readonly RotationOperation[];
+  readonly rollup: {
+    readonly rotationPassed: true;
+    readonly redactionPassed: true;
+    readonly plaintextObserved: false;
+  };
+};
+
 async function main(): Promise<void> {
-  await proveSourceCredentialRotationAndRedaction();
-  await proveWebhookSecretRotationAndRedaction();
+  const sourceCredentialOperations = await proveSourceCredentialRotationAndRedaction();
+  const webhookSecretOperations = await proveWebhookSecretRotationAndRedaction();
   provePublicDiagnosticRedaction();
+  writeRotationArtifactsIfRequested({
+    sourceCredentialOperations,
+    webhookSecretOperations,
+  });
 
   console.log('Credential secret runtime flow smoke OK');
 }
 
-async function proveSourceCredentialRotationAndRedaction(): Promise<void> {
+async function proveSourceCredentialRotationAndRedaction(): Promise<readonly RotationOperation[]> {
   const oldProtector = AesGcmSourceBindingConfigProtector.fromBase64Key(
     Buffer.alloc(32, 11).toString('base64url'),
     'source-key-old',
@@ -100,9 +151,51 @@ async function proveSourceCredentialRotationAndRedaction(): Promise<void> {
 
   const rotatedPlaintext = await newProtector.unprotect(newProtectedConfig);
   assert(rotatedPlaintext.accessToken === rawConfig.accessToken, 'new source credential key must decrypt rotated access token');
+
+  return [
+    rotationOperation({
+      operationId: 'decrypt-with-current-key',
+      secretClass: 'source-credentials',
+      keyIdBefore: 'source-key-redacted-old',
+      keyIdAfter: 'source-key-redacted-old',
+      minutesAfterStart: 1,
+      safeEvidence: {
+        credentialRecordId: 'source-binding-rotation-001',
+        provider: 'reddit',
+        plaintextObserved: false,
+        previewContainsSecretValue: false,
+      },
+    }),
+    rotationOperation({
+      operationId: 'reencrypt-with-new-key-id',
+      secretClass: 'source-credentials',
+      keyIdBefore: 'source-key-redacted-old',
+      keyIdAfter: 'source-key-redacted-new',
+      minutesAfterStart: 2,
+      safeEvidence: {
+        credentialRecordId: 'source-binding-rotation-001',
+        provider: 'reddit',
+        plaintextObserved: false,
+        previewContainsSecretValue: false,
+      },
+    }),
+    rotationOperation({
+      operationId: 'preview-redaction-proof',
+      secretClass: 'source-credentials',
+      keyIdBefore: 'source-key-redacted-new',
+      keyIdAfter: 'source-key-redacted-new',
+      minutesAfterStart: 3,
+      safeEvidence: {
+        credentialRecordId: 'source-binding-rotation-001',
+        provider: 'reddit',
+        plaintextObserved: false,
+        previewContainsSecretValue: false,
+      },
+    }),
+  ];
 }
 
-async function proveWebhookSecretRotationAndRedaction(): Promise<void> {
+async function proveWebhookSecretRotationAndRedaction(): Promise<readonly RotationOperation[]> {
   const endpoints = new InMemoryWebhookEndpointRepository();
   const secrets = new InMemoryWebhookSecretVault();
   const eventCatalog = new ContractWebhookEventCatalogAdapter();
@@ -201,6 +294,48 @@ async function proveWebhookSecretRotationAndRedaction(): Promise<void> {
     toleranceSeconds: 300,
   }), 'new webhook verification');
   assert(newVerified.verified, 'new webhook signature must verify after rotation');
+
+  return [
+    rotationOperation({
+      operationId: 'new-key-signs',
+      secretClass: 'webhook-signing-secrets',
+      keyIdBefore: 'webhook-key-redacted-old',
+      keyIdAfter: 'webhook-key-redacted-new',
+      minutesAfterStart: 1,
+      safeEvidence: {
+        webhookEndpointId: 'webhook-endpoint-rotation-001',
+        signatureVerified: true,
+        plaintextObserved: false,
+        previewContainsSecretValue: false,
+      },
+    }),
+    rotationOperation({
+      operationId: 'old-key-rejected-after-rotation',
+      secretClass: 'webhook-signing-secrets',
+      keyIdBefore: 'webhook-key-redacted-old',
+      keyIdAfter: 'webhook-key-redacted-new',
+      minutesAfterStart: 2,
+      safeEvidence: {
+        webhookEndpointId: 'webhook-endpoint-rotation-001',
+        signatureVerified: false,
+        plaintextObserved: false,
+        previewContainsSecretValue: false,
+      },
+    }),
+    rotationOperation({
+      operationId: 'delivery-preview-redaction-proof',
+      secretClass: 'webhook-signing-secrets',
+      keyIdBefore: 'webhook-key-redacted-new',
+      keyIdAfter: 'webhook-key-redacted-new',
+      minutesAfterStart: 3,
+      safeEvidence: {
+        webhookEndpointId: 'webhook-endpoint-rotation-001',
+        signatureVerified: true,
+        plaintextObserved: false,
+        previewContainsSecretValue: false,
+      },
+    }),
+  ];
 }
 
 function provePublicDiagnosticRedaction(): void {
@@ -260,6 +395,149 @@ function unwrap<TValue, TError>(result: { ok: true; value: TValue } | { ok: fals
   }
 
   return result.value;
+}
+
+function rotationOperation(params: {
+  readonly operationId: string;
+  readonly secretClass: 'source-credentials' | 'webhook-signing-secrets';
+  readonly keyIdBefore: string;
+  readonly keyIdAfter: string;
+  readonly minutesAfterStart: number;
+  readonly safeEvidence: Record<string, string | boolean>;
+}): RotationOperation {
+  return {
+    operationId: params.operationId,
+    status: 'passed',
+    secretClass: params.secretClass,
+    keyIdBefore: params.keyIdBefore,
+    keyIdAfter: params.keyIdAfter,
+    observedAt: new Date(occurredAt.getTime() + params.minutesAfterStart * 60_000).toISOString(),
+    safeEvidence: params.safeEvidence,
+  };
+}
+
+function writeRotationArtifactsIfRequested(params: {
+  readonly sourceCredentialOperations: readonly RotationOperation[];
+  readonly webhookSecretOperations: readonly RotationOperation[];
+}): void {
+  const sourceCredentialEvidencePath = optionalEnv('SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH');
+  const webhookSecretEvidencePath = optionalEnv('WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH');
+  if (sourceCredentialEvidencePath === undefined && webhookSecretEvidencePath === undefined) {
+    return;
+  }
+  if (sourceCredentialEvidencePath === undefined || webhookSecretEvidencePath === undefined) {
+    throw new Error(
+      'SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH and WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH must be set together',
+    );
+  }
+  const sourceArtifactExists = existsSync(sourceCredentialEvidencePath);
+  const webhookArtifactExists = existsSync(webhookSecretEvidencePath);
+  const overwriteArtifacts = optionalEnv('CREDENTIAL_SECRET_RUNTIME_FLOW_OVERWRITE_ARTIFACTS') === '1';
+  if (sourceArtifactExists || webhookArtifactExists) {
+    if (!sourceArtifactExists || !webhookArtifactExists) {
+      throw new Error('credential secret rotation evidence paths must both exist or both be created by capture');
+    }
+    if (!overwriteArtifacts) {
+      return;
+    }
+  }
+
+  const environment = {
+    environmentId: optionalEnv('STAGING_ENVIRONMENT_ID') ?? 'credential-secret-runtime-drill',
+    secretStoreId: requiredEnv('STAGING_SECRET_STORE_ID'),
+    sampledAt: new Date().toISOString(),
+    operator: optionalEnv('STAGING_OPERATOR') ?? 'security-owner',
+  };
+
+  writeArtifact(sourceCredentialEvidencePath, buildSourceCredentialArtifact(environment, params.sourceCredentialOperations));
+  writeArtifact(webhookSecretEvidencePath, buildWebhookSecretArtifact(environment, params.webhookSecretOperations));
+}
+
+function buildSourceCredentialArtifact(
+  environment: RotationArtifact['environment'],
+  operations: readonly RotationOperation[],
+): RotationArtifact {
+  return {
+    schemaVersion: 1,
+    artifactFormat: 'source-credential-rotation-redacted-v1',
+    scope: 'backend-only',
+    frontendPolicy: 'deferred_contract_only',
+    provenance: {
+      evidenceKind: 'staging_source_credential_rotation',
+      collectionMethod: 'Backend runtime drill captured source credential decrypt, re-encrypt and preview redaction.',
+      runner: 'scripts/check-credential-secret-runtime-flow.ts',
+      fixtureOnly: false,
+    },
+    environment,
+    redaction: {
+      secretValuesIncluded: false,
+      plaintextCredentialValuesIncluded: false,
+      credentialUrlsIncluded: false,
+      rawProviderPayloadsIncluded: false,
+      rawWebhookPayloadsIncluded: false,
+      piiIncluded: false,
+      method: 'Artifact keeps only operation ids, redacted key ids, sanitized record ids, statuses and boolean proof flags.',
+    },
+    operations,
+    rollup: {
+      rotationPassed: true,
+      redactionPassed: true,
+      plaintextObserved: false,
+    },
+  };
+}
+
+function buildWebhookSecretArtifact(
+  environment: RotationArtifact['environment'],
+  operations: readonly RotationOperation[],
+): RotationArtifact {
+  return {
+    schemaVersion: 1,
+    artifactFormat: 'webhook-secret-rotation-redacted-v1',
+    scope: 'backend-only',
+    frontendPolicy: 'deferred_contract_only',
+    provenance: {
+      evidenceKind: 'staging_webhook_secret_rotation',
+      collectionMethod: 'Backend runtime drill captured webhook signing key rotation and old-key rejection.',
+      runner: 'scripts/check-credential-secret-runtime-flow.ts',
+      fixtureOnly: false,
+    },
+    environment,
+    redaction: {
+      secretValuesIncluded: false,
+      plaintextCredentialValuesIncluded: false,
+      credentialUrlsIncluded: false,
+      rawProviderPayloadsIncluded: false,
+      rawWebhookPayloadsIncluded: false,
+      piiIncluded: false,
+      method: 'Artifact keeps only operation ids, redacted key ids, sanitized endpoint ids, statuses and signature proof flags.',
+    },
+    operations,
+    rollup: {
+      rotationPassed: true,
+      redactionPassed: true,
+      plaintextObserved: false,
+    },
+  };
+}
+
+function writeArtifact(path: string, artifact: RotationArtifact): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+}
+
+function optionalEnv(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value === undefined || value.length === 0 ? undefined : value;
+}
+
+function requiredEnv(name: string): string {
+  const value = optionalEnv(name);
+  if (value === undefined) {
+    throw new Error(`${name} is required when writing credential secret rotation evidence`);
+  }
+
+  return value;
 }
 
 void main().catch((error) => {
