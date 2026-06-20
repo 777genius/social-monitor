@@ -247,9 +247,12 @@ function validateLocalRuntimeStatusSmoke() {
     const localPlan = readEvidencePlan({
       cleanEnv: false,
       envOverride: {
-        API_BASE_URL: 'http://127.0.0.1:3000',
+        API_BASE_URL: 'http://127.0.0.1:3000?access_token=status-api-token-value-1234567890',
         BACKEND_IMAGE_DIGEST: `sha256:${'a'.repeat(64)}`,
+        DATABASE_URL: 'postgresql://status_user:...@127.0.0.1:54329/social_monitor',
         DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(tempDirectory, 'durable-backend-e2e.json'),
+        RABBITMQ_URL: 'amqp://status_user:...@127.0.0.1:56729/social_monitor',
+        REDDIT_ACCESS_TOKEN: 'reddit-status-access-value-1234567890',
         STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
       },
     });
@@ -266,8 +269,24 @@ function validateLocalRuntimeStatusSmoke() {
     if (localStatus.strictExternalBetaReady !== false) {
       violations.push(`${contractPath}: local runtime status smoke must not mark external beta ready`);
     }
+    assertNoStatusOutputSecrets(JSON.stringify(localStatus), [
+      'status-api-token-value-1234567890',
+      'reddit-status-access-value-1234567890',
+      'postgresql://status_user:...@127.0.0.1:54329/social_monitor',
+      'amqp://status_user:...@127.0.0.1:56729/social_monitor',
+      '127.0.0.1:54329',
+      '127.0.0.1:56729',
+    ]);
   } finally {
     rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function assertNoStatusOutputSecrets(output, forbiddenOutputFragments) {
+  for (const fragment of forbiddenOutputFragments) {
+    if (String(output).includes(fragment)) {
+      violations.push(`${contractPath}: status output must not print raw env value fragment "${fragment}"`);
+    }
   }
 }
 
