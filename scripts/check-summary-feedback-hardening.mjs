@@ -15,6 +15,7 @@ const feedbackPath = 'ops/release/beta-feedback-classification-report.json';
 const evalOutputPath = 'ops/evals/summary-eval-output.json';
 const costPath = 'ops/cost/summary-cost-attribution.json';
 const packagePath = 'package.json';
+const envExamplePath = 'ops/release/external-beta-evidence.env.example';
 const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
 const backendOpsPath = 'ops/release/backend-ops-readiness-contract.json';
@@ -27,6 +28,7 @@ const feedback = readJson(feedbackPath);
 const evalOutput = readJson(evalOutputPath);
 const cost = readJson(costPath);
 const packageJson = readJson(packagePath);
+const envExampleSource = readFileSync(envExamplePath, 'utf8');
 const backendSafe = readJson(backendSafePath);
 const releaseContract = readJson(releaseContractPath);
 const backendOps = readJson(backendOpsPath);
@@ -230,6 +232,28 @@ const requiredRollupRequirementFragments = [
   'releaseBlockingSamples',
   'evalFixtureEligibleSamples',
   'blockerSampleIds',
+];
+const requiredSummaryFeedbackExportEnv = [
+  'SUMMARY_FEEDBACK_REDACTED_INPUT_PATH',
+  'SUMMARY_FEEDBACK_EXPORT_ENV_PATH',
+  'SUMMARY_FEEDBACK_TENANT_ID',
+  'SUMMARY_FEEDBACK_WORKSPACE_ID',
+  'SUMMARY_FEEDBACK_WINDOW_STARTED_AT',
+  'SUMMARY_FEEDBACK_WINDOW_ENDED_AT',
+  'SUMMARY_FEEDBACK_EXPORT_LIMIT',
+  'SUMMARY_FEEDBACK_MIN_SAMPLES',
+  'SUMMARY_FEEDBACK_SOURCE_KIND',
+  'SUMMARY_FEEDBACK_ENVIRONMENT_ID',
+  'SUMMARY_FEEDBACK_OPERATOR',
+  'SUMMARY_FEEDBACK_COLLECTION_METHOD',
+  'SUMMARY_FEEDBACK_REDACTED_BY',
+  'SUMMARY_FEEDBACK_APPROVED_BY',
+  'SUMMARY_FEEDBACK_EXPORT_SOURCE_SYSTEM',
+  'SUMMARY_FEEDBACK_EXPORT_ID',
+  'SUMMARY_FEEDBACK_EXPORTED_AT',
+  'SUMMARY_FEEDBACK_REVIEW_QUEUE',
+  'SUMMARY_FEEDBACK_REDACTION_REVIEW_ID',
+  'SUMMARY_FEEDBACK_APPROVAL_REFERENCE',
 ];
 
 if (evidence.schemaVersion !== 1) {
@@ -1187,6 +1211,14 @@ function requireWiring() {
   }
   if (!scripts[captureCheckScript]) {
     violations.push(`${packagePath}: missing ${captureCheckScript}`);
+  }
+  for (const envName of requiredSummaryFeedbackExportEnv) {
+    if (!new RegExp(`^${envName}=`, 'm').test(envExampleSource)) {
+      violations.push(`${envExamplePath}: missing summary feedback export env ${envName}`);
+    }
+    if (new RegExp(`^${envName}=\\S`, 'm').test(envExampleSource)) {
+      violations.push(`${envExamplePath}: summary feedback export env ${envName} must not commit a value`);
+    }
   }
   const selfSource = readFileSync(currentScriptPath, 'utf8');
   for (const marker of [
