@@ -7,6 +7,7 @@ import {
   runNpmScript,
   withDockerBackendEvidenceStack,
 } from './lib/docker-backend-evidence-harness.mjs';
+import { shellQuote, writeEvidenceEnvFile } from './lib/evidence-env-file.mjs';
 
 const artifactDir =
   process.env.BACKEND_STAGING_EVIDENCE_ARTIFACT_DIR ??
@@ -48,6 +49,9 @@ const releaseDeploySmokePath =
 const bundlePath =
   process.env.BACKEND_STAGING_EVIDENCE_BUNDLE_PATH ??
   join(artifactDir, 'backend-staging-evidence-bundle.json');
+const envFilePath =
+  process.env.BACKEND_STAGING_EVIDENCE_ENV_PATH ??
+  join(artifactDir, 'backend-staging-evidence.env');
 
 mkdirSync(artifactDir, { recursive: true });
 
@@ -88,6 +92,7 @@ await withDockerBackendEvidenceStack({
 
   writeBundleSummary({
     bundlePath,
+    envFilePath,
     context,
     artifactPaths: {
       durableRuntimePath,
@@ -98,6 +103,24 @@ await withDockerBackendEvidenceStack({
       webhookSecretRotationPath,
       securityFinalSweepPath,
       releaseDeploySmokePath,
+    },
+  });
+  writeBundleEnvFile({
+    envFilePath,
+    env,
+    artifactPaths: {
+      durableRuntimePath,
+      rabbitmqPath,
+      postgresPath,
+      durableBackendPath,
+      sourceCredentialRotationPath,
+      webhookSecretRotationPath,
+      securityFinalSweepPath,
+      logExportPath,
+      metricsExportPath,
+      publicErrorExportPath,
+      releaseDeploySmokePath,
+      bundlePath,
     },
   });
 
@@ -113,9 +136,10 @@ await withDockerBackendEvidenceStack({
   console.log(`PUBLIC_ERROR_EXPORT_PATH=${publicErrorExportPath}`);
   console.log(`RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH=${releaseDeploySmokePath}`);
   console.log(`BACKEND_STAGING_EVIDENCE_BUNDLE_PATH=${bundlePath}`);
+  console.log(`BACKEND_STAGING_EVIDENCE_ENV_PATH=${envFilePath}`);
 });
 
-function writeBundleSummary({ bundlePath, context, artifactPaths }) {
+function writeBundleSummary({ bundlePath, envFilePath, context, artifactPaths }) {
   const artifacts = [
     artifactSummary('durable-runtime-selector', artifactPaths.durableRuntimePath),
     artifactSummary('rabbitmq-staging-drill-output', artifactPaths.rabbitmqPath),
@@ -135,6 +159,7 @@ function writeBundleSummary({ bundlePath, context, artifactPaths }) {
     imageDigest: context.imageDigest,
     apiBaseUrl: context.apiBaseUrl,
     operator: context.operator,
+    envFilePath,
     generatedAt: new Date().toISOString(),
     provenance: {
       evidenceKind: 'docker_staging_bundle',
@@ -152,6 +177,38 @@ function writeBundleSummary({ bundlePath, context, artifactPaths }) {
   };
 
   writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`);
+}
+
+function writeBundleEnvFile({ envFilePath, env, artifactPaths }) {
+  writeEvidenceEnvFile(envFilePath, [
+    ['API_BASE_URL', env.API_BASE_URL],
+    ['BACKEND_IMAGE_DIGEST', env.BACKEND_IMAGE_DIGEST],
+    ['DATABASE_URL', env.DATABASE_URL],
+    ['RABBITMQ_URL', env.RABBITMQ_URL],
+    ['RABBITMQ_MANAGEMENT_URL', env.RABBITMQ_MANAGEMENT_URL],
+    ['STAGING_ENVIRONMENT_ID', env.STAGING_ENVIRONMENT_ID],
+    ['STAGING_OPERATOR', env.STAGING_OPERATOR],
+    ['STAGING_SECRET_STORE_ID', env.STAGING_SECRET_STORE_ID],
+    ['DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH', artifactPaths.durableRuntimePath],
+    ['RABBITMQ_STAGING_DRILL_ARTIFACT_PATH', artifactPaths.rabbitmqPath],
+    ['POSTGRES_RESTORE_DRILL_ARTIFACT_PATH', artifactPaths.postgresPath],
+    ['DURABLE_BACKEND_E2E_ARTIFACT_PATH', artifactPaths.durableBackendPath],
+    ['SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH', artifactPaths.sourceCredentialRotationPath],
+    ['WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH', artifactPaths.webhookSecretRotationPath],
+    ['SECURITY_FINAL_SWEEP_ARTIFACT_PATH', artifactPaths.securityFinalSweepPath],
+    ['LOG_EXPORT_PATH', artifactPaths.logExportPath],
+    ['METRICS_EXPORT_PATH', artifactPaths.metricsExportPath],
+    ['PUBLIC_ERROR_EXPORT_PATH', artifactPaths.publicErrorExportPath],
+    ['RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH', artifactPaths.releaseDeploySmokePath],
+    ['BACKEND_STAGING_EVIDENCE_BUNDLE_PATH', artifactPaths.bundlePath],
+  ], {
+    usageLines: [
+      'Usage:',
+      `set -a; . ${shellQuote(envFilePath)}; set +a`,
+      'npm run beta:evidence:validate -- --jobs durable-runtime-staging-proof,credential-secret-rotation-drill,rabbitmq-staging-reliability-drill,postgres-restore-migration-drill,durable-backend-e2e-loop,release-deploy-smoke,security-final-sweep-staging',
+      'This file intentionally does not include live source, Reddit, or summary feedback evidence paths.',
+    ],
+  });
 }
 
 function artifactSummary(artifactId, path) {
