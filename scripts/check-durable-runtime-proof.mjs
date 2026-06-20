@@ -100,6 +100,8 @@ const requiredServiceSelectorValues = new Map([
     DELIVERY_ATTEMPT_DISPATCH_QUEUE: 'rabbitmq',
     DELIVERY_ATTEMPT_QUEUE_READER: 'rabbitmq',
     DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP: 'enabled',
+    DELIVERY_SUMMARY_READY_EVENT_READER: 'rabbitmq',
+    DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP: 'enabled',
   }],
   ['event-relay', {
     EVENT_RELAY_LOOP: 'enabled',
@@ -487,6 +489,12 @@ function rejectForbiddenSelectorValues(selectors, label) {
     }
     if (selector === 'EVENT_RELAY_LOOP' && normalizedValue === 'disabled') {
       violations.push(`${label}.${selector} must not disable event relay`);
+    }
+    if (selector === 'DELIVERY_SUMMARY_READY_EVENT_READER' && normalizedValue === 'disabled') {
+      violations.push(`${label}.${selector} must not disable summary ready event reader`);
+    }
+    if (selector === 'DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP' && normalizedValue === 'disabled') {
+      violations.push(`${label}.${selector} must not disable summary ready event drain loop`);
     }
     if (selector === 'DELIVERY_ENABLED_CHANNELS' && /\b(?:email|in_app)\b/.test(normalizedValue)) {
       violations.push(`${label}.${selector} must not enable fake email or in_app delivery in beta`);

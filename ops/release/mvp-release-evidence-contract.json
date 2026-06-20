@@ -280,6 +280,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "summary-ready-event-drain-loop",
+      "command": "npm run check:summary-ready-event-drain-loop",
+      "blocksRelease": true
+    },
+    {
       "gateId": "identity-prisma-persistence",
       "command": "npm run check:identity-persistence",
       "blocksRelease": true

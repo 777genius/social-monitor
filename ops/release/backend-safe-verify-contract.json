@@ -76,6 +76,7 @@
     "check:summary-job-polling-loop",
     "check:summary-queue-drain-loop",
     "check:summary-ready-projection-handler",
+    "check:summary-ready-event-drain-loop",
     "check:identity-persistence",
     "check:read-api-key-scope",
     "check:write-api-key-scope",

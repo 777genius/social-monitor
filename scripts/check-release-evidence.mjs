@@ -65,6 +65,7 @@ const requiredGateIds = new Set([
   'summary-job-polling-loop',
   'summary-queue-drain-loop',
   'summary-ready-projection-handler',
+  'summary-ready-event-drain-loop',
   'identity-prisma-persistence',
   'api-key-read-scope',
   'api-key-write-scope',

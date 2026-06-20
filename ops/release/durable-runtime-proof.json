@@ -38,7 +38,8 @@
       "in-memory",
       "noop",
       "auth-disabled",
-      "event-relay-disabled"
+      "event-relay-disabled",
+      "summary-ready-event-disabled"
     ],
     "requiredRuntimeEnv": [
       "STAGING_ENVIRONMENT_ID",
@@ -92,6 +93,8 @@
     "DELIVERY_ATTEMPT_DISPATCH_QUEUE: rabbitmq",
     "DELIVERY_ATTEMPT_QUEUE_READER: rabbitmq",
     "DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP: enabled",
+    "DELIVERY_SUMMARY_READY_EVENT_READER: rabbitmq",
+    "DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP: enabled",
     "EVENT_RELAY_LOOP: enabled",
     "RABBITMQ_QUEUE_TYPE: quorum",
     "RABBITMQ_QUEUE_DELIVERY_LIMIT: \"20\""
@@ -112,6 +115,8 @@
     "INGESTION_SCAN_QUEUE_READER: in-memory",
     "INTELLIGENCE_SUMMARY_QUEUE_READER: in-memory",
     "DELIVERY_ATTEMPT_QUEUE_READER: in-memory",
+    "DELIVERY_SUMMARY_READY_EVENT_READER: disabled",
+    "DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP: disabled",
     "EVENT_RELAY_LOOP: disabled",
     "SOCIAL_MONITOR_USER_AUTH_MODE: disabled"
   ],

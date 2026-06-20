@@ -114,7 +114,9 @@
         "DELIVERY_ATTEMPT_DISPATCH_TARGET": "queue",
         "DELIVERY_ATTEMPT_DISPATCH_QUEUE": "rabbitmq",
         "DELIVERY_ATTEMPT_QUEUE_READER": "rabbitmq",
-        "DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP": "enabled"
+        "DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP": "enabled",
+        "DELIVERY_SUMMARY_READY_EVENT_READER": "rabbitmq",
+        "DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP": "enabled"
       },
       "forbiddenSelectorValuesFound": [],
       "healthCheck": {

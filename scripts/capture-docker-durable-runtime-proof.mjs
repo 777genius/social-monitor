@@ -61,6 +61,8 @@ const serviceSelectorNames = new Map([
       'DELIVERY_ATTEMPT_DISPATCH_QUEUE',
       'DELIVERY_ATTEMPT_QUEUE_READER',
       'DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP',
+      'DELIVERY_SUMMARY_READY_EVENT_READER',
+      'DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP',
     ],
   ],
   ['event-relay', ['EVENT_RELAY_LOOP']],
@@ -266,6 +268,12 @@ function findForbiddenSelectorValues(selectors) {
     if (selector === 'EVENT_RELAY_LOOP' && normalized === 'disabled') {
       forbidden.push(`${selector}=${value}`);
     }
+    if (selector === 'DELIVERY_SUMMARY_READY_EVENT_READER' && normalized === 'disabled') {
+      forbidden.push(`${selector}=${value}`);
+    }
+    if (selector === 'DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP' && normalized === 'disabled') {
+      forbidden.push(`${selector}=${value}`);
+    }
   }
 
   return forbidden;
@@ -298,6 +306,8 @@ function assertReadyPayloadMatchesArtifact(ready, artifact) {
   assertEqual(runtime.queues.intelligenceSummaryReader, 'rabbitmq', 'ready intelligence summary reader');
   assertEqual(runtime.queues.deliveryAttemptPublisher, 'rabbitmq', 'ready delivery attempt publisher');
   assertEqual(runtime.queues.deliveryAttemptReader, 'rabbitmq', 'ready delivery attempt reader');
+  assertEqual(runtime.queues.deliverySummaryReadyEventReader, 'rabbitmq', 'ready delivery summary ready event reader');
+  assertEqual(runtime.workerLoops.deliverySummaryReadyEventDrain, 'enabled', 'ready delivery summary ready event drain');
   assertEqual(runtime.providers.deliveryWebhook, 'http', 'ready delivery webhook provider');
   assertEqual(runtime.providers.deliveryEnabledChannels, 'webhook', 'ready delivery enabled channels');
 
