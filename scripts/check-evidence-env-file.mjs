@@ -2,15 +2,24 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { shellQuote, validateEvidenceEnvFilePath, writeEvidenceEnvFile } from './lib/evidence-env-file.mjs';
+import {
+  shellQuote,
+  validateEvidenceEnvFilePath,
+  validateEvidenceJsonFilePath,
+  writeEvidenceEnvFile,
+} from './lib/evidence-env-file.mjs';
 
 const tempDirectory = mkdtempSync(join(tmpdir(), 'evidence-env-file-'));
 const violations = [];
 
 try {
   validatePositiveWrite();
+  validatePositiveJsonPath();
   validateWorkspacePathRejected();
+  validateWorkspaceJsonPathRejected();
   validateFixturePathRejected();
+  validateFixtureJsonPathRejected();
+  validateRelativeJsonPathRejected();
 } finally {
   rmSync(tempDirectory, { recursive: true, force: true });
 }
@@ -55,11 +64,43 @@ function validateWorkspacePathRejected() {
   );
 }
 
+function validatePositiveJsonPath() {
+  const jsonPath = join(tempDirectory, 'release-evidence.json');
+  const resolved = validateEvidenceJsonFilePath(jsonPath, 'RELEASE_EVIDENCE_PATH');
+  if (resolved !== jsonPath) {
+    violations.push('evidence JSON path helper must return the resolved JSON path');
+  }
+}
+
+function validateWorkspaceJsonPathRejected() {
+  assertRejected(
+    () => validateEvidenceJsonFilePath(`${process.cwd()}/workspace-output.json`, 'RELEASE_EVIDENCE_PATH'),
+    'workspace JSON path',
+    'must not write release evidence into the git workspace',
+  );
+}
+
 function validateFixturePathRejected() {
   assertRejected(
     () => validateEvidenceEnvFilePath(join(tempDirectory, 'fixtures', 'output.env')),
     'fixture path',
     'must not point to fixture or example paths',
+  );
+}
+
+function validateFixtureJsonPathRejected() {
+  assertRejected(
+    () => validateEvidenceJsonFilePath(join(tempDirectory, 'fixtures', 'output.json'), 'RELEASE_EVIDENCE_PATH'),
+    'fixture JSON path',
+    'must not point to fixture or example paths',
+  );
+}
+
+function validateRelativeJsonPathRejected() {
+  assertRejected(
+    () => validateEvidenceJsonFilePath('relative-output.json', 'RELEASE_EVIDENCE_PATH'),
+    'relative JSON path',
+    'must be an absolute JSON file path',
   );
 }
 

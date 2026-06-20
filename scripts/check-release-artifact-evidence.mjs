@@ -684,6 +684,7 @@ function validateCaptureScriptWiring() {
   }
   for (const marker of [
     'validateEvidenceEnvFilePath',
+    'validateEvidenceJsonFilePath',
     'writeEvidenceEnvFile',
     'RELEASE_DEPLOY_SMOKE_ENV_PATH',
     'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH',
@@ -698,14 +699,6 @@ function validateCaptureScriptWiring() {
   for (const marker of ['temporaryArtifactPath', 'renameSync', 'rmSync(temporaryArtifactPath']) {
     if (!captureScript.includes(marker)) {
       violations.push(`${captureScriptPath}: capture must validate deploy smoke artifacts atomically`);
-    }
-  }
-  for (const marker of [
-    'must not write release evidence into the git workspace',
-    'must not point to fixture or example paths',
-  ]) {
-    if (!captureScript.includes(marker)) {
-      violations.push(`${captureScriptPath}: capture must reject unsafe artifact paths`);
     }
   }
 }

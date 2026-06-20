@@ -1,7 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { shellQuote, validateEvidenceEnvFilePath, writeEvidenceEnvFile } from './lib/evidence-env-file.mjs';
+import {
+  shellQuote,
+  validateEvidenceEnvFilePath,
+  validateEvidenceJsonFilePath,
+  writeEvidenceEnvFile,
+} from './lib/evidence-env-file.mjs';
 
 const artifactDir =
   process.env.SUMMARY_FEEDBACK_EVIDENCE_ARTIFACT_DIR ??
@@ -198,20 +203,7 @@ function resolveInputPath(path) {
 }
 
 function resolveOutputPath(path) {
-  if (!isAbsolute(path)) {
-    throw new Error(`${outputPathEnv} must be an absolute JSON file path`);
-  }
-  const resolved = resolve(path);
-  if (!resolved.endsWith('.json')) {
-    throw new Error(`${outputPathEnv} must end with .json`);
-  }
-  if (isInsideWorkspace(resolved)) {
-    throw new Error(`${outputPathEnv} must not write release evidence into the git workspace`);
-  }
-  if (isFixtureLikePath(resolved)) {
-    throw new Error(`${outputPathEnv} must not point to fixture or example paths`);
-  }
-  return resolved;
+  return validateEvidenceJsonFilePath(path, outputPathEnv);
 }
 
 function isInsideWorkspace(path) {

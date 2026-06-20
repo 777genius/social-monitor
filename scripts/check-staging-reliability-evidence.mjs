@@ -1110,13 +1110,12 @@ function requireCaptureScriptWiring() {
   for (const marker of [
     'writeEvidenceEnvFile',
     'validateEvidenceEnvFilePath',
+    'validateEvidenceJsonFilePath',
     'DURABLE_BACKEND_E2E_ENV_PATH',
     'DURABLE_BACKEND_E2E_ARTIFACT_PATH',
     'API_BASE_URL',
     'STAGING_ENVIRONMENT_ID',
     'BACKEND_IMAGE_DIGEST',
-    'must not write release evidence into the git workspace',
-    'must not point to fixture or example paths',
   ]) {
     if (!e2eCaptureSource.includes(marker)) {
       violations.push(`${dockerDurableBackendE2eCapturePath}: capture must include ${marker}`);

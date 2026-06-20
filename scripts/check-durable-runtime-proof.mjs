@@ -558,6 +558,7 @@ function validateCaptureScriptWiring() {
   for (const marker of [
     'writeEvidenceEnvFile',
     'validateEvidenceEnvFilePath',
+    'validateEvidenceJsonFilePath',
     'DURABLE_RUNTIME_SELECTOR_ENV_PATH',
     'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH',
     'API_BASE_URL',
@@ -567,14 +568,6 @@ function validateCaptureScriptWiring() {
   ]) {
     if (!captureSource.includes(marker)) {
       violations.push(`${dockerDurableRuntimeCapturePath}: capture must include ${marker}`);
-    }
-  }
-  for (const marker of [
-    'must not write release evidence into the git workspace',
-    'must not point to fixture or example paths',
-  ]) {
-    if (!captureSource.includes(marker)) {
-      violations.push(`${dockerDurableRuntimeCapturePath}: capture must reject unsafe artifact paths`);
     }
   }
 }

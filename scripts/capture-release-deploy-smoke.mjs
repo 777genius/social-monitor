@@ -1,10 +1,15 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { URL } from 'node:url';
 
-import { shellQuote, validateEvidenceEnvFilePath, writeEvidenceEnvFile } from './lib/evidence-env-file.mjs';
+import {
+  shellQuote,
+  validateEvidenceEnvFilePath,
+  validateEvidenceJsonFilePath,
+  writeEvidenceEnvFile,
+} from './lib/evidence-env-file.mjs';
 
 const artifactDir =
   process.env.RELEASE_DEPLOY_SMOKE_ARTIFACT_DIR ??
@@ -20,7 +25,7 @@ const apiBaseUrl = requiredEnv('API_BASE_URL');
 const imageDigest = requiredEnv('BACKEND_IMAGE_DIGEST');
 const environmentId = requiredEnv('STAGING_ENVIRONMENT_ID');
 const operator = process.env.STAGING_OPERATOR?.trim() || 'release-owner';
-const artifactTarget = resolveArtifactPath(artifactPath, 'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH');
+const artifactTarget = validateEvidenceJsonFilePath(artifactPath, 'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH');
 const envFileTarget = validateEvidenceEnvFilePath(envFilePath);
 const sampledAt = new Date().toISOString();
 const releaseEvidence = readJson('ops/release/release-artifact-evidence.json');
@@ -218,35 +223,6 @@ function requiredEnv(name) {
   }
 
   return value;
-}
-
-function resolveArtifactPath(path, label) {
-  if (!isAbsolute(path)) {
-    throw new Error(`${label} must be an absolute JSON file path`);
-  }
-  const resolved = resolve(path);
-  if (!resolved.endsWith('.json')) {
-    throw new Error(`${label} must end with .json`);
-  }
-  if (isInsideWorkspace(resolved)) {
-    throw new Error(`${label} must not write release evidence into the git workspace`);
-  }
-  if (isFixtureLikePath(resolved)) {
-    throw new Error(`${label} must not point to fixture or example paths`);
-  }
-
-  return resolved;
-}
-
-function isInsideWorkspace(path) {
-  const workspace = resolve(process.cwd());
-  const relativePath = relative(workspace, path);
-  return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath));
-}
-
-function isFixtureLikePath(path) {
-  const normalized = path.replaceAll('\\', '/').toLowerCase();
-  return ['/fixtures/', '.example.', '-examples', '_examples'].some((fragment) => normalized.includes(fragment));
 }
 
 function assert(condition, message) {

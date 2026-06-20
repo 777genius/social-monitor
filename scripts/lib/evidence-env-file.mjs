@@ -46,6 +46,24 @@ export function validateEvidenceEnvFilePath(envFilePath) {
   return resolvedPath;
 }
 
+export function validateEvidenceJsonFilePath(path, label) {
+  if (!isAbsolute(path)) {
+    throw new Error(`${label} must be an absolute JSON file path`);
+  }
+  const resolvedPath = resolve(path);
+  if (!resolvedPath.endsWith('.json')) {
+    throw new Error(`${label} must end with .json`);
+  }
+  if (isInsideWorkspace(resolvedPath)) {
+    throw new Error(`${label} must not write release evidence into the git workspace`);
+  }
+  if (isFixtureLikePath(resolvedPath)) {
+    throw new Error(`${label} must not point to fixture or example paths`);
+  }
+
+  return resolvedPath;
+}
+
 export function shellQuote(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
