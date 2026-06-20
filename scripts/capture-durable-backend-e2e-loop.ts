@@ -73,6 +73,7 @@ async function main(): Promise<void> {
     };
     const evidence = await executeBackendLoop(auth, ids);
     const completedAt = nowIso();
+    const signalObservedAt = completedAt;
     const artifact = {
       schemaVersion: 1,
       format: 'staging-reliability-artifact-v1',
@@ -109,21 +110,21 @@ async function main(): Promise<void> {
           webhookDeliveryAttemptId: evidence.webhookDeliveryAttemptId,
           realtimeEventId: evidence.realtimeEventId,
           auditEventIds: evidence.auditEventIds,
-        }),
+        }, signalObservedAt),
         signalResult('backend-loop-tenant-isolation', {
           summary: 'wrong tenant and wrong workspace checks denied durable data access',
           negativeChecks: evidence.negativeChecks,
           wrongTenantStatus: evidence.wrongTenantStatus,
           wrongWorkspaceStatus: evidence.wrongWorkspaceStatus,
           leakageObserved: false,
-        }),
+        }, signalObservedAt),
         signalResult('backend-loop-idempotency', {
           summary: 'idempotency keys replayed without duplicate durable side effects',
           idempotencyKeys: evidence.idempotencyKeys,
           responseIds: evidence.responseIds,
           stableDurableCounts: evidence.stableDurableCounts,
           duplicateSideEffectsObserved: false,
-        }),
+        }, signalObservedAt),
       ] satisfies readonly SignalResult[],
     };
 
@@ -630,11 +631,11 @@ function safeHttpErrorBody(body: unknown): string {
   return serialized.length > 1_000 ? `${serialized.slice(0, 1_000)}...` : serialized;
 }
 
-function signalResult(signalId: string, evidence: JsonRecord): SignalResult {
+function signalResult(signalId: string, evidence: JsonRecord, observedAt: string): SignalResult {
   return {
     signalId,
     status: 'passed',
-    observedAt: nowIso(),
+    observedAt,
     evidence,
   };
 }
