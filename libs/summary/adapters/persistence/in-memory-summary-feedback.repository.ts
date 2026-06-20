@@ -1,11 +1,14 @@
 import type { SummaryFeedback } from '../../domain';
 import type {
+  ExportSummaryFeedbackQuery,
+  ExportSummaryFeedbackResult,
   ListSummaryFeedbackQuery,
   ListSummaryFeedbackResult,
+  SummaryFeedbackExportRepositoryPort,
   SummaryFeedbackRepositoryPort,
 } from '../../ports';
 
-export class InMemorySummaryFeedbackRepository implements SummaryFeedbackRepositoryPort {
+export class InMemorySummaryFeedbackRepository implements SummaryFeedbackRepositoryPort, SummaryFeedbackExportRepositoryPort {
   private readonly feedbackById = new Map<string, SummaryFeedback>();
   private readonly feedbackByIdempotencyKey = new Map<string, SummaryFeedback>();
 
@@ -50,6 +53,26 @@ export class InMemorySummaryFeedbackRepository implements SummaryFeedbackReposit
 
   all(): readonly SummaryFeedback[] {
     return [...this.feedbackById.values()];
+  }
+
+  async exportForReleaseEvidence(
+    query: ExportSummaryFeedbackQuery,
+  ): Promise<ExportSummaryFeedbackResult> {
+    const items = [...this.feedbackById.values()]
+      .filter((feedback) => {
+        const snapshot = feedback.toSnapshot();
+
+        return (
+          snapshot.tenantId === query.tenantId &&
+          snapshot.workspaceId === query.workspaceId &&
+          snapshot.createdAt.getTime() >= query.startedAt.getTime() &&
+          snapshot.createdAt.getTime() <= query.endedAt.getTime()
+        );
+      })
+      .sort(compareSummaryFeedback)
+      .slice(0, query.limit);
+
+    return { items };
   }
 }
 

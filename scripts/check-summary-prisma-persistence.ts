@@ -519,12 +519,18 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
   private filterFeedback(where: {
     readonly tenantId: string;
     readonly workspaceId: string;
-    readonly summaryArtifactId: string;
+    readonly summaryArtifactId?: string;
+    readonly createdAt?: {
+      readonly gte?: Date;
+      readonly lte?: Date;
+    };
   }): PrismaSummaryFeedbackRecord[] {
     return [...this.feedback.values()].filter((record) => (
       record.tenantId === where.tenantId &&
       record.workspaceId === where.workspaceId &&
-      record.summaryArtifactId === where.summaryArtifactId
+      (where.summaryArtifactId === undefined || record.summaryArtifactId === where.summaryArtifactId) &&
+      (where.createdAt?.gte === undefined || record.createdAt.getTime() >= where.createdAt.gte.getTime()) &&
+      (where.createdAt?.lte === undefined || record.createdAt.getTime() <= where.createdAt.lte.getTime())
     ));
   }
 }

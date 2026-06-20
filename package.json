@@ -48,6 +48,7 @@
     "capture:live-open-connectors": "node scripts/capture-live-open-connectors.mjs",
     "capture:live-reddit-oauth": "node scripts/capture-live-reddit-oauth.mjs",
     "capture:summary-feedback-samples": "node scripts/capture-summary-feedback-samples.mjs",
+    "export:summary-feedback-samples": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/export-summary-feedback-samples.ts",
     "capture:durable-backend-e2e-loop": "node scripts/run-with-timeout.mjs --timeout-ms 300000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/capture-durable-backend-e2e-loop.ts",
     "capture:docker-durable-backend-e2e-loop": "node scripts/capture-docker-durable-backend-e2e-loop.mjs",
     "capture:docker-backend-staging-evidence-bundle": "node scripts/capture-docker-backend-staging-evidence-bundle.mjs",

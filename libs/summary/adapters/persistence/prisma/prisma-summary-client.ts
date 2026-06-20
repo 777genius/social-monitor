@@ -168,7 +168,11 @@ export type PrismaSummaryClient = {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly summaryArtifactId: string;
+        readonly summaryArtifactId?: string;
+        readonly createdAt?: {
+          readonly gte?: Date;
+          readonly lte?: Date;
+        };
       };
       readonly orderBy: readonly [{ readonly createdAt: 'desc' }, { readonly id: 'desc' }];
       readonly skip: number;

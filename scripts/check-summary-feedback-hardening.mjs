@@ -41,6 +41,8 @@ const gateCommand = `npm run ${gateScript}`;
 const gateId = 'summary-feedback-hardening';
 const captureScript = 'capture:summary-feedback-samples';
 const captureScriptPath = 'scripts/capture-summary-feedback-samples.mjs';
+const exportScript = 'export:summary-feedback-samples';
+const exportScriptPath = 'scripts/export-summary-feedback-samples.ts';
 const captureCheckScript = 'check:summary-feedback-sample-capture';
 const redactedSampleFormat = 'redacted-summary-feedback-samples-v1';
 const redactedSampleEvidenceKind = 'redacted_real_feedback_samples';
@@ -1179,6 +1181,9 @@ function requireWiring() {
   }
   if (!String(scripts[captureScript] ?? '').includes(captureScriptPath)) {
     violations.push(`${packagePath}: ${captureScript} must run ${captureScriptPath}`);
+  }
+  if (!String(scripts[exportScript] ?? '').includes(exportScriptPath)) {
+    violations.push(`${packagePath}: ${exportScript} must run ${exportScriptPath}`);
   }
   if (!scripts[captureCheckScript]) {
     violations.push(`${packagePath}: missing ${captureCheckScript}`);
