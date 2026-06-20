@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import {
   restartBackendServices,
@@ -7,53 +7,98 @@ import {
   runNpmScript,
   withDockerBackendEvidenceStack,
 } from './lib/docker-backend-evidence-harness.mjs';
-import { shellQuote, writeEvidenceEnvFile } from './lib/evidence-env-file.mjs';
+import {
+  shellQuote,
+  validateEvidenceEnvFilePath,
+  validateEvidenceJsonFilePath,
+  writeEvidenceEnvFile,
+} from './lib/evidence-env-file.mjs';
 
 const artifactDir =
   process.env.BACKEND_STAGING_EVIDENCE_ARTIFACT_DIR ??
   process.env.STAGING_RELIABILITY_ARTIFACT_DIR ??
   '/tmp/social-monitor-evidence';
+const artifactRoot = resolve(artifactDir);
 const durableRuntimePath =
   process.env.DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH ??
-  join(artifactDir, 'durable-runtime-selector.json');
+  join(artifactRoot, 'durable-runtime-selector.json');
 const rabbitmqPath =
   process.env.RABBITMQ_STAGING_DRILL_ARTIFACT_PATH ??
-  join(artifactDir, 'rabbitmq-staging-drill.json');
+  join(artifactRoot, 'rabbitmq-staging-drill.json');
 const postgresPath =
   process.env.POSTGRES_RESTORE_DRILL_ARTIFACT_PATH ??
-  join(artifactDir, 'postgres-restore-drill.json');
+  join(artifactRoot, 'postgres-restore-drill.json');
 const durableBackendPath =
   process.env.DURABLE_BACKEND_E2E_ARTIFACT_PATH ??
-  join(artifactDir, 'durable-backend-e2e-loop.json');
+  join(artifactRoot, 'durable-backend-e2e-loop.json');
 const sourceCredentialRotationPath =
   process.env.SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH ??
-  join(artifactDir, 'source-credential-rotation.json');
+  join(artifactRoot, 'source-credential-rotation.json');
 const webhookSecretRotationPath =
   process.env.WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH ??
-  join(artifactDir, 'webhook-secret-rotation.json');
+  join(artifactRoot, 'webhook-secret-rotation.json');
 const securityFinalSweepPath =
   process.env.SECURITY_FINAL_SWEEP_ARTIFACT_PATH ??
-  join(artifactDir, 'security-final-sweep.json');
+  join(artifactRoot, 'security-final-sweep.json');
 const logExportPath =
   process.env.LOG_EXPORT_PATH ??
-  join(artifactDir, 'security-logs-export.json');
+  join(artifactRoot, 'security-logs-export.json');
 const metricsExportPath =
   process.env.METRICS_EXPORT_PATH ??
-  join(artifactDir, 'security-metrics-export.json');
+  join(artifactRoot, 'security-metrics-export.json');
 const publicErrorExportPath =
   process.env.PUBLIC_ERROR_EXPORT_PATH ??
-  join(artifactDir, 'security-public-errors-export.json');
+  join(artifactRoot, 'security-public-errors-export.json');
 const releaseDeploySmokePath =
   process.env.RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH ??
-  join(artifactDir, 'release-deploy-smoke.json');
+  join(artifactRoot, 'release-deploy-smoke.json');
 const bundlePath =
   process.env.BACKEND_STAGING_EVIDENCE_BUNDLE_PATH ??
-  join(artifactDir, 'backend-staging-evidence-bundle.json');
+  join(artifactRoot, 'backend-staging-evidence-bundle.json');
 const envFilePath =
   process.env.BACKEND_STAGING_EVIDENCE_ENV_PATH ??
-  join(artifactDir, 'backend-staging-evidence.env');
+  join(artifactRoot, 'backend-staging-evidence.env');
 
-mkdirSync(artifactDir, { recursive: true });
+const durableRuntimeTarget = validateEvidenceJsonFilePath(
+  durableRuntimePath,
+  'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH',
+);
+const rabbitmqTarget = validateEvidenceJsonFilePath(
+  rabbitmqPath,
+  'RABBITMQ_STAGING_DRILL_ARTIFACT_PATH',
+);
+const postgresTarget = validateEvidenceJsonFilePath(
+  postgresPath,
+  'POSTGRES_RESTORE_DRILL_ARTIFACT_PATH',
+);
+const durableBackendTarget = validateEvidenceJsonFilePath(
+  durableBackendPath,
+  'DURABLE_BACKEND_E2E_ARTIFACT_PATH',
+);
+const sourceCredentialRotationTarget = validateEvidenceJsonFilePath(
+  sourceCredentialRotationPath,
+  'SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH',
+);
+const webhookSecretRotationTarget = validateEvidenceJsonFilePath(
+  webhookSecretRotationPath,
+  'WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH',
+);
+const securityFinalSweepTarget = validateEvidenceJsonFilePath(
+  securityFinalSweepPath,
+  'SECURITY_FINAL_SWEEP_ARTIFACT_PATH',
+);
+const logExportTarget = validateEvidenceJsonFilePath(logExportPath, 'LOG_EXPORT_PATH');
+const metricsExportTarget = validateEvidenceJsonFilePath(metricsExportPath, 'METRICS_EXPORT_PATH');
+const publicErrorExportTarget = validateEvidenceJsonFilePath(publicErrorExportPath, 'PUBLIC_ERROR_EXPORT_PATH');
+const releaseDeploySmokeTarget = validateEvidenceJsonFilePath(
+  releaseDeploySmokePath,
+  'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH',
+);
+const bundleTarget = validateEvidenceJsonFilePath(
+  bundlePath,
+  'BACKEND_STAGING_EVIDENCE_BUNDLE_PATH',
+);
+const envFileTarget = validateEvidenceEnvFilePath(envFilePath);
 
 await withDockerBackendEvidenceStack({
   projectEnvName: 'BACKEND_STAGING_EVIDENCE_COMPOSE_PROJECT',
@@ -62,20 +107,20 @@ await withDockerBackendEvidenceStack({
 }, async (context) => {
   const env = {
     ...context.runnerEnv,
-    BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: bundlePath,
-    DURABLE_BACKEND_E2E_ARTIFACT_PATH: durableBackendPath,
-    DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: durableRuntimePath,
-    POSTGRES_RESTORE_DRILL_ARTIFACT_PATH: postgresPath,
-    RABBITMQ_STAGING_DRILL_ARTIFACT_PATH: rabbitmqPath,
-    SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: sourceCredentialRotationPath,
-    WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: webhookSecretRotationPath,
-    SECURITY_FINAL_SWEEP_ARTIFACT_PATH: securityFinalSweepPath,
-    LOG_EXPORT_PATH: logExportPath,
-    METRICS_EXPORT_PATH: metricsExportPath,
-    PUBLIC_ERROR_EXPORT_PATH: publicErrorExportPath,
-    RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: releaseDeploySmokePath,
+    BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: bundleTarget,
+    DURABLE_BACKEND_E2E_ARTIFACT_PATH: durableBackendTarget,
+    DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: durableRuntimeTarget,
+    POSTGRES_RESTORE_DRILL_ARTIFACT_PATH: postgresTarget,
+    RABBITMQ_STAGING_DRILL_ARTIFACT_PATH: rabbitmqTarget,
+    SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: sourceCredentialRotationTarget,
+    WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: webhookSecretRotationTarget,
+    SECURITY_FINAL_SWEEP_ARTIFACT_PATH: securityFinalSweepTarget,
+    LOG_EXPORT_PATH: logExportTarget,
+    METRICS_EXPORT_PATH: metricsExportTarget,
+    PUBLIC_ERROR_EXPORT_PATH: publicErrorExportTarget,
+    RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: releaseDeploySmokeTarget,
     STAGING_SECRET_STORE_ID: process.env.STAGING_SECRET_STORE_ID ?? `${context.environmentId}-secret-store`,
-    STAGING_RELIABILITY_ARTIFACT_DIR: artifactDir,
+    STAGING_RELIABILITY_ARTIFACT_DIR: artifactRoot,
   };
 
   runNpmScript('capture:credential-secret-runtime-flow', env);
@@ -91,53 +136,53 @@ await withDockerBackendEvidenceStack({
   runNpmScript('check:staging-reliability-evidence', env);
 
   writeBundleSummary({
-    bundlePath,
-    envFilePath,
+    bundlePath: bundleTarget,
+    envFilePath: envFileTarget,
     context,
     artifactPaths: {
-      durableRuntimePath,
-      rabbitmqPath,
-      postgresPath,
-      durableBackendPath,
-      sourceCredentialRotationPath,
-      webhookSecretRotationPath,
-      securityFinalSweepPath,
-      releaseDeploySmokePath,
+      durableRuntimePath: durableRuntimeTarget,
+      rabbitmqPath: rabbitmqTarget,
+      postgresPath: postgresTarget,
+      durableBackendPath: durableBackendTarget,
+      sourceCredentialRotationPath: sourceCredentialRotationTarget,
+      webhookSecretRotationPath: webhookSecretRotationTarget,
+      securityFinalSweepPath: securityFinalSweepTarget,
+      releaseDeploySmokePath: releaseDeploySmokeTarget,
     },
   });
   writeBundleEnvFile({
-    envFilePath,
+    envFilePath: envFileTarget,
     env,
     artifactPaths: {
-      durableRuntimePath,
-      rabbitmqPath,
-      postgresPath,
-      durableBackendPath,
-      sourceCredentialRotationPath,
-      webhookSecretRotationPath,
-      securityFinalSweepPath,
-      logExportPath,
-      metricsExportPath,
-      publicErrorExportPath,
-      releaseDeploySmokePath,
-      bundlePath,
+      durableRuntimePath: durableRuntimeTarget,
+      rabbitmqPath: rabbitmqTarget,
+      postgresPath: postgresTarget,
+      durableBackendPath: durableBackendTarget,
+      sourceCredentialRotationPath: sourceCredentialRotationTarget,
+      webhookSecretRotationPath: webhookSecretRotationTarget,
+      securityFinalSweepPath: securityFinalSweepTarget,
+      logExportPath: logExportTarget,
+      metricsExportPath: metricsExportTarget,
+      publicErrorExportPath: publicErrorExportTarget,
+      releaseDeploySmokePath: releaseDeploySmokeTarget,
+      bundlePath: bundleTarget,
     },
   });
   runNpmScript('check:docker-backend-staging-evidence-bundle', env);
 
-  console.log(`DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH=${durableRuntimePath}`);
-  console.log(`RABBITMQ_STAGING_DRILL_ARTIFACT_PATH=${rabbitmqPath}`);
-  console.log(`POSTGRES_RESTORE_DRILL_ARTIFACT_PATH=${postgresPath}`);
-  console.log(`DURABLE_BACKEND_E2E_ARTIFACT_PATH=${durableBackendPath}`);
-  console.log(`SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH=${sourceCredentialRotationPath}`);
-  console.log(`WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH=${webhookSecretRotationPath}`);
-  console.log(`SECURITY_FINAL_SWEEP_ARTIFACT_PATH=${securityFinalSweepPath}`);
-  console.log(`LOG_EXPORT_PATH=${logExportPath}`);
-  console.log(`METRICS_EXPORT_PATH=${metricsExportPath}`);
-  console.log(`PUBLIC_ERROR_EXPORT_PATH=${publicErrorExportPath}`);
-  console.log(`RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH=${releaseDeploySmokePath}`);
-  console.log(`BACKEND_STAGING_EVIDENCE_BUNDLE_PATH=${bundlePath}`);
-  console.log(`BACKEND_STAGING_EVIDENCE_ENV_PATH=${envFilePath}`);
+  console.log(`DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH=${durableRuntimeTarget}`);
+  console.log(`RABBITMQ_STAGING_DRILL_ARTIFACT_PATH=${rabbitmqTarget}`);
+  console.log(`POSTGRES_RESTORE_DRILL_ARTIFACT_PATH=${postgresTarget}`);
+  console.log(`DURABLE_BACKEND_E2E_ARTIFACT_PATH=${durableBackendTarget}`);
+  console.log(`SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH=${sourceCredentialRotationTarget}`);
+  console.log(`WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH=${webhookSecretRotationTarget}`);
+  console.log(`SECURITY_FINAL_SWEEP_ARTIFACT_PATH=${securityFinalSweepTarget}`);
+  console.log(`LOG_EXPORT_PATH=${logExportTarget}`);
+  console.log(`METRICS_EXPORT_PATH=${metricsExportTarget}`);
+  console.log(`PUBLIC_ERROR_EXPORT_PATH=${publicErrorExportTarget}`);
+  console.log(`RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH=${releaseDeploySmokeTarget}`);
+  console.log(`BACKEND_STAGING_EVIDENCE_BUNDLE_PATH=${bundleTarget}`);
+  console.log(`BACKEND_STAGING_EVIDENCE_ENV_PATH=${envFileTarget}`);
 });
 
 function writeBundleSummary({ bundlePath, envFilePath, context, artifactPaths }) {
@@ -177,6 +222,7 @@ function writeBundleSummary({ bundlePath, envFilePath, context, artifactPaths })
     artifacts,
   };
 
+  mkdirSync(dirname(bundlePath), { recursive: true });
   writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`, { mode: 0o600 });
 }
 

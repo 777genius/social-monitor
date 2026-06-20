@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { URL } from 'node:url';
 import {
   validateEvidenceArtifactProvenance,
@@ -469,6 +471,7 @@ requireBackendOpsWiring();
 requireExternalReadinessWiring();
 requireBaselineWiring();
 requireCaptureScriptWiring();
+validateCaptureOutputPathGuards();
 
 if (violations.length > 0) {
   console.error(violations.join('\n'));
@@ -1098,6 +1101,7 @@ function requireCaptureScriptWiring() {
   for (const marker of [
     'writeEvidenceEnvFile',
     'validateEvidenceEnvFilePath',
+    'validateEvidenceJsonFilePath',
     'STAGING_RELIABILITY_ENV_PATH',
     'RABBITMQ_STAGING_DRILL_ARTIFACT_PATH',
     'POSTGRES_RESTORE_DRILL_ARTIFACT_PATH',
@@ -1134,6 +1138,57 @@ function requireCaptureScriptWiring() {
     if (!durableBackendE2eCaptureSource.includes(marker)) {
       violations.push(`${durableBackendE2eCapturePath}: capture must include ${marker}`);
     }
+  }
+}
+
+function validateCaptureOutputPathGuards() {
+  const rabbitWorkspaceArtifactPath = resolve('rabbitmq-staging-drill-workspace-output.json');
+  const rabbitResult = runDockerStagingCaptureExpectingFailure({
+    RABBITMQ_STAGING_DRILL_ARTIFACT_PATH: rabbitWorkspaceArtifactPath,
+    POSTGRES_RESTORE_DRILL_ARTIFACT_PATH: '/tmp/social-monitor-postgres-restore-drill-output.json',
+    STAGING_RELIABILITY_ENV_PATH: '/tmp/social-monitor-staging-reliability.env',
+  });
+  if (rabbitResult.exitCode === 0) {
+    violations.push(`${dockerStagingReliabilityCapturePath}: capture must reject workspace RABBITMQ_STAGING_DRILL_ARTIFACT_PATH`);
+  } else if (!rabbitResult.output.includes('RABBITMQ_STAGING_DRILL_ARTIFACT_PATH must not write release evidence into the git workspace')) {
+    violations.push(`${dockerStagingReliabilityCapturePath}: workspace RabbitMQ artifact path rejection must explain evidence path policy`);
+  }
+  if (existsSync(rabbitWorkspaceArtifactPath)) {
+    violations.push(`${dockerStagingReliabilityCapturePath}: workspace RabbitMQ artifact path rejection must not create ${rabbitWorkspaceArtifactPath}`);
+  }
+
+  const postgresWorkspaceArtifactPath = resolve('postgres-restore-drill-workspace-output.json');
+  const postgresResult = runDockerStagingCaptureExpectingFailure({
+    RABBITMQ_STAGING_DRILL_ARTIFACT_PATH: '/tmp/social-monitor-rabbitmq-staging-drill-output.json',
+    POSTGRES_RESTORE_DRILL_ARTIFACT_PATH: postgresWorkspaceArtifactPath,
+    STAGING_RELIABILITY_ENV_PATH: '/tmp/social-monitor-staging-reliability.env',
+  });
+  if (postgresResult.exitCode === 0) {
+    violations.push(`${dockerStagingReliabilityCapturePath}: capture must reject workspace POSTGRES_RESTORE_DRILL_ARTIFACT_PATH`);
+  } else if (!postgresResult.output.includes('POSTGRES_RESTORE_DRILL_ARTIFACT_PATH must not write release evidence into the git workspace')) {
+    violations.push(`${dockerStagingReliabilityCapturePath}: workspace Postgres artifact path rejection must explain evidence path policy`);
+  }
+  if (existsSync(postgresWorkspaceArtifactPath)) {
+    violations.push(`${dockerStagingReliabilityCapturePath}: workspace Postgres artifact path rejection must not create ${postgresWorkspaceArtifactPath}`);
+  }
+}
+
+function runDockerStagingCaptureExpectingFailure(env) {
+  try {
+    execFileSync(process.execPath, [dockerStagingReliabilityCapturePath], {
+      env: {
+        ...process.env,
+        ...env,
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
   }
 }
 

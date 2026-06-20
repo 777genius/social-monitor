@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
@@ -69,6 +70,7 @@ const violations = [];
 const bundlePath = process.env.BACKEND_STAGING_EVIDENCE_BUNDLE_PATH;
 
 validateStaticWiring();
+validateCaptureOutputPathGuards();
 validateSelfTestBundle();
 
 if (bundlePath !== undefined && bundlePath.trim().length > 0) {
@@ -125,6 +127,11 @@ function validateStaticWiring() {
   if (!captureSource.includes('writeEvidenceEnvFile')) {
     violations.push(`${captureScriptPath}: bundle capture must use writeEvidenceEnvFile`);
   }
+  for (const marker of ['validateEvidenceEnvFilePath', 'validateEvidenceJsonFilePath']) {
+    if (!captureSource.includes(marker)) {
+      violations.push(`${captureScriptPath}: bundle capture must use ${marker}`);
+    }
+  }
   if (!captureSource.includes('mode: 0o600')) {
     violations.push(`${captureScriptPath}: bundle capture must write bundle evidence with private file permissions`);
   }
@@ -135,6 +142,44 @@ function validateStaticWiring() {
     if (!dockerHarnessSource.includes(marker)) {
       violations.push(`${dockerHarnessPath}: Docker evidence preflight must include ${marker}`);
     }
+  }
+}
+
+function validateCaptureOutputPathGuards() {
+  const workspaceBundlePath = resolve('backend-staging-evidence-bundle-workspace-output.json');
+  const result = runCaptureExpectingFailure({
+    BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: workspaceBundlePath,
+    BACKEND_STAGING_EVIDENCE_ENV_PATH: '/tmp/social-monitor-backend-staging-evidence.env',
+  });
+
+  if (result.exitCode === 0) {
+    violations.push(`${captureScriptPath}: capture must reject workspace BACKEND_STAGING_EVIDENCE_BUNDLE_PATH`);
+    return;
+  }
+  if (!result.output.includes('BACKEND_STAGING_EVIDENCE_BUNDLE_PATH must not write release evidence into the git workspace')) {
+    violations.push(`${captureScriptPath}: workspace bundle path rejection must explain evidence path policy`);
+  }
+  if (existsSync(workspaceBundlePath)) {
+    violations.push(`${captureScriptPath}: workspace bundle path rejection must not create ${workspaceBundlePath}`);
+  }
+}
+
+function runCaptureExpectingFailure(env) {
+  try {
+    execFileSync(process.execPath, [captureScriptPath], {
+      env: {
+        ...process.env,
+        ...env,
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
   }
 }
 
