@@ -1,12 +1,15 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
   validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
+import { readPrivateEvidenceJsonFile } from './lib/evidence-env-file.mjs';
 
 const evidencePath = 'ops/security/security-final-sweep-evidence.json';
 const packagePath = 'package.json';
@@ -16,6 +19,7 @@ const backendOpsPath = 'ops/release/backend-ops-readiness-contract.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
 const captureScriptPath = 'scripts/capture-security-final-sweep.mjs';
+const currentScriptPath = fileURLToPath(import.meta.url);
 
 const evidence = readJson(evidencePath);
 const packageJson = readJson(packagePath);
@@ -179,7 +183,7 @@ if (securityFinalSweepArtifactPath !== undefined && securityFinalSweepArtifactPa
   validateSecurityFinalSweepArtifactPath(
     securityFinalSweepArtifactPath,
     'SECURITY_FINAL_SWEEP_ARTIFACT_PATH',
-    { allowExample: false },
+    { allowExample: false, requirePrivateExternalPath: true },
   );
 }
 validateRequiredChecks();
@@ -187,6 +191,7 @@ validateLeakClasses();
 validateNoSensitiveEvidenceLiterals();
 validateCaptureHandoff();
 validateCaptureOutputPathGuards();
+validateDirectArtifactPathGuards();
 requireWiring();
 
 if (violations.length > 0) {
@@ -201,7 +206,14 @@ function readJson(path) {
 }
 
 function readSecurityFinalSweepArtifact(path) {
-  const rawContent = readFileSync(path, 'utf8');
+  return readSecurityFinalSweepArtifactContent(readFileSync(path, 'utf8'), path);
+}
+
+function readPrivateSecurityFinalSweepArtifact(path, label) {
+  return readSecurityFinalSweepArtifactContent(readPrivateEvidenceJsonFile(path, label), path);
+}
+
+function readSecurityFinalSweepArtifactContent(rawContent, path) {
   validateNoSensitiveArtifactContent(rawContent, path);
   return JSON.parse(rawContent);
 }
@@ -257,12 +269,24 @@ function requireSetCoverage(actual, expected, label) {
 }
 
 function validateSecurityFinalSweepArtifactPath(path, label, options) {
-  requireExistingPath(path, label);
-  if (typeof path !== 'string' || path.trim().length === 0 || !existsSync(path)) {
+  if (typeof path !== 'string' || path.trim().length === 0) {
+    violations.push(`${evidencePath}: ${label} must reference an existing path`);
+    return;
+  }
+  if (options.requirePrivateExternalPath !== true && !existsSync(path)) {
+    violations.push(`${evidencePath}: ${label} must reference an existing path`);
     return;
   }
 
-  const artifact = readSecurityFinalSweepArtifact(path);
+  let artifact;
+  try {
+    artifact = options.requirePrivateExternalPath === true
+      ? readPrivateSecurityFinalSweepArtifact(path, label)
+      : readSecurityFinalSweepArtifact(path);
+  } catch (error) {
+    violations.push(error instanceof Error ? error.message : String(error));
+    return;
+  }
   validateSecurityFinalSweepArtifact(artifact, path, options);
 }
 
@@ -409,10 +433,11 @@ function validateArtifactSourceExports(sourceExports, path, options) {
 
 function validateSourceExportPath(sourceExport, exportLabel, expectedEnv, options) {
   const exportPath = sourceExport.path;
-  if (typeof exportPath !== 'string' || exportPath.trim().length === 0 || !existsSync(exportPath)) {
+  if (typeof exportPath !== 'string' || exportPath.trim().length === 0) {
     violations.push(`${exportLabel}: path must reference an existing redacted export file`);
     return;
   }
+  let content;
   if (options.allowExample !== true) {
     const expectedPath = process.env[expectedEnv];
     if (typeof expectedPath !== 'string' || expectedPath.trim().length === 0) {
@@ -420,9 +445,20 @@ function validateSourceExportPath(sourceExport, exportLabel, expectedEnv, option
     } else if (exportPath !== expectedPath) {
       violations.push(`${exportLabel}: path must match ${expectedEnv}`);
     }
+    try {
+      content = readPrivateEvidenceJsonFile(exportPath, expectedEnv);
+    } catch (error) {
+      violations.push(error instanceof Error ? error.message : String(error));
+      return;
+    }
+  } else {
+    if (!existsSync(exportPath)) {
+      violations.push(`${exportLabel}: path must reference an existing redacted export file`);
+      return;
+    }
+    content = readFileSync(exportPath);
   }
 
-  const content = readFileSync(exportPath);
   const digest = createHash('sha256').update(content).digest('hex');
   if (sourceExport.sha256 !== digest) {
     violations.push(`${exportLabel}: sha256 must match the export file content`);
@@ -797,6 +833,17 @@ function validateCaptureHandoff() {
   if (!captureScriptSource.includes('must not use local, fixture, example, mock or test identifiers')) {
     violations.push(`${captureScriptPath}: security final sweep capture must reject non-beta evidence identity values`);
   }
+
+  const selfSource = readFileSync(currentScriptPath, 'utf8');
+  for (const marker of [
+    'readPrivateEvidenceJsonFile',
+    'validateDirectArtifactPathGuards',
+    '0600-style private file permissions',
+  ]) {
+    if (!selfSource.includes(marker)) {
+      violations.push(`${currentScriptPath}: direct security artifact env path guard must include ${marker}`);
+    }
+  }
 }
 
 function validateCaptureOutputPathGuards() {
@@ -871,6 +918,240 @@ function runCaptureExpectingFailure(env) {
     execFileSync(process.execPath, [captureScriptPath], {
       env: {
         ...process.env,
+        ...env,
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function validateDirectArtifactPathGuards() {
+  if (process.env.SECURITY_FINAL_SWEEP_DIRECT_PATH_GUARD_TEST === '1') {
+    return;
+  }
+
+  const requiredEnv = {
+    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+    STAGING_OPERATOR: 'security-owner-1',
+    BACKEND_IMAGE_DIGEST: `sha256:${'e'.repeat(64)}`,
+  };
+
+  const workspaceArtifactPath = resolve('security-final-sweep-direct-workspace-output.json');
+  const workspaceResult = runSelfExpectingFailure({
+    ...requiredEnv,
+    SECURITY_FINAL_SWEEP_ARTIFACT_PATH: workspaceArtifactPath,
+  });
+  if (workspaceResult.exitCode === 0) {
+    violations.push('check:security-final-sweep must reject workspace SECURITY_FINAL_SWEEP_ARTIFACT_PATH');
+  } else if (!workspaceResult.output.includes('SECURITY_FINAL_SWEEP_ARTIFACT_PATH must not write release evidence into the git workspace')) {
+    violations.push('check:security-final-sweep workspace artifact rejection must explain evidence path policy');
+  }
+  if (existsSync(workspaceArtifactPath)) {
+    violations.push(`check:security-final-sweep workspace artifact rejection must not create ${workspaceArtifactPath}`);
+  }
+
+  const artifactTempDirectory = mkdtempSync(join(tmpdir(), 'security-final-sweep-direct-artifact-'));
+  try {
+    const publicArtifactPath = join(artifactTempDirectory, 'security-final-sweep.json');
+    writeFileSync(publicArtifactPath, '{}\n', { mode: 0o600 });
+    chmodSync(publicArtifactPath, 0o644);
+    const publicArtifactResult = runSelfExpectingFailure({
+      ...requiredEnv,
+      SECURITY_FINAL_SWEEP_ARTIFACT_PATH: publicArtifactPath,
+    });
+    if (publicArtifactResult.exitCode === 0) {
+      violations.push('check:security-final-sweep must reject public SECURITY_FINAL_SWEEP_ARTIFACT_PATH permissions');
+    } else if (!publicArtifactResult.output.includes('SECURITY_FINAL_SWEEP_ARTIFACT_PATH must use 0600-style private file permissions')) {
+      violations.push('check:security-final-sweep public artifact rejection must explain private file mode policy');
+    }
+  } finally {
+    rmSync(artifactTempDirectory, { recursive: true, force: true });
+  }
+
+  for (const [surfaceId, envName] of requiredSourceExportEnvBySurface.entries()) {
+    validateDirectExportPathGuard({ surfaceId, envName, requiredEnv });
+  }
+}
+
+function validateDirectExportPathGuard({ surfaceId, envName, requiredEnv }) {
+  const workspaceExportPath = resolve(`${envName.toLowerCase().replaceAll('_', '-')}-direct-workspace-output.json`);
+  const workspaceContext = buildDirectSecurityArtifactContext({ envName, exportPath: workspaceExportPath });
+  try {
+    const workspaceResult = runSelfExpectingFailure({
+      ...requiredEnv,
+      SECURITY_FINAL_SWEEP_ARTIFACT_PATH: workspaceContext.artifactPath,
+      LOG_EXPORT_PATH: workspaceContext.exportPathsByEnv.LOG_EXPORT_PATH,
+      METRICS_EXPORT_PATH: workspaceContext.exportPathsByEnv.METRICS_EXPORT_PATH,
+      PUBLIC_ERROR_EXPORT_PATH: workspaceContext.exportPathsByEnv.PUBLIC_ERROR_EXPORT_PATH,
+    });
+    if (workspaceResult.exitCode === 0) {
+      violations.push(`check:security-final-sweep must reject workspace ${envName}`);
+    } else if (!workspaceResult.output.includes(`${envName} must not write release evidence into the git workspace`)) {
+      violations.push(`check:security-final-sweep workspace ${envName} rejection must explain evidence path policy`);
+    }
+    if (existsSync(workspaceExportPath)) {
+      violations.push(`check:security-final-sweep workspace ${envName} rejection must not create ${workspaceExportPath}`);
+    }
+  } finally {
+    rmSync(workspaceContext.tempDirectory, { recursive: true, force: true });
+  }
+
+  const publicContext = buildDirectSecurityArtifactContext();
+  try {
+    chmodSync(publicContext.exportPathsByEnv[envName], 0o644);
+    const publicResult = runSelfExpectingFailure({
+      ...requiredEnv,
+      SECURITY_FINAL_SWEEP_ARTIFACT_PATH: publicContext.artifactPath,
+      LOG_EXPORT_PATH: publicContext.exportPathsByEnv.LOG_EXPORT_PATH,
+      METRICS_EXPORT_PATH: publicContext.exportPathsByEnv.METRICS_EXPORT_PATH,
+      PUBLIC_ERROR_EXPORT_PATH: publicContext.exportPathsByEnv.PUBLIC_ERROR_EXPORT_PATH,
+    });
+    if (publicResult.exitCode === 0) {
+      violations.push(`check:security-final-sweep must reject public ${envName} permissions`);
+    } else if (!publicResult.output.includes(`${envName} must use 0600-style private file permissions`)) {
+      violations.push(`check:security-final-sweep public ${envName} rejection must explain private file mode policy`);
+    }
+  } finally {
+    rmSync(publicContext.tempDirectory, { recursive: true, force: true });
+  }
+
+  if (!requiredSourceExportEnvBySurface.has(surfaceId)) {
+    violations.push(`check:security-final-sweep direct guard has unsupported surface ${surfaceId}`);
+  }
+}
+
+function buildDirectSecurityArtifactContext(options = {}) {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'security-final-sweep-direct-'));
+  const exportPathsByEnv = {
+    LOG_EXPORT_PATH: join(tempDirectory, 'security-logs-export.json'),
+    METRICS_EXPORT_PATH: join(tempDirectory, 'security-metrics-export.json'),
+    PUBLIC_ERROR_EXPORT_PATH: join(tempDirectory, 'security-public-errors-export.json'),
+  };
+  if (options.envName !== undefined && options.exportPath !== undefined) {
+    exportPathsByEnv[options.envName] = options.exportPath;
+  }
+
+  const exportDocuments = {
+    LOG_EXPORT_PATH: { records: [{ requestId: 'req-sec-1', status: 'ok' }] },
+    METRICS_EXPORT_PATH: { records: [{ metricName: 'queue_lag_seconds', status: 'ok' }] },
+    PUBLIC_ERROR_EXPORT_PATH: { records: [{ errorCode: 'rate_limited', status: 'handled' }] },
+  };
+  const exportHashesByEnv = {};
+  for (const [exportEnvName, exportPath] of Object.entries(exportPathsByEnv)) {
+    const content = `${JSON.stringify(exportDocuments[exportEnvName], null, 2)}\n`;
+    if (exportPath.startsWith(process.cwd())) {
+      exportHashesByEnv[exportEnvName] = createHash('sha256').update(content).digest('hex');
+      continue;
+    }
+    writeFileSync(exportPath, content, { mode: 0o600 });
+    chmodSync(exportPath, 0o600);
+    exportHashesByEnv[exportEnvName] = createHash('sha256').update(content).digest('hex');
+  }
+
+  const artifactPath = join(tempDirectory, 'security-final-sweep.json');
+  const artifact = buildDirectSecurityArtifact({ exportPathsByEnv, exportHashesByEnv });
+  writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(artifactPath, 0o600);
+
+  return { artifactPath, exportPathsByEnv, tempDirectory };
+}
+
+function buildDirectSecurityArtifact({ exportPathsByEnv, exportHashesByEnv }) {
+  const sampledAt = new Date('2026-01-01T00:00:00.000Z').toISOString();
+  const sourceExports = [
+    directSourceExport('logs', 'LOG_EXPORT_PATH', exportPathsByEnv.LOG_EXPORT_PATH, exportHashesByEnv.LOG_EXPORT_PATH, sampledAt),
+    directSourceExport('metrics', 'METRICS_EXPORT_PATH', exportPathsByEnv.METRICS_EXPORT_PATH, exportHashesByEnv.METRICS_EXPORT_PATH, sampledAt),
+    directSourceExport(
+      'public-errors',
+      'PUBLIC_ERROR_EXPORT_PATH',
+      exportPathsByEnv.PUBLIC_ERROR_EXPORT_PATH,
+      exportHashesByEnv.PUBLIC_ERROR_EXPORT_PATH,
+      sampledAt,
+    ),
+  ];
+
+  return {
+    schemaVersion: 1,
+    artifactFormat: securityFinalSweepArtifactFormat,
+    scope: 'backend-only',
+    frontendPolicy: 'deferred_contract_only',
+    provenance: {
+      evidenceKind: securityFinalSweepEvidenceKind,
+      collectionMethod: 'staging security sweep capture',
+      runner: 'scripts/capture-security-final-sweep.mjs',
+      fixtureOnly: false,
+    },
+    environment: {
+      environmentId: 'staging-alpha-1',
+      imageDigest: `sha256:${'e'.repeat(64)}`,
+      sampledAt,
+      operator: 'security-owner-1',
+    },
+    redaction: {
+      secretValuesIncluded: false,
+      credentialUrlsIncluded: false,
+      rawProviderPayloadsIncluded: false,
+      rawPromptTextIncluded: false,
+      rawSourceTextIncluded: false,
+      piiIncluded: false,
+      method: 'Sanitized staging security sweep artifacts with redacted diagnostic fields.',
+    },
+    sourceExports,
+    surfaces: [
+      directSurface('logs'),
+      directSurface('metrics'),
+      directSurface('public-errors'),
+      directSurface('audit-metadata'),
+    ],
+    review: {
+      reviewer: 'security-owner-1',
+      decision: 'passed',
+      notes: 'Security final sweep review completed for sanitized staging evidence.',
+    },
+  };
+}
+
+function directSourceExport(surfaceId, envVar, path, sha256, collectedAt) {
+  return {
+    surfaceId,
+    envVar,
+    path,
+    sha256,
+    sampleCount: 1,
+    redactedOnly: true,
+    sanitized: true,
+    collectedAt,
+  };
+}
+
+function directSurface(surfaceId) {
+  return {
+    surfaceId,
+    sampleCount: 1,
+    scanStatus: 'passed',
+    redactedOnly: true,
+    safeDiagnosticFields: ['requestId', 'tenantId', 'workspaceId', 'status'],
+    leakClassResults: [...requiredLeakClasses].map((leakClass) => ({
+      leakClass,
+      found: false,
+      sampleCount: 1,
+    })),
+  };
+}
+
+function runSelfExpectingFailure(env) {
+  try {
+    execFileSync(process.execPath, [currentScriptPath], {
+      env: {
+        ...process.env,
+        SECURITY_FINAL_SWEEP_DIRECT_PATH_GUARD_TEST: '1',
         ...env,
       },
       encoding: 'utf8',
