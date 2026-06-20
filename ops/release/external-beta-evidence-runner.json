@@ -508,7 +508,7 @@
           "format": "capacity-envelope-beta-ring-decision-v1"
         }
       ],
-      "exitCondition": "Beta ring remains hold until durable runtime, live source, real feedback and release evidence are attached."
+      "exitCondition": "Beta ring remains hold until durable runtime, live source, credential/secret runtime flow, real feedback, staging reliability, release artifact and security final sweep evidence are attached."
     },
     {
       "jobId": "release-deploy-smoke",

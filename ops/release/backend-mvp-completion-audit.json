@@ -312,7 +312,7 @@
         "capacity-envelope-beta-ring-decision"
       ],
       "exitCondition": "tenant, workspace, topic, source, scan, queue, cost and delivery limits are set for the beta ring",
-      "goCondition": "decision changes from hold to go only after durable runtime, live source, real feedback, staging reliability and release artifact evidence pass"
+      "goCondition": "decision changes from hold to go only after durable runtime, live source, credential/secret runtime flow, real feedback, staging reliability, release artifact and security final sweep evidence pass"
     },
     {
       "requirementId": "release-artifact-evidence",

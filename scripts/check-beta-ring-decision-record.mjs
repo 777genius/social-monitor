@@ -141,6 +141,10 @@ for (const requiredReason of [
   'summary-feedback-blockers-exist',
   'durable-runtime-not-proven-for-external-beta',
   'live-source-evidence-not-attached',
+  'credential-secret-runtime-evidence-not-attached',
+  'staging-reliability-evidence-not-attached',
+  'release-artifact-evidence-not-attached',
+  'security-final-sweep-evidence-not-attached',
 ]) {
   if (!holdReasonIds.has(requiredReason)) {
     fail(`${decisionPath}: holdReasons missing "${requiredReason}"`);

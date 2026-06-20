@@ -28,7 +28,8 @@
       "artifact": "ops/release/durable-runtime-proof.json",
       "requiredStatusField": "externalBetaStatus",
       "requiredPassedValue": "passed",
-      "currentHoldValue": "hold_until_staging_runtime_evidence"
+      "currentHoldValue": "hold_until_staging_runtime_evidence",
+      "holdReasonId": "durable-runtime-not-proven-for-external-beta"
     },
     {
       "prerequisiteId": "live-source-provider-evidence",
@@ -36,7 +37,17 @@
       "artifact": "ops/ingestion/source-live-certification-evidence.json",
       "requiredStatusField": "externalBetaStatus",
       "requiredPassedValue": "passed",
-      "currentHoldValue": "hold_until_live_provider_evidence"
+      "currentHoldValue": "hold_until_live_provider_evidence",
+      "holdReasonId": "live-source-evidence-not-attached"
+    },
+    {
+      "prerequisiteId": "credential-secret-runtime-flow",
+      "owner": "security-owner",
+      "artifact": "ops/security/credential-secret-runtime-flow.json",
+      "requiredStatusField": "externalBetaStatus",
+      "requiredPassedValue": "passed",
+      "currentHoldValue": "hold_until_runtime_secret_store_and_rotation_evidence",
+      "holdReasonId": "credential-secret-runtime-evidence-not-attached"
     },
     {
       "prerequisiteId": "real-feedback-samples",
@@ -44,7 +55,8 @@
       "artifact": "ops/release/summary-feedback-hardening-evidence.json",
       "requiredStatusField": "externalBetaStatus",
       "requiredPassedValue": "passed",
-      "currentHoldValue": "hold_until_redacted_real_feedback_samples"
+      "currentHoldValue": "hold_until_redacted_real_feedback_samples",
+      "holdReasonId": "feedback-report-is-fixture-only"
     },
     {
       "prerequisiteId": "staging-reliability-drills",
@@ -52,7 +64,8 @@
       "artifact": "ops/drills/staging-reliability-evidence.json",
       "requiredStatusField": "externalBetaStatus",
       "requiredPassedValue": "passed",
-      "currentHoldValue": "hold_until_real_staging_drill_output"
+      "currentHoldValue": "hold_until_real_staging_drill_output",
+      "holdReasonId": "staging-reliability-evidence-not-attached"
     },
     {
       "prerequisiteId": "release-artifact-evidence",
@@ -60,7 +73,17 @@
       "artifact": "ops/release/release-artifact-evidence.json",
       "requiredStatusField": "status",
       "requiredPassedValue": "passed",
-      "currentHoldValue": "pending_image_digest_and_deploy_smoke"
+      "currentHoldValue": "pending_image_digest_and_deploy_smoke",
+      "holdReasonId": "release-artifact-evidence-not-attached"
+    },
+    {
+      "prerequisiteId": "security-final-sweep",
+      "owner": "security-owner",
+      "artifact": "ops/security/security-final-sweep-evidence.json",
+      "requiredStatusField": "externalBetaStatus",
+      "requiredPassedValue": "passed",
+      "currentHoldValue": "hold_until_deploy_log_metric_public_error_samples",
+      "holdReasonId": "security-final-sweep-evidence-not-attached"
     }
   ],
   "allowedWhileHeld": [
@@ -90,6 +113,6 @@
   "externalBetaExitCriteria": [
     "Capacity limits are present for tenants, workspaces, topics, bindings, scan interval, queue lag, summary cost and delivery attempts.",
     "Beta ring decision remains hold while any go prerequisite is not passed.",
-    "Changing externalBetaDecision to go requires durable runtime, live source evidence, real feedback samples, staging reliability evidence and release artifact evidence."
+    "Changing externalBetaDecision to go requires durable runtime, live source evidence, credential/secret runtime flow, real feedback samples, staging reliability evidence, release artifact evidence and security final sweep evidence."
   ]
 }

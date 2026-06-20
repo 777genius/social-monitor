@@ -43,6 +43,19 @@ const requiredHoldReasons = new Set([
   'summary-feedback-blockers-exist',
   'durable-runtime-not-proven-for-external-beta',
   'live-source-evidence-not-attached',
+  'credential-secret-runtime-evidence-not-attached',
+  'staging-reliability-evidence-not-attached',
+  'release-artifact-evidence-not-attached',
+  'security-final-sweep-evidence-not-attached',
+]);
+const requiredGoPrerequisiteIds = new Set([
+  'durable-runtime-proof',
+  'live-source-provider-evidence',
+  'credential-secret-runtime-flow',
+  'real-feedback-samples',
+  'staging-reliability-drills',
+  'release-artifact-evidence',
+  'security-final-sweep',
 ]);
 
 if (contract.schemaVersion !== 1) {
@@ -170,12 +183,24 @@ function validatePolicyAndDecision() {
 
 function validateGoPrerequisites() {
   let hasPendingPrerequisite = false;
+  const observedPrerequisiteIds = new Set();
+  const holdReasonIds = new Set((betaDecision.holdReasons ?? []).map((reason) => reason.reasonId));
 
   for (const prerequisite of contract.goPrerequisites ?? []) {
-    for (const field of ['prerequisiteId', 'owner', 'artifact', 'requiredStatusField', 'requiredPassedValue', 'currentHoldValue']) {
+    for (const field of ['prerequisiteId', 'owner', 'artifact', 'requiredStatusField', 'requiredPassedValue', 'currentHoldValue', 'holdReasonId']) {
       if (typeof prerequisite[field] !== 'string' || prerequisite[field].trim().length === 0) {
         violations.push(`${contractPath}: goPrerequisite must define ${field}`);
       }
+    }
+    if (observedPrerequisiteIds.has(prerequisite.prerequisiteId)) {
+      violations.push(`${contractPath}: duplicate goPrerequisite "${prerequisite.prerequisiteId}"`);
+    }
+    observedPrerequisiteIds.add(prerequisite.prerequisiteId);
+    if (!requiredGoPrerequisiteIds.has(prerequisite.prerequisiteId)) {
+      violations.push(`${contractPath}: unsupported goPrerequisite "${prerequisite.prerequisiteId}"`);
+    }
+    if (!holdReasonIds.has(prerequisite.holdReasonId)) {
+      violations.push(`${betaDecisionPath}: holdReasons missing go prerequisite reason "${prerequisite.holdReasonId}"`);
     }
     if (!existsSync(prerequisite.artifact)) {
       violations.push(`${contractPath}: goPrerequisite "${prerequisite.prerequisiteId}" references missing artifact`);
@@ -191,6 +216,11 @@ function validateGoPrerequisites() {
           `${prerequisite.artifact}: prerequisite "${prerequisite.prerequisiteId}" must be passed or hold at "${prerequisite.currentHoldValue}"`,
         );
       }
+    }
+  }
+  for (const requiredPrerequisiteId of requiredGoPrerequisiteIds) {
+    if (!observedPrerequisiteIds.has(requiredPrerequisiteId)) {
+      violations.push(`${contractPath}: goPrerequisites missing "${requiredPrerequisiteId}"`);
     }
   }
 

@@ -51,9 +51,20 @@
         "npm run check:summary-persistence",
         "npm run check:identity-persistence",
         "npm run check:usage-persistence",
-        "npm run check:delivery-persistence"
+        "npm run check:delivery-persistence",
+        "npm run check:credential-secret-runtime-flow"
       ],
       "risk": "External beta remains blocked while any API or worker runtime uses in-memory/noop state in the target environment."
+    },
+    "security": {
+      "status": "needs_staging_security_evidence_before_expansion",
+      "evidence": [
+        "npm run check:security-final-sweep",
+        "npm run check:secrets",
+        "npm run check:dependencies",
+        "npm run check:user-auth-boundary"
+      ],
+      "risk": "External beta remains blocked until deploy logs, metrics, public errors and audit metadata prove redaction on the promoted image."
     }
   },
   "requiredGateCommands": [
@@ -69,6 +80,8 @@
     "npm run check:delivery-replay",
     "npm run check:beta-feedback-report",
     "npm run check:persistence-readiness",
+    "npm run check:credential-secret-runtime-flow",
+    "npm run check:security-final-sweep",
     "npm run check:release",
     "npm run check:durable-runtime-proof",
     "npm run check:staging-reliability-evidence",
@@ -97,6 +110,26 @@
       "reasonId": "live-source-evidence-not-attached",
       "owner": "source-owner",
       "exitCondition": "Attach live HN, RSS, GitHub and Reddit source evidence while Telegram and X remain deferred."
+    },
+    {
+      "reasonId": "credential-secret-runtime-evidence-not-attached",
+      "owner": "security-owner",
+      "exitCondition": "Attach source credential and webhook secret rotation evidence through the approved runtime secret boundary."
+    },
+    {
+      "reasonId": "staging-reliability-evidence-not-attached",
+      "owner": "ops-owner",
+      "exitCondition": "Attach RabbitMQ and Postgres staging reliability drill evidence for the promoted backend image."
+    },
+    {
+      "reasonId": "release-artifact-evidence-not-attached",
+      "owner": "release-owner",
+      "exitCondition": "Attach immutable image digest, release deploy smoke and release artifact hash evidence."
+    },
+    {
+      "reasonId": "security-final-sweep-evidence-not-attached",
+      "owner": "security-owner",
+      "exitCondition": "Attach staging security final sweep evidence for logs, metrics, public errors and audit metadata."
     }
   ],
   "allowedWhileHeld": [
@@ -136,6 +169,16 @@
       "itemId": "live-source-evidence",
       "owner": "source-owner",
       "requiredEvidence": "HN, RSS, GitHub and Reddit live source evidence artifacts are attached for the promoted backend image"
+    },
+    {
+      "itemId": "credential-secret-runtime-evidence",
+      "owner": "security-owner",
+      "requiredEvidence": "source credential and webhook secret rotation artifacts validate for the staging secret store"
+    },
+    {
+      "itemId": "security-final-sweep-evidence",
+      "owner": "security-owner",
+      "requiredEvidence": "security final sweep deploy samples validate against the promoted backend image"
     }
   ]
 }

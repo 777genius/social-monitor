@@ -123,7 +123,7 @@
       "requiredQualifier": "\"evidenceMode\": \"deterministic_pre_beta_fixture\"",
       "owner": "release-owner",
       "blocking": true,
-      "exitCondition": "Move to go only after durable runtime, live source, real feedback and release artifact evidence pass."
+      "exitCondition": "Move to go only after durable runtime, live source, credential/secret runtime flow, real feedback, staging reliability, release artifact and security final sweep evidence pass."
     },
     {
       "claimId": "promotion-doc-blocks-external-beta",
