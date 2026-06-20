@@ -33,8 +33,12 @@ import {
   DELIVERY_DIGEST_SCHEDULER_LOOP_OPTIONS,
   DELIVERY_RABBITMQ_ATTEMPT_QUEUE_OPTIONS,
   DELIVERY_RABBITMQ_ATTEMPT_QUEUE_READER_OPTIONS,
+  DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP_OPTIONS,
+  DELIVERY_SUMMARY_READY_EVENT_QUEUE_OPTIONS,
+  DELIVERY_SUMMARY_READY_EVENT_READER_MODE,
   type DeliveryAttemptDispatchQueueMode,
   type DeliveryAttemptQueueReaderMode,
+  type DeliverySummaryReadyEventReaderMode,
   resolveDeliveryAttemptDispatchQueueMode,
   resolveDeliveryAttemptDispatchLoopOptions,
   resolveDeliveryAttemptQueueDrainLoopOptions,
@@ -42,6 +46,9 @@ import {
   resolveDeliveryDigestSchedulerLoopOptions,
   resolveDeliveryRabbitMqAttemptQueueOptions,
   resolveDeliveryRabbitMqAttemptQueueReaderOptions,
+  resolveDeliverySummaryReadyEventDrainLoopOptions,
+  resolveDeliverySummaryReadyEventQueueOptions,
+  resolveDeliverySummaryReadyEventReaderMode,
 } from './delivery-service-provider-tokens';
 import { DeliveryAttemptDispatchLoop } from './delivery-attempt-dispatch-loop';
 import {
@@ -53,9 +60,19 @@ import {
 } from './delivery-attempt-queue-reader';
 import { DeliveryAttemptQueueDrainLoop } from './delivery-attempt-queue-drain-loop';
 import { DigestSchedulerLoop } from './digest-scheduler-loop';
+import { SummaryReadyEventDrainLoop } from './summary-ready-event-drain-loop';
+import {
+  DELIVERY_SUMMARY_READY_EVENT_QUEUE_READER,
+  DisabledSummaryReadyEventQueueReader,
+  RabbitMqSummaryReadyEventQueueReader,
+  type RabbitMqSummaryReadyEventQueueReaderChannelPort,
+  type SummaryReadyEventQueueReaderPort,
+} from './summary-ready-event-queue-reader';
 
 const DELIVERY_ATTEMPT_DISPATCH_QUEUE = Symbol('DELIVERY_ATTEMPT_DISPATCH_QUEUE');
 const DELIVERY_RABBITMQ_ATTEMPT_QUEUE_CHANNEL = Symbol('DELIVERY_RABBITMQ_ATTEMPT_QUEUE_CHANNEL');
+const DELIVERY_RABBITMQ_SUMMARY_READY_EVENT_QUEUE_CHANNEL =
+  Symbol('DELIVERY_RABBITMQ_SUMMARY_READY_EVENT_QUEUE_CHANNEL');
 
 type RabbitMqDeliveryAttemptQueueChannelPort =
   RabbitMqQueueChannelPort & RabbitMqDeliveryAttemptQueueReaderChannelPort;
@@ -80,6 +97,10 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
       useFactory: () => resolveDeliveryAttemptQueueReaderMode(process.env),
     },
     {
+      provide: DELIVERY_SUMMARY_READY_EVENT_READER_MODE,
+      useFactory: () => resolveDeliverySummaryReadyEventReaderMode(process.env),
+    },
+    {
       provide: DELIVERY_RABBITMQ_ATTEMPT_QUEUE_OPTIONS,
       useFactory: () => resolveDeliveryRabbitMqAttemptQueueOptions(process.env),
     },
@@ -90,6 +111,14 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
     {
       provide: DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP_OPTIONS,
       useFactory: () => resolveDeliveryAttemptQueueDrainLoopOptions(process.env),
+    },
+    {
+      provide: DELIVERY_SUMMARY_READY_EVENT_QUEUE_OPTIONS,
+      useFactory: () => resolveDeliverySummaryReadyEventQueueOptions(process.env),
+    },
+    {
+      provide: DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP_OPTIONS,
+      useFactory: () => resolveDeliverySummaryReadyEventDrainLoopOptions(process.env),
     },
     InMemoryQueuePublisher,
     {
@@ -142,6 +171,35 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
         InMemoryQueuePublisher,
         DELIVERY_RABBITMQ_ATTEMPT_QUEUE_CHANNEL,
         DELIVERY_RABBITMQ_ATTEMPT_QUEUE_READER_OPTIONS,
+      ],
+    },
+    DisabledSummaryReadyEventQueueReader,
+    {
+      provide: DELIVERY_RABBITMQ_SUMMARY_READY_EVENT_QUEUE_CHANNEL,
+      useFactory: (
+        mode: DeliverySummaryReadyEventReaderMode,
+      ): RabbitMqSummaryReadyEventQueueReaderChannelPort | null =>
+        mode === 'rabbitmq'
+          ? new AmqplibRabbitMqChannel({ url: process.env.RABBITMQ_URL ?? '' })
+          : null,
+      inject: [DELIVERY_SUMMARY_READY_EVENT_READER_MODE],
+    },
+    {
+      provide: DELIVERY_SUMMARY_READY_EVENT_QUEUE_READER,
+      useFactory: (
+        mode: DeliverySummaryReadyEventReaderMode,
+        channel: RabbitMqSummaryReadyEventQueueReaderChannelPort | null,
+        options: ReturnType<typeof resolveDeliverySummaryReadyEventQueueOptions>,
+        disabled: DisabledSummaryReadyEventQueueReader,
+      ): SummaryReadyEventQueueReaderPort =>
+        mode === 'rabbitmq'
+          ? new RabbitMqSummaryReadyEventQueueReader(requireRabbitMqSummaryReadyEventQueueChannel(channel), options)
+          : disabled,
+      inject: [
+        DELIVERY_SUMMARY_READY_EVENT_READER_MODE,
+        DELIVERY_RABBITMQ_SUMMARY_READY_EVENT_QUEUE_CHANNEL,
+        DELIVERY_SUMMARY_READY_EVENT_QUEUE_OPTIONS,
+        DisabledSummaryReadyEventQueueReader,
       ],
     },
     {
@@ -209,6 +267,21 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
         InMemoryMetricsRecorder,
       ],
     },
+    {
+      provide: SummaryReadyEventDrainLoop,
+      useFactory: (
+        queue: SummaryReadyEventQueueReaderPort,
+        handler: ProjectSummaryReadyEventHandler,
+        options: ReturnType<typeof resolveDeliverySummaryReadyEventDrainLoopOptions>,
+        metrics: InMemoryMetricsRecorder,
+      ) => new SummaryReadyEventDrainLoop(queue, handler, options, metrics, new SystemClock()),
+      inject: [
+        DELIVERY_SUMMARY_READY_EVENT_QUEUE_READER,
+        ProjectSummaryReadyEventHandler,
+        DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP_OPTIONS,
+        InMemoryMetricsRecorder,
+      ],
+    },
     DigestSchedulerLoop,
   ],
   exports: [
@@ -218,6 +291,7 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
     EnqueueDeliveryAttemptDispatchUseCase,
     DeliveryAttemptDispatchLoop,
     DeliveryAttemptQueueDrainLoop,
+    SummaryReadyEventDrainLoop,
   ],
 })
 export class DeliveryServiceModule {}
@@ -227,6 +301,18 @@ const requireRabbitMqDeliveryAttemptQueueChannel = (
 ): RabbitMqDeliveryAttemptQueueChannelPort => {
   if (channel === null) {
     throw new Error('RabbitMQ delivery attempt queue channel is required for delivery queue runtime');
+  }
+
+  return channel;
+};
+
+const requireRabbitMqSummaryReadyEventQueueChannel = (
+  channel: RabbitMqSummaryReadyEventQueueReaderChannelPort | null,
+): RabbitMqSummaryReadyEventQueueReaderChannelPort => {
+  if (channel === null) {
+    throw new Error(
+      'RabbitMQ summary ready event queue channel is required when DELIVERY_SUMMARY_READY_EVENT_READER=rabbitmq',
+    );
   }
 
   return channel;

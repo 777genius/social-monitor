@@ -26,6 +26,8 @@ import {
   resolveDeliveryAttemptQueueDrainLoopOptions,
   resolveDeliveryAttemptQueueReaderMode,
   resolveDeliveryDigestSchedulerLoopOptions,
+  resolveDeliverySummaryReadyEventDrainLoopOptions,
+  resolveDeliverySummaryReadyEventReaderMode,
 } from '../../delivery-service/src/delivery-service-provider-tokens';
 import { resolveEventRelayLoopOptions } from '../../event-relay/src/event-relay-provider-tokens';
 import {
@@ -67,6 +69,7 @@ export type ReadinessResponse = HealthResponse & {
       readonly deliveryDigestScheduler: string;
       readonly deliveryAttemptDispatch: string;
       readonly deliveryAttemptQueueDrain: string;
+      readonly deliverySummaryReadyEventDrain: string;
       readonly eventRelay: string;
     };
     readonly queues: {
@@ -76,6 +79,7 @@ export type ReadinessResponse = HealthResponse & {
       readonly intelligenceSummaryReader: string;
       readonly deliveryAttemptPublisher: string;
       readonly deliveryAttemptReader: string;
+      readonly deliverySummaryReadyEventReader: string;
     };
     readonly providers: {
       readonly deliveryWebhook: string;
@@ -148,6 +152,9 @@ export class ApiGatewayHealthReporter {
           deliveryDigestScheduler: this.loopMode(resolveDeliveryDigestSchedulerLoopOptions(this.env).enabled),
           deliveryAttemptDispatch: this.loopMode(resolveDeliveryAttemptDispatchLoopOptions(this.env).enabled),
           deliveryAttemptQueueDrain: this.loopMode(resolveDeliveryAttemptQueueDrainLoopOptions(this.env).enabled),
+          deliverySummaryReadyEventDrain: this.loopMode(
+            resolveDeliverySummaryReadyEventDrainLoopOptions(this.env).enabled,
+          ),
           eventRelay: this.loopMode(resolveEventRelayLoopOptions(this.env).enabled),
         },
         queues: {
@@ -157,6 +164,7 @@ export class ApiGatewayHealthReporter {
           intelligenceSummaryReader: resolveIntelligenceSummaryQueueReaderMode(this.env),
           deliveryAttemptPublisher: resolveDeliveryAttemptDispatchQueueMode(this.env),
           deliveryAttemptReader: resolveDeliveryAttemptQueueReaderMode(this.env),
+          deliverySummaryReadyEventReader: resolveDeliverySummaryReadyEventReaderMode(this.env),
         },
         providers: {
           deliveryWebhook: resolveDeliveryWebhookProviderMode(this.env),
