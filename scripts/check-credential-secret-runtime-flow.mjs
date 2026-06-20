@@ -15,6 +15,7 @@ const backendOpsPath = 'ops/release/backend-ops-readiness-contract.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
 const captureScriptPath = 'scripts/capture-credential-secret-runtime-flow.mjs';
+const runtimeFlowScriptPath = 'scripts/check-credential-secret-runtime-flow.ts';
 const sourceConfigProtectorPath = 'libs/monitoring/adapters/security/aes-gcm-source-binding-config-protector.ts';
 const sourceConfigProtectorSmokePath = 'scripts/check-source-config-protector-smoke.ts';
 
@@ -26,6 +27,7 @@ const backendOps = readJson(backendOpsPath);
 const externalReadiness = readJson(externalReadinessPath);
 const baseline = readJson(baselinePath);
 const captureScriptSource = readText(captureScriptPath);
+const runtimeFlowScriptSource = readText(runtimeFlowScriptPath);
 const sourceConfigProtectorSource = readText(sourceConfigProtectorPath);
 const sourceConfigProtectorSmokeSource = readText(sourceConfigProtectorSmokePath);
 const scripts = packageJson.scripts ?? {};
@@ -845,6 +847,11 @@ function validateCaptureHandoff() {
   ]) {
     if (!captureScriptSource.includes(marker)) {
       violations.push(`${captureScriptPath}: credential secret capture env handoff must include ${marker}`);
+    }
+  }
+  for (const marker of ['mode: 0o600', 'chmodSync']) {
+    if (!runtimeFlowScriptSource.includes(marker)) {
+      violations.push(`${runtimeFlowScriptPath}: credential secret runtime flow must write rotation artifacts with private permissions`);
     }
   }
   if (!captureScriptSource.includes('must not use local, fixture, example, mock or test identifiers')) {

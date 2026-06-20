@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { ContractWebhookEventCatalogAdapter } from '@social-monitor/delivery/adapters/events/contract-webhook-event-catalog.adapter';
@@ -524,6 +524,7 @@ function buildWebhookSecretArtifact(
 function writeArtifact(path: string, artifact: RotationArtifact): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(path, 0o600);
 }
 
 function optionalEnv(name: string): string | undefined {
