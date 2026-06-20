@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
 const DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS = 5_000;
+const DEFAULT_DOCKER_SOCKET_PING_TIMEOUT_MS = 3_000;
 const DEFAULT_MIN_FREE_BYTES = 8 * 1024 ** 3;
 
 export async function withDockerBackendEvidenceStack(options, callback) {
@@ -155,21 +156,31 @@ export function assertDockerEvidencePrerequisites(options = {}) {
     );
   }
 
-  const dockerVersion = spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], {
+  const socketProbe = probeDockerApiSocket({
     cwd,
-    encoding: 'utf8',
-    timeout: dockerTimeoutMs,
+    timeoutMs: Math.min(dockerTimeoutMs, DEFAULT_DOCKER_SOCKET_PING_TIMEOUT_MS),
   });
+  if (socketProbe !== undefined && !socketProbe.ok) {
+    failures.push(`Docker API socket check failed: ${socketProbe.message}`);
+  }
 
-  if (dockerVersion.error) {
-    failures.push(dockerVersion.error.code === 'ETIMEDOUT'
-      ? `Docker daemon did not respond within ${dockerTimeoutMs}ms`
-      : `Docker daemon check failed: ${dockerVersion.error.message}`);
-  } else if (dockerVersion.status !== 0) {
-    const stderr = dockerVersion.stderr.trim();
-    failures.push(stderr.length > 0
-      ? `Docker daemon check failed: ${stderr}`
-      : `Docker daemon check exited with status ${dockerVersion.status ?? 'unknown'}`);
+  if (failures.length === 0) {
+    const dockerVersion = spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], {
+      cwd,
+      encoding: 'utf8',
+      timeout: dockerTimeoutMs,
+    });
+
+    if (dockerVersion.error) {
+      failures.push(dockerVersion.error.code === 'ETIMEDOUT'
+        ? `Docker daemon did not respond within ${dockerTimeoutMs}ms`
+        : `Docker daemon check failed: ${dockerVersion.error.message}`);
+    } else if (dockerVersion.status !== 0) {
+      const stderr = dockerVersion.stderr.trim();
+      failures.push(stderr.length > 0
+        ? `Docker daemon check failed: ${stderr}`
+        : `Docker daemon check exited with status ${dockerVersion.status ?? 'unknown'}`);
+    }
   }
 
   if (failures.length > 0) {
@@ -179,6 +190,117 @@ export function assertDockerEvidencePrerequisites(options = {}) {
       'Restart Docker Desktop, free disk space, or set DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES for a controlled override.',
     ].join('\n'));
   }
+}
+
+function probeDockerApiSocket({ cwd, timeoutMs }) {
+  const socketPath = dockerApiSocketPath();
+  if (socketPath === undefined) {
+    return undefined;
+  }
+
+  const probe = spawnSync(process.execPath, ['-e', dockerSocketPingScript(), socketPath, String(timeoutMs)], {
+    cwd,
+    encoding: 'utf8',
+    timeout: timeoutMs + 1_000,
+  });
+
+  if (probe.error) {
+    return {
+      ok: false,
+      message: probe.error.code === 'ETIMEDOUT'
+        ? `Docker API socket ${socketPath} did not respond within ${timeoutMs}ms`
+        : probe.error.message,
+    };
+  }
+  if (probe.status !== 0) {
+    const stderr = probe.stderr.trim();
+    return {
+      ok: false,
+      message: stderr.length > 0
+        ? stderr
+        : `Docker API socket probe exited with status ${probe.status ?? 'unknown'}`,
+    };
+  }
+
+  let result;
+  try {
+    result = JSON.parse(probe.stdout);
+  } catch {
+    return {
+      ok: false,
+      message: `Docker API socket probe returned non-JSON output: ${probe.stdout.trim()}`,
+    };
+  }
+
+  if (typeof result.error === 'string' && result.error.length > 0) {
+    return {
+      ok: false,
+      message: result.error,
+    };
+  }
+  if (result.statusCode !== 200) {
+    const bodySummary = typeof result.body === 'string' && result.body.length > 0
+      ? ` with body ${JSON.stringify(result.body)}`
+      : '';
+    return {
+      ok: false,
+      message: `GET /_ping returned HTTP ${result.statusCode ?? 'unknown'}${bodySummary}`,
+    };
+  }
+  if (result.body !== 'OK') {
+    return {
+      ok: false,
+      message: `GET /_ping returned ${JSON.stringify(result.body)}`,
+    };
+  }
+
+  return { ok: true };
+}
+
+function dockerApiSocketPath() {
+  const dockerHost = process.env.DOCKER_HOST?.trim();
+  if (dockerHost?.startsWith('unix://')) {
+    return dockerHost.slice('unix://'.length);
+  }
+  if (dockerHost !== undefined && dockerHost.length > 0) {
+    return undefined;
+  }
+
+  return '/var/run/docker.sock';
+}
+
+function dockerSocketPingScript() {
+  return `
+    const http = require('node:http');
+    const [socketPath, timeoutRaw] = process.argv.slice(1);
+    const timeoutMs = Number(timeoutRaw);
+    const request = http.request({
+      socketPath,
+      method: 'GET',
+      path: '/_ping',
+      timeout: timeoutMs,
+    }, (response) => {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        body += chunk;
+        if (body.length > 4096) body = body.slice(0, 4096);
+      });
+      response.on('end', () => {
+        console.log(JSON.stringify({
+          statusCode: response.statusCode ?? 0,
+          body: body.trim(),
+        }));
+      });
+    });
+    request.on('timeout', () => {
+      request.destroy(new Error(\`Docker API socket \${socketPath} did not respond within \${timeoutMs}ms\`));
+    });
+    request.on('error', (error) => {
+      console.log(JSON.stringify({ error: error.message }));
+    });
+    request.end();
+  `;
 }
 
 function buildComposeOverride(values) {

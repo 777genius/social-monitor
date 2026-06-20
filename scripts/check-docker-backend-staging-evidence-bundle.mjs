@@ -9,6 +9,7 @@ const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
 const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
 const captureScriptPath = 'scripts/capture-docker-backend-staging-evidence-bundle.mjs';
+const dockerHarnessPath = 'scripts/lib/docker-backend-evidence-harness.mjs';
 const checkScriptName = 'check:docker-backend-staging-evidence-bundle';
 const checkCommand = `npm run ${checkScriptName}`;
 const expectedBundleFormat = 'docker-backend-staging-evidence-bundle-v1';
@@ -87,6 +88,7 @@ function validateStaticWiring() {
   const baseline = readJson(baselinePath);
   const releaseContract = readJson(releaseContractPath);
   const captureSource = readFileSync(captureScriptPath, 'utf8');
+  const dockerHarnessSource = readFileSync(dockerHarnessPath, 'utf8');
   const packageScripts = packageJson.scripts ?? {};
   const backendScripts = new Set(backendSafe.backendScripts ?? []);
   const baselineScripts = new Set(baseline.requiredGreenScripts ?? []);
@@ -128,6 +130,11 @@ function validateStaticWiring() {
   }
   if (!captureSource.includes("check:docker-backend-staging-evidence-bundle")) {
     violations.push(`${captureScriptPath}: bundle capture must self-validate the generated Docker bundle`);
+  }
+  for (const marker of ['probeDockerApiSocket', '/_ping', 'Docker API socket check failed', 'DOCKER_HOST', 'unix://']) {
+    if (!dockerHarnessSource.includes(marker)) {
+      violations.push(`${dockerHarnessPath}: Docker evidence preflight must include ${marker}`);
+    }
   }
 }
 
