@@ -1939,229 +1939,79 @@ function runRunnerNegativeSmoke(artifactPath) {
 }
 
 function runRunnerSecurityFinalSweepArtifactSmoke(artifactPath, exportPaths) {
-  try {
-    execFileSync(
-      process.execPath,
-      [
-        contract.runnerFile,
-        '--validate-artifacts',
-        '--require-env',
-        '--job',
-        'security-final-sweep-staging',
-      ],
-      {
-        env: {
-          PATH: process.env.PATH ?? '',
-          LOG_EXPORT_PATH: exportPaths.logs.path,
-          METRICS_EXPORT_PATH: exportPaths.metrics.path,
-          PUBLIC_ERROR_EXPORT_PATH: exportPaths.publicErrors.path,
-          SECURITY_FINAL_SWEEP_ARTIFACT_PATH: artifactPath,
-        },
-        encoding: 'utf8',
-        stdio: 'pipe',
-      },
-    );
-    return { exitCode: 0, output: '' };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
-    };
-  }
+  return runRunnerValidateArtifactsSmoke('security-final-sweep-staging', {
+    LOG_EXPORT_PATH: exportPaths.logs.path,
+    METRICS_EXPORT_PATH: exportPaths.metrics.path,
+    PUBLIC_ERROR_EXPORT_PATH: exportPaths.publicErrors.path,
+    SECURITY_FINAL_SWEEP_ARTIFACT_PATH: artifactPath,
+  });
 }
 
 function runRunnerCredentialRotationArtifactSmoke(sourceArtifactPath, webhookArtifactPath) {
-  try {
-    execFileSync(
-      process.execPath,
-      [
-        contract.runnerFile,
-        '--validate-artifacts',
-        '--require-env',
-        '--job',
-        'credential-secret-rotation-drill',
-      ],
-      {
-        env: {
-          PATH: process.env.PATH ?? '',
-          SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: sourceArtifactPath,
-          STAGING_SECRET_STORE_ID: 'secret-store-staging-alpha-1',
-          WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: webhookArtifactPath,
-        },
-        encoding: 'utf8',
-        stdio: 'pipe',
-      },
-    );
-    return { exitCode: 0, output: '' };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
-    };
-  }
+  return runRunnerValidateArtifactsSmoke('credential-secret-rotation-drill', {
+    SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: sourceArtifactPath,
+    STAGING_SECRET_STORE_ID: 'secret-store-staging-alpha-1',
+    WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: webhookArtifactPath,
+  });
 }
 
 function runRunnerDurableRuntimeArtifactSmoke(artifactPath) {
   const imageDigest = `sha256:${'d'.repeat(64)}`;
-  try {
-    execFileSync(
-      process.execPath,
-      [
-        contract.runnerFile,
-        '--validate-artifacts',
-        '--require-env',
-        '--job',
-        'durable-runtime-staging-proof',
-      ],
-      {
-        env: {
-          PATH: process.env.PATH ?? '',
-          API_BASE_URL: 'https://api.staging.social-monitor.invalid',
-          BACKEND_IMAGE_DIGEST: imageDigest,
-          DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: artifactPath,
-          STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
-        },
-        encoding: 'utf8',
-        stdio: 'pipe',
-      },
-    );
-    return { exitCode: 0, output: '' };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
-    };
-  }
+  return runRunnerValidateArtifactsSmoke('durable-runtime-staging-proof', {
+    API_BASE_URL: 'https://api.staging.social-monitor.invalid',
+    BACKEND_IMAGE_DIGEST: imageDigest,
+    DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: artifactPath,
+    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+  });
 }
 
 function runRunnerStagingReliabilityArtifactSmoke(config, artifactPath) {
-  try {
-    execFileSync(
-      process.execPath,
-      [
-        contract.runnerFile,
-        '--validate-artifacts',
-        '--require-env',
-        '--job',
-        config.jobId,
-      ],
-      {
-        env: {
-          PATH: process.env.PATH ?? '',
-          BACKEND_IMAGE_DIGEST: config.imageDigest,
-          STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
-          [config.envName]: artifactPath,
-          ...config.requiredEnv,
-        },
-        encoding: 'utf8',
-        stdio: 'pipe',
-      },
-    );
-    return { exitCode: 0, output: '' };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
-    };
-  }
+  return runRunnerValidateArtifactsSmoke(config.jobId, {
+    BACKEND_IMAGE_DIGEST: config.imageDigest,
+    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+    [config.envName]: artifactPath,
+    ...config.requiredEnv,
+  });
 }
 
 function runRunnerSummaryFeedbackArtifactSmoke(artifactPath) {
-  try {
-    execFileSync(
-      process.execPath,
-      [
-        contract.runnerFile,
-        '--validate-artifacts',
-        '--require-env',
-        '--job',
-        'summary-real-feedback-import',
-      ],
-      {
-        env: {
-          PATH: process.env.PATH ?? '',
-          SUMMARY_REAL_FEEDBACK_SAMPLES_PATH: artifactPath,
-        },
-        encoding: 'utf8',
-        stdio: 'pipe',
-      },
-    );
-    return { exitCode: 0, output: '' };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
-    };
-  }
+  return runRunnerValidateArtifactsSmoke('summary-real-feedback-import', {
+    SUMMARY_REAL_FEEDBACK_SAMPLES_PATH: artifactPath,
+  });
 }
 
 function runRunnerReleaseDeployArtifactSmoke(artifactPath) {
-  try {
-    execFileSync(
-      process.execPath,
-      [
-        contract.runnerFile,
-        '--validate-artifacts',
-        '--require-env',
-        '--job',
-        'release-deploy-smoke',
-      ],
-      {
-        env: {
-          API_BASE_URL: 'https://api.staging.social-monitor.invalid',
-          BACKEND_IMAGE_DIGEST: releaseDeploySmokeImageDigest(),
-          PATH: process.env.PATH ?? '',
-          RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: artifactPath,
-          STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
-        },
-        encoding: 'utf8',
-        stdio: 'pipe',
-      },
-    );
-    return { exitCode: 0, output: '' };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
-    };
-  }
+  return runRunnerValidateArtifactsSmoke('release-deploy-smoke', {
+    API_BASE_URL: 'https://api.staging.social-monitor.invalid',
+    BACKEND_IMAGE_DIGEST: releaseDeploySmokeImageDigest(),
+    RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: artifactPath,
+    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+  });
 }
 
 function runRunnerArtifactSmoke(artifactPath) {
   const imageDigest = `sha256:${'a'.repeat(64)}`;
-  try {
-    execFileSync(
-      process.execPath,
-      [
-        contract.runnerFile,
-        '--validate-artifacts',
-        '--require-env',
-        '--job',
-        'live-open-connectors',
-      ],
-      {
-        env: {
-          PATH: process.env.PATH ?? '',
-          BACKEND_IMAGE_DIGEST: imageDigest,
-          LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: artifactPath,
-          SOURCE_LIVE_ENVIRONMENT_ID: 'source-prod-alpha',
-          SOURCE_LIVE_OPERATOR: 'release-operator-1',
-        },
-        encoding: 'utf8',
-        stdio: 'pipe',
-      },
-    );
-    return { exitCode: 0, output: '' };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
-    };
-  }
+  return runRunnerValidateArtifactsSmoke('live-open-connectors', {
+    BACKEND_IMAGE_DIGEST: imageDigest,
+    LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: artifactPath,
+    SOURCE_LIVE_ENVIRONMENT_ID: 'source-prod-alpha',
+    SOURCE_LIVE_OPERATOR: 'release-operator-1',
+  });
 }
 
 function runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath) {
   const imageDigest = `sha256:${'b'.repeat(64)}`;
+  return runRunnerValidateArtifactsSmoke('live-reddit-oauth', {
+    BACKEND_IMAGE_DIGEST: imageDigest,
+    REDDIT_ACCESS_TOKEN: 'reddit-live-value-1234567890',
+    REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: lifecyclePath,
+    REDDIT_LIVE_EVIDENCE_PATH: liveArtifactPath,
+    SOURCE_LIVE_ENVIRONMENT_ID: 'source-reddit-alpha',
+    SOURCE_LIVE_OPERATOR: 'source-operator-1',
+  });
+}
+
+function runRunnerValidateArtifactsSmoke(jobId, env) {
   try {
     execFileSync(
       process.execPath,
@@ -2170,17 +2020,12 @@ function runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath) {
         '--validate-artifacts',
         '--require-env',
         '--job',
-        'live-reddit-oauth',
+        jobId,
       ],
       {
         env: {
           PATH: process.env.PATH ?? '',
-          BACKEND_IMAGE_DIGEST: imageDigest,
-          REDDIT_ACCESS_TOKEN: 'reddit-live-value-1234567890',
-          REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: lifecyclePath,
-          REDDIT_LIVE_EVIDENCE_PATH: liveArtifactPath,
-          SOURCE_LIVE_ENVIRONMENT_ID: 'source-reddit-alpha',
-          SOURCE_LIVE_OPERATOR: 'source-operator-1',
+          ...env,
         },
         encoding: 'utf8',
         stdio: 'pipe',
