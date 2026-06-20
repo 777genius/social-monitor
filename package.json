@@ -42,6 +42,8 @@
     "check:durable-runtime-proof": "node scripts/check-durable-runtime-proof.mjs",
     "capture:docker-durable-runtime-proof": "node scripts/capture-docker-durable-runtime-proof.mjs",
     "capture:docker-staging-reliability-evidence": "node scripts/capture-docker-staging-reliability-evidence.mjs",
+    "capture:durable-backend-e2e-loop": "node scripts/run-with-timeout.mjs --timeout-ms 300000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/capture-durable-backend-e2e-loop.ts",
+    "capture:docker-durable-backend-e2e-loop": "node scripts/capture-docker-durable-backend-e2e-loop.mjs",
     "check:events": "node scripts/check-event-contracts.mjs",
     "check:external-beta-readiness": "node scripts/check-external-beta-readiness.mjs",
     "check:external-beta-evidence-runner": "node scripts/check-external-beta-evidence-runner.mjs",
