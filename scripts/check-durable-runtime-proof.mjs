@@ -25,6 +25,44 @@ const hasVerificationScript = (scriptName) =>
 const violations = [];
 const durableRuntimeSelectorArtifactFormat = 'durable-runtime-selector-artifact-v1';
 const durableRuntimeEvidenceKind = 'staging_runtime_selector';
+const forbiddenArtifactFragments = [
+  'bearer ',
+  'basic ',
+  'access_token',
+  'refresh_token',
+  'id_token',
+  'client_secret=',
+  'private_key',
+  'postgres://',
+  'postgresql://',
+  'amqp://',
+  'amqps://',
+  'redis://',
+  'rediss://',
+  'github_pat_',
+  'ghp_',
+  'glpat-',
+  'xoxb-',
+  'xoxp-',
+  'sk-proj-',
+  'sk-live-',
+  'smk_',
+  'whsec_',
+];
+const forbiddenArtifactValuePatterns = [
+  {
+    label: 'query credential',
+    regex: /\b(?:access_token|refresh_token|id_token|api_key|apikey|client_secret|signature|sig)=([^&\s"']+)/gi,
+  },
+  {
+    label: 'header credential',
+    regex: /\b(?:authorization|x-api-key|x-amz-security-token):\s*([^,\s"'}]+)/gi,
+  },
+  {
+    label: 'jwt credential',
+    regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+  },
+];
 const requiredServiceSelectorValues = new Map([
   ['api-gateway', {
     MONITORING_PERSISTENCE: 'prisma',
@@ -268,8 +306,23 @@ function validateDurableRuntimeSelectorArtifactPath(path, label, options) {
     return;
   }
 
-  const artifact = JSON.parse(readFileSync(path, 'utf8'));
+  const artifact = readDurableRuntimeSelectorArtifact(path);
+  if (artifact === undefined) {
+    return;
+  }
   validateDurableRuntimeSelectorArtifact(artifact, path, options);
+}
+
+function readDurableRuntimeSelectorArtifact(path) {
+  const rawContent = readFileSync(path, 'utf8');
+  validateNoSensitiveArtifactContent(rawContent, path);
+  try {
+    return JSON.parse(rawContent);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    violations.push(`${path}: durable runtime selector artifact must be valid JSON (${message})`);
+    return undefined;
+  }
 }
 
 function validateDurableRuntimeSelectorArtifact(artifact, path, options) {
@@ -290,6 +343,7 @@ function validateDurableRuntimeSelectorArtifact(artifact, path, options) {
   validateArtifactEnvironment(artifact.environment, path, options);
   validateArtifactServices(artifact.services, path);
   validateArtifactRollup(artifact.rollup, path);
+  validateNoSensitiveArtifactContent(JSON.stringify(artifact), path);
 }
 
 function validateArtifactProvenance(provenance, path, options) {
@@ -437,6 +491,26 @@ function rejectForbiddenSelectorValues(selectors, label) {
     if (selector === 'DELIVERY_ENABLED_CHANNELS' && /\b(?:email|in_app)\b/.test(normalizedValue)) {
       violations.push(`${label}.${selector} must not enable fake email or in_app delivery in beta`);
     }
+  }
+}
+
+function validateNoSensitiveArtifactContent(content, path) {
+  const serialized = content.toLowerCase();
+  for (const fragment of forbiddenArtifactFragments) {
+    if (serialized.includes(fragment)) {
+      violations.push(`${path}: artifact must not contain sensitive literal fragment "${fragment}"`);
+    }
+  }
+  validateNoSensitivePatterns(content, `${path}: artifact`);
+}
+
+function validateNoSensitivePatterns(content, label) {
+  for (const pattern of forbiddenArtifactValuePatterns) {
+    pattern.regex.lastIndex = 0;
+    if (pattern.regex.test(content)) {
+      violations.push(`${label} must not contain sensitive ${pattern.label}`);
+    }
+    pattern.regex.lastIndex = 0;
   }
 }
 

@@ -905,6 +905,18 @@ function validateRunnerNegativeDurableRuntimeArtifactSmokes() {
         artifact.environment.imageDigest = `sha256:${'e'.repeat(64)}`;
       },
     },
+    {
+      label: 'durable runtime raw duplicate-key credential hidden by JSON parser',
+      expectedOutput: 'sensitive literal fragment "bearer "',
+      artifactContent: (artifact) => `${JSON.stringify(artifact, null, 2)}\n`.replace(
+        '"operator": "release-operator-1"',
+        [
+          '"operator": "',
+          ['Bearer', ' raw-runtime-token-hidden-by-duplicate-key'].join(''),
+          '",\n    "operator": "release-operator-1"',
+        ].join(''),
+      ),
+    },
   ];
 
   for (const scenario of scenarios) {
@@ -929,9 +941,12 @@ function writeDurableRuntimeSelectorArtifact(tempDirectory, options = {}) {
   const artifactPath = join(tempDirectory, 'durable-runtime-selector.json');
   const artifact = durableRuntimeSelectorArtifact();
   options.mutateArtifact?.(artifact);
+  const artifactContent = typeof options.artifactContent === 'function'
+    ? options.artifactContent(artifact)
+    : `${JSON.stringify(artifact, null, 2)}\n`;
   writeFileSync(
     artifactPath,
-    `${JSON.stringify(artifact, null, 2)}\n`,
+    artifactContent,
     { mode: 0o600 },
   );
   return artifactPath;
