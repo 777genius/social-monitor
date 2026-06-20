@@ -266,10 +266,12 @@ function capturePostgresArtifact() {
   execFileSync('docker', ['exec', postgresContainer, 'rm', '-f', backupPath], { stdio: 'ignore' });
 
   const idempotencyKeys = [`scan:${runId}`, `summary:${runId}`, `delivery:${runId}`];
+  const completedAt = nowIso();
+  const signalObservedAt = completedAt;
   return artifactEnvelope({
     artifactId: 'postgres-restore-drill-output',
     startedAt,
-    completedAt: nowIso(),
+    completedAt,
     collectionMethod: 'Docker Compose Postgres backup restore drill capture.',
     signalResults: [
       signalResult('postgres-backup-created', {
@@ -278,38 +280,38 @@ function capturePostgresArtifact() {
         schemaVersion,
         includedTableCount: tableCount,
         operationalTablesIncluded: tableCount >= 30,
-      }),
+      }, signalObservedAt),
       signalResult('postgres-restore-rpo-rto', {
         summary: 'restore completed inside Docker drill RPO and RTO envelope',
         restoreStartedAt,
         restoreCompletedAt,
         rpoMinutes: 1,
         rtoMinutes: Math.max(1, Math.ceil((Date.parse(restoreCompletedAt) - Date.parse(restoreStartedAt)) / 60_000)),
-      }),
+      }, signalObservedAt),
       signalResult('postgres-migration-version', {
         summary: 'restored database migration state matched release commit schema',
         releaseCommitSha,
         appliedMigrationIds,
         schemaChecksumMatched: appliedMigrationIds.length > 0,
-      }),
+      }, signalObservedAt),
       signalResult('postgres-validation-queries', {
         summary: 'validation query groups passed against restored Docker database',
         queryNames: Object.keys(validation),
         checkedTableGroups: ['tenancy', 'ingestion', 'summary', 'delivery', 'audit', 'usage'],
         failedQueryCount: Object.values(validation).filter((value) => value < 0).length,
-      }),
+      }, signalObservedAt),
       signalResult('postgres-outbox-inbox-idempotency', {
         summary: 'outbox inbox idempotency counts matched before and after restore',
         beforeCounts,
         afterCounts,
         countsMatched: JSON.stringify(beforeCounts) === JSON.stringify(afterCounts),
-      }),
+      }, signalObservedAt),
       signalResult('postgres-worker-pause-resume', {
         summary: 'workers were paused during restore validation and resumed after validation',
         pauseCommandId: `pause-workers-${runId}`,
         resumeCommandId: `resume-workers-${runId}`,
         workAcceptedDuringValidation: false,
-      }),
+      }, signalObservedAt),
       signalResult('postgres-no-duplicate-side-effects', {
         summary: 'durable counts stayed stable after worker resume',
         idempotencyKeys,
@@ -320,7 +322,7 @@ function capturePostgresArtifact() {
           deliveryAttempts: Number(afterCounts.deliveryAttempts),
         },
         duplicateSideEffectsObserved: false,
-      }),
+      }, signalObservedAt),
     ],
   });
 }
@@ -351,11 +353,11 @@ function artifactEnvelope({ artifactId, startedAt, completedAt, collectionMethod
   };
 }
 
-function signalResult(signalId, evidence) {
+function signalResult(signalId, evidence, observedAt = nowIso()) {
   return {
     signalId,
     status: 'passed',
-    observedAt: nowIso(),
+    observedAt,
     evidence,
   };
 }
