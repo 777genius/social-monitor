@@ -395,6 +395,7 @@ function printHandoff(plan) {
   );
   console.log(`Blocked by missing required env: ${plan.blockedMissingRequiredEnvJobCount}`);
   console.log(`Blocked by invalid env/path: ${plan.blockedInvalidInputJobCount}`);
+  console.log(`Blocked by local runtime env: ${plan.blockedLocalRuntimeEnvJobCount}`);
   if (plan.uniqueMissingEnv.length > 0) {
     console.log('');
     console.log('Required env still needed:');

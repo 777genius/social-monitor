@@ -519,6 +519,7 @@ function validateRunnerImplementation() {
     'blockedMissingRequiredEnvJobCount',
     'blockedInvalidInputJobCount',
     'blockedLocalRuntimeEnvJobCount',
+    'Blocked by local runtime env',
     'uniqueMissingEnv',
     'readSelectedJobSelection',
     'Invalid external beta evidence job selection:',
@@ -2310,11 +2311,12 @@ function runRunnerPreflightNegativeSmoke(jobId, env) {
 function validateRunnerLocalRuntimePlanSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-local-runtime-plan-'));
   try {
+    const env = durableBackendE2ePreflightEnv(tempDirectory, {
+      API_BASE_URL: 'http://127.0.0.1:3000',
+    });
     const result = runRunnerJsonPlanSmoke(
       'durable-backend-e2e-loop',
-      durableBackendE2ePreflightEnv(tempDirectory, {
-        API_BASE_URL: 'http://127.0.0.1:3000',
-      }),
+      env,
     );
     if (result.exitCode !== 0) {
       violations.push(`${contract.runnerFile}: runner local runtime plan smoke must produce a JSON plan: ${smokeOutputSnippet(result.output)}`);
@@ -2334,8 +2336,47 @@ function validateRunnerLocalRuntimePlanSmoke() {
     if (plan.blockedInvalidInputJobCount !== 0) {
       violations.push(`${contract.runnerFile}: local runtime plan must not count local runtime URLs as generic invalid input`);
     }
+
+    const handoffResult = runRunnerTextHandoffSmoke('durable-backend-e2e-loop', env);
+    if (handoffResult.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner local runtime handoff smoke must produce text handoff: ${smokeOutputSnippet(handoffResult.output)}`);
+      return;
+    }
+    for (const expectedText of ['Blocked by local runtime env: 1', 'Readiness: blocked_local_runtime_env']) {
+      if (!handoffResult.output.includes(expectedText)) {
+        violations.push(`${contract.runnerFile}: local runtime handoff smoke must include "${expectedText}"`);
+      }
+    }
   } finally {
     rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function runRunnerTextHandoffSmoke(jobId, env) {
+  try {
+    const output = execFileSync(
+      process.execPath,
+      [
+        contract.runnerFile,
+        '--handoff',
+        '--job',
+        jobId,
+      ],
+      {
+        env: {
+          PATH: process.env.PATH ?? '',
+          ...env,
+        },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    );
+    return { exitCode: 0, output };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
   }
 }
 
