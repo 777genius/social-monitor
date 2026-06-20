@@ -15,6 +15,7 @@ const backendOpsPath = 'ops/release/backend-ops-readiness-contract.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
 const dockerStagingReliabilityCapturePath = 'scripts/capture-docker-staging-reliability-evidence.mjs';
+const dockerDurableBackendE2eCapturePath = 'scripts/capture-docker-durable-backend-e2e-loop.mjs';
 
 const evidence = readJson(evidencePath);
 const packageJson = readJson(packagePath);
@@ -1079,6 +1080,9 @@ function requirePackageWiring() {
   if (!String(scripts['capture:docker-staging-reliability-evidence'] ?? '').includes(dockerStagingReliabilityCapturePath)) {
     violations.push(`${packagePath}: capture:docker-staging-reliability-evidence must run ${dockerStagingReliabilityCapturePath}`);
   }
+  if (!String(scripts['capture:docker-durable-backend-e2e-loop'] ?? '').includes(dockerDurableBackendE2eCapturePath)) {
+    violations.push(`${packagePath}: capture:docker-durable-backend-e2e-loop must run ${dockerDurableBackendE2eCapturePath}`);
+  }
 
   if (!new Set(backendSafe.backendScripts ?? []).has(gateScript)) {
     violations.push(`${backendSafePath}: backend-safe verify must include ${gateScript}`);
@@ -1099,6 +1103,23 @@ function requireCaptureScriptWiring() {
   ]) {
     if (!captureSource.includes(marker)) {
       violations.push(`${dockerStagingReliabilityCapturePath}: capture must include ${marker}`);
+    }
+  }
+
+  const e2eCaptureSource = readFileSync(dockerDurableBackendE2eCapturePath, 'utf8');
+  for (const marker of [
+    'writeEvidenceEnvFile',
+    'validateEvidenceEnvFilePath',
+    'DURABLE_BACKEND_E2E_ENV_PATH',
+    'DURABLE_BACKEND_E2E_ARTIFACT_PATH',
+    'API_BASE_URL',
+    'STAGING_ENVIRONMENT_ID',
+    'BACKEND_IMAGE_DIGEST',
+    'must not write release evidence into the git workspace',
+    'must not point to fixture or example paths',
+  ]) {
+    if (!e2eCaptureSource.includes(marker)) {
+      violations.push(`${dockerDurableBackendE2eCapturePath}: capture must include ${marker}`);
     }
   }
 }
