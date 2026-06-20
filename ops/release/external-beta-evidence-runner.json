@@ -212,6 +212,7 @@
         "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
         "SOURCE_LIVE_ENVIRONMENT_ID",
         "BACKEND_IMAGE_DIGEST",
+        "BACKEND_GIT_COMMIT_SHA",
         "SOURCE_LIVE_OPERATOR"
       ],
       "optionalEnv": [
@@ -259,6 +260,7 @@
         "REDDIT_LIVE_EVIDENCE_PATH",
         "SOURCE_LIVE_ENVIRONMENT_ID",
         "BACKEND_IMAGE_DIGEST",
+        "BACKEND_GIT_COMMIT_SHA",
         "SOURCE_LIVE_OPERATOR"
       ],
       "optionalEnv": [

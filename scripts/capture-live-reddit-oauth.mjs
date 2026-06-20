@@ -42,6 +42,7 @@ async function main() {
     REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: lifecycleEvidenceTarget,
     SOURCE_LIVE_ENVIRONMENT_ID: requiredEnv('SOURCE_LIVE_ENVIRONMENT_ID'),
     BACKEND_IMAGE_DIGEST: requiredEnv('BACKEND_IMAGE_DIGEST'),
+    BACKEND_GIT_COMMIT_SHA: requiredCommitShaEnv('BACKEND_GIT_COMMIT_SHA'),
     SOURCE_LIVE_OPERATOR: requiredEnv('SOURCE_LIVE_OPERATOR'),
   };
 
@@ -76,6 +77,7 @@ async function main() {
     ['REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH', lifecycleEvidenceTarget],
     ['SOURCE_LIVE_ENVIRONMENT_ID', env.SOURCE_LIVE_ENVIRONMENT_ID],
     ['BACKEND_IMAGE_DIGEST', env.BACKEND_IMAGE_DIGEST],
+    ['BACKEND_GIT_COMMIT_SHA', env.BACKEND_GIT_COMMIT_SHA],
     ['SOURCE_LIVE_OPERATOR', env.SOURCE_LIVE_OPERATOR],
   ], {
     usageLines: [
@@ -142,6 +144,15 @@ function requiredEnv(name) {
   }
   if (identityEnvNames.includes(name) && isForbiddenEvidenceIdentity(value)) {
     throw new Error(`${name} must not use local, fixture, example, mock or test identifiers`);
+  }
+
+  return value;
+}
+
+function requiredCommitShaEnv(name) {
+  const value = requiredEnv(name);
+  if (!/^[0-9a-f]{40}$/.test(value)) {
+    throw new Error(`${name} must be a full 40-character lowercase git commit SHA`);
   }
 
   return value;

@@ -38,6 +38,11 @@
       "env": ["BACKEND_IMAGE_DIGEST"]
     },
     {
+      "inputClass": "git_commit_sha",
+      "description": "Full lowercase 40-character backend git commit SHA for the promoted release build.",
+      "env": ["BACKEND_GIT_COMMIT_SHA"]
+    },
+    {
       "inputClass": "https_url",
       "description": "HTTPS endpoint used only by staging/live evidence collection.",
       "env": [

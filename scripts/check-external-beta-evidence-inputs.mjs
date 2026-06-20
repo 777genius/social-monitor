@@ -129,6 +129,9 @@ function validateClassifications() {
   if (classifications.get('BACKEND_IMAGE_DIGEST') !== 'image_digest') {
     violations.push(`${matrixPath}: BACKEND_IMAGE_DIGEST must be classified as image_digest`);
   }
+  if (classifications.get('BACKEND_GIT_COMMIT_SHA') !== 'git_commit_sha') {
+    violations.push(`${matrixPath}: BACKEND_GIT_COMMIT_SHA must be classified as git_commit_sha`);
+  }
   if (classifications.get('DATABASE_URL') !== 'postgres_url') {
     violations.push(`${matrixPath}: DATABASE_URL must be classified as postgres_url`);
   }

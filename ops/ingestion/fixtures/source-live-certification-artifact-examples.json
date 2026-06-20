@@ -9,6 +9,7 @@
       "artifactId": "live-open-connectors-evidence-v1",
       "environmentId": "staging-beta-a",
       "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000101",
+      "commitSha": "1111111111111111111111111111111111111111",
       "operator": "source-owner",
       "sampledAt": "2026-06-18T10:00:00.000Z",
       "provenance": {
@@ -166,6 +167,7 @@
       "artifactId": "live-reddit-oauth-evidence-v1",
       "environmentId": "staging-beta-a",
       "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000102",
+      "commitSha": "2222222222222222222222222222222222222222",
       "operator": "source-owner",
       "sampledAt": "2026-06-18T10:05:00.000Z",
       "provenance": {

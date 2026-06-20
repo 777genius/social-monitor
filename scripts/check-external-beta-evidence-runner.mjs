@@ -76,6 +76,7 @@ const requiredJobEnvNames = new Map([
       'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH',
       'SOURCE_LIVE_ENVIRONMENT_ID',
       'BACKEND_IMAGE_DIGEST',
+      'BACKEND_GIT_COMMIT_SHA',
       'SOURCE_LIVE_OPERATOR',
     ],
   ],
@@ -87,6 +88,7 @@ const requiredJobEnvNames = new Map([
       'REDDIT_LIVE_EVIDENCE_PATH',
       'SOURCE_LIVE_ENVIRONMENT_ID',
       'BACKEND_IMAGE_DIGEST',
+      'BACKEND_GIT_COMMIT_SHA',
       'SOURCE_LIVE_OPERATOR',
     ],
   ],
@@ -662,6 +664,7 @@ function validateRunnerImplementation() {
     'must match ${rule.envName}',
     'STAGING_ENVIRONMENT_ID',
     'BACKEND_IMAGE_DIGEST',
+    'BACKEND_GIT_COMMIT_SHA',
     'SOURCE_LIVE_ENVIRONMENT_ID',
     'SOURCE_LIVE_OPERATOR',
     'STAGING_SECRET_STORE_ID',
@@ -819,6 +822,17 @@ function validateRunnerNegativeSmokes() {
         environment: {
           ...base.environment,
           imageDigest: wrongImageDigest,
+        },
+      }),
+    },
+    {
+      label: 'environment commit sha mismatch',
+      expectedOutput: 'commitSha must match BACKEND_GIT_COMMIT_SHA',
+      artifact: (base) => ({
+        ...base,
+        environment: {
+          ...base.environment,
+          commitSha: '0'.repeat(40),
         },
       }),
     },
@@ -2042,6 +2056,13 @@ function validateRunnerNegativeRedditArtifactSmokes() {
         artifact.providerResults = [];
       },
     },
+    {
+      label: 'reddit live commit sha mismatch',
+      expectedOutput: 'commitSha must match BACKEND_GIT_COMMIT_SHA',
+      mutateLive: (artifact) => {
+        artifact.commitSha = '0'.repeat(40);
+      },
+    },
   ];
 
   for (const scenario of scenarios) {
@@ -2140,8 +2161,10 @@ function runRunnerReleaseDeployArtifactSmoke(artifactPath) {
 
 function runRunnerArtifactSmoke(artifactPath) {
   const imageDigest = `sha256:${'a'.repeat(64)}`;
+  const commitSha = 'a'.repeat(40);
   return runRunnerValidateArtifactsSmoke('live-open-connectors', {
     BACKEND_IMAGE_DIGEST: imageDigest,
+    BACKEND_GIT_COMMIT_SHA: commitSha,
     LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: artifactPath,
     SOURCE_LIVE_ENVIRONMENT_ID: 'source-prod-alpha',
     SOURCE_LIVE_OPERATOR: 'release-operator-1',
@@ -2150,8 +2173,10 @@ function runRunnerArtifactSmoke(artifactPath) {
 
 function runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath) {
   const imageDigest = `sha256:${'b'.repeat(64)}`;
+  const commitSha = 'b'.repeat(40);
   return runRunnerValidateArtifactsSmoke('live-reddit-oauth', {
     BACKEND_IMAGE_DIGEST: imageDigest,
+    BACKEND_GIT_COMMIT_SHA: commitSha,
     REDDIT_ACCESS_TOKEN: 'reddit-live-value-1234567890',
     REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: lifecyclePath,
     REDDIT_LIVE_EVIDENCE_PATH: liveArtifactPath,
@@ -2533,6 +2558,7 @@ function rabbitmqDrillPreflightEnv(tempDirectory, overrides = {}) {
 function redditOAuthPreflightEnv(tempDirectory, overrides = {}) {
   return {
     BACKEND_IMAGE_DIGEST: `sha256:${'e'.repeat(64)}`,
+    BACKEND_GIT_COMMIT_SHA: 'e'.repeat(40),
     REDDIT_ACCESS_TOKEN: 'reddit-live-access-value-1234567890',
     REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: join(tempDirectory, 'reddit-credential-lifecycle.json'),
     REDDIT_LIVE_EVIDENCE_PATH: join(tempDirectory, 'reddit-live-evidence.json'),
@@ -2604,6 +2630,7 @@ function completeExternalEvidencePreflightEnv(tempDirectory) {
   return {
     API_BASE_URL: 'https://api.staging.social-monitor.invalid',
     BACKEND_IMAGE_DIGEST: `sha256:${'f'.repeat(64)}`,
+    BACKEND_GIT_COMMIT_SHA: 'f'.repeat(40),
     DATABASE_URL: 'postgresql://release:...@db.staging.social-monitor.invalid:5432/social_monitor',
     DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(tempDirectory, 'durable-backend-e2e.json'),
     DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: join(tempDirectory, 'durable-runtime-selector.json'),
@@ -2641,12 +2668,14 @@ function smokeOutputSnippet(output) {
 function liveOpenConnectorsArtifact() {
   const now = new Date().toISOString();
   const imageDigest = `sha256:${'a'.repeat(64)}`;
+  const commitSha = 'a'.repeat(40);
   return {
     schemaVersion: 1,
     format: 'source-live-provider-evidence-v1',
     artifactId: 'live-open-connectors-evidence-v1',
     environmentId: 'source-prod-alpha',
     imageDigest,
+    commitSha,
     operator: 'release-operator-1',
     sampledAt: now,
     provenance: {
@@ -2664,6 +2693,7 @@ function liveOpenConnectorsArtifact() {
     environment: {
       environmentId: 'source-prod-alpha',
       imageDigest,
+      commitSha,
       operator: 'release-operator-1',
       sampledAt: now,
     },
@@ -2774,12 +2804,14 @@ function liveOpenConnectorsArtifact() {
 function redditCredentialLifecycleArtifact() {
   const now = new Date().toISOString();
   const imageDigest = `sha256:${'b'.repeat(64)}`;
+  const commitSha = 'b'.repeat(40);
   return {
     schemaVersion: 1,
     format: 'reddit-credential-lifecycle-redacted-v1',
     artifactId: 'reddit-credential-lifecycle-redacted-positive-smoke',
     environmentId: 'source-reddit-alpha',
     imageDigest,
+    commitSha,
     operator: 'source-operator-1',
     sampledAt: now,
     provenance: {
@@ -2819,12 +2851,14 @@ function redditCredentialLifecycleOperation(operation, observedAt, summary) {
 function liveRedditArtifact(lifecycleArtifactSha256) {
   const now = new Date().toISOString();
   const imageDigest = `sha256:${'b'.repeat(64)}`;
+  const commitSha = 'b'.repeat(40);
   return {
     schemaVersion: 1,
     format: 'source-live-provider-evidence-v1',
     artifactId: 'live-reddit-oauth-evidence-v1',
     environmentId: 'source-reddit-alpha',
     imageDigest,
+    commitSha,
     operator: 'source-operator-1',
     sampledAt: now,
     provenance: {
@@ -2842,6 +2876,7 @@ function liveRedditArtifact(lifecycleArtifactSha256) {
     environment: {
       environmentId: 'source-reddit-alpha',
       imageDigest,
+      commitSha,
       operator: 'source-operator-1',
       sampledAt: now,
     },

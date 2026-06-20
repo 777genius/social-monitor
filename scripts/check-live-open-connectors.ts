@@ -26,6 +26,7 @@ const liveArtifactFormat = 'source-live-provider-evidence-v1';
 const liveEvidencePathEnv = 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH';
 const environmentIdEnv = 'SOURCE_LIVE_ENVIRONMENT_ID';
 const imageDigestEnv = 'BACKEND_IMAGE_DIGEST';
+const commitShaEnv = 'BACKEND_GIT_COMMIT_SHA';
 const operatorEnv = 'SOURCE_LIVE_OPERATOR';
 const timeoutMs = 10_000;
 const liveRssFeedUrls = [
@@ -371,6 +372,7 @@ const writeEvidenceIfRequested = (evidence: {
     artifactId: evidence.artifactId,
     environmentId: readRequiredEnv(environmentIdEnv),
     imageDigest: readRequiredImageDigest(),
+    commitSha: readRequiredCommitSha(),
     operator: readRequiredEnv(operatorEnv),
     sampledAt: evidence.sampledAt,
     provenance: {
@@ -405,6 +407,12 @@ const readRequiredImageDigest = (): string => {
   const imageDigest = readRequiredEnv(imageDigestEnv);
   assert(/^sha256:[0-9a-f]{64}$/.test(imageDigest), `${imageDigestEnv} must be an immutable sha256 digest`);
   return imageDigest;
+};
+
+const readRequiredCommitSha = (): string => {
+  const commitSha = readRequiredEnv(commitShaEnv);
+  assert(/^[0-9a-f]{40}$/.test(commitSha), `${commitShaEnv} must be a full 40-character lowercase git commit SHA`);
+  return commitSha;
 };
 
 void main().catch((error) => {

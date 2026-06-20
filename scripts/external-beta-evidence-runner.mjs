@@ -867,6 +867,10 @@ function validateEvidenceValueEnv(job, missingEnvSet, violations, options = {}) 
       violations.push(`${job.jobId}: env ${envName} must be an immutable sha256 image digest`);
       continue;
     }
+    if (envName === 'BACKEND_GIT_COMMIT_SHA' && !/^[0-9a-f]{40}$/.test(value)) {
+      violations.push(`${job.jobId}: env ${envName} must be a full 40-character lowercase git commit SHA`);
+      continue;
+    }
     if (envName === 'API_BASE_URL') {
       validateHttpsEvidenceUrlEnv(job, envName, value, violations);
       continue;
@@ -1579,6 +1583,11 @@ function artifactEnvConsistencyRules() {
       envName: 'BACKEND_IMAGE_DIGEST',
       label: 'imageDigest',
       paths: [['imageDigest'], ['environment', 'imageDigest']],
+    },
+    {
+      envName: 'BACKEND_GIT_COMMIT_SHA',
+      label: 'commitSha',
+      paths: [['commitSha'], ['environment', 'commitSha']],
     },
     {
       envName: 'API_BASE_URL',

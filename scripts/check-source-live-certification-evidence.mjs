@@ -310,7 +310,7 @@ function validateLiveSmokeScripts() {
   if (!liveOpenCaptureScript.includes('LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH')) {
     violations.push(`${liveOpenCaptureScriptPath}: live open connector capture must write a credentialless evidence env handoff`);
   }
-  for (const marker of ['writeEvidenceEnvFile', 'validateEvidenceEnvFilePath', 'validateEvidenceJsonFilePath', 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', 'SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'SOURCE_LIVE_OPERATOR']) {
+  for (const marker of ['writeEvidenceEnvFile', 'validateEvidenceEnvFilePath', 'validateEvidenceJsonFilePath', 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', 'SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'BACKEND_GIT_COMMIT_SHA', 'SOURCE_LIVE_OPERATOR']) {
     if (!liveOpenCaptureScript.includes(marker)) {
       violations.push(`${liveOpenCaptureScriptPath}: live open connector env handoff must include ${marker}`);
     }
@@ -327,7 +327,7 @@ function validateLiveSmokeScripts() {
   if (!redditLiveCaptureScript.includes('REDDIT_LIVE_EVIDENCE_ENV_PATH')) {
     violations.push(`${redditLiveCaptureScriptPath}: live Reddit OAuth capture must write an evidence env handoff`);
   }
-  for (const marker of ['writeEvidenceEnvFile', 'validateEvidenceEnvFilePath', 'validateEvidenceJsonFilePath', 'REDDIT_LIVE_EVIDENCE_PATH', 'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH', 'SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'SOURCE_LIVE_OPERATOR']) {
+  for (const marker of ['writeEvidenceEnvFile', 'validateEvidenceEnvFilePath', 'validateEvidenceJsonFilePath', 'REDDIT_LIVE_EVIDENCE_PATH', 'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH', 'SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'BACKEND_GIT_COMMIT_SHA', 'SOURCE_LIVE_OPERATOR']) {
     if (!redditLiveCaptureScript.includes(marker)) {
       violations.push(`${redditLiveCaptureScriptPath}: live Reddit OAuth env handoff must include ${marker}`);
     }
@@ -395,6 +395,7 @@ function validateCaptureOutputPathGuards() {
     LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH: '/tmp/social-monitor-live-open-connectors.env',
     SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
     BACKEND_IMAGE_DIGEST: `sha256:${'a'.repeat(64)}`,
+    BACKEND_GIT_COMMIT_SHA: 'a'.repeat(40),
     SOURCE_LIVE_OPERATOR: 'source-owner-1',
   });
   if (openResult.exitCode === 0) {
@@ -414,6 +415,7 @@ function validateCaptureOutputPathGuards() {
     REDDIT_LIVE_EVIDENCE_ENV_PATH: '/tmp/social-monitor-live-reddit-oauth.env',
     SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
     BACKEND_IMAGE_DIGEST: `sha256:${'b'.repeat(64)}`,
+    BACKEND_GIT_COMMIT_SHA: 'b'.repeat(40),
     SOURCE_LIVE_OPERATOR: 'source-owner-1',
   });
   if (redditResult.exitCode === 0) {
@@ -433,6 +435,7 @@ function validateCaptureOutputPathGuards() {
     REDDIT_LIVE_EVIDENCE_ENV_PATH: '/tmp/social-monitor-live-reddit-oauth.env',
     SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
     BACKEND_IMAGE_DIGEST: `sha256:${'b'.repeat(64)}`,
+    BACKEND_GIT_COMMIT_SHA: 'b'.repeat(40),
     SOURCE_LIVE_OPERATOR: 'source-owner-1',
   });
   if (redditLifecycleResult.exitCode === 0) {
@@ -519,6 +522,7 @@ function runLiveRedditSmokeExpectingFailure(env) {
           REDDIT_LIVE_EVIDENCE_PATH: '/tmp/social-monitor-live-reddit-direct-path-guard.json',
           SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
           BACKEND_IMAGE_DIGEST: `sha256:${'c'.repeat(64)}`,
+          BACKEND_GIT_COMMIT_SHA: 'c'.repeat(40),
           SOURCE_LIVE_OPERATOR: 'source-owner-1',
           ...env,
         },
@@ -565,6 +569,7 @@ function validatePassedArtifactContentSchema() {
     'artifactId',
     'environmentId',
     'imageDigest',
+    'commitSha',
     'operator',
     'sampledAt',
     'provenance',
@@ -680,7 +685,7 @@ function validateLiveProviderEvidence() {
 
 function validateProviderEvidenceFields(provider) {
   if (provider.status === 'pending_live_evidence') {
-    for (const field of ['stagingArtifactPath', 'environmentId', 'imageDigest', 'sampledAt']) {
+    for (const field of ['stagingArtifactPath', 'environmentId', 'imageDigest', 'commitSha', 'sampledAt']) {
       if (provider[field] !== null) {
         violations.push(`${evidencePath}: pending provider "${provider.providerKey}" must keep ${field}=null`);
       }
@@ -696,6 +701,9 @@ function validateProviderEvidenceFields(provider) {
   }
   if (!/^sha256:[0-9a-f]{64}$/.test(String(provider.imageDigest ?? ''))) {
     violations.push(`${evidencePath}: passed provider "${provider.providerKey}" must define immutable imageDigest`);
+  }
+  if (!/^[0-9a-f]{40}$/.test(String(provider.commitSha ?? ''))) {
+    violations.push(`${evidencePath}: passed provider "${provider.providerKey}" must define full commitSha`);
   }
   validatePassedProviderArtifact(provider);
 }
@@ -747,6 +755,7 @@ function validatePassedProviderArtifact(provider) {
     label: `provider "${provider.providerKey}" stagingArtifactPath`,
     expectedEnvironmentId: provider.environmentId,
     expectedImageDigest: provider.imageDigest,
+    expectedCommitSha: provider.commitSha,
     expectedSampledAt: provider.sampledAt,
     requiredProviders: new Set([provider.providerKey]),
   });
@@ -802,12 +811,14 @@ function validateLiveEvidenceEnvArtifact(envVar, requiredProviders) {
 
   const expectedEnvironmentId = requireEnvWhenArtifactIsPresent(envVar, 'SOURCE_LIVE_ENVIRONMENT_ID');
   const expectedImageDigest = requireEnvWhenArtifactIsPresent(envVar, 'BACKEND_IMAGE_DIGEST');
+  const expectedCommitSha = requireEnvWhenArtifactIsPresent(envVar, 'BACKEND_GIT_COMMIT_SHA');
   const expectedOperator = requireEnvWhenArtifactIsPresent(envVar, 'SOURCE_LIVE_OPERATOR');
   const artifact = readEvidenceArtifact(artifactPath, `${envVar} (${artifactPath})`);
   validateLiveProviderArtifact(artifact, {
     label: `${envVar} (${artifactPath})`,
     expectedEnvironmentId,
     expectedImageDigest,
+    expectedCommitSha,
     expectedOperator,
     requiredProviders,
   });
@@ -839,6 +850,10 @@ function validateRedditCredentialLifecycleEnvArtifact() {
     'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH',
     'BACKEND_IMAGE_DIGEST',
   );
+  const expectedCommitSha = requireEnvWhenArtifactIsPresent(
+    'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH',
+    'BACKEND_GIT_COMMIT_SHA',
+  );
   const expectedOperator = requireEnvWhenArtifactIsPresent(
     'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH',
     'SOURCE_LIVE_OPERATOR',
@@ -855,6 +870,7 @@ function validateRedditCredentialLifecycleEnvArtifact() {
       label: `REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH (${lifecyclePath})`,
       expectedEnvironmentId,
       expectedImageDigest,
+      expectedCommitSha,
       expectedOperator,
     });
   }
@@ -898,13 +914,16 @@ function validateLiveProviderArtifact(artifact, options) {
   if (artifact.format !== liveArtifactFormat) {
     violations.push(`${label}: format must be ${liveArtifactFormat}`);
   }
-  for (const field of ['artifactId', 'environmentId', 'imageDigest', 'operator', 'sampledAt']) {
+  for (const field of ['artifactId', 'environmentId', 'imageDigest', 'commitSha', 'operator', 'sampledAt']) {
     if (typeof artifact[field] !== 'string' || artifact[field].trim().length === 0) {
       violations.push(`${label}: ${field} must be a non-empty string`);
     }
   }
   if (!/^sha256:[0-9a-f]{64}$/.test(String(artifact.imageDigest ?? ''))) {
     violations.push(`${label}: imageDigest must be immutable sha256 digest`);
+  }
+  if (!/^[0-9a-f]{40}$/.test(String(artifact.commitSha ?? ''))) {
+    violations.push(`${label}: commitSha must be a full git commit SHA`);
   }
   if (!isIsoDateString(artifact.sampledAt)) {
     violations.push(`${label}: sampledAt must be an ISO timestamp`);
@@ -923,6 +942,9 @@ function validateLiveProviderArtifact(artifact, options) {
   }
   if (options.expectedImageDigest !== undefined && artifact.imageDigest !== options.expectedImageDigest) {
     violations.push(`${label}: imageDigest must match liveProviderEvidence entry`);
+  }
+  if (options.expectedCommitSha !== undefined && artifact.commitSha !== options.expectedCommitSha) {
+    violations.push(`${label}: commitSha must match liveProviderEvidence entry`);
   }
   if (options.expectedSampledAt !== undefined && artifact.sampledAt !== options.expectedSampledAt) {
     violations.push(`${label}: sampledAt must match liveProviderEvidence entry`);
@@ -966,6 +988,7 @@ function validateRedditCredentialLifecycleSchema(schema) {
       'artifactId',
       'environmentId',
       'imageDigest',
+      'commitSha',
       'operator',
       'sampledAt',
       'provenance',
@@ -976,7 +999,7 @@ function validateRedditCredentialLifecycleSchema(schema) {
   );
   requireFieldListCoverage(
     schema.requiredEnv,
-    ['SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'SOURCE_LIVE_OPERATOR'],
+    ['SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'BACKEND_GIT_COMMIT_SHA', 'SOURCE_LIVE_OPERATOR'],
     `${label}.requiredEnv`,
   );
   requireFieldListCoverage(schema.requiredOperations, [...requiredRedditLifecycleOperations], `${label}.requiredOperations`);
@@ -1041,13 +1064,16 @@ function validateRedditCredentialLifecycleArtifact(artifact, options) {
   if (artifact.format !== redditCredentialLifecycleFormat) {
     violations.push(`${label}: format must be ${redditCredentialLifecycleFormat}`);
   }
-  for (const field of ['artifactId', 'environmentId', 'imageDigest', 'operator', 'sampledAt']) {
+  for (const field of ['artifactId', 'environmentId', 'imageDigest', 'commitSha', 'operator', 'sampledAt']) {
     if (typeof artifact[field] !== 'string' || artifact[field].trim().length === 0) {
       violations.push(`${label}: ${field} must be a non-empty string`);
     }
   }
   if (!/^sha256:[0-9a-f]{64}$/.test(String(artifact.imageDigest ?? ''))) {
     violations.push(`${label}: imageDigest must be immutable sha256 digest`);
+  }
+  if (!/^[0-9a-f]{40}$/.test(String(artifact.commitSha ?? ''))) {
+    violations.push(`${label}: commitSha must be a full git commit SHA`);
   }
   if (!isIsoDateString(artifact.sampledAt)) {
     violations.push(`${label}: sampledAt must be an ISO timestamp`);
@@ -1066,6 +1092,9 @@ function validateRedditCredentialLifecycleArtifact(artifact, options) {
   }
   if (options.expectedImageDigest !== undefined && artifact.imageDigest !== options.expectedImageDigest) {
     violations.push(`${label}: imageDigest must match BACKEND_IMAGE_DIGEST`);
+  }
+  if (options.expectedCommitSha !== undefined && artifact.commitSha !== options.expectedCommitSha) {
+    violations.push(`${label}: commitSha must match BACKEND_GIT_COMMIT_SHA`);
   }
   if (options.expectedOperator !== undefined && artifact.operator !== options.expectedOperator) {
     violations.push(`${label}: operator must match SOURCE_LIVE_OPERATOR`);
@@ -1359,6 +1388,11 @@ function validateEnvArtifactValidation(validationRules) {
       if (rule.sha256MustMatchSignal !== 'reddit-credential-lifecycle') {
         violations.push(`${evidencePath}: ${label}.sha256MustMatchSignal must be reddit-credential-lifecycle`);
       }
+      for (const envVar of ['SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'BACKEND_GIT_COMMIT_SHA', 'SOURCE_LIVE_OPERATOR']) {
+        if (!rule.requiredEnv?.includes(envVar)) {
+          violations.push(`${evidencePath}: ${label}.requiredEnv must include ${envVar}`);
+        }
+      }
       continue;
     }
 
@@ -1372,7 +1406,7 @@ function validateEnvArtifactValidation(validationRules) {
     if (rule.format !== liveArtifactFormat) {
       violations.push(`${evidencePath}: ${label}.format must be ${liveArtifactFormat}`);
     }
-    for (const envVar of ['SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'SOURCE_LIVE_OPERATOR']) {
+    for (const envVar of ['SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'BACKEND_GIT_COMMIT_SHA', 'SOURCE_LIVE_OPERATOR']) {
       if (!rule.requiredEnv?.includes(envVar)) {
         violations.push(`${evidencePath}: ${label}.requiredEnv must include ${envVar}`);
       }

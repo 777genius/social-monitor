@@ -37,6 +37,7 @@
       "artifactId",
       "environmentId",
       "imageDigest",
+      "commitSha",
       "operator",
       "sampledAt",
       "provenance",
@@ -78,7 +79,7 @@
         "providerResults.providerKey must match the passed liveProviderEvidence providerKey",
         "signalResults must include exactly every required signal for the provider",
         "signalResults.evidence must be a signal-specific redacted object with required fields",
-        "environmentId, imageDigest and sampledAt must match the liveProviderEvidence entry",
+        "environmentId, imageDigest, commitSha and sampledAt must match the liveProviderEvidence entry",
         "artifact JSON must not include tokens, credential values, private network URLs or raw provider payloads"
       ]
     },
@@ -94,6 +95,7 @@
         "requiredEnv": [
           "SOURCE_LIVE_ENVIRONMENT_ID",
           "BACKEND_IMAGE_DIGEST",
+          "BACKEND_GIT_COMMIT_SHA",
           "SOURCE_LIVE_OPERATOR"
         ]
       },
@@ -106,6 +108,7 @@
         "requiredEnv": [
           "SOURCE_LIVE_ENVIRONMENT_ID",
           "BACKEND_IMAGE_DIGEST",
+          "BACKEND_GIT_COMMIT_SHA",
           "SOURCE_LIVE_OPERATOR"
         ]
       },
@@ -117,6 +120,7 @@
         "requiredEnv": [
           "SOURCE_LIVE_ENVIRONMENT_ID",
           "BACKEND_IMAGE_DIGEST",
+          "BACKEND_GIT_COMMIT_SHA",
           "SOURCE_LIVE_OPERATOR"
         ]
       }
@@ -130,6 +134,7 @@
         "artifactId",
         "environmentId",
         "imageDigest",
+        "commitSha",
         "operator",
         "sampledAt",
         "provenance",
@@ -139,6 +144,7 @@
       "requiredEnv": [
         "SOURCE_LIVE_ENVIRONMENT_ID",
         "BACKEND_IMAGE_DIGEST",
+        "BACKEND_GIT_COMMIT_SHA",
         "SOURCE_LIVE_OPERATOR"
       ],
       "provenanceRequirements": {
@@ -172,7 +178,7 @@
       ],
       "matchingRules": [
         "REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH must be a structured JSON artifact",
-        "environmentId, imageDigest and operator must match the promoted live evidence environment",
+        "environmentId, imageDigest, commitSha and operator must match the promoted live evidence environment",
         "artifact sha256 must match the reddit-credential-lifecycle signal in REDDIT_LIVE_EVIDENCE_PATH",
         "lifecycle operations must prove create, rotate, revoke and redacted-preview without credential values"
       ]
@@ -188,6 +194,7 @@
       "stagingArtifactPath": null,
       "environmentId": null,
       "imageDigest": null,
+      "commitSha": null,
       "sampledAt": null,
       "signals": [
         {
@@ -212,6 +219,7 @@
       "stagingArtifactPath": null,
       "environmentId": null,
       "imageDigest": null,
+      "commitSha": null,
       "sampledAt": null,
       "signals": [
         {
@@ -241,6 +249,7 @@
       "stagingArtifactPath": null,
       "environmentId": null,
       "imageDigest": null,
+      "commitSha": null,
       "sampledAt": null,
       "signals": [
         {
@@ -265,6 +274,7 @@
       "stagingArtifactPath": null,
       "environmentId": null,
       "imageDigest": null,
+      "commitSha": null,
       "sampledAt": null,
       "signals": [
         {
