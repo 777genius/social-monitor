@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
   shellQuote,
@@ -33,8 +33,10 @@ async function main() {
 
   try {
     writeFileSync(temporaryOutputPath, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+    chmodSync(temporaryOutputPath, 0o600);
     runSummaryFeedbackValidator(temporaryOutputPath);
     renameSync(temporaryOutputPath, outputTarget);
+    chmodSync(outputTarget, 0o600);
     runSummaryFeedbackValidator(outputTarget);
   } catch (error) {
     rmSync(temporaryOutputPath, { force: true });

@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 import amqp from 'amqplib';
@@ -543,6 +543,7 @@ function psql(containerId, database, sql) {
 function writeArtifact(path, artifact) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(path, 0o600);
 }
 
 function composeContainerId(service) {

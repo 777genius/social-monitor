@@ -693,6 +693,7 @@ function validateCaptureScriptWiring() {
     'API_BASE_URL',
     'BACKEND_IMAGE_DIGEST',
     'STAGING_ENVIRONMENT_ID',
+    'chmodSync',
   ]) {
     if (!captureScript.includes(marker)) {
       violations.push(`${captureScriptPath}: capture must include ${marker}`);

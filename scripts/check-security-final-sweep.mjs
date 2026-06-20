@@ -788,6 +788,7 @@ function validateCaptureHandoff() {
     'LOG_EXPORT_PATH',
     'METRICS_EXPORT_PATH',
     'PUBLIC_ERROR_EXPORT_PATH',
+    'chmodSync',
   ]) {
     if (!captureScriptSource.includes(marker)) {
       violations.push(`${captureScriptPath}: security final sweep env handoff must include ${marker}`);

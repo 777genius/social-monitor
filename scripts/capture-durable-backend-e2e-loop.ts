@@ -1,5 +1,5 @@
 import { createPrivateKey, randomUUID, sign as signJwt } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { Pool, type PoolClient } from 'pg';
@@ -130,6 +130,7 @@ async function main(): Promise<void> {
 
     mkdirSync(dirname(config.outputPath), { recursive: true });
     writeFileSync(config.outputPath, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+    chmodSync(config.outputPath, 0o600);
     console.log(config.outputPath);
   } finally {
     await pool.end();

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { get as httpGet } from 'node:http';
 import { get as httpsGet } from 'node:https';
 import { dirname, join } from 'node:path';
@@ -143,6 +143,7 @@ const artifact = {
 assertReadyPayloadMatchesArtifact(ready, artifact);
 mkdirSync(dirname(artifactTarget), { recursive: true });
 writeFileSync(artifactTarget, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+chmodSync(artifactTarget, 0o600);
 writeEvidenceEnvFile(envFileTarget, [
   ['DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH', artifactTarget],
   ['API_BASE_URL', apiBaseUrl],

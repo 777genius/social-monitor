@@ -135,6 +135,9 @@ function validateStaticWiring() {
   if (!captureSource.includes('mode: 0o600')) {
     violations.push(`${captureScriptPath}: bundle capture must write bundle evidence with private file permissions`);
   }
+  if (!captureSource.includes('chmodSync')) {
+    violations.push(`${captureScriptPath}: bundle capture must chmod bundle evidence after repeated writes`);
+  }
   if (!captureSource.includes("check:docker-backend-staging-evidence-bundle")) {
     violations.push(`${captureScriptPath}: bundle capture must self-validate the generated Docker bundle`);
   }

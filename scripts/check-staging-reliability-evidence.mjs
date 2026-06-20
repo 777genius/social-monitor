@@ -1108,6 +1108,7 @@ function requireCaptureScriptWiring() {
     'STAGING_ENVIRONMENT_ID',
     'BACKEND_IMAGE_DIGEST',
     'mode: 0o600',
+    'chmodSync',
   ]) {
     if (!captureSource.includes(marker)) {
       violations.push(`${dockerStagingReliabilityCapturePath}: capture must include ${marker}`);
@@ -1134,6 +1135,7 @@ function requireCaptureScriptWiring() {
   for (const marker of [
     'DURABLE_BACKEND_E2E_ARTIFACT_PATH',
     'mode: 0o600',
+    'chmodSync',
   ]) {
     if (!durableBackendE2eCaptureSource.includes(marker)) {
       violations.push(`${durableBackendE2eCapturePath}: capture must include ${marker}`);

@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { URL } from 'node:url';
 
@@ -118,8 +118,10 @@ const temporaryArtifactPath = `${artifactTarget}.${process.pid}.${Date.now()}.tm
 
 try {
   writeFileSync(temporaryArtifactPath, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(temporaryArtifactPath, 0o600);
   runReleaseArtifactValidator(temporaryArtifactPath);
   renameSync(temporaryArtifactPath, artifactTarget);
+  chmodSync(artifactTarget, 0o600);
   runReleaseArtifactValidator(artifactTarget);
 } catch (error) {
   rmSync(temporaryArtifactPath, { force: true });

@@ -9,6 +9,7 @@ const tempDirectory = mkdtempSync(join(tmpdir(), 'summary-feedback-sample-captur
 const violations = [];
 
 try {
+  validateCaptureScriptGuards();
   validatePositiveCapture();
   validateWorkspaceInputRejected();
   validateFixtureArtifactInputRejected();
@@ -24,6 +25,15 @@ if (violations.length > 0) {
 }
 
 console.log('Summary feedback sample capture OK');
+
+function validateCaptureScriptGuards() {
+  const captureSource = readFileSync(captureScript, 'utf8');
+  for (const marker of ['mode: 0o600', 'chmodSync']) {
+    if (!captureSource.includes(marker)) {
+      violations.push(`${captureScript}: capture must include ${marker}`);
+    }
+  }
+}
 
 function validatePositiveCapture() {
   const inputPath = join(tempDirectory, 'redacted-summary-feedback-input.json');

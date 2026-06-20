@@ -568,6 +568,7 @@ function validateCaptureScriptWiring() {
     'STAGING_ENVIRONMENT_ID',
     'BACKEND_IMAGE_DIGEST',
     'mode: 0o600',
+    'chmodSync',
   ]) {
     if (!captureSource.includes(marker)) {
       violations.push(`${dockerDurableRuntimeCapturePath}: capture must include ${marker}`);

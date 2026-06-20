@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 import {
@@ -224,6 +224,7 @@ function writeBundleSummary({ bundlePath, envFilePath, context, artifactPaths })
 
   mkdirSync(dirname(bundlePath), { recursive: true });
   writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(bundlePath, 0o600);
 }
 
 function writeBundleEnvFile({ envFilePath, env, artifactPaths }) {

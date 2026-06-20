@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 import {
@@ -167,6 +167,7 @@ const artifact = {
 };
 
 writeFileSync(securityFinalSweepTarget, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+chmodSync(securityFinalSweepTarget, 0o600);
 
 const env = {
   ...process.env,
@@ -204,6 +205,7 @@ function writeExport(path, document) {
   mkdirSync(dirname(path), { recursive: true });
   const content = `${JSON.stringify(document, null, 2)}\n`;
   writeFileSync(path, content, { mode: 0o600 });
+  chmodSync(path, 0o600);
   return {
     path,
     sha256: createHash('sha256').update(content).digest('hex'),
