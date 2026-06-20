@@ -1,13 +1,15 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { URL } from 'node:url';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath, URL } from 'node:url';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
   validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
+import { readPrivateEvidenceJsonFile } from './lib/evidence-env-file.mjs';
 
 const evidencePath = 'ops/drills/staging-reliability-evidence.json';
 const packagePath = 'package.json';
@@ -19,6 +21,7 @@ const baselinePath = 'ops/release/release-baseline-contract.json';
 const dockerStagingReliabilityCapturePath = 'scripts/capture-docker-staging-reliability-evidence.mjs';
 const dockerDurableBackendE2eCapturePath = 'scripts/capture-docker-durable-backend-e2e-loop.mjs';
 const durableBackendE2eCapturePath = 'scripts/capture-durable-backend-e2e-loop.ts';
+const currentScriptPath = fileURLToPath(import.meta.url);
 
 const evidence = readJson(evidencePath);
 const packageJson = readJson(packagePath);
@@ -472,6 +475,7 @@ requireExternalReadinessWiring();
 requireBaselineWiring();
 requireCaptureScriptWiring();
 validateCaptureOutputPathGuards();
+validateDirectArtifactPathGuards();
 
 if (violations.length > 0) {
   console.error(violations.join('\n'));
@@ -699,12 +703,15 @@ function validateEnvironmentArtifacts(signalsByArtifactId) {
     if (artifactPath === undefined) {
       continue;
     }
-    if (!existsSync(artifactPath)) {
-      violations.push(`${config.envVar}: must reference an existing staging reliability artifact`);
+    let rawContent;
+    try {
+      rawContent = readPrivateEvidenceJsonFile(artifactPath, config.envVar);
+    } catch (error) {
+      violations.push(error instanceof Error ? error.message : String(error));
       continue;
     }
 
-    const content = readArtifactContent({ path: artifactPath });
+    const content = readArtifactContent({ path: artifactPath }, { rawContent });
     if (content === undefined) {
       continue;
     }
@@ -801,9 +808,9 @@ function validateEnvArtifactValidation(validationRules) {
   }
 }
 
-function readArtifactContent(artifact) {
+function readArtifactContent(artifact, options = {}) {
   try {
-    const rawContent = readFileSync(artifact.path, 'utf8');
+    const rawContent = options.rawContent ?? readFileSync(artifact.path, 'utf8');
     validateNoSensitiveArtifactContent(rawContent, artifact.path);
     const content = JSON.parse(rawContent);
     if (!isRecord(content)) {
@@ -1141,6 +1148,17 @@ function requireCaptureScriptWiring() {
       violations.push(`${durableBackendE2eCapturePath}: capture must include ${marker}`);
     }
   }
+
+  const selfSource = readFileSync(currentScriptPath, 'utf8');
+  for (const marker of [
+    'readPrivateEvidenceJsonFile',
+    'validateDirectArtifactPathGuards',
+    '0600-style private file permissions',
+  ]) {
+    if (!selfSource.includes(marker)) {
+      violations.push(`${currentScriptPath}: direct staging artifact env path guard must include ${marker}`);
+    }
+  }
 }
 
 function validateCaptureOutputPathGuards() {
@@ -1213,6 +1231,72 @@ function runDurableBackendE2eCaptureExpectingFailure(env) {
     execFileSync(process.execPath, [dockerDurableBackendE2eCapturePath], {
       env: {
         ...process.env,
+        ...env,
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function validateDirectArtifactPathGuards() {
+  if (process.env.STAGING_RELIABILITY_DIRECT_PATH_GUARD_TEST === '1') {
+    return;
+  }
+
+  const requiredEnv = {
+    STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
+    BACKEND_IMAGE_DIGEST: `sha256:${'e'.repeat(64)}`,
+    API_BASE_URL: 'http://127.0.0.1:4000',
+  };
+
+  for (const config of requiredEnvArtifacts.values()) {
+    const workspaceArtifactPath = resolve(`${config.envVar.toLowerCase().replaceAll('_', '-')}-direct-workspace-output.json`);
+    const workspaceResult = runSelfExpectingFailure({
+      ...requiredEnv,
+      [config.envVar]: workspaceArtifactPath,
+    });
+    if (workspaceResult.exitCode === 0) {
+      violations.push(`check:staging-reliability-evidence must reject workspace ${config.envVar}`);
+    } else if (!workspaceResult.output.includes(`${config.envVar} must not write release evidence into the git workspace`)) {
+      violations.push(`check:staging-reliability-evidence workspace ${config.envVar} rejection must explain evidence path policy`);
+    }
+    if (existsSync(workspaceArtifactPath)) {
+      violations.push(`check:staging-reliability-evidence workspace ${config.envVar} rejection must not create ${workspaceArtifactPath}`);
+    }
+
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'staging-reliability-direct-'));
+    try {
+      const publicArtifactPath = join(tempDirectory, 'staging-reliability-artifact.json');
+      writeFileSync(publicArtifactPath, '{}\n', { mode: 0o600 });
+      chmodSync(publicArtifactPath, 0o644);
+      const publicModeResult = runSelfExpectingFailure({
+        ...requiredEnv,
+        [config.envVar]: publicArtifactPath,
+      });
+      if (publicModeResult.exitCode === 0) {
+        violations.push(`check:staging-reliability-evidence must reject public ${config.envVar} permissions`);
+      } else if (!publicModeResult.output.includes(`${config.envVar} must use 0600-style private file permissions`)) {
+        violations.push(`check:staging-reliability-evidence public ${config.envVar} rejection must explain private file mode policy`);
+      }
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+function runSelfExpectingFailure(env) {
+  try {
+    execFileSync(process.execPath, [currentScriptPath], {
+      env: {
+        ...process.env,
+        STAGING_RELIABILITY_DIRECT_PATH_GUARD_TEST: '1',
         ...env,
       },
       encoding: 'utf8',
