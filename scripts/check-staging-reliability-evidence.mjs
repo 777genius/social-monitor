@@ -287,6 +287,7 @@ const requiredBackendOpsDomains = [
   'mvp-loop',
 ];
 const requiredRealArtifactIdentityFields = ['environmentId', 'operator'];
+const forbiddenRealArtifactMarkerPattern = /(?:^|[-_:.\s])(example|fixture|synthetic|mock|test)(?:$|[-_:.\s])/i;
 const requiredSignalResultRequirementTexts = new Set([
   'every required signalId for the stagingArtifactId is present exactly once',
   'every signal result has status=passed',
@@ -296,6 +297,7 @@ const requiredSignalResultRequirementTexts = new Set([
   'every signal result evidence is an object matching signal-specific required fields',
   'artifact metadata matches the release evidence row',
   'real artifact environmentId and operator are not example, fixture, synthetic, mock or test identifiers',
+  'real artifact nested evidence values do not contain example, fixture, synthetic, mock or test markers',
 ]);
 const forbiddenArtifactFragments = [
   'bearer ',
@@ -593,6 +595,7 @@ function validatePassedArtifactContent(artifact, signals) {
   validateArtifactContentEnvelope(content, artifact.path, artifact.artifactId);
   validateRealArtifactIdentity(content, artifact.path);
   validateArtifactProvenance(content.provenance, artifact.path, { allowFixture: false });
+  validateNoRealArtifactFixtureMarkers(content, artifact.path);
   for (const field of ['artifactId', 'environmentId', 'imageDigest', 'operator', 'startedAt', 'completedAt']) {
     if (content[field] !== artifact[field]) {
       violations.push(`${artifact.path}: ${field} must match ${evidencePath} artifact metadata`);
@@ -719,6 +722,7 @@ function validateEnvironmentArtifacts(signalsByArtifactId) {
     const artifactLabel = `${config.envVar} (${artifactPath})`;
     validateArtifactContentEnvelope(content, artifactLabel, artifactId);
     validateArtifactProvenance(content.provenance, artifactLabel, { allowFixture: false });
+    validateNoRealArtifactFixtureMarkers(content, artifactLabel);
     validateEnvArtifactMetadata(content, config, artifactLabel);
     validateRedaction(content, artifactLabel);
     validateSignalResults(
@@ -767,6 +771,32 @@ function validateRealArtifactIdentity(content, label) {
     violations,
     realEvidenceLabel: 'real staging artifacts',
   });
+}
+
+function validateNoRealArtifactFixtureMarkers(value, label, path = []) {
+  if (typeof value === 'string') {
+    const marker = forbiddenRealArtifactMarkerPattern.exec(value);
+    if (marker !== null) {
+      const fieldPath = path.length === 0 ? '<root>' : path.join('.');
+      violations.push(`${label}: ${fieldPath} must not contain fixture marker "${marker[1]}"`);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      validateNoRealArtifactFixtureMarkers(item, label, [...path, `[${index}]`]);
+    }
+    return;
+  }
+
+  if (!isRecord(value)) {
+    return;
+  }
+
+  for (const [key, item] of Object.entries(value)) {
+    validateNoRealArtifactFixtureMarkers(item, label, [...path, key]);
+  }
 }
 
 function validateEnvArtifactValidation(validationRules) {

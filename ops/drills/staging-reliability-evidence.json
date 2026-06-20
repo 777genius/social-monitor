@@ -53,7 +53,8 @@
       "every signal result observedAt is inside artifact startedAt/completedAt window",
       "every signal result evidence is an object matching signal-specific required fields",
       "artifact metadata matches the release evidence row",
-      "real artifact environmentId and operator are not example, fixture, synthetic, mock or test identifiers"
+      "real artifact environmentId and operator are not example, fixture, synthetic, mock or test identifiers",
+      "real artifact nested evidence values do not contain example, fixture, synthetic, mock or test markers"
     ],
     "envArtifactValidation": [
       {

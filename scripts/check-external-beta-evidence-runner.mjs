@@ -1105,6 +1105,14 @@ function validateRunnerNegativeStagingReliabilityArtifactSmokes() {
       },
     },
     {
+      label: 'staging reliability nested fixture marker',
+      artifactId: 'rabbitmq-staging-drill-output',
+      expectedOutput: 'must not contain fixture marker "example"',
+      mutateArtifact: (artifact) => {
+        artifact.signalResults[0].evidence.messageId = 'msg-rabbitmq-confirm-example';
+      },
+    },
+    {
       label: 'staging reliability raw duplicate-key credential hidden by JSON parser',
       artifactId: 'rabbitmq-staging-drill-output',
       expectedOutput: 'sensitive literal fragment "bearer "',
