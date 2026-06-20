@@ -120,4 +120,19 @@ describe('ApiGatewayHealthReporter', () => {
       }),
     }));
   });
+
+  it('reports resolved beta delivery channels when the selector is omitted', () => {
+    const reporter = new ApiGatewayHealthReporter(
+      {
+        NODE_ENV: 'production',
+        SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+        DELIVERY_WEBHOOK_PROVIDER: 'http',
+      },
+      new FixedClock(new Date('2026-01-02T03:04:05.000Z')),
+      () => 3,
+      readinessProfiles,
+    );
+
+    expect(reporter.ready().runtime.providers.deliveryEnabledChannels).toBe('webhook');
+  });
 });

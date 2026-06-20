@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { resolveDeliveryEnabledChannels } from '@social-monitor/delivery/interfaces/rest/delivery-provider-tokens';
 import type { SourceReadinessProfile } from '@social-monitor/ingestion/ports';
 import { resolveRuntimeProfile } from '@social-monitor/platform-config';
 import type { Clock } from '@social-monitor/shared-kernel';
@@ -122,7 +123,7 @@ export class ApiGatewayHealthReporter {
         },
         providers: {
           deliveryWebhook: this.envMode('DELIVERY_WEBHOOK_PROVIDER', 'in-memory'),
-          deliveryEnabledChannels: this.envMode('DELIVERY_ENABLED_CHANNELS', 'default'),
+          deliveryEnabledChannels: resolveDeliveryEnabledChannels(this.env).join(','),
         },
       },
       capabilities: {
