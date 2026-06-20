@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
@@ -305,7 +307,7 @@ function validateLiveSmokeScripts() {
   if (!liveOpenCaptureScript.includes('LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH')) {
     violations.push(`${liveOpenCaptureScriptPath}: live open connector capture must write a credentialless evidence env handoff`);
   }
-  for (const marker of ['writeEvidenceEnvFile', 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', 'SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'SOURCE_LIVE_OPERATOR']) {
+  for (const marker of ['writeEvidenceEnvFile', 'validateEvidenceEnvFilePath', 'validateEvidenceJsonFilePath', 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', 'SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'SOURCE_LIVE_OPERATOR']) {
     if (!liveOpenCaptureScript.includes(marker)) {
       violations.push(`${liveOpenCaptureScriptPath}: live open connector env handoff must include ${marker}`);
     }
@@ -322,7 +324,7 @@ function validateLiveSmokeScripts() {
   if (!redditLiveCaptureScript.includes('REDDIT_LIVE_EVIDENCE_ENV_PATH')) {
     violations.push(`${redditLiveCaptureScriptPath}: live Reddit OAuth capture must write an evidence env handoff`);
   }
-  for (const marker of ['writeEvidenceEnvFile', 'REDDIT_LIVE_EVIDENCE_PATH', 'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH', 'SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'SOURCE_LIVE_OPERATOR']) {
+  for (const marker of ['writeEvidenceEnvFile', 'validateEvidenceEnvFilePath', 'validateEvidenceJsonFilePath', 'REDDIT_LIVE_EVIDENCE_PATH', 'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH', 'SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'SOURCE_LIVE_OPERATOR']) {
     if (!redditLiveCaptureScript.includes(marker)) {
       violations.push(`${redditLiveCaptureScriptPath}: live Reddit OAuth env handoff must include ${marker}`);
     }
@@ -354,6 +356,64 @@ function validateLiveSmokeScripts() {
         violations.push(`${scriptPath}: live smoke script must write evidence artifacts atomically with private temp files`);
       }
     }
+  }
+  validateCaptureOutputPathGuards();
+}
+
+function validateCaptureOutputPathGuards() {
+  const openWorkspaceArtifactPath = resolve('live-open-connectors-workspace-output.json');
+  const openResult = runCaptureExpectingFailure(liveOpenCaptureScriptPath, {
+    LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: openWorkspaceArtifactPath,
+    LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH: '/tmp/social-monitor-live-open-connectors.env',
+    SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
+    BACKEND_IMAGE_DIGEST: `sha256:${'a'.repeat(64)}`,
+    SOURCE_LIVE_OPERATOR: 'source-owner-1',
+  });
+  if (openResult.exitCode === 0) {
+    violations.push(`${liveOpenCaptureScriptPath}: capture must reject workspace LIVE_OPEN_CONNECTORS_EVIDENCE_PATH`);
+  } else if (!openResult.output.includes('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH must not write release evidence into the git workspace')) {
+    violations.push(`${liveOpenCaptureScriptPath}: workspace artifact path rejection must explain evidence path policy`);
+  }
+  if (existsSync(openWorkspaceArtifactPath)) {
+    violations.push(`${liveOpenCaptureScriptPath}: workspace artifact path rejection must not create ${openWorkspaceArtifactPath}`);
+  }
+
+  const redditWorkspaceArtifactPath = resolve('live-reddit-oauth-workspace-output.json');
+  const redditResult = runCaptureExpectingFailure(redditLiveCaptureScriptPath, {
+    REDDIT_ACCESS_TOKEN: 'reddit-live-access-token-for-path-guard',
+    REDDIT_LIVE_EVIDENCE_PATH: redditWorkspaceArtifactPath,
+    REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: '/tmp/social-monitor-reddit-credential-lifecycle.json',
+    REDDIT_LIVE_EVIDENCE_ENV_PATH: '/tmp/social-monitor-live-reddit-oauth.env',
+    SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
+    BACKEND_IMAGE_DIGEST: `sha256:${'b'.repeat(64)}`,
+    SOURCE_LIVE_OPERATOR: 'source-owner-1',
+  });
+  if (redditResult.exitCode === 0) {
+    violations.push(`${redditLiveCaptureScriptPath}: capture must reject workspace REDDIT_LIVE_EVIDENCE_PATH`);
+  } else if (!redditResult.output.includes('REDDIT_LIVE_EVIDENCE_PATH must not write release evidence into the git workspace')) {
+    violations.push(`${redditLiveCaptureScriptPath}: workspace artifact path rejection must explain evidence path policy`);
+  }
+  if (existsSync(redditWorkspaceArtifactPath)) {
+    violations.push(`${redditLiveCaptureScriptPath}: workspace artifact path rejection must not create ${redditWorkspaceArtifactPath}`);
+  }
+}
+
+function runCaptureExpectingFailure(scriptPath, env) {
+  try {
+    execFileSync(process.execPath, [scriptPath], {
+      env: {
+        ...process.env,
+        ...env,
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
   }
 }
 

@@ -1,10 +1,15 @@
 import { execFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
-import { existsSync, mkdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { URLSearchParams } from 'node:url';
 
-import { shellQuote, validateEvidenceEnvFilePath, writeEvidenceEnvFile } from './lib/evidence-env-file.mjs';
+import {
+  shellQuote,
+  validateEvidenceEnvFilePath,
+  validateEvidenceJsonFilePath,
+  writeEvidenceEnvFile,
+} from './lib/evidence-env-file.mjs';
 
 const artifactDir =
   process.env.SOURCE_LIVE_EVIDENCE_ARTIFACT_DIR ??
@@ -19,6 +24,11 @@ const lifecycleEvidencePath =
 const envFilePath =
   process.env.REDDIT_LIVE_EVIDENCE_ENV_PATH ??
   join(resolve(artifactDir), 'live-reddit-oauth.env');
+const liveEvidenceTarget = validateEvidenceJsonFilePath(liveEvidencePath, 'REDDIT_LIVE_EVIDENCE_PATH');
+const lifecycleEvidenceTarget = validateEvidenceJsonFilePath(
+  lifecycleEvidencePath,
+  'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH',
+);
 const identityEnvNames = ['SOURCE_LIVE_ENVIRONMENT_ID', 'SOURCE_LIVE_OPERATOR'];
 const forbiddenIdentityFragments = ['local', 'fixture', 'example', 'mock', 'test'];
 
@@ -28,20 +38,16 @@ async function main() {
   const env = {
     ...process.env,
     REDDIT_ACCESS_TOKEN: accessToken,
-    REDDIT_LIVE_EVIDENCE_PATH: liveEvidencePath,
-    REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: lifecycleEvidencePath,
+    REDDIT_LIVE_EVIDENCE_PATH: liveEvidenceTarget,
+    REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: lifecycleEvidenceTarget,
     SOURCE_LIVE_ENVIRONMENT_ID: requiredEnv('SOURCE_LIVE_ENVIRONMENT_ID'),
     BACKEND_IMAGE_DIGEST: requiredEnv('BACKEND_IMAGE_DIGEST'),
     SOURCE_LIVE_OPERATOR: requiredEnv('SOURCE_LIVE_OPERATOR'),
   };
 
-  mkdirSync(artifactDir, { recursive: true });
-  mkdirSync(dirname(liveEvidencePath), { recursive: true });
-  mkdirSync(dirname(lifecycleEvidencePath), { recursive: true });
-
-  if (!existsSync(lifecycleEvidencePath)) {
+  if (!existsSync(lifecycleEvidenceTarget)) {
     throw new Error(
-      `REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH must reference existing redacted lifecycle evidence: ${lifecycleEvidencePath}`,
+      `REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH must reference existing redacted lifecycle evidence: ${lifecycleEvidenceTarget}`,
     );
   }
 
@@ -66,8 +72,8 @@ async function main() {
   });
 
   writeEvidenceEnvFile(envFileTarget, [
-    ['REDDIT_LIVE_EVIDENCE_PATH', liveEvidencePath],
-    ['REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH', lifecycleEvidencePath],
+    ['REDDIT_LIVE_EVIDENCE_PATH', liveEvidenceTarget],
+    ['REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH', lifecycleEvidenceTarget],
     ['SOURCE_LIVE_ENVIRONMENT_ID', env.SOURCE_LIVE_ENVIRONMENT_ID],
     ['BACKEND_IMAGE_DIGEST', env.BACKEND_IMAGE_DIGEST],
     ['SOURCE_LIVE_OPERATOR', env.SOURCE_LIVE_OPERATOR],
@@ -80,8 +86,8 @@ async function main() {
     ],
   });
 
-  console.log(`REDDIT_LIVE_EVIDENCE_PATH=${liveEvidencePath}`);
-  console.log(`REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH=${lifecycleEvidencePath}`);
+  console.log(`REDDIT_LIVE_EVIDENCE_PATH=${liveEvidenceTarget}`);
+  console.log(`REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH=${lifecycleEvidenceTarget}`);
   console.log(`REDDIT_LIVE_EVIDENCE_ENV_PATH=${envFileTarget}`);
 }
 
