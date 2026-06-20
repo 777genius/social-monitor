@@ -68,7 +68,6 @@ describe('Webhook endpoint read authorization (e2e)', () => {
       .get('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
-      .set('Authorization', readerAuthorization)
       .expect(403);
 
     expect(missingRole.body).toMatchObject({

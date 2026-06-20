@@ -31,17 +31,6 @@ describe('Webhook endpoint workspace authorization (e2e)', () => {
   it('requires owner or admin workspace role to create and disable webhook endpoints', async () => {
     const tenant = tenantId('tenant-webhook-authorization-e2e');
     const workspace = workspaceId('workspace-webhook-authorization-e2e');
-    const apiKey = await request(app.getHttpServer())
-      .post('/identity/api-keys')
-      .set('x-tenant-id', tenant)
-      .set('x-workspace-id', workspace)
-      .set('x-workspace-role', 'admin')
-      .send({
-        name: 'Webhook authorization writer',
-        scopes: ['write:webhook_endpoints'],
-      })
-      .expect(201);
-    const authorization = `Bearer ${apiKey.body.secret}`;
     const webhookBody = {
       url: 'https://example.com/webhooks/authorization',
       eventTypes: ['digest.ready.v1'],
@@ -51,7 +40,6 @@ describe('Webhook endpoint workspace authorization (e2e)', () => {
       .post('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
-      .set('Authorization', authorization)
       .send(webhookBody)
       .expect(403);
 
@@ -68,7 +56,6 @@ describe('Webhook endpoint workspace authorization (e2e)', () => {
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
-      .set('Authorization', authorization)
       .send(webhookBody)
       .expect(403);
 
@@ -86,7 +73,6 @@ describe('Webhook endpoint workspace authorization (e2e)', () => {
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
-      .set('Authorization', authorization)
       .send(webhookBody)
       .expect(201);
 
@@ -95,7 +81,6 @@ describe('Webhook endpoint workspace authorization (e2e)', () => {
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
-      .set('Authorization', authorization)
       .expect(403);
 
     expect(disableViewer.body).toMatchObject({
@@ -112,7 +97,6 @@ describe('Webhook endpoint workspace authorization (e2e)', () => {
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'owner')
-      .set('Authorization', authorization)
       .expect(200);
 
     expect(disabled.body).toMatchObject({

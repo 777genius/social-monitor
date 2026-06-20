@@ -1,9 +1,14 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
   validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
+import { readPrivateEvidenceJsonFile } from './lib/evidence-env-file.mjs';
 
 const evidencePath = 'ops/release/summary-feedback-hardening-evidence.json';
 const feedbackPath = 'ops/release/beta-feedback-classification-report.json';
@@ -15,6 +20,7 @@ const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
 const backendOpsPath = 'ops/release/backend-ops-readiness-contract.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
+const currentScriptPath = fileURLToPath(import.meta.url);
 
 const evidence = readJson(evidencePath);
 const feedback = readJson(feedbackPath);
@@ -294,7 +300,7 @@ if (summaryRealFeedbackSamplesPath !== undefined && summaryRealFeedbackSamplesPa
   validateRedactedSampleArtifactPath(
     summaryRealFeedbackSamplesPath,
     'SUMMARY_REAL_FEEDBACK_SAMPLES_PATH',
-    { allowExample: false },
+    { allowExample: false, requirePrivateExternalPath: true },
   );
 }
 
@@ -366,6 +372,7 @@ for (const fragment of forbiddenSerializedFragments) {
   }
 }
 
+validateDirectArtifactPathGuards();
 requireWiring();
 
 if (violations.length > 0) {
@@ -380,7 +387,14 @@ function readJson(path) {
 }
 
 function readRedactedSampleArtifact(path) {
-  const rawContent = readFileSync(path, 'utf8');
+  return readRedactedSampleArtifactContent(readFileSync(path, 'utf8'), path);
+}
+
+function readPrivateRedactedSampleArtifact(path, label) {
+  return readRedactedSampleArtifactContent(readPrivateEvidenceJsonFile(path, label), path);
+}
+
+function readRedactedSampleArtifactContent(rawContent, path) {
   validateSerializedArtifactContent(rawContent, path);
   return JSON.parse(rawContent);
 }
@@ -473,12 +487,24 @@ function requireSetCoverage(actual, expected, label) {
 }
 
 function validateRedactedSampleArtifactPath(path, label, options) {
-  requireExistingPath(path, label);
-  if (typeof path !== 'string' || path.trim().length === 0 || !existsSync(path)) {
+  if (typeof path !== 'string' || path.trim().length === 0) {
+    violations.push(`${evidencePath}: ${label} must reference an existing path`);
+    return;
+  }
+  if (options.requirePrivateExternalPath !== true && !existsSync(path)) {
+    violations.push(`${evidencePath}: ${label} must reference an existing path`);
     return;
   }
 
-  const artifact = readRedactedSampleArtifact(path);
+  let artifact;
+  try {
+    artifact = options.requirePrivateExternalPath === true
+      ? readPrivateRedactedSampleArtifact(path, label)
+      : readRedactedSampleArtifact(path);
+  } catch (error) {
+    violations.push(error instanceof Error ? error.message : String(error));
+    return;
+  }
   validateRedactedSampleArtifact(artifact, path, options);
 }
 
@@ -964,6 +990,62 @@ function requireExistingPath(path, label) {
   }
 }
 
+function validateDirectArtifactPathGuards() {
+  if (process.env.SUMMARY_FEEDBACK_DIRECT_PATH_GUARD_TEST === '1') {
+    return;
+  }
+
+  const workspaceArtifactPath = resolve('summary-real-feedback-samples-direct-workspace-output.json');
+  const workspaceResult = runSelfExpectingFailure({
+    SUMMARY_REAL_FEEDBACK_SAMPLES_PATH: workspaceArtifactPath,
+  });
+  if (workspaceResult.exitCode === 0) {
+    violations.push('check:summary-feedback-hardening must reject workspace SUMMARY_REAL_FEEDBACK_SAMPLES_PATH');
+  } else if (!workspaceResult.output.includes('SUMMARY_REAL_FEEDBACK_SAMPLES_PATH must not write release evidence into the git workspace')) {
+    violations.push('check:summary-feedback-hardening workspace artifact rejection must explain evidence path policy');
+  }
+  if (existsSync(workspaceArtifactPath)) {
+    violations.push(`check:summary-feedback-hardening workspace artifact rejection must not create ${workspaceArtifactPath}`);
+  }
+
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'summary-feedback-direct-'));
+  try {
+    const publicArtifactPath = join(tempDirectory, 'summary-real-feedback-samples.json');
+    writeFileSync(publicArtifactPath, '{}\n', { mode: 0o600 });
+    chmodSync(publicArtifactPath, 0o644);
+    const publicResult = runSelfExpectingFailure({
+      SUMMARY_REAL_FEEDBACK_SAMPLES_PATH: publicArtifactPath,
+    });
+    if (publicResult.exitCode === 0) {
+      violations.push('check:summary-feedback-hardening must reject public SUMMARY_REAL_FEEDBACK_SAMPLES_PATH permissions');
+    } else if (!publicResult.output.includes('SUMMARY_REAL_FEEDBACK_SAMPLES_PATH must use 0600-style private file permissions')) {
+      violations.push('check:summary-feedback-hardening public artifact rejection must explain private file mode policy');
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function runSelfExpectingFailure(env) {
+  try {
+    execFileSync(process.execPath, [currentScriptPath], {
+      env: {
+        ...process.env,
+        SUMMARY_FEEDBACK_DIRECT_PATH_GUARD_TEST: '1',
+        ...env,
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
 function requireWiring() {
   const backendScripts = new Set(backendSafe.backendScripts ?? []);
   const releaseGateIds = new Set((releaseContract.requiredGates ?? []).map((gate) => gate.gateId));
@@ -981,6 +1063,16 @@ function requireWiring() {
   }
   if (!scripts[captureCheckScript]) {
     violations.push(`${packagePath}: missing ${captureCheckScript}`);
+  }
+  const selfSource = readFileSync(currentScriptPath, 'utf8');
+  for (const marker of [
+    'readPrivateEvidenceJsonFile',
+    'validateDirectArtifactPathGuards',
+    '0600-style private file permissions',
+  ]) {
+    if (!selfSource.includes(marker)) {
+      violations.push(`${currentScriptPath}: direct summary feedback artifact env path guard must include ${marker}`);
+    }
   }
   if (!backendScripts.has(gateScript)) {
     violations.push(`${backendSafePath}: backend-safe verify must include ${gateScript}`);

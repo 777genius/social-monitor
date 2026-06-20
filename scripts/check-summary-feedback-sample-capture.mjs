@@ -28,7 +28,7 @@ console.log('Summary feedback sample capture OK');
 
 function validateCaptureScriptGuards() {
   const captureSource = readFileSync(captureScript, 'utf8');
-  for (const marker of ['mode: 0o600', 'chmodSync']) {
+  for (const marker of ['mode: 0o600', 'chmodSync', '.tmp.json']) {
     if (!captureSource.includes(marker)) {
       violations.push(`${captureScript}: capture must include ${marker}`);
     }

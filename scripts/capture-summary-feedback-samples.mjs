@@ -29,7 +29,7 @@ async function main() {
   const artifact = buildArtifact(source);
 
   mkdirSync(dirname(outputTarget), { recursive: true });
-  const temporaryOutputPath = `${outputTarget}.${process.pid}.${Date.now()}.tmp`;
+  const temporaryOutputPath = `${outputTarget}.${process.pid}.${Date.now()}.tmp.json`;
 
   try {
     writeFileSync(temporaryOutputPath, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });

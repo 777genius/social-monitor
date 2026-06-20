@@ -59,7 +59,7 @@ describe('Webhook endpoint public API rate limit (e2e)', () => {
     expect(limited.body).toMatchObject({
       code: 'operation.rate_limited',
       details: {
-        operation: 'webhook_endpoints.manage',
+        operation: 'webhook_endpoints.create',
         limit: 2,
         remaining: 0,
         retryAfterSeconds: expect.any(Number),

@@ -62,6 +62,7 @@ const betaDurableEnv: NodeJS.ProcessEnv = {
   INTELLIGENCE_SUMMARY_QUEUE_READER: 'rabbitmq',
   DELIVERY_ATTEMPT_DISPATCH_QUEUE: 'rabbitmq',
   DELIVERY_ATTEMPT_QUEUE_READER: 'rabbitmq',
+  DELIVERY_SUMMARY_READY_EVENT_READER: 'rabbitmq',
   DELIVERY_WEBHOOK_PROVIDER: 'http',
 };
 
