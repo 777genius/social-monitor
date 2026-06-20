@@ -6,7 +6,10 @@ import { delimiter, join } from 'node:path';
 
 const DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS = 5_000;
 const DEFAULT_DOCKER_SOCKET_PING_TIMEOUT_MS = 3_000;
+const DEFAULT_DOCKER_VOLUME_PROBE_TIMEOUT_MS = 20_000;
 const DEFAULT_MIN_FREE_BYTES = 8 * 1024 ** 3;
+const DEFAULT_DOCKER_VOLUME_PROBE_BYTES = 64 * 1024 ** 2;
+const DOCKER_VOLUME_PROBE_IMAGE = 'postgres:18.4-alpine';
 
 export async function withDockerBackendEvidenceStack(options, callback) {
   assertDockerEvidencePrerequisites({ cwd: options.preflightCwd ?? process.cwd() });
@@ -147,6 +150,13 @@ export function assertDockerEvidencePrerequisites(options = {}) {
     options.dockerTimeoutMs ?? positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_DOCKER_TIMEOUT_MS', DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS);
   const minFreeBytes =
     options.minFreeBytes ?? positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES', DEFAULT_MIN_FREE_BYTES);
+  const volumeProbeBytes =
+    options.volumeProbeBytes ?? positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES', DEFAULT_DOCKER_VOLUME_PROBE_BYTES);
+  const volumeProbeTimeoutMs =
+    options.volumeProbeTimeoutMs ?? positiveIntegerEnv(
+      'DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_TIMEOUT_MS',
+      DEFAULT_DOCKER_VOLUME_PROBE_TIMEOUT_MS,
+    );
   const failures = [];
   const freeBytes = availableDiskBytes(cwd);
 
@@ -183,12 +193,99 @@ export function assertDockerEvidencePrerequisites(options = {}) {
     }
   }
 
+  if (failures.length === 0) {
+    const volumeProbe = probeDockerVolumeWritable({
+      cwd,
+      bytes: volumeProbeBytes,
+      timeoutMs: volumeProbeTimeoutMs,
+    });
+    if (!volumeProbe.ok) {
+      failures.push(`Docker volume write probe failed: ${volumeProbe.message}`);
+    }
+  }
+
   if (failures.length > 0) {
     throw new Error([
       'Docker backend evidence preflight failed:',
       ...failures.map((failure) => `- ${failure}`),
-      'Restart Docker Desktop, free disk space, or set DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES for a controlled override.',
+      'Restart Docker Desktop, free disk space, prune unused Docker data, or set DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES / DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES for a controlled override.',
     ].join('\n'));
+  }
+}
+
+function probeDockerVolumeWritable({ cwd, bytes, timeoutMs }) {
+  const volumeName = `social-monitor-backend-evidence-preflight-${process.pid}-${Date.now().toString(36)}`;
+  const probeMiB = Math.max(1, Math.ceil(bytes / 1024 ** 2));
+  const script = [
+    'set -eu',
+    'mkdir -p /probe/preflight',
+    `dd if=/dev/zero of=/probe/preflight/write-probe.bin bs=1M count=${probeMiB} conv=fsync`,
+    'rm -f /probe/preflight/write-probe.bin',
+    'rmdir /probe/preflight',
+  ].join('\n');
+
+  const cleanup = () => {
+    spawnSync('docker', ['volume', 'rm', '-f', volumeName], {
+      cwd,
+      encoding: 'utf8',
+      timeout: timeoutMs,
+    });
+  };
+
+  try {
+    const created = spawnSync('docker', ['volume', 'create', volumeName], {
+      cwd,
+      encoding: 'utf8',
+      timeout: timeoutMs,
+    });
+    if (created.error) {
+      return {
+        ok: false,
+        message: created.error.code === 'ETIMEDOUT'
+          ? `docker volume create did not respond within ${timeoutMs}ms`
+          : created.error.message,
+      };
+    }
+    if (created.status !== 0) {
+      return {
+        ok: false,
+        message: commandFailureMessage(created, 'docker volume create'),
+      };
+    }
+
+    const probe = spawnSync('docker', [
+      'run',
+      '--rm',
+      '-v',
+      `${volumeName}:/probe`,
+      '--entrypoint',
+      'sh',
+      DOCKER_VOLUME_PROBE_IMAGE,
+      '-ec',
+      script,
+    ], {
+      cwd,
+      encoding: 'utf8',
+      timeout: timeoutMs,
+    });
+    if (probe.error) {
+      return {
+        ok: false,
+        message: probe.error.code === 'ETIMEDOUT'
+          ? `Docker volume write probe could not write ${formatBytes(bytes)} within ${timeoutMs}ms`
+          : probe.error.message,
+      };
+    }
+    if (probe.status !== 0) {
+      return {
+        ok: false,
+        message: `${commandFailureMessage(probe, `Docker volume write probe could not write ${formatBytes(bytes)}`)}. Docker reported this before Postgres initdb could run; free Docker Desktop storage or prune unused Docker volumes/images.`,
+      };
+    }
+
+    return { ok: true };
+  } finally {
+    cleanup();
   }
 }
 
@@ -410,6 +507,18 @@ function positiveIntegerEnv(name, fallback) {
   }
 
   return value;
+}
+
+function commandFailureMessage(result, label) {
+  const stderr = result.stderr?.trim() ?? '';
+  const stdout = result.stdout?.trim() ?? '';
+  if (stderr.length > 0) {
+    return `${label} failed: ${stderr}`;
+  }
+  if (stdout.length > 0) {
+    return `${label} failed: ${stdout}`;
+  }
+  return `${label} exited with status ${result.status ?? 'unknown'}`;
 }
 
 function formatBytes(bytes) {

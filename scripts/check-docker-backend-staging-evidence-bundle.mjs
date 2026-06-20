@@ -147,6 +147,18 @@ function validateStaticWiring() {
       violations.push(`${dockerHarnessPath}: Docker evidence preflight must include ${marker}`);
     }
   }
+  for (const marker of [
+    'probeDockerVolumeWritable',
+    'DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES',
+    'docker volume create',
+    'Docker volume write probe failed',
+    'before Postgres initdb could run',
+    'postgres:18.4-alpine',
+  ]) {
+    if (!dockerHarnessSource.includes(marker)) {
+      violations.push(`${dockerHarnessPath}: Docker evidence volume storage preflight must include ${marker}`);
+    }
+  }
 }
 
 function validateCaptureOutputPathGuards() {
