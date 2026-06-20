@@ -53,7 +53,16 @@
       "sampleCount",
       "collectionMethod",
       "redactedBy",
-      "approvedBy"
+      "approvedBy",
+      "export"
+    ],
+    "requiredSourceExportFields": [
+      "sourceSystem",
+      "exportId",
+      "exportedAt",
+      "reviewQueue",
+      "redactionReviewId",
+      "approvalReference"
     ],
     "provenanceRequirements": {
       "evidenceKind": "redacted_real_feedback_samples",
@@ -85,7 +94,8 @@
     ],
     "realSampleGuards": [
       "real feedback samples must not reuse fixture sample ids",
-      "real feedback samples must not copy fixture sample signal text"
+      "real feedback samples must not copy fixture sample signal text",
+      "real feedback artifacts must include source.export traceability metadata from the feedback queue export and redaction approval"
     ],
     "rollupRequirements": [
       "sampleCount matches source.sampleCount and samples.length",

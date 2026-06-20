@@ -90,6 +90,7 @@ function buildArtifact(source) {
       collectionMethod,
       redactedBy: readMetadata('SUMMARY_FEEDBACK_REDACTED_BY', source.source?.redactedBy),
       approvedBy: readMetadata('SUMMARY_FEEDBACK_APPROVED_BY', source.source?.approvedBy),
+      export: readExportMetadata(source),
     },
     redaction: {
       rawProviderPayloadsIncluded: false,
@@ -103,6 +104,23 @@ function buildArtifact(source) {
     },
     samples,
     rollup: buildRollup(samples),
+  };
+}
+
+function readExportMetadata(source) {
+  const exportSource = isRecord(source.source?.export)
+    ? source.source.export
+    : isRecord(source.export)
+      ? source.export
+      : {};
+
+  return {
+    sourceSystem: readMetadata('SUMMARY_FEEDBACK_EXPORT_SOURCE_SYSTEM', exportSource.sourceSystem),
+    exportId: readMetadata('SUMMARY_FEEDBACK_EXPORT_ID', exportSource.exportId),
+    exportedAt: readMetadata('SUMMARY_FEEDBACK_EXPORTED_AT', exportSource.exportedAt),
+    reviewQueue: readMetadata('SUMMARY_FEEDBACK_REVIEW_QUEUE', exportSource.reviewQueue),
+    redactionReviewId: readMetadata('SUMMARY_FEEDBACK_REDACTION_REVIEW_ID', exportSource.redactionReviewId),
+    approvalReference: readMetadata('SUMMARY_FEEDBACK_APPROVAL_REFERENCE', exportSource.approvalReference),
   };
 }
 
@@ -180,15 +198,24 @@ function assertInputIsNotFixtureEvidence(parsed) {
 
   const source = isRecord(parsed.source) ? parsed.source : undefined;
   if (source !== undefined) {
-    for (const field of ['kind', 'environmentId', 'operator', 'collectionMethod', 'redactedBy', 'approvedBy']) {
-      const value = source[field];
+    const sourceFields = [
+      ...['kind', 'environmentId', 'operator', 'collectionMethod', 'redactedBy', 'approvedBy'].map((field) => ({
+        path: `source.${field}`,
+        value: source[field],
+      })),
+      ...Object.entries(isRecord(source.export) ? source.export : {}).map(([field, value]) => ({
+        path: `source.export.${field}`,
+        value,
+      })),
+    ];
+    for (const { path, value } of sourceFields) {
       if (typeof value !== 'string') {
         continue;
       }
       const normalized = value.toLowerCase();
       for (const fragment of ['example', 'fixture', 'synthetic', 'mock', 'test']) {
         if (normalized.includes(fragment)) {
-          throw new Error(`${inputPathEnv} source.${field} must not contain "${fragment}" for real feedback input`);
+          throw new Error(`${inputPathEnv} ${path} must not contain "${fragment}" for real feedback input`);
         }
       }
     }

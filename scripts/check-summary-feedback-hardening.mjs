@@ -74,6 +74,15 @@ const requiredSampleSourceFields = new Set([
   'collectionMethod',
   'redactedBy',
   'approvedBy',
+  'export',
+]);
+const requiredSampleSourceExportFields = new Set([
+  'sourceSystem',
+  'exportId',
+  'exportedAt',
+  'reviewQueue',
+  'redactionReviewId',
+  'approvalReference',
 ]);
 const forbiddenRealSourceFragments = [
   'example',
@@ -431,6 +440,11 @@ function validateRedactedSampleContentSchema(schema) {
     requiredSampleSourceFields,
     'redactedSampleContentSchema.requiredSourceFields',
   );
+  requireSetCoverage(
+    new Set(schema.requiredSourceExportFields ?? []),
+    requiredSampleSourceExportFields,
+    'redactedSampleContentSchema.requiredSourceExportFields',
+  );
   validateProvenanceRequirements(schema.provenanceRequirements);
   requireSetCoverage(
     new Set(schema.allowedRealSourceKinds ?? []),
@@ -662,6 +676,36 @@ function validateSampleSource(source, path, options) {
   } else if (Date.parse(source.sampleWindow.startedAt) >= Date.parse(source.sampleWindow.endedAt)) {
     violations.push(`${path}: source.sampleWindow.startedAt must be before endedAt`);
   }
+  validateSourceExport(source.export, path, options);
+}
+
+function validateSourceExport(sourceExport, path, options) {
+  if (sourceExport === null || typeof sourceExport !== 'object' || Array.isArray(sourceExport)) {
+    violations.push(`${path}: source.export must be an object`);
+    return;
+  }
+
+  for (const field of ['sourceSystem', 'exportId', 'reviewQueue', 'redactionReviewId', 'approvalReference']) {
+    if (typeof sourceExport[field] !== 'string' || sourceExport[field].trim().length < 4) {
+      violations.push(`${path}: source.export.${field} must be a non-empty traceability string`);
+    }
+  }
+  if (!isIsoDateString(sourceExport.exportedAt)) {
+    violations.push(`${path}: source.export.exportedAt must be an ISO timestamp`);
+  }
+
+  if (options.allowExample === true) {
+    return;
+  }
+
+  validateRealEvidenceIdentityStrings({
+    source: sourceExport,
+    fields: ['sourceSystem', 'exportId', 'reviewQueue', 'redactionReviewId', 'approvalReference'],
+    label: `${path}: source.export`,
+    violations,
+    realEvidenceLabel: 'real feedback artifacts',
+    forbiddenRealFragments: forbiddenRealSourceFragments,
+  });
 }
 
 function validateSampleRedaction(redaction, path) {
@@ -971,11 +1015,21 @@ function isIsoDateString(value) {
 function validateGeneratedAtCoversSampleWindow(artifact, path) {
   const generatedAtMs = parseIsoTimestampMs(artifact.generatedAt);
   const endedAtMs = parseIsoTimestampMs(artifact.source?.sampleWindow?.endedAt);
+  const exportedAtMs = parseIsoTimestampMs(artifact.source?.export?.exportedAt);
   if (generatedAtMs === undefined || endedAtMs === undefined) {
     return;
   }
   if (generatedAtMs < endedAtMs) {
     violations.push(`${path}: generatedAt must be greater than or equal to source.sampleWindow.endedAt`);
+  }
+  if (exportedAtMs === undefined) {
+    return;
+  }
+  if (exportedAtMs < endedAtMs) {
+    violations.push(`${path}: source.export.exportedAt must be greater than or equal to source.sampleWindow.endedAt`);
+  }
+  if (generatedAtMs < exportedAtMs) {
+    violations.push(`${path}: generatedAt must be greater than or equal to source.export.exportedAt`);
   }
 }
 

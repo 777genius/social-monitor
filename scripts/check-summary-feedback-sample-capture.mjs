@@ -11,6 +11,7 @@ const violations = [];
 try {
   validateCaptureScriptGuards();
   validatePositiveCapture();
+  validateMissingExportTraceabilityRejected();
   validateWorkspaceInputRejected();
   validateFixtureArtifactInputRejected();
   validateCopiedFixtureSamplesRejected();
@@ -62,6 +63,9 @@ function validatePositiveCapture() {
       SUMMARY_FEEDBACK_REDACTED_BY: 'summary-owner-1',
       SUMMARY_FEEDBACK_APPROVED_BY: 'security-owner-1',
       SUMMARY_FEEDBACK_COLLECTION_METHOD: 'Redacted internal dogfood export collected from summary feedback API review queue.',
+      ...redactedExportEnv({
+        SUMMARY_FEEDBACK_EXPORTED_AT: new Date(now - 60 * 1000).toISOString(),
+      }),
     },
     stdio: 'inherit',
   });
@@ -77,6 +81,9 @@ function validatePositiveCapture() {
   }
   if (artifact.rollup?.sampleCount !== samples.length) {
     violations.push(`${captureScript}: positive smoke output rollup.sampleCount must match input samples`);
+  }
+  if (artifact.source?.export?.exportId !== 'SF-EXPORT-20260618-ALPHA') {
+    violations.push(`${captureScript}: positive smoke output must include source.export traceability metadata`);
   }
 
   if (!existsSync(envFilePath)) {
@@ -109,6 +116,7 @@ function validateWorkspaceInputRejected() {
     SUMMARY_FEEDBACK_COLLECTION_METHOD: 'Redacted internal dogfood export collected from summary feedback API review queue.',
     SUMMARY_FEEDBACK_WINDOW_STARTED_AT: '2026-06-18T00:00:00.000Z',
     SUMMARY_FEEDBACK_WINDOW_ENDED_AT: '2026-06-19T00:00:00.000Z',
+    ...redactedExportEnv(),
   });
 
   if (result.exitCode === 0) {
@@ -117,6 +125,40 @@ function validateWorkspaceInputRejected() {
   }
   if (!result.output.includes('must not read redacted feedback input from the git workspace')) {
     violations.push(`${captureScript}: negative smoke must explain workspace input rejection`);
+  }
+}
+
+function validateMissingExportTraceabilityRejected() {
+  const inputPath = join(tempDirectory, 'missing-export-traceability-input.json');
+  const outputPath = join(tempDirectory, 'missing-export-traceability-should-not-write.json');
+  writeFileSync(inputPath, `${JSON.stringify({
+    samples: redactedDogfoodSamples(),
+    sampleWindow: {
+      startedAt: '2026-06-18T00:00:00.000Z',
+      endedAt: '2026-06-19T00:00:00.000Z',
+    },
+  }, null, 2)}\n`, { mode: 0o600 });
+
+  const result = runCaptureExpectingFailure({
+    SUMMARY_FEEDBACK_REDACTED_INPUT_PATH: inputPath,
+    SUMMARY_REAL_FEEDBACK_SAMPLES_PATH: outputPath,
+    SUMMARY_FEEDBACK_SOURCE_KIND: 'internal_dogfood',
+    SUMMARY_FEEDBACK_ENVIRONMENT_ID: 'summary-dogfood-alpha-1',
+    SUMMARY_FEEDBACK_OPERATOR: 'summary-owner-1',
+    SUMMARY_FEEDBACK_REDACTED_BY: 'summary-owner-1',
+    SUMMARY_FEEDBACK_APPROVED_BY: 'security-owner-1',
+    SUMMARY_FEEDBACK_COLLECTION_METHOD: 'Redacted internal dogfood export collected from summary feedback API review queue.',
+  });
+
+  if (result.exitCode === 0) {
+    violations.push(`${captureScript}: negative smoke must reject missing source.export traceability`);
+    return;
+  }
+  if (existsSync(outputPath)) {
+    violations.push(`${captureScript}: negative smoke must not write output artifact when source.export traceability is missing`);
+  }
+  if (!result.output.includes('SUMMARY_FEEDBACK_EXPORT_SOURCE_SYSTEM is required')) {
+    violations.push(`${captureScript}: negative smoke must explain missing source.export traceability`);
   }
 }
 
@@ -135,6 +177,7 @@ function validateFixtureArtifactInputRejected() {
     SUMMARY_FEEDBACK_REDACTED_BY: 'summary-owner-1',
     SUMMARY_FEEDBACK_APPROVED_BY: 'security-owner-1',
     SUMMARY_FEEDBACK_COLLECTION_METHOD: 'Redacted internal dogfood export collected from summary feedback API review queue.',
+    ...redactedExportEnv(),
   });
 
   if (result.exitCode === 0) {
@@ -170,6 +213,7 @@ function validateCopiedFixtureSamplesRejected() {
     SUMMARY_FEEDBACK_REDACTED_BY: 'summary-owner-1',
     SUMMARY_FEEDBACK_APPROVED_BY: 'security-owner-1',
     SUMMARY_FEEDBACK_COLLECTION_METHOD: 'Redacted internal dogfood export collected from summary feedback API review queue.',
+    ...redactedExportEnv(),
   });
 
   if (result.exitCode === 0) {
@@ -206,6 +250,7 @@ function validatePublicInputRejected() {
     SUMMARY_FEEDBACK_REDACTED_BY: 'summary-owner-1',
     SUMMARY_FEEDBACK_APPROVED_BY: 'security-owner-1',
     SUMMARY_FEEDBACK_COLLECTION_METHOD: 'Redacted internal dogfood export collected from summary feedback API review queue.',
+    ...redactedExportEnv(),
   });
 
   if (result.exitCode === 0) {
@@ -242,6 +287,7 @@ function validateWorkspaceEnvFileRejected() {
     SUMMARY_FEEDBACK_REDACTED_BY: 'summary-owner-1',
     SUMMARY_FEEDBACK_APPROVED_BY: 'security-owner-1',
     SUMMARY_FEEDBACK_COLLECTION_METHOD: 'Redacted internal dogfood export collected from summary feedback API review queue.',
+    ...redactedExportEnv(),
   });
 
   if (result.exitCode === 0) {
@@ -254,6 +300,18 @@ function validateWorkspaceEnvFileRejected() {
   if (!result.output.includes('Evidence env file path must not be inside the git workspace')) {
     violations.push(`${captureScript}: negative smoke must explain workspace env handoff rejection`);
   }
+}
+
+function redactedExportEnv(overrides = {}) {
+  return {
+    SUMMARY_FEEDBACK_EXPORT_SOURCE_SYSTEM: 'summary-feedback-api',
+    SUMMARY_FEEDBACK_EXPORT_ID: 'SF-EXPORT-20260618-ALPHA',
+    SUMMARY_FEEDBACK_EXPORTED_AT: '2026-06-19T00:05:00.000Z',
+    SUMMARY_FEEDBACK_REVIEW_QUEUE: 'summary-quality-review',
+    SUMMARY_FEEDBACK_REDACTION_REVIEW_ID: 'SEC-REDACTION-4321',
+    SUMMARY_FEEDBACK_APPROVAL_REFERENCE: 'REL-APPROVAL-9876',
+    ...overrides,
+  };
 }
 
 function redactedDogfoodSamples() {

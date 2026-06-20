@@ -10,7 +10,7 @@
     "fixtureOnly": true
   },
   "evidenceMode": "redacted_beta_samples",
-  "generatedAt": "2026-06-18T00:00:00.000Z",
+  "generatedAt": "2026-06-18T00:06:00.000Z",
   "source": {
     "kind": "example_redacted_dogfood",
     "environmentId": "internal-dogfood-redacted-example",
@@ -22,7 +22,15 @@
     "sampleCount": 3,
     "collectionMethod": "Synthetic example shaped like a summary feedback API export; not live evidence.",
     "redactedBy": "summary-owner",
-    "approvedBy": "security-owner"
+    "approvedBy": "security-owner",
+    "export": {
+      "sourceSystem": "summary-feedback-api",
+      "exportId": "summary-feedback-export-20260618-alpha",
+      "exportedAt": "2026-06-18T00:05:00.000Z",
+      "reviewQueue": "summary-quality-review",
+      "redactionReviewId": "SEC-REDACTION-4321",
+      "approvalReference": "REL-APPROVAL-9876"
+    }
   },
   "redaction": {
     "rawProviderPayloadsIncluded": false,

@@ -1399,6 +1399,13 @@ function validateRunnerNegativeSummaryFeedbackArtifactSmokes() {
       },
     },
     {
+      label: 'summary feedback missing source export traceability',
+      expectedOutput: 'source.export must be an object',
+      mutateArtifact: (artifact) => {
+        delete artifact.source.export;
+      },
+    },
+    {
       label: 'summary feedback raw source redaction flag',
       expectedOutput: 'redaction.rawSourceTextIncluded must be false',
       mutateArtifact: (artifact) => {
@@ -1478,6 +1485,7 @@ function summaryFeedbackSamplesArtifact() {
   const artifact = readJson('ops/release/fixtures/redacted-summary-feedback-samples-examples.json');
   const now = Date.now();
   const generatedAt = new Date(now - 60 * 1000).toISOString();
+  const exportedAt = new Date(now - 90 * 1000).toISOString();
   const sampleWindowEndedAt = new Date(now - 2 * 60 * 1000).toISOString();
   const sampleWindowStartedAt = new Date(now - 26 * 60 * 60 * 1000).toISOString();
 
@@ -1501,6 +1509,14 @@ function summaryFeedbackSamplesArtifact() {
     collectionMethod: 'Redacted internal dogfood export collected from summary feedback API review queue.',
     redactedBy: 'summary-owner-1',
     approvedBy: 'security-owner-1',
+    export: {
+      sourceSystem: 'summary-feedback-api',
+      exportId: 'SF-EXPORT-20260618-ALPHA',
+      exportedAt,
+      reviewQueue: 'summary-quality-review',
+      redactionReviewId: 'SEC-REDACTION-4321',
+      approvalReference: 'REL-APPROVAL-9876',
+    },
   };
   artifact.redaction = {
     ...artifact.redaction,
