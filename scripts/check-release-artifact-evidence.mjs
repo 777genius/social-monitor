@@ -1,13 +1,15 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { URL } from 'node:url';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath, URL } from 'node:url';
 import {
   validateEvidenceArtifactProvenance,
   validateEvidenceProvenanceRequirements,
   validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
+import { readPrivateEvidenceJsonFile } from './lib/evidence-env-file.mjs';
 
 const artifactPath = 'ops/release/release-artifact-evidence.json';
 const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
@@ -15,6 +17,7 @@ const packagePath = 'package.json';
 const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
 const captureScriptPath = 'scripts/capture-release-deploy-smoke.mjs';
+const currentScriptPath = fileURLToPath(import.meta.url);
 const artifact = JSON.parse(readFileSync(artifactPath, 'utf8'));
 const releaseContract = JSON.parse(readFileSync(releaseContractPath, 'utf8'));
 const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
@@ -244,6 +247,7 @@ validateExampleDeployArtifact();
 validateEnvDeploySmokeArtifact(gitSha, migrationVersion);
 validateCaptureScriptWiring();
 validateCaptureOutputPathGuards();
+validateDirectArtifactPathGuards();
 
 if (artifact.status === 'passed') {
   if (imageDigest === null) {
@@ -457,6 +461,12 @@ function readDeployArtifact(path, label) {
   return JSON.parse(rawContent);
 }
 
+function readPrivateDeployArtifact(path, label) {
+  const rawContent = readPrivateEvidenceJsonFile(path, label);
+  validateNoSensitiveDeployArtifactContent(rawContent, label);
+  return JSON.parse(rawContent);
+}
+
 function validateDeployArtifactProvenance(provenance, label, options) {
   validateEvidenceArtifactProvenance({
     provenance,
@@ -623,20 +633,20 @@ function validateEnvDeploySmokeArtifact(gitSha, migrationVersion) {
   if (releaseDeploySmokeArtifactPath === undefined || releaseDeploySmokeArtifactPath.length === 0) {
     return;
   }
-  if (!existsSync(releaseDeploySmokeArtifactPath)) {
-    violations.push('RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH must reference an existing deploy smoke artifact');
-    return;
-  }
 
   const environmentId = requireEnvWhenDeployArtifactIsPresent('STAGING_ENVIRONMENT_ID');
   const imageDigest = requireEnvWhenDeployArtifactIsPresent('BACKEND_IMAGE_DIGEST');
   const apiBaseUrl = requireEnvWhenDeployArtifactIsPresent('API_BASE_URL');
-  const deployArtifact = readDeployArtifact(
-    releaseDeploySmokeArtifactPath,
-    `RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH (${releaseDeploySmokeArtifactPath})`,
-  );
+  const deployArtifactLabel = `RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH (${releaseDeploySmokeArtifactPath})`;
+  let deployArtifact;
+  try {
+    deployArtifact = readPrivateDeployArtifact(releaseDeploySmokeArtifactPath, 'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH');
+  } catch (error) {
+    violations.push(error instanceof Error ? error.message : String(error));
+    return;
+  }
   validateDeployArtifactShape(deployArtifact, {
-    label: `RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH (${releaseDeploySmokeArtifactPath})`,
+    label: deployArtifactLabel,
     strict: true,
     expectedEnvironmentId: environmentId,
     expectedImageDigest: imageDigest,
@@ -704,6 +714,16 @@ function validateCaptureScriptWiring() {
       violations.push(`${captureScriptPath}: capture must validate deploy smoke artifacts atomically`);
     }
   }
+  const selfSource = readFileSync(currentScriptPath, 'utf8');
+  for (const marker of [
+    'readPrivateEvidenceJsonFile',
+    'validateDirectArtifactPathGuards',
+    '0600-style private file permissions',
+  ]) {
+    if (!selfSource.includes(marker)) {
+      violations.push(`${currentScriptPath}: direct release deploy artifact env path guard must include ${marker}`);
+    }
+  }
 }
 
 function validateCaptureOutputPathGuards() {
@@ -746,6 +766,69 @@ function runCaptureExpectingFailure(env) {
         API_BASE_URL: 'https://staging-alpha.social-monitor.invalid',
         BACKEND_IMAGE_DIGEST: `sha256:${'c'.repeat(64)}`,
         STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
+  }
+}
+
+function validateDirectArtifactPathGuards() {
+  if (process.env.RELEASE_DEPLOY_SMOKE_DIRECT_PATH_GUARD_TEST === '1') {
+    return;
+  }
+
+  const requiredEnv = {
+    API_BASE_URL: 'https://staging-alpha.social-monitor.invalid',
+    BACKEND_IMAGE_DIGEST: `sha256:${'c'.repeat(64)}`,
+    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+  };
+  const workspaceArtifactPath = resolve('release-deploy-smoke-direct-workspace-output.json');
+  const workspaceResult = runSelfExpectingFailure({
+    ...requiredEnv,
+    RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: workspaceArtifactPath,
+  });
+  if (workspaceResult.exitCode === 0) {
+    violations.push('check:release-artifact-evidence must reject workspace RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH');
+  } else if (!workspaceResult.output.includes('RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH must not write release evidence into the git workspace')) {
+    violations.push('check:release-artifact-evidence workspace artifact rejection must explain evidence path policy');
+  }
+  if (existsSync(workspaceArtifactPath)) {
+    violations.push(`check:release-artifact-evidence workspace artifact rejection must not create ${workspaceArtifactPath}`);
+  }
+
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'release-deploy-smoke-direct-'));
+  try {
+    const publicArtifactPath = join(tempDirectory, 'release-deploy-smoke.json');
+    writeFileSync(publicArtifactPath, '{}\n', { mode: 0o600 });
+    chmodSync(publicArtifactPath, 0o644);
+    const publicResult = runSelfExpectingFailure({
+      ...requiredEnv,
+      RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: publicArtifactPath,
+    });
+    if (publicResult.exitCode === 0) {
+      violations.push('check:release-artifact-evidence must reject public RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH permissions');
+    } else if (!publicResult.output.includes('RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH must use 0600-style private file permissions')) {
+      violations.push('check:release-artifact-evidence public artifact rejection must explain private file mode policy');
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function runSelfExpectingFailure(env) {
+  try {
+    execFileSync(process.execPath, [currentScriptPath], {
+      env: {
+        ...process.env,
+        RELEASE_DEPLOY_SMOKE_DIRECT_PATH_GUARD_TEST: '1',
+        ...env,
       },
       encoding: 'utf8',
       stdio: 'pipe',
