@@ -21,12 +21,12 @@ const artifactPath =
 const envFilePath =
   process.env.RELEASE_DEPLOY_SMOKE_ENV_PATH ??
   join(resolve(artifactDir), 'release-deploy-smoke.env');
+const artifactTarget = validateEvidenceJsonFilePath(artifactPath, 'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH');
+const envFileTarget = validateEvidenceEnvFilePath(envFilePath);
 const apiBaseUrl = requiredEnv('API_BASE_URL');
 const imageDigest = requiredEnv('BACKEND_IMAGE_DIGEST');
 const environmentId = requiredEnv('STAGING_ENVIRONMENT_ID');
 const operator = process.env.STAGING_OPERATOR?.trim() || 'release-owner';
-const artifactTarget = validateEvidenceJsonFilePath(artifactPath, 'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH');
-const envFileTarget = validateEvidenceEnvFilePath(envFilePath);
 const sampledAt = new Date().toISOString();
 const releaseEvidence = readJson('ops/release/release-artifact-evidence.json');
 const commitSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();

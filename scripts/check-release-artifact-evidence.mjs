@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { URL } from 'node:url';
 import {
   validateEvidenceArtifactProvenance,
@@ -242,6 +243,7 @@ for (const smokeId of smokeIds) {
 validateExampleDeployArtifact();
 validateEnvDeploySmokeArtifact(gitSha, migrationVersion);
 validateCaptureScriptWiring();
+validateCaptureOutputPathGuards();
 
 if (artifact.status === 'passed') {
   if (imageDigest === null) {
@@ -700,6 +702,59 @@ function validateCaptureScriptWiring() {
     if (!captureScript.includes(marker)) {
       violations.push(`${captureScriptPath}: capture must validate deploy smoke artifacts atomically`);
     }
+  }
+}
+
+function validateCaptureOutputPathGuards() {
+  const workspaceArtifactPath = resolve('release-deploy-smoke-workspace-output.json');
+  const artifactResult = runCaptureExpectingFailure({
+    RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: workspaceArtifactPath,
+    RELEASE_DEPLOY_SMOKE_ENV_PATH: '/tmp/social-monitor-release-deploy-smoke.env',
+  });
+  if (artifactResult.exitCode === 0) {
+    violations.push(`${captureScriptPath}: capture must reject workspace RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH`);
+  } else if (!artifactResult.output.includes('RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH must not write release evidence into the git workspace')) {
+    violations.push(`${captureScriptPath}: workspace artifact path rejection must explain evidence path policy`);
+  }
+  if (existsSync(workspaceArtifactPath)) {
+    violations.push(`${captureScriptPath}: workspace artifact path rejection must not create ${workspaceArtifactPath}`);
+  }
+
+  const workspaceEnvPath = resolve('release-deploy-smoke.env');
+  const tmpArtifactPath = '/tmp/social-monitor-release-deploy-smoke-output.json';
+  const envResult = runCaptureExpectingFailure({
+    RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: tmpArtifactPath,
+    RELEASE_DEPLOY_SMOKE_ENV_PATH: workspaceEnvPath,
+  });
+  if (envResult.exitCode === 0) {
+    violations.push(`${captureScriptPath}: capture must reject workspace RELEASE_DEPLOY_SMOKE_ENV_PATH`);
+  } else if (!envResult.output.includes('Evidence env file path must not be inside the git workspace')) {
+    violations.push(`${captureScriptPath}: workspace env path rejection must explain evidence env path policy`);
+  }
+  if (existsSync(workspaceEnvPath)) {
+    violations.push(`${captureScriptPath}: workspace env path rejection must not create ${workspaceEnvPath}`);
+  }
+}
+
+function runCaptureExpectingFailure(env) {
+  try {
+    execFileSync(process.execPath, [captureScriptPath], {
+      env: {
+        ...process.env,
+        ...env,
+        API_BASE_URL: 'https://staging-alpha.social-monitor.invalid',
+        BACKEND_IMAGE_DIGEST: `sha256:${'c'.repeat(64)}`,
+        STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { exitCode: 0, output: '' };
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+    };
   }
 }
 
