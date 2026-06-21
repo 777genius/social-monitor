@@ -3,6 +3,8 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { readPrivateEvidenceEnvEntries } from './lib/evidence-env-file.mjs';
+
 const contractPath = 'ops/release/backend-mvp-status-contract.json';
 const auditPath = 'ops/release/backend-mvp-completion-audit.json';
 const externalReadinessPath = 'ops/release/external-beta-readiness-contract.json';
@@ -32,6 +34,8 @@ const baseline = readJson(baselinePath);
 const packageJson = readJson(packagePath);
 const scripts = packageJson.scripts ?? {};
 const violations = envFileSelection.errors.map((error) => `${contractPath}: ${error}`);
+const currentGitCommitSha = readCurrentGitCommitSha();
+const currentEvidenceCommitPolicy = buildCurrentEvidenceCommitPolicy(statusEnvFilePaths);
 
 const cleanEvidencePlan = readEvidencePlan({ cleanEnv: true });
 const evidencePlan = jsonOutput || statusUsesEnvFile
@@ -39,12 +43,16 @@ const evidencePlan = jsonOutput || statusUsesEnvFile
   : cleanEvidencePlan;
 const cleanStatus = buildStatus(cleanEvidencePlan, { cleanEnv: true });
 const status = jsonOutput || statusUsesEnvFile
-  ? buildStatus(evidencePlan, { envFileCount: statusEnvFilePaths.length })
+  ? buildStatus(evidencePlan, {
+    envFileCount: statusEnvFilePaths.length,
+    currentEvidenceCommitPolicy,
+  })
   : cleanStatus;
 
 validateContract();
 validateStatus();
 validateActiveExternalBlockerSemantics();
+validateCurrentEvidenceCommitSemantics();
 validateLocalRuntimeStatusSmoke();
 validateEnvFileStatusSmoke();
 validateWiring();
@@ -66,6 +74,49 @@ if (jsonOutput) {
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function readCurrentGitCommitSha() {
+  const value = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+  }).trim();
+  if (!/^[0-9a-f]{40}$/.test(value)) {
+    violations.push(`${contractPath}: git HEAD must resolve to a full lowercase commit SHA`);
+  }
+
+  return value;
+}
+
+function buildCurrentEvidenceCommitPolicy(envFilePaths) {
+  if (envFilePaths.length === 0) {
+    return {
+      expectedCommitSha: currentGitCommitSha,
+      packagedCommitSha: null,
+      matchesCurrentHead: false,
+      sourceEnvFileCount: 0,
+      mismatchBlocksExternalBeta: true,
+    };
+  }
+
+  const packagedCommitShas = new Set();
+  for (const envFilePath of envFilePaths) {
+    const entries = readPrivateEvidenceEnvEntries(envFilePath, `status evidence env file ${envFilePath}`);
+    const commitSha = new Map(entries).get('BACKEND_GIT_COMMIT_SHA');
+    if (commitSha !== undefined) {
+      packagedCommitShas.add(commitSha);
+    }
+  }
+  const packagedCommitSha = packagedCommitShas.size === 1 ? [...packagedCommitShas][0] : null;
+  const matchesCurrentHead = packagedCommitSha === currentGitCommitSha;
+
+  return {
+    expectedCommitSha: currentGitCommitSha,
+    packagedCommitSha,
+    matchesCurrentHead,
+    sourceEnvFileCount: envFilePaths.length,
+    mismatchBlocksExternalBeta: true,
+  };
 }
 
 function readEvidencePlan({ cleanEnv, envOverride, envFilePaths = [] }) {
@@ -151,6 +202,13 @@ function buildStatus(plan, options = {}) {
     sourceEvidenceRunner: contract.sourceEvidenceRunner,
     evidenceInputMode: statusEvidenceInputMode(options),
     evidenceEnvFileCount: options.envFileCount ?? 0,
+    currentEvidenceCommitPolicy: options.currentEvidenceCommitPolicy ?? {
+      expectedCommitSha: currentGitCommitSha,
+      packagedCommitSha: null,
+      matchesCurrentHead: false,
+      sourceEnvFileCount: 0,
+      mismatchBlocksExternalBeta: true,
+    },
     decisions: {
       completionStatus: effectiveCompletionStatus,
       externalBetaDecision: effectiveExternalBetaDecision,
@@ -184,6 +242,7 @@ function buildStatus(plan, options = {}) {
 function isEvidenceBackedExternalBetaReady(plan, options, activeExternalEvidenceBlockerJobs) {
   return (
     (options.envFileCount ?? 0) > 0 &&
+    options.currentEvidenceCommitPolicy?.matchesCurrentHead === true &&
     plan.externalEvidenceEnvReadinessPercent === 100 &&
     activeExternalEvidenceBlockerJobs.length === 0 &&
     (plan.blockedLocalRuntimeEnvJobCount ?? 0) === 0 &&
@@ -304,6 +363,9 @@ function validateStatus() {
     if (status.externalBlockerJobCount !== 0 || status.missingRequiredEnv.length !== 0) {
       violations.push(`${contractPath}: strictExternalBetaReady requires no external blockers or missing env`);
     }
+    if (status.currentEvidenceCommitPolicy?.matchesCurrentHead !== true) {
+      violations.push(`${contractPath}: strictExternalBetaReady requires packaged evidence commit to match git HEAD`);
+    }
   }
   if (contract.cleanEnvMustRemainBlocked === true) {
     assertSameSet(
@@ -378,6 +440,76 @@ function validateActiveExternalBlockerSemantics() {
   }
   if (semanticStatus.activeExternalEvidenceBlockerJobs.length !== 1) {
     violations.push(`${contractPath}: status must expose active external evidence blocker jobs`);
+  }
+}
+
+function validateCurrentEvidenceCommitSemantics() {
+  const readyPlan = {
+    jobCount: 2,
+    localContractJobCount: 1,
+    liveCommandJobCount: 1,
+    manualArtifactJobCount: 0,
+    executableLiveJobCount: 1,
+    liveArtifactReadyForValidationJobCount: 0,
+    manualArtifactReadyForValidationJobCount: 0,
+    externalBlockerJobCount: 2,
+    contractClosurePercent: 100,
+    externalEvidenceEnvReadinessPercent: 100,
+    blockedMissingRequiredEnvJobCount: 0,
+    blockedInvalidInputJobCount: 0,
+    blockedLocalRuntimeEnvJobCount: 0,
+    readinessCounts: {
+      local_contract_ready: 1,
+      live_command_executable: 1,
+    },
+    uniqueMissingEnv: [],
+    uniqueMissingOptionalEnv: [],
+    jobs: [
+      {
+        jobId: 'release-baseline-freeze',
+        blocksExternalBeta: true,
+        executionReadiness: 'local_contract_ready',
+        missingEnv: [],
+        preflightViolations: [],
+      },
+      {
+        jobId: 'live-open-connectors',
+        blocksExternalBeta: true,
+        executionReadiness: 'live_command_executable',
+        missingEnv: [],
+        preflightViolations: [],
+      },
+    ],
+  };
+  const matchingCommitStatus = buildStatus(readyPlan, {
+    envFileCount: 1,
+    currentEvidenceCommitPolicy: {
+      expectedCommitSha: currentGitCommitSha,
+      packagedCommitSha: currentGitCommitSha,
+      matchesCurrentHead: true,
+      sourceEnvFileCount: 1,
+      mismatchBlocksExternalBeta: true,
+    },
+  });
+  const staleCommitStatus = buildStatus(readyPlan, {
+    envFileCount: 1,
+    currentEvidenceCommitPolicy: {
+      expectedCommitSha: currentGitCommitSha,
+      packagedCommitSha: '0'.repeat(40),
+      matchesCurrentHead: false,
+      sourceEnvFileCount: 1,
+      mismatchBlocksExternalBeta: true,
+    },
+  });
+
+  if (matchingCommitStatus.strictExternalBetaReady !== true) {
+    violations.push(`${contractPath}: matching current evidence commit must allow strictExternalBetaReady`);
+  }
+  if (staleCommitStatus.strictExternalBetaReady !== false) {
+    violations.push(`${contractPath}: stale current evidence commit must block strictExternalBetaReady`);
+  }
+  if (staleCommitStatus.decisions.externalBetaDecision !== 'hold') {
+    violations.push(`${contractPath}: stale current evidence commit must keep effective external beta decision on hold`);
   }
 }
 

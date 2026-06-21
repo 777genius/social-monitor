@@ -17,12 +17,14 @@
     "external beta decision is go",
     "every blocking backend MVP requirement is passed",
     "external beta evidence runner has no blocker jobs",
-    "live/manual evidence readiness is 100 percent"
+    "live/manual evidence readiness is 100 percent",
+    "packaged current evidence commit matches git HEAD"
   ],
   "requiredStatusFields": [
     "strictExternalBetaReady",
     "evidenceInputMode",
     "evidenceEnvFileCount",
+    "currentEvidenceCommitPolicy",
     "strictExternalBetaExitPercent",
     "contractClosurePercent",
     "externalEvidenceEnvReadinessPercent",
