@@ -6,6 +6,7 @@ import { delimiter, join, resolve } from 'node:path';
 
 const DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS = 5_000;
 const DEFAULT_DOCKER_SOCKET_PING_TIMEOUT_MS = 3_000;
+const MAX_DOCKER_SOCKET_PING_TIMEOUT_MS = 30_000;
 const DEFAULT_DOCKER_VOLUME_PROBE_TIMEOUT_MS = 20_000;
 const DEFAULT_MIN_FREE_BYTES = 8 * 1024 ** 3;
 const DEFAULT_DOCKER_VOLUME_PROBE_BYTES = 256 * 1024 ** 2;
@@ -171,6 +172,12 @@ export function assertDockerEvidencePrerequisites(options = {}) {
   const storageMode = options.storageMode ?? dockerEvidenceStorageMode();
   const dockerTimeoutMs =
     options.dockerTimeoutMs ?? positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_DOCKER_TIMEOUT_MS', DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS);
+  const socketPingTimeoutMs =
+    options.socketPingTimeoutMs ?? boundedPositiveIntegerEnv(
+      'DOCKER_BACKEND_EVIDENCE_SOCKET_PING_TIMEOUT_MS',
+      DEFAULT_DOCKER_SOCKET_PING_TIMEOUT_MS,
+      MAX_DOCKER_SOCKET_PING_TIMEOUT_MS,
+    );
   const minFreeBytes =
     options.minFreeBytes ?? positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES', DEFAULT_MIN_FREE_BYTES);
   const volumeProbeBytes =
@@ -191,7 +198,7 @@ export function assertDockerEvidencePrerequisites(options = {}) {
 
   const socketProbe = probeDockerApiSocket({
     cwd,
-    timeoutMs: Math.min(dockerTimeoutMs, DEFAULT_DOCKER_SOCKET_PING_TIMEOUT_MS),
+    timeoutMs: socketPingTimeoutMs,
   });
   if (socketProbe !== undefined && !socketProbe.ok) {
     failures.push(`Docker API socket check failed: ${socketProbe.message}`);
@@ -233,7 +240,7 @@ export function assertDockerEvidencePrerequisites(options = {}) {
     throw new Error([
       'Docker backend evidence preflight failed:',
       ...failures.map((failure) => `- ${failure}`),
-      'Restart Docker Desktop, free disk space, prune unused Docker data, or set DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES / DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES for a controlled override.',
+      'Restart Docker Desktop, free disk space, prune unused Docker data, or set DOCKER_BACKEND_EVIDENCE_SOCKET_PING_TIMEOUT_MS / DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES / DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES for a controlled override.',
     ].join('\n'));
   }
 }
@@ -813,6 +820,15 @@ function positiveIntegerEnv(name, fallback) {
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new Error(`${name} must be a positive integer`);
+  }
+
+  return value;
+}
+
+function boundedPositiveIntegerEnv(name, fallback, max) {
+  const value = positiveIntegerEnv(name, fallback);
+  if (value > max) {
+    throw new Error(`${name} must be <= ${max}`);
   }
 
   return value;

@@ -161,7 +161,16 @@ function validateStaticWiring() {
       violations.push(`${importScriptPath}: Docker bundle import must include ${marker}`);
     }
   }
-  for (const marker of ['probeDockerApiSocket', '/_ping', 'Docker API socket check failed', 'DOCKER_HOST', 'unix://']) {
+  for (const marker of [
+    'probeDockerApiSocket',
+    '/_ping',
+    'Docker API socket check failed',
+    'DOCKER_BACKEND_EVIDENCE_SOCKET_PING_TIMEOUT_MS',
+    'MAX_DOCKER_SOCKET_PING_TIMEOUT_MS',
+    'boundedPositiveIntegerEnv',
+    'DOCKER_HOST',
+    'unix://',
+  ]) {
     if (!dockerHarnessSource.includes(marker)) {
       violations.push(`${dockerHarnessPath}: Docker evidence preflight must include ${marker}`);
     }
