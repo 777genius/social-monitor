@@ -120,12 +120,7 @@
         "kind": "reddit-credential-lifecycle-redacted",
         "format": "reddit-credential-lifecycle-redacted-v1",
         "sha256MustMatchSignal": "reddit-credential-lifecycle",
-        "requiredEnv": [
-          "SOURCE_LIVE_ENVIRONMENT_ID",
-          "BACKEND_IMAGE_DIGEST",
-          "BACKEND_GIT_COMMIT_SHA",
-          "SOURCE_LIVE_OPERATOR"
-        ]
+        "requiredEnv": []
       }
     ],
     "lifecycleArtifactSchema": {
@@ -144,12 +139,7 @@
         "redaction",
         "lifecycleOperations"
       ],
-      "requiredEnv": [
-        "SOURCE_LIVE_ENVIRONMENT_ID",
-        "BACKEND_IMAGE_DIGEST",
-        "BACKEND_GIT_COMMIT_SHA",
-        "SOURCE_LIVE_OPERATOR"
-      ],
+      "requiredEnv": [],
       "provenanceRequirements": {
         "evidenceKind": "credential_lifecycle",
         "fixtureOnly": false,

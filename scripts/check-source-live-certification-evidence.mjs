@@ -900,23 +900,6 @@ function validateRedditCredentialLifecycleEnvArtifact() {
     }
   }
 
-  const expectedEnvironmentId = requireEnvWhenArtifactIsPresent(
-    'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH',
-    'SOURCE_LIVE_ENVIRONMENT_ID',
-  );
-  const expectedImageDigest = requireEnvWhenArtifactIsPresent(
-    'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH',
-    'BACKEND_IMAGE_DIGEST',
-  );
-  const expectedCommitSha = requireEnvWhenArtifactIsPresent(
-    'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH',
-    'BACKEND_GIT_COMMIT_SHA',
-  );
-  const expectedOperator = requireEnvWhenArtifactIsPresent(
-    'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH',
-    'SOURCE_LIVE_OPERATOR',
-  );
-
   let lifecycleArtifact;
   try {
     lifecycleArtifact = JSON.parse(serialized);
@@ -926,10 +909,6 @@ function validateRedditCredentialLifecycleEnvArtifact() {
   if (lifecycleArtifact !== undefined) {
     validateRedditCredentialLifecycleArtifact(lifecycleArtifact, {
       label: `REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH (${lifecyclePath})`,
-      expectedEnvironmentId,
-      expectedImageDigest,
-      expectedCommitSha,
-      expectedOperator,
     });
   }
 
@@ -1058,11 +1037,9 @@ function validateRedditCredentialLifecycleSchema(schema) {
     ],
     `${label}.requiredTopLevelFields`,
   );
-  requireFieldListCoverage(
-    schema.requiredEnv,
-    ['SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'BACKEND_GIT_COMMIT_SHA', 'SOURCE_LIVE_OPERATOR'],
-    `${label}.requiredEnv`,
-  );
+  if (Array.isArray(schema.requiredEnv) && schema.requiredEnv.length > 0) {
+    violations.push(`${evidencePath}: ${label}.requiredEnv must be empty because lifecycle grants can predate the current release artifact`);
+  }
   requireFieldListCoverage(schema.requiredOperations, [...requiredRedditLifecycleOperations], `${label}.requiredOperations`);
   validateProvenanceRequirements(
     schema.provenanceRequirements,
@@ -1487,10 +1464,8 @@ function validateEnvArtifactValidation(validationRules) {
       if (rule.sha256MustMatchSignal !== 'reddit-credential-lifecycle') {
         violations.push(`${evidencePath}: ${label}.sha256MustMatchSignal must be reddit-credential-lifecycle`);
       }
-      for (const envVar of ['SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'BACKEND_GIT_COMMIT_SHA', 'SOURCE_LIVE_OPERATOR']) {
-        if (!rule.requiredEnv?.includes(envVar)) {
-          violations.push(`${evidencePath}: ${label}.requiredEnv must include ${envVar}`);
-        }
+      if (Array.isArray(rule.requiredEnv) && rule.requiredEnv.length > 0) {
+        violations.push(`${evidencePath}: ${label}.requiredEnv must be empty because lifecycle grants can predate the current release artifact`);
       }
       continue;
     }
