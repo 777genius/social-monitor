@@ -35,6 +35,7 @@ export const presentSummaryFeedback = (feedback: SummaryFeedback): SummaryFeedba
       citationId: snapshot.evidence.citationId,
       feedItemId: snapshot.evidence.feedItemId,
       sourceItemId: snapshot.evidence.sourceItemId,
+      providerKey: snapshot.evidence.providerKey,
     },
     triageOwner: snapshot.triageOwner,
     eligibleForEvalFixture: snapshot.eligibleForEvalFixture,

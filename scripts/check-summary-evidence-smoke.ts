@@ -141,7 +141,8 @@ const run = async (): Promise<void> => {
 
   if (
     firstCitation.feedItemId !== 'feed:summary-smoke:1' ||
-    firstCitation.sourceItemId !== 'rss-binding-smoke:rss-guid-1'
+    firstCitation.sourceItemId !== 'rss-binding-smoke:rss-guid-1' ||
+    firstCitation.providerKey !== 'rss'
   ) {
     throw new Error(`Unexpected citation: ${JSON.stringify(firstCitation)}`);
   }

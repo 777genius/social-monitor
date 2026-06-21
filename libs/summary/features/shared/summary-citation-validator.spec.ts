@@ -33,6 +33,7 @@ const draft = (overrides: Partial<GeneratedSummaryDraft> = {}): GeneratedSummary
       citationId: 'c1',
       feedItemId: 'feed-1',
       sourceItemId: 'source-1',
+      providerKey: 'rss',
       field: 'title',
     },
   ],
@@ -70,6 +71,7 @@ describe('validateSummaryCitationsAgainstEvidence', () => {
           citationId: 'c1',
           feedItemId: 'feed-outside-window',
           sourceItemId: 'source-1',
+          providerKey: 'rss',
           field: 'title',
         },
       ],
@@ -83,9 +85,24 @@ describe('validateSummaryCitationsAgainstEvidence', () => {
           citationId: 'c1',
           feedItemId: 'feed-1',
           sourceItemId: 'source-other',
+          providerKey: 'rss',
           field: 'title',
         },
       ],
     }), evidence)).toThrow('Summary citation validation failed: citation c1 source item mismatch');
+  });
+
+  it('rejects citations that mismatch selected providers', () => {
+    expect(() => validateSummaryCitationsAgainstEvidence(draft({
+      citationMap: [
+        {
+          citationId: 'c1',
+          feedItemId: 'feed-1',
+          sourceItemId: 'source-1',
+          providerKey: 'github',
+          field: 'title',
+        },
+      ],
+    }), evidence)).toThrow('Summary citation validation failed: citation c1 provider key mismatch');
   });
 });

@@ -26,6 +26,7 @@ export type SummaryFeedbackEvidence = {
   readonly citationId?: string;
   readonly feedItemId?: string;
   readonly sourceItemId?: string;
+  readonly providerKey?: string;
 };
 
 export type SummaryFeedbackProps = {
@@ -99,6 +100,15 @@ export class SummaryFeedback {
 
     if (props.evidence.summaryId !== props.summaryId || props.evidence.topicId !== props.topicId) {
       throw new Error('Summary feedback evidence must reference the same summary and topic');
+    }
+
+    if (
+      [props.evidence.citationId, props.evidence.feedItemId, props.evidence.sourceItemId].some(
+        (value) => value !== undefined,
+      ) &&
+      (props.evidence.providerKey ?? '').trim().length === 0
+    ) {
+      throw new Error('Summary feedback citation evidence must include provider key');
     }
 
     if (props.category === 'source_request' && (props.comment ?? '').trim().length === 0) {

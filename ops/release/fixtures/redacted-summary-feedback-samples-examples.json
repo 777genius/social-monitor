@@ -56,7 +56,8 @@
         "topicId": "topic-redacted-sample-001",
         "citationId": "citation-redacted-sample-001",
         "feedItemId": "feed-item-redacted-sample-001",
-        "sourceItemId": "source-item-redacted-sample-001"
+        "sourceItemId": "source-item-redacted-sample-001",
+        "providerKey": "rss"
       },
       "sanitizedSignal": "Summary asserted a decision that was not supported by the cited redacted item.",
       "redactedComment": "The cited source only says review is pending, but the summary says it was approved.",
@@ -90,7 +91,8 @@
         "topicId": "topic-redacted-sample-001",
         "citationId": "citation-redacted-sample-002",
         "feedItemId": "feed-item-redacted-sample-002",
-        "sourceItemId": "source-item-redacted-sample-002"
+        "sourceItemId": "source-item-redacted-sample-002",
+        "providerKey": "github"
       },
       "sanitizedSignal": "Citation was on-topic but did not support the attached sentence.",
       "redactedComment": "The summary linked to a related update, not the item that proves the stated metric.",
@@ -124,7 +126,8 @@
         "topicId": "topic-redacted-sample-001",
         "citationId": "citation-redacted-sample-003",
         "feedItemId": "feed-item-redacted-sample-003",
-        "sourceItemId": "source-item-redacted-sample-003"
+        "sourceItemId": "source-item-redacted-sample-003",
+        "providerKey": "reddit"
       },
       "sanitizedSignal": "Summary missed a supported item inside the selected evidence window.",
       "redactedComment": "A newer relevant item was in the window but did not appear in the summary.",

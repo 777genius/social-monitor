@@ -336,6 +336,12 @@ const main = async (): Promise<void> => {
   for (const target of targets) {
     assert(selectedProviders.has(target.providerKey), `summary evidence window must include ${target.providerKey}`);
   }
+
+  const citedProviders = new Set(artifactSnapshot.citationMap.map((citation) => citation.providerKey));
+  for (const target of targets) {
+    assert(citedProviders.has(target.providerKey), `summary citation map must include ${target.providerKey}`);
+  }
+
   assert(
     artifactSnapshot.citationMap.length >= targets.length,
     'live multi-provider summary must cite at least one item per provider',
@@ -350,6 +356,7 @@ const main = async (): Promise<void> => {
     feedItemCount: feedSnapshots.length,
     selectedFeedItemCount: artifactSnapshot.sourceWindow.selectedFeedItemIds.length,
     selectedProviders: [...selectedProviders].sort(),
+    citedProviders: [...citedProviders].sort(),
     citationCount: artifactSnapshot.citationMap.length,
     summaryStatus: summary.status,
     summaryReadyPublished: summaryEvents.all().some((event) => event.eventType === 'summary.ready'),
@@ -425,6 +432,7 @@ const writeOptionalEvidenceArtifact = (input: {
   readonly feedItemCount: number;
   readonly selectedFeedItemCount: number;
   readonly selectedProviders: readonly LiveProviderKey[];
+  readonly citedProviders: readonly string[];
   readonly citationCount: number;
   readonly summaryStatus: string;
   readonly summaryReadyPublished: boolean;
@@ -474,6 +482,7 @@ const writeOptionalEvidenceArtifact = (input: {
           feedItemCount: input.feedItemCount,
           selectedFeedItemCount: input.selectedFeedItemCount,
           selectedProviders: input.selectedProviders,
+          citedProviders: input.citedProviders,
           citationCount: input.citationCount,
           summaryCompleted: input.summaryStatus === 'completed',
           summaryReadyPublished: input.summaryReadyPublished,
@@ -484,6 +493,7 @@ const writeOptionalEvidenceArtifact = (input: {
       scans: input.scanMetrics,
       feedItems: input.feedItemCount,
       selectedFeedItems: input.selectedFeedItemCount,
+      citedProviders: input.citedProviders,
       citations: input.citationCount,
     },
     redaction: {

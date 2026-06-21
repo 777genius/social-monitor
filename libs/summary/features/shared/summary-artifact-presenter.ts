@@ -6,6 +6,7 @@ export type SummaryCitationView = {
   readonly label: string;
   readonly feedItemId: string;
   readonly sourceItemId: string;
+  readonly providerKey: string;
   readonly field: 'title' | 'bodyPreview' | 'canonicalUrl';
 };
 
@@ -50,6 +51,7 @@ export const presentSummaryArtifact = (
       label: `[${index + 1}]`,
       feedItemId: citation.feedItemId,
       sourceItemId: citation.sourceItemId,
+      providerKey: citation.providerKey,
       field: citation.field,
     })),
     freshness: presentFreshness(freshness),

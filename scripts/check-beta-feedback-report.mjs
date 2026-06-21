@@ -164,6 +164,14 @@ for (const finding of findings) {
     fail(`${reportPath}: finding "${id}" must include summaryId and topicId evidence`);
   }
 
+  if (evalFixtureCategories.has(finding.category)) {
+    for (const field of ['citationId', 'feedItemId', 'sourceItemId', 'providerKey']) {
+      if (!nonEmptyString(evidence[field])) {
+        fail(`${reportPath}: finding "${id}" must include ${field} evidence`);
+      }
+    }
+  }
+
   if (finding.eligibleForEvalFixture === true && !evalFixtureCategories.has(finding.category)) {
     fail(`${reportPath}: finding "${id}" cannot be eval-fixture eligible for category ${finding.category}`);
   }

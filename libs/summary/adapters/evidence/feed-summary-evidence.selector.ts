@@ -18,22 +18,25 @@ export class FeedSummaryEvidenceSelector implements SummaryEvidenceSelectorPort 
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       topicId: params.topicId,
-      limit: normalizeLimit(params.maxItems),
+      limit: MAX_EVIDENCE_ITEMS,
     });
-    const items = result.items.map((item): SummaryEvidenceItem => {
-      const snapshot = item.toSnapshot();
+    const items = selectProviderBalancedEvidence(
+      result.items.map((item): SummaryEvidenceItem => {
+        const snapshot = item.toSnapshot();
 
-      return {
-        feedItemId: snapshot.id,
-        sourceItemId: snapshot.sourceItemId,
-        sourceBindingId: snapshot.sourceBindingId,
-        providerKey: snapshot.providerKey,
-        title: snapshot.title,
-        bodyPreview: snapshot.bodyPreview,
-        canonicalUrl: snapshot.canonicalUrl,
-        observedAt: snapshot.observedAt,
-      };
-    });
+        return {
+          feedItemId: snapshot.id,
+          sourceItemId: snapshot.sourceItemId,
+          sourceBindingId: snapshot.sourceBindingId,
+          providerKey: snapshot.providerKey,
+          title: snapshot.title,
+          bodyPreview: snapshot.bodyPreview,
+          canonicalUrl: snapshot.canonicalUrl,
+          observedAt: snapshot.observedAt,
+        };
+      }),
+      normalizeLimit(params.maxItems),
+    );
 
     return {
       sourceWindow: buildSourceWindow(params, items, this.clock),
@@ -48,6 +51,37 @@ const normalizeLimit = (value: number): number => {
   }
 
   return Math.min(value, MAX_EVIDENCE_ITEMS);
+};
+
+const selectProviderBalancedEvidence = (
+  items: readonly SummaryEvidenceItem[],
+  limit: number,
+): readonly SummaryEvidenceItem[] => {
+  const selected = new Map<string, SummaryEvidenceItem>();
+  const selectedProviders = new Set<string>();
+
+  for (const item of items) {
+    if (selected.size >= limit) {
+      break;
+    }
+
+    if (!selectedProviders.has(item.providerKey)) {
+      selected.set(item.feedItemId, item);
+      selectedProviders.add(item.providerKey);
+    }
+  }
+
+  for (const item of items) {
+    if (selected.size >= limit) {
+      break;
+    }
+
+    if (!selected.has(item.feedItemId)) {
+      selected.set(item.feedItemId, item);
+    }
+  }
+
+  return [...selected.values()];
 };
 
 const buildSourceWindow = (

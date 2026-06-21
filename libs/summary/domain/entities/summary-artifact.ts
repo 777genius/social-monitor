@@ -10,6 +10,7 @@ export type SummaryCitation = {
   readonly citationId: string;
   readonly feedItemId: string;
   readonly sourceItemId: string;
+  readonly providerKey: string;
   readonly field: 'title' | 'bodyPreview' | 'canonicalUrl';
 };
 
@@ -115,6 +116,18 @@ export class SummaryArtifact {
     for (const citation of props.citationMap) {
       if (citation.citationId.trim().length === 0) {
         throw new Error('Summary citation id must be non-empty');
+      }
+
+      if (citation.feedItemId.trim().length === 0) {
+        throw new Error('Summary citation feed item id must be non-empty');
+      }
+
+      if (citation.sourceItemId.trim().length === 0) {
+        throw new Error('Summary citation source item id must be non-empty');
+      }
+
+      if (citation.providerKey.trim().length === 0) {
+        throw new Error('Summary citation provider key must be non-empty');
       }
 
       if (citationIds.has(citation.citationId)) {

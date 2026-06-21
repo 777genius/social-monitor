@@ -90,6 +90,7 @@ describe('Summary feedback submission (e2e)', () => {
         citationId: citation.citationId,
         feedItemId: citation.feedItemId,
         sourceItemId: citation.sourceItemId,
+        providerKey: citation.providerKey,
       },
       eligibleForEvalFixture: true,
       createdAt: expect.any(String),
@@ -142,6 +143,7 @@ describe('Summary feedback submission (e2e)', () => {
           citationId: citation.citationId,
           feedItemId: citation.feedItemId,
           sourceItemId: citation.sourceItemId,
+          providerKey: citation.providerKey,
         },
       }),
     ]);
@@ -177,6 +179,7 @@ type SummaryCitation = {
   readonly citationId: string;
   readonly feedItemId: string;
   readonly sourceItemId: string;
+  readonly providerKey: string;
 };
 
 const createCitedSummary = async (params: {

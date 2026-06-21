@@ -124,6 +124,91 @@ describe('FeedSummaryEvidenceSelector', () => {
     });
   });
 
+  it('keeps provider coverage when one source has the newest items', async () => {
+    const tenant = tenantId('tenant-balanced');
+    const workspace = workspaceId('workspace-balanced');
+    const feedItems = new FakeFeedItems();
+
+    feedItems.upsert(FeedItem.publish({
+      id: 'feed-reddit-new-1',
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: 'topic-balanced',
+      sourceItemId: 'reddit-binding:item-new-1',
+      sourceBindingId: 'reddit-binding',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://example.test/reddit/new-1',
+      title: 'Reddit newest signal',
+      bodyPreview: 'Newest Reddit body',
+      publishedAt: new Date('2026-06-06T12:03:00.000Z'),
+      observedAt: new Date('2026-06-06T12:03:30.000Z'),
+    }));
+    feedItems.upsert(FeedItem.publish({
+      id: 'feed-reddit-new-2',
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: 'topic-balanced',
+      sourceItemId: 'reddit-binding:item-new-2',
+      sourceBindingId: 'reddit-binding',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://example.test/reddit/new-2',
+      title: 'Reddit second signal',
+      bodyPreview: 'Second Reddit body',
+      publishedAt: new Date('2026-06-06T12:02:00.000Z'),
+      observedAt: new Date('2026-06-06T12:02:30.000Z'),
+    }));
+    feedItems.upsert(FeedItem.publish({
+      id: 'feed-reddit-new-3',
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: 'topic-balanced',
+      sourceItemId: 'reddit-binding:item-new-3',
+      sourceBindingId: 'reddit-binding',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://example.test/reddit/new-3',
+      title: 'Reddit third signal',
+      bodyPreview: 'Third Reddit body',
+      publishedAt: new Date('2026-06-06T12:01:00.000Z'),
+      observedAt: new Date('2026-06-06T12:01:30.000Z'),
+    }));
+    feedItems.upsert(FeedItem.publish({
+      id: 'feed-github-older',
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: 'topic-balanced',
+      sourceItemId: 'github-binding:item-older',
+      sourceBindingId: 'github-binding',
+      providerKey: 'github',
+      canonicalUrl: 'https://example.test/github/older',
+      title: 'GitHub older but distinct provider signal',
+      bodyPreview: 'GitHub body',
+      publishedAt: new Date('2026-06-06T11:00:00.000Z'),
+      observedAt: new Date('2026-06-06T11:00:30.000Z'),
+    }));
+
+    const result = await new FeedSummaryEvidenceSelector(
+      feedItems,
+      new FixedClock(new Date('2026-06-06T12:30:00.000Z')),
+    ).select({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: 'topic-balanced',
+      maxItems: 3,
+    });
+
+    expect(result.items.map((item) => item.feedItemId)).toEqual([
+      'feed-reddit-new-1',
+      'feed-github-older',
+      'feed-reddit-new-2',
+    ]);
+    expect(new Set(result.items.map((item) => item.providerKey))).toEqual(new Set(['reddit', 'github']));
+    expect(result.sourceWindow.selectedFeedItemIds).toEqual([
+      'feed-reddit-new-1',
+      'feed-github-older',
+      'feed-reddit-new-2',
+    ]);
+  });
+
   it('returns an empty window when no feed evidence exists', async () => {
     const tenant = tenantId('tenant-1');
     const workspace = workspaceId('workspace-1');

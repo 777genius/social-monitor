@@ -121,6 +121,7 @@ export class RecordSummaryFeedbackUseCase {
         citationId: citation?.citationId,
         feedItemId: citation?.feedItemId,
         sourceItemId: citation?.sourceItemId,
+        providerKey: citation?.providerKey,
       },
       triageOwner: triageOwnerFor(command.category),
       eligibleForEvalFixture: isEligibleForEvalFixture(command.category, normalizedComment, citation?.citationId),
@@ -184,6 +185,7 @@ const presentFeedback = (feedback: SummaryFeedback, created: boolean): RecordSum
     citationId: snapshot.evidence.citationId,
     feedItemId: snapshot.evidence.feedItemId,
     sourceItemId: snapshot.evidence.sourceItemId,
+    providerKey: snapshot.evidence.providerKey,
   };
 
   return {

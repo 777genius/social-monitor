@@ -490,6 +490,7 @@ const normalizeCitationMap = (value: unknown): readonly SummaryCitation[] => {
       citationId: requiredString(record.citationId, `citationMap[${index}].citationId`),
       feedItemId: requiredString(record.feedItemId, `citationMap[${index}].feedItemId`),
       sourceItemId: requiredString(record.sourceItemId, `citationMap[${index}].sourceItemId`),
+      providerKey: requiredString(record.providerKey, `citationMap[${index}].providerKey`),
       field: field as SummaryCitation['field'],
     };
   });
@@ -883,11 +884,12 @@ const openAiSummaryJsonSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['citationId', 'feedItemId', 'sourceItemId', 'field'],
+        required: ['citationId', 'feedItemId', 'sourceItemId', 'providerKey', 'field'],
         properties: {
           citationId: { type: 'string', minLength: 1 },
           feedItemId: { type: 'string', minLength: 1 },
           sourceItemId: { type: 'string', minLength: 1 },
+          providerKey: { type: 'string', minLength: 1 },
           field: { type: 'string', enum: ['title', 'bodyPreview', 'canonicalUrl'] },
         },
       },

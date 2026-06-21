@@ -138,6 +138,7 @@ async function main(): Promise<void> {
       citationId: 'citation-1',
       feedItemId: 'feed-1',
       sourceItemId: 'source-1',
+      providerKey: 'rss',
     },
     triageOwner: 'summary-owner',
     eligibleForEvalFixture: true,
@@ -154,6 +155,10 @@ async function main(): Promise<void> {
   assert(
     foundFeedback.toSnapshot().evidence.citationId === 'citation-1',
     'summary feedback evidence must round-trip',
+  );
+  assert(
+    foundFeedback.toSnapshot().evidence.providerKey === 'rss',
+    'summary feedback provider key evidence must round-trip',
   );
 
   const listedFeedback = await feedbackRepository.list({
@@ -249,6 +254,7 @@ const makeCompletedArtifact = (summaryId: string): SummaryArtifact =>
         citationId: 'citation-1',
         feedItemId: 'feed-1',
         sourceItemId: 'source-1',
+        providerKey: 'rss',
         field: 'bodyPreview',
       },
     ],

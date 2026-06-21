@@ -367,6 +367,7 @@ const normalizeFeedbackEvidence = (
       citationId: normalizeOptionalString((value as { readonly citationId?: unknown }).citationId),
       feedItemId: normalizeOptionalString((value as { readonly feedItemId?: unknown }).feedItemId),
       sourceItemId: normalizeOptionalString((value as { readonly sourceItemId?: unknown }).sourceItemId),
+      providerKey: normalizeOptionalString((value as { readonly providerKey?: unknown }).providerKey),
     };
   }
 

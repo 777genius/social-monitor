@@ -38,6 +38,10 @@ export const validateSummaryCitationsAgainstEvidence = (
     if (evidenceItem.sourceItemId !== citation.sourceItemId) {
       throw new Error(`Summary citation validation failed: citation ${citation.citationId} source item mismatch`);
     }
+
+    if (evidenceItem.providerKey !== citation.providerKey) {
+      throw new Error(`Summary citation validation failed: citation ${citation.citationId} provider key mismatch`);
+    }
   }
 
   for (const keyPoint of draft.keyPoints) {

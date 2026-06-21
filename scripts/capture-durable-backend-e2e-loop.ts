@@ -123,7 +123,9 @@ async function main(): Promise<void> {
           providerFeedCounts: evidence.providerFeedCounts,
           feedItemIds: evidence.feedItemIds,
           summaryId: evidence.summaryId,
+          summaryCitationProviderKeys: evidence.summaryCitationProviderKeys,
           feedbackId: evidence.feedbackId,
+          feedbackProviderKey: evidence.feedbackProviderKey,
           digestId: evidence.digestId,
           webhookEndpointId: evidence.webhookEndpointId,
           webhookDeliveryAttemptId: evidence.webhookDeliveryAttemptId,
@@ -164,7 +166,9 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
   readonly scanId: string;
   readonly feedItemIds: readonly string[];
   readonly summaryId: string;
+  readonly summaryCitationProviderKeys: readonly string[];
   readonly feedbackId: string;
+  readonly feedbackProviderKey: string;
   readonly digestId: string;
   readonly webhookEndpointId: string;
   readonly webhookDeliveryAttemptId: string;
@@ -261,6 +265,21 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
   const summaryArtifact = await requestJson<JsonRecord>('GET', `/summaries/${encodeURIComponent(summaryId)}`, { headers });
   const citations = readObjectArray(summaryArtifact, 'citations');
   const firstCitationId = citations.length === 0 ? undefined : readString(citations[0] ?? {}, 'citationId');
+  const summaryCitationProviderKeys = [...new Set(citations.map((citation) => readString(citation, 'providerKey')))].sort();
+  for (const binding of bindingsWithFeed) {
+    if (!summaryCitationProviderKeys.includes(binding.providerKey)) {
+      throw new Error(`summary citations must include provider key ${binding.providerKey}: ${JSON.stringify({
+        expectedProviders: bindingsWithFeed.map((item) => item.providerKey),
+        providerFeedCounts: bindingsWithFeed.map((item) => ({
+          providerKey: item.providerKey,
+          feedItemCount: item.feedItemCount,
+          feedProviderKeys: item.feedProviderKeys,
+        })),
+        summaryCitationProviderKeys,
+        citationCount: citations.length,
+      })}`);
+    }
+  }
 
   const realtimeChannel = `topic:${topicId}:summary-status`;
   const realtime = await pollJson<JsonRecord>(
@@ -287,6 +306,11 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
     },
   });
   const feedbackId = readString(feedback, 'feedbackId');
+  const feedbackEvidence = readRecord(feedback, 'evidence');
+  const feedbackProviderKey = readString(feedbackEvidence, 'providerKey');
+  if (firstCitationId !== undefined && !summaryCitationProviderKeys.includes(feedbackProviderKey)) {
+    throw new Error(`feedback provider key ${feedbackProviderKey} must match a summary citation provider`);
+  }
 
   const webhook = await requestJson<JsonRecord>('POST', '/delivery/webhook-endpoints', {
     headers,
@@ -401,7 +425,9 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
     scanId: primaryBinding.scanId,
     feedItemIds,
     summaryId,
+    summaryCitationProviderKeys,
     feedbackId,
+    feedbackProviderKey,
     digestId,
     webhookEndpointId,
     webhookDeliveryAttemptId,

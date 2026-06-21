@@ -881,7 +881,7 @@ function validateSummaryEvidence(summaryEvidence, category, sampleLabel) {
   }
 
   if (['wrong_fact', 'missing_source', 'bad_citation'].includes(category)) {
-    for (const field of ['citationId', 'feedItemId', 'sourceItemId']) {
+    for (const field of ['citationId', 'feedItemId', 'sourceItemId', 'providerKey']) {
       if (typeof summaryEvidence[field] !== 'string' || summaryEvidence[field].trim().length === 0) {
         violations.push(`${sampleLabel}: summaryEvidence.${field} is required for ${category}`);
       }

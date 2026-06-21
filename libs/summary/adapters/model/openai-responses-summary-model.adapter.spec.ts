@@ -58,6 +58,7 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
     expect(attempt.draft.headline).toBe('Backend signals are converging');
     expect(attempt.draft.keyPoints[0]?.citationIds).toEqual(['c1']);
     expect(attempt.draft.citationMap[0]?.feedItemId).toBe('feed-1');
+    expect(attempt.draft.citationMap[0]?.providerKey).toBe('reddit');
     expect(attempt.draft.usage).toMatchObject({
       inputTokens: 321,
       outputTokens: 123,
@@ -245,12 +246,14 @@ const validProviderDraft = () => ({
       citationId: 'c1',
       feedItemId: 'feed-1',
       sourceItemId: 'source-1',
+      providerKey: 'reddit',
       field: 'title',
     },
     {
       citationId: 'c2',
       feedItemId: 'feed-2',
       sourceItemId: 'source-2',
+      providerKey: 'github',
       field: 'bodyPreview',
     },
   ],

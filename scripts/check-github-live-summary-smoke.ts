@@ -233,6 +233,10 @@ const main = async (): Promise<void> => {
   const artifactSnapshot = artifact.toSnapshot();
   assert(artifactSnapshot.citationMap.length > 0, 'live GitHub summary must include citations');
   assert(
+    artifactSnapshot.citationMap.every((citation) => citation.providerKey === 'github'),
+    'live GitHub summary citations must retain provider key',
+  );
+  assert(
     artifactSnapshot.sourceWindow.selectedFeedItemIds.length === feed.items.length,
     'live GitHub summary source window must reference selected feed items',
   );
@@ -247,6 +251,7 @@ const main = async (): Promise<void> => {
     summaryStatus: summary.status,
     summaryReadyPublished: summaryEvents.all().some((event) => event.eventType === 'summary.ready'),
     citationCount: artifactSnapshot.citationMap.length,
+    citedProviders: [...new Set(artifactSnapshot.citationMap.map((citation) => citation.providerKey))].sort(),
     selectedFeedItemCount: artifactSnapshot.sourceWindow.selectedFeedItemIds.length,
   });
 
@@ -267,6 +272,7 @@ function writeOptionalEvidenceArtifact(input: {
   summaryStatus: string;
   summaryReadyPublished: boolean;
   citationCount: number;
+  citedProviders: readonly string[];
   selectedFeedItemCount: number;
 }): void {
   if (evidencePath === undefined) {
@@ -312,6 +318,7 @@ function writeOptionalEvidenceArtifact(input: {
           feedProjectionInsertedItems: input.feedItemCount,
           summaryCompleted: input.summaryStatus === 'completed',
           citationCount: input.citationCount,
+          citedProviders: input.citedProviders,
           summaryReadyPublished: input.summaryReadyPublished,
         },
       },
@@ -323,6 +330,7 @@ function writeOptionalEvidenceArtifact(input: {
       feedItems: input.feedItemCount,
       selectedFeedItems: input.selectedFeedItemCount,
       citationCount: input.citationCount,
+      citedProviders: input.citedProviders,
     },
     redaction: {
       rawProviderPayloadIncluded: false,

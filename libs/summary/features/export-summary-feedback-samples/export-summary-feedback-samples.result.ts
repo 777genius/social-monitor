@@ -14,6 +14,7 @@ export type RedactedSummaryFeedbackSampleInput = {
     readonly citationId?: string;
     readonly feedItemId?: string;
     readonly sourceItemId?: string;
+    readonly providerKey?: string;
   };
   readonly sanitizedSignal: string;
   readonly redactedComment: string;

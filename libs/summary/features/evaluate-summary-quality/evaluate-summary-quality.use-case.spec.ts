@@ -92,6 +92,7 @@ class SafeEvalModel implements SummaryModelPort {
             citationId: 'c1',
             feedItemId: firstItem.feedItemId,
             sourceItemId: firstItem.sourceItemId,
+            providerKey: firstItem.providerKey,
             field: 'title',
           },
         ],

@@ -96,6 +96,7 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
       citationId: `c${index + 1}`,
       feedItemId: item.feedItemId,
       sourceItemId: item.sourceItemId,
+      providerKey: item.providerKey,
       field: 'title' as const,
     }));
     const keyPoints = selectedItems.map((item, index) => ({

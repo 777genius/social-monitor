@@ -235,6 +235,7 @@ class InvalidCitationSummaryModel extends NoSignalSummaryModel {
             citationId: 'c1',
             feedItemId: 'feed-outside-window',
             sourceItemId: 'source-1',
+            providerKey: 'rss',
             field: 'title',
           },
         ],

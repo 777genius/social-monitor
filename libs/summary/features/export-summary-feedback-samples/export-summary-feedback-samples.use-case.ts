@@ -112,7 +112,7 @@ function validateCommand(command: ExportSummaryFeedbackSamplesCommand): DomainEr
 function toRedactedSample(feedback: SummaryFeedback): RedactedSummaryFeedbackSampleInput | DomainError {
   const snapshot = feedback.toSnapshot();
   if (citationRequiredCategories.has(snapshot.category)) {
-    for (const field of ['citationId', 'feedItemId', 'sourceItemId'] as const) {
+    for (const field of ['citationId', 'feedItemId', 'sourceItemId', 'providerKey'] as const) {
       if (snapshot.evidence[field] === undefined) {
         return new DomainError(
           'validation.failed',
@@ -136,6 +136,7 @@ function toRedactedSample(feedback: SummaryFeedback): RedactedSummaryFeedbackSam
       citationId: snapshot.evidence.citationId,
       feedItemId: snapshot.evidence.feedItemId,
       sourceItemId: snapshot.evidence.sourceItemId,
+      providerKey: snapshot.evidence.providerKey,
     },
     sanitizedSignal: sanitizedSignal(snapshot.category, snapshot.rating, snapshot.triageOwner),
     redactedComment: redactedComment(snapshot.comment),

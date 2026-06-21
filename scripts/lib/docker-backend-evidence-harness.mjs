@@ -83,7 +83,7 @@ export async function withDockerBackendEvidenceStack(options, callback) {
 
   try {
     try {
-      docker([...composeBaseArgs, 'build'], { stdio: 'inherit' });
+      docker([...composeBaseArgs, 'build', ...dockerComposeBuildCacheArgs()], { stdio: 'inherit' });
     } catch (error) {
       throw new Error(dockerComposeBuildFailureMessage(error, storageMode));
     }
@@ -776,6 +776,16 @@ function shouldKeepStack(keepEnvNames) {
   }
 
   return keepEnvNames.some((name) => process.env[name] === '1');
+}
+
+function dockerComposeBuildCacheArgs() {
+  return boolEnv('DOCKER_BACKEND_EVIDENCE_NO_CACHE') ? ['--no-cache'] : [];
+}
+
+function boolEnv(name) {
+  const value = process.env[name]?.trim().toLowerCase();
+
+  return value === '1' || value === 'true' || value === 'yes';
 }
 
 function dockerComposeBuildFailureMessage(error, storageMode) {

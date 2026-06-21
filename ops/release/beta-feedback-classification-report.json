@@ -50,7 +50,8 @@
         "topicId": "topic-beta-policy",
         "citationId": "citation-source-001",
         "feedItemId": "feed-item-source-001",
-        "sourceItemId": "source-item-source-001"
+        "sourceItemId": "source-item-source-001",
+        "providerKey": "rss"
       },
       "sanitizedSignal": "Summary asserted a fact that was not supported by the cited item.",
       "action": "Add eval fixture and block ring expansion until citation-grounding regression passes.",
@@ -69,7 +70,8 @@
         "topicId": "topic-beta-policy",
         "citationId": "citation-source-002",
         "feedItemId": "feed-item-source-002",
-        "sourceItemId": "source-item-source-002"
+        "sourceItemId": "source-item-source-002",
+        "providerKey": "github"
       },
       "sanitizedSignal": "Citation pointed to the right topic but did not support the sentence it was attached to.",
       "action": "Tighten citation validator and add regression case before promoting the beta ring.",
@@ -138,7 +140,8 @@
         "topicId": "topic-beta-policy",
         "citationId": "citation-source-003",
         "feedItemId": "feed-item-source-003",
-        "sourceItemId": "source-item-source-003"
+        "sourceItemId": "source-item-source-003",
+        "providerKey": "reddit"
       },
       "sanitizedSignal": "Summary missed an important supported-source item that was present in the evidence window.",
       "action": "Add eval fixture and inspect source-window selection before changing scan frequency.",
