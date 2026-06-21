@@ -421,6 +421,45 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
         expect(response.body.code).toBe('validation.failed');
       });
   });
+
+  it('rejects idempotency-key reuse across different personalized summary scopes', async () => {
+    const tenant = tenantId('tenant-summary-idempotency-scope-e2e');
+    const workspace = workspaceId('workspace-summary-idempotency-scope-e2e');
+    const topicId = 'topic-summary-idempotency-scope-e2e';
+
+    const first = await request(app.getHttpServer())
+      .post(`/topics/${topicId}/summary-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
+      .set('x-request-id', 'summary-idempotency-scope-request-1')
+      .set('idempotency-key', 'summary-idempotency-scope-request-1')
+      .send({
+        userId: 'user-idempotency-a',
+      })
+      .expect(201);
+
+    expect(first.body).toEqual({
+      summaryJobId: expect.any(String),
+      status: 'requested',
+      created: true,
+    });
+
+    await request(app.getHttpServer())
+      .post(`/topics/${topicId}/summary-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
+      .set('x-request-id', 'summary-idempotency-scope-request-2')
+      .set('idempotency-key', 'summary-idempotency-scope-request-1')
+      .send({
+        userId: 'user-idempotency-b',
+      })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body.code).toBe('operation.conflict');
+      });
+  });
 });
 
 const createSubscription = (

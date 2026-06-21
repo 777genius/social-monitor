@@ -153,6 +153,72 @@ describe('RequestSummaryUseCase', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('rejects empty idempotency key', async () => {
+    const useCase = new RequestSummaryUseCase(
+      new FakeSummaryJobs(),
+      new FakeSummaryJobQueue(),
+      new AllowingSummaryQuota(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      idempotencyKey: ' ',
+      correlationId: 'correlation-1',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'validation.failed',
+      }),
+    });
+  });
+
+  it('rejects idempotency key reuse for a different personalized request scope', async () => {
+    const useCase = new RequestSummaryUseCase(
+      new FakeSummaryJobs(),
+      new FakeSummaryJobQueue(),
+      new AllowingSummaryQuota(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-06T00:00:00.000Z')),
+    );
+    const baseCommand = {
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      userId: 'user-1',
+      subscriptionId: 'subscription-1',
+      idempotencyKey: 'personalized-summary-1',
+      correlationId: 'correlation-1',
+    };
+
+    await expect(useCase.execute(baseCommand)).resolves.toEqual({
+      ok: true,
+      value: {
+        summaryJobId: 'summary-job-1',
+        status: 'requested',
+        created: true,
+      },
+    });
+
+    const result = await useCase.execute({
+      ...baseCommand,
+      userId: 'user-2',
+      correlationId: 'correlation-2',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'operation.conflict',
+      }),
+    });
+  });
+
   it('checks quota before creating a new summary job', async () => {
     const summaryJobs = new FakeSummaryJobs();
     const useCase = new RequestSummaryUseCase(

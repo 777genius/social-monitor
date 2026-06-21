@@ -7,7 +7,7 @@ import {
   type Result,
 } from '@social-monitor/shared-kernel';
 
-import { SummaryJob } from '../../domain';
+import { SummaryJob, type SummaryJobProps } from '../../domain';
 import type { SummaryJobQueuePort, SummaryJobRepositoryPort, SummaryQuotaPort } from '../../ports';
 import type { RequestSummaryCommand } from './request-summary.command';
 import type { RequestSummaryResult } from './request-summary.result';
@@ -24,22 +24,39 @@ export class RequestSummaryUseCase {
   ) {}
 
   async execute(command: RequestSummaryCommand): Promise<Result<RequestSummaryResult, RequestSummaryFailure>> {
-    if (command.topicId.trim().length === 0) {
+    const topicId = command.topicId.trim();
+    const userId = normalizeOptionalText(command.userId);
+    const subscriptionId = normalizeOptionalText(command.subscriptionId);
+    const idempotencyKey = command.idempotencyKey.trim();
+
+    if (topicId.length === 0) {
       return err(new DomainError('validation.failed', 'Summary topic id must be non-empty'));
     }
 
-    if (normalizeOptionalText(command.subscriptionId) !== undefined && normalizeOptionalText(command.userId) === undefined) {
+    if (idempotencyKey.length === 0) {
+      return err(new DomainError('validation.failed', 'Summary idempotency key must be non-empty'));
+    }
+
+    if (subscriptionId !== undefined && userId === undefined) {
       return err(new DomainError('validation.failed', 'Subscription-scoped summary request must include userId'));
     }
 
     const existing = await this.summaryJobs.findByIdempotencyKey({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      idempotencyKey: command.idempotencyKey,
+      idempotencyKey,
     });
 
     if (existing !== null) {
       const snapshot = existing.toSnapshot();
+
+      if (!isSameIdempotentSummaryRequest(snapshot, { topicId, userId, subscriptionId })) {
+        return err(new DomainError(
+          'operation.conflict',
+          'Summary idempotency key was already used for a different request scope',
+          { idempotencyKey },
+        ));
+      }
 
       return ok({
         summaryJobId: snapshot.id,
@@ -54,18 +71,18 @@ export class RequestSummaryUseCase {
       workspaceId: command.workspaceId,
       summaryJobId,
       correlationId: command.correlationId,
-      causationId: command.idempotencyKey,
+      causationId: idempotencyKey,
     };
     if (!(await this.summaryJobQueue.canAccept(queueCommand))) {
       return err(new DomainError('operation.backpressure', 'Summary job queue backpressure limit reached', {
-        topicId: command.topicId,
+        topicId,
       }));
     }
 
     const quota = await this.summaryQuota.reserveSummaryJob({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      topicId: command.topicId,
+      topicId,
       operation: 'summary.request',
     });
     if (!quota.ok) {
@@ -76,10 +93,10 @@ export class RequestSummaryUseCase {
       id: summaryJobId,
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      topicId: command.topicId,
-      userId: normalizeOptionalText(command.userId),
-      subscriptionId: normalizeOptionalText(command.subscriptionId),
-      idempotencyKey: command.idempotencyKey,
+      topicId,
+      userId,
+      subscriptionId,
+      idempotencyKey,
       requestedAt: this.clock.now(),
     });
     await this.summaryJobs.save(job);
@@ -99,3 +116,15 @@ const normalizeOptionalText = (value: string | undefined): string | undefined =>
 
   return normalized === undefined || normalized.length === 0 ? undefined : normalized;
 };
+
+const isSameIdempotentSummaryRequest = (
+  snapshot: SummaryJobProps,
+  request: {
+    readonly topicId: string;
+    readonly userId?: string;
+    readonly subscriptionId?: string;
+  },
+): boolean =>
+  snapshot.topicId === request.topicId &&
+  snapshot.userId === request.userId &&
+  snapshot.subscriptionId === request.subscriptionId;
