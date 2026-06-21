@@ -483,6 +483,7 @@ function buildHandoff(plan) {
       preflightCommand: contract.preflightCommand,
       artifactValidationCommand: contract.artifactValidationCommand,
       dockerBundleImportCommand: contract.dockerBundleImportCommand,
+      currentPackageCommand: contract.currentPackageCommand,
       envFileArg: contract.executionSafety.envFileArg,
       envFileConflictPolicy: contract.executionSafety.envFileConflictPolicy,
       liveExecutionRequires: contract.executionSafety.liveExecutionRequires,
@@ -1997,7 +1998,13 @@ function runCommand(command, label) {
     throw new Error(`${label}: unsupported command "${command}"`);
   }
   console.log(`\n> ${label}: npm run ${scriptName}`);
-  execFileSync('npm', ['run', scriptName], { stdio: 'inherit' });
+  const output = execFileSync('npm', ['run', scriptName], {
+    encoding: 'utf8',
+    stdio: 'pipe',
+  });
+  if (output.length > 0) {
+    process.stdout.write(output);
+  }
 }
 
 function scriptNameFromCommand(command) {

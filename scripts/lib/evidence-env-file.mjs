@@ -1,5 +1,6 @@
 import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { parse as parseDotenv } from 'dotenv';
 
 const forbiddenPathFragments = ['/fixtures/', '\\fixtures\\', '.example.', '-examples', '_examples'];
 
@@ -66,9 +67,32 @@ export function validateEvidenceJsonFilePath(path, label) {
 
 export function readPrivateEvidenceJsonFile(path, label) {
   const resolvedPath = validateEvidenceJsonFilePath(path, label);
+  assertPrivateRegularFile(resolvedPath, label);
+
+  return readFileSync(resolvedPath, 'utf8');
+}
+
+export function readPrivateEvidenceEnvFile(path, label) {
+  const resolvedPath = validateEvidenceEnvFilePath(path);
+  assertPrivateRegularFile(resolvedPath, label);
+
+  return readFileSync(resolvedPath, 'utf8');
+}
+
+export function readPrivateEvidenceEnvEntries(path, label) {
+  return Object.entries(parseDotenv(readPrivateEvidenceEnvFile(path, label)))
+    .map(([name, value]) => [name, String(value).trim()])
+    .filter(([, value]) => value.length > 0);
+}
+
+export function shellQuote(value) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function assertPrivateRegularFile(path, label) {
   let stats;
   try {
-    stats = statSync(resolvedPath);
+    stats = statSync(path);
   } catch {
     throw new Error(`${label} must point to an existing regular file`);
   }
@@ -79,12 +103,6 @@ export function readPrivateEvidenceJsonFile(path, label) {
   if ((stats.mode & 0o077) !== 0) {
     throw new Error(`${label} must use 0600-style private file permissions`);
   }
-
-  return readFileSync(resolvedPath, 'utf8');
-}
-
-export function shellQuote(value) {
-  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function isValidEnvName(name) {

@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -308,6 +309,7 @@ validateCommand(contract.handoffJsonCommand, `${contractPath}: handoffJsonComman
 validateCommand(contract.preflightCommand, `${contractPath}: preflightCommand`);
 validateCommand(contract.artifactValidationCommand, `${contractPath}: artifactValidationCommand`);
 validateCommand(contract.dockerBundleImportCommand, `${contractPath}: dockerBundleImportCommand`);
+validateCommand(contract.currentPackageCommand, `${contractPath}: currentPackageCommand`);
 validateCommand(contract.executeCommand, `${contractPath}: executeCommand`);
 validateSafety();
 validateArtifactFreshnessPolicy();
@@ -2406,7 +2408,7 @@ function runRunnerValidateArtifactsSmoke(jobId, env) {
   } catch (error) {
     return {
       exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+      output: childProcessErrorOutput(error),
     };
   }
 }
@@ -2526,7 +2528,7 @@ function runRunnerPreflightNegativeSmoke(jobId, env) {
   } catch (error) {
     return {
       exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+      output: childProcessErrorOutput(error),
     };
   }
 }
@@ -2705,7 +2707,7 @@ function runRunnerOutputSmoke(args, env) {
   } catch (error) {
     return {
       exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+      output: childProcessErrorOutput(error),
     };
   }
 }
@@ -2733,7 +2735,7 @@ function runRunnerTextHandoffSmoke(jobId, env) {
   } catch (error) {
     return {
       exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+      output: childProcessErrorOutput(error),
     };
   }
 }
@@ -2762,10 +2764,25 @@ function runRunnerJsonPlanSmoke(jobId, env) {
   } catch (error) {
     return {
       exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+      output: childProcessErrorOutput(error),
       plan: undefined,
     };
   }
+}
+
+function childProcessErrorOutput(error) {
+  const chunks = [
+    error.stdout,
+    error.stderr,
+    ...(Array.isArray(error.output) ? error.output : []),
+    error.message,
+  ];
+
+  return chunks
+    .filter((chunk) => chunk !== undefined && chunk !== null)
+    .map((chunk) => Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk))
+    .filter((chunk) => chunk.trim().length > 0)
+    .join('\n');
 }
 
 function durableBackendE2ePreflightEnv(tempDirectory, overrides = {}) {
@@ -2864,7 +2881,7 @@ function runRunnerPreflightPositiveSmoke(env, jobId) {
   } catch (error) {
     return {
       exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${error.stdout ?? ''}\n${error.stderr ?? ''}`,
+      output: childProcessErrorOutput(error),
     };
   }
 }
@@ -3528,6 +3545,7 @@ function validateWiring() {
   const handoffJsonScript = scriptNameFromCommand(contract.handoffJsonCommand);
   const preflightScript = scriptNameFromCommand(contract.preflightCommand);
   const artifactValidationScript = scriptNameFromCommand(contract.artifactValidationCommand);
+  const currentPackageScript = scriptNameFromCommand(contract.currentPackageCommand);
   const executeScript = scriptNameFromCommand(contract.executeCommand);
 
   for (const scriptName of [
@@ -3539,6 +3557,7 @@ function validateWiring() {
     handoffJsonScript,
     preflightScript,
     artifactValidationScript,
+    currentPackageScript,
     executeScript,
   ]) {
     if (!packageScripts[scriptName]) {
@@ -3566,6 +3585,9 @@ function validateWiring() {
   if (!String(packageScripts[artifactValidationScript] ?? '').includes('--require-env')) {
     violations.push(`${packagePath}: ${artifactValidationScript} must pass --require-env`);
   }
+  if (packageScripts[currentPackageScript] !== 'node scripts/package-current-external-beta-evidence.mjs') {
+    violations.push(`${packagePath}: ${currentPackageScript} must run scripts/package-current-external-beta-evidence.mjs`);
+  }
   if (!backendScripts.has(checkScript)) {
     violations.push(`${backendSafePath}: backendScripts must include ${checkScript}`);
   }
@@ -3577,6 +3599,7 @@ function validateWiring() {
     handoffJsonScript,
     preflightScript,
     artifactValidationScript,
+    currentPackageScript,
     executeScript,
   ]) {
     if (backendScripts.has(scriptName)) {

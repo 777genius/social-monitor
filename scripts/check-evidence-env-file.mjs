@@ -1,9 +1,11 @@
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
   shellQuote,
+  readPrivateEvidenceEnvEntries,
   validateEvidenceEnvFilePath,
   validateEvidenceJsonFilePath,
   writeEvidenceEnvFile,
@@ -20,6 +22,8 @@ try {
   validateFixturePathRejected();
   validateFixtureJsonPathRejected();
   validateRelativeJsonPathRejected();
+  validatePrivateEnvRead();
+  validateCurrentEvidencePackage();
 } finally {
   rmSync(tempDirectory, { recursive: true, force: true });
 }
@@ -102,6 +106,109 @@ function validateRelativeJsonPathRejected() {
     'relative JSON path',
     'must be an absolute JSON file path',
   );
+}
+
+function validatePrivateEnvRead() {
+  const envFilePath = join(tempDirectory, 'read-private.env');
+  writeEvidenceEnvFile(envFilePath, [
+    ['API_BASE_URL', 'https://api.staging.social-monitor.invalid'],
+    ['EMPTY_VALUE_SKIPPED', ''],
+  ]);
+  const entries = new Map(readPrivateEvidenceEnvEntries(envFilePath, 'read private env fixture'));
+  if (entries.get('API_BASE_URL') !== 'https://api.staging.social-monitor.invalid') {
+    violations.push('private evidence env reader must parse generated env files');
+  }
+  if (entries.has('EMPTY_VALUE_SKIPPED')) {
+    violations.push('private evidence env reader must skip empty env values');
+  }
+
+  chmodSync(envFilePath, 0o644);
+  assertRejected(
+    () => readPrivateEvidenceEnvEntries(envFilePath, 'public env fixture'),
+    'public env fixture',
+    'must use 0600-style private file permissions',
+  );
+}
+
+function validateCurrentEvidencePackage() {
+  const dockerEnvPath = join(tempDirectory, 'docker-import.env');
+  const liveOpenEnvPath = join(tempDirectory, 'live-open.env');
+  const outputEnvPath = join(tempDirectory, 'current-package.env');
+  const outputReportPath = join(tempDirectory, 'current-package-report.json');
+  const artifactPath = (name) => {
+    const path = join(tempDirectory, `${name}.json`);
+    writeFileSync(path, '{}\n', { mode: 0o600 });
+    chmodSync(path, 0o600);
+    return path;
+  };
+  const commitSha = 'a'.repeat(40);
+  const imageDigest = `sha256:${'b'.repeat(64)}`;
+
+  writeEvidenceEnvFile(dockerEnvPath, [
+    ['API_BASE_URL', 'http://127.0.0.1:4000'],
+    ['BACKEND_GIT_COMMIT_SHA', commitSha],
+    ['BACKEND_IMAGE_DIGEST', imageDigest],
+    ['DATABASE_URL', 'postgresql://credential-user:...@db.internal/social_monitor'],
+    ['RABBITMQ_URL', 'amqp://credential-user:...@rabbit.internal'],
+    ['STAGING_ENVIRONMENT_ID', 'dogfood-package-20260621'],
+    ['STAGING_OPERATOR', 'codex'],
+    ['STAGING_SECRET_STORE_ID', 'dogfood-secret-store-20260621'],
+    ['DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH', artifactPath('durable-runtime-selector')],
+    ['RABBITMQ_STAGING_DRILL_ARTIFACT_PATH', artifactPath('rabbitmq-staging-drill')],
+    ['POSTGRES_RESTORE_DRILL_ARTIFACT_PATH', artifactPath('postgres-restore-drill')],
+    ['DURABLE_BACKEND_E2E_ARTIFACT_PATH', artifactPath('durable-backend-e2e')],
+    ['SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH', artifactPath('source-credential-rotation')],
+    ['WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH', artifactPath('webhook-secret-rotation')],
+    ['SECURITY_FINAL_SWEEP_ARTIFACT_PATH', artifactPath('security-final-sweep')],
+    ['LOG_EXPORT_PATH', artifactPath('security-logs-export')],
+    ['METRICS_EXPORT_PATH', artifactPath('security-metrics-export')],
+    ['PUBLIC_ERROR_EXPORT_PATH', artifactPath('security-public-errors-export')],
+    ['RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH', artifactPath('release-deploy-smoke')],
+    ['BACKEND_STAGING_EVIDENCE_BUNDLE_PATH', artifactPath('backend-staging-evidence-bundle')],
+  ]);
+  writeEvidenceEnvFile(liveOpenEnvPath, [
+    ['LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', artifactPath('live-open-connectors')],
+    ['SOURCE_LIVE_ENVIRONMENT_ID', 'dogfood-public-network-20260621'],
+    ['SOURCE_LIVE_OPERATOR', 'codex'],
+    ['BACKEND_GIT_COMMIT_SHA', commitSha],
+    ['BACKEND_IMAGE_DIGEST', imageDigest],
+  ]);
+
+  const output = execFileSync('node', ['scripts/package-current-external-beta-evidence.mjs'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DOCKER_BACKEND_STAGING_IMPORTED_ENV_PATH: dockerEnvPath,
+      LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH: liveOpenEnvPath,
+      EXTERNAL_BETA_CURRENT_ENV_PATH: outputEnvPath,
+      EXTERNAL_BETA_CURRENT_REPORT_PATH: outputReportPath,
+    },
+  });
+
+  if (!output.includes('EXTERNAL_BETA_CURRENT_ENV_PATH=')) {
+    violations.push('current evidence package script must print env handoff path');
+  }
+  const packagedEnv = readFileSync(outputEnvPath, 'utf8');
+  if (!packagedEnv.includes('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH=')) {
+    violations.push('current evidence package must merge live-open evidence env');
+  }
+  if (packagedEnv.includes('DATABASE_URL=') || packagedEnv.includes('RABBITMQ_URL=')) {
+    violations.push('current evidence package must not write secret DB/RabbitMQ URL values');
+  }
+  const report = JSON.parse(readFileSync(outputReportPath, 'utf8'));
+  if (report.artifactFormat !== 'external-beta-current-evidence-package-v1') {
+    violations.push('current evidence package report must use the expected artifact format');
+  }
+  if (report.inputPolicy?.secretValuesIncluded !== false) {
+    violations.push('current evidence package report must state that secret values are excluded');
+  }
+  if (!report.inputPolicy?.secretEnvNamesWithheld?.includes('DATABASE_URL')) {
+    violations.push('current evidence package report must list withheld DATABASE_URL');
+  }
+  if (!Array.isArray(report.remaining?.requiredEnv)) {
+    violations.push('current evidence package report must include remaining required env names');
+  }
 }
 
 function assertRejected(fn, label, expectedMessage) {
