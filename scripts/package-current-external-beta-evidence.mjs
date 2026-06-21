@@ -21,16 +21,6 @@ const reportPath = validateEvidenceJsonFilePath(
     || join(resolve(artifactDir), 'external-beta-current-package-report.json'),
   'EXTERNAL_BETA_CURRENT_REPORT_PATH',
 );
-const defaultInputPaths = [
-  process.env.DOCKER_BACKEND_STAGING_IMPORTED_ENV_PATH?.trim()
-    || join(resolve(artifactDir), 'external-beta-evidence-from-docker-bundle.env'),
-  process.env.LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH?.trim()
-    || join(resolve(artifactDir), 'live-open-connectors.env'),
-  process.env.GITHUB_LIVE_SUMMARY_EVIDENCE_ENV_PATH?.trim(),
-  process.env.REDDIT_LIVE_EVIDENCE_ENV_PATH?.trim()
-    || join(resolve(artifactDir), 'live-reddit-oauth.env'),
-  process.env.SUMMARY_FEEDBACK_SAMPLES_ENV_PATH?.trim(),
-];
 const additionalInputPaths = (process.env.EXTERNAL_BETA_ADDITIONAL_ENV_PATHS ?? '')
   .split(delimiter)
   .map((path) => path.trim())
@@ -58,9 +48,16 @@ const forbiddenValueFragments = [
   'redis://',
 ];
 
-const selectedInputPaths = uniquePaths([...defaultInputPaths, ...additionalInputPaths]);
-const packageResult = packageEvidenceEnvFiles(selectedInputPaths);
 const expectedCommitSha = readExpectedCommitSha();
+const selectedInputSpecs = uniqueInputSpecs([
+  ...defaultInputSpecs(),
+  ...additionalInputPaths.map((path) => ({
+    path,
+    staleCommitPolicy: 'reject',
+    source: 'additional_env_path',
+  })),
+]);
+const packageResult = packageEvidenceEnvFiles(selectedInputSpecs, expectedCommitSha);
 assertExpectedCommitSha(packageResult.entries, expectedCommitSha);
 
 if (packageResult.includedEnvFiles.length === 0) {
@@ -106,15 +103,17 @@ console.log(`EXTERNAL_BETA_CURRENT_REPORT_PATH=${reportPath}`);
 console.log(`External beta current evidence package: ${report.readiness.externalEvidenceReadyJobs}/${report.readiness.externalEvidenceTotalJobs} external evidence jobs ready`);
 console.log(`Remaining required env: ${report.remaining.requiredEnv.length > 0 ? report.remaining.requiredEnv.join(', ') : 'none'}`);
 
-function packageEvidenceEnvFiles(inputPaths) {
+function packageEvidenceEnvFiles(inputSpecs, expectedCommitSha) {
   const entries = new Map();
   const sourcesByName = new Map();
   const includedEnvFiles = [];
   const skippedMissingEnvFiles = [];
+  const skippedStaleEnvFiles = [];
   const withheldSecretEnvNames = new Set();
   const violations = [];
 
-  for (const path of inputPaths) {
+  for (const inputSpec of inputSpecs) {
+    const path = inputSpec.path;
     if (path === undefined || path.length === 0) {
       continue;
     }
@@ -124,6 +123,21 @@ function packageEvidenceEnvFiles(inputPaths) {
     }
 
     const parsedEntries = readPrivateEvidenceEnvEntries(path, `evidence env file ${path}`);
+    const packagedCommitSha = new Map(parsedEntries).get('BACKEND_GIT_COMMIT_SHA');
+    if (packagedCommitSha !== undefined && packagedCommitSha !== expectedCommitSha) {
+      if (inputSpec.staleCommitPolicy === 'skip') {
+        skippedStaleEnvFiles.push({
+          path,
+          source: inputSpec.source,
+          packagedCommitSha,
+          expectedCommitSha,
+        });
+        continue;
+      }
+      violations.push(`${path}: stale BACKEND_GIT_COMMIT_SHA ${packagedCommitSha}; expected ${expectedCommitSha}`);
+      continue;
+    }
+
     includedEnvFiles.push(path);
     for (const [name, value] of parsedEntries) {
       if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) {
@@ -159,6 +173,7 @@ function packageEvidenceEnvFiles(inputPaths) {
     entries,
     includedEnvFiles,
     skippedMissingEnvFiles,
+    skippedStaleEnvFiles,
     withheldSecretEnvNames: [...withheldSecretEnvNames].sort(),
   };
 }
@@ -198,6 +213,7 @@ function buildReport({ envFilePath, reportPath, packageResult, expectedCommitSha
     },
     includedEnvFiles: packageResult.includedEnvFiles,
     skippedMissingEnvFiles: packageResult.skippedMissingEnvFiles,
+    skippedStaleEnvFiles: packageResult.skippedStaleEnvFiles,
     packagedEnvNames: [...packageResult.entries.keys()].sort(),
     readiness: {
       contractClosurePercent: readiness.contractClosurePercent,
@@ -284,6 +300,56 @@ function writePrivateJson(path, document) {
   chmodSync(path, 0o600);
 }
 
-function uniquePaths(paths) {
-  return [...new Set(paths.filter((path) => path !== undefined && path.length > 0))];
+function defaultInputSpecs() {
+  const dockerOverridePath = process.env.DOCKER_BACKEND_STAGING_IMPORTED_ENV_PATH?.trim();
+  const liveOpenOverridePath = process.env.LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH?.trim();
+  const redditOverridePath = process.env.REDDIT_LIVE_EVIDENCE_ENV_PATH?.trim();
+  const githubOverridePath = process.env.GITHUB_LIVE_SUMMARY_EVIDENCE_ENV_PATH?.trim();
+  const feedbackOverridePath = process.env.SUMMARY_FEEDBACK_SAMPLES_ENV_PATH?.trim();
+  const resolvedArtifactDir = resolve(artifactDir);
+
+  return [
+    {
+      path: dockerOverridePath || join(resolvedArtifactDir, 'external-beta-evidence-from-docker-bundle.env'),
+      staleCommitPolicy: dockerOverridePath ? 'reject' : 'skip',
+      source: dockerOverridePath
+        ? 'docker_backend_staging_import_env_override'
+        : 'default_docker_backend_staging_import_env',
+    },
+    {
+      path: liveOpenOverridePath || join(resolvedArtifactDir, 'live-open-connectors.env'),
+      staleCommitPolicy: liveOpenOverridePath ? 'reject' : 'skip',
+      source: liveOpenOverridePath
+        ? 'live_open_connectors_env_override'
+        : 'default_live_open_connectors_env',
+    },
+    {
+      path: githubOverridePath,
+      staleCommitPolicy: githubOverridePath ? 'reject' : 'skip',
+      source: 'github_live_summary_env',
+    },
+    {
+      path: redditOverridePath || join(resolvedArtifactDir, 'live-reddit-oauth.env'),
+      staleCommitPolicy: redditOverridePath ? 'reject' : 'skip',
+      source: redditOverridePath
+        ? 'reddit_live_oauth_env_override'
+        : 'default_reddit_live_oauth_env',
+    },
+    {
+      path: feedbackOverridePath,
+      staleCommitPolicy: feedbackOverridePath ? 'reject' : 'skip',
+      source: 'summary_feedback_samples_env',
+    },
+  ];
+}
+
+function uniqueInputSpecs(inputSpecs) {
+  const seenPaths = new Set();
+  return inputSpecs.filter((inputSpec) => {
+    if (inputSpec.path === undefined || inputSpec.path.length === 0 || seenPaths.has(inputSpec.path)) {
+      return false;
+    }
+    seenPaths.add(inputSpec.path);
+    return true;
+  });
 }

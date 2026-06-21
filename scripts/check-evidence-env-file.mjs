@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -24,6 +24,7 @@ try {
   validateRelativeJsonPathRejected();
   validatePrivateEnvRead();
   validateCurrentEvidencePackage();
+  validateCurrentEvidencePackageSkipsStaleDefaultEvidence();
   validateCurrentEvidencePackageRejectsStaleCommit();
 } finally {
   rmSync(tempDirectory, { recursive: true, force: true });
@@ -269,6 +270,74 @@ function validateCurrentEvidencePackageRejectsStaleCommit() {
     'stale current evidence package commit',
     'stale BACKEND_GIT_COMMIT_SHA',
   );
+}
+
+function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
+  const artifactDir = join(tempDirectory, 'stale-default-package');
+  mkdirSync(artifactDir, { recursive: true });
+  const dockerEnvPath = join(artifactDir, 'docker-import.env');
+  const outputEnvPath = join(artifactDir, 'current-package.env');
+  const outputReportPath = join(artifactDir, 'current-package-report.json');
+  const liveOpenDefaultEnvPath = join(artifactDir, 'live-open-connectors.env');
+  const redditDefaultEnvPath = join(artifactDir, 'live-reddit-oauth.env');
+  const artifactPath = (name) => {
+    const path = join(artifactDir, `${name}.json`);
+    writeFileSync(path, '{}\n', { mode: 0o600 });
+    chmodSync(path, 0o600);
+    return path;
+  };
+  const commitSha = 'e'.repeat(40);
+  const staleCommitSha = 'f'.repeat(40);
+  const imageDigest = `sha256:${'b'.repeat(64)}`;
+  const staleImageDigest = `sha256:${'c'.repeat(64)}`;
+
+  writeEvidenceEnvFile(dockerEnvPath, [
+    ['BACKEND_GIT_COMMIT_SHA', commitSha],
+    ['BACKEND_IMAGE_DIGEST', imageDigest],
+    ['DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH', artifactPath('durable-runtime-selector-current')],
+  ]);
+  writeEvidenceEnvFile(liveOpenDefaultEnvPath, [
+    ['LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', artifactPath('live-open-connectors-stale')],
+    ['BACKEND_GIT_COMMIT_SHA', staleCommitSha],
+    ['BACKEND_IMAGE_DIGEST', staleImageDigest],
+  ]);
+  writeEvidenceEnvFile(redditDefaultEnvPath, [
+    ['REDDIT_LIVE_EVIDENCE_PATH', artifactPath('reddit-live-stale')],
+    ['BACKEND_GIT_COMMIT_SHA', staleCommitSha],
+    ['BACKEND_IMAGE_DIGEST', staleImageDigest],
+  ]);
+
+  execFileSync('node', ['scripts/package-current-external-beta-evidence.mjs'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DOCKER_BACKEND_STAGING_IMPORTED_ENV_PATH: dockerEnvPath,
+      LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH: '',
+      GITHUB_LIVE_SUMMARY_EVIDENCE_ENV_PATH: '',
+      REDDIT_LIVE_EVIDENCE_ENV_PATH: '',
+      SUMMARY_FEEDBACK_SAMPLES_ENV_PATH: '',
+      EXTERNAL_BETA_ADDITIONAL_ENV_PATHS: '',
+      EXTERNAL_BETA_CURRENT_PACKAGE_ARTIFACT_DIR: artifactDir,
+      EXTERNAL_BETA_CURRENT_ENV_PATH: outputEnvPath,
+      EXTERNAL_BETA_CURRENT_REPORT_PATH: outputReportPath,
+      EXTERNAL_BETA_CURRENT_PACKAGE_EXPECTED_COMMIT_SHA: commitSha,
+    },
+  });
+
+  const packagedEnv = readFileSync(outputEnvPath, 'utf8');
+  if (packagedEnv.includes('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH=')
+    || packagedEnv.includes('REDDIT_LIVE_EVIDENCE_PATH=')) {
+    violations.push('current evidence package must not merge stale default evidence env files');
+  }
+  const report = JSON.parse(readFileSync(outputReportPath, 'utf8'));
+  const skippedStalePaths = new Set((report.skippedStaleEnvFiles ?? []).map((record) => record.path));
+  if (!skippedStalePaths.has(liveOpenDefaultEnvPath) || !skippedStalePaths.has(redditDefaultEnvPath)) {
+    violations.push('current evidence package report must list skipped stale default evidence env files');
+  }
+  if (!Array.isArray(report.artifactIntegrity?.inputEnvFiles) || report.artifactIntegrity.inputEnvFiles.length !== 1) {
+    violations.push('current evidence package report must hash only included input env files');
+  }
 }
 
 function assertRejected(fn, label, expectedMessage) {

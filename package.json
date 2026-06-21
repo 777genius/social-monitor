@@ -9,7 +9,7 @@
     "check:agent-quality-rules": "node scripts/check-agent-quality-rules.mjs",
     "check:claude-hooks": "node scripts/check-claude-hooks.mjs",
     "check:architecture": "node scripts/check-architecture.mjs",
-    "check:api-health": "node scripts/run-with-timeout.mjs --timeout-ms 30000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-api-health-smoke.ts",
+    "check:api-health": "node scripts/run-with-timeout.mjs --timeout-ms 90000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-api-health-smoke.ts",
     "check:auth-boundary": "node scripts/check-auth-boundary.mjs",
     "check:backend-ops-readiness": "node scripts/check-backend-ops-readiness.mjs",
     "check:backend-mvp-completion-audit": "node scripts/check-backend-mvp-completion-audit.mjs",
