@@ -28,6 +28,8 @@
         "RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH",
         "SECURITY_FINAL_SWEEP_ARTIFACT_PATH",
         "SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH",
+        "SUMMARY_FEEDBACK_EXPORT_ENV_PATH",
+        "SUMMARY_FEEDBACK_REDACTED_INPUT_PATH",
         "SUMMARY_REAL_FEEDBACK_SAMPLES_PATH",
         "WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH"
       ]
@@ -92,7 +94,43 @@
         "SOURCE_LIVE_OPERATOR",
         "STAGING_ENVIRONMENT_ID",
         "STAGING_SECRET_STORE_ID",
+        "SUMMARY_FEEDBACK_APPROVAL_REFERENCE",
+        "SUMMARY_FEEDBACK_APPROVED_BY",
+        "SUMMARY_FEEDBACK_ENVIRONMENT_ID",
+        "SUMMARY_FEEDBACK_EXPORT_ID",
+        "SUMMARY_FEEDBACK_EXPORT_SOURCE_SYSTEM",
+        "SUMMARY_FEEDBACK_OPERATOR",
+        "SUMMARY_FEEDBACK_REDACTED_BY",
+        "SUMMARY_FEEDBACK_REDACTION_REVIEW_ID",
+        "SUMMARY_FEEDBACK_REVIEW_QUEUE",
+        "SUMMARY_FEEDBACK_TENANT_ID",
         "SUMMARY_FEEDBACK_TRIAGE_OWNER"
+      ]
+    },
+    {
+      "inputClass": "iso_timestamp",
+      "description": "ISO-8601 timestamp used to define the redacted evidence export window or source export time.",
+      "env": [
+        "SUMMARY_FEEDBACK_EXPORTED_AT",
+        "SUMMARY_FEEDBACK_WINDOW_ENDED_AT",
+        "SUMMARY_FEEDBACK_WINDOW_STARTED_AT"
+      ]
+    },
+    {
+      "inputClass": "numeric_limit",
+      "description": "Positive integer limit used by an operator-side evidence export workflow.",
+      "env": [
+        "SUMMARY_FEEDBACK_EXPORT_LIMIT",
+        "SUMMARY_FEEDBACK_MIN_SAMPLES"
+      ]
+    },
+    {
+      "inputClass": "operator_metadata",
+      "description": "Non-secret operator-provided traceability metadata for redacted summary feedback evidence.",
+      "env": [
+        "SUMMARY_FEEDBACK_COLLECTION_METHOD",
+        "SUMMARY_FEEDBACK_SOURCE_KIND",
+        "SUMMARY_FEEDBACK_WORKSPACE_ID"
       ]
     },
     {

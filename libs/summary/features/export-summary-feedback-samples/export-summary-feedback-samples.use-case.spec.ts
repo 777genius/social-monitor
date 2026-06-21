@@ -1,7 +1,11 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { InMemorySummaryFeedbackRepository } from '../../adapters/persistence/in-memory-summary-feedback.repository';
 import { SummaryFeedback } from '../../domain';
+import type {
+  ExportSummaryFeedbackQuery,
+  ExportSummaryFeedbackResult,
+  SummaryFeedbackExportRepositoryPort,
+} from '../../ports';
 import { ExportSummaryFeedbackSamplesUseCase } from './export-summary-feedback-samples.use-case';
 
 const tenant = tenantId('tenant-export-summary-feedback');
@@ -12,7 +16,7 @@ const topicId = 'topic-export-feedback-1';
 
 describe('ExportSummaryFeedbackSamplesUseCase', () => {
   it('exports redacted release feedback samples from the selected workspace window', async () => {
-    const feedback = new InMemorySummaryFeedbackRepository();
+    const feedback = new FakeSummaryFeedbackExportRepository();
     await feedback.save(createFeedback({
       id: 'feedback-export-newer',
       category: 'bad_citation',
@@ -78,7 +82,7 @@ describe('ExportSummaryFeedbackSamplesUseCase', () => {
   });
 
   it('rejects blocker feedback missing citation-backed evidence', async () => {
-    const feedback = new InMemorySummaryFeedbackRepository();
+    const feedback = new FakeSummaryFeedbackExportRepository();
     await feedback.save(createFeedback({
       id: 'feedback-export-missing-citation',
       category: 'wrong_fact',
@@ -97,6 +101,44 @@ describe('ExportSummaryFeedbackSamplesUseCase', () => {
     expect(result.error.message).toContain('missing citationId');
   });
 });
+
+class FakeSummaryFeedbackExportRepository implements SummaryFeedbackExportRepositoryPort {
+  private readonly feedback: SummaryFeedback[] = [];
+
+  async save(feedback: SummaryFeedback): Promise<void> {
+    this.feedback.push(feedback);
+  }
+
+  async exportForReleaseEvidence(query: ExportSummaryFeedbackQuery): Promise<ExportSummaryFeedbackResult> {
+    const items = this.feedback
+      .filter((feedback) => {
+        const snapshot = feedback.toSnapshot();
+
+        return (
+          snapshot.tenantId === query.tenantId &&
+          snapshot.workspaceId === query.workspaceId &&
+          snapshot.createdAt.getTime() >= query.startedAt.getTime() &&
+          snapshot.createdAt.getTime() <= query.endedAt.getTime()
+        );
+      })
+      .sort(compareSummaryFeedback)
+      .slice(0, query.limit);
+
+    return { items };
+  }
+}
+
+const compareSummaryFeedback = (left: SummaryFeedback, right: SummaryFeedback): number => {
+  const leftSnapshot = left.toSnapshot();
+  const rightSnapshot = right.toSnapshot();
+  const createdAtDiff = rightSnapshot.createdAt.getTime() - leftSnapshot.createdAt.getTime();
+
+  if (createdAtDiff !== 0) {
+    return createdAtDiff;
+  }
+
+  return rightSnapshot.id.localeCompare(leftSnapshot.id);
+};
 
 function baseCommand() {
   return {
