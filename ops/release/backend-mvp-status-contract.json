@@ -31,7 +31,11 @@
     "blockedLocalRuntimeEnvJobCount",
     "blockingRequirementCount",
     "passedBlockingRequirementCount",
+    "externalEvidenceReadyJobCount",
+    "externalEvidenceTotalJobCount",
     "externalBlockerJobCount",
+    "totalExternalBetaBlockingJobCount",
+    "activeExternalEvidenceBlockerJobs",
     "missingRequiredEnv"
   ],
   "minimumRequirementCount": 14,

@@ -44,6 +44,7 @@ const status = jsonOutput || statusUsesEnvFile
 
 validateContract();
 validateStatus();
+validateActiveExternalBlockerSemantics();
 validateLocalRuntimeStatusSmoke();
 validateEnvFileStatusSmoke();
 validateWiring();
@@ -108,12 +109,25 @@ function buildStatus(plan, options = {}) {
       exitCondition: requirement.exitCondition,
       goCondition: requirement.goCondition,
     }));
+  const activeExternalEvidenceBlockerJobs = (plan.jobs ?? [])
+    .filter((job) => job.blocksExternalBeta === true && isActiveEvidenceBlockerReadiness(job.executionReadiness))
+    .map((job) => ({
+      jobId: job.jobId,
+      executionReadiness: job.executionReadiness,
+      missingEnv: job.missingEnv ?? [],
+      preflightViolations: job.preflightViolations ?? [],
+    }));
+  const externalEvidenceReadyJobCount =
+    plan.executableLiveJobCount +
+    (plan.liveArtifactReadyForValidationJobCount ?? 0) +
+    plan.manualArtifactReadyForValidationJobCount;
+  const externalEvidenceTotalJobCount = plan.liveCommandJobCount + plan.manualArtifactJobCount;
 
   const strictExternalBetaReady = (
     audit.completionStatus === 'complete' &&
     externalReadiness.externalBetaDecision === 'go' &&
     passedBlockingRequirements.length === blockingRequirements.length &&
-    plan.externalBlockerJobCount === 0 &&
+    activeExternalEvidenceBlockerJobs.length === 0 &&
     plan.externalEvidenceEnvReadinessPercent === 100
   );
 
@@ -143,12 +157,24 @@ function buildStatus(plan, options = {}) {
     passedBlockingRequirementCount: passedBlockingRequirements.length,
     requirementStatusCounts: statusCounts,
     externalEvidenceJobCount: plan.jobCount,
-    externalBlockerJobCount: plan.externalBlockerJobCount,
+    externalBlockerJobCount: activeExternalEvidenceBlockerJobs.length,
     evidenceReadinessCounts: plan.readinessCounts,
+    externalEvidenceReadyJobCount,
+    externalEvidenceTotalJobCount,
+    totalExternalBetaBlockingJobCount: plan.externalBlockerJobCount,
     missingRequiredEnv: plan.uniqueMissingEnv,
     missingOptionalEnv: plan.uniqueMissingOptionalEnv,
+    activeExternalEvidenceBlockerJobs,
     blockerRequirements,
   };
+}
+
+function isActiveEvidenceBlockerReadiness(readiness) {
+  return [
+    'blocked_missing_required_env',
+    'blocked_invalid_env',
+    'blocked_local_runtime_env',
+  ].includes(readiness);
 }
 
 function statusEvidenceInputMode(options) {
@@ -269,6 +295,67 @@ function validateStatus() {
     if (cleanStatus.externalBlockerJobCount === 0) {
       violations.push(`${contractPath}: clean-env status must expose external blocker jobs`);
     }
+  }
+}
+
+function validateActiveExternalBlockerSemantics() {
+  const semanticStatus = buildStatus({
+    jobCount: 3,
+    localContractJobCount: 1,
+    liveCommandJobCount: 1,
+    manualArtifactJobCount: 1,
+    executableLiveJobCount: 0,
+    liveArtifactReadyForValidationJobCount: 0,
+    manualArtifactReadyForValidationJobCount: 1,
+    externalBlockerJobCount: 3,
+    contractClosurePercent: 33,
+    externalEvidenceEnvReadinessPercent: 50,
+    blockedMissingRequiredEnvJobCount: 1,
+    blockedInvalidInputJobCount: 0,
+    blockedLocalRuntimeEnvJobCount: 0,
+    readinessCounts: {
+      local_contract_ready: 1,
+      manual_artifact_required: 1,
+      blocked_missing_required_env: 1,
+    },
+    uniqueMissingEnv: ['REDDIT_REFRESH_TOKEN'],
+    uniqueMissingOptionalEnv: [],
+    jobs: [
+      {
+        jobId: 'release-baseline-freeze',
+        blocksExternalBeta: true,
+        executionReadiness: 'local_contract_ready',
+        missingEnv: [],
+        preflightViolations: [],
+      },
+      {
+        jobId: 'durable-runtime-staging-proof',
+        blocksExternalBeta: true,
+        executionReadiness: 'manual_artifact_required',
+        missingEnv: [],
+        preflightViolations: [],
+      },
+      {
+        jobId: 'live-reddit-oauth',
+        blocksExternalBeta: true,
+        executionReadiness: 'blocked_missing_required_env',
+        missingEnv: ['REDDIT_REFRESH_TOKEN'],
+        preflightViolations: [],
+      },
+    ],
+  });
+
+  if (semanticStatus.externalBlockerJobCount !== 1) {
+    violations.push(`${contractPath}: externalBlockerJobCount must count active evidence blockers only`);
+  }
+  if (semanticStatus.totalExternalBetaBlockingJobCount !== 3) {
+    violations.push(`${contractPath}: totalExternalBetaBlockingJobCount must preserve total policy-blocking jobs`);
+  }
+  if (semanticStatus.externalEvidenceReadyJobCount !== 1 || semanticStatus.externalEvidenceTotalJobCount !== 2) {
+    violations.push(`${contractPath}: status must expose live/manual evidence ready and total job counts`);
+  }
+  if (semanticStatus.activeExternalEvidenceBlockerJobs.length !== 1) {
+    violations.push(`${contractPath}: status must expose active external evidence blocker jobs`);
   }
 }
 

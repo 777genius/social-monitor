@@ -239,6 +239,12 @@ function validateCurrentEvidencePackage() {
   if (!Array.isArray(report.remaining?.requiredEnv)) {
     violations.push('current evidence package report must include remaining required env names');
   }
+  if (!Number.isInteger(report.readiness?.activeExternalEvidenceBlockerJobCount)) {
+    violations.push('current evidence package report must include active external evidence blocker count');
+  }
+  if (!Array.isArray(report.remaining?.activeBlockerJobs)) {
+    violations.push('current evidence package report must include active blocker jobs');
+  }
   const requiredAlternativeGroups = report.remaining?.requiredAlternativeGroups ?? [];
   if (!Array.isArray(requiredAlternativeGroups)) {
     violations.push('current evidence package report must include remaining required alternative groups');

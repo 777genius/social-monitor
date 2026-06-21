@@ -192,6 +192,16 @@ function buildReport({ envFilePath, reportPath, packageResult, expectedCommitSha
       preflightViolations: job.preflightViolations ?? [],
       operatorAction: job.operatorAction,
     }));
+  const activeBlockerJobs = jobs
+    .filter((job) => job.blocksExternalBeta === true && isActiveEvidenceBlockerReadiness(job.executionReadiness))
+    .map((job) => ({
+      jobId: job.jobId,
+      executionReadiness: job.executionReadiness,
+      missingEnv: job.missingEnv ?? [],
+      missingRequiredAlternativeGroups: missingRequiredAlternativeGroups(job),
+      preflightViolations: job.preflightViolations ?? [],
+      operatorAction: job.operatorAction,
+    }));
 
   return {
     schemaVersion: 1,
@@ -226,6 +236,7 @@ function buildReport({ envFilePath, reportPath, packageResult, expectedCommitSha
       externalEvidenceEnvReadinessPercent: readiness.externalEvidenceEnvReadinessPercent,
       blockedMissingRequiredEnvJobCount: readiness.blockedMissingRequiredEnvJobCount,
       blockedLocalRuntimeEnvJobCount: readiness.blockedLocalRuntimeEnvJobCount,
+      activeExternalEvidenceBlockerJobCount: activeBlockerJobs.length,
       readinessCounts: readiness.readinessCounts,
     },
     remaining: {
@@ -237,9 +248,18 @@ function buildReport({ envFilePath, reportPath, packageResult, expectedCommitSha
           ...group,
         }))
       )),
+      activeBlockerJobs,
       blockedJobs,
     },
   };
+}
+
+function isActiveEvidenceBlockerReadiness(readiness) {
+  return [
+    'blocked_missing_required_env',
+    'blocked_invalid_env',
+    'blocked_local_runtime_env',
+  ].includes(readiness);
 }
 
 function missingRequiredAlternativeGroups(job) {
