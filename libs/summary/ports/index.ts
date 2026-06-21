@@ -8,3 +8,4 @@ export * from './summary-job-queue.port';
 export * from './summary-model.port';
 export * from './summary-policy-repository.port';
 export * from './summary-quota.port';
+export * from './youtube-video-summary-provider.port';

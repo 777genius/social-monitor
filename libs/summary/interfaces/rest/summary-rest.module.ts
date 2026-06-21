@@ -18,6 +18,7 @@ import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-res
 import { UsageSummaryQuotaAdapter } from '../../adapters/quota/usage-summary-quota.adapter';
 import { FeedSummaryEvidenceSelector } from '../../adapters/evidence/feed-summary-evidence.selector';
 import { FeedSummaryFreshnessProbe } from '../../adapters/evidence/feed-summary-freshness.probe';
+import { YoutubeVideoSummaryEvidenceSelector } from '../../adapters/evidence/youtube-video-summary-evidence.selector';
 import { InMemorySummaryEventPublisher } from '../../adapters/messaging/in-memory-summary-event-publisher';
 import {
   InMemorySummaryJobQueueAdapter,
@@ -36,6 +37,9 @@ import { PrismaSummaryEventPublisher } from '../../adapters/persistence/prisma/p
 import { PrismaSummaryFeedbackRepository } from '../../adapters/persistence/prisma/prisma-summary-feedback.repository';
 import { PrismaSummaryJobRepository } from '../../adapters/persistence/prisma/prisma-summary-job.repository';
 import { PrismaSummaryPolicyRepository } from '../../adapters/persistence/prisma/prisma-summary-policy.repository';
+import { DeterministicYoutubeVideoSummaryProvider } from '../../adapters/video/deterministic-youtube-video-summary.provider';
+import { DisabledYoutubeVideoSummaryProvider } from '../../adapters/video/disabled-youtube-video-summary.provider';
+import { GoogleGeminiYoutubeVideoSummaryProvider } from '../../adapters/video/google-gemini-youtube-video-summary.provider';
 import { EvaluateSummaryQualityUseCase } from '../../features/evaluate-summary-quality/evaluate-summary-quality.use-case';
 import { ExecuteSummaryJobUseCase } from '../../features/execute-summary-job/execute-summary-job.use-case';
 import { GetSummaryPolicyUseCase } from '../../features/get-summary-policy/get-summary-policy.use-case';
@@ -49,17 +53,20 @@ import { RequestSummaryUseCase } from '../../features/request-summary/request-su
 import { UpsertSummaryPolicyUseCase } from '../../features/upsert-summary-policy/upsert-summary-policy.use-case';
 import type {
   SummaryArtifactRepositoryPort,
+  SummaryEvidenceSelectorPort,
   SummaryEventPublisherPort,
   SummaryFeedbackRepositoryPort,
   SummaryJobQueuePort,
   SummaryJobRepositoryPort,
   SummaryPolicyRepositoryPort,
+  YoutubeVideoSummaryProviderPort,
 } from '../../ports';
 import { SummaryFeedbackController } from './summary-feedback.controller';
 import { SummaryJobController } from './summary-job.controller';
 import { SummaryPolicyController } from './summary-policy.controller';
 import {
   SUMMARY_ARTIFACT_REPOSITORY,
+  SUMMARY_EVIDENCE_SELECTOR,
   SUMMARY_EVENT_PUBLISHER,
   SUMMARY_JOB_QUEUE_MODE,
   SUMMARY_FEEDBACK_REPOSITORY,
@@ -70,12 +77,19 @@ import {
   SUMMARY_PRISMA_CLIENT,
   SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS,
   SUMMARY_RABBITMQ_QUEUE_CHANNEL,
+  SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER,
+  SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE,
   type SummaryJobQueueMode,
   type SummaryPersistenceMode,
+  type SummaryYoutubeVideoSummaryProviderMode,
+  resolveSummaryGeminiYoutubeVideoSummaryTimeoutMs,
   resolveSummaryJobQuotaPerHour,
+  resolveSummaryYoutubeVideoSummaryMaxItems,
+  resolveSummaryYoutubeVideoSummaryMaxPreviewCharacters,
   summaryJobQueueModeProvider,
   summaryPersistenceModeProvider,
   summaryRabbitMqJobQueueOptionsProvider,
+  summaryYoutubeVideoSummaryProviderModeProvider,
 } from './summary-provider-tokens';
 import { SummaryRequestController } from './summary-request.controller';
 import { SummaryController } from './summary.controller';
@@ -92,6 +106,7 @@ import { SummaryController } from './summary.controller';
   providers: [
     summaryPersistenceModeProvider,
     summaryJobQueueModeProvider,
+    summaryYoutubeVideoSummaryProviderModeProvider,
     summaryRabbitMqJobQueueOptionsProvider,
     {
       provide: SUMMARY_PRISMA_CLIENT,
@@ -203,6 +218,39 @@ import { SummaryController } from './summary.controller';
       inject: [FEED_ITEM_READ_REPOSITORY],
     },
     {
+      provide: SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER,
+      useFactory: (mode: SummaryYoutubeVideoSummaryProviderMode): YoutubeVideoSummaryProviderPort => {
+        if (mode === 'deterministic') {
+          return new DeterministicYoutubeVideoSummaryProvider();
+        }
+
+        if (mode === 'google-gemini') {
+          return new GoogleGeminiYoutubeVideoSummaryProvider({
+            apiKey: process.env.GEMINI_API_KEY ?? '',
+            model: process.env.GEMINI_YOUTUBE_VIDEO_SUMMARY_MODEL ?? 'gemini-3.1-flash-lite',
+            promptVersion: process.env.GEMINI_YOUTUBE_VIDEO_SUMMARY_PROMPT_VERSION,
+            timeoutMs: resolveSummaryGeminiYoutubeVideoSummaryTimeoutMs(process.env),
+          });
+        }
+
+        return new DisabledYoutubeVideoSummaryProvider();
+      },
+      inject: [SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE],
+    },
+    {
+      provide: SUMMARY_EVIDENCE_SELECTOR,
+      useFactory: (
+        feedEvidenceSelector: FeedSummaryEvidenceSelector,
+        youtubeVideoSummaryProvider: YoutubeVideoSummaryProviderPort,
+      ): SummaryEvidenceSelectorPort =>
+        new YoutubeVideoSummaryEvidenceSelector(feedEvidenceSelector, youtubeVideoSummaryProvider, {
+          maxVideosPerSelection: resolveSummaryYoutubeVideoSummaryMaxItems(process.env),
+          maxPreviewCharacters: resolveSummaryYoutubeVideoSummaryMaxPreviewCharacters(process.env),
+          continueOnProviderError: true,
+        }),
+      inject: [FeedSummaryEvidenceSelector, SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER],
+    },
+    {
       provide: FeedSummaryFreshnessProbe,
       useFactory: (feedItems: FeedItemReadRepositoryPort) =>
         new FeedSummaryFreshnessProbe(feedItems, new SystemClock()),
@@ -247,7 +295,7 @@ import { SummaryController } from './summary.controller';
         summaryJobs: SummaryJobRepositoryPort,
         summaryArtifacts: SummaryArtifactRepositoryPort,
         summaryPolicies: SummaryPolicyRepositoryPort,
-        evidenceSelector: FeedSummaryEvidenceSelector,
+        evidenceSelector: SummaryEvidenceSelectorPort,
         summaryModel: MeteredSummaryModelAdapter,
         events: SummaryEventPublisherPort,
       ) =>
@@ -265,7 +313,7 @@ import { SummaryController } from './summary.controller';
         SUMMARY_JOB_REPOSITORY,
         SUMMARY_ARTIFACT_REPOSITORY,
         SUMMARY_POLICY_REPOSITORY,
-        FeedSummaryEvidenceSelector,
+        SUMMARY_EVIDENCE_SELECTOR,
         MeteredSummaryModelAdapter,
         SUMMARY_EVENT_PUBLISHER,
       ],
@@ -360,11 +408,13 @@ import { SummaryController } from './summary.controller';
     InMemorySummaryPolicyRepository,
     ListSummaryFeedbackUseCase,
     SUMMARY_ARTIFACT_REPOSITORY,
+    SUMMARY_EVIDENCE_SELECTOR,
     SUMMARY_FEEDBACK_REPOSITORY,
     SUMMARY_EVENT_PUBLISHER,
     SUMMARY_JOB_QUEUE,
     SUMMARY_JOB_REPOSITORY,
     SUMMARY_POLICY_REPOSITORY,
+    SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER,
     GetSummaryPolicyUseCase,
     RecordSummaryFeedbackUseCase,
     RegenerateSummaryUseCase,

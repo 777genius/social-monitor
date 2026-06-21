@@ -10,22 +10,28 @@ import {
 import type {
   SummaryArtifactRepositoryPort,
   SummaryEventPublisherPort,
+  SummaryEvidenceSelectorPort,
   SummaryFeedbackRepositoryPort,
   SummaryJobQueuePort,
   SummaryJobRepositoryPort,
   SummaryPolicyRepositoryPort,
+  YoutubeVideoSummaryProviderPort,
 } from '../../ports';
 
 export type SummaryPersistenceMode = 'in-memory' | 'prisma';
 export type SummaryJobQueueMode = 'in-memory' | 'rabbitmq';
+export type SummaryYoutubeVideoSummaryProviderMode = 'disabled' | 'deterministic' | 'google-gemini';
 
 export const SUMMARY_PERSISTENCE_MODE = Symbol('SUMMARY_PERSISTENCE_MODE');
 export const SUMMARY_JOB_QUEUE_MODE = Symbol('SUMMARY_JOB_QUEUE_MODE');
+export const SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE = Symbol('SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE');
 export const SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS = Symbol('SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS');
 export const SUMMARY_RABBITMQ_QUEUE_CHANNEL = Symbol('SUMMARY_RABBITMQ_QUEUE_CHANNEL');
 export const SUMMARY_PRISMA_CLIENT = Symbol('SUMMARY_PRISMA_CLIENT');
 export const SUMMARY_JOB_REPOSITORY = Symbol('SUMMARY_JOB_REPOSITORY');
 export const SUMMARY_JOB_QUEUE = Symbol('SUMMARY_JOB_QUEUE');
+export const SUMMARY_EVIDENCE_SELECTOR = Symbol('SUMMARY_EVIDENCE_SELECTOR');
+export const SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER = Symbol('SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER');
 export const SUMMARY_ARTIFACT_REPOSITORY = Symbol('SUMMARY_ARTIFACT_REPOSITORY');
 export const SUMMARY_FEEDBACK_REPOSITORY = Symbol('SUMMARY_FEEDBACK_REPOSITORY');
 export const SUMMARY_POLICY_REPOSITORY = Symbol('SUMMARY_POLICY_REPOSITORY');
@@ -34,11 +40,14 @@ export const SUMMARY_EVENT_PUBLISHER = Symbol('SUMMARY_EVENT_PUBLISHER');
 export type SummaryProviderTokenMap = {
   readonly [SUMMARY_PERSISTENCE_MODE]: SummaryPersistenceMode;
   readonly [SUMMARY_JOB_QUEUE_MODE]: SummaryJobQueueMode;
+  readonly [SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE]: SummaryYoutubeVideoSummaryProviderMode;
   readonly [SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS]: RabbitMqQueuePublisherOptions;
   readonly [SUMMARY_RABBITMQ_QUEUE_CHANNEL]: unknown;
   readonly [SUMMARY_PRISMA_CLIENT]: unknown;
   readonly [SUMMARY_JOB_REPOSITORY]: SummaryJobRepositoryPort;
   readonly [SUMMARY_JOB_QUEUE]: SummaryJobQueuePort;
+  readonly [SUMMARY_EVIDENCE_SELECTOR]: SummaryEvidenceSelectorPort;
+  readonly [SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER]: YoutubeVideoSummaryProviderPort;
   readonly [SUMMARY_ARTIFACT_REPOSITORY]: SummaryArtifactRepositoryPort;
   readonly [SUMMARY_FEEDBACK_REPOSITORY]: SummaryFeedbackRepositoryPort;
   readonly [SUMMARY_POLICY_REPOSITORY]: SummaryPolicyRepositoryPort;
@@ -53,6 +62,11 @@ export const summaryPersistenceModeProvider: Provider<SummaryPersistenceMode> = 
 export const summaryJobQueueModeProvider: Provider<SummaryJobQueueMode> = {
   provide: SUMMARY_JOB_QUEUE_MODE,
   useFactory: () => resolveSummaryJobQueueMode(process.env),
+};
+
+export const summaryYoutubeVideoSummaryProviderModeProvider: Provider<SummaryYoutubeVideoSummaryProviderMode> = {
+  provide: SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE,
+  useFactory: () => resolveSummaryYoutubeVideoSummaryProviderMode(process.env),
 };
 
 export const summaryRabbitMqJobQueueOptionsProvider: Provider<RabbitMqQueuePublisherOptions> = {
@@ -124,6 +138,18 @@ export const resolveSummaryJobQueueMode = (env: NodeJS.ProcessEnv): SummaryJobQu
   throw new Error('SUMMARY_JOB_QUEUE_MODE must be "in-memory" or "rabbitmq"');
 };
 
+export const resolveSummaryYoutubeVideoSummaryProviderMode = (
+  env: NodeJS.ProcessEnv,
+): SummaryYoutubeVideoSummaryProviderMode => {
+  const value = env.SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER ?? 'disabled';
+
+  if (value === 'disabled' || value === 'deterministic' || value === 'google-gemini') {
+    return value;
+  }
+
+  throw new Error('SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER must be "disabled", "deterministic", or "google-gemini"');
+};
+
 export const resolveSummaryRabbitMqJobQueueOptions = (
   env: NodeJS.ProcessEnv,
 ): RabbitMqQueuePublisherOptions => ({
@@ -149,6 +175,15 @@ export const resolveSummaryRabbitMqJobQueueOptions = (
 
 export const resolveSummaryJobQuotaPerHour = (env: NodeJS.ProcessEnv): number =>
   parsePositiveInteger(env.SUMMARY_JOB_QUOTA_PER_HOUR, 60);
+
+export const resolveSummaryYoutubeVideoSummaryMaxItems = (env: NodeJS.ProcessEnv): number =>
+  parsePositiveInteger(env.SUMMARY_YOUTUBE_VIDEO_SUMMARY_MAX_ITEMS, 3);
+
+export const resolveSummaryYoutubeVideoSummaryMaxPreviewCharacters = (env: NodeJS.ProcessEnv): number =>
+  parsePositiveInteger(env.SUMMARY_YOUTUBE_VIDEO_SUMMARY_MAX_PREVIEW_CHARACTERS, 4_000);
+
+export const resolveSummaryGeminiYoutubeVideoSummaryTimeoutMs = (env: NodeJS.ProcessEnv): number =>
+  parsePositiveInteger(env.GEMINI_YOUTUBE_VIDEO_SUMMARY_TIMEOUT_MS, 120_000);
 
 const nonEmptyOrFallback = (value: string | undefined, fallback: string): string => {
   const trimmed = value?.trim();

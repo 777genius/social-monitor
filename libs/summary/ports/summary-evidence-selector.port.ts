@@ -9,7 +9,26 @@ export type SummaryEvidenceItem = {
   readonly title: string;
   readonly bodyPreview?: string;
   readonly canonicalUrl?: string;
+  readonly extractedSummaries?: readonly SummaryEvidenceExtractedSummary[];
   readonly observedAt: Date;
+};
+
+export type SummaryEvidenceExtractedSummary = {
+  readonly kind: 'youtube_video_summary';
+  readonly provider: string;
+  readonly model: string;
+  readonly promptVersion: string;
+  readonly summary: string;
+  readonly keyPoints: readonly string[];
+  readonly chapters: readonly SummaryEvidenceExtractedSummaryChapter[];
+  readonly followUpQuestions: readonly string[];
+  readonly confidenceScore: number;
+};
+
+export type SummaryEvidenceExtractedSummaryChapter = {
+  readonly startTime?: string;
+  readonly title: string;
+  readonly summary: string;
 };
 
 export type SummaryEvidenceSelection = {
