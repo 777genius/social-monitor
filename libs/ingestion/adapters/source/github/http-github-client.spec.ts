@@ -10,7 +10,7 @@ describe('HttpGitHubClient', () => {
   it('uses a trimmed bearer token without exposing it in errors or response data', async () => {
     const fetchMock = jest.fn(async (_url: string, init?: RequestInit) => {
       expect(init?.headers).toEqual(expect.objectContaining({
-        authorization: 'Bearer github-token',
+        authorization: 'Bearer token-value',
       }));
 
       return new Response(JSON.stringify({
@@ -34,7 +34,7 @@ describe('HttpGitHubClient', () => {
     await expect(new HttpGitHubClient().searchIssues({
       query: 'repo:acme/project is:issue',
       limit: 1,
-      accessToken: '  github-token  ',
+      accessToken: '  token-value  ',
     })).resolves.toMatchObject({
       items: [{
         htmlUrl: 'https://github.com/acme/project/issues/1',
