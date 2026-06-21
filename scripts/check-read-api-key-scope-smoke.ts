@@ -62,6 +62,7 @@ async function main(): Promise<void> {
       topicId,
       sourceItemId: 'source-read-api-key-smoke',
       sourceBindingId: 'binding-read-api-key-smoke',
+      providerKey: 'rss',
       canonicalUrl: 'https://example.test/read-api-key-smoke',
       title: 'API key feed read smoke',
       bodyPreview: 'Feed read should be available through read:feed API key scope.',

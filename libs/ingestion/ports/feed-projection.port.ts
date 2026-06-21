@@ -7,6 +7,7 @@ export type ProjectFeedItemsCommand = {
   readonly workspaceId: WorkspaceId;
   readonly topicId: string;
   readonly sourceBindingId: string;
+  readonly providerKey: string;
   readonly sourceItems: readonly SourceItem[];
 };
 

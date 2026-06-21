@@ -117,6 +117,7 @@ export class ExecuteScanUseCase {
         workspaceId: command.workspaceId,
         topicId: command.topicId,
         sourceBindingId: command.sourceBindingId,
+        providerKey: command.providerKey,
         sourceItems: items,
       });
       if (fetched.nextCursor !== undefined) {

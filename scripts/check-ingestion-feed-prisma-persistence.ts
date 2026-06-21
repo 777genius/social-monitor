@@ -128,6 +128,7 @@ async function main(): Promise<void> {
     workspaceId: workspace,
     topicId,
     sourceBindingId,
+    providerKey: 'fake-source',
     sourceItems: [firstItem, duplicateProviderItem],
   });
   assert(projectionResult.projected === 2, 'feed projection must process every source item command');
@@ -137,6 +138,7 @@ async function main(): Promise<void> {
   const feedItem = list.items[0];
   assert(feedItem !== undefined, 'feed read repository must return the projected feed item');
   assert(feedItem.toSnapshot().title === 'Duplicate Durable Feed', 'feed upsert must refresh duplicate feed content');
+  assert(feedItem.toSnapshot().providerKey === 'fake-source', 'feed projection must persist provider key');
 
   const search = await feedRead.list({
     tenantId: tenant,
@@ -480,6 +482,7 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
         topicId: existing?.topicId ?? args.create.topicId,
         sourceItemId: args.update.sourceItemId,
         sourceBindingId: args.update.sourceBindingId,
+        providerKey: args.update.providerKey,
         dedupeKey: existing?.dedupeKey ?? args.create.dedupeKey,
         canonicalUrl: args.update.canonicalUrl,
         title: args.update.title,

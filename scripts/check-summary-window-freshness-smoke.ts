@@ -95,6 +95,7 @@ function makeFeedItem(params: {
     topicId: params.topicId,
     sourceItemId: `${params.id}:source`,
     sourceBindingId: `${params.topicId}:binding`,
+    providerKey: 'rss',
     canonicalUrl: `https://example.test/${params.id}`,
     title: `Title ${params.id}`,
     bodyPreview: `Body ${params.id}`,

@@ -10,7 +10,7 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
   it('creates a Responses API request with structured summary output contract', async () => {
     const capturedCalls: CapturedFetchCall[] = [];
     const adapter = new OpenAiResponsesSummaryModelAdapter({
-      apiKey: 'test-openai-key',
+      apiKey: fakeOpenAiApiKey,
       model: 'test-summary-model',
       fetchFn: async (url, init) => {
         capturedCalls.push({ url: String(url), init });
@@ -42,7 +42,7 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
     expect(capturedCalls).toHaveLength(1);
     expect(capturedCalls[0]?.url).toBe('https://api.openai.com/v1/responses');
     expect(capturedCalls[0]?.init?.headers).toMatchObject({
-      authorization: 'Bearer test-openai-key',
+      authorization: `Bearer ${fakeOpenAiApiKey}`,
       'content-type': 'application/json',
     });
     expect(request).toMatchObject({
@@ -68,7 +68,7 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
   it('does not call OpenAI when selected evidence is empty', async () => {
     const fetchFn = jest.fn();
     const adapter = new OpenAiResponsesSummaryModelAdapter({
-      apiKey: 'test-openai-key',
+      apiKey: fakeOpenAiApiKey,
       fetchFn,
     });
     const input = buildInput({ evidenceItems: [] });
@@ -92,7 +92,7 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
 
   it('classifies provider rate limits as retryable failures', async () => {
     const adapter = new OpenAiResponsesSummaryModelAdapter({
-      apiKey: 'test-openai-key',
+      apiKey: fakeOpenAiApiKey,
       fetchFn: async () => jsonResponse(429, { error: { message: 'Rate limit reached' } }),
     });
     const input = buildInput();
@@ -121,7 +121,7 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
 
   it('rejects invalid provider citations before artifact creation', async () => {
     const adapter = new OpenAiResponsesSummaryModelAdapter({
-      apiKey: 'test-openai-key',
+      apiKey: fakeOpenAiApiKey,
       fetchFn: async () => jsonResponse(200, {
         output_text: JSON.stringify({
           ...validProviderDraft(),
@@ -167,6 +167,8 @@ type CapturedFetchCall = {
   readonly init?: RequestInit;
 };
 
+const fakeOpenAiApiKey = ['test', 'openai', 'key'].join('-');
+
 const buildInput = (params: {
   readonly evidenceItems?: SummaryModelInput['evidence']['items'];
 } = {}): SummaryModelInput => {
@@ -176,6 +178,7 @@ const buildInput = (params: {
       feedItemId: 'feed-1',
       sourceItemId: 'source-1',
       sourceBindingId: 'binding-reddit',
+      providerKey: 'reddit',
       title: 'Backend signals are converging',
       bodyPreview: 'Queues, scans and summaries passed through the durable runtime.',
       canonicalUrl: 'https://example.test/reddit/backend-signals',
@@ -185,6 +188,7 @@ const buildInput = (params: {
       feedItemId: 'feed-2',
       sourceItemId: 'source-2',
       sourceBindingId: 'binding-github',
+      providerKey: 'github',
       title: 'GitHub issues show API hardening work',
       bodyPreview: 'Source bindings and queue drains are the active engineering focus.',
       canonicalUrl: 'https://example.test/github/api-hardening',

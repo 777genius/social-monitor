@@ -13,6 +13,7 @@ const evidence: SummaryEvidenceSelection = {
       feedItemId: 'feed-1',
       sourceItemId: 'source-1',
       sourceBindingId: 'binding-1',
+      providerKey: 'rss',
       title: 'Selected source',
       bodyPreview: 'Selected body',
       canonicalUrl: 'https://example.test/source-1',

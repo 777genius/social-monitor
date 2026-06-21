@@ -9,6 +9,7 @@ export type PrismaFeedItemRecord = {
   readonly topicId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
+  readonly providerKey: string;
   readonly dedupeKey: string;
   readonly canonicalUrl: string;
   readonly title: string;
@@ -28,6 +29,7 @@ export const feedItemFromPrisma = (record: PrismaFeedItemRecord): FeedItem =>
     topicId: record.topicId,
     sourceItemId: record.sourceItemId,
     sourceBindingId: record.sourceBindingId,
+    providerKey: record.providerKey,
     canonicalUrl: record.canonicalUrl,
     title: record.title,
     bodyPreview: record.bodyPreview,

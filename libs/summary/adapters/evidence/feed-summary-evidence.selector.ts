@@ -27,6 +27,7 @@ export class FeedSummaryEvidenceSelector implements SummaryEvidenceSelectorPort 
         feedItemId: snapshot.id,
         sourceItemId: snapshot.sourceItemId,
         sourceBindingId: snapshot.sourceBindingId,
+        providerKey: snapshot.providerKey,
         title: snapshot.title,
         bodyPreview: snapshot.bodyPreview,
         canonicalUrl: snapshot.canonicalUrl,

@@ -45,6 +45,7 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
       topicId,
       sourceItemId: 'source-read-api-key-1',
       sourceBindingId: 'binding-read-api-key-e2e',
+      providerKey: 'github',
       canonicalUrl: 'https://example.test/read-api-key-feed',
       title: 'API key feed read surface',
       bodyPreview: 'Feed read should be available through read:feed API key scope.',

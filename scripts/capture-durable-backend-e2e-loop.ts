@@ -58,6 +58,7 @@ type SourceBindingEvidence = {
   readonly scanId: string;
   readonly feedItemCount: number;
   readonly feedItemIds: readonly string[];
+  readonly feedProviderKeys: readonly string[];
 };
 
 const config = loadConfig();
@@ -206,7 +207,13 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
       const items = readObjectArray(page, 'items');
       const sourceBindingIds = new Set(items.map((item) => readString(item, 'sourceBindingId')));
 
-      return sourceBindings.every((binding) => sourceBindingIds.has(binding.sourceBindingId))
+      return sourceBindings.every((binding) =>
+        sourceBindingIds.has(binding.sourceBindingId) &&
+        items.some((item) =>
+          readString(item, 'sourceBindingId') === binding.sourceBindingId &&
+          readString(item, 'providerKey') === binding.providerKey,
+        ),
+      )
         ? page
         : undefined;
     },
@@ -216,11 +223,19 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
   const feedItemIds = feedItems.map((item) => readString(item, 'id')).slice(0, 5);
   const bindingsWithFeed = sourceBindings.map((binding): SourceBindingEvidence => {
     const bindingFeedItems = feedItems.filter((item) => readString(item, 'sourceBindingId') === binding.sourceBindingId);
+    const providerKeys = [...new Set(bindingFeedItems.map((item) => readString(item, 'providerKey')))].sort();
+
+    if (providerKeys.length !== 1 || providerKeys[0] !== binding.providerKey) {
+      throw new Error(
+        `feed items for ${binding.providerKey} binding ${binding.sourceBindingId} have provider keys ${providerKeys.join(',')}`,
+      );
+    }
 
     return {
       ...binding,
       feedItemCount: bindingFeedItems.length,
       feedItemIds: bindingFeedItems.map((item) => readString(item, 'id')).slice(0, 5),
+      feedProviderKeys: providerKeys,
     };
   });
   const primaryBinding = readFirst(bindingsWithFeed, 'source binding evidence');
@@ -380,6 +395,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
       providerKey: binding.providerKey,
       sourceBindingId: binding.sourceBindingId,
       feedItemCount: binding.feedItemCount,
+      feedProviderKeys: binding.feedProviderKeys,
       scanId: binding.scanId,
     })),
     scanId: primaryBinding.scanId,
@@ -423,7 +439,7 @@ async function createSourceBindingAndScan(params: {
   readonly topicId: string;
   readonly target: DurableScanTarget;
   readonly runId: string;
-}): Promise<Omit<SourceBindingEvidence, 'feedItemCount' | 'feedItemIds'>> {
+}): Promise<Omit<SourceBindingEvidence, 'feedItemCount' | 'feedItemIds' | 'feedProviderKeys'>> {
   const binding = await requestJson<JsonRecord>('POST', `/topics/${encodeURIComponent(params.topicId)}/source-bindings`, {
     headers: withIdempotency(params.headers, bindingIdempotencyKey(params.target.providerKey, params.runId)),
     body: {

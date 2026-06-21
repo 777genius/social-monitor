@@ -319,6 +319,7 @@ CREATE TABLE "feed_items" (
     "topic_id" UUID NOT NULL,
     "source_item_id" UUID NOT NULL,
     "source_binding_id" UUID NOT NULL,
+    "provider_key" TEXT NOT NULL,
     "dedupe_key" TEXT NOT NULL,
     "canonical_url" TEXT NOT NULL,
     "title" TEXT NOT NULL,
@@ -825,6 +826,9 @@ CREATE UNIQUE INDEX "scan_leases_tenant_id_workspace_id_scan_job_id_key" ON "sca
 CREATE INDEX "feed_items_tenant_id_workspace_id_status_created_at_idx" ON "feed_items"("tenant_id", "workspace_id", "status", "created_at");
 
 -- CreateIndex
+CREATE INDEX "feed_items_tenant_id_workspace_id_provider_key_observed_at_idx" ON "feed_items"("tenant_id", "workspace_id", "provider_key", "observed_at");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "feed_items_tenant_id_topic_id_dedupe_key_key" ON "feed_items"("tenant_id", "topic_id", "dedupe_key");
 
 -- CreateIndex
@@ -973,4 +977,3 @@ ALTER TABLE "user_subscription_schedules" ADD CONSTRAINT "user_subscription_sche
 
 -- AddForeignKey
 ALTER TABLE "user_summary_preferences" ADD CONSTRAINT "user_summary_preferences_subscription_id_fkey" FOREIGN KEY ("subscription_id") REFERENCES "user_subscriptions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-

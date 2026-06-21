@@ -243,6 +243,7 @@ const seedSummaryEvidence = (
     topicId,
     sourceItemId: 'source-summary-feedback-submit-e2e-1',
     sourceBindingId: 'source-binding-summary-feedback-submit-e2e',
+    providerKey: 'rss',
     canonicalUrl: 'https://example.test/summary-feedback/1',
     title: 'Beta feedback evidence source',
     bodyPreview: 'The summary feedback test needs citation-backed evidence for triage.',

@@ -405,6 +405,7 @@ model FeedItem {
   topicId       String         @map("topic_id") @db.Uuid
   sourceItemId  String         @map("source_item_id") @db.Uuid
   sourceBindingId String       @map("source_binding_id") @db.Uuid
+  providerKey   String         @map("provider_key")
   dedupeKey     String         @map("dedupe_key")
   canonicalUrl  String         @map("canonical_url")
   title         String
@@ -418,6 +419,7 @@ model FeedItem {
 
   @@unique([tenantId, topicId, dedupeKey])
   @@index([tenantId, workspaceId, status, createdAt])
+  @@index([tenantId, workspaceId, providerKey, observedAt])
   @@map("feed_items")
 }
 

@@ -103,6 +103,7 @@ const matchesSearch = (item: FeedItem, searchQuery: string | undefined): boolean
     snapshot.title,
     snapshot.bodyPreview,
     snapshot.canonicalUrl,
+    snapshot.providerKey,
     snapshot.authorHandle ?? '',
   ].join(' '));
 

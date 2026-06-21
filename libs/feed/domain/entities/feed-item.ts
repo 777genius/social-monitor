@@ -7,6 +7,7 @@ export type FeedItemProps = {
   readonly topicId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
+  readonly providerKey: string;
   readonly canonicalUrl: string;
   readonly title: string;
   readonly bodyPreview: string;
@@ -41,6 +42,10 @@ export class FeedItem {
 
     if (props.sourceItemId.trim().length === 0) {
       throw new Error('Source item id must be non-empty');
+    }
+
+    if (props.providerKey.trim().length === 0) {
+      throw new Error('Feed item provider key must be non-empty');
     }
 
     if (props.topicId.trim().length === 0) {

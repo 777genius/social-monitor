@@ -27,6 +27,7 @@ export class GetFeedItemUseCase {
       topicId: snapshot.topicId,
       sourceItemId: snapshot.sourceItemId,
       sourceBindingId: snapshot.sourceBindingId,
+      providerKey: snapshot.providerKey,
       canonicalUrl: snapshot.canonicalUrl,
       title: snapshot.title,
       bodyPreview: snapshot.bodyPreview,

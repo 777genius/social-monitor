@@ -17,6 +17,7 @@ const makeItem = (params: {
     topicId: params.topicId ?? 'topic-1',
     sourceItemId: params.sourceItemId,
     sourceBindingId: 'binding-1',
+    providerKey: 'rss',
     canonicalUrl: params.canonicalUrl,
     title: `Title ${params.id}`,
     bodyPreview: `Body ${params.id}`,

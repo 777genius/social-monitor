@@ -261,6 +261,7 @@ describe('Feed items list (e2e)', () => {
         topicId: params.topicId ?? 'topic-feed-e2e',
         sourceItemId: params.sourceItemId,
         sourceBindingId: 'binding-feed-e2e',
+        providerKey: 'rss',
         canonicalUrl: params.canonicalUrl ?? `https://example.test/${params.id}`,
         title: `Title ${params.id}`,
         bodyPreview: `Body ${params.id}`,

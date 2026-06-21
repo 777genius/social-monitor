@@ -6,6 +6,7 @@ export type SummaryEvidenceItem = {
   readonly feedItemId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
+  readonly providerKey: string;
   readonly title: string;
   readonly bodyPreview?: string;
   readonly canonicalUrl?: string;

@@ -34,6 +34,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
         update: {
           sourceItemId: snapshot.id,
           sourceBindingId: command.sourceBindingId,
+          providerKey: command.providerKey,
           canonicalUrl: snapshot.canonicalUrl,
           title: snapshot.title,
           bodyPreview: snapshot.body.slice(0, 280),
@@ -49,6 +50,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
           topicId: command.topicId,
           sourceItemId: snapshot.id,
           sourceBindingId: command.sourceBindingId,
+          providerKey: command.providerKey,
           dedupeKey,
           canonicalUrl: snapshot.canonicalUrl,
           title: snapshot.title,

@@ -3,6 +3,7 @@ export type FeedItemDto = {
   readonly topicId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
+  readonly providerKey: string;
   readonly canonicalUrl: string;
   readonly title: string;
   readonly bodyPreview: string;

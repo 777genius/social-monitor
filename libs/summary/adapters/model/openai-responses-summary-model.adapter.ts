@@ -395,6 +395,7 @@ const buildPromptPayload = (input: SummaryModelInput): string => JSON.stringify(
     feedItemId: item.feedItemId,
     sourceItemId: item.sourceItemId,
     sourceBindingId: item.sourceBindingId,
+    providerKey: item.providerKey,
     title: item.title,
     bodyPreview: item.bodyPreview,
     canonicalUrl: item.canonicalUrl,
