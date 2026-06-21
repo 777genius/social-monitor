@@ -77,12 +77,13 @@ try {
     '',
   ].join('\n'));
 
-  const revokeDrill = await authorize('revoke-drill');
-  await revokeCredential(revokeDrill.credential);
-  const liveSmoke = await authorize('live-smoke');
+  const revokeDrill = await authorize('revoke-drill', { duration: 'temporary' });
+  await revokeCredential(revokeDrill.credential.accessToken);
+  const liveSmoke = await authorize('live-smoke', { duration: 'permanent', requireRefreshToken: true });
   writeLifecycleArtifact({
-    revokeDigest: digestCredential(revokeDrill.credential),
-    liveDigest: digestCredential(liveSmoke.credential),
+    revokeDigest: digestCredentialValue(revokeDrill.credential.accessToken),
+    liveDigest: digestCredentialValue(liveSmoke.credential.refreshToken),
+    liveDuration: liveSmoke.duration,
   });
   writeSecretEnv(liveSmoke.credential);
 
@@ -99,10 +100,10 @@ try {
   await close(server);
 }
 
-async function authorize(label) {
+async function authorize(label, { duration, requireRefreshToken = false }) {
   const state = `${label}-${randomBytes(16).toString('hex')}`;
   const codePromise = waitForAuthorizationCode(state, label);
-  const url = authorizationUrl(state);
+  const url = authorizationUrl(state, duration);
 
   console.log([
     '',
@@ -114,17 +115,22 @@ async function authorize(label) {
 
   const code = await codePromise;
   const credential = await exchangeCode(code);
+  if (requireRefreshToken && typeof credential.refreshToken !== 'string') {
+    throw new Error(
+      `${label}: Reddit did not return refresh_token. Check that the app uses code-flow OAuth and the authorization URL contains duration=permanent.`,
+    );
+  }
   console.log(`${label}: received and exchanged code; credential value was not printed.`);
-  return { credential };
+  return { credential, duration };
 }
 
-function authorizationUrl(state) {
+function authorizationUrl(state, duration) {
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: 'code',
     state,
     redirect_uri: redirectUri,
-    duration: 'temporary',
+    duration,
     scope,
   });
   return `https://www.reddit.com/api/v1/authorize?${params.toString()}`;
@@ -204,7 +210,15 @@ async function exchangeCode(code) {
   if (typeof parsed.access_token !== 'string' || parsed.access_token.trim().length === 0) {
     throw new Error('Reddit code exchange did not return a credential');
   }
-  return parsed.access_token;
+  return {
+    accessToken: parsed.access_token,
+    refreshToken: typeof parsed.refresh_token === 'string' && parsed.refresh_token.trim().length > 0
+      ? parsed.refresh_token
+      : undefined,
+    tokenType: typeof parsed.token_type === 'string' ? parsed.token_type : undefined,
+    expiresIn: Number.isSafeInteger(parsed.expires_in) ? parsed.expires_in : undefined,
+    scope: typeof parsed.scope === 'string' ? parsed.scope : scope,
+  };
 }
 
 async function revokeCredential(credential) {
@@ -230,7 +244,7 @@ async function revokeCredential(credential) {
   console.log('revoke-drill: revoked first grant; credential value was not printed.');
 }
 
-function writeLifecycleArtifact({ revokeDigest, liveDigest }) {
+function writeLifecycleArtifact({ revokeDigest, liveDigest, liveDuration }) {
   const now = new Date().toISOString();
   const artifact = {
     schemaVersion: 1,
@@ -243,9 +257,10 @@ function writeLifecycleArtifact({ revokeDigest, liveDigest }) {
     sampledAt: now,
     provenance: {
       evidenceKind: 'credential_lifecycle',
-      collectionMethod: 'Local OAuth callback drill with two user-approved Reddit grants; first grant was revoked and second grant was retained only for live smoke.',
+      collectionMethod: 'Local OAuth callback drill with a revoked temporary grant and a retained permanent refresh-token grant for recurring Reddit monitoring.',
       runner: 'scripts/reddit-oauth-local-callback.mjs',
       fixtureOnly: false,
+      liveGrantDuration: liveDuration,
     },
     redaction: {
       secretsIncluded: false,
@@ -256,7 +271,7 @@ function writeLifecycleArtifact({ revokeDigest, liveDigest }) {
     lifecycleOperations: [
       lifecycleOperation('create', now, 'Operator approved the first Reddit OAuth grant through the local callback flow.', revokeDigest),
       lifecycleOperation('revoke', now, 'The first Reddit OAuth grant was revoked through the Reddit revoke endpoint.', revokeDigest),
-      lifecycleOperation('rotate', now, 'Operator approved a second Reddit OAuth grant to replace the revoked grant for live smoke.', liveDigest),
+      lifecycleOperation('rotate', now, 'Operator approved a second permanent Reddit OAuth grant; only the refresh token is retained for recurring live smoke.', liveDigest),
       lifecycleOperation('redacted-preview', now, 'Credential preview exposed only redacted metadata, scope names and one-way credential digests.', liveDigest),
     ],
   };
@@ -281,7 +296,9 @@ function lifecycleOperation(operation, observedAt, summary, credentialDigestSha2
 
 function writeSecretEnv(credential) {
   writeEvidenceEnvFile(secretEnvPath, [
-    ['REDDIT_ACCESS_TOKEN', credential],
+    ['REDDIT_CLIENT_ID', clientId],
+    ['REDDIT_CLIENT_SECRET', clientSecret],
+    ['REDDIT_REFRESH_TOKEN', credential.refreshToken],
     ['REDDIT_USER_AGENT', userAgent],
     ['REDDIT_SUBREDDIT', readOptionalEnv('REDDIT_SUBREDDIT') ?? 'programming'],
     ['REDDIT_LISTING', readOptionalEnv('REDDIT_LISTING') ?? 'hot'],
@@ -295,6 +312,7 @@ function writeSecretEnv(credential) {
   ], {
     usageLines: [
       'Private Reddit OAuth live smoke env. Do not commit or paste this file.',
+      'This file stores the permanent refresh token, not a short-lived access token.',
       'Load only in an operator shell.',
       'set -a; . /absolute/path/to/reddit-oauth-secret.env; set +a',
       'npm run capture:live-reddit-oauth',
@@ -306,7 +324,7 @@ function basicAuthorization() {
   return `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`;
 }
 
-function digestCredential(credential) {
+function digestCredentialValue(credential) {
   return createHash('sha256').update(credential).digest('hex');
 }
 

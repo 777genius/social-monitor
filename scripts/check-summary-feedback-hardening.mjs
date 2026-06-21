@@ -43,6 +43,8 @@ const gateCommand = `npm run ${gateScript}`;
 const gateId = 'summary-feedback-hardening';
 const captureScript = 'capture:summary-feedback-samples';
 const captureScriptPath = 'scripts/capture-summary-feedback-samples.mjs';
+const dogfoodCaptureScript = 'capture:summary-feedback-dogfood-samples';
+const dogfoodCaptureScriptPath = 'scripts/capture-summary-feedback-dogfood-samples.ts';
 const exportScript = 'export:summary-feedback-samples';
 const exportScriptPath = 'scripts/export-summary-feedback-samples.ts';
 const captureCheckScript = 'check:summary-feedback-sample-capture';
@@ -1206,11 +1208,29 @@ function requireWiring() {
   if (!String(scripts[captureScript] ?? '').includes(captureScriptPath)) {
     violations.push(`${packagePath}: ${captureScript} must run ${captureScriptPath}`);
   }
+  if (!String(scripts[dogfoodCaptureScript] ?? '').includes(dogfoodCaptureScriptPath)) {
+    violations.push(`${packagePath}: ${dogfoodCaptureScript} must run ${dogfoodCaptureScriptPath}`);
+  }
   if (!String(scripts[exportScript] ?? '').includes(exportScriptPath)) {
     violations.push(`${packagePath}: ${exportScript} must run ${exportScriptPath}`);
   }
   if (!scripts[captureCheckScript]) {
     violations.push(`${packagePath}: missing ${captureCheckScript}`);
+  }
+  const dogfoodCaptureSource = existsSync(dogfoodCaptureScriptPath)
+    ? readFileSync(dogfoodCaptureScriptPath, 'utf8')
+    : '';
+  for (const marker of [
+    'PrismaSummaryFeedbackRepository',
+    'ExportSummaryFeedbackSamplesUseCase',
+    'scripts/capture-summary-feedback-samples.mjs',
+    'SUMMARY_FEEDBACK_REDACTED_INPUT_PATH',
+    'internal_dogfood',
+    'must not write release evidence into the git workspace',
+  ]) {
+    if (!dogfoodCaptureSource.includes(marker)) {
+      violations.push(`${dogfoodCaptureScriptPath}: dogfood capture wrapper must include ${marker}`);
+    }
   }
   for (const envName of requiredSummaryFeedbackExportEnv) {
     if (!new RegExp(`^${envName}=`, 'm').test(envExampleSource)) {

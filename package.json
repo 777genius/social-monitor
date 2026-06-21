@@ -50,6 +50,7 @@
     "reddit:oauth:local-callback": "node scripts/reddit-oauth-local-callback.mjs",
     "capture:github-live-summary-smoke": "node scripts/capture-github-live-summary-smoke.mjs",
     "capture:summary-feedback-samples": "node scripts/capture-summary-feedback-samples.mjs",
+    "capture:summary-feedback-dogfood-samples": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/capture-summary-feedback-dogfood-samples.ts",
     "export:summary-feedback-samples": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/export-summary-feedback-samples.ts",
     "capture:durable-backend-e2e-loop": "node scripts/run-with-timeout.mjs --timeout-ms 300000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/capture-durable-backend-e2e-loop.ts",
     "capture:docker-durable-backend-e2e-loop": "node scripts/capture-docker-durable-backend-e2e-loop.mjs",

@@ -94,14 +94,17 @@ async function main() {
 }
 
 async function resolveRedditAccessToken() {
-  const accessToken = readOptionalEnv('REDDIT_ACCESS_TOKEN');
-  if (accessToken !== undefined) {
-    return accessToken;
+  const refreshToken = readOptionalEnv('REDDIT_REFRESH_TOKEN');
+  if (refreshToken === undefined) {
+    const accessToken = readOptionalEnv('REDDIT_ACCESS_TOKEN');
+    if (accessToken !== undefined) {
+      return accessToken;
+    }
   }
 
   const clientId = requiredEnv('REDDIT_CLIENT_ID');
-  const clientSecret = requiredEnv('REDDIT_CLIENT_SECRET');
-  const refreshToken = requiredEnv('REDDIT_REFRESH_TOKEN');
+  const clientSecret = readOptionalEnv('REDDIT_CLIENT_SECRET') ?? '';
+  const durableRefreshToken = refreshToken ?? requiredEnv('REDDIT_REFRESH_TOKEN');
   const userAgent = readOptionalEnv('REDDIT_USER_AGENT') ?? 'social-monitor-mvp/0.1 live-smoke';
   const timeoutMs = positiveIntegerEnv('REDDIT_TOKEN_EXCHANGE_TIMEOUT_MS', 10_000);
   const response = await globalThis.fetch('https://www.reddit.com/api/v1/access_token', {
@@ -114,7 +117,7 @@ async function resolveRedditAccessToken() {
     },
     body: new URLSearchParams({
       grant_type: 'refresh_token',
-      refresh_token: refreshToken,
+      refresh_token: durableRefreshToken,
     }),
     signal: globalThis.AbortSignal.timeout(timeoutMs),
   });

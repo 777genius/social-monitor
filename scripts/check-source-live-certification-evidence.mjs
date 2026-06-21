@@ -21,6 +21,7 @@ const liveOpenScriptPath = 'scripts/check-live-open-connectors.ts';
 const liveOpenCaptureScriptPath = 'scripts/capture-live-open-connectors.mjs';
 const redditLiveScriptPath = 'scripts/check-live-reddit-oauth.ts';
 const redditLiveCaptureScriptPath = 'scripts/capture-live-reddit-oauth.mjs';
+const redditOAuthLocalCallbackScriptPath = 'scripts/reddit-oauth-local-callback.mjs';
 const liveEvidenceArtifactHelperPath = 'scripts/lib/live-evidence-artifact.ts';
 
 const evidence = readJson(evidencePath);
@@ -299,6 +300,7 @@ function validateLiveSmokeScripts() {
   const liveOpenCaptureScript = readFileSync(liveOpenCaptureScriptPath, 'utf8');
   const redditLiveScript = readFileSync(redditLiveScriptPath, 'utf8');
   const redditLiveCaptureScript = readFileSync(redditLiveCaptureScriptPath, 'utf8');
+  const redditOAuthLocalCallbackScript = readFileSync(redditOAuthLocalCallbackScriptPath, 'utf8');
   const liveEvidenceArtifactHelper = readFileSync(liveEvidenceArtifactHelperPath, 'utf8');
 
   requireScriptSignals(liveOpenScriptPath, liveOpenScript, [
@@ -339,8 +341,31 @@ function validateLiveSmokeScripts() {
   if (!redditLiveCaptureScript.includes('intentionally does not export secret values')) {
     violations.push(`${redditLiveCaptureScriptPath}: live Reddit OAuth env handoff must document that OAuth credentials stay out of the handoff`);
   }
+  for (const marker of [
+    "grant_type: 'refresh_token'",
+    'REDDIT_REFRESH_TOKEN',
+    "readOptionalEnv('REDDIT_CLIENT_SECRET') ?? ''",
+  ]) {
+    if (!redditLiveCaptureScript.includes(marker)) {
+      violations.push(`${redditLiveCaptureScriptPath}: live Reddit OAuth capture must support permanent refresh-token credentials through ${marker}`);
+    }
+  }
   if (!redditLiveCaptureScript.includes('must not use local, fixture, example, mock or test identifiers')) {
     violations.push(`${redditLiveCaptureScriptPath}: live Reddit OAuth capture must reject non-beta evidence identity values`);
+  }
+  for (const marker of [
+    "duration: 'permanent'",
+    'refresh_token',
+    'REDDIT_REFRESH_TOKEN',
+    'This file stores the permanent refresh token, not a short-lived access token.',
+    'did not return refresh_token',
+  ]) {
+    if (!redditOAuthLocalCallbackScript.includes(marker)) {
+      violations.push(`${redditOAuthLocalCallbackScriptPath}: local callback helper must create permanent Reddit refresh-token credentials through ${marker}`);
+    }
+  }
+  if (redditOAuthLocalCallbackScript.includes("['REDDIT_ACCESS_TOKEN', credential")) {
+    violations.push(`${redditOAuthLocalCallbackScriptPath}: local callback helper must not persist short-lived REDDIT_ACCESS_TOKEN in the secret env`);
   }
   if (!redditLiveScript.includes('fail_closed_without_reddit_access_token')) {
     violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must fail closed when REDDIT_ACCESS_TOKEN is missing`);
