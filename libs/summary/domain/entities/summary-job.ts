@@ -7,6 +7,8 @@ export type SummaryJobProps = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly topicId: string;
+  readonly userId?: string;
+  readonly subscriptionId?: string;
   readonly status: SummaryJobStatus;
   readonly idempotencyKey: string;
   readonly requestedAt: Date;
@@ -22,6 +24,7 @@ export class SummaryJob {
 
   static request(props: Omit<SummaryJobProps, 'status'>): SummaryJob {
     this.assertTopic(props.topicId);
+    this.assertPersonalizationScope(props);
 
     return new SummaryJob({
       ...props,
@@ -31,6 +34,7 @@ export class SummaryJob {
 
   static rehydrate(props: SummaryJobProps): SummaryJob {
     this.assertTopic(props.topicId);
+    this.assertPersonalizationScope(props);
 
     if ((props.status === 'completed' || props.status === 'no_signal') && props.summaryId === undefined) {
       throw new Error('Completed summary job must reference a summary artifact');
@@ -130,6 +134,8 @@ export class SummaryJob {
       tenantId: this.props.tenantId,
       workspaceId: this.props.workspaceId,
       topicId: this.props.topicId,
+      userId: this.props.userId,
+      subscriptionId: this.props.subscriptionId,
       status: 'requested',
       idempotencyKey: this.props.idempotencyKey,
       requestedAt: params.requestedAt,
@@ -143,6 +149,12 @@ export class SummaryJob {
   private static assertTopic(topicId: string): void {
     if (topicId.trim().length === 0) {
       throw new Error('Summary topic id must be non-empty');
+    }
+  }
+
+  private static assertPersonalizationScope(props: Pick<SummaryJobProps, 'userId' | 'subscriptionId'>): void {
+    if ((props.userId ?? '').trim().length === 0 && props.subscriptionId !== undefined) {
+      throw new Error('Subscription-scoped summary job must include user id');
     }
   }
 }

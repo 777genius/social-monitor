@@ -68,7 +68,7 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
         route: selectedRoute,
         draft: {
           headline: 'No reliable signal yet',
-          executiveSummary: 'No eligible evidence items were available for this topic window.',
+          executiveSummary: buildNoSignalSummary(input),
           keyPoints: [],
           risksAndUnknowns: [
             {
@@ -179,6 +179,16 @@ const buildExecutiveSummary = (input: SummaryModelInput): string => {
   const toneLabel = input.policy.tone;
   const languageLabel = input.policy.language === 'auto' ? 'source language' : input.policy.language;
   const base = `Current ${formatLabel} uses ${input.evidence.items.length} selected item(s), ${toneLabel} tone, ${languageLabel}.`;
+
+  if (input.policy.customInstructions === undefined) {
+    return base;
+  }
+
+  return `${base} Custom focus: ${input.policy.customInstructions}`;
+};
+
+const buildNoSignalSummary = (input: SummaryModelInput): string => {
+  const base = 'No eligible evidence items were available for this topic window.';
 
   if (input.policy.customInstructions === undefined) {
     return base;

@@ -29,6 +29,8 @@ export class PrismaSummaryArtifactRepository implements SummaryArtifactRepositor
       where: { id: snapshot.summaryId },
       update: {
         status,
+        userId: snapshot.userId ?? null,
+        subscriptionId: snapshot.subscriptionId ?? null,
         modelVersion: snapshot.lineage.modelVersion,
         promptVersion: snapshot.lineage.promptVersion,
         headline: snapshot.headline,
@@ -42,6 +44,8 @@ export class PrismaSummaryArtifactRepository implements SummaryArtifactRepositor
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
         topicId: snapshot.topicId,
+        userId: snapshot.userId ?? null,
+        subscriptionId: snapshot.subscriptionId ?? null,
         status,
         schemaVersion: 1,
         modelVersion: snapshot.lineage.modelVersion,

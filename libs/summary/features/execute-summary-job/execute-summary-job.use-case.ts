@@ -12,6 +12,7 @@ import {
 
 import {
   defaultSummaryGenerationPolicy,
+  resolveEffectiveSummaryPolicy,
   SummaryArtifact,
   type SummaryJob,
   type SummaryReadyEvent,
@@ -26,6 +27,7 @@ import type {
   SummaryModelPolicy,
   SummaryModelPort,
   SummaryPolicyRepositoryPort,
+  UserSummaryPreferenceReaderPort,
 } from '../../ports';
 import type { ExecuteSummaryJobCommand } from './execute-summary-job.command';
 import type { ExecuteSummaryJobResult } from './execute-summary-job.result';
@@ -51,6 +53,7 @@ export class ExecuteSummaryJobUseCase {
     private readonly summaryJobs: SummaryJobRepositoryPort,
     private readonly summaryArtifacts: SummaryArtifactRepositoryPort,
     private readonly summaryPolicies: SummaryPolicyRepositoryPort,
+    private readonly userSummaryPreferences: UserSummaryPreferenceReaderPort,
     private readonly evidenceSelector: SummaryEvidenceSelectorPort,
     private readonly summaryModel: SummaryModelPort,
     private readonly events: SummaryEventPublisherPort,
@@ -137,6 +140,8 @@ export class ExecuteSummaryJobUseCase {
           tenantId: finalSnapshot.tenantId,
           workspaceId: finalSnapshot.workspaceId,
           topicId: finalSnapshot.topicId,
+          userId: finalSnapshot.userId,
+          subscriptionId: finalSnapshot.subscriptionId,
           status: finalSnapshot.status === 'no_signal' ? 'no_signal' : 'completed',
         },
       } satisfies SummaryReadyEvent);
@@ -174,12 +179,24 @@ export class ExecuteSummaryJobUseCase {
       workspaceId: snapshot.workspaceId,
       topicId: snapshot.topicId,
     });
+    const userPreference = snapshot.userId === undefined
+      ? null
+      : await this.userSummaryPreferences.findEffectivePreference({
+          tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId,
+          userId: snapshot.userId,
+          subscriptionId: snapshot.subscriptionId,
+          topicId: snapshot.topicId,
+        });
+    const basePolicy = summaryPolicy?.toGenerationPolicy() ?? defaultSummaryGenerationPolicy();
     const input = {
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
       topicId: snapshot.topicId,
+      userId: snapshot.userId,
+      subscriptionId: snapshot.subscriptionId,
       evidence,
-      policy: summaryPolicy?.toGenerationPolicy() ?? defaultSummaryGenerationPolicy(),
+      policy: resolveEffectiveSummaryPolicy(basePolicy, userPreference),
       requestedAt: snapshot.requestedAt,
     };
     const route = this.summaryModel.route(input, defaultModelPolicy, defaultModelBudget);
@@ -202,6 +219,8 @@ export class ExecuteSummaryJobUseCase {
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
       topicId: snapshot.topicId,
+      userId: snapshot.userId,
+      subscriptionId: snapshot.subscriptionId,
       sourceWindow: evidence.sourceWindow,
       ...attempt.draft,
     });

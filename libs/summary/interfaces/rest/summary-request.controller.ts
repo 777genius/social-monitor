@@ -1,4 +1,4 @@
-import { Controller, Headers, Inject, Param, Post } from '@nestjs/common';
+import { Body, Controller, Headers, Inject, Param, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
@@ -14,7 +14,7 @@ import { RequestCorrelationIdFactory } from '@social-monitor/platform-request-co
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
-import type { RequestSummaryResponseDto } from './request-summary.dto';
+import { RequestSummaryRequestDto, type RequestSummaryResponseDto } from './request-summary.dto';
 
 @ApiTags('summaries')
 @Controller('topics/:topicId/summary-requests')
@@ -45,6 +45,7 @@ export class SummaryRequestController {
     @Headers('authorization') authorizationHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-request-id') requestId: string | undefined,
+    @Body() body: RequestSummaryRequestDto | undefined,
   ): Promise<RequestSummaryResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
@@ -62,6 +63,8 @@ export class SummaryRequestController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       topicId,
+      userId: body?.userId,
+      subscriptionId: body?.subscriptionId,
       idempotencyKey,
       correlationId: this.requestCorrelationIds.fromRequestId(requestId),
     });

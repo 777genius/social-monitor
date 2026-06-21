@@ -76,6 +76,7 @@ import { FeedSummaryFreshnessProbe } from '../libs/summary/adapters/evidence/fee
 import { InMemorySummaryEventPublisher } from '../libs/summary/adapters/messaging/in-memory-summary-event-publisher';
 import { InMemorySummaryJobQueueAdapter } from '../libs/summary/adapters/messaging/in-memory-summary-job-queue.adapter';
 import { DeterministicSummaryModelAdapter } from '../libs/summary/adapters/model/deterministic-summary-model.adapter';
+import { NoopUserSummaryPreferenceReader } from '../libs/summary/adapters/preferences/noop-user-summary-preference.reader';
 import { InMemorySummaryArtifactRepository } from '../libs/summary/adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryFeedbackRepository } from '../libs/summary/adapters/persistence/in-memory-summary-feedback.repository';
 import { InMemorySummaryJobRepository } from '../libs/summary/adapters/persistence/in-memory-summary-job.repository';
@@ -332,6 +333,7 @@ async function main(): Promise<void> {
       summaryJobs,
       summaryArtifacts,
       summaryPolicies,
+      new NoopUserSummaryPreferenceReader(),
       new FeedSummaryEvidenceSelector(feedItems, clock),
       new DeterministicSummaryModelAdapter(),
       summaryEvents,

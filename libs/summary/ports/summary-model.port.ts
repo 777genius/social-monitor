@@ -26,6 +26,8 @@ export type SummaryModelInput = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly topicId: string;
+  readonly userId?: string;
+  readonly subscriptionId?: string;
   readonly evidence: SummaryEvidenceSelection;
   readonly policy: SummaryGenerationPolicy;
   readonly requestedAt: Date;
@@ -39,7 +41,7 @@ export type SummaryModelEstimate = {
 
 export type GeneratedSummaryDraft = Omit<
   SummaryArtifactProps,
-  'schemaVersion' | 'summaryId' | 'tenantId' | 'workspaceId' | 'topicId' | 'sourceWindow'
+  'schemaVersion' | 'summaryId' | 'tenantId' | 'workspaceId' | 'topicId' | 'userId' | 'subscriptionId' | 'sourceWindow'
 > & {
   readonly lineage: SummaryLineage;
   readonly usage: SummaryUsage;

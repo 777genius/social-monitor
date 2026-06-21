@@ -3,6 +3,7 @@ import { DomainError, FixedClock, type IdGenerator, tenantId, workspaceId } from
 import { EmptySummaryEvidenceSelector } from '../libs/summary/adapters/evidence/empty-summary-evidence.selector';
 import { DeterministicSummaryModelAdapter } from '../libs/summary/adapters/model/deterministic-summary-model.adapter';
 import { InMemorySummaryEventPublisher } from '../libs/summary/adapters/messaging/in-memory-summary-event-publisher';
+import { NoopUserSummaryPreferenceReader } from '../libs/summary/adapters/preferences/noop-user-summary-preference.reader';
 import { InMemorySummaryArtifactRepository } from '../libs/summary/adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryJobRepository } from '../libs/summary/adapters/persistence/in-memory-summary-job.repository';
 import { InMemorySummaryPolicyRepository } from '../libs/summary/adapters/persistence/in-memory-summary-policy.repository';
@@ -99,6 +100,7 @@ async function main(): Promise<void> {
     summaryJobs,
     artifacts,
     new InMemorySummaryPolicyRepository(),
+    new NoopUserSummaryPreferenceReader(),
     new EmptySummaryEvidenceSelector(clock),
     new FailOnceSummaryModel(new DeterministicSummaryModelAdapter()),
     events,

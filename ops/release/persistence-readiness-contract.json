@@ -73,6 +73,19 @@
       "durableReplacementPlan": "Delivery persistence can opt into Prisma with DELIVERY_PERSISTENCE=prisma; webhook secret durability additionally requires DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY. Prisma digest assembly reads persisted summary artifacts and feed items. Delivery attempt dispatch can opt into RabbitMQ command transport in delivery-service with DELIVERY_ATTEMPT_DISPATCH_TARGET=queue and DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq. Webhook delivery can opt into signed HTTP POST transport with DELIVERY_WEBHOOK_PROVIDER=http, and beta runtime must use DELIVERY_ENABLED_CHANNELS=webhook so in-memory email/in_app delivery cannot look successful. Remaining blocker is real email transport and deployed shared-infra evidence."
     },
     {
+      "moduleFile": "libs/subscriptions/interfaces/rest/subscriptions-rest.module.ts",
+      "context": "subscriptions-api",
+      "owner": "summary-owner",
+      "inMemoryStateAdapters": [
+        "InMemorySourceTargetRepository",
+        "InMemoryUserSubscriptionRepository",
+        "InMemoryUserSubscriptionScheduleRepository",
+        "InMemoryUserSummaryPreferenceRepository"
+      ],
+      "risk": "source targets, user subscriptions, subscription schedules and user summary preference overlays can opt into Prisma, but default local mode is still process-local",
+      "durableReplacementPlan": "SubscriptionsRestModule can opt into Prisma target, subscription, schedule and user summary preference persistence with SUBSCRIPTIONS_PERSISTENCE=prisma; beta runtime must use shared DATABASE_URL so per-user source monitoring and summary personalization survive restarts and are visible across API replicas"
+    },
+    {
       "moduleFile": "apps/delivery-service/src/delivery-service.module.ts",
       "context": "delivery-worker",
       "owner": "delivery-owner",

@@ -24,9 +24,13 @@
     "summary_feedback",
     "summary_jobs",
     "summary_policies",
+    "source_targets",
     "topics",
     "usage_quota_buckets",
     "usage_records",
+    "user_subscriptions",
+    "user_subscription_schedules",
+    "user_summary_preferences",
     "users",
     "webhook_endpoints",
     "workspaces"

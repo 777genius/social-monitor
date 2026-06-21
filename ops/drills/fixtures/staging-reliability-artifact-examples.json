@@ -183,7 +183,7 @@
             "summary": "redacted backup id and mapped table count observed",
             "backupId": "backup-staging-example",
             "schemaVersion": "20260618002000",
-            "includedTableCount": 28,
+            "includedTableCount": 32,
             "operationalTablesIncluded": true
           }
         },

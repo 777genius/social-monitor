@@ -12,6 +12,12 @@ import {
 } from '@social-monitor/platform-queue/adapters/rabbitmq';
 import { RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
+import { SubscriptionUserSummaryPreferenceReaderAdapter } from '@social-monitor/subscriptions/adapters/summary/subscription-user-summary-preference.reader';
+import { SubscriptionsRestModule } from '@social-monitor/subscriptions/interfaces/rest/subscriptions-rest.module';
+import {
+  SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY,
+} from '@social-monitor/subscriptions/interfaces/rest/subscriptions-provider-tokens';
+import type { UserSummaryPreferenceRepositoryPort } from '@social-monitor/subscriptions/ports';
 import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
@@ -59,6 +65,7 @@ import type {
   SummaryJobQueuePort,
   SummaryJobRepositoryPort,
   SummaryPolicyRepositoryPort,
+  UserSummaryPreferenceReaderPort,
   YoutubeVideoSummaryProviderPort,
 } from '../../ports';
 import { SummaryFeedbackController } from './summary-feedback.controller';
@@ -77,6 +84,7 @@ import {
   SUMMARY_PRISMA_CLIENT,
   SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS,
   SUMMARY_RABBITMQ_QUEUE_CHANNEL,
+  SUMMARY_USER_SUMMARY_PREFERENCE_READER,
   SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER,
   SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE,
   type SummaryJobQueueMode,
@@ -95,7 +103,7 @@ import { SummaryRequestController } from './summary-request.controller';
 import { SummaryController } from './summary.controller';
 
 @Module({
-  imports: [UsageRestModule, IdentityRestModule, FeedRestModule],
+  imports: [UsageRestModule, IdentityRestModule, FeedRestModule, SubscriptionsRestModule],
   controllers: [
     SummaryController,
     SummaryFeedbackController,
@@ -274,6 +282,12 @@ import { SummaryController } from './summary.controller';
       inject: [ReserveUsageQuotaUseCase],
     },
     {
+      provide: SUMMARY_USER_SUMMARY_PREFERENCE_READER,
+      useFactory: (preferences: UserSummaryPreferenceRepositoryPort): UserSummaryPreferenceReaderPort =>
+        new SubscriptionUserSummaryPreferenceReaderAdapter(preferences),
+      inject: [SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY],
+    },
+    {
       provide: RequestSummaryUseCase,
       useFactory: (
         summaryJobs: SummaryJobRepositoryPort,
@@ -295,6 +309,7 @@ import { SummaryController } from './summary.controller';
         summaryJobs: SummaryJobRepositoryPort,
         summaryArtifacts: SummaryArtifactRepositoryPort,
         summaryPolicies: SummaryPolicyRepositoryPort,
+        userSummaryPreferences: UserSummaryPreferenceReaderPort,
         evidenceSelector: SummaryEvidenceSelectorPort,
         summaryModel: MeteredSummaryModelAdapter,
         events: SummaryEventPublisherPort,
@@ -303,6 +318,7 @@ import { SummaryController } from './summary.controller';
           summaryJobs,
           summaryArtifacts,
           summaryPolicies,
+          userSummaryPreferences,
           evidenceSelector,
           summaryModel,
           events,
@@ -313,6 +329,7 @@ import { SummaryController } from './summary.controller';
         SUMMARY_JOB_REPOSITORY,
         SUMMARY_ARTIFACT_REPOSITORY,
         SUMMARY_POLICY_REPOSITORY,
+        SUMMARY_USER_SUMMARY_PREFERENCE_READER,
         SUMMARY_EVIDENCE_SELECTOR,
         MeteredSummaryModelAdapter,
         SUMMARY_EVENT_PUBLISHER,
@@ -414,6 +431,7 @@ import { SummaryController } from './summary.controller';
     SUMMARY_JOB_QUEUE,
     SUMMARY_JOB_REPOSITORY,
     SUMMARY_POLICY_REPOSITORY,
+    SUMMARY_USER_SUMMARY_PREFERENCE_READER,
     SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER,
     GetSummaryPolicyUseCase,
     RecordSummaryFeedbackUseCase,

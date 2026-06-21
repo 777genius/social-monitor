@@ -33,6 +33,8 @@ export type PrismaSummaryJobRecord = {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly topicId: string;
+  readonly userId: string | null;
+  readonly subscriptionId: string | null;
   readonly status: PrismaSummaryStatus;
   readonly idempotencyKey: string;
   readonly requestedAt: Date;
@@ -50,6 +52,8 @@ export type PrismaSummaryArtifactRecord = {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly topicId: string;
+  readonly userId: string | null;
+  readonly subscriptionId: string | null;
   readonly status: PrismaSummaryStatus;
   readonly schemaVersion: number;
   readonly modelVersion: string;
@@ -117,6 +121,8 @@ export const summaryJobFromPrisma = (record: PrismaSummaryJobRecord): SummaryJob
     tenantId: tenantId(record.tenantId),
     workspaceId: workspaceId(record.workspaceId),
     topicId: record.topicId,
+    userId: record.userId ?? undefined,
+    subscriptionId: record.subscriptionId ?? undefined,
     status: summaryJobStatusFromPrisma(record.status),
     idempotencyKey: record.idempotencyKey,
     requestedAt: record.requestedAt,
@@ -284,6 +290,8 @@ const normalizeArtifactPayload = (
     tenantId: tenantId(fallback.tenantId),
     workspaceId: workspaceId(fallback.workspaceId),
     topicId: fallback.topicId,
+    userId: normalizeOptionalString(value.userId) ?? fallback.userId ?? undefined,
+    subscriptionId: normalizeOptionalString(value.subscriptionId) ?? fallback.subscriptionId ?? undefined,
     sourceWindow: {
       windowId: requireString(serializedSourceWindow.windowId, 'Summary source window id'),
       startedAt: requireDate(serializedSourceWindow.startedAt, 'Summary source window start'),
@@ -384,6 +392,8 @@ type SerializedSummarySourceWindow = {
 
 type SerializedSummaryArtifactPayload = {
   readonly schemaVersion?: unknown;
+  readonly userId?: unknown;
+  readonly subscriptionId?: unknown;
   readonly sourceWindow?: SerializedSummarySourceWindow | unknown;
   readonly headline?: unknown;
   readonly executiveSummary?: unknown;

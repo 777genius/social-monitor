@@ -18,6 +18,8 @@ export class PrismaSummaryJobRepository implements SummaryJobRepositoryPort {
       update: {
         status,
         idempotencyKey: snapshot.idempotencyKey,
+        userId: snapshot.userId ?? null,
+        subscriptionId: snapshot.subscriptionId ?? null,
         requestedAt: snapshot.requestedAt,
         startedAt: snapshot.startedAt ?? null,
         completedAt: snapshot.completedAt ?? null,
@@ -30,6 +32,8 @@ export class PrismaSummaryJobRepository implements SummaryJobRepositoryPort {
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
         topicId: snapshot.topicId,
+        userId: snapshot.userId ?? null,
+        subscriptionId: snapshot.subscriptionId ?? null,
         status,
         idempotencyKey: snapshot.idempotencyKey,
         requestedAt: snapshot.requestedAt,

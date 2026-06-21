@@ -94,6 +94,16 @@
       "purgeTrigger": "source_binding_deleted_or_workspace_offboarding_completed"
     },
     {
+      "table": "source_targets",
+      "dataClass": "user_source_configuration",
+      "owner": "monitoring-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_last_subscription_deleted_or_workspace_offboarding",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "source_target_unreferenced_or_workspace_offboarding_completed"
+    },
+    {
       "table": "scan_policies",
       "dataClass": "source_configuration",
       "owner": "monitoring-owner",
@@ -204,6 +214,16 @@
       "purgeTrigger": "topic_deleted_or_workspace_offboarding_completed"
     },
     {
+      "table": "user_summary_preferences",
+      "dataClass": "user_summary_configuration",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_subscription_topic_user_or_workspace_deleted",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "subscription_topic_user_or_workspace_offboarding_completed"
+    },
+    {
       "table": "summary_feedback",
       "dataClass": "user_feedback",
       "owner": "summary-owner",
@@ -242,6 +262,26 @@
       "exportable": true,
       "legalHoldAware": true,
       "purgeTrigger": "digest_schedule_disabled_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "user_subscriptions",
+      "dataClass": "user_source_subscription",
+      "owner": "monitoring-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_unsubscribe_user_or_workspace_offboarding",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "unsubscribe_user_deleted_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "user_subscription_schedules",
+      "dataClass": "user_delivery_configuration",
+      "owner": "delivery-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_subscription_deleted_or_workspace_offboarding",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "subscription_deleted_or_workspace_offboarding_completed"
     },
     {
       "table": "realtime_events",

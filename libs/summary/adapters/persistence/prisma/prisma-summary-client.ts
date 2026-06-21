@@ -9,6 +9,8 @@ import type {
 
 export type PrismaSummaryArtifactMutation = {
   readonly status: PrismaSummaryStatus;
+  readonly userId?: string | null;
+  readonly subscriptionId?: string | null;
   readonly modelVersion: string;
   readonly promptVersion: string;
   readonly headline: string;
@@ -23,6 +25,8 @@ export type PrismaSummaryArtifactCreate = PrismaSummaryArtifactMutation & {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly topicId: string;
+  readonly userId?: string | null;
+  readonly subscriptionId?: string | null;
   readonly schemaVersion: number;
 };
 
@@ -73,6 +77,8 @@ export type PrismaSummaryClient = {
       readonly update: {
         readonly status: PrismaSummaryStatus;
         readonly idempotencyKey: string;
+        readonly userId?: string | null;
+        readonly subscriptionId?: string | null;
         readonly requestedAt: Date;
         readonly startedAt?: Date | null;
         readonly completedAt?: Date | null;
@@ -85,6 +91,8 @@ export type PrismaSummaryClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly topicId: string;
+        readonly userId?: string | null;
+        readonly subscriptionId?: string | null;
         readonly status: PrismaSummaryStatus;
         readonly idempotencyKey: string;
         readonly requestedAt: Date;

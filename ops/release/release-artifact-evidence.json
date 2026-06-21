@@ -112,7 +112,7 @@
       "artifactId": "prisma-schema",
       "path": "prisma/schema.prisma",
       "algorithm": "sha256",
-      "value": "8bf5bcc4964ddf579d07c8d9e7a85aa7bad5dbb7b5c23e520d29a1b30c0ff7d6"
+      "value": "443605366502f5eb6e166f3c32ef92f84b5b481901a6f50084bde0e443a3ff78"
     }
   ],
   "deploySmokeEvidence": [

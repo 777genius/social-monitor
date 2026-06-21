@@ -19,6 +19,7 @@ import type {
   SummaryModelRoute,
   SummaryModelValidationResult,
   SummaryPolicyRepositoryPort,
+  UserSummaryPreferenceReaderPort,
 } from '../../ports';
 import { ExecuteSummaryJobUseCase } from './execute-summary-job.use-case';
 
@@ -85,6 +86,12 @@ class FakeSummaryPolicies implements SummaryPolicyRepositoryPort {
   }
 
   async findByTopic(): Promise<SummaryPolicy | null> {
+    return null;
+  }
+}
+
+class FakeUserSummaryPreferenceReader implements UserSummaryPreferenceReaderPort {
+  async findEffectivePreference(): Promise<null> {
     return null;
   }
 }
@@ -330,6 +337,7 @@ describe('ExecuteSummaryJobUseCase', () => {
       jobs,
       artifacts,
       new FakeSummaryPolicies(),
+      new FakeUserSummaryPreferenceReader(),
       new EmptyEvidenceSelector(),
       new NoSignalSummaryModel(),
       events,
@@ -396,6 +404,7 @@ describe('ExecuteSummaryJobUseCase', () => {
       jobs,
       artifacts,
       new FakeSummaryPolicies(),
+      new FakeUserSummaryPreferenceReader(),
       new SelectedEvidenceSelector(),
       new InvalidCitationSummaryModel(),
       events,
@@ -459,6 +468,7 @@ describe('ExecuteSummaryJobUseCase', () => {
       jobs,
       artifacts,
       new FakeSummaryPolicies(),
+      new FakeUserSummaryPreferenceReader(),
       new EmptyEvidenceSelector(),
       new InvalidRawResponseSummaryModel(),
       events,
@@ -520,6 +530,7 @@ describe('ExecuteSummaryJobUseCase', () => {
       jobs,
       artifacts,
       new FakeSummaryPolicies(),
+      new FakeUserSummaryPreferenceReader(),
       new EmptyEvidenceSelector(),
       new TransientFailureSummaryModel(),
       events,

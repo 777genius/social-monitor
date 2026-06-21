@@ -29,6 +29,12 @@ CREATE TYPE "DeliveryDigestStatus" AS ENUM ('ASSEMBLED', 'EMPTY');
 CREATE TYPE "DigestScheduleStatus" AS ENUM ('ENABLED', 'DISABLED');
 
 -- CreateEnum
+CREATE TYPE "UserSubscriptionStatus" AS ENUM ('ENABLED', 'PAUSED', 'CANCELLED');
+
+-- CreateEnum
+CREATE TYPE "UserSubscriptionScheduleStatus" AS ENUM ('ENABLED', 'DISABLED');
+
+-- CreateEnum
 CREATE TYPE "WebhookEndpointStatus" AS ENUM ('ENABLED', 'DISABLED', 'QUARANTINED');
 
 -- CreateEnum
@@ -333,6 +339,8 @@ CREATE TABLE "summary_artifacts" (
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
     "topic_id" UUID NOT NULL,
+    "user_id" TEXT,
+    "subscription_id" UUID,
     "status" "SummaryStatus" NOT NULL DEFAULT 'COMPLETED',
     "schema_version" INTEGER NOT NULL DEFAULT 1,
     "model_version" TEXT NOT NULL,
@@ -354,6 +362,8 @@ CREATE TABLE "summary_jobs" (
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
     "topic_id" UUID NOT NULL,
+    "user_id" TEXT,
+    "subscription_id" UUID,
     "status" "SummaryStatus" NOT NULL DEFAULT 'REQUESTED',
     "idempotency_key" TEXT NOT NULL,
     "requested_at" TIMESTAMPTZ(6) NOT NULL,
@@ -475,6 +485,76 @@ CREATE TABLE "digest_schedules" (
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
 
     CONSTRAINT "digest_schedules_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "source_targets" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "provider_key" TEXT NOT NULL,
+    "target_kind" TEXT NOT NULL,
+    "target_value" TEXT NOT NULL,
+    "normalized_key" TEXT NOT NULL,
+    "config" JSONB NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "source_targets_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "user_subscriptions" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "source_target_id" UUID NOT NULL,
+    "status" "UserSubscriptionStatus" NOT NULL DEFAULT 'ENABLED',
+    "created_at" TIMESTAMPTZ(6) NOT NULL,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "user_subscriptions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "user_subscription_schedules" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "subscription_id" UUID NOT NULL,
+    "recipient_key" TEXT NOT NULL,
+    "channel" TEXT NOT NULL,
+    "interval_seconds" INTEGER NOT NULL,
+    "include_no_signal" BOOLEAN NOT NULL,
+    "next_run_at" TIMESTAMPTZ(6) NOT NULL,
+    "status" "UserSubscriptionScheduleStatus" NOT NULL DEFAULT 'ENABLED',
+    "created_at" TIMESTAMPTZ(6) NOT NULL,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "user_subscription_schedules_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "user_summary_preferences" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "subscription_id" UUID,
+    "topic_id" UUID,
+    "language" TEXT,
+    "format" TEXT,
+    "tone" TEXT,
+    "max_key_points" INTEGER,
+    "include_risks" BOOLEAN,
+    "include_source_highlights" BOOLEAN,
+    "custom_instructions" TEXT,
+    "rules_version" TEXT NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "user_summary_preferences_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -751,7 +831,13 @@ CREATE UNIQUE INDEX "feed_items_tenant_id_topic_id_dedupe_key_key" ON "feed_item
 CREATE INDEX "summary_artifacts_tenant_id_workspace_id_topic_id_status_cr_idx" ON "summary_artifacts"("tenant_id", "workspace_id", "topic_id", "status", "created_at");
 
 -- CreateIndex
+CREATE INDEX "summary_artifacts_tenant_id_workspace_id_user_id_topic_id_c_idx" ON "summary_artifacts"("tenant_id", "workspace_id", "user_id", "topic_id", "created_at");
+
+-- CreateIndex
 CREATE INDEX "summary_jobs_tenant_id_workspace_id_topic_id_status_created_idx" ON "summary_jobs"("tenant_id", "workspace_id", "topic_id", "status", "created_at");
+
+-- CreateIndex
+CREATE INDEX "summary_jobs_tenant_id_workspace_id_user_id_topic_id_create_idx" ON "summary_jobs"("tenant_id", "workspace_id", "user_id", "topic_id", "created_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "summary_jobs_tenant_id_idempotency_key_key" ON "summary_jobs"("tenant_id", "idempotency_key");
@@ -782,6 +868,33 @@ CREATE UNIQUE INDEX "digests_tenant_id_workspace_id_recipient_key_channel_window
 
 -- CreateIndex
 CREATE INDEX "digest_schedules_tenant_id_workspace_id_status_next_run_at_idx" ON "digest_schedules"("tenant_id", "workspace_id", "status", "next_run_at");
+
+-- CreateIndex
+CREATE INDEX "source_targets_tenant_id_workspace_id_provider_key_idx" ON "source_targets"("tenant_id", "workspace_id", "provider_key");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "source_targets_tenant_id_workspace_id_provider_key_normaliz_key" ON "source_targets"("tenant_id", "workspace_id", "provider_key", "normalized_key");
+
+-- CreateIndex
+CREATE INDEX "user_subscriptions_tenant_id_workspace_id_user_id_created_a_idx" ON "user_subscriptions"("tenant_id", "workspace_id", "user_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "user_subscriptions_tenant_id_workspace_id_source_target_id_idx" ON "user_subscriptions"("tenant_id", "workspace_id", "source_target_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "user_subscriptions_tenant_id_workspace_id_user_id_source_ta_key" ON "user_subscriptions"("tenant_id", "workspace_id", "user_id", "source_target_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "user_subscription_schedules_subscription_id_key" ON "user_subscription_schedules"("subscription_id");
+
+-- CreateIndex
+CREATE INDEX "user_subscription_schedules_tenant_id_workspace_id_status_n_idx" ON "user_subscription_schedules"("tenant_id", "workspace_id", "status", "next_run_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "user_summary_preferences_tenant_id_workspace_id_user_id_sub_key" ON "user_summary_preferences"("tenant_id", "workspace_id", "user_id", "subscription_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "user_summary_preferences_tenant_id_workspace_id_user_id_top_key" ON "user_summary_preferences"("tenant_id", "workspace_id", "user_id", "topic_id");
 
 -- CreateIndex
 CREATE INDEX "realtime_events_tenant_id_workspace_id_channel_sequence_idx" ON "realtime_events"("tenant_id", "workspace_id", "channel", "sequence");
@@ -851,4 +964,13 @@ ALTER TABLE "topics" ADD CONSTRAINT "topics_workspace_id_fkey" FOREIGN KEY ("wor
 
 -- AddForeignKey
 ALTER TABLE "capability_profiles" ADD CONSTRAINT "capability_profiles_source_id_fkey" FOREIGN KEY ("source_id") REFERENCES "source_catalog_entries"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "user_subscriptions" ADD CONSTRAINT "user_subscriptions_source_target_id_fkey" FOREIGN KEY ("source_target_id") REFERENCES "source_targets"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "user_subscription_schedules" ADD CONSTRAINT "user_subscription_schedules_subscription_id_fkey" FOREIGN KEY ("subscription_id") REFERENCES "user_subscriptions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "user_summary_preferences" ADD CONSTRAINT "user_summary_preferences_subscription_id_fkey" FOREIGN KEY ("subscription_id") REFERENCES "user_subscriptions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 

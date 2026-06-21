@@ -73,6 +73,17 @@ enum DigestScheduleStatus {
   DISABLED
 }
 
+enum UserSubscriptionStatus {
+  ENABLED
+  PAUSED
+  CANCELLED
+}
+
+enum UserSubscriptionScheduleStatus {
+  ENABLED
+  DISABLED
+}
+
 enum WebhookEndpointStatus {
   ENABLED
   DISABLED
@@ -415,6 +426,8 @@ model SummaryArtifact {
   tenantId       String        @map("tenant_id") @db.Uuid
   workspaceId    String        @map("workspace_id") @db.Uuid
   topicId        String        @map("topic_id") @db.Uuid
+  userId         String?       @map("user_id")
+  subscriptionId String?       @map("subscription_id") @db.Uuid
   status         SummaryStatus @default(COMPLETED)
   schemaVersion  Int           @default(1) @map("schema_version")
   modelVersion   String        @map("model_version")
@@ -428,6 +441,7 @@ model SummaryArtifact {
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([tenantId, workspaceId, topicId, status, createdAt])
+  @@index([tenantId, workspaceId, userId, topicId, createdAt])
   @@map("summary_artifacts")
 }
 
@@ -436,6 +450,8 @@ model SummaryJob {
   tenantId          String        @map("tenant_id") @db.Uuid
   workspaceId       String        @map("workspace_id") @db.Uuid
   topicId           String        @map("topic_id") @db.Uuid
+  userId            String?       @map("user_id")
+  subscriptionId    String?       @map("subscription_id") @db.Uuid
   status            SummaryStatus @default(REQUESTED)
   idempotencyKey    String        @map("idempotency_key")
   requestedAt       DateTime      @map("requested_at") @db.Timestamptz(6)
@@ -449,6 +465,7 @@ model SummaryJob {
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, workspaceId, topicId, status, createdAt])
+  @@index([tenantId, workspaceId, userId, topicId, createdAt])
   @@map("summary_jobs")
 }
 
@@ -563,6 +580,86 @@ model DigestSchedule {
 
   @@index([tenantId, workspaceId, status, nextRunAt])
   @@map("digest_schedules")
+}
+
+model SourceTarget {
+  id            String   @id @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  providerKey   String   @map("provider_key")
+  targetKind    String   @map("target_kind")
+  targetValue   String   @map("target_value")
+  normalizedKey String   @map("normalized_key")
+  config        Json
+  createdAt     DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  subscriptions UserSubscription[]
+
+  @@unique([tenantId, workspaceId, providerKey, normalizedKey])
+  @@index([tenantId, workspaceId, providerKey])
+  @@map("source_targets")
+}
+
+model UserSubscription {
+  id             String                 @id @db.Uuid
+  tenantId       String                 @map("tenant_id") @db.Uuid
+  workspaceId    String                 @map("workspace_id") @db.Uuid
+  userId         String                 @map("user_id")
+  sourceTargetId String                 @map("source_target_id") @db.Uuid
+  status         UserSubscriptionStatus @default(ENABLED)
+  createdAt      DateTime               @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sourceTarget   SourceTarget           @relation(fields: [sourceTargetId], references: [id], onDelete: Restrict)
+  schedule       UserSubscriptionSchedule?
+  preferences    UserSummaryPreference[]
+
+  @@unique([tenantId, workspaceId, userId, sourceTargetId])
+  @@index([tenantId, workspaceId, userId, createdAt])
+  @@index([tenantId, workspaceId, sourceTargetId])
+  @@map("user_subscriptions")
+}
+
+model UserSubscriptionSchedule {
+  id              String                         @id @db.Uuid
+  tenantId        String                         @map("tenant_id") @db.Uuid
+  workspaceId     String                         @map("workspace_id") @db.Uuid
+  subscriptionId  String                         @unique @map("subscription_id") @db.Uuid
+  recipientKey    String                         @map("recipient_key")
+  channel         String
+  intervalSeconds Int                            @map("interval_seconds")
+  includeNoSignal Boolean                        @map("include_no_signal")
+  nextRunAt       DateTime                       @map("next_run_at") @db.Timestamptz(6)
+  status          UserSubscriptionScheduleStatus @default(ENABLED)
+  createdAt       DateTime                       @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  subscription    UserSubscription               @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, workspaceId, status, nextRunAt])
+  @@map("user_subscription_schedules")
+}
+
+model UserSummaryPreference {
+  id                      String   @id @db.Uuid
+  tenantId                String   @map("tenant_id") @db.Uuid
+  workspaceId             String   @map("workspace_id") @db.Uuid
+  userId                  String   @map("user_id")
+  subscriptionId          String?  @map("subscription_id") @db.Uuid
+  topicId                 String?  @map("topic_id") @db.Uuid
+  language                String?
+  format                  String?
+  tone                    String?
+  maxKeyPoints            Int?     @map("max_key_points")
+  includeRisks            Boolean? @map("include_risks")
+  includeSourceHighlights Boolean? @map("include_source_highlights")
+  customInstructions      String?  @map("custom_instructions")
+  rulesVersion            String   @map("rules_version")
+  createdAt               DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  subscription            UserSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, workspaceId, userId, subscriptionId])
+  @@unique([tenantId, workspaceId, userId, topicId])
+  @@map("user_summary_preferences")
 }
 
 model RealtimeEvent {

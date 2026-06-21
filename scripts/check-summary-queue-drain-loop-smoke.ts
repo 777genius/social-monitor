@@ -5,6 +5,7 @@ import { WorkerRuntime } from '@social-monitor/platform-worker';
 import { FeedSummaryEvidenceSelector } from '@social-monitor/summary/adapters/evidence/feed-summary-evidence.selector';
 import { InMemorySummaryEventPublisher } from '@social-monitor/summary/adapters/messaging/in-memory-summary-event-publisher';
 import { DeterministicSummaryModelAdapter } from '@social-monitor/summary/adapters/model/deterministic-summary-model.adapter';
+import { NoopUserSummaryPreferenceReader } from '@social-monitor/summary/adapters/preferences/noop-user-summary-preference.reader';
 import { InMemorySummaryArtifactRepository } from '@social-monitor/summary/adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryJobRepository } from '@social-monitor/summary/adapters/persistence/in-memory-summary-job.repository';
 import { InMemorySummaryPolicyRepository } from '@social-monitor/summary/adapters/persistence/in-memory-summary-policy.repository';
@@ -89,6 +90,7 @@ async function verifyInMemoryDrainLoop(): Promise<void> {
         summaryJobs,
         summaryArtifacts,
         summaryPolicies,
+        new NoopUserSummaryPreferenceReader(),
         new FeedSummaryEvidenceSelector(new InMemoryFeedItemReadRepository(), clock),
         new DeterministicSummaryModelAdapter(),
         events,

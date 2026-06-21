@@ -17,6 +17,7 @@ import {
 import { DeterministicSummaryModelAdapter } from '@social-monitor/summary/adapters/model/deterministic-summary-model.adapter';
 import { InMemorySummaryEventPublisher } from '@social-monitor/summary/adapters/messaging/in-memory-summary-event-publisher';
 import { InMemorySummaryJobQueueAdapter } from '@social-monitor/summary/adapters/messaging/in-memory-summary-job-queue.adapter';
+import { NoopUserSummaryPreferenceReader } from '@social-monitor/summary/adapters/preferences/noop-user-summary-preference.reader';
 import { InMemorySummaryArtifactRepository } from '@social-monitor/summary/adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryJobRepository } from '@social-monitor/summary/adapters/persistence/in-memory-summary-job.repository';
 import { InMemorySummaryPolicyRepository } from '@social-monitor/summary/adapters/persistence/in-memory-summary-policy.repository';
@@ -203,6 +204,7 @@ const main = async (): Promise<void> => {
     summaryJobs,
     summaryArtifacts,
     new InMemorySummaryPolicyRepository(),
+    new NoopUserSummaryPreferenceReader(),
     new FeedSummaryEvidenceSelector(feedItems, clock),
     new DeterministicSummaryModelAdapter(),
     summaryEvents,

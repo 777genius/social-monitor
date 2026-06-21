@@ -8,6 +8,8 @@ export type SummaryReadyPayload = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly topicId: string;
+  readonly userId?: string;
+  readonly subscriptionId?: string;
   readonly status: Extract<SummaryJobStatus, 'completed' | 'no_signal'>;
 };
 

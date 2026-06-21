@@ -36,6 +36,9 @@ export type WorkspaceAction =
   | 'summary_policies.set'
   | 'summary_requests.create'
   | 'summary_regenerations.create'
+  | 'user_subscriptions.read'
+  | 'user_subscriptions.create'
+  | 'user_summary_preferences.set'
   | 'webhook_endpoints.read'
   | 'webhook_endpoints.create'
   | 'webhook_endpoints.disable';

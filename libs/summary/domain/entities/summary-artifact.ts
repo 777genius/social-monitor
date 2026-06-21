@@ -58,6 +58,8 @@ export type SummaryArtifactProps = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly topicId: string;
+  readonly userId?: string;
+  readonly subscriptionId?: string;
   readonly sourceWindow: SummarySourceWindow;
   readonly headline: string;
   readonly executiveSummary: string;
@@ -98,6 +100,10 @@ export class SummaryArtifact {
 
     if (props.topicId.trim().length === 0) {
       throw new Error('Summary topic id must be non-empty');
+    }
+
+    if ((props.userId ?? '').trim().length === 0 && props.subscriptionId !== undefined) {
+      throw new Error('Subscription-scoped summary must include user id');
     }
 
     if (props.sourceWindow.endedAt.getTime() <= props.sourceWindow.startedAt.getTime()) {

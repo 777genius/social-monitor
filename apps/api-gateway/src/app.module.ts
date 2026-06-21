@@ -9,6 +9,7 @@ import { LaunchRestModule } from '@social-monitor/launch/interfaces/rest/launch-
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
 import { SystemClock } from '@social-monitor/shared-kernel';
 import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summary-rest.module';
+import { SubscriptionsRestModule } from '@social-monitor/subscriptions/interfaces/rest/subscriptions-rest.module';
 
 import { DomainErrorFilter } from './domain-error.filter';
 import { HealthController } from './health.controller';
@@ -27,6 +28,7 @@ import { RequestContextMiddleware } from './request-context.middleware';
     FeedRestModule,
     IngestionRestModule,
     LaunchRestModule,
+    SubscriptionsRestModule,
     SummaryRestModule,
     DeliveryRestModule,
     IdentityRestModule,

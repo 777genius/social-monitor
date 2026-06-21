@@ -28,6 +28,10 @@ export class RequestSummaryUseCase {
       return err(new DomainError('validation.failed', 'Summary topic id must be non-empty'));
     }
 
+    if (normalizeOptionalText(command.subscriptionId) !== undefined && normalizeOptionalText(command.userId) === undefined) {
+      return err(new DomainError('validation.failed', 'Subscription-scoped summary request must include userId'));
+    }
+
     const existing = await this.summaryJobs.findByIdempotencyKey({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
@@ -73,6 +77,8 @@ export class RequestSummaryUseCase {
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       topicId: command.topicId,
+      userId: normalizeOptionalText(command.userId),
+      subscriptionId: normalizeOptionalText(command.subscriptionId),
       idempotencyKey: command.idempotencyKey,
       requestedAt: this.clock.now(),
     });
@@ -87,3 +93,9 @@ export class RequestSummaryUseCase {
     });
   }
 }
+
+const normalizeOptionalText = (value: string | undefined): string | undefined => {
+  const normalized = value?.trim();
+
+  return normalized === undefined || normalized.length === 0 ? undefined : normalized;
+};

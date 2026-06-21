@@ -15,6 +15,7 @@ import type {
   SummaryJobQueuePort,
   SummaryJobRepositoryPort,
   SummaryPolicyRepositoryPort,
+  UserSummaryPreferenceReaderPort,
   YoutubeVideoSummaryProviderPort,
 } from '../../ports';
 
@@ -36,6 +37,7 @@ export const SUMMARY_ARTIFACT_REPOSITORY = Symbol('SUMMARY_ARTIFACT_REPOSITORY')
 export const SUMMARY_FEEDBACK_REPOSITORY = Symbol('SUMMARY_FEEDBACK_REPOSITORY');
 export const SUMMARY_POLICY_REPOSITORY = Symbol('SUMMARY_POLICY_REPOSITORY');
 export const SUMMARY_EVENT_PUBLISHER = Symbol('SUMMARY_EVENT_PUBLISHER');
+export const SUMMARY_USER_SUMMARY_PREFERENCE_READER = Symbol('SUMMARY_USER_SUMMARY_PREFERENCE_READER');
 
 export type SummaryProviderTokenMap = {
   readonly [SUMMARY_PERSISTENCE_MODE]: SummaryPersistenceMode;
@@ -52,6 +54,7 @@ export type SummaryProviderTokenMap = {
   readonly [SUMMARY_FEEDBACK_REPOSITORY]: SummaryFeedbackRepositoryPort;
   readonly [SUMMARY_POLICY_REPOSITORY]: SummaryPolicyRepositoryPort;
   readonly [SUMMARY_EVENT_PUBLISHER]: SummaryEventPublisherPort;
+  readonly [SUMMARY_USER_SUMMARY_PREFERENCE_READER]: UserSummaryPreferenceReaderPort;
 };
 
 export const summaryPersistenceModeProvider: Provider<SummaryPersistenceMode> = {

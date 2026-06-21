@@ -40,6 +40,7 @@
       "@social-monitor/privacy/*": ["libs/privacy/*"],
       "@social-monitor/feed/*": ["libs/feed/*"],
       "@social-monitor/summary/*": ["libs/summary/*"],
+      "@social-monitor/subscriptions/*": ["libs/subscriptions/*"],
       "@social-monitor/delivery/*": ["libs/delivery/*"],
       "@social-monitor/usage/*": ["libs/usage/*"]
     }
