@@ -3645,6 +3645,12 @@ function validateWiring() {
   if (evidenceRunner.artifactValidationCommand !== contract.artifactValidationCommand) {
     violations.push(`${externalReadinessPath}: evidenceRunner.artifactValidationCommand must match runner contract`);
   }
+  if (evidenceRunner.dockerBundleImportCommand !== contract.dockerBundleImportCommand) {
+    violations.push(`${externalReadinessPath}: evidenceRunner.dockerBundleImportCommand must match runner contract`);
+  }
+  if (evidenceRunner.currentPackageCommand !== contract.currentPackageCommand) {
+    violations.push(`${externalReadinessPath}: evidenceRunner.currentPackageCommand must match runner contract`);
+  }
 }
 
 function validateNoSensitiveLiterals() {

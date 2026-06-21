@@ -90,6 +90,7 @@ function validateDryRunContract() {
     ['summaryCommand', 'summaryCommand'],
     ['preflightCommand', 'preflightCommand'],
     ['artifactValidationCommand', 'artifactValidationCommand'],
+    ['currentPackageCommand', 'currentPackageCommand'],
   ];
   for (const [dryRunField, runnerField] of commandPairs) {
     if (dryRun[dryRunField] !== runner[runnerField]) {
@@ -183,6 +184,9 @@ function validateHandoffShape() {
   }
   if (handoff.safety?.handoffJsonCommand !== dryRun.handoffJsonCommand) {
     violations.push(`${dryRunPath}: JSON handoff must expose the dry-run JSON handoff command`);
+  }
+  if (handoff.safety?.currentPackageCommand !== dryRun.currentPackageCommand) {
+    violations.push(`${dryRunPath}: JSON handoff must expose the current evidence package command`);
   }
   if (handoff.safety?.envValuePolicy !== 'names_only') {
     violations.push(`${dryRunPath}: JSON handoff safety.envValuePolicy must be names_only`);
@@ -279,6 +283,7 @@ function validateRunnerSafety() {
     dryRun.summaryCommand,
     dryRun.preflightCommand,
     dryRun.artifactValidationCommand,
+    dryRun.currentPackageCommand,
     dryRun.liveExecutionTemplate,
   ].join('\n').toLowerCase();
   for (const forbiddenTarget of dryRun.forbiddenTargets ?? []) {
@@ -320,6 +325,9 @@ function validateReadinessLinkage() {
   }
   if (readinessRunner.handoffJsonCommand !== dryRun.handoffJsonCommand) {
     violations.push(`${readinessPath}: evidenceRunner.handoffJsonCommand must match dry-run JSON handoff command`);
+  }
+  if (readinessRunner.currentPackageCommand !== dryRun.currentPackageCommand) {
+    violations.push(`${readinessPath}: evidenceRunner.currentPackageCommand must match dry-run current package command`);
   }
 }
 

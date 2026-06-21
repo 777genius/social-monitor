@@ -93,6 +93,7 @@ if (typeof evidenceRunner !== 'object' || evidenceRunner === null) {
     'preflightCommand',
     'artifactValidationCommand',
     'dockerBundleImportCommand',
+    'currentPackageCommand',
   ]) {
     const scriptName = scriptNameFromNpmCommand(evidenceRunner[field]);
     if (scriptName === null || !scripts[scriptName]) {

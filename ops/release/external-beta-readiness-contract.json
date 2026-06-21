@@ -26,7 +26,8 @@
     "handoffJsonCommand": "npm run --silent beta:evidence:handoff:json",
     "preflightCommand": "npm run beta:evidence:preflight",
     "artifactValidationCommand": "npm run beta:evidence:validate",
-    "dockerBundleImportCommand": "npm run beta:evidence:import-docker-bundle"
+    "dockerBundleImportCommand": "npm run beta:evidence:import-docker-bundle",
+    "currentPackageCommand": "npm run beta:evidence:package-current"
   },
   "capacityEnvelope": {
     "ringId": "private-beta-1",
