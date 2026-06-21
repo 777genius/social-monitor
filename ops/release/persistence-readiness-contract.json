@@ -43,6 +43,8 @@
       "context": "summary-api",
       "owner": "summary-owner",
       "inMemoryStateAdapters": [
+        "InMemoryAutoSummaryCandidateRepository",
+        "InMemoryFeedItemReadRepository",
         "InMemorySummaryJobRepository",
         "InMemorySummaryArtifactRepository",
         "InMemorySummaryFeedbackRepository",

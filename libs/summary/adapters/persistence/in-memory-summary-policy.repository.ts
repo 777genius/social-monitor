@@ -17,4 +17,8 @@ export class InMemorySummaryPolicyRepository implements SummaryPolicyRepositoryP
   ): Promise<SummaryPolicy | null> {
     return this.policiesByTopic.get(`${params.tenantId}:${params.workspaceId}:${params.topicId}`) ?? null;
   }
+
+  all(): readonly SummaryPolicy[] {
+    return [...this.policiesByTopic.values()];
+  }
 }

@@ -6,7 +6,7 @@ import { Pool, type PoolClient } from 'pg';
 
 type JsonRecord = Record<string, unknown>;
 
-type HttpMethod = 'GET' | 'POST' | 'PATCH';
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH';
 
 type RunnerConfig = {
   readonly apiBaseUrl: string;
@@ -72,6 +72,18 @@ type ScheduledScanEvidence = {
   readonly nextRunAtAfterSchedule: string;
   readonly feedItemCount: number;
   readonly feedItemIds: readonly string[];
+};
+
+type AutoSummaryEvidence = {
+  readonly summaryPolicyId: string;
+  readonly summaryJobId: string;
+  readonly summaryId: string;
+  readonly idempotencyKey: string;
+  readonly status: 'completed' | 'no_signal';
+  readonly requestedAt: string;
+  readonly completedAt: string;
+  readonly latestFeedItemObservedAt: string;
+  readonly newFeedItemCount: number;
 };
 
 const config = loadConfig();
@@ -150,6 +162,11 @@ async function main(): Promise<void> {
           scheduledScan: evidence.scheduledScan,
           manualScanIdempotencyKeyUsed: false,
         }, signalObservedAt),
+        signalResult('backend-loop-auto-summary-scheduler', {
+          summary: 'summary policy automatically requested a summary job after new feed evidence became stable',
+          autoSummary: evidence.autoSummary,
+          manualSummaryRequestUsed: false,
+        }, signalObservedAt),
         signalResult('backend-loop-tenant-isolation', {
           summary: 'wrong tenant and wrong workspace checks denied durable data access',
           negativeChecks: evidence.negativeChecks,
@@ -182,6 +199,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
   readonly sourceBindings: readonly SourceBindingEvidence[];
   readonly providerFeedCounts: readonly JsonRecord[];
   readonly scheduledScan: ScheduledScanEvidence;
+  readonly autoSummary: AutoSummaryEvidence;
   readonly scanId: string;
   readonly feedItemIds: readonly string[];
   readonly summaryId: string;
@@ -213,6 +231,19 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
     },
   });
   const topicId = readString(topic, 'topicId');
+  const summaryPolicy = await requestJson<JsonRecord>('PUT', `/topics/${encodeURIComponent(topicId)}/summary-policy`, {
+    headers,
+    body: {
+      language: 'auto',
+      format: 'bullet_digest',
+      tone: 'concise',
+      maxKeyPoints: 5,
+      includeRisks: true,
+      includeSourceHighlights: true,
+      customInstructions: 'Automatically summarize stable feed evidence across all configured backend sources.',
+    },
+  });
+  const summaryPolicyId = readString(readRecord(summaryPolicy, 'policy'), 'summaryPolicyId');
 
   const sourceBindings = await Promise.all(scanTargets.map((target) =>
     createSourceBindingAndScan({
@@ -268,6 +299,15 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
     };
   });
   const primaryBinding = readFirst(bindingsWithFeed, 'source binding evidence');
+  const autoSummary = await pollAutoSummaryEvidence({
+    tenantId: ids.tenantId,
+    workspaceId: ids.workspaceId,
+    topicId,
+    summaryPolicyId,
+  }, {
+    timeoutMs: 180_000,
+    label: 'auto-summary scheduler completion',
+  });
 
   const summary = await requestJson<JsonRecord>('POST', `/topics/${encodeURIComponent(topicId)}/summary-requests`, {
     headers: withIdempotency(headers, summaryKey),
@@ -448,6 +488,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
       scanId: binding.scanId,
     })),
     scheduledScan,
+    autoSummary,
     scanId: primaryBinding.scanId,
     feedItemIds,
     summaryId,
@@ -471,6 +512,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
       scheduledBindingIdempotencyKey(runtimeIds.runId),
       scheduledPolicyIdempotencyKey(runtimeIds.runId),
       scheduledScan.scheduledIdempotencyKey,
+      autoSummary.idempotencyKey,
       ...scanTargets.flatMap((target) => [
         bindingIdempotencyKey(target.providerKey, runtimeIds.runId),
         policyIdempotencyKey(target.providerKey, runtimeIds.runId),
@@ -482,6 +524,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
     responseIds: [
       readString(replayedTopic, 'topicId'),
       scheduledScan.scanJobId,
+      autoSummary.summaryJobId,
       readString(replayedScan, 'scanJobId'),
       readString(replayedSummary, 'summaryJobId'),
       webhookDeliveryAttemptId,
@@ -777,6 +820,153 @@ async function scheduledScanEvidenceSnapshot(params: {
       nextRunAtAfterSchedule: row.next_run_at_after_schedule.toISOString(),
       feedItemCount: Number(row.feed_item_count),
       feedItemIds: row.feed_item_ids ?? [],
+    };
+  });
+}
+
+async function pollAutoSummaryEvidence(
+  params: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly topicId: string;
+    readonly summaryPolicyId: string;
+  },
+  options: { readonly timeoutMs: number; readonly label: string },
+): Promise<AutoSummaryEvidence> {
+  const deadline = Date.now() + options.timeoutMs;
+  let lastValue: JsonRecord | undefined;
+
+  while (Date.now() < deadline) {
+    const value = await autoSummaryEvidenceSnapshot(params);
+    lastValue = value;
+
+    if (value !== undefined) {
+      const status = readString(value, 'status');
+      if (status === 'failed' || status === 'rejected') {
+        throw new Error(`${options.label} ended with ${status}: ${String(value.failureReason ?? '')}`);
+      }
+
+      if ((status === 'completed' || status === 'no_signal') && readString(value, 'summaryId').trim().length > 0) {
+        return {
+          summaryPolicyId: params.summaryPolicyId,
+          summaryJobId: readString(value, 'summaryJobId'),
+          summaryId: readString(value, 'summaryId'),
+          idempotencyKey: readString(value, 'idempotencyKey'),
+          status,
+          requestedAt: readString(value, 'requestedAt'),
+          completedAt: readString(value, 'completedAt'),
+          latestFeedItemObservedAt: readString(value, 'latestFeedItemObservedAt'),
+          newFeedItemCount: readNumber(value, 'newFeedItemCount'),
+        };
+      }
+    }
+
+    await delay(1_000);
+  }
+
+  throw new Error(`${options.label} did not complete before timeout; last=${JSON.stringify(lastValue ?? {})}`);
+}
+
+async function autoSummaryEvidenceSnapshot(params: {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly topicId: string;
+}): Promise<JsonRecord | undefined> {
+  return withClient(pool, async (client) => {
+    const result = await client.query<{
+      summary_job_id: string;
+      summary_id: string | null;
+      idempotency_key: string;
+      status: string;
+      requested_at: Date;
+      completed_at: Date | null;
+      failure_reason: string | null;
+      latest_feed_item_observed_at: Date | null;
+      new_feed_item_count: number;
+    }>(
+      `
+        with selected_job as (
+          select
+            j.id,
+            j.tenant_id,
+            j.workspace_id,
+            j.topic_id,
+            j.summary_artifact_id,
+            j.idempotency_key,
+            j.status,
+            j.requested_at,
+            j.completed_at,
+            j.failure_reason
+          from summary_jobs j
+          where j.tenant_id = $1
+            and j.workspace_id = $2
+            and j.topic_id = $3
+            and j.user_id is null
+            and j.subscription_id is null
+            and j.idempotency_key like 'auto-summary:%'
+          order by j.requested_at desc, j.id desc
+          limit 1
+        ),
+        previous_summary as (
+          select max(previous.requested_at) as requested_at
+          from summary_jobs previous
+          join selected_job selected
+            on selected.tenant_id = previous.tenant_id
+           and selected.workspace_id = previous.workspace_id
+           and selected.topic_id = previous.topic_id
+          where previous.user_id is null
+            and previous.subscription_id is null
+            and previous.requested_at < selected.requested_at
+        )
+        select
+          selected.id as summary_job_id,
+          selected.summary_artifact_id as summary_id,
+          selected.idempotency_key,
+          lower(selected.status::text) as status,
+          selected.requested_at,
+          selected.completed_at,
+          selected.failure_reason,
+          max(fi.observed_at) filter (
+            where fi.observed_at <= selected.requested_at
+              and (previous.requested_at is null or fi.observed_at > previous.requested_at)
+          ) as latest_feed_item_observed_at,
+          count(fi.id) filter (
+            where fi.observed_at <= selected.requested_at
+              and (previous.requested_at is null or fi.observed_at > previous.requested_at)
+          )::int as new_feed_item_count
+        from selected_job selected
+        cross join previous_summary previous
+        left join feed_items fi
+          on fi.tenant_id = selected.tenant_id
+          and fi.workspace_id = selected.workspace_id
+          and fi.topic_id = selected.topic_id
+          and fi.status = 'VISIBLE'
+        group by
+          selected.id,
+          selected.summary_artifact_id,
+          selected.idempotency_key,
+          selected.status,
+          selected.requested_at,
+          selected.completed_at,
+          selected.failure_reason
+      `,
+      [params.tenantId, params.workspaceId, params.topicId],
+    );
+    const row = result.rows[0];
+    if (row === undefined) {
+      return undefined;
+    }
+
+    return {
+      summaryJobId: row.summary_job_id,
+      summaryId: row.summary_id ?? '',
+      idempotencyKey: row.idempotency_key,
+      status: row.status,
+      requestedAt: row.requested_at.toISOString(),
+      completedAt: row.completed_at?.toISOString() ?? '',
+      failureReason: row.failure_reason,
+      latestFeedItemObservedAt: row.latest_feed_item_observed_at?.toISOString() ?? '',
+      newFeedItemCount: Number(row.new_feed_item_count),
     };
   });
 }

@@ -77,6 +77,7 @@ const requiredSignalIds = new Set([
   'postgres-no-duplicate-side-effects',
   'backend-loop-topic-to-delivery-audit',
   'backend-loop-scheduled-scan',
+  'backend-loop-auto-summary-scheduler',
   'backend-loop-tenant-isolation',
   'backend-loop-idempotency',
 ]);
@@ -262,6 +263,22 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['wrongTenantStatus', 'positive_integer'],
       ['wrongWorkspaceStatus', 'positive_integer'],
       ['leakageObserved', 'boolean_false'],
+    ],
+  ],
+  [
+    'backend-loop-auto-summary-scheduler',
+    [
+      ['summary', 'non_empty_string'],
+      ['autoSummary.summaryPolicyId', 'non_empty_string'],
+      ['autoSummary.summaryJobId', 'non_empty_string'],
+      ['autoSummary.summaryId', 'non_empty_string'],
+      ['autoSummary.idempotencyKey', 'auto_summary_idempotency_key'],
+      ['autoSummary.status', 'terminal_summary_status'],
+      ['autoSummary.requestedAt', 'iso_timestamp'],
+      ['autoSummary.completedAt', 'iso_timestamp'],
+      ['autoSummary.latestFeedItemObservedAt', 'iso_timestamp'],
+      ['autoSummary.newFeedItemCount', 'positive_integer'],
+      ['manualSummaryRequestUsed', 'boolean_false'],
     ],
   ],
   [
@@ -1023,6 +1040,9 @@ function validateSignalEvidenceShape(artifactPath, result) {
   if (result.signalId === 'backend-loop-scheduled-scan') {
     validateScheduledScanEvidence(artifactPath, result.evidence);
   }
+  if (result.signalId === 'backend-loop-auto-summary-scheduler') {
+    validateAutoSummaryEvidence(artifactPath, result.evidence);
+  }
 }
 
 function getPath(value, path) {
@@ -1061,8 +1081,12 @@ function matchesEvidenceType(value, fieldType) {
       return ['github', 'hn', 'reddit', 'rss'].includes(value);
     case 'scheduled_idempotency_key':
       return typeof value === 'string' && value.startsWith('scheduled:') && value.trim().length > 'scheduled:'.length;
+    case 'auto_summary_idempotency_key':
+      return typeof value === 'string' && value.startsWith('auto-summary:') && value.trim().length > 'auto-summary:'.length;
     case 'scan_status_succeeded':
       return value === 'SUCCEEDED';
+    case 'terminal_summary_status':
+      return value === 'completed' || value === 'no_signal';
     default:
       return false;
   }
@@ -1073,6 +1097,18 @@ function validateScheduledScanEvidence(artifactPath, evidenceValue) {
   const nextRunAtMs = parseIsoTimestampMs(getPath(evidenceValue, 'scheduledScan.nextRunAtAfterSchedule'));
   if (completedAtMs !== undefined && nextRunAtMs !== undefined && nextRunAtMs <= completedAtMs) {
     violations.push(`${artifactPath}: signal result "backend-loop-scheduled-scan" evidence.scheduledScan.nextRunAtAfterSchedule must be after completedAt`);
+  }
+}
+
+function validateAutoSummaryEvidence(artifactPath, evidenceValue) {
+  const latestFeedItemObservedAtMs = parseIsoTimestampMs(getPath(evidenceValue, 'autoSummary.latestFeedItemObservedAt'));
+  const requestedAtMs = parseIsoTimestampMs(getPath(evidenceValue, 'autoSummary.requestedAt'));
+  const completedAtMs = parseIsoTimestampMs(getPath(evidenceValue, 'autoSummary.completedAt'));
+  if (latestFeedItemObservedAtMs !== undefined && requestedAtMs !== undefined && requestedAtMs < latestFeedItemObservedAtMs) {
+    violations.push(`${artifactPath}: signal result "backend-loop-auto-summary-scheduler" evidence.autoSummary.requestedAt must be after latestFeedItemObservedAt`);
+  }
+  if (requestedAtMs !== undefined && completedAtMs !== undefined && completedAtMs < requestedAtMs) {
+    violations.push(`${artifactPath}: signal result "backend-loop-auto-summary-scheduler" evidence.autoSummary.completedAt must be after requestedAt`);
   }
 }
 
@@ -1126,7 +1162,9 @@ function isSupportedEvidenceType(fieldType) {
     'non_empty_object_array',
     'durable_provider_key',
     'scheduled_idempotency_key',
+    'auto_summary_idempotency_key',
     'scan_status_succeeded',
+    'terminal_summary_status',
   ]).has(fieldType);
 }
 

@@ -332,6 +332,10 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
   private readonly policies = new Map<string, PrismaSummaryPolicyRecord>();
   readonly outboxEvents = new Map<string, PrismaSummaryOutboxEventRecord>();
 
+  readonly $queryRaw: PrismaSummaryClient['$queryRaw'] = async () => {
+    throw new Error('FakePrismaSummaryClient.$queryRaw is not implemented for this smoke');
+  };
+
   readonly summaryJob: PrismaSummaryClient['summaryJob'] = {
     upsert: async (args) => {
       const existing = this.jobs.get(args.where.id);

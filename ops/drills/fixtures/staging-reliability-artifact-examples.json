@@ -385,6 +385,26 @@
           }
         },
         {
+          "signalId": "backend-loop-auto-summary-scheduler",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:10:00.000Z",
+          "evidence": {
+            "summary": "redacted summary policy automatically requested a summary job after stable feed evidence",
+            "autoSummary": {
+              "summaryPolicyId": "summary-policy-auto-example",
+              "summaryJobId": "summary-job-auto-example",
+              "summaryId": "summary-auto-example",
+              "idempotencyKey": "auto-summary:topic-e2e-example:2026-06-18T01:08:00.000Z:2",
+              "status": "completed",
+              "requestedAt": "2026-06-18T01:09:00.000Z",
+              "completedAt": "2026-06-18T01:09:30.000Z",
+              "latestFeedItemObservedAt": "2026-06-18T01:08:00.000Z",
+              "newFeedItemCount": 2
+            },
+            "manualSummaryRequestUsed": false
+          }
+        },
+        {
           "signalId": "backend-loop-idempotency",
           "status": "passed",
           "observedAt": "2026-06-18T01:11:00.000Z",

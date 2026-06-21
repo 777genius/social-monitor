@@ -8,6 +8,7 @@ import {
 } from '@social-monitor/platform-queue/adapters/rabbitmq';
 
 import type {
+  AutoSummaryCandidateRepositoryPort,
   SummaryArtifactRepositoryPort,
   SummaryEventPublisherPort,
   SummaryEvidenceSelectorPort,
@@ -40,6 +41,7 @@ export const SUMMARY_FEEDBACK_REPOSITORY = Symbol('SUMMARY_FEEDBACK_REPOSITORY')
 export const SUMMARY_POLICY_REPOSITORY = Symbol('SUMMARY_POLICY_REPOSITORY');
 export const SUMMARY_EVENT_PUBLISHER = Symbol('SUMMARY_EVENT_PUBLISHER');
 export const SUMMARY_USER_SUMMARY_PREFERENCE_READER = Symbol('SUMMARY_USER_SUMMARY_PREFERENCE_READER');
+export const SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY = Symbol('SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY');
 
 export type SummaryProviderTokenMap = {
   readonly [SUMMARY_PERSISTENCE_MODE]: SummaryPersistenceMode;
@@ -58,6 +60,7 @@ export type SummaryProviderTokenMap = {
   readonly [SUMMARY_POLICY_REPOSITORY]: SummaryPolicyRepositoryPort;
   readonly [SUMMARY_EVENT_PUBLISHER]: SummaryEventPublisherPort;
   readonly [SUMMARY_USER_SUMMARY_PREFERENCE_READER]: UserSummaryPreferenceReaderPort;
+  readonly [SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY]: AutoSummaryCandidateRepositoryPort;
 };
 
 export const summaryPersistenceModeProvider: Provider<SummaryPersistenceMode> = {

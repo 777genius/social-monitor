@@ -20,6 +20,7 @@ type PrismaSummaryRuntimeModule = {
 const runtimeRequire = createRequire(`${process.cwd()}/package.json`);
 
 export class PrismaSummaryConnection implements PrismaSummaryClient {
+  readonly $queryRaw: PrismaSummaryClient['$queryRaw'];
   readonly summaryJob: PrismaSummaryClient['summaryJob'];
   readonly summaryArtifact: PrismaSummaryClient['summaryArtifact'];
   readonly summaryFeedback: PrismaSummaryClient['summaryFeedback'];
@@ -43,6 +44,7 @@ export class PrismaSummaryConnection implements PrismaSummaryClient {
     this.summaryFeedback = this.client.summaryFeedback;
     this.summaryPolicy = this.client.summaryPolicy;
     this.outboxEvent = this.client.outboxEvent;
+    this.$queryRaw = this.client.$queryRaw.bind(this.client) as PrismaSummaryClient['$queryRaw'];
   }
 
   async close(): Promise<void> {

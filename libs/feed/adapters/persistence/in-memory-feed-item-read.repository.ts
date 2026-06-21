@@ -73,6 +73,10 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
 
     return item ?? null;
   }
+
+  all(): readonly FeedItem[] {
+    return [...this.itemsById.values()];
+  }
 }
 
 const compareFeedItems = (left: FeedItem, right: FeedItem): number => {

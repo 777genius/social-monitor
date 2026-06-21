@@ -71,6 +71,7 @@ export type PrismaSummaryPolicyCreate = PrismaSummaryPolicyMutation & {
 };
 
 export type PrismaSummaryClient = {
+  readonly $queryRaw: <T = unknown>(query: TemplateStringsArray, ...values: readonly unknown[]) => Promise<T>;
   readonly summaryJob: {
     upsert(args: {
       readonly where: { readonly id: string };

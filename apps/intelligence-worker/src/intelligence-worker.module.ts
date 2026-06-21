@@ -11,10 +11,12 @@ import { SystemClock } from '@social-monitor/shared-kernel';
 
 import {
   INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS,
+  INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS,
   INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_READER_OPTIONS,
   INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
   INTELLIGENCE_SUMMARY_QUEUE_READER_MODE,
   type IntelligenceSummaryQueueReaderMode,
+  resolveIntelligenceAutoSummarySchedulerOptions,
   resolveIntelligenceRabbitMqSummaryQueueReaderOptions,
   resolveIntelligenceSummaryJobLoopOptions,
   resolveIntelligenceSummaryQueueDrainLoopOptions,
@@ -29,6 +31,7 @@ import {
 } from './summary-job-queue-reader';
 import { SummaryJobQueueDrainLoop } from './summary-job-queue-drain-loop';
 import { SummaryJobPollingLoop } from './summary-job-polling-loop';
+import { AutoSummarySchedulerLoop } from './auto-summary-scheduler-loop';
 
 const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol('INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL');
 
@@ -38,6 +41,10 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol('INTELLIGENCE_RABBITM
     {
       provide: INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS,
       useFactory: () => resolveIntelligenceSummaryJobLoopOptions(process.env),
+    },
+    {
+      provide: INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS,
+      useFactory: () => resolveIntelligenceAutoSummarySchedulerOptions(process.env),
     },
     {
       provide: INTELLIGENCE_SUMMARY_QUEUE_READER_MODE,
@@ -87,6 +94,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol('INTELLIGENCE_RABBITM
       inject: [ExecuteSummaryJobUseCase, InMemoryMetricsRecorder, WorkerRuntime],
     },
     SummaryJobPollingLoop,
+    AutoSummarySchedulerLoop,
     {
       provide: SummaryJobQueueDrainLoop,
       useFactory: (
@@ -103,7 +111,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol('INTELLIGENCE_RABBITM
       ],
     },
   ],
-  exports: [ExecuteSummaryJobCommandHandler, SummaryJobPollingLoop, SummaryJobQueueDrainLoop],
+  exports: [ExecuteSummaryJobCommandHandler, SummaryJobPollingLoop, SummaryJobQueueDrainLoop, AutoSummarySchedulerLoop],
 })
 export class IntelligenceWorkerModule {}
 

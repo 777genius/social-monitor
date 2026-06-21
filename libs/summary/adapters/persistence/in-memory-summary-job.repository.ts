@@ -38,6 +38,10 @@ export class InMemorySummaryJobRepository implements SummaryJobRepositoryPort {
       .sort(compareRequestedJobs)
       .slice(0, params.limit);
   }
+
+  all(): readonly SummaryJob[] {
+    return [...this.jobsById.values()];
+  }
 }
 
 const compareRequestedJobs = (left: SummaryJob, right: SummaryJob): number => {

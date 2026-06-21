@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.module';
 import { FEED_ITEM_READ_REPOSITORY, type FeedItemReadRepositoryPort } from '@social-monitor/feed/ports';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
@@ -37,9 +38,11 @@ import {
   resolveOpenAiResponsesSummaryModelOptions,
 } from '../../adapters/model/openai-responses-summary-model.adapter';
 import { InMemorySummaryArtifactRepository } from '../../adapters/persistence/in-memory-summary-artifact.repository';
+import { InMemoryAutoSummaryCandidateRepository } from '../../adapters/persistence/in-memory-auto-summary-candidate.repository';
 import { InMemorySummaryFeedbackRepository } from '../../adapters/persistence/in-memory-summary-feedback.repository';
 import { InMemorySummaryJobRepository } from '../../adapters/persistence/in-memory-summary-job.repository';
 import { InMemorySummaryPolicyRepository } from '../../adapters/persistence/in-memory-summary-policy.repository';
+import { PrismaAutoSummaryCandidateRepository } from '../../adapters/persistence/prisma/prisma-auto-summary-candidate.repository';
 import { PrismaSummaryConnection } from '../../adapters/persistence/prisma/prisma-summary-connection';
 import type { PrismaSummaryClient } from '../../adapters/persistence/prisma/prisma-summary-client';
 import { PrismaSummaryArtifactRepository } from '../../adapters/persistence/prisma/prisma-summary-artifact.repository';
@@ -60,8 +63,10 @@ import { ListSummariesUseCase } from '../../features/list-summaries/list-summari
 import { RecordSummaryFeedbackUseCase } from '../../features/record-summary-feedback/record-summary-feedback.use-case';
 import { RegenerateSummaryUseCase } from '../../features/regenerate-summary/regenerate-summary.use-case';
 import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
+import { ScheduleAutoSummariesUseCase } from '../../features/schedule-auto-summaries/schedule-auto-summaries.use-case';
 import { UpsertSummaryPolicyUseCase } from '../../features/upsert-summary-policy/upsert-summary-policy.use-case';
 import type {
+  AutoSummaryCandidateRepositoryPort,
   SummaryArtifactRepositoryPort,
   SummaryEvidenceSelectorPort,
   SummaryEventPublisherPort,
@@ -77,6 +82,7 @@ import { SummaryJobController } from './summary-job.controller';
 import { SummaryPolicyController } from './summary-policy.controller';
 import {
   SUMMARY_ARTIFACT_REPOSITORY,
+  SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY,
   SUMMARY_EVIDENCE_SELECTOR,
   SUMMARY_EVENT_PUBLISHER,
   SUMMARY_JOB_QUEUE_MODE,
@@ -214,6 +220,32 @@ import { SummaryController } from './summary.controller';
           : inMemorySummaryPolicies,
       inject: [SUMMARY_PERSISTENCE_MODE, SUMMARY_PRISMA_CLIENT, InMemorySummaryPolicyRepository],
     },
+    {
+      provide: SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY,
+      useFactory: (
+        mode: SummaryPersistenceMode,
+        prisma: PrismaSummaryClient | null,
+        policies: InMemorySummaryPolicyRepository,
+        jobs: InMemorySummaryJobRepository,
+        feedItems: FeedItemReadRepositoryPort,
+      ): AutoSummaryCandidateRepositoryPort => {
+        if (mode === 'prisma') {
+          return new PrismaAutoSummaryCandidateRepository(requirePrismaSummaryClient(prisma));
+        }
+        if (!(feedItems instanceof InMemoryFeedItemReadRepository)) {
+          throw new Error('In-memory auto-summary candidates require InMemoryFeedItemReadRepository');
+        }
+
+        return new InMemoryAutoSummaryCandidateRepository(policies, jobs, feedItems);
+      },
+      inject: [
+        SUMMARY_PERSISTENCE_MODE,
+        SUMMARY_PRISMA_CLIENT,
+        InMemorySummaryPolicyRepository,
+        InMemorySummaryJobRepository,
+        FEED_ITEM_READ_REPOSITORY,
+      ],
+    },
     InMemorySummaryEventPublisher,
     {
       provide: SUMMARY_EVENT_PUBLISHER,
@@ -333,6 +365,14 @@ import { SummaryController } from './summary.controller';
           new SystemClock(),
         ),
       inject: [SUMMARY_JOB_REPOSITORY, SUMMARY_JOB_QUEUE, UsageSummaryQuotaAdapter],
+    },
+    {
+      provide: ScheduleAutoSummariesUseCase,
+      useFactory: (
+        candidates: AutoSummaryCandidateRepositoryPort,
+        requestSummary: RequestSummaryUseCase,
+      ) => new ScheduleAutoSummariesUseCase(candidates, requestSummary),
+      inject: [SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY, RequestSummaryUseCase],
     },
     {
       provide: ExecuteSummaryJobUseCase,
@@ -456,6 +496,7 @@ import { SummaryController } from './summary.controller';
     InMemorySummaryPolicyRepository,
     ListSummaryFeedbackUseCase,
     SUMMARY_ARTIFACT_REPOSITORY,
+    SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY,
     SUMMARY_EVIDENCE_SELECTOR,
     SUMMARY_FEEDBACK_REPOSITORY,
     SUMMARY_EVENT_PUBLISHER,
@@ -467,6 +508,8 @@ import { SummaryController } from './summary.controller';
     GetSummaryPolicyUseCase,
     RecordSummaryFeedbackUseCase,
     RegenerateSummaryUseCase,
+    RequestSummaryUseCase,
+    ScheduleAutoSummariesUseCase,
     UpsertSummaryPolicyUseCase,
   ],
 })

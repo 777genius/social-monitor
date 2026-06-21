@@ -27,6 +27,15 @@ export type IntelligenceSummaryQueueDrainLoopOptions = {
   readonly limit: number;
   readonly runOnStart: boolean;
 };
+export type IntelligenceAutoSummarySchedulerOptions = {
+  readonly enabled: boolean;
+  readonly intervalMs: number;
+  readonly minFeedAgeMs: number;
+  readonly limit: number;
+  readonly runOnStart: boolean;
+  readonly tenantId?: string;
+  readonly workspaceId?: string;
+};
 
 export const INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS = Symbol('INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS');
 export const INTELLIGENCE_SUMMARY_QUEUE_READER_MODE = Symbol('INTELLIGENCE_SUMMARY_QUEUE_READER_MODE');
@@ -34,6 +43,8 @@ export const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_READER_OPTIONS =
   Symbol('INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_READER_OPTIONS');
 export const INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS =
   Symbol('INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS');
+export const INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS =
+  Symbol('INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS');
 
 export const resolveIntelligenceSummaryJobLoopOptions = (
   env: NodeJS.ProcessEnv,
@@ -127,6 +138,35 @@ export const resolveIntelligenceSummaryQueueDrainLoopOptions = (
     intervalMs: parseBoundedInteger(env.INTELLIGENCE_SUMMARY_QUEUE_DRAIN_INTERVAL_MS, 5_000, 500, 3_600_000),
     limit: parseBoundedInteger(env.INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LIMIT, 20, 1, 100),
     runOnStart: parseBoolean(env.INTELLIGENCE_SUMMARY_QUEUE_DRAIN_RUN_ON_START, true),
+  };
+};
+
+export const resolveIntelligenceAutoSummarySchedulerOptions = (
+  env: NodeJS.ProcessEnv,
+): IntelligenceAutoSummarySchedulerOptions => {
+  const loopMode = env.INTELLIGENCE_AUTO_SUMMARY_SCHEDULER ?? 'disabled';
+
+  if (loopMode !== 'enabled' && loopMode !== 'disabled') {
+    throw new Error('INTELLIGENCE_AUTO_SUMMARY_SCHEDULER must be "enabled" or "disabled"');
+  }
+
+  const tenant = emptyToUndefined(env.INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_TENANT_ID);
+  const workspace = emptyToUndefined(env.INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_WORKSPACE_ID);
+
+  if ((tenant === undefined) !== (workspace === undefined)) {
+    throw new Error(
+      'INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_TENANT_ID and INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_WORKSPACE_ID must be set together',
+    );
+  }
+
+  return {
+    enabled: loopMode === 'enabled',
+    intervalMs: parseBoundedInteger(env.INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_INTERVAL_MS, 60_000, 1_000, 3_600_000),
+    minFeedAgeMs: parseBoundedInteger(env.INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_MIN_FEED_AGE_MS, 30_000, 0, 3_600_000),
+    limit: parseBoundedInteger(env.INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_LIMIT, 20, 1, 100),
+    runOnStart: parseBoolean(env.INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_RUN_ON_START, true),
+    tenantId: tenant,
+    workspaceId: workspace,
   };
 };
 
