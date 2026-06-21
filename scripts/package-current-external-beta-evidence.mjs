@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 
 import {
@@ -189,6 +190,10 @@ function buildReport({ envFilePath, reportPath, packageResult, expectedCommitSha
       packagedCommitSha: packageResult.entries.get('BACKEND_GIT_COMMIT_SHA') ?? null,
       requireCurrentCommit: true,
     },
+    artifactIntegrity: {
+      inputEnvFiles: fileIntegrityRecords(packageResult.includedEnvFiles, 'input evidence env file'),
+      packagedEvidenceArtifacts: packagedEvidenceArtifactIntegrityRecords(packageResult.entries),
+    },
     includedEnvFiles: packageResult.includedEnvFiles,
     skippedMissingEnvFiles: packageResult.skippedMissingEnvFiles,
     packagedEnvNames: [...packageResult.entries.keys()].sort(),
@@ -206,6 +211,49 @@ function buildReport({ envFilePath, reportPath, packageResult, expectedCommitSha
       optionalEnv: readiness.uniqueMissingOptionalEnv,
       blockedJobs,
     },
+  };
+}
+
+function packagedEvidenceArtifactIntegrityRecords(entries) {
+  return [...entries.entries()]
+    .filter(([name]) => name.endsWith('_PATH'))
+    .map(([name, path]) => evidenceJsonFileIntegrityRecord(path, name))
+    .sort((left, right) => left.envName.localeCompare(right.envName));
+}
+
+function evidenceJsonFileIntegrityRecord(path, envName) {
+  return {
+    envName,
+    ...fileIntegrityRecord(validateEvidenceJsonFilePath(path, envName), envName),
+  };
+}
+
+function fileIntegrityRecords(paths, label) {
+  return paths
+    .map((path) => fileIntegrityRecord(path, label))
+    .sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function fileIntegrityRecord(path, label) {
+  let stats;
+  try {
+    stats = statSync(path);
+  } catch {
+    throw new Error(`${label} ${path} must point to an existing regular file`);
+  }
+  if (!stats.isFile()) {
+    throw new Error(`${label} ${path} must point to a regular file`);
+  }
+  if ((stats.mode & 0o077) !== 0) {
+    throw new Error(`${label} ${path} must use 0600-style private file permissions`);
+  }
+  const body = readFileSync(path);
+
+  return {
+    path,
+    sha256: createHash('sha256').update(body).digest('hex'),
+    sizeBytes: stats.size,
+    mtimeMs: Math.trunc(stats.mtimeMs),
   };
 }
 

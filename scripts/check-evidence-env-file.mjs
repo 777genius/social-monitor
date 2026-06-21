@@ -208,6 +208,28 @@ function validateCurrentEvidencePackage() {
   if (report.commitPolicy?.expectedCommitSha !== commitSha || report.commitPolicy?.packagedCommitSha !== commitSha) {
     violations.push('current evidence package report must expose the expected and packaged commit SHA');
   }
+  if (!Array.isArray(report.artifactIntegrity?.inputEnvFiles) || report.artifactIntegrity.inputEnvFiles.length !== 2) {
+    violations.push('current evidence package report must include input env file integrity records');
+  }
+  if (!Array.isArray(report.artifactIntegrity?.packagedEvidenceArtifacts) || report.artifactIntegrity.packagedEvidenceArtifacts.length === 0) {
+    violations.push('current evidence package report must include packaged evidence artifact integrity records');
+  }
+  const digestPattern = /^[0-9a-f]{64}$/;
+  for (const record of [
+    ...(report.artifactIntegrity?.inputEnvFiles ?? []),
+    ...(report.artifactIntegrity?.packagedEvidenceArtifacts ?? []),
+  ]) {
+    if (!digestPattern.test(String(record.sha256 ?? '')) || !Number.isInteger(record.sizeBytes) || record.sizeBytes <= 0) {
+      violations.push('current evidence package integrity records must include sha256 and positive sizeBytes');
+      break;
+    }
+  }
+  const artifactIntegrityEnvNames = new Set(
+    (report.artifactIntegrity?.packagedEvidenceArtifacts ?? []).map((record) => record.envName),
+  );
+  if (!artifactIntegrityEnvNames.has('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH')) {
+    violations.push('current evidence package report must hash live-open evidence artifact');
+  }
   if (!report.inputPolicy?.secretEnvNamesWithheld?.includes('DATABASE_URL')) {
     violations.push('current evidence package report must list withheld DATABASE_URL');
   }
