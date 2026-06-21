@@ -1,3 +1,7 @@
+import { createHash } from 'node:crypto';
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
+
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
@@ -48,6 +52,7 @@ const timeoutMs = 10_000;
 const githubQuery = process.env.GITHUB_LIVE_SUMMARY_QUERY?.trim() || 'repo:microsoft/TypeScript is:issue';
 const maxItems = readPositiveIntegerEnv('GITHUB_LIVE_SUMMARY_MAX_ITEMS', 2, 1, 5);
 const sampledAt = new Date('2026-06-21T00:00:00.000Z');
+const evidencePath = readOptionalEnv('GITHUB_LIVE_SUMMARY_EVIDENCE_PATH');
 
 class StaticSourceConfigReader implements SourceConfigReaderPort {
   async readConfig(): Promise<SourceRuntimeConfig> {
@@ -234,6 +239,15 @@ const main = async (): Promise<void> => {
     'live GitHub summary must publish summary.ready',
   );
 
+  writeOptionalEvidenceArtifact({
+    scan,
+    feedItemCount: feed.items.length,
+    summaryStatus: summary.status,
+    summaryReadyPublished: summaryEvents.all().some((event) => event.eventType === 'summary.ready'),
+    citationCount: artifactSnapshot.citationMap.length,
+    selectedFeedItemCount: artifactSnapshot.sourceWindow.selectedFeedItemIds.length,
+  });
+
   console.log([
     'GitHub live summary smoke OK',
     `Query: ${githubQuery}`,
@@ -244,6 +258,116 @@ const main = async (): Promise<void> => {
     `Headline: ${artifactSnapshot.headline}`,
   ].join('\n'));
 };
+
+function writeOptionalEvidenceArtifact(input: {
+  scan: { fetched: number; inserted: number; projected: number };
+  feedItemCount: number;
+  summaryStatus: string;
+  summaryReadyPublished: boolean;
+  citationCount: number;
+  selectedFeedItemCount: number;
+}): void {
+  if (evidencePath === undefined) {
+    return;
+  }
+
+  const target = validateEvidenceJsonPath(evidencePath, 'GITHUB_LIVE_SUMMARY_EVIDENCE_PATH');
+  const generatedAt = new Date().toISOString();
+  const authMode = readOptionalEnv('GITHUB_ACCESS_TOKEN') === undefined ? 'anonymous' : 'token_redacted';
+  const artifact = {
+    schemaVersion: 1,
+    artifactId: 'github-live-summary-smoke-evidence-v1',
+    format: 'github-live-summary-smoke-evidence-v1',
+    scope: 'backend-only',
+    frontendPolicy: 'deferred_contract_only',
+    generatedAt,
+    sampledAt: generatedAt,
+    provenance: {
+      commitSha: readOptionalEnv('BACKEND_GIT_COMMIT_SHA') ?? null,
+      imageDigest: readOptionalEnv('BACKEND_IMAGE_DIGEST') ?? null,
+      environmentId: readOptionalEnv('SOURCE_LIVE_ENVIRONMENT_ID') ?? null,
+      operator: readOptionalEnv('SOURCE_LIVE_OPERATOR') ?? null,
+    },
+    provider: {
+      providerKey: 'github',
+      authMode,
+      accessTokenIncluded: false,
+    },
+    query: {
+      mode: 'search',
+      sha256: sha256(githubQuery),
+      defaultQuery: githubQuery === 'repo:microsoft/TypeScript is:issue',
+      maxItems,
+      rawQueryIncluded: false,
+    },
+    signals: [
+      {
+        signalId: 'github-live-api-to-summary-smoke',
+        status: 'passed',
+        observedAt: generatedAt,
+        evidence: {
+          liveApiFetchedItems: input.scan.fetched,
+          feedProjectionInsertedItems: input.feedItemCount,
+          summaryCompleted: input.summaryStatus === 'completed',
+          citationCount: input.citationCount,
+          summaryReadyPublished: input.summaryReadyPublished,
+        },
+      },
+    ],
+    metrics: {
+      fetched: input.scan.fetched,
+      inserted: input.scan.inserted,
+      projected: input.scan.projected,
+      feedItems: input.feedItemCount,
+      selectedFeedItems: input.selectedFeedItemCount,
+      citationCount: input.citationCount,
+    },
+    redaction: {
+      rawProviderPayloadIncluded: false,
+      rawFeedItemTextIncluded: false,
+      rawSummaryTextIncluded: false,
+      accessTokenIncluded: false,
+      tokenValuesIncluded: false,
+    },
+  };
+
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(target, 0o600);
+}
+
+function validateEvidenceJsonPath(path: string, label: string): string {
+  if (!isAbsolute(path)) {
+    throw new Error(`${label} must be an absolute JSON file path`);
+  }
+  const resolvedPath = resolve(path);
+  if (!resolvedPath.endsWith('.json')) {
+    throw new Error(`${label} must end with .json`);
+  }
+  if (isInsideWorkspace(resolvedPath)) {
+    throw new Error(`${label} must not write release evidence into the git workspace`);
+  }
+  if (isFixtureLikePath(resolvedPath)) {
+    throw new Error(`${label} must not point to fixture or example paths`);
+  }
+
+  return resolvedPath;
+}
+
+function isInsideWorkspace(path: string): boolean {
+  const workspace = resolve(process.cwd());
+  const relativePath = relative(workspace, path);
+  return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath));
+}
+
+function isFixtureLikePath(path: string): boolean {
+  const normalized = path.replaceAll('\\', '/').toLowerCase();
+  return ['/fixtures/', '.example.', '-examples', '_examples'].some((fragment) => normalized.includes(fragment));
+}
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
 
 function unwrap<TValue, TError>(result: Result<TValue, TError>, label: string): TValue {
   if (result.ok) {

@@ -26,6 +26,7 @@ const defaultInputPaths = [
     || join(resolve(artifactDir), 'external-beta-evidence-from-docker-bundle.env'),
   process.env.LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH?.trim()
     || join(resolve(artifactDir), 'live-open-connectors.env'),
+  process.env.GITHUB_LIVE_SUMMARY_EVIDENCE_ENV_PATH?.trim(),
   process.env.LIVE_REDDIT_EVIDENCE_ENV_PATH?.trim(),
   process.env.SUMMARY_FEEDBACK_SAMPLES_ENV_PATH?.trim(),
 ];
