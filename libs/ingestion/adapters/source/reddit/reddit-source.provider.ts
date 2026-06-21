@@ -10,6 +10,7 @@ import type {
 } from '../../../ports';
 import { redditListings } from './http-reddit-client';
 import type { RedditClientPort, RedditPost, RedditPostListing } from './reddit-client.port';
+import type { RedditTokenProviderPort } from './reddit-token-provider.port';
 
 const capabilityProfile: SourceCapabilityProfile = {
   providerKey: 'reddit',
@@ -20,14 +21,17 @@ const capabilityProfile: SourceCapabilityProfile = {
   supportedQueryModes: ['search', 'listing'],
   cursorModel: 'opaque',
   stableIdentity: ['providerId', 'canonicalUrl'],
-  quotaModel: 'per_credential',
+  quotaModel: 'per_app',
   limitations: [
-    'Uses Reddit OAuth API only. Requires tenant-provided bearer token in encrypted source binding config.',
+    'Uses Reddit OAuth API only. Uses app-only OAuth by default; encrypted tenant bearer token can override when needed.',
   ],
 };
 
 export class RedditSourceProvider implements SourceProviderPort {
-  constructor(private readonly client: RedditClientPort) {}
+  constructor(
+    private readonly client: RedditClientPort,
+    private readonly tokenProvider?: RedditTokenProviderPort,
+  ) {}
 
   key(): string {
     return capabilityProfile.providerKey;
@@ -75,7 +79,7 @@ export class RedditSourceProvider implements SourceProviderPort {
     plan: SourceProviderScanPlan,
     context: SourceProviderScanContext,
   ): Promise<SourceProviderScanResult> {
-    const accessToken = readRequiredString(context.config?.accessToken, 'accessToken');
+    const accessToken = await this.resolveAccessToken(context);
     const userAgent = readOptionalString(context.config?.userAgent);
     const page = plan.query.mode === 'listing'
       ? await this.client.listSubredditPosts({
@@ -107,7 +111,13 @@ export class RedditSourceProvider implements SourceProviderPort {
     const message = error instanceof Error ? error.message : 'Unknown Reddit provider error';
     const lowerMessage = message.toLowerCase();
 
-    if (message.includes('401') || message.includes('403') || lowerMessage.includes('token')) {
+    if (
+      message.includes('401')
+      || message.includes('403')
+      || lowerMessage.includes('token')
+      || lowerMessage.includes('oauth')
+      || lowerMessage.includes('credential')
+    ) {
       return {
         kind: 'auth_failed',
         retryable: false,
@@ -128,6 +138,24 @@ export class RedditSourceProvider implements SourceProviderPort {
       retryable: true,
       message,
     };
+  }
+
+  private async resolveAccessToken(context: SourceProviderScanContext): Promise<string> {
+    const configuredAccessToken = firstNonEmptyString(
+      context.config?.accessToken,
+      context.config?.apiToken,
+      context.config?.bearerToken,
+    );
+
+    if (configuredAccessToken !== undefined) {
+      return configuredAccessToken;
+    }
+
+    if (this.tokenProvider === undefined) {
+      throw new Error('Reddit app-only OAuth token provider is not configured');
+    }
+
+    return this.tokenProvider.getAccessToken();
   }
 }
 
@@ -196,6 +224,9 @@ const readRequiredString = (value: unknown, field: string, fallback?: string): s
 
 const readOptionalString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+
+const firstNonEmptyString = (...values: readonly unknown[]): string | undefined =>
+  values.map(readOptionalString).find((value) => value !== undefined);
 
 const readPositiveInteger = (
   value: unknown,

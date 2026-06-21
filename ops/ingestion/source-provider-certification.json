@@ -89,11 +89,11 @@
       "runtimeReadiness": "fixture_ready",
       "liveBetaReady": false,
       "liveBetaBlockers": [
-        "Tenant OAuth credential and live Reddit API rate-limit evidence required before external beta."
+        "App-only OAuth client credentials and live Reddit API rate-limit evidence required before external beta."
       ],
       "productionSafe": true,
       "cursorModel": "opaque",
-      "quotaModel": "per_credential",
+      "quotaModel": "per_app",
       "itemCount": 2,
       "warningCount": 0,
       "firstExternalId": "reddit:t3_fixturepost1",

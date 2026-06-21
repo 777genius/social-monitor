@@ -98,7 +98,7 @@ async function main(): Promise<void> {
     assert(reddit.productionSafe === true, 'Reddit profile must be marked production safe after provider enablement');
     assert(reddit.readinessState === 'enabled_beta', 'Reddit readiness must be enabled beta');
     assert(reddit.acquisitionMode === 'official_oauth_api', 'Reddit profile must document official API acquisition');
-    assert(reddit.quotaModel === 'per_credential', 'Reddit profile must expose tenant credential quota model');
+    assert(reddit.quotaModel === 'per_app', 'Reddit profile must expose app-only quota model');
     assert(reddit.cursorModel === 'opaque', 'Reddit profile must expose opaque cursor model');
     assert(reddit.supportedQueryModes.includes('listing'), 'Reddit profile must support subreddit listings');
     assert(reddit.supportedQueryModes.includes('search'), 'Reddit profile must support search mode');

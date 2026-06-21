@@ -119,7 +119,9 @@ const sourceCatalogEntries = [
       supportsListing: true,
       supportsCursor: true,
       productionSafe: true,
-      requiresCredentials: true,
+      requiresCredentials: false,
+      appOnlyOAuth: true,
+      tenantCredentialOverrideSupported: true,
     },
   },
 ];

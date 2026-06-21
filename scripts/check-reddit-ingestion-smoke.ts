@@ -4,6 +4,7 @@ import { InMemorySourceProviderRegistry } from '../libs/ingestion/adapters/sourc
 import { RegistrySourceFetcherAdapter } from '../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
 import { FixtureRedditClient } from '../libs/ingestion/adapters/source/reddit/fixture-reddit-client';
 import { RedditSourceProvider } from '../libs/ingestion/adapters/source/reddit/reddit-source.provider';
+import type { RedditTokenProviderPort } from '../libs/ingestion/adapters/source/reddit/reddit-token-provider.port';
 import { InMemoryScanAttemptRepository } from '../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
 import { InMemoryScanCursorRepository } from '../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
 import { InMemorySourceItemRepository } from '../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
@@ -39,7 +40,6 @@ async function main(): Promise<void> {
     mode: 'listing',
     subreddit: 'observability',
     listing: 'hot',
-    accessToken: 'fixture-reddit-token',
     userAgent: 'social-monitor-reddit-smoke/0.1',
   });
   const binding = SourceBinding.create({
@@ -55,8 +55,11 @@ async function main(): Promise<void> {
 
   await sourceBindings.save(binding);
 
+  const appTokenProvider = new CapturingRedditTokenProvider('fixture-reddit-app-token');
   const fetcher = new RegistrySourceFetcherAdapter(
-    new InMemorySourceProviderRegistry([new RedditSourceProvider(new FixtureRedditClient())], []),
+    new InMemorySourceProviderRegistry([
+      new RedditSourceProvider(new FixtureRedditClient(), appTokenProvider),
+    ], []),
     new MonitoringSourceConfigReaderAdapter(sourceBindings, protector),
   );
   const result = await fetcher.fetch({
@@ -70,9 +73,10 @@ async function main(): Promise<void> {
   });
 
   assert(
-    JSON.stringify(binding.toSnapshot().config).includes('fixture-reddit-token') === false,
-    'token must be encrypted',
+    JSON.stringify(binding.toSnapshot().config).includes('fixture-reddit-app-token') === false,
+    'app-only token must stay outside source binding config',
   );
+  assert(appTokenProvider.calls === 1, `expected one Reddit app-only token request, got ${appTokenProvider.calls}`);
   assert(result.items.length === 2, `expected two Reddit fixture items, got ${result.items.length}`);
   assert(result.items[0]?.externalId === 'reddit:t3_fixturepost1', 'first Reddit external id mismatch');
   assert(result.items[0]?.canonicalUrl.startsWith('https://www.reddit.com/r/observability/'), 'canonical URL mismatch');
@@ -96,9 +100,13 @@ async function main(): Promise<void> {
   });
   await sourceBindings.save(missingTokenBinding);
 
+  const fetcherWithoutAppToken = new RegistrySourceFetcherAdapter(
+    new InMemorySourceProviderRegistry([new RedditSourceProvider(new FixtureRedditClient())], []),
+    new MonitoringSourceConfigReaderAdapter(sourceBindings, protector),
+  );
   let authFailure: unknown;
   try {
-    await fetcher.fetch({
+    await fetcherWithoutAppToken.fetch({
       tenantId: tenant,
       workspaceId: workspace,
       sourceBindingId: 'source-binding-reddit-missing-token-smoke',
@@ -117,7 +125,7 @@ async function main(): Promise<void> {
   const scanFailures = new InMemoryScanFailureQueueAdapter(new InMemoryMetricsRecorder());
   const scanReporter = new CapturingScanExecutionReporter();
   const executeScanResult = await new ExecuteScanUseCase(
-    fetcher,
+    fetcherWithoutAppToken,
     new InMemorySourceItemRepository(),
     new InMemoryFeedProjectionAdapter(new InMemoryFeedItemReadRepository()),
     new InMemoryScanAttemptRepository(),
@@ -149,6 +157,17 @@ async function main(): Promise<void> {
   assert(scanReporter.failed.length === 1, 'non-retryable Reddit auth failure must report scan failure');
 
   console.log('Reddit ingestion smoke OK');
+}
+
+class CapturingRedditTokenProvider implements RedditTokenProviderPort {
+  calls = 0;
+
+  constructor(private readonly accessToken: string) {}
+
+  async getAccessToken(): Promise<string> {
+    this.calls += 1;
+    return this.accessToken;
+  }
 }
 
 class SequenceIdGenerator implements IdGenerator {

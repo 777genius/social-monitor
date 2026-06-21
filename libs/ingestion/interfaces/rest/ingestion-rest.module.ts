@@ -15,6 +15,7 @@ import { HackerNewsSourceProvider } from '../../adapters/source/hacker-news/hack
 import { InMemorySourceProviderRegistry } from '../../adapters/source/in-memory-source-provider.registry';
 import { FixtureRedditClient } from '../../adapters/source/reddit/fixture-reddit-client';
 import { RedditSourceProvider } from '../../adapters/source/reddit/reddit-source.provider';
+import { StaticRedditTokenProvider } from '../../adapters/source/reddit/static-reddit-token-provider';
 import { FixtureRssClient } from '../../adapters/source/rss/fixture-rss-client';
 import { RssSourceProvider } from '../../adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfiles } from '../../adapters/source/source-readiness-profiles';
@@ -71,6 +72,10 @@ import { SourceProfileController } from './source-profile.controller';
     FixtureGitHubClient,
     FixtureHackerNewsClient,
     FixtureRedditClient,
+    {
+      provide: StaticRedditTokenProvider,
+      useFactory: () => new StaticRedditTokenProvider('fixture-reddit-app-token'),
+    },
     FixtureRssClient,
     {
       provide: HackerNewsSourceProvider,
@@ -89,8 +94,11 @@ import { SourceProfileController } from './source-profile.controller';
     },
     {
       provide: RedditSourceProvider,
-      useFactory: (client: FixtureRedditClient) => new RedditSourceProvider(client),
-      inject: [FixtureRedditClient],
+      useFactory: (
+        client: FixtureRedditClient,
+        tokenProvider: StaticRedditTokenProvider,
+      ) => new RedditSourceProvider(client, tokenProvider),
+      inject: [FixtureRedditClient, StaticRedditTokenProvider],
     },
     {
       provide: InMemorySourceProviderRegistry,

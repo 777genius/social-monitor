@@ -10,6 +10,7 @@ import { FixtureHackerNewsClient } from '../libs/ingestion/adapters/source/hacke
 import { HackerNewsSourceProvider } from '../libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
 import { FixtureRedditClient } from '../libs/ingestion/adapters/source/reddit/fixture-reddit-client';
 import { RedditSourceProvider } from '../libs/ingestion/adapters/source/reddit/reddit-source.provider';
+import { StaticRedditTokenProvider } from '../libs/ingestion/adapters/source/reddit/static-reddit-token-provider';
 import { FixtureRssClient } from '../libs/ingestion/adapters/source/rss/fixture-rss-client';
 import { RssSourceProvider } from '../libs/ingestion/adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
@@ -109,14 +110,16 @@ const cases: readonly ProviderCase[] = [
     expectedFailureKind: 'unavailable',
   },
   {
-    providerFactory: () => new RedditSourceProvider(new FixtureRedditClient()),
+    providerFactory: () => new RedditSourceProvider(
+      new FixtureRedditClient(),
+      new StaticRedditTokenProvider('fixture-reddit-app-token'),
+    ),
     validQuery: { mode: 'listing', query: 'observability:hot' },
     unsupportedQueryMode: 'thread',
     expectedProviderKey: 'reddit',
     expectedReadinessState: 'enabled_beta',
     expectedFailureKind: 'unavailable',
     contextConfig: {
-      accessToken: 'fixture-reddit-token',
       subreddit: 'observability',
       listing: 'hot',
     },

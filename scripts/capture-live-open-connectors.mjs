@@ -62,7 +62,7 @@ writeEvidenceEnvFile(envFileTarget, [
     'Usage:',
     `set -a; . ${shellQuote(envFileTarget)}; set +a`,
     'npm run check:source-live-certification-evidence',
-    'This credentialless handoff covers Hacker News, RSS and GitHub only. Reddit evidence remains blocked until tenant OAuth credentials are provided.',
+    'This credentialless handoff covers Hacker News, RSS and GitHub only. Reddit evidence is captured separately through app-only or tenant OAuth smoke.',
   ],
 });
 

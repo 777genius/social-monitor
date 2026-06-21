@@ -115,11 +115,6 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
 
     if (providerKey === 'reddit') {
       const mode = firstNonEmptyString(config.mode) ?? 'search';
-      const accessToken = firstNonEmptyString(config.accessToken, config.apiToken, config.bearerToken);
-
-      if (accessToken === undefined) {
-        return { ok: false, reason: 'Reddit source requires accessToken, apiToken or bearerToken.' };
-      }
 
       if (mode !== 'search' && mode !== 'listing') {
         return { ok: false, reason: `Unsupported Reddit query mode: ${mode}` };

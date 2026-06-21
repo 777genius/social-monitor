@@ -40,6 +40,7 @@ import { HttpHackerNewsClient } from '@social-monitor/ingestion/adapters/source/
 import { InMemorySourceProviderRegistry } from '@social-monitor/ingestion/adapters/source/in-memory-source-provider.registry';
 import { RegistrySourceFetcherAdapter } from '@social-monitor/ingestion/adapters/source/registry-source-fetcher.adapter';
 import { HttpRedditClient } from '@social-monitor/ingestion/adapters/source/reddit/http-reddit-client';
+import { RedditAppOnlyTokenProvider } from '@social-monitor/ingestion/adapters/source/reddit/app-only-reddit-token-provider';
 import { RedditSourceProvider } from '@social-monitor/ingestion/adapters/source/reddit/reddit-source.provider';
 import { HttpRssClient } from '@social-monitor/ingestion/adapters/source/rss/http-rss-client';
 import { RssSourceProvider } from '@social-monitor/ingestion/adapters/source/rss/rss-source.provider';
@@ -161,14 +162,21 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
       useFactory: () => new HttpRedditClient(),
     },
     {
+      provide: RedditAppOnlyTokenProvider,
+      useFactory: (): RedditAppOnlyTokenProvider | null => RedditAppOnlyTokenProvider.fromEnvironment(process.env),
+    },
+    {
       provide: RssSourceProvider,
       useFactory: (client: HttpRssClient) => new RssSourceProvider(client),
       inject: [HttpRssClient],
     },
     {
       provide: RedditSourceProvider,
-      useFactory: (client: HttpRedditClient) => new RedditSourceProvider(client),
-      inject: [HttpRedditClient],
+      useFactory: (
+        client: HttpRedditClient,
+        tokenProvider: RedditAppOnlyTokenProvider | null,
+      ) => new RedditSourceProvider(client, tokenProvider ?? undefined),
+      inject: [HttpRedditClient, RedditAppOnlyTokenProvider],
     },
     {
       provide: InMemorySourceProviderRegistry,

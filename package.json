@@ -77,6 +77,7 @@
     "check:local-infra": "node scripts/check-local-infra.mjs",
     "check:load-cost": "node scripts/check-load-cost.mjs",
     "check:live-open-connectors": "node scripts/run-with-timeout.mjs --timeout-ms 45000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-live-open-connectors.ts",
+    "check:live-reddit-app-oauth": "node scripts/run-with-timeout.mjs --timeout-ms 45000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-live-reddit-app-oauth.ts",
     "check:live-reddit-oauth": "node scripts/run-with-timeout.mjs --timeout-ms 45000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-live-reddit-oauth.ts",
     "check:ingestion-feed-persistence": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-ingestion-feed-prisma-persistence.ts",
     "check:monitoring-persistence": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-monitoring-prisma-persistence.ts",
