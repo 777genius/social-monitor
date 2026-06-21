@@ -102,6 +102,9 @@ console.log(`EXTERNAL_BETA_CURRENT_ENV_PATH=${writtenEnvFilePath}`);
 console.log(`EXTERNAL_BETA_CURRENT_REPORT_PATH=${reportPath}`);
 console.log(`External beta current evidence package: ${report.readiness.externalEvidenceReadyJobs}/${report.readiness.externalEvidenceTotalJobs} external evidence jobs ready`);
 console.log(`Remaining required env: ${report.remaining.requiredEnv.length > 0 ? report.remaining.requiredEnv.join(', ') : 'none'}`);
+if (report.remaining.requiredAlternativeGroups.length > 0) {
+  console.log(`Remaining required alternatives: ${formatRequiredAlternativeGroups(report.remaining.requiredAlternativeGroups)}`);
+}
 
 function packageEvidenceEnvFiles(inputSpecs, expectedCommitSha) {
   const entries = new Map();
@@ -185,6 +188,7 @@ function buildReport({ envFilePath, reportPath, packageResult, expectedCommitSha
       jobId: job.jobId,
       executionReadiness: job.executionReadiness,
       missingEnv: job.missingEnv ?? [],
+      missingRequiredAlternativeGroups: missingRequiredAlternativeGroups(job),
       preflightViolations: job.preflightViolations ?? [],
       operatorAction: job.operatorAction,
     }));
@@ -227,9 +231,42 @@ function buildReport({ envFilePath, reportPath, packageResult, expectedCommitSha
     remaining: {
       requiredEnv: readiness.uniqueMissingEnv,
       optionalEnv: readiness.uniqueMissingOptionalEnv,
+      requiredAlternativeGroups: blockedJobs.flatMap((job) => (
+        job.missingRequiredAlternativeGroups.map((group) => ({
+          jobId: job.jobId,
+          ...group,
+        }))
+      )),
       blockedJobs,
     },
   };
+}
+
+function missingRequiredAlternativeGroups(job) {
+  const missingEnv = new Set(job.missingEnv ?? []);
+  return (job.requiredAlternativeInputs ?? [])
+    .filter((alternative) => (
+      (alternative.coversEnv ?? []).some((envName) => missingEnv.has(envName))
+    ))
+    .map((alternative) => {
+      const inputs = alternative.inputs ?? [];
+      return {
+        label: alternative.label,
+        coversEnv: alternative.coversEnv ?? [],
+        requiredEnv: inputs.map((input) => input.env),
+        missingEnv: inputs.filter((input) => input.missing === true).map((input) => input.env),
+        satisfied: inputs.length > 0 && inputs.every((input) => input.missing !== true),
+      };
+    });
+}
+
+function formatRequiredAlternativeGroups(groups) {
+  return groups
+    .map((group) => {
+      const missing = group.missingEnv.length > 0 ? group.missingEnv.join('+') : 'none';
+      return `${group.jobId}:${group.label}[missing ${missing}]`;
+    })
+    .join('; ');
 }
 
 function packagedEvidenceArtifactIntegrityRecords(entries) {

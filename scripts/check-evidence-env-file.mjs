@@ -239,6 +239,20 @@ function validateCurrentEvidencePackage() {
   if (!Array.isArray(report.remaining?.requiredEnv)) {
     violations.push('current evidence package report must include remaining required env names');
   }
+  const requiredAlternativeGroups = report.remaining?.requiredAlternativeGroups ?? [];
+  if (!Array.isArray(requiredAlternativeGroups)) {
+    violations.push('current evidence package report must include remaining required alternative groups');
+  } else {
+    const redditRefreshAlternative = requiredAlternativeGroups.find((group) => (
+      group.jobId === 'live-reddit-oauth'
+      && group.label === 'reddit_refresh_token_flow'
+    ));
+    if (redditRefreshAlternative === undefined) {
+      violations.push('current evidence package report must expose Reddit refresh-token alternative when Reddit evidence is missing');
+    } else if (!redditRefreshAlternative.missingEnv?.includes('REDDIT_REFRESH_TOKEN')) {
+      violations.push('current evidence package report must mark missing Reddit refresh token in the refresh-token alternative');
+    }
+  }
 }
 
 function validateCurrentEvidencePackageRejectsStaleCommit() {

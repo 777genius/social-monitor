@@ -188,6 +188,11 @@ function validateHandoffEnrichment() {
         sourceAlternative?.env ?? [],
         `${matrixPath}: ${job.jobId} handoff requiredAlternativeInputs[${index}]`,
       );
+      for (const input of alternativeInput.inputs ?? []) {
+        if (input.missing !== true) {
+          violations.push(`${matrixPath}: ${job.jobId} handoff missing alternative input ${input.env} must be marked missing without env`);
+        }
+      }
     }
 
     const allInputs = [

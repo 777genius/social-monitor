@@ -558,8 +558,12 @@ function buildHandoffAlternativeInputs(job) {
   return (job.requiredEnvAlternatives ?? []).map((alternative) => ({
     label: alternative.label ?? null,
     coversEnv: requiredEnvAlternativeCoveredEnvNames(alternative),
-    inputs: buildHandoffInputs(job, alternative.env ?? [], []),
+    inputs: buildHandoffInputs(job, alternative.env ?? [], missingAlternativeEnvNames(alternative)),
   }));
+}
+
+function missingAlternativeEnvNames(alternative) {
+  return (alternative.env ?? []).filter((envName) => !hasEnv(envName));
 }
 
 function buildHandoffEnvArtifacts(job, envName) {
@@ -833,7 +837,9 @@ function executableJobViolations(candidateJobs) {
   for (const job of candidateJobs) {
     const missingEnv = missingRequiredEnv(job, { allowCapturedArtifactAlternatives: false });
     if (missingEnv.length > 0) {
-      violations.push(`${job.jobId}: missing required env ${missingEnv.join(', ')}`);
+      violations.push(formatMissingRequiredEnvViolation(job, missingEnv, {
+        allowCapturedArtifactAlternatives: false,
+      }));
     }
     validateEvidenceValueEnv(job, new Set(missingEnv), violations);
     validateExecutableOutputArtifactPathEnv(job, new Set(missingEnv), violations);
@@ -869,7 +875,7 @@ function artifactValidationViolations(candidateJobs) {
     const missingEnv = missingRequiredEnv(job);
     const missingEnvSet = new Set(missingEnv);
     if (missingEnv.length > 0) {
-      violations.push(`${job.jobId}: missing required env ${missingEnv.join(', ')}`);
+      violations.push(formatMissingRequiredEnvViolation(job, missingEnv));
     }
     validateEvidenceValueEnv(job, missingEnvSet, violations);
     const invalidPathEnv = validateEvidencePathEnv(job, missingEnvSet, violations);
@@ -914,6 +920,33 @@ function artifactValidationViolations(candidateJobs) {
     }
   }
   return violations;
+}
+
+function formatMissingRequiredEnvViolation(job, missingEnv, options = {}) {
+  const base = `${job.jobId}: missing required env ${missingEnv.join(', ')}`;
+  const alternatives = missingCoveringAlternatives(job, missingEnv, options);
+  if (alternatives.length === 0) {
+    return base;
+  }
+
+  return `${base}; satisfy one alternative: ${alternatives.map(formatRequiredEnvAlternative).join(' OR ')}`;
+}
+
+function missingCoveringAlternatives(job, missingEnv, options = {}) {
+  const missingEnvSet = new Set(missingEnv);
+  const allowCapturedArtifactAlternatives = options.allowCapturedArtifactAlternatives !== false;
+  return (job.requiredEnvAlternatives ?? []).filter((alternative) => {
+    if (alternative.mode === 'captured_artifact' && !allowCapturedArtifactAlternatives) {
+      return false;
+    }
+    return requiredEnvAlternativeCoveredEnvNames(alternative).some((envName) => missingEnvSet.has(envName));
+  });
+}
+
+function formatRequiredEnvAlternative(alternative) {
+  const label = alternative.label ?? 'unnamed_alternative';
+  const envNames = (alternative.env ?? []).join('+');
+  return `${label}(${envNames})`;
 }
 
 function duplicateEvidencePathViolations(candidateJobs) {
