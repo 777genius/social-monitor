@@ -153,22 +153,22 @@ function inspectDockerDangling({ sampleLimit }) {
 
   return {
     sampleLimit,
-    imageSamples: imageRows?.slice(0, sampleLimit).map(inspectDanglingImage),
-    volumeSamples: volumeRows?.slice(0, sampleLimit).map(inspectDanglingVolume),
+    imageSamples: prioritizeDanglingRows({
+      rows: imageRows,
+      inspect: inspectDanglingImageMetadata,
+    })?.slice(0, sampleLimit).map(inspectDanglingImage),
+    volumeSamples: prioritizeDanglingRows({
+      rows: volumeRows,
+      inspect: inspectDanglingVolumeMetadata,
+    })?.slice(0, sampleLimit).map(inspectDanglingVolume),
   };
 }
 
 function inspectDanglingImage(row) {
   const [id = 'unknown', size = 'unknown', createdSince = 'unknown'] = row.split('\t');
-  const inspect = runDocker([
-    'image',
-    'inspect',
-    id,
-    '--format',
-    'labels={{json .Config.Labels}}\nrepoTags={{json .RepoTags}}\ncreated={{.Created}}\nworkdir={{.Config.WorkingDir}}',
-  ]);
+  const inspect = inspectDanglingImageMetadata(row);
   const history = runDocker(['history', '--no-trunc', '--format', '{{.CreatedBy}}', id]);
-  const metadata = inspect.status === 0 ? inspect.stdout.trim() : commandFailureMessage(inspect, `docker image inspect ${id}`);
+  const metadata = inspect.metadata;
   const historyText = history.status === 0 ? history.stdout.trim() : commandFailureMessage(history, `docker history ${id}`);
   const signals = danglingObjectSignals(`${row}\n${metadata}\n${historyText}`);
 
@@ -182,6 +182,35 @@ function inspectDanglingImage(row) {
 }
 
 function inspectDanglingVolume(name) {
+  const inspect = inspectDanglingVolumeMetadata(name);
+  const metadata = inspect.metadata;
+  const signals = danglingObjectSignals(`${name}\n${metadata}`);
+
+  return {
+    name,
+    signals,
+    metadata: metadata.split('\n').slice(0, 3),
+  };
+}
+
+function inspectDanglingImageMetadata(row) {
+  const [id = 'unknown'] = row.split('\t');
+  const inspect = runDocker([
+    'image',
+    'inspect',
+    id,
+    '--format',
+    'labels={{json .Config.Labels}}\nrepoTags={{json .RepoTags}}\ncreated={{.Created}}\nworkdir={{.Config.WorkingDir}}',
+  ]);
+  const metadata = inspect.status === 0 ? inspect.stdout.trim() : commandFailureMessage(inspect, `docker image inspect ${id}`);
+
+  return {
+    metadata,
+    signals: danglingObjectSignals(`${row}\n${metadata}`),
+  };
+}
+
+function inspectDanglingVolumeMetadata(name) {
   const inspect = runDocker([
     'volume',
     'inspect',
@@ -190,13 +219,46 @@ function inspectDanglingVolume(name) {
     'labels={{json .Labels}}\ncreated={{.CreatedAt}}\nmountpoint={{.Mountpoint}}',
   ]);
   const metadata = inspect.status === 0 ? inspect.stdout.trim() : commandFailureMessage(inspect, `docker volume inspect ${name}`);
-  const signals = danglingObjectSignals(`${name}\n${metadata}`);
 
   return {
-    name,
-    signals,
-    metadata: metadata.split('\n').slice(0, 3),
+    metadata,
+    signals: danglingObjectSignals(`${name}\n${metadata}`),
   };
+}
+
+function prioritizeDanglingRows({ rows, inspect }) {
+  if (rows === undefined) {
+    return undefined;
+  }
+
+  return rows
+    .map((row, index) => ({
+      row,
+      index,
+      priority: danglingSignalPriority(inspect(row).signals),
+    }))
+    .sort((left, right) => right.priority - left.priority || left.index - right.index)
+    .map((candidate) => candidate.row);
+}
+
+function danglingSignalPriority(signals) {
+  if (signals.includes('social-monitor marker')) {
+    return 50;
+  }
+  if (signals.includes('backend evidence marker')) {
+    return 40;
+  }
+  if (signals.includes('backend build layer marker')) {
+    return 30;
+  }
+  if (signals.includes('node build layer marker')) {
+    return 20;
+  }
+  if (signals.includes('compose project label')) {
+    return 10;
+  }
+
+  return 0;
 }
 
 function danglingObjectSignals(text) {
