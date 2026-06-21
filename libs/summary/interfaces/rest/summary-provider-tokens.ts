@@ -21,10 +21,12 @@ import type {
 
 export type SummaryPersistenceMode = 'in-memory' | 'prisma';
 export type SummaryJobQueueMode = 'in-memory' | 'rabbitmq';
+export type SummaryModelProviderMode = 'deterministic' | 'openai-responses';
 export type SummaryYoutubeVideoSummaryProviderMode = 'disabled' | 'deterministic' | 'google-gemini';
 
 export const SUMMARY_PERSISTENCE_MODE = Symbol('SUMMARY_PERSISTENCE_MODE');
 export const SUMMARY_JOB_QUEUE_MODE = Symbol('SUMMARY_JOB_QUEUE_MODE');
+export const SUMMARY_MODEL_PROVIDER_MODE = Symbol('SUMMARY_MODEL_PROVIDER_MODE');
 export const SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE = Symbol('SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE');
 export const SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS = Symbol('SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS');
 export const SUMMARY_RABBITMQ_QUEUE_CHANNEL = Symbol('SUMMARY_RABBITMQ_QUEUE_CHANNEL');
@@ -42,6 +44,7 @@ export const SUMMARY_USER_SUMMARY_PREFERENCE_READER = Symbol('SUMMARY_USER_SUMMA
 export type SummaryProviderTokenMap = {
   readonly [SUMMARY_PERSISTENCE_MODE]: SummaryPersistenceMode;
   readonly [SUMMARY_JOB_QUEUE_MODE]: SummaryJobQueueMode;
+  readonly [SUMMARY_MODEL_PROVIDER_MODE]: SummaryModelProviderMode;
   readonly [SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE]: SummaryYoutubeVideoSummaryProviderMode;
   readonly [SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS]: RabbitMqQueuePublisherOptions;
   readonly [SUMMARY_RABBITMQ_QUEUE_CHANNEL]: unknown;
@@ -65,6 +68,11 @@ export const summaryPersistenceModeProvider: Provider<SummaryPersistenceMode> = 
 export const summaryJobQueueModeProvider: Provider<SummaryJobQueueMode> = {
   provide: SUMMARY_JOB_QUEUE_MODE,
   useFactory: () => resolveSummaryJobQueueMode(process.env),
+};
+
+export const summaryModelProviderModeProvider: Provider<SummaryModelProviderMode> = {
+  provide: SUMMARY_MODEL_PROVIDER_MODE,
+  useFactory: () => resolveSummaryModelProviderMode(process.env),
 };
 
 export const summaryYoutubeVideoSummaryProviderModeProvider: Provider<SummaryYoutubeVideoSummaryProviderMode> = {
@@ -139,6 +147,16 @@ export const resolveSummaryJobQueueMode = (env: NodeJS.ProcessEnv): SummaryJobQu
   }
 
   throw new Error('SUMMARY_JOB_QUEUE_MODE must be "in-memory" or "rabbitmq"');
+};
+
+export const resolveSummaryModelProviderMode = (env: NodeJS.ProcessEnv): SummaryModelProviderMode => {
+  const value = env.SUMMARY_MODEL_PROVIDER ?? 'deterministic';
+
+  if (value === 'deterministic' || value === 'openai-responses') {
+    return value;
+  }
+
+  throw new Error('SUMMARY_MODEL_PROVIDER must be "deterministic" or "openai-responses"');
 };
 
 export const resolveSummaryYoutubeVideoSummaryProviderMode = (

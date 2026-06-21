@@ -32,6 +32,10 @@ import {
 } from '../../adapters/messaging/in-memory-summary-job-queue.adapter';
 import { DeterministicSummaryModelAdapter } from '../../adapters/model/deterministic-summary-model.adapter';
 import { MeteredSummaryModelAdapter } from '../../adapters/model/metered-summary-model.adapter';
+import {
+  OpenAiResponsesSummaryModelAdapter,
+  resolveOpenAiResponsesSummaryModelOptions,
+} from '../../adapters/model/openai-responses-summary-model.adapter';
 import { InMemorySummaryArtifactRepository } from '../../adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryFeedbackRepository } from '../../adapters/persistence/in-memory-summary-feedback.repository';
 import { InMemorySummaryJobRepository } from '../../adapters/persistence/in-memory-summary-job.repository';
@@ -76,6 +80,7 @@ import {
   SUMMARY_EVIDENCE_SELECTOR,
   SUMMARY_EVENT_PUBLISHER,
   SUMMARY_JOB_QUEUE_MODE,
+  SUMMARY_MODEL_PROVIDER_MODE,
   SUMMARY_FEEDBACK_REPOSITORY,
   SUMMARY_JOB_QUEUE,
   SUMMARY_JOB_REPOSITORY,
@@ -88,6 +93,7 @@ import {
   SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER,
   SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE,
   type SummaryJobQueueMode,
+  type SummaryModelProviderMode,
   type SummaryPersistenceMode,
   type SummaryYoutubeVideoSummaryProviderMode,
   resolveSummaryGeminiYoutubeVideoSummaryTimeoutMs,
@@ -95,6 +101,7 @@ import {
   resolveSummaryYoutubeVideoSummaryMaxItems,
   resolveSummaryYoutubeVideoSummaryMaxPreviewCharacters,
   summaryJobQueueModeProvider,
+  summaryModelProviderModeProvider,
   summaryPersistenceModeProvider,
   summaryRabbitMqJobQueueOptionsProvider,
   summaryYoutubeVideoSummaryProviderModeProvider,
@@ -114,6 +121,7 @@ import { SummaryController } from './summary.controller';
   providers: [
     summaryPersistenceModeProvider,
     summaryJobQueueModeProvider,
+    summaryModelProviderModeProvider,
     summaryYoutubeVideoSummaryProviderModeProvider,
     summaryRabbitMqJobQueueOptionsProvider,
     {
@@ -268,10 +276,33 @@ import { SummaryController } from './summary.controller';
     RequestCorrelationIdFactory,
     DeterministicSummaryModelAdapter,
     {
+      provide: OpenAiResponsesSummaryModelAdapter,
+      useFactory: (mode: SummaryModelProviderMode) =>
+        new OpenAiResponsesSummaryModelAdapter(
+          resolveOpenAiResponsesSummaryModelOptions(process.env, {
+            requireApiKey: mode === 'openai-responses',
+          }),
+        ),
+      inject: [SUMMARY_MODEL_PROVIDER_MODE],
+    },
+    {
       provide: MeteredSummaryModelAdapter,
-      useFactory: (summaryModel: DeterministicSummaryModelAdapter, metrics: InMemoryMetricsRecorder) =>
-        new MeteredSummaryModelAdapter(summaryModel, metrics),
-      inject: [DeterministicSummaryModelAdapter, InMemoryMetricsRecorder],
+      useFactory: (
+        mode: SummaryModelProviderMode,
+        deterministicSummaryModel: DeterministicSummaryModelAdapter,
+        openAiSummaryModel: OpenAiResponsesSummaryModelAdapter,
+        metrics: InMemoryMetricsRecorder,
+      ) =>
+        new MeteredSummaryModelAdapter(
+          mode === 'openai-responses' ? openAiSummaryModel : deterministicSummaryModel,
+          metrics,
+        ),
+      inject: [
+        SUMMARY_MODEL_PROVIDER_MODE,
+        DeterministicSummaryModelAdapter,
+        OpenAiResponsesSummaryModelAdapter,
+        InMemoryMetricsRecorder,
+      ],
     },
     {
       provide: UsageSummaryQuotaAdapter,
