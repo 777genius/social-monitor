@@ -44,8 +44,9 @@ export class HttpGitHubClient implements GitHubClientPort {
       'x-github-api-version': '2022-11-28',
     };
 
-    if (request.accessToken !== undefined) {
-      headers.authorization = `Bearer ${request.accessToken}`;
+    const accessToken = normalizeOptionalString(request.accessToken);
+    if (accessToken !== undefined) {
+      headers.authorization = `Bearer ${accessToken}`;
     }
 
     const response = await fetch(url, {
@@ -95,6 +96,11 @@ const readPageCursor = (cursor: string | undefined): number => {
   const parsed = Number(cursor);
 
   return Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
+};
+
+const normalizeOptionalString = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim();
+  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
 };
 
 const parseNextPageCursor = (linkHeader: string | null): string | undefined => {

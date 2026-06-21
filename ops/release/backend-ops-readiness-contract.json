@@ -25,6 +25,18 @@
       ]
     },
     {
+      "domainId": "production-secret-boundary",
+      "gates": ["check:production-secret-boundary"],
+      "releaseGateIds": ["production-secret-boundary"],
+      "artifacts": [
+        "ops/release/production-secret-boundary.json",
+        "ops/release/external-beta-evidence.env.example",
+        "ops/release/external-beta-evidence-runner.json",
+        ".env.example",
+        "docker-compose.yml"
+      ]
+    },
+    {
       "domainId": "credential-secret-runtime-flow",
       "gates": [
         "check:credential-secret-runtime-flow",

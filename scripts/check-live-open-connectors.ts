@@ -29,6 +29,14 @@ const imageDigestEnv = 'BACKEND_IMAGE_DIGEST';
 const commitShaEnv = 'BACKEND_GIT_COMMIT_SHA';
 const operatorEnv = 'SOURCE_LIVE_OPERATOR';
 const timeoutMs = 10_000;
+const forbiddenGitHubOauthScopes = [
+  'repo',
+  'public_repo',
+  'workflow',
+  'delete_repo',
+  'admin:',
+  'write:',
+] as const;
 const liveRssFeedUrls = [
   'https://hnrss.org/frontpage',
   'https://github.blog/changelog/feed/',
@@ -193,10 +201,14 @@ async function main(): Promise<void> {
             coreRemaining: githubRateLimit.core.remaining,
             searchRemaining: githubRateLimit.search.remaining,
             budgetObserved: true,
+            authMode: githubRateLimit.authMode,
+            oauthScopesChecked: githubRateLimit.oauthScopesChecked,
+            forbiddenOauthScopesPresent: false,
           },
           metrics: {
             coreRemaining: githubRateLimit.core.remaining,
             searchRemaining: githubRateLimit.search.remaining,
+            oauthScopeCount: githubRateLimit.oauthScopeCount,
           },
         },
       ],
@@ -292,6 +304,9 @@ const readRssEvidence = async (): Promise<{
 const readGitHubRateLimitBudget = async (): Promise<{
   readonly core: { readonly limit: number; readonly remaining: number; readonly reset: number };
   readonly search: { readonly limit: number; readonly remaining: number; readonly reset: number };
+  readonly authMode: 'anonymous' | 'token_redacted';
+  readonly oauthScopesChecked: boolean;
+  readonly oauthScopeCount: number;
 }> => {
   const headers: Record<string, string> = {
     accept: 'application/vnd.github+json',
@@ -312,8 +327,16 @@ const readGitHubRateLimitBudget = async (): Promise<{
   const body = await response.json() as GitHubRateLimitResponse;
   const core = normalizeGitHubRate(body.resources?.core, 'core');
   const search = normalizeGitHubRate(body.resources?.search, 'search');
+  const oauthScopes = readGitHubOauthScopes(response.headers.get('x-oauth-scopes'));
+  assertNoForbiddenGitHubOauthScopes(oauthScopes);
 
-  return { core, search };
+  return {
+    core,
+    search,
+    authMode: accessToken === undefined ? 'anonymous' : 'token_redacted',
+    oauthScopesChecked: accessToken !== undefined,
+    oauthScopeCount: oauthScopes.length,
+  };
 };
 
 type GitHubRateLimitResponse = {
@@ -349,6 +372,24 @@ const normalizeGitHubRate = (
     remaining,
     reset,
   };
+};
+
+const readGitHubOauthScopes = (header: string | null): readonly string[] =>
+  (header ?? '')
+    .split(',')
+    .map((scope) => scope.trim().toLowerCase())
+    .filter((scope) => scope.length > 0);
+
+const assertNoForbiddenGitHubOauthScopes = (scopes: readonly string[]): void => {
+  const forbiddenScope = scopes.find((scope) =>
+    forbiddenGitHubOauthScopes.some((forbidden) =>
+      forbidden.endsWith(':') ? scope.startsWith(forbidden) : scope === forbidden,
+    ),
+  );
+  assert(
+    forbiddenScope === undefined,
+    'GITHUB_ACCESS_TOKEN must be anonymous, fine-grained read-only, or classic token without repo/write/admin scopes',
+  );
 };
 
 const readOptionalEnv = (name: string): string | undefined => {

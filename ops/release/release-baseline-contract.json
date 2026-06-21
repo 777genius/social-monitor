@@ -12,6 +12,7 @@
     "check:auth-boundary",
     "check:user-auth-boundary",
     "check:production-auth-matrix",
+    "check:production-secret-boundary",
     "check:credential-secret-runtime-flow",
     "check:security-final-sweep",
     "check:source-live-certification-evidence",
@@ -62,6 +63,10 @@
     {
       "artifactId": "backend-ops-readiness",
       "path": "ops/release/backend-ops-readiness-contract.json"
+    },
+    {
+      "artifactId": "production-secret-boundary",
+      "path": "ops/release/production-secret-boundary.json"
     },
     {
       "artifactId": "backend-mvp-completion-audit",

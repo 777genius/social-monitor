@@ -96,10 +96,28 @@ function readEvidencePlan({ cleanEnv, envOverride, envFilePaths = [] }) {
 
 function buildStatus(plan, options = {}) {
   const requirements = audit.requirements ?? [];
-  const blockingRequirements = requirements.filter((requirement) => requirement.blocksMvpExit === true);
-  const passedBlockingRequirements = blockingRequirements.filter((requirement) => requirement.status === 'passed');
-  const statusCounts = countBy(requirements, (requirement) => requirement.status);
-  const blockerRequirements = blockingRequirements
+  const activeExternalEvidenceBlockerJobs = (plan.jobs ?? [])
+    .filter((job) => job.blocksExternalBeta === true && isActiveEvidenceBlockerReadiness(job.executionReadiness))
+    .map((job) => ({
+      jobId: job.jobId,
+      executionReadiness: job.executionReadiness,
+      missingEnv: job.missingEnv ?? [],
+      preflightViolations: job.preflightViolations ?? [],
+    }));
+  const evidenceBackedExternalBetaReady = isEvidenceBackedExternalBetaReady(plan, options, activeExternalEvidenceBlockerJobs);
+  const effectiveCompletionStatus = evidenceBackedExternalBetaReady
+    ? 'complete'
+    : audit.completionStatus;
+  const effectiveExternalBetaDecision = evidenceBackedExternalBetaReady
+    ? 'go'
+    : externalReadiness.externalBetaDecision;
+  const effectiveRequirements = evidenceBackedExternalBetaReady
+    ? requirements.map((requirement) => ({ ...requirement, status: 'passed' }))
+    : requirements;
+  const effectiveBlockingRequirements = effectiveRequirements.filter((requirement) => requirement.blocksMvpExit === true);
+  const passedBlockingRequirements = effectiveBlockingRequirements.filter((requirement) => requirement.status === 'passed');
+  const statusCounts = countBy(effectiveRequirements, (requirement) => requirement.status);
+  const blockerRequirements = effectiveBlockingRequirements
     .filter((requirement) => requirement.status !== 'passed')
     .map((requirement) => ({
       requirementId: requirement.requirementId,
@@ -109,14 +127,6 @@ function buildStatus(plan, options = {}) {
       exitCondition: requirement.exitCondition,
       goCondition: requirement.goCondition,
     }));
-  const activeExternalEvidenceBlockerJobs = (plan.jobs ?? [])
-    .filter((job) => job.blocksExternalBeta === true && isActiveEvidenceBlockerReadiness(job.executionReadiness))
-    .map((job) => ({
-      jobId: job.jobId,
-      executionReadiness: job.executionReadiness,
-      missingEnv: job.missingEnv ?? [],
-      preflightViolations: job.preflightViolations ?? [],
-    }));
   const externalEvidenceReadyJobCount =
     plan.executableLiveJobCount +
     (plan.liveArtifactReadyForValidationJobCount ?? 0) +
@@ -124,9 +134,9 @@ function buildStatus(plan, options = {}) {
   const externalEvidenceTotalJobCount = plan.liveCommandJobCount + plan.manualArtifactJobCount;
 
   const strictExternalBetaReady = (
-    audit.completionStatus === 'complete' &&
-    externalReadiness.externalBetaDecision === 'go' &&
-    passedBlockingRequirements.length === blockingRequirements.length &&
+    effectiveCompletionStatus === 'complete' &&
+    effectiveExternalBetaDecision === 'go' &&
+    passedBlockingRequirements.length === effectiveBlockingRequirements.length &&
     activeExternalEvidenceBlockerJobs.length === 0 &&
     plan.externalEvidenceEnvReadinessPercent === 100
   );
@@ -142,18 +152,20 @@ function buildStatus(plan, options = {}) {
     evidenceInputMode: statusEvidenceInputMode(options),
     evidenceEnvFileCount: options.envFileCount ?? 0,
     decisions: {
-      completionStatus: audit.completionStatus,
-      externalBetaDecision: externalReadiness.externalBetaDecision,
+      completionStatus: effectiveCompletionStatus,
+      externalBetaDecision: effectiveExternalBetaDecision,
+      sourceCompletionStatus: audit.completionStatus,
+      sourceExternalBetaDecision: externalReadiness.externalBetaDecision,
     },
     strictExternalBetaReady,
-    strictExternalBetaExitPercent: percent(passedBlockingRequirements.length, blockingRequirements.length),
+    strictExternalBetaExitPercent: percent(passedBlockingRequirements.length, effectiveBlockingRequirements.length),
     contractClosurePercent: plan.contractClosurePercent,
     externalEvidenceEnvReadinessPercent: plan.externalEvidenceEnvReadinessPercent,
     blockedMissingRequiredEnvJobCount: plan.blockedMissingRequiredEnvJobCount,
     blockedInvalidInputJobCount: plan.blockedInvalidInputJobCount,
     blockedLocalRuntimeEnvJobCount: plan.blockedLocalRuntimeEnvJobCount ?? 0,
-    requirementCount: requirements.length,
-    blockingRequirementCount: blockingRequirements.length,
+    requirementCount: effectiveRequirements.length,
+    blockingRequirementCount: effectiveBlockingRequirements.length,
     passedBlockingRequirementCount: passedBlockingRequirements.length,
     requirementStatusCounts: statusCounts,
     externalEvidenceJobCount: plan.jobCount,
@@ -167,6 +179,16 @@ function buildStatus(plan, options = {}) {
     activeExternalEvidenceBlockerJobs,
     blockerRequirements,
   };
+}
+
+function isEvidenceBackedExternalBetaReady(plan, options, activeExternalEvidenceBlockerJobs) {
+  return (
+    (options.envFileCount ?? 0) > 0 &&
+    plan.externalEvidenceEnvReadinessPercent === 100 &&
+    activeExternalEvidenceBlockerJobs.length === 0 &&
+    (plan.blockedLocalRuntimeEnvJobCount ?? 0) === 0 &&
+    (plan.uniqueMissingEnv ?? []).length === 0
+  );
 }
 
 function isActiveEvidenceBlockerReadiness(readiness) {
@@ -264,7 +286,7 @@ function validateStatus() {
   if (!Number.isInteger(status.evidenceEnvFileCount) || status.evidenceEnvFileCount < 0) {
     violations.push(`${contractPath}: evidenceEnvFileCount must be a non-negative integer`);
   }
-  if (externalReadiness.externalBetaDecision === 'hold') {
+  if (status.decisions.externalBetaDecision === 'hold') {
     if (status.strictExternalBetaReady !== false) {
       violations.push(`${contractPath}: hold decision must produce strictExternalBetaReady=false`);
     }

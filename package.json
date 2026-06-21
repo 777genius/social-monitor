@@ -102,6 +102,7 @@
     "check:openapi": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --clean-env --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-openapi.ts",
     "check:persistence-readiness": "node scripts/check-persistence-readiness.mjs",
     "check:production-auth-matrix": "node scripts/check-production-auth-matrix.mjs && node scripts/run-with-timeout.mjs --timeout-ms 90000 --clean-env --node-options --max-old-space-size=512 -- jest --config test/jest-e2e.config.ts --runInBand --runTestsByPath test/e2e/production-auth-boundary-matrix.e2e-spec.ts",
+    "check:production-secret-boundary": "node scripts/check-production-secret-boundary.mjs",
     "check:rabbitmq-queue-publisher": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-rabbitmq-queue-publisher-smoke.ts",
     "check:realtime-websocket": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-realtime-websocket-smoke.ts",
     "check:release": "node scripts/check-release-evidence.mjs",

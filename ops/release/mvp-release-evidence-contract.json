@@ -80,6 +80,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "production-secret-boundary",
+      "command": "npm run check:production-secret-boundary",
+      "blocksRelease": true
+    },
+    {
       "gateId": "credential-secret-runtime-flow",
       "command": "npm run check:credential-secret-runtime-flow",
       "blocksRelease": true
