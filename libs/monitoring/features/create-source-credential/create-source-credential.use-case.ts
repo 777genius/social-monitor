@@ -15,6 +15,7 @@ import type {
 import type { CreateSourceCredentialCommand } from './create-source-credential.command';
 import type { CreateSourceCredentialResult } from './create-source-credential.result';
 import { presentSourceCredential } from '../shared/source-credential-presenter';
+import { normalizeSourceCredentialSecretForStorage } from '../shared/source-credential-secret-policy';
 
 type CreateSourceCredentialFailure = DomainError | Error;
 
@@ -34,7 +35,17 @@ export class CreateSourceCredentialUseCase {
       return err(new DomainError('validation.failed', 'Source credential provider key must be non-empty'));
     }
 
-    if (Object.keys(command.secret).length === 0) {
+    const normalized = normalizeSourceCredentialSecretForStorage({
+      providerKey,
+      kind: command.kind,
+      secret: command.secret,
+    });
+    if (!normalized.ok) {
+      return err(normalized.error);
+    }
+
+    const secret = normalized.value;
+    if (Object.keys(secret).length === 0) {
       return err(new DomainError('validation.failed', 'Source credential secret must be non-empty'));
     }
 
@@ -48,7 +59,7 @@ export class CreateSourceCredentialUseCase {
       providerKey,
       kind: command.kind,
       secretKeyId,
-      secretPreview: previewFromSecret(command.secretPreview, command.secret),
+      secretPreview: previewFromSecret(command.secretPreview, secret),
       scopes: command.scopes ?? [],
       expiresAt: command.expiresAt,
       createdAt: now,
@@ -56,7 +67,7 @@ export class CreateSourceCredentialUseCase {
 
     await this.vault.put({
       secretKeyId,
-      secret: command.secret,
+      secret,
     });
     await this.credentials.save(credential);
 

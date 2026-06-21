@@ -29,6 +29,7 @@ const baselineArtifacts = new Set((baseline.trackedArtifacts ?? []).map((artifac
 const externalGroups = new Map((externalReadiness.requiredEvidenceGroups ?? []).map((group) => [group.groupId, group]));
 const auditRequirements = new Map((audit.requirements ?? []).map((requirement) => [requirement.requirementId, requirement]));
 const violations = [];
+const artifactValidationSmokeTimeoutMs = 300_000;
 
 const allowedModes = new Set([
   'local_contract',
@@ -2475,6 +2476,7 @@ function runRunnerValidateArtifactsSmoke(jobId, env) {
         },
         encoding: 'utf8',
         stdio: 'pipe',
+        timeout: artifactValidationSmokeTimeoutMs,
       },
     );
     return { exitCode: 0, output: '' };

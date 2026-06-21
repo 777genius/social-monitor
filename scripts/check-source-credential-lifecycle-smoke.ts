@@ -161,6 +161,10 @@ async function main(): Promise<void> {
       secret: {
         accessToken: 'manually-rotated-access-token',
         accessTokenExpiresAt: '2026-06-21T14:00:00.000Z',
+        refreshToken: 'manually-rotated-refresh-token',
+        tokenUrl: tokenEndpoint.url,
+        clientId: 'reddit-client-id',
+        clientSecret: 'reddit-client-secret',
       },
       secretPreview: 'manual-rotation',
       scopes: ['read'],
