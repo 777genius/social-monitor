@@ -66,6 +66,24 @@ describe('HackerNewsSourceProvider', () => {
     });
   });
 
+  it('uses source config maxItems to cap listing and search reads', async () => {
+    const provider = new HackerNewsSourceProvider(new FixtureHackerNewsClient());
+    const context = {
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'hn-binding-1',
+      scanJobId: 'scan-job-1',
+      correlationId: 'correlation-1',
+      config: { maxItems: 1 },
+    };
+    const query = { mode: 'search' as const, query: 'monitoring' };
+
+    const result = await provider.scan(provider.planScan(query, context), context);
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.externalId).toBe('hn:1001');
+  });
+
   it('rejects unsupported listing names before provider calls', () => {
     const provider = new HackerNewsSourceProvider(new FixtureHackerNewsClient());
 

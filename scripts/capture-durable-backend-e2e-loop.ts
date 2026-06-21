@@ -44,6 +44,22 @@ type SignalResult = {
   readonly evidence: JsonRecord;
 };
 
+type DurableScanProviderKey = 'hacker-news' | 'github' | 'reddit' | 'rss';
+
+type DurableScanTarget = {
+  readonly providerKey: DurableScanProviderKey;
+  readonly config: JsonRecord;
+};
+
+type SourceBindingEvidence = {
+  readonly providerKey: DurableScanProviderKey;
+  readonly sourceBindingId: string;
+  readonly scanPolicyId: string;
+  readonly scanId: string;
+  readonly feedItemCount: number;
+  readonly feedItemIds: readonly string[];
+};
+
 const config = loadConfig();
 const ids: RuntimeIds = {
   runId: `run-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`,
@@ -98,10 +114,12 @@ async function main(): Promise<void> {
       },
       signalResults: [
         signalResult('backend-loop-topic-to-delivery-audit', {
-          summary: 'topic source scan feed summary feedback digest webhook realtime audit loop observed on durable runtime',
+          summary: 'topic multi-source scan feed summary feedback digest webhook realtime audit loop observed on durable runtime',
           topicId: evidence.topicId,
           sourceBindingId: evidence.sourceBindingId,
           scanId: evidence.scanId,
+          providerBindings: evidence.sourceBindings,
+          providerFeedCounts: evidence.providerFeedCounts,
           feedItemIds: evidence.feedItemIds,
           summaryId: evidence.summaryId,
           feedbackId: evidence.feedbackId,
@@ -140,6 +158,8 @@ async function main(): Promise<void> {
 async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Promise<{
   readonly topicId: string;
   readonly sourceBindingId: string;
+  readonly sourceBindings: readonly SourceBindingEvidence[];
+  readonly providerFeedCounts: readonly JsonRecord[];
   readonly scanId: string;
   readonly feedItemIds: readonly string[];
   readonly summaryId: string;
@@ -158,70 +178,52 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
 }> {
   const headers = authHeaders(auth);
   const topicKey = `topic-${runtimeIds.runId}`;
-  const bindingKey = `binding-${runtimeIds.runId}`;
-  const policyKey = `policy-${runtimeIds.runId}`;
-  const scanKey = `scan-${runtimeIds.runId}`;
   const summaryKey = `summary-${runtimeIds.runId}`;
   const feedbackKey = `feedback-${runtimeIds.runId}`;
+  const scanTargets = durableScanTargets();
   const topic = await requestJson<JsonRecord>('POST', '/topics', {
     headers: withIdempotency(headers, topicKey),
     body: {
-      name: `Durable Backend Loop ${runtimeIds.runId}`,
-      query: 'backend reliability observability',
+      name: `Durable Multi-Provider Backend Loop ${runtimeIds.runId}`,
+      query: 'backend reliability observability social monitoring developer tools',
     },
   });
   const topicId = readString(topic, 'topicId');
 
-  const binding = await requestJson<JsonRecord>('POST', `/topics/${encodeURIComponent(topicId)}/source-bindings`, {
-    headers: withIdempotency(headers, bindingKey),
-    body: {
-      providerKey: 'hacker-news',
-      config: {
-        mode: 'listing',
-        listing: 'top',
-      },
-    },
-  });
-  const sourceBindingId = readString(binding, 'sourceBindingId');
-
-  await requestJson<JsonRecord>('POST', `/source-bindings/${encodeURIComponent(sourceBindingId)}/scan-policy`, {
-    headers: withIdempotency(headers, policyKey),
-    body: {
-      intervalSeconds: 60,
-      freshnessSeconds: 300,
-      retryBudget: 3,
-    },
-  });
-
-  const scan = await requestJson<JsonRecord>('POST', `/source-bindings/${encodeURIComponent(sourceBindingId)}/scan-requests`, {
-    headers: withIdempotency(headers, scanKey),
-  });
-  const scanId = readString(scan, 'scanJobId');
-  await pollJson<JsonRecord>(
-    `/scan-requests/${encodeURIComponent(scanId)}/status`,
-    headers,
-    (status) => {
-      const scanStatus = readString(status, 'status');
-      if (scanStatus === 'failed' || scanStatus === 'cancelled') {
-        throw new Error(`scan job ${scanId} ended with ${scanStatus}: ${String(status.failureReason ?? '')}`);
-      }
-
-      return scanStatus === 'succeeded' ? status : undefined;
-    },
-    { timeoutMs: 180_000, label: 'scan completion' },
-  );
+  const sourceBindings = await Promise.all(scanTargets.map((target) =>
+    createSourceBindingAndScan({
+      headers,
+      topicId,
+      target,
+      runId: runtimeIds.runId,
+    }),
+  ));
 
   const feed = await pollJson<JsonRecord>(
-    `/feed/items?topicId=${encodeURIComponent(topicId)}&limit=20`,
+    `/feed/items?topicId=${encodeURIComponent(topicId)}&limit=100`,
     headers,
     (page) => {
       const items = readObjectArray(page, 'items');
-      return items.length > 0 ? page : undefined;
+      const sourceBindingIds = new Set(items.map((item) => readString(item, 'sourceBindingId')));
+
+      return sourceBindings.every((binding) => sourceBindingIds.has(binding.sourceBindingId))
+        ? page
+        : undefined;
     },
-    { timeoutMs: 60_000, label: 'feed projection' },
+    { timeoutMs: 120_000, label: 'multi-provider feed projection' },
   );
   const feedItems = readObjectArray(feed, 'items');
   const feedItemIds = feedItems.map((item) => readString(item, 'id')).slice(0, 5);
+  const bindingsWithFeed = sourceBindings.map((binding): SourceBindingEvidence => {
+    const bindingFeedItems = feedItems.filter((item) => readString(item, 'sourceBindingId') === binding.sourceBindingId);
+
+    return {
+      ...binding,
+      feedItemCount: bindingFeedItems.length,
+      feedItemIds: bindingFeedItems.map((item) => readString(item, 'id')).slice(0, 5),
+    };
+  });
+  const primaryBinding = readFirst(bindingsWithFeed, 'source binding evidence');
 
   const summary = await requestJson<JsonRecord>('POST', `/topics/${encodeURIComponent(topicId)}/summary-requests`, {
     headers: withIdempotency(headers, summaryKey),
@@ -359,8 +361,8 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
       query: 'backend reliability observability',
     },
   });
-  const replayedScan = await requestJson<JsonRecord>('POST', `/source-bindings/${encodeURIComponent(sourceBindingId)}/scan-requests`, {
-    headers: withIdempotency(headers, scanKey),
+  const replayedScan = await requestJson<JsonRecord>('POST', `/source-bindings/${encodeURIComponent(primaryBinding.sourceBindingId)}/scan-requests`, {
+    headers: withIdempotency(headers, scanIdempotencyKey(primaryBinding.providerKey, runtimeIds.runId)),
   });
   const replayedSummary = await requestJson<JsonRecord>('POST', `/topics/${encodeURIComponent(topicId)}/summary-requests`, {
     headers: withIdempotency(headers, summaryKey),
@@ -372,8 +374,15 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
 
   return {
     topicId,
-    sourceBindingId,
-    scanId,
+    sourceBindingId: primaryBinding.sourceBindingId,
+    sourceBindings: bindingsWithFeed,
+    providerFeedCounts: bindingsWithFeed.map((binding) => ({
+      providerKey: binding.providerKey,
+      sourceBindingId: binding.sourceBindingId,
+      feedItemCount: binding.feedItemCount,
+      scanId: binding.scanId,
+    })),
+    scanId: primaryBinding.scanId,
     feedItemIds,
     summaryId,
     feedbackId,
@@ -389,7 +398,16 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
     ],
     wrongTenantStatus,
     wrongWorkspaceStatus,
-    idempotencyKeys: [topicKey, bindingKey, policyKey, scanKey, summaryKey, feedbackKey],
+    idempotencyKeys: [
+      topicKey,
+      ...scanTargets.flatMap((target) => [
+        bindingIdempotencyKey(target.providerKey, runtimeIds.runId),
+        policyIdempotencyKey(target.providerKey, runtimeIds.runId),
+        scanIdempotencyKey(target.providerKey, runtimeIds.runId),
+      ]),
+      summaryKey,
+      feedbackKey,
+    ],
     responseIds: [
       readString(replayedTopic, 'topicId'),
       readString(replayedScan, 'scanJobId'),
@@ -397,6 +415,55 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
       webhookDeliveryAttemptId,
     ],
     stableDurableCounts: countsAfterReplay,
+  };
+}
+
+async function createSourceBindingAndScan(params: {
+  readonly headers: Readonly<Record<string, string>>;
+  readonly topicId: string;
+  readonly target: DurableScanTarget;
+  readonly runId: string;
+}): Promise<Omit<SourceBindingEvidence, 'feedItemCount' | 'feedItemIds'>> {
+  const binding = await requestJson<JsonRecord>('POST', `/topics/${encodeURIComponent(params.topicId)}/source-bindings`, {
+    headers: withIdempotency(params.headers, bindingIdempotencyKey(params.target.providerKey, params.runId)),
+    body: {
+      providerKey: params.target.providerKey,
+      config: params.target.config,
+    },
+  });
+  const sourceBindingId = readString(binding, 'sourceBindingId');
+  const policy = await requestJson<JsonRecord>('POST', `/source-bindings/${encodeURIComponent(sourceBindingId)}/scan-policy`, {
+    headers: withIdempotency(params.headers, policyIdempotencyKey(params.target.providerKey, params.runId)),
+    body: {
+      intervalSeconds: 60,
+      freshnessSeconds: 300,
+      retryBudget: 3,
+    },
+  });
+  const scanPolicyId = readString(policy, 'scanPolicyId');
+  const scan = await requestJson<JsonRecord>('POST', `/source-bindings/${encodeURIComponent(sourceBindingId)}/scan-requests`, {
+    headers: withIdempotency(params.headers, scanIdempotencyKey(params.target.providerKey, params.runId)),
+  });
+  const scanId = readString(scan, 'scanJobId');
+  await pollJson<JsonRecord>(
+    `/scan-requests/${encodeURIComponent(scanId)}/status`,
+    params.headers,
+    (status) => {
+      const scanStatus = readString(status, 'status');
+      if (scanStatus === 'failed' || scanStatus === 'cancelled') {
+        throw new Error(`scan job ${scanId} for ${params.target.providerKey} ended with ${scanStatus}: ${String(status.failureReason ?? '')}`);
+      }
+
+      return scanStatus === 'succeeded' ? status : undefined;
+    },
+    { timeoutMs: 180_000, label: `${params.target.providerKey} scan completion` },
+  );
+
+  return {
+    providerKey: params.target.providerKey,
+    sourceBindingId,
+    scanPolicyId,
+    scanId,
   };
 }
 
@@ -554,6 +621,64 @@ function withIdempotency(headers: Readonly<Record<string, string>>, key: string)
   };
 }
 
+function durableScanTargets(): readonly DurableScanTarget[] {
+  return [
+    {
+      providerKey: 'hacker-news',
+      config: {
+        mode: 'search',
+        query: 'monitoring',
+        maxItems: 2,
+      },
+    },
+    {
+      providerKey: 'github',
+      config: {
+        query: 'repo:microsoft/TypeScript is:issue',
+        maxItems: 2,
+      },
+    },
+    {
+      providerKey: 'rss',
+      config: {
+        feedUrl: 'https://hnrss.org/frontpage',
+        maxItems: 2,
+      },
+    },
+    ...hasRedditAppOnlyCredentials()
+      ? [{
+          providerKey: 'reddit' as const,
+          config: {
+            mode: 'listing',
+            subreddit: 'programming',
+            listing: 'hot',
+            maxItems: 2,
+            userAgent: process.env.REDDIT_APP_USER_AGENT ?? process.env.REDDIT_USER_AGENT ?? 'social-monitor-mvp/0.1 reddit-app-only',
+          },
+        }]
+      : [],
+  ];
+}
+
+function hasRedditAppOnlyCredentials(): boolean {
+  return (
+    emptyToUndefined(process.env.REDDIT_APP_CLIENT_ID) !== undefined &&
+    emptyToUndefined(process.env.REDDIT_APP_CLIENT_SECRET) !== undefined
+  );
+}
+
+function bindingIdempotencyKey(providerKey: DurableScanProviderKey, runId: string): string {
+  return `binding-${providerKey}-${runId}`;
+}
+
+function policyIdempotencyKey(providerKey: DurableScanProviderKey, runId: string): string {
+  return `policy-${providerKey}-${runId}`;
+}
+
+function scanIdempotencyKey(providerKey: DurableScanProviderKey, runId: string): string {
+  return `scan-${providerKey}-${runId}`;
+}
+
 async function pollJson<T extends JsonRecord>(
   path: string,
   headers: Readonly<Record<string, string>>,
@@ -705,6 +830,15 @@ function readObjectArray(source: JsonRecord, field: string): readonly JsonRecord
   }
 
   return value as readonly JsonRecord[];
+}
+
+function readFirst<T>(values: readonly T[], label: string): T {
+  const first = values[0];
+  if (first === undefined) {
+    throw new Error(`Expected at least one ${label}`);
+  }
+
+  return first;
 }
 
 function isRecord(value: unknown): value is JsonRecord {

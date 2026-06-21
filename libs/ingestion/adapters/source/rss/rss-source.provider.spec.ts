@@ -102,4 +102,23 @@ describe('RssSourceProvider', () => {
       lastModified: 'Fri, 05 Jun 2026 10:02:00 GMT',
     }));
   });
+
+  it('uses source config maxItems to cap feed reads', async () => {
+    const client = new FixtureRssClient();
+    const provider = new RssSourceProvider(client);
+    const context = {
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'rss-binding-1',
+      scanJobId: 'scan-job-1',
+      correlationId: 'correlation-1',
+      config: { maxItems: 1 },
+    };
+    const query = { mode: 'url' as const, query: 'https://example.test/feed.xml' };
+
+    const result = await provider.scan(provider.planScan(query, context), context);
+
+    expect(result.items).toHaveLength(1);
+    expect(client.lastRead?.limit).toBe(1);
+  });
 });

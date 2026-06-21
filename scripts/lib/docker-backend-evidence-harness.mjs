@@ -667,9 +667,14 @@ function buildComposeOverride(values) {
     ['SOCIAL_MONITOR_OIDC_JWKS_JSON', values.jwksJson],
     ['SOURCE_CONFIG_ENCRYPTION_KEY', values.sourceConfigEncryptionKey],
     ['DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY', values.webhookSecretEncryptionKey],
+    ['SUBSCRIPTIONS_PERSISTENCE', 'prisma'],
+    ['REDDIT_APP_CLIENT_ID', process.env.REDDIT_APP_CLIENT_ID],
+    ['REDDIT_APP_CLIENT_SECRET', process.env.REDDIT_APP_CLIENT_SECRET],
+    ['REDDIT_APP_USER_AGENT', process.env.REDDIT_APP_USER_AGENT],
   ];
   const fastLoopEnvironment = [
     ...commonEnvironment,
+    ['INGESTION_SCAN_SCHEDULER_INTERVAL_MS', '1000'],
     ['INGESTION_SCAN_QUEUE_DRAIN_INTERVAL_MS', '500'],
     ['INTELLIGENCE_SUMMARY_QUEUE_DRAIN_INTERVAL_MS', '500'],
     ['DELIVERY_ATTEMPT_QUEUE_DRAIN_INTERVAL_MS', '500'],
@@ -716,10 +721,12 @@ function serviceVolumes(service, entries) {
 }
 
 function serviceEnvironment(service, entries) {
+  const normalizedEntries = entries.filter(([, value]) => typeof value === 'string' && value.trim().length > 0);
+
   return [
     `  ${service}:`,
     '    environment:',
-    ...entries.map(([name, value]) => `      ${name}: ${JSON.stringify(value)}`),
+    ...normalizedEntries.map(([name, value]) => `      ${name}: ${JSON.stringify(value)}`),
   ].join('\n');
 }
 

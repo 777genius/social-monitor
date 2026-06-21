@@ -48,11 +48,9 @@ export class RssSourceProvider implements SourceProviderPort {
   }
 
   planScan(query: SourceQuery, context: SourceProviderScanContext): SourceProviderScanPlan {
-    void context;
-
     return {
       query,
-      maxItems: 30,
+      maxItems: readPositiveInteger(context.config?.maxItems, 30, 1, 100),
     };
   }
 
@@ -139,4 +137,21 @@ const encodeCursor = (
     etag: feed.etag,
     lastModified: feed.lastModified,
   });
+};
+
+const readPositiveInteger = (
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number => {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`RSS source config integer must be between ${min} and ${max}`);
+  }
+
+  return value;
 };
