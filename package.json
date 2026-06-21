@@ -55,6 +55,7 @@
     "check:docker-backend-staging-evidence-bundle": "node scripts/check-docker-backend-staging-evidence-bundle.mjs",
     "check:docker-evidence-storage": "node scripts/check-docker-evidence-storage.mjs",
     "check:docker-evidence-storage:report": "node scripts/check-docker-evidence-storage.mjs --report-only",
+    "check:docker-evidence-storage:dangling": "node scripts/check-docker-evidence-storage.mjs --report-only --inspect-dangling",
     "check:events": "node scripts/check-event-contracts.mjs",
     "check:evidence-env-file": "node scripts/check-evidence-env-file.mjs",
     "check:external-beta-readiness": "node scripts/check-external-beta-readiness.mjs",

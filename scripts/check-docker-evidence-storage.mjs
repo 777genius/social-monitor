@@ -6,13 +6,16 @@ import { assertDockerEvidencePrerequisites } from './lib/docker-backend-evidence
 const args = new Set(process.argv.slice(2));
 const reportOnly = args.has('--report-only');
 const skipPreflight = args.has('--skip-preflight');
+const inspectDangling = args.has('--inspect-dangling');
 const dockerTimeoutMs = positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_DOCKER_TIMEOUT_MS', 15_000);
+const danglingSampleLimit = positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_DANGLING_SAMPLE_LIMIT', 12);
 const storageMode = process.env.DOCKER_BACKEND_EVIDENCE_STORAGE_MODE?.trim() || 'docker-volume';
 const rows = readDockerSystemDf();
 const hostFreeBytes = availableDiskBytes(process.cwd());
 const danglingVolumeCount = countDockerLines(['volume', 'ls', '--filter', 'dangling=true', '--format', '{{.Name}}']);
 const danglingImageCount = countDockerLines(['image', 'ls', '--filter', 'dangling=true', '--format', '{{.ID}}']);
 const exitedContainerCount = countDockerLines(['ps', '-a', '--filter', 'status=exited', '--format', '{{.ID}}']);
+const danglingInspection = inspectDangling ? inspectDockerDangling({ sampleLimit: danglingSampleLimit }) : undefined;
 const preflight = skipPreflight ? { ok: true, skipped: true } : runPreflight();
 
 printReport({
@@ -22,6 +25,7 @@ printReport({
   danglingVolumeCount,
   danglingImageCount,
   exitedContainerCount,
+  danglingInspection,
   preflight,
 });
 
@@ -102,6 +106,8 @@ function printReport(report) {
     'Run destructive cleanup only after confirming unrelated containers, volumes and images are safe to remove.',
   ].join('\n'));
 
+  printDanglingInspection(report.danglingInspection);
+
   if (!report.preflight.ok && report.preflight.message !== undefined) {
     console.error(`\nPreflight failure detail:\n${report.preflight.message}`);
   }
@@ -125,6 +131,162 @@ function preflightLine(preflight) {
 
 function formatOptionalCount(count) {
   return count === undefined ? 'unavailable' : String(count);
+}
+
+function inspectDockerDangling({ sampleLimit }) {
+  const imageRows = listDockerLines([
+    'image',
+    'ls',
+    '--filter',
+    'dangling=true',
+    '--format',
+    '{{.ID}}\t{{.Size}}\t{{.CreatedSince}}',
+  ]);
+  const volumeRows = listDockerLines([
+    'volume',
+    'ls',
+    '--filter',
+    'dangling=true',
+    '--format',
+    '{{.Name}}',
+  ]);
+
+  return {
+    sampleLimit,
+    imageSamples: imageRows?.slice(0, sampleLimit).map(inspectDanglingImage),
+    volumeSamples: volumeRows?.slice(0, sampleLimit).map(inspectDanglingVolume),
+  };
+}
+
+function inspectDanglingImage(row) {
+  const [id = 'unknown', size = 'unknown', createdSince = 'unknown'] = row.split('\t');
+  const inspect = runDocker([
+    'image',
+    'inspect',
+    id,
+    '--format',
+    'labels={{json .Config.Labels}}\nrepoTags={{json .RepoTags}}\ncreated={{.Created}}\nworkdir={{.Config.WorkingDir}}',
+  ]);
+  const history = runDocker(['history', '--no-trunc', '--format', '{{.CreatedBy}}', id]);
+  const metadata = inspect.status === 0 ? inspect.stdout.trim() : commandFailureMessage(inspect, `docker image inspect ${id}`);
+  const historyText = history.status === 0 ? history.stdout.trim() : commandFailureMessage(history, `docker history ${id}`);
+  const signals = danglingObjectSignals(`${row}\n${metadata}\n${historyText}`);
+
+  return {
+    id,
+    size,
+    createdSince,
+    signals,
+    metadata: metadata.split('\n').slice(0, 4),
+  };
+}
+
+function inspectDanglingVolume(name) {
+  const inspect = runDocker([
+    'volume',
+    'inspect',
+    name,
+    '--format',
+    'labels={{json .Labels}}\ncreated={{.CreatedAt}}\nmountpoint={{.Mountpoint}}',
+  ]);
+  const metadata = inspect.status === 0 ? inspect.stdout.trim() : commandFailureMessage(inspect, `docker volume inspect ${name}`);
+  const signals = danglingObjectSignals(`${name}\n${metadata}`);
+
+  return {
+    name,
+    signals,
+    metadata: metadata.split('\n').slice(0, 3),
+  };
+}
+
+function danglingObjectSignals(text) {
+  const lowerText = text.toLowerCase();
+  const signals = [];
+  if (lowerText.includes('social-monitor')) {
+    signals.push('social-monitor marker');
+  }
+  if (lowerText.includes('backend-evidence') || lowerText.includes('staging-evidence')) {
+    signals.push('backend evidence marker');
+  }
+  if (lowerText.includes('com.docker.compose.project')) {
+    signals.push('compose project label');
+  }
+  if (lowerText.includes('npm ci') || lowerText.includes('package-lock.json')) {
+    signals.push('node build layer marker');
+  }
+  if (lowerText.includes('tsc -p tsconfig.build.json') || lowerText.includes('prisma generate')) {
+    signals.push('backend build layer marker');
+  }
+
+  return signals.length > 0 ? signals : ['no obvious project marker'];
+}
+
+function printDanglingInspection(inspection) {
+  if (inspection === undefined) {
+    return;
+  }
+
+  console.log(`\nDangling object inspection samples (first ${inspection.sampleLimit}; read-only):`);
+  printDanglingImageSamples(inspection.imageSamples);
+  printDanglingVolumeSamples(inspection.volumeSamples);
+  console.log([
+    '',
+    'Manual follow-up commands:',
+    '  docker image inspect <image-id>',
+    '  docker history --no-trunc <image-id>',
+    '  docker volume inspect <volume-name>',
+    'Only remove objects after confirming ownership.',
+  ].join('\n'));
+}
+
+function printDanglingImageSamples(samples) {
+  if (samples === undefined) {
+    console.log('Dangling image samples: unavailable');
+    return;
+  }
+  if (samples.length === 0) {
+    console.log('Dangling image samples: none');
+    return;
+  }
+
+  console.log('Dangling image samples:');
+  for (const sample of samples) {
+    console.log(`- ${sample.id} size=${sample.size} age=${sample.createdSince} signals=${sample.signals.join(', ')}`);
+    for (const line of sample.metadata) {
+      console.log(`  ${line}`);
+    }
+  }
+}
+
+function printDanglingVolumeSamples(samples) {
+  if (samples === undefined) {
+    console.log('Dangling volume samples: unavailable');
+    return;
+  }
+  if (samples.length === 0) {
+    console.log('Dangling volume samples: none');
+    return;
+  }
+
+  console.log('Dangling volume samples:');
+  for (const sample of samples) {
+    console.log(`- ${sample.name} signals=${sample.signals.join(', ')}`);
+    for (const line of sample.metadata) {
+      console.log(`  ${line}`);
+    }
+  }
+}
+
+function listDockerLines(args) {
+  const result = runDocker(args);
+  if (result.status !== 0) {
+    return undefined;
+  }
+
+  return result.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
 }
 
 function runDocker(args) {
