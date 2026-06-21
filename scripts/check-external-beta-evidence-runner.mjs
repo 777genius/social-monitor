@@ -2267,6 +2267,22 @@ function validateRunnerPositiveRedditArtifactSmoke() {
   } finally {
     rmSync(tempDirectory, { recursive: true, force: true });
   }
+
+  const durableLifecycleDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-reddit-durable-lifecycle-'));
+  try {
+    const { liveArtifactPath, lifecyclePath } = writeRedditArtifactPair(durableLifecycleDirectory, {
+      mutateLifecycle: (artifact) => {
+        artifact.imageDigest = `sha256:${'c'.repeat(64)}`;
+        artifact.commitSha = 'c'.repeat(40);
+      },
+    });
+    const result = runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath);
+    if (result.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner positive Reddit artifact smoke must accept a durable lifecycle artifact from a previous release image: ${smokeOutputSnippet(result.output)}`);
+    }
+  } finally {
+    rmSync(durableLifecycleDirectory, { recursive: true, force: true });
+  }
 }
 
 function validateRunnerNegativeRedditArtifactSmokes() {

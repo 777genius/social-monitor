@@ -1714,6 +1714,9 @@ function validateArtifactProviderKeys(content, job, artifact, violations) {
 
 function validateArtifactEnvConsistency(content, job, artifactEnv, violations) {
   for (const rule of artifactEnvConsistencyRules()) {
+    if (shouldSkipArtifactEnvConsistencyRule(artifactEnv, rule)) {
+      continue;
+    }
     if (!(job.requiredEnv ?? []).includes(rule.envName) && !(job.optionalEnv ?? []).includes(rule.envName)) {
       continue;
     }
@@ -1734,6 +1737,11 @@ function validateArtifactEnvConsistency(content, job, artifactEnv, violations) {
       }
     }
   }
+}
+
+function shouldSkipArtifactEnvConsistencyRule(artifactEnv, rule) {
+  return artifactEnv === 'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH'
+    && ['BACKEND_IMAGE_DIGEST', 'BACKEND_GIT_COMMIT_SHA'].includes(rule.envName);
 }
 
 function validateArtifactFreshness(content, job, artifactEnv, artifactFormat, violations) {
