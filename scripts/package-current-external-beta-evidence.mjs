@@ -57,6 +57,8 @@ const forbiddenValueFragments = [
 
 const selectedInputPaths = uniquePaths([...defaultInputPaths, ...additionalInputPaths]);
 const packageResult = packageEvidenceEnvFiles(selectedInputPaths);
+const expectedCommitSha = readExpectedCommitSha();
+assertExpectedCommitSha(packageResult.entries, expectedCommitSha);
 
 if (packageResult.includedEnvFiles.length === 0) {
   throw new Error('No current external beta evidence env files were found to package');
@@ -90,6 +92,7 @@ const report = buildReport({
   envFilePath: writtenEnvFilePath,
   reportPath,
   packageResult,
+  expectedCommitSha,
   readiness: handoff.readiness,
   jobs: handoff.jobs,
 });
@@ -157,7 +160,7 @@ function packageEvidenceEnvFiles(inputPaths) {
   };
 }
 
-function buildReport({ envFilePath, reportPath, packageResult, readiness, jobs }) {
+function buildReport({ envFilePath, reportPath, packageResult, expectedCommitSha, readiness, jobs }) {
   const blockedJobs = jobs
     .filter((job) => job.blocksExternalBeta === true && job.executionReadiness !== 'local_contract_ready')
     .map((job) => ({
@@ -181,6 +184,11 @@ function buildReport({ envFilePath, reportPath, packageResult, readiness, jobs }
       secretValuesIncluded: false,
       secretEnvNamesWithheld: packageResult.withheldSecretEnvNames,
     },
+    commitPolicy: {
+      expectedCommitSha,
+      packagedCommitSha: packageResult.entries.get('BACKEND_GIT_COMMIT_SHA') ?? null,
+      requireCurrentCommit: true,
+    },
     includedEnvFiles: packageResult.includedEnvFiles,
     skippedMissingEnvFiles: packageResult.skippedMissingEnvFiles,
     packagedEnvNames: [...packageResult.entries.keys()].sort(),
@@ -199,6 +207,25 @@ function buildReport({ envFilePath, reportPath, packageResult, readiness, jobs }
       blockedJobs,
     },
   };
+}
+
+function assertExpectedCommitSha(entries, expectedCommitSha) {
+  const packagedCommitSha = entries.get('BACKEND_GIT_COMMIT_SHA');
+  if (packagedCommitSha !== undefined && packagedCommitSha !== expectedCommitSha) {
+    throw new Error(
+      `Current evidence package has stale BACKEND_GIT_COMMIT_SHA ${packagedCommitSha}; expected ${expectedCommitSha}. Regenerate Docker/live evidence for the current release commit or set EXTERNAL_BETA_CURRENT_PACKAGE_EXPECTED_COMMIT_SHA for an intentional non-HEAD release package.`,
+    );
+  }
+}
+
+function readExpectedCommitSha() {
+  const value = process.env.EXTERNAL_BETA_CURRENT_PACKAGE_EXPECTED_COMMIT_SHA?.trim()
+    || execFileSync('git', ['rev-parse', 'HEAD'], { cwd: process.cwd(), encoding: 'utf8' }).trim();
+  if (!/^[0-9a-f]{40}$/.test(value)) {
+    throw new Error('EXTERNAL_BETA_CURRENT_PACKAGE_EXPECTED_COMMIT_SHA must be a full lowercase git commit SHA');
+  }
+
+  return value;
 }
 
 function writePrivateJson(path, document) {

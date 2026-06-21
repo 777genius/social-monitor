@@ -24,6 +24,7 @@ try {
   validateRelativeJsonPathRejected();
   validatePrivateEnvRead();
   validateCurrentEvidencePackage();
+  validateCurrentEvidencePackageRejectsStaleCommit();
 } finally {
   rmSync(tempDirectory, { recursive: true, force: true });
 }
@@ -183,6 +184,7 @@ function validateCurrentEvidencePackage() {
       LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH: liveOpenEnvPath,
       EXTERNAL_BETA_CURRENT_ENV_PATH: outputEnvPath,
       EXTERNAL_BETA_CURRENT_REPORT_PATH: outputReportPath,
+      EXTERNAL_BETA_CURRENT_PACKAGE_EXPECTED_COMMIT_SHA: commitSha,
     },
   });
 
@@ -203,12 +205,45 @@ function validateCurrentEvidencePackage() {
   if (report.inputPolicy?.secretValuesIncluded !== false) {
     violations.push('current evidence package report must state that secret values are excluded');
   }
+  if (report.commitPolicy?.expectedCommitSha !== commitSha || report.commitPolicy?.packagedCommitSha !== commitSha) {
+    violations.push('current evidence package report must expose the expected and packaged commit SHA');
+  }
   if (!report.inputPolicy?.secretEnvNamesWithheld?.includes('DATABASE_URL')) {
     violations.push('current evidence package report must list withheld DATABASE_URL');
   }
   if (!Array.isArray(report.remaining?.requiredEnv)) {
     violations.push('current evidence package report must include remaining required env names');
   }
+}
+
+function validateCurrentEvidencePackageRejectsStaleCommit() {
+  const dockerEnvPath = join(tempDirectory, 'stale-docker-import.env');
+  const outputEnvPath = join(tempDirectory, 'stale-current-package.env');
+  const outputReportPath = join(tempDirectory, 'stale-current-package-report.json');
+  const staleCommitSha = 'c'.repeat(40);
+  const expectedCommitSha = 'd'.repeat(40);
+
+  writeEvidenceEnvFile(dockerEnvPath, [
+    ['BACKEND_GIT_COMMIT_SHA', staleCommitSha],
+  ]);
+
+  assertRejected(
+    () => execFileSync('node', ['scripts/package-current-external-beta-evidence.mjs'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        DOCKER_BACKEND_STAGING_IMPORTED_ENV_PATH: dockerEnvPath,
+        LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH: join(tempDirectory, 'missing-live-open.env'),
+        EXTERNAL_BETA_CURRENT_ENV_PATH: outputEnvPath,
+        EXTERNAL_BETA_CURRENT_REPORT_PATH: outputReportPath,
+        EXTERNAL_BETA_CURRENT_PACKAGE_EXPECTED_COMMIT_SHA: expectedCommitSha,
+      },
+    }),
+    'stale current evidence package commit',
+    'stale BACKEND_GIT_COMMIT_SHA',
+  );
 }
 
 function assertRejected(fn, label, expectedMessage) {
