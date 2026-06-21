@@ -2,7 +2,7 @@
 
 ## Last Verified
 
-2026-06-20.
+2026-06-21.
 
 ## Sources
 
@@ -27,6 +27,13 @@ Default posture:
 - public source monitoring should run without a GitHub token when rate limits are acceptable;
 - if a token is needed, use a fine-grained personal access token or a GitHub App installation token;
 - prefer GitHub App for multi-tenant or org-owned beta usage.
+
+Current official limits to design around:
+
+- unauthenticated public REST API reads are limited to 60 requests/hour per originating IP;
+- authenticated user/PAT REST API reads are generally 5,000 requests/hour;
+- GitHub App installation tokens start at 5,000 requests/hour and can scale by installation size, capped before enterprise uplifts;
+- secondary limits still apply, so workers must limit concurrency and use response rate-limit headers.
 
 Minimal fine-grained PAT setup:
 
@@ -113,6 +120,7 @@ Direct X API read-only minimum:
 Commercial gate:
 
 - X API uses pay-per-usage credits and endpoint-specific costs;
+- X has no-subscription pay-per-use pricing, but credits are still prepaid and endpoint-specific;
 - rate limits are endpoint-specific and must be captured from response headers;
 - every X binding must have tenant entitlement, monthly spend cap, scan interval floor, retention policy and deletion policy before enablement.
 
