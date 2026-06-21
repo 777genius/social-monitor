@@ -5,6 +5,16 @@
   "frontendPolicy": "deferred_contract_only",
   "externalBetaStatus": "hold_until_all_exceptions_resolved",
   "externalReadinessContract": "ops/release/external-beta-readiness-contract.json",
+  "baselinePolicy": "static_no_go_baseline_until_current_evidence_package",
+  "currentEvidencePromotion": {
+    "statusJsonCommand": "npm run --silent backend:mvp:status:current",
+    "evidenceEnvFile": "/tmp/social-monitor-evidence/external-beta-current-package.env",
+    "artifactValidationCommand": "node scripts/external-beta-evidence-runner.mjs --validate-artifacts --require-env --env-file /tmp/social-monitor-evidence/external-beta-current-package.env",
+    "effectiveDecisionPath": "decisions.externalBetaDecision",
+    "strictReadyPath": "strictExternalBetaReady",
+    "secretValuePolicy": "env_names_only",
+    "baselineDecisionPolicy": "Static release artifacts stay conservative hold in clean env; promoted current status is computed from a validated evidence env package."
+  },
   "requiredExceptionIds": [
     "fixture-source-certification",
     "staging-drills-not-run",

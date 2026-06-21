@@ -61,6 +61,7 @@ validateClaimAudits();
 validateForbiddenGoClaims();
 validateDocumentationClaimScan();
 validateDecisionArtifacts();
+validateCurrentEvidencePromotion();
 requireWiring();
 
 if (violations.length > 0) {
@@ -264,6 +265,46 @@ function validateDecisionArtifacts() {
   }
   if (betaFeedback.releaseDecision?.externalRingExpansionStatus !== 'hold_until_real_feedback_report_replaces_fixture') {
     violations.push(`${betaFeedbackPath}: externalRingExpansionStatus must hold until real feedback report replaces fixture`);
+  }
+}
+
+function validateCurrentEvidencePromotion() {
+  const promotion = contract.currentEvidencePromotion;
+  const currentStatusCommand = 'npm run --silent backend:mvp:status:current';
+  const evidenceEnvFile = '/tmp/social-monitor-evidence/external-beta-current-package.env';
+  const artifactValidationCommand =
+    'node scripts/external-beta-evidence-runner.mjs --validate-artifacts --require-env --env-file /tmp/social-monitor-evidence/external-beta-current-package.env';
+
+  if (contract.baselinePolicy !== 'static_no_go_baseline_until_current_evidence_package') {
+    violations.push(`${contractPath}: baselinePolicy must distinguish static hold baseline from current evidence promotion`);
+  }
+  if (typeof promotion !== 'object' || promotion === null) {
+    violations.push(`${contractPath}: currentEvidencePromotion is required`);
+    return;
+  }
+  if (promotion.statusJsonCommand !== currentStatusCommand) {
+    violations.push(`${contractPath}: currentEvidencePromotion.statusJsonCommand must be ${currentStatusCommand}`);
+  }
+  if (promotion.evidenceEnvFile !== evidenceEnvFile) {
+    violations.push(`${contractPath}: currentEvidencePromotion.evidenceEnvFile must be ${evidenceEnvFile}`);
+  }
+  if (promotion.artifactValidationCommand !== artifactValidationCommand) {
+    violations.push(`${contractPath}: currentEvidencePromotion.artifactValidationCommand must validate the current evidence env file`);
+  }
+  if (promotion.effectiveDecisionPath !== 'decisions.externalBetaDecision') {
+    violations.push(`${contractPath}: currentEvidencePromotion.effectiveDecisionPath must point to decisions.externalBetaDecision`);
+  }
+  if (promotion.strictReadyPath !== 'strictExternalBetaReady') {
+    violations.push(`${contractPath}: currentEvidencePromotion.strictReadyPath must point to strictExternalBetaReady`);
+  }
+  if (promotion.secretValuePolicy !== 'env_names_only') {
+    violations.push(`${contractPath}: currentEvidencePromotion.secretValuePolicy must be env_names_only`);
+  }
+  if (typeof promotion.baselineDecisionPolicy !== 'string' || !promotion.baselineDecisionPolicy.includes('conservative hold')) {
+    violations.push(`${contractPath}: currentEvidencePromotion.baselineDecisionPolicy must explain the conservative hold baseline`);
+  }
+  if (scripts['backend:mvp:status:current'] !== 'node scripts/check-backend-mvp-status.mjs --json --env-file /tmp/social-monitor-evidence/external-beta-current-package.env') {
+    violations.push(`${packagePath}: backend:mvp:status:current must compute current evidence promotion from the packaged env file`);
   }
 }
 
