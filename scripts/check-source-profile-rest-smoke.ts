@@ -75,6 +75,8 @@ async function main(): Promise<void> {
     const github = requireSource(sources, 'github');
     requireSource(sources, 'hacker-news');
     requireSource(sources, 'rss');
+    const telegram = requireSource(sources, 'telegram');
+    const xTwitter = requireSource(sources, 'x-twitter');
 
     assert(fake.readinessState === 'certification_ready', 'Fake source must be certification-only');
     assert(fake.runtimeReadiness === 'fixture_ready', 'Fake source must stay fixture-ready only');
@@ -105,6 +107,21 @@ async function main(): Promise<void> {
       reddit.limitations.some((limitation) => limitation.toLowerCase().includes('oauth api')),
       'Reddit profile must document OAuth API limitation',
     );
+
+    assert(xTwitter.displayName === undefined, 'X/Twitter must not expose runtime capability display name while deferred');
+    assert(xTwitter.productionSafe === false, 'X/Twitter must not be production-safe while provider-only');
+    assert(xTwitter.readinessState === 'provider_only', 'X/Twitter readiness must stay provider-only before paid API/vendor approval');
+    assert(xTwitter.runtimeReadiness === 'deferred', 'X/Twitter runtime readiness must stay deferred');
+    assert(xTwitter.acquisitionMode === 'approved_paid_api_or_vendor', 'X/Twitter must require approved paid API or vendor acquisition');
+    assert(xTwitter.supportedQueryModes.length === 0, 'X/Twitter must not expose query modes without a registered runtime provider');
+    assert(
+      xTwitter.liveBetaBlockers.some((blocker) => blocker.toLowerCase().includes('paid x api')),
+      'X/Twitter profile must explain paid API blocker',
+    );
+
+    assert(telegram.readinessState === 'manual_only', 'Telegram readiness must stay manual-only before authorization model');
+    assert(telegram.runtimeReadiness === 'deferred', 'Telegram runtime readiness must stay deferred');
+    assert(telegram.supportedQueryModes.length === 0, 'Telegram must not expose query modes without a registered runtime provider');
 
     console.log('Source profile REST smoke OK');
   } finally {
