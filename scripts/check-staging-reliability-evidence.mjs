@@ -22,6 +22,7 @@ const dockerStagingReliabilityCapturePath = 'scripts/capture-docker-staging-reli
 const dockerDurableBackendE2eCapturePath = 'scripts/capture-docker-durable-backend-e2e-loop.mjs';
 const durableBackendE2eCapturePath = 'scripts/capture-durable-backend-e2e-loop.ts';
 const currentScriptPath = fileURLToPath(import.meta.url);
+const backendStagingEvidenceBundlePath = process.env.BACKEND_STAGING_EVIDENCE_BUNDLE_PATH?.trim();
 
 const evidence = readJson(evidencePath);
 const packageJson = readJson(packagePath);
@@ -776,7 +777,7 @@ function validateEnvironmentArtifacts(signalsByArtifactId) {
 function validateEnvArtifactMetadata(content, config, artifactLabel) {
   validateRealArtifactIdentity(content, artifactLabel);
   for (const envVar of config.requiredEnv) {
-    const expected = readOptionalEnv(envVar);
+    const expected = expectedEnvValueForArtifact(content, config, envVar);
     if (expected === undefined) {
       violations.push(`${config.envVar}: requires ${envVar}`);
       continue;
@@ -796,6 +797,38 @@ function validateEnvArtifactMetadata(content, config, artifactLabel) {
       }
     }
   }
+}
+
+function expectedEnvValueForArtifact(content, config, envVar) {
+  const expected = readOptionalEnv(envVar);
+  if (expected !== undefined || envVar !== 'API_BASE_URL') {
+    return expected;
+  }
+  if (backendStagingEvidenceBundlePath === undefined || backendStagingEvidenceBundlePath.length === 0) {
+    return undefined;
+  }
+
+  let bundle;
+  try {
+    bundle = JSON.parse(readPrivateEvidenceJsonFile(backendStagingEvidenceBundlePath, 'BACKEND_STAGING_EVIDENCE_BUNDLE_PATH'));
+  } catch (error) {
+    violations.push(error instanceof Error ? error.message : String(error));
+    return undefined;
+  }
+
+  const artifactPath = readOptionalEnv(config.envVar);
+  const bundleArtifact = (bundle.artifacts ?? [])
+    .find((item) => item?.artifactId === content.artifactId);
+  if (bundleArtifact?.path !== artifactPath) {
+    violations.push(`BACKEND_STAGING_EVIDENCE_BUNDLE_PATH must reference ${config.envVar} to cover API_BASE_URL`);
+    return undefined;
+  }
+  if (bundle.imageDigest !== content.imageDigest) {
+    violations.push(`BACKEND_STAGING_EVIDENCE_BUNDLE_PATH imageDigest must match ${config.envVar} imageDigest`);
+  }
+
+  const apiBaseUrl = typeof content.apiBaseUrl === 'string' ? content.apiBaseUrl.trim() : '';
+  return apiBaseUrl.length > 0 ? apiBaseUrl : undefined;
 }
 
 function validateRealArtifactIdentity(content, label) {

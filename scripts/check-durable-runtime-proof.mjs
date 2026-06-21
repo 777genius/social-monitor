@@ -26,6 +26,7 @@ const scripts = packageJson.scripts ?? {};
 const verifyScript = String(scripts.verify ?? '');
 const backendSafeScripts = new Set(backendSafe.backendScripts ?? []);
 const durableRuntimeSelectorArtifactPath = process.env.DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH;
+const backendStagingEvidenceBundlePath = process.env.BACKEND_STAGING_EVIDENCE_BUNDLE_PATH?.trim();
 const hasVerificationScript = (scriptName) =>
   verifyScript.includes(`npm run ${scriptName}`) || backendSafeScripts.has(scriptName);
 const violations = [];
@@ -162,7 +163,7 @@ if (
       expectedEvidence: {
         environmentId: requireEnvWhenArtifactIsPresent('STAGING_ENVIRONMENT_ID'),
         imageDigest: requireEnvWhenArtifactIsPresent('BACKEND_IMAGE_DIGEST'),
-        apiBaseUrl: requireEnvWhenArtifactIsPresent('API_BASE_URL'),
+        apiBaseUrl: apiBaseUrlForDurableRuntimeSelectorArtifact(durableRuntimeSelectorArtifactPath),
       },
     },
   );
@@ -754,6 +755,55 @@ function requireEnvWhenArtifactIsPresent(name) {
   }
 
   return value;
+}
+
+function apiBaseUrlForDurableRuntimeSelectorArtifact(artifactPath) {
+  const envValue = process.env.API_BASE_URL?.trim();
+  if (envValue !== undefined && envValue.length > 0) {
+    return envValue;
+  }
+
+  if (backendStagingEvidenceBundlePath === undefined || backendStagingEvidenceBundlePath.length === 0) {
+    violations.push('DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH requires API_BASE_URL');
+    return undefined;
+  }
+
+  let bundle;
+  try {
+    bundle = JSON.parse(readPrivateEvidenceJsonFile(backendStagingEvidenceBundlePath, 'BACKEND_STAGING_EVIDENCE_BUNDLE_PATH'));
+  } catch (error) {
+    violations.push(error instanceof Error ? error.message : String(error));
+    return undefined;
+  }
+
+  const bundleArtifact = (bundle.artifacts ?? [])
+    .find((item) => item?.artifactId === 'durable-runtime-selector');
+  if (bundleArtifact?.path !== artifactPath) {
+    violations.push('BACKEND_STAGING_EVIDENCE_BUNDLE_PATH must reference DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH to cover API_BASE_URL');
+    return undefined;
+  }
+
+  let selectorArtifact;
+  try {
+    selectorArtifact = JSON.parse(readPrivateEvidenceJsonFile(artifactPath, 'DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH'));
+  } catch (error) {
+    violations.push(error instanceof Error ? error.message : String(error));
+    return undefined;
+  }
+
+  if (bundle.imageDigest !== selectorArtifact.environment?.imageDigest) {
+    violations.push('BACKEND_STAGING_EVIDENCE_BUNDLE_PATH imageDigest must match durable runtime selector artifact imageDigest');
+  }
+
+  const apiBaseUrl = typeof selectorArtifact.environment?.apiBaseUrl === 'string'
+    ? selectorArtifact.environment.apiBaseUrl.trim()
+    : '';
+  if (apiBaseUrl.length === 0) {
+    violations.push('DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH environment.apiBaseUrl is required when Docker bundle covers API_BASE_URL');
+    return undefined;
+  }
+
+  return apiBaseUrl;
 }
 
 function isIsoDateString(value) {

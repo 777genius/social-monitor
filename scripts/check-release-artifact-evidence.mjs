@@ -33,6 +33,7 @@ const violations = [];
 const deployArtifactFormat = 'release-deploy-smoke-artifact-v1';
 const deployArtifactEvidenceKind = 'staging_deploy';
 const releaseDeploySmokeArtifactPath = process.env.RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH?.trim();
+const backendStagingEvidenceBundlePath = process.env.BACKEND_STAGING_EVIDENCE_BUNDLE_PATH?.trim();
 const allowedArtifactStatus = new Set(['pending_image_digest_and_deploy_smoke', 'passed']);
 const requiredSmokeEvidenceShapeBySmokeId = new Map([
   [
@@ -674,7 +675,6 @@ function validateEnvDeploySmokeArtifact(gitSha, migrationVersion) {
 
   const environmentId = requireEnvWhenDeployArtifactIsPresent('STAGING_ENVIRONMENT_ID');
   const imageDigest = requireEnvWhenDeployArtifactIsPresent('BACKEND_IMAGE_DIGEST');
-  const apiBaseUrl = requireEnvWhenDeployArtifactIsPresent('API_BASE_URL');
   const deployArtifactLabel = `RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH (${releaseDeploySmokeArtifactPath})`;
   let deployArtifact;
   try {
@@ -683,6 +683,7 @@ function validateEnvDeploySmokeArtifact(gitSha, migrationVersion) {
     violations.push(error instanceof Error ? error.message : String(error));
     return;
   }
+  const apiBaseUrl = apiBaseUrlForDeployArtifact(deployArtifact);
   validateDeployArtifactShape(deployArtifact, {
     label: deployArtifactLabel,
     strict: true,
@@ -694,6 +695,47 @@ function validateEnvDeploySmokeArtifact(gitSha, migrationVersion) {
     expectedReleaseImageDigest: imageDigest,
     expectedApiBaseUrl: apiBaseUrl,
   });
+}
+
+function apiBaseUrlForDeployArtifact(deployArtifact) {
+  const envValue = process.env.API_BASE_URL?.trim();
+  if (envValue !== undefined && envValue.length > 0) {
+    return envValue;
+  }
+
+  if (backendStagingEvidenceBundlePath === undefined || backendStagingEvidenceBundlePath.length === 0) {
+    violations.push('RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH requires API_BASE_URL');
+    return undefined;
+  }
+
+  let bundle;
+  try {
+    bundle = JSON.parse(readPrivateEvidenceJsonFile(backendStagingEvidenceBundlePath, 'BACKEND_STAGING_EVIDENCE_BUNDLE_PATH'));
+  } catch (error) {
+    violations.push(error instanceof Error ? error.message : String(error));
+    return undefined;
+  }
+
+  const bundleDeployArtifact = (bundle.artifacts ?? [])
+    .find((item) => item?.artifactId === 'release-deploy-smoke');
+  if (bundleDeployArtifact?.path !== releaseDeploySmokeArtifactPath) {
+    violations.push('BACKEND_STAGING_EVIDENCE_BUNDLE_PATH must reference RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH to cover API_BASE_URL');
+    return undefined;
+  }
+  if (bundle.commitSha !== deployArtifact.commitSha) {
+    violations.push('BACKEND_STAGING_EVIDENCE_BUNDLE_PATH commitSha must match release deploy smoke artifact commitSha');
+  }
+  if (bundle.imageDigest !== deployArtifact.imageDigest) {
+    violations.push('BACKEND_STAGING_EVIDENCE_BUNDLE_PATH imageDigest must match release deploy smoke artifact imageDigest');
+  }
+
+  const apiBaseUrl = typeof deployArtifact.apiBaseUrl === 'string' ? deployArtifact.apiBaseUrl.trim() : '';
+  if (apiBaseUrl.length === 0) {
+    violations.push('RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH apiBaseUrl is required when Docker bundle covers API_BASE_URL');
+    return undefined;
+  }
+
+  return apiBaseUrl;
 }
 
 function requireEnvWhenDeployArtifactIsPresent(name) {
