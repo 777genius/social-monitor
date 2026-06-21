@@ -43,6 +43,7 @@ import { InMemorySourceProviderRegistry } from '@social-monitor/ingestion/adapte
 import { RegistrySourceFetcherAdapter } from '@social-monitor/ingestion/adapters/source/registry-source-fetcher.adapter';
 import { HttpRedditClient } from '@social-monitor/ingestion/adapters/source/reddit/http-reddit-client';
 import { RedditAppOnlyTokenProvider } from '@social-monitor/ingestion/adapters/source/reddit/app-only-reddit-token-provider';
+import { RedditRefreshTokenProvider } from '@social-monitor/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider';
 import { RedditSourceProvider } from '@social-monitor/ingestion/adapters/source/reddit/reddit-source.provider';
 import { HttpRssClient } from '@social-monitor/ingestion/adapters/source/rss/http-rss-client';
 import { RssSourceProvider } from '@social-monitor/ingestion/adapters/source/rss/rss-source.provider';
@@ -168,6 +169,10 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
       useFactory: (): RedditAppOnlyTokenProvider | null => RedditAppOnlyTokenProvider.fromEnvironment(process.env),
     },
     {
+      provide: RedditRefreshTokenProvider,
+      useFactory: (): RedditRefreshTokenProvider => RedditRefreshTokenProvider.fromEnvironment(process.env),
+    },
+    {
       provide: RssSourceProvider,
       useFactory: (client: HttpRssClient) => new RssSourceProvider(client),
       inject: [HttpRssClient],
@@ -177,8 +182,9 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
       useFactory: (
         client: HttpRedditClient,
         tokenProvider: RedditAppOnlyTokenProvider | null,
-      ) => new RedditSourceProvider(client, tokenProvider ?? undefined),
-      inject: [HttpRedditClient, RedditAppOnlyTokenProvider],
+        refreshTokenProvider: RedditRefreshTokenProvider,
+      ) => new RedditSourceProvider(client, tokenProvider ?? undefined, refreshTokenProvider),
+      inject: [HttpRedditClient, RedditAppOnlyTokenProvider, RedditRefreshTokenProvider],
     },
     {
       provide: InMemorySourceProviderRegistry,

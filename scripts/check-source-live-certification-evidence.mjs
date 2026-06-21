@@ -22,6 +22,8 @@ const liveOpenCaptureScriptPath = 'scripts/capture-live-open-connectors.mjs';
 const redditLiveScriptPath = 'scripts/check-live-reddit-oauth.ts';
 const redditLiveCaptureScriptPath = 'scripts/capture-live-reddit-oauth.mjs';
 const redditOAuthLocalCallbackScriptPath = 'scripts/reddit-oauth-local-callback.mjs';
+const redditSourceProviderPath = 'libs/ingestion/adapters/source/reddit/reddit-source.provider.ts';
+const redditRefreshTokenProviderPath = 'libs/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider.ts';
 const liveEvidenceArtifactHelperPath = 'scripts/lib/live-evidence-artifact.ts';
 
 const evidence = readJson(evidencePath);
@@ -301,6 +303,8 @@ function validateLiveSmokeScripts() {
   const redditLiveScript = readFileSync(redditLiveScriptPath, 'utf8');
   const redditLiveCaptureScript = readFileSync(redditLiveCaptureScriptPath, 'utf8');
   const redditOAuthLocalCallbackScript = readFileSync(redditOAuthLocalCallbackScriptPath, 'utf8');
+  const redditSourceProviderScript = readFileSync(redditSourceProviderPath, 'utf8');
+  const redditRefreshTokenProviderScript = readFileSync(redditRefreshTokenProviderPath, 'utf8');
   const liveEvidenceArtifactHelper = readFileSync(liveEvidenceArtifactHelperPath, 'utf8');
 
   requireScriptSignals(liveOpenScriptPath, liveOpenScript, [
@@ -366,6 +370,30 @@ function validateLiveSmokeScripts() {
   }
   if (redditOAuthLocalCallbackScript.includes("['REDDIT_ACCESS_TOKEN', credential")) {
     violations.push(`${redditOAuthLocalCallbackScriptPath}: local callback helper must not persist short-lived REDDIT_ACCESS_TOKEN in the secret env`);
+  }
+  for (const marker of [
+    'refreshTokenProvider',
+    'context.config?.refreshToken',
+    'context.config?.redditRefreshToken',
+    'context.config?.clientId',
+    'context.config?.redditClientId',
+    'Reddit refresh-token OAuth provider is not configured',
+  ]) {
+    if (!redditSourceProviderScript.includes(marker)) {
+      violations.push(`${redditSourceProviderPath}: runtime Reddit provider must support tenant refresh-token credentials through ${marker}`);
+    }
+  }
+  for (const marker of [
+    'grant_type: \'refresh_token\'',
+    'refresh_token: request.refreshToken',
+    'cacheKeyFor',
+    'createHash',
+    'redactedBodyPreview',
+    'RedditRefreshTokenProviderPort',
+  ]) {
+    if (!redditRefreshTokenProviderScript.includes(marker)) {
+      violations.push(`${redditRefreshTokenProviderPath}: Reddit refresh-token provider must implement safe token exchange through ${marker}`);
+    }
   }
   if (!redditLiveScript.includes('fail_closed_without_reddit_access_token')) {
     violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must fail closed when REDDIT_ACCESS_TOKEN is missing`);

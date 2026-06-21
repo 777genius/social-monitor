@@ -10,6 +10,7 @@ import type {
 } from '../../../ports';
 import { redditListings } from './http-reddit-client';
 import type { RedditClientPort, RedditPost, RedditPostListing } from './reddit-client.port';
+import type { RedditRefreshTokenProviderPort } from './refresh-token-reddit-token-provider';
 import type { RedditTokenProviderPort } from './reddit-token-provider.port';
 
 const capabilityProfile: SourceCapabilityProfile = {
@@ -23,7 +24,7 @@ const capabilityProfile: SourceCapabilityProfile = {
   stableIdentity: ['providerId', 'canonicalUrl'],
   quotaModel: 'per_app',
   limitations: [
-    'Uses Reddit OAuth API only. Uses app-only OAuth by default; encrypted tenant bearer token can override when needed.',
+    'Uses Reddit OAuth API only. Uses app-only OAuth by default; encrypted tenant bearer or refresh-token credentials can override when needed.',
   ],
 };
 
@@ -31,6 +32,7 @@ export class RedditSourceProvider implements SourceProviderPort {
   constructor(
     private readonly client: RedditClientPort,
     private readonly tokenProvider?: RedditTokenProviderPort,
+    private readonly refreshTokenProvider?: RedditRefreshTokenProviderPort,
   ) {}
 
   key(): string {
@@ -149,6 +151,26 @@ export class RedditSourceProvider implements SourceProviderPort {
 
     if (configuredAccessToken !== undefined) {
       return configuredAccessToken;
+    }
+
+    const refreshToken = firstNonEmptyString(
+      context.config?.refreshToken,
+      context.config?.redditRefreshToken,
+    );
+    if (refreshToken !== undefined) {
+      if (this.refreshTokenProvider === undefined) {
+        throw new Error('Reddit refresh-token OAuth provider is not configured');
+      }
+
+      return this.refreshTokenProvider.getAccessToken({
+        clientId: readRequiredString(
+          firstNonEmptyString(context.config?.clientId, context.config?.redditClientId),
+          'clientId',
+        ),
+        clientSecret: firstNonEmptyString(context.config?.clientSecret, context.config?.redditClientSecret),
+        refreshToken,
+        userAgent: readOptionalString(context.config?.userAgent),
+      });
     }
 
     if (this.tokenProvider === undefined) {

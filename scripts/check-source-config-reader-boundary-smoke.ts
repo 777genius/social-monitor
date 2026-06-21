@@ -14,7 +14,8 @@ import type {
 import { InMemorySourceBindingRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-binding.repository';
 import { AesGcmSourceBindingConfigProtector } from '../libs/monitoring/adapters/security/aes-gcm-source-binding-config-protector';
 import { SourceBinding } from '../libs/monitoring/domain';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import type { SourceCredentialResolverPort, SourceCredentialSecret } from '../libs/monitoring/ports';
+import { DomainError, err, ok, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) {
@@ -59,8 +60,17 @@ class CredentialAssertingSourceProvider implements SourceProviderPort {
     plan: SourceProviderScanPlan,
     context: SourceProviderScanContext,
   ): Promise<SourceProviderScanResult> {
-    assert(plan.query.query === 'credential check', 'provider must receive source query');
-    assert(context.config?.accessToken === 'raw-access-token', 'provider must receive decrypted access token');
+    if (plan.query.query === 'credential check') {
+      assert(context.config?.accessToken === 'raw-access-token', 'provider must receive decrypted access token');
+    } else if (plan.query.query === 'credential ref check') {
+      assert(context.config?.accessToken === undefined, 'credentialRef source binding must not inject stale access token');
+      assert(context.config?.clientId === 'reddit-client-id', 'provider must receive resolved Reddit client id');
+      assert(context.config?.clientSecret === 'reddit-client-secret', 'provider must receive resolved Reddit client secret');
+      assert(context.config?.refreshToken === 'reddit-refresh-token', 'provider must receive resolved Reddit refresh token');
+      assert(context.config?.subreddit === 'observability', 'provider must preserve non-secret binding config');
+    } else {
+      throw new Error(`Unexpected source query: ${plan.query.query}`);
+    }
 
     return {
       items: [
@@ -94,6 +104,13 @@ async function main(): Promise<void> {
     query: 'credential check',
     accessToken: 'raw-access-token',
   });
+  const protectedCredentialRefConfig = await protector.protect({
+    query: 'credential ref check',
+    credentialRef: {
+      sourceCredentialId: 'source-credential-reddit-refresh',
+    },
+    subreddit: 'observability',
+  });
 
   await sourceBindings.save(SourceBinding.create({
     id: 'source-binding-source-config-reader-smoke',
@@ -105,10 +122,30 @@ async function main(): Promise<void> {
     config: protectedConfig,
     createdAt: new Date('2026-06-06T00:00:00.000Z'),
   }));
+  await sourceBindings.save(SourceBinding.create({
+    id: 'source-binding-source-config-reader-credential-ref-smoke',
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId: 'topic-source-config-reader-smoke',
+    providerKey: 'credential-source',
+    capabilityProfileVersion: 1,
+    config: protectedCredentialRefConfig,
+    createdAt: new Date('2026-06-06T00:00:00.000Z'),
+  }));
 
   const fetcher = new RegistrySourceFetcherAdapter(
     new InMemorySourceProviderRegistry([new CredentialAssertingSourceProvider()], []),
-    new MonitoringSourceConfigReaderAdapter(sourceBindings, protector),
+    new MonitoringSourceConfigReaderAdapter(
+      sourceBindings,
+      protector,
+      new StaticSourceCredentialResolver({
+        'source-credential-reddit-refresh': {
+          clientId: 'reddit-client-id',
+          clientSecret: 'reddit-client-secret',
+          refreshToken: 'reddit-refresh-token',
+        },
+      }),
+    ),
   );
   const result = await fetcher.fetch({
     tenantId: tenant,
@@ -124,7 +161,36 @@ async function main(): Promise<void> {
   });
 
   assert(result.items.length === 1, `expected one fetched item, got ${result.items.length}`);
+  const credentialRefResult = await fetcher.fetch({
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: 'source-binding-source-config-reader-credential-ref-smoke',
+    scanJobId: 'scan-job-source-config-reader-credential-ref-smoke',
+    providerKey: 'credential-source',
+    sourceQuery: {
+      mode: 'search',
+      query: 'credential ref check',
+    },
+    correlationId: 'source-config-reader-credential-ref-smoke',
+  });
+
+  assert(credentialRefResult.items.length === 1, `expected one credential-ref fetched item, got ${credentialRefResult.items.length}`);
   console.log('Source config reader boundary smoke OK');
+}
+
+class StaticSourceCredentialResolver implements SourceCredentialResolverPort {
+  constructor(private readonly secretsById: Readonly<Record<string, SourceCredentialSecret>>) {}
+
+  async resolve(
+    params: Parameters<SourceCredentialResolverPort['resolve']>[0],
+  ): ReturnType<SourceCredentialResolverPort['resolve']> {
+    const secret = this.secretsById[params.sourceCredentialId];
+    if (secret === undefined || params.providerKey !== 'credential-source') {
+      return err(new DomainError('resource.not_found', 'Source credential not found'));
+    }
+
+    return ok(secret);
+  }
 }
 
 void main().catch((error) => {

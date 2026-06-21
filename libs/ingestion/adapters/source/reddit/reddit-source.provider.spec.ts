@@ -3,6 +3,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import type { SourceProviderScanContext, SourceRuntimeConfig } from '../../../ports';
 import type { RedditClientPort, RedditListingPage, RedditListSubredditPostsRequest, RedditSearchPostsRequest } from './reddit-client.port';
 import { RedditSourceProvider } from './reddit-source.provider';
+import type { RedditRefreshTokenProviderPort, RedditRefreshTokenRequest } from './refresh-token-reddit-token-provider';
 import type { RedditTokenProviderPort } from './reddit-token-provider.port';
 
 describe('RedditSourceProvider', () => {
@@ -24,9 +25,11 @@ describe('RedditSourceProvider', () => {
   it('keeps encrypted tenant bearer tokens as an explicit override', async () => {
     const client = new CapturingRedditClient();
     const appTokenProvider = new StaticTokenProvider('reddit-app-only-token');
-    const provider = new RedditSourceProvider(client, appTokenProvider);
+    const refreshTokenProvider = new StaticRefreshTokenProvider('tenant-refresh-access-token');
+    const provider = new RedditSourceProvider(client, appTokenProvider, refreshTokenProvider);
     const context = scanContext({
       accessToken: 'tenant-reddit-token',
+      refreshToken: 'tenant-refresh-token',
       subreddit: 'observability',
       listing: 'hot',
     });
@@ -35,7 +38,51 @@ describe('RedditSourceProvider', () => {
     await provider.scan(plan, context);
 
     expect(appTokenProvider.calls).toBe(0);
+    expect(refreshTokenProvider.requests).toHaveLength(0);
     expect(client.listingRequests[0]?.accessToken).toBe('tenant-reddit-token');
+  });
+
+  it('exchanges encrypted tenant refresh tokens before falling back to app-only OAuth', async () => {
+    const client = new CapturingRedditClient();
+    const appTokenProvider = new StaticTokenProvider('reddit-app-only-token');
+    const refreshTokenProvider = new StaticRefreshTokenProvider('tenant-refresh-access-token');
+    const provider = new RedditSourceProvider(client, appTokenProvider, refreshTokenProvider);
+    const context = scanContext({
+      clientId: 'reddit-client-id',
+      clientSecret: 'reddit-client-secret',
+      refreshToken: 'tenant-refresh-token',
+      userAgent: 'social-monitor-test/0.1',
+      subreddit: 'observability',
+      listing: 'hot',
+    });
+    const plan = provider.planScan({ mode: 'listing', query: 'observability:hot' }, context);
+
+    await provider.scan(plan, context);
+
+    expect(appTokenProvider.calls).toBe(0);
+    expect(refreshTokenProvider.requests).toEqual([{
+      clientId: 'reddit-client-id',
+      clientSecret: 'reddit-client-secret',
+      refreshToken: 'tenant-refresh-token',
+      userAgent: 'social-monitor-test/0.1',
+    }]);
+    expect(client.listingRequests[0]?.accessToken).toBe('tenant-refresh-access-token');
+  });
+
+  it('fails closed when a refresh token is present without client credentials', async () => {
+    const provider = new RedditSourceProvider(
+      new CapturingRedditClient(),
+      new StaticTokenProvider('reddit-app-only-token'),
+      new StaticRefreshTokenProvider('tenant-refresh-access-token'),
+    );
+    const context = scanContext({
+      refreshToken: 'tenant-refresh-token',
+      subreddit: 'observability',
+      listing: 'hot',
+    });
+    const plan = provider.planScan({ mode: 'listing', query: 'observability:hot' }, context);
+
+    await expect(provider.scan(plan, context)).rejects.toThrow('Reddit source config field is required: clientId');
   });
 
   it('fails closed when neither binding token nor app-only provider is configured', async () => {
@@ -62,6 +109,17 @@ class StaticTokenProvider implements RedditTokenProviderPort {
 
   async getAccessToken(): Promise<string> {
     this.calls += 1;
+    return this.accessToken;
+  }
+}
+
+class StaticRefreshTokenProvider implements RedditRefreshTokenProviderPort {
+  readonly requests: RedditRefreshTokenRequest[] = [];
+
+  constructor(private readonly accessToken: string) {}
+
+  async getAccessToken(request: RedditRefreshTokenRequest): Promise<string> {
+    this.requests.push(request);
     return this.accessToken;
   }
 }
