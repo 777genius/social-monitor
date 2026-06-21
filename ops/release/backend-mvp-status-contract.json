@@ -9,6 +9,7 @@
   "sourceEvidenceDryRun": "ops/release/external-beta-evidence-dry-run.json",
   "checkCommand": "npm run check:backend-mvp-status",
   "statusJsonCommand": "npm run --silent backend:mvp:status:json",
+  "currentEvidenceStatusJsonCommand": "npm run --silent backend:mvp:status:current",
   "releaseGateId": "backend-mvp-status",
   "forbidSubjectiveOverallPercent": true,
   "strictExternalBetaReadyRequires": [
@@ -20,6 +21,8 @@
   ],
   "requiredStatusFields": [
     "strictExternalBetaReady",
+    "evidenceInputMode",
+    "evidenceEnvFileCount",
     "strictExternalBetaExitPercent",
     "contractClosurePercent",
     "externalEvidenceEnvReadinessPercent",

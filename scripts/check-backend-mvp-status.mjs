@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -14,7 +14,11 @@ const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
 const packagePath = 'package.json';
 
-const jsonOutput = process.argv.includes('--json');
+const args = process.argv.slice(2);
+const jsonOutput = args.includes('--json');
+const envFileSelection = readStatusEnvFileSelection(args);
+const statusEnvFilePaths = envFileSelection.paths;
+const statusUsesEnvFile = statusEnvFilePaths.length > 0;
 
 const contract = readJson(contractPath);
 const audit = readJson(auditPath);
@@ -27,16 +31,21 @@ const backendSafe = readJson(backendSafePath);
 const baseline = readJson(baselinePath);
 const packageJson = readJson(packagePath);
 const scripts = packageJson.scripts ?? {};
-const violations = [];
+const violations = envFileSelection.errors.map((error) => `${contractPath}: ${error}`);
 
 const cleanEvidencePlan = readEvidencePlan({ cleanEnv: true });
-const evidencePlan = jsonOutput ? readEvidencePlan({ cleanEnv: false }) : cleanEvidencePlan;
-const cleanStatus = buildStatus(cleanEvidencePlan);
-const status = jsonOutput ? buildStatus(evidencePlan) : cleanStatus;
+const evidencePlan = jsonOutput || statusUsesEnvFile
+  ? readEvidencePlan({ cleanEnv: false, envFilePaths: statusEnvFilePaths })
+  : cleanEvidencePlan;
+const cleanStatus = buildStatus(cleanEvidencePlan, { cleanEnv: true });
+const status = jsonOutput || statusUsesEnvFile
+  ? buildStatus(evidencePlan, { envFileCount: statusEnvFilePaths.length })
+  : cleanStatus;
 
 validateContract();
 validateStatus();
 validateLocalRuntimeStatusSmoke();
+validateEnvFileStatusSmoke();
 validateWiring();
 
 if (violations.length > 0) {
@@ -58,7 +67,7 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-function readEvidencePlan({ cleanEnv, envOverride }) {
+function readEvidencePlan({ cleanEnv, envOverride, envFilePaths = [] }) {
   const env = envOverride !== undefined
     ? {
         PATH: process.env.PATH ?? '',
@@ -69,9 +78,13 @@ function readEvidencePlan({ cleanEnv, envOverride }) {
           PATH: process.env.PATH ?? '',
         }
       : process.env;
+  const runnerArgs = ['scripts/external-beta-evidence-runner.mjs', '--plan', '--json'];
+  for (const path of envFilePaths) {
+    runnerArgs.push('--env-file', path);
+  }
   const output = execFileSync(
     process.execPath,
-    ['scripts/external-beta-evidence-runner.mjs', '--plan', '--json'],
+    runnerArgs,
     {
       encoding: 'utf8',
       env,
@@ -80,7 +93,7 @@ function readEvidencePlan({ cleanEnv, envOverride }) {
   return JSON.parse(output);
 }
 
-function buildStatus(plan) {
+function buildStatus(plan, options = {}) {
   const requirements = audit.requirements ?? [];
   const blockingRequirements = requirements.filter((requirement) => requirement.blocksMvpExit === true);
   const passedBlockingRequirements = blockingRequirements.filter((requirement) => requirement.status === 'passed');
@@ -112,6 +125,8 @@ function buildStatus(plan) {
     sourceAudit: contract.sourceAudit,
     sourceExternalReadiness: contract.sourceExternalReadiness,
     sourceEvidenceRunner: contract.sourceEvidenceRunner,
+    evidenceInputMode: statusEvidenceInputMode(options),
+    evidenceEnvFileCount: options.envFileCount ?? 0,
     decisions: {
       completionStatus: audit.completionStatus,
       externalBetaDecision: externalReadiness.externalBetaDecision,
@@ -134,6 +149,16 @@ function buildStatus(plan) {
     missingOptionalEnv: plan.uniqueMissingOptionalEnv,
     blockerRequirements,
   };
+}
+
+function statusEvidenceInputMode(options) {
+  if (options.cleanEnv === true) {
+    return 'clean_env';
+  }
+  if ((options.envFileCount ?? 0) > 0) {
+    return 'env_file';
+  }
+  return 'shell_env';
 }
 
 function validateContract() {
@@ -206,6 +231,12 @@ function validateStatus() {
   }
   if (status.overallPercent !== undefined || status.mvpReadyPercent !== undefined) {
     violations.push(`${contractPath}: status output must not include subjective overall percent fields`);
+  }
+  if (!['clean_env', 'shell_env', 'env_file'].includes(status.evidenceInputMode)) {
+    violations.push(`${contractPath}: evidenceInputMode must be clean_env, shell_env or env_file`);
+  }
+  if (!Number.isInteger(status.evidenceEnvFileCount) || status.evidenceEnvFileCount < 0) {
+    violations.push(`${contractPath}: evidenceEnvFileCount must be a non-negative integer`);
   }
   if (externalReadiness.externalBetaDecision === 'hold') {
     if (status.strictExternalBetaReady !== false) {
@@ -282,6 +313,65 @@ function validateLocalRuntimeStatusSmoke() {
   }
 }
 
+function validateEnvFileStatusSmoke() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'backend-mvp-status-env-file-'));
+  try {
+    const envFilePath = join(tempDirectory, 'status-evidence.env');
+    writePrivateStatusEnvFile(envFilePath, {
+      API_BASE_URL: 'http://127.0.0.1:3000?access_token=status-env-file-api-token-value-1234567890',
+      BACKEND_IMAGE_DIGEST: `sha256:${'b'.repeat(64)}`,
+      DATABASE_URL: 'postgresql://status_env_file_user:...@127.0.0.1:54339/social_monitor',
+      DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(tempDirectory, 'durable-backend-e2e.json'),
+      RABBITMQ_URL: 'amqp://status_env_file_user:...@127.0.0.1:56739/social_monitor',
+      REDDIT_ACCESS_TOKEN: 'reddit-status-env-file-access-value-1234567890',
+      STAGING_ENVIRONMENT_ID: 'docker-alpha-env-file-1',
+    });
+
+    const envFilePlan = readEvidencePlan({
+      cleanEnv: false,
+      envOverride: {
+        PATH: process.env.PATH ?? '',
+      },
+      envFilePaths: [envFilePath],
+    });
+    const envFileStatus = buildStatus(envFilePlan, { envFileCount: 1 });
+    if (envFileStatus.evidenceInputMode !== 'env_file') {
+      violations.push(`${contractPath}: env-file status smoke must report evidenceInputMode=env_file`);
+    }
+    if (envFileStatus.evidenceEnvFileCount !== 1) {
+      violations.push(`${contractPath}: env-file status smoke must report one loaded env file`);
+    }
+    if (envFileStatus.blockedLocalRuntimeEnvJobCount < 1) {
+      violations.push(`${contractPath}: env-file status smoke must expose local runtime blockers`);
+    }
+    if (envFileStatus.strictExternalBetaReady !== false) {
+      violations.push(`${contractPath}: env-file status smoke must not mark external beta ready`);
+    }
+    assertNoStatusOutputSecrets(JSON.stringify(envFileStatus), [
+      'status-env-file-api-token-value-1234567890',
+      'reddit-status-env-file-access-value-1234567890',
+      'postgresql://status_env_file_user:...@127.0.0.1:54339/social_monitor',
+      'amqp://status_env_file_user:...@127.0.0.1:56739/social_monitor',
+      '127.0.0.1:54339',
+      '127.0.0.1:56739',
+    ]);
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function writePrivateStatusEnvFile(path, entries) {
+  const body = Object.entries(entries)
+    .map(([name, value]) => `${name}=${quoteEnvValue(String(value))}`)
+    .join('\n');
+  writeFileSync(path, `${body}\n`, { mode: 0o600 });
+  chmodSync(path, 0o600);
+}
+
+function quoteEnvValue(value) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function assertNoStatusOutputSecrets(output, forbiddenOutputFragments) {
   for (const fragment of forbiddenOutputFragments) {
     if (String(output).includes(fragment)) {
@@ -303,6 +393,15 @@ function validateWiring() {
   }
   if (scripts['backend:mvp:status:json'] !== 'node scripts/check-backend-mvp-status.mjs --json') {
     violations.push(`${packagePath}: backend:mvp:status:json must emit status JSON`);
+  }
+  if (
+    scripts['backend:mvp:status:current'] !==
+    'node scripts/check-backend-mvp-status.mjs --json --env-file /tmp/social-monitor-evidence/external-beta-current-package.env'
+  ) {
+    violations.push(`${packagePath}: backend:mvp:status:current must emit status JSON for the current packaged evidence env file`);
+  }
+  if (contract.currentEvidenceStatusJsonCommand !== 'npm run --silent backend:mvp:status:current') {
+    violations.push(`${contractPath}: currentEvidenceStatusJsonCommand must point to backend:mvp:status:current`);
   }
   if (!backendScripts.has('check:backend-mvp-status')) {
     violations.push(`${backendSafePath}: backendScripts must include check:backend-mvp-status`);
@@ -340,6 +439,26 @@ function countBy(values, callback) {
     counts[key] = (counts[key] ?? 0) + 1;
     return counts;
   }, {});
+}
+
+function readStatusEnvFileSelection(argv) {
+  const paths = [];
+  const errors = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] !== '--env-file') {
+      continue;
+    }
+
+    const value = argv[index + 1];
+    if (value === undefined || value.trim() === '' || value.startsWith('--')) {
+      errors.push('--env-file requires a non-empty absolute env file path');
+      continue;
+    }
+    paths.push(value.trim());
+    index += 1;
+  }
+
+  return { paths, errors };
 }
 
 function percent(numerator, denominator) {
