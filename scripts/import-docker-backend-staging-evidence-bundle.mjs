@@ -44,7 +44,6 @@ const sourceCredentialArtifact = readArtifact(
 const securityExports = securityExportPaths(securityArtifact);
 
 writeEvidenceEnvFile(envFilePath, [
-  ['API_BASE_URL', bundle.apiBaseUrl],
   ['BACKEND_IMAGE_DIGEST', bundle.imageDigest],
   ['BACKEND_GIT_COMMIT_SHA', bundle.commitSha],
   ['STAGING_ENVIRONMENT_ID', bundle.environmentId],
@@ -68,8 +67,9 @@ writeEvidenceEnvFile(envFilePath, [
     `set -a; . ${shellQuote(envFilePath)}; set +a`,
     'npm run check:docker-backend-staging-evidence-bundle',
     'npm run check:durable-runtime-proof && npm run check:staging-reliability-evidence && npm run check:credential-secret-runtime-flow && npm run check:security-final-sweep && npm run check:release-artifact-evidence',
-    'This import intentionally does not invent DATABASE_URL, RABBITMQ_URL, live provider tokens or real feedback paths.',
-    'For full external beta validation, supply real staging DB/RabbitMQ secret-boundary env and live/feedback evidence separately.',
+    'This import intentionally does not write API_BASE_URL, DATABASE_URL, RABBITMQ_URL, live provider tokens or real feedback paths.',
+    'The Docker bundle path covers local Docker API, Postgres and RabbitMQ runtime proof without exposing secret URLs.',
+    'For non-Docker external beta validation, supply real staging DB/RabbitMQ secret-boundary env and live/feedback evidence separately.',
   ],
 });
 chmodSync(envFilePath, 0o600);

@@ -47,6 +47,7 @@ function readHandoffJson() {
     ['scripts/external-beta-evidence-runner.mjs', '--handoff-json'],
     {
       encoding: 'utf8',
+      maxBuffer: 4 * 1024 * 1024,
       env: {
         PATH: process.env.PATH ?? '',
       },
@@ -180,8 +181,22 @@ function validateHandoffEnrichment() {
       job.optionalEnv ?? [],
       `${matrixPath}: ${job.jobId} handoff optionalInputs`,
     );
+    for (const [index, alternativeInput] of (job.requiredAlternativeInputs ?? []).entries()) {
+      const sourceAlternative = (job.requiredEnvAlternatives ?? [])[index];
+      assertSameSet(
+        alternativeInput.inputs?.map((input) => input.env) ?? [],
+        sourceAlternative?.env ?? [],
+        `${matrixPath}: ${job.jobId} handoff requiredAlternativeInputs[${index}]`,
+      );
+    }
 
-    for (const input of [...(job.requiredInputs ?? []), ...(job.optionalInputs ?? [])]) {
+    const allInputs = [
+      ...(job.requiredInputs ?? []),
+      ...(job.optionalInputs ?? []),
+      ...(job.requiredAlternativeInputs ?? []).flatMap((alternativeInput) => alternativeInput.inputs ?? []),
+    ];
+
+    for (const input of allInputs) {
       const expectedClass = classificationByEnv.get(input.env);
       if (input.inputClass !== expectedClass) {
         violations.push(`${matrixPath}: ${job.jobId} handoff input ${input.env} must use inputClass ${expectedClass}`);
@@ -255,6 +270,11 @@ function runnerEnvNames() {
     }
     for (const envName of job.optionalEnv ?? []) {
       envNames.add(envName);
+    }
+    for (const alternative of job.requiredEnvAlternatives ?? []) {
+      for (const envName of alternative.env ?? []) {
+        envNames.add(envName);
+      }
     }
     for (const artifact of job.outputArtifacts ?? []) {
       if (artifact.env !== undefined) {

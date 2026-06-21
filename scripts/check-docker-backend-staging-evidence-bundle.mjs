@@ -155,7 +155,8 @@ function validateStaticWiring() {
     'check:docker-backend-staging-evidence-bundle',
     'DATABASE_URL',
     'RABBITMQ_URL',
-    'This import intentionally does not invent DATABASE_URL, RABBITMQ_URL',
+    'This import intentionally does not write API_BASE_URL, DATABASE_URL, RABBITMQ_URL',
+    'The Docker bundle path covers local Docker API, Postgres and RabbitMQ runtime proof without exposing secret URLs.',
   ]) {
     if (!importSource.includes(marker)) {
       violations.push(`${importScriptPath}: Docker bundle import must include ${marker}`);

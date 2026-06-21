@@ -165,6 +165,13 @@
         "API_BASE_URL",
         "DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH"
       ],
+      "requiredEnvAlternatives": [
+        {
+          "label": "docker_backend_staging_bundle",
+          "env": ["BACKEND_STAGING_EVIDENCE_BUNDLE_PATH"],
+          "coversEnv": ["API_BASE_URL"]
+        }
+      ],
       "optionalEnv": [
         "OIDC_ISSUER",
         "JWKS_URL"
@@ -259,11 +266,13 @@
       "requiredEnvAlternatives": [
         {
           "label": "reddit_access_token",
-          "env": ["REDDIT_ACCESS_TOKEN"]
+          "env": ["REDDIT_ACCESS_TOKEN"],
+          "coversEnv": ["REDDIT_ACCESS_TOKEN"]
         },
         {
           "label": "reddit_refresh_token_flow",
-          "env": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_REFRESH_TOKEN"]
+          "env": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_REFRESH_TOKEN"],
+          "coversEnv": ["REDDIT_ACCESS_TOKEN"]
         }
       ],
       "requiredEnv": [
@@ -363,6 +372,13 @@
         "BACKEND_IMAGE_DIGEST",
         "RABBITMQ_STAGING_DRILL_ARTIFACT_PATH"
       ],
+      "requiredEnvAlternatives": [
+        {
+          "label": "docker_backend_staging_bundle",
+          "env": ["BACKEND_STAGING_EVIDENCE_BUNDLE_PATH"],
+          "coversEnv": ["RABBITMQ_URL"]
+        }
+      ],
       "optionalEnv": [
         "RABBITMQ_MANAGEMENT_URL"
       ],
@@ -397,6 +413,13 @@
         "BACKEND_IMAGE_DIGEST",
         "POSTGRES_RESTORE_DRILL_ARTIFACT_PATH"
       ],
+      "requiredEnvAlternatives": [
+        {
+          "label": "docker_backend_staging_bundle",
+          "env": ["BACKEND_STAGING_EVIDENCE_BUNDLE_PATH"],
+          "coversEnv": ["DATABASE_URL"]
+        }
+      ],
       "optionalEnv": [
         "BACKUP_OBJECT_URI"
       ],
@@ -429,6 +452,13 @@
         "STAGING_ENVIRONMENT_ID",
         "BACKEND_IMAGE_DIGEST",
         "DURABLE_BACKEND_E2E_ARTIFACT_PATH"
+      ],
+      "requiredEnvAlternatives": [
+        {
+          "label": "docker_backend_staging_bundle",
+          "env": ["BACKEND_STAGING_EVIDENCE_BUNDLE_PATH"],
+          "coversEnv": ["API_BASE_URL"]
+        }
       ],
       "optionalEnv": [
         "OIDC_TEST_TOKEN_REF",
@@ -565,6 +595,13 @@
         "STAGING_ENVIRONMENT_ID",
         "BACKEND_IMAGE_DIGEST",
         "API_BASE_URL"
+      ],
+      "requiredEnvAlternatives": [
+        {
+          "label": "docker_backend_staging_bundle",
+          "env": ["BACKEND_STAGING_EVIDENCE_BUNDLE_PATH"],
+          "coversEnv": ["API_BASE_URL"]
+        }
       ],
       "optionalEnv": [
         "DEPLOYMENT_ID"

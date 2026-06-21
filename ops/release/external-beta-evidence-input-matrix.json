@@ -15,6 +15,7 @@
       "description": "Absolute JSON evidence file path with 0600-style private file permissions. Values must not live in the git workspace and must not point at fixtures or examples.",
       "env": [
         "AUDIT_EVENT_EXPORT_PATH",
+        "BACKEND_STAGING_EVIDENCE_BUNDLE_PATH",
         "DURABLE_BACKEND_E2E_ARTIFACT_PATH",
         "DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH",
         "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",

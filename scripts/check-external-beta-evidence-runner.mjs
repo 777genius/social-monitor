@@ -188,6 +188,55 @@ const requiredJobOptionalEnvNames = new Map([
     ],
   ],
 ]);
+const requiredJobEnvAlternatives = new Map([
+  ['durable-runtime-staging-proof', [
+    {
+      label: 'docker_backend_staging_bundle',
+      env: ['BACKEND_STAGING_EVIDENCE_BUNDLE_PATH'],
+      coversEnv: ['API_BASE_URL'],
+    },
+  ]],
+  ['live-reddit-oauth', [
+    {
+      label: 'reddit_access_token',
+      env: ['REDDIT_ACCESS_TOKEN'],
+      coversEnv: ['REDDIT_ACCESS_TOKEN'],
+    },
+    {
+      label: 'reddit_refresh_token_flow',
+      env: ['REDDIT_CLIENT_ID', 'REDDIT_CLIENT_SECRET', 'REDDIT_REFRESH_TOKEN'],
+      coversEnv: ['REDDIT_ACCESS_TOKEN'],
+    },
+  ]],
+  ['rabbitmq-staging-reliability-drill', [
+    {
+      label: 'docker_backend_staging_bundle',
+      env: ['BACKEND_STAGING_EVIDENCE_BUNDLE_PATH'],
+      coversEnv: ['RABBITMQ_URL'],
+    },
+  ]],
+  ['postgres-restore-migration-drill', [
+    {
+      label: 'docker_backend_staging_bundle',
+      env: ['BACKEND_STAGING_EVIDENCE_BUNDLE_PATH'],
+      coversEnv: ['DATABASE_URL'],
+    },
+  ]],
+  ['durable-backend-e2e-loop', [
+    {
+      label: 'docker_backend_staging_bundle',
+      env: ['BACKEND_STAGING_EVIDENCE_BUNDLE_PATH'],
+      coversEnv: ['API_BASE_URL'],
+    },
+  ]],
+  ['release-deploy-smoke', [
+    {
+      label: 'docker_backend_staging_bundle',
+      env: ['BACKEND_STAGING_EVIDENCE_BUNDLE_PATH'],
+      coversEnv: ['API_BASE_URL'],
+    },
+  ]],
+]);
 const requiredJobOutputArtifacts = new Map([
   [
     'durable-runtime-staging-proof',
@@ -333,6 +382,7 @@ validateRunnerNegativeRedditArtifactSmokes();
 validateRunnerNegativeSmokes();
 validateRunnerPreflightNegativeSmokes();
 validateRunnerLocalRuntimePlanSmoke();
+validateRunnerDockerBundleAlternativeSmoke();
 validateRunnerOutputRedactionSmoke();
 validateRunnerEnvFileSmokes();
 validateRunnerPreflightPositiveSmoke();
@@ -591,6 +641,12 @@ function validateRunnerImplementation() {
     'Load env files: append --env-file',
     'missingOptionalEnvCount',
     'uniqueMissingOptionalEnv',
+    'requiredEnvAlternatives',
+    'satisfiedRequiredEnvAlternatives',
+    'requiredEnvAlternativeCoveredEnvNames',
+    'jobInputEnvNames',
+    'requiredAlternativeInputs',
+    'coversEnv',
     'jobExecutionReadiness',
     'blocked_missing_required_env',
     'blocked_invalid_env',
@@ -2577,6 +2633,111 @@ function validateRunnerLocalRuntimePlanSmoke() {
   }
 }
 
+function validateRunnerDockerBundleAlternativeSmoke() {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-docker-bundle-alternative-'));
+  try {
+    const bundlePath = join(tempDirectory, 'backend-staging-evidence-bundle.json');
+    writeFileSync(bundlePath, JSON.stringify({
+      schemaVersion: 1,
+      artifactId: 'backend-staging-evidence-bundle-redacted-smoke',
+      provenance: {
+        evidenceKind: 'local_docker_staging',
+        fixtureOnly: false,
+      },
+      redaction: {
+        secretsIncluded: false,
+        rawConnectionUrlsIncluded: false,
+      },
+    }, null, 2));
+    chmodSync(bundlePath, 0o600);
+
+    const cases = [
+      {
+        jobId: 'durable-runtime-staging-proof',
+        coveredEnv: 'API_BASE_URL',
+        env: {
+          BACKEND_IMAGE_DIGEST: `sha256:${'1'.repeat(64)}`,
+          BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: bundlePath,
+          DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: join(tempDirectory, 'durable-runtime-selector.json'),
+          STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
+        },
+      },
+      {
+        jobId: 'rabbitmq-staging-reliability-drill',
+        coveredEnv: 'RABBITMQ_URL',
+        env: {
+          BACKEND_IMAGE_DIGEST: `sha256:${'2'.repeat(64)}`,
+          BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: bundlePath,
+          RABBITMQ_STAGING_DRILL_ARTIFACT_PATH: join(tempDirectory, 'rabbitmq-staging-drill.json'),
+          STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
+        },
+      },
+      {
+        jobId: 'postgres-restore-migration-drill',
+        coveredEnv: 'DATABASE_URL',
+        env: {
+          BACKEND_IMAGE_DIGEST: `sha256:${'3'.repeat(64)}`,
+          BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: bundlePath,
+          POSTGRES_RESTORE_DRILL_ARTIFACT_PATH: join(tempDirectory, 'postgres-restore-drill.json'),
+          STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
+        },
+      },
+      {
+        jobId: 'durable-backend-e2e-loop',
+        coveredEnv: 'API_BASE_URL',
+        env: durableBackendE2ePreflightEnv(tempDirectory, {
+          API_BASE_URL: '',
+          BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: bundlePath,
+          STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
+        }),
+      },
+      {
+        jobId: 'release-deploy-smoke',
+        coveredEnv: 'API_BASE_URL',
+        env: {
+          BACKEND_IMAGE_DIGEST: `sha256:${'4'.repeat(64)}`,
+          BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: bundlePath,
+          RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: join(tempDirectory, 'release-deploy-smoke.json'),
+          STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
+        },
+      },
+    ];
+
+    for (const currentCase of cases) {
+      const result = runRunnerJsonPlanSmoke(currentCase.jobId, currentCase.env);
+      if (result.exitCode !== 0) {
+        violations.push(`${contract.runnerFile}: Docker bundle alternative plan smoke for ${currentCase.jobId} must produce a JSON plan: ${smokeOutputSnippet(result.output)}`);
+        continue;
+      }
+      const job = result.plan.jobs?.[0];
+      if (job?.executionReadiness !== 'manual_artifact_required') {
+        violations.push(`${contract.runnerFile}: Docker bundle alternative for ${currentCase.jobId} must be manual_artifact_required`);
+      }
+      if (job?.missingEnv?.includes(currentCase.coveredEnv)) {
+        violations.push(`${contract.runnerFile}: Docker bundle alternative for ${currentCase.jobId} must cover ${currentCase.coveredEnv}`);
+      }
+      if (result.plan.blockedMissingRequiredEnvJobCount !== 0) {
+        violations.push(`${contract.runnerFile}: Docker bundle alternative for ${currentCase.jobId} must not count missing required env`);
+      }
+      if (result.plan.blockedInvalidInputJobCount !== 0) {
+        violations.push(`${contract.runnerFile}: Docker bundle alternative for ${currentCase.jobId} must not count invalid input`);
+      }
+      if (result.plan.blockedLocalRuntimeEnvJobCount !== 0) {
+        violations.push(`${contract.runnerFile}: Docker bundle alternative for ${currentCase.jobId} must not count local runtime env`);
+      }
+    }
+
+    const handoffResult = runRunnerTextHandoffSmoke('durable-backend-e2e-loop', cases[3].env);
+    if (handoffResult.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: Docker bundle alternative handoff smoke must produce text handoff: ${smokeOutputSnippet(handoffResult.output)}`);
+    } else if (!handoffResult.output.includes('BACKEND_STAGING_EVIDENCE_BUNDLE_PATH covers API_BASE_URL')) {
+      violations.push(`${contract.runnerFile}: Docker bundle alternative handoff must explain covered API_BASE_URL`);
+    }
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
 function validateRunnerOutputRedactionSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-output-redaction-'));
   try {
@@ -3257,6 +3418,7 @@ function validateEnvExample() {
   const expectedEnvNames = new Set([
     'EXTERNAL_BETA_EVIDENCE_CONFIRM',
     ...contract.jobs.flatMap((job) => job.requiredEnv ?? []),
+    ...contract.jobs.flatMap((job) => (job.requiredEnvAlternatives ?? []).flatMap((alternative) => alternative.env ?? [])),
     ...contract.jobs.flatMap((job) => job.optionalEnv ?? []),
   ]);
   const actualEnvNames = new Set();
@@ -3387,6 +3549,38 @@ function validateJobEnvironment(job, label) {
     }
   }
 
+  if (job.requiredEnvAlternatives !== undefined && !Array.isArray(job.requiredEnvAlternatives)) {
+    violations.push(`${label}: requiredEnvAlternatives must be an array when set`);
+  }
+  const requiredEnvSet = new Set(job.requiredEnv ?? []);
+  for (const [index, alternative] of (job.requiredEnvAlternatives ?? []).entries()) {
+    const alternativeLabel = `${label}: requiredEnvAlternatives[${index}]`;
+    if (typeof alternative.label !== 'string' || alternative.label.trim().length === 0) {
+      violations.push(`${alternativeLabel}: label must be a non-empty string`);
+    }
+    if (!Array.isArray(alternative.env) || alternative.env.length === 0) {
+      violations.push(`${alternativeLabel}: env must be a non-empty array`);
+    }
+    const seenEnv = new Set();
+    for (const envName of alternative.env ?? []) {
+      if (!/^[A-Z][A-Z0-9_]*$/.test(String(envName))) {
+        violations.push(`${alternativeLabel}: env contains invalid env name "${envName}"`);
+      }
+      if (seenEnv.has(envName)) {
+        violations.push(`${alternativeLabel}: env contains duplicate env name "${envName}"`);
+      }
+      seenEnv.add(envName);
+    }
+    if (alternative.coversEnv !== undefined && !Array.isArray(alternative.coversEnv)) {
+      violations.push(`${alternativeLabel}: coversEnv must be an array when set`);
+    }
+    for (const envName of alternative.coversEnv ?? []) {
+      if (!requiredEnvSet.has(envName)) {
+        violations.push(`${alternativeLabel}: coversEnv "${envName}" must be listed in requiredEnv`);
+      }
+    }
+  }
+
   if (job.runPolicy !== 'local_contract' && job.requiredEnv.length === 0) {
     violations.push(`${label}: non-local job must define requiredEnv`);
   }
@@ -3458,6 +3652,20 @@ function validateRequiredJobEvidence(job, label) {
   for (const envName of requiredOptionalEnvNames) {
     if (!optionalEnvNames.has(envName)) {
       violations.push(`${label}: must include optional evidence env "${envName}"`);
+    }
+  }
+
+  const requiredAlternatives = requiredJobEnvAlternatives.get(job.jobId) ?? [];
+  for (const requiredAlternative of requiredAlternatives) {
+    const hasAlternative = (job.requiredEnvAlternatives ?? []).some((alternative) => (
+      alternative.label === requiredAlternative.label
+      && providerKeysEqual(alternative.env, requiredAlternative.env)
+      && providerKeysEqual(alternative.coversEnv ?? alternative.env, requiredAlternative.coversEnv)
+    ));
+    if (!hasAlternative) {
+      violations.push(
+        `${label}: requiredEnvAlternatives must include "${requiredAlternative.label}" env "${requiredAlternative.env.join(', ')}" covering "${requiredAlternative.coversEnv.join(', ')}"`,
+      );
     }
   }
 

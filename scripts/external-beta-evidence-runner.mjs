@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { URL } from 'node:url';
 import { parse as parseDotenv } from 'dotenv';
@@ -447,6 +447,7 @@ function printHandoff(plan) {
     console.log(`   Run policy: ${job.runPolicy}`);
     console.log(`   Readiness: ${job.executionReadiness}`);
     console.log(`   Required env: ${job.requiredEnv.length === 0 ? 'none' : job.requiredEnv.join(', ')}`);
+    console.log(`   Required env alternatives: ${formatRequiredEnvAlternatives(job)}`);
     console.log(`   Missing env: ${job.missingEnv.length === 0 ? 'none' : job.missingEnv.join(', ')}`);
     console.log(`   Optional env: ${job.optionalEnv.length === 0 ? 'none' : job.optionalEnv.join(', ')}`);
     console.log(`   Preflight violations: ${job.preflightViolations.length === 0 ? 'none' : job.preflightViolations.join(' | ')}`);
@@ -459,7 +460,7 @@ function printHandoff(plan) {
 }
 
 function printJsonHandoff(plan) {
-  console.log(JSON.stringify(buildHandoff(plan), null, 2));
+  writeStdout(`${JSON.stringify(buildHandoff(plan), null, 2)}\n`);
 }
 
 function buildHandoff(plan) {
@@ -523,6 +524,7 @@ function buildHandoff(plan) {
       missingEnv: job.missingEnv,
       missingOptionalEnv: job.missingOptionalEnv,
       requiredInputs: buildHandoffInputs(job, job.requiredEnv, job.missingEnv),
+      requiredAlternativeInputs: buildHandoffAlternativeInputs(job),
       optionalInputs: buildHandoffInputs(job, job.optionalEnv, job.missingOptionalEnv),
       preflightViolations: job.preflightViolations,
       outputArtifacts: buildHandoffArtifactContracts(job),
@@ -544,6 +546,14 @@ function buildHandoffInputs(job, envNames, missingEnvNames) {
       artifacts: buildHandoffEnvArtifacts(job, envName),
     };
   });
+}
+
+function buildHandoffAlternativeInputs(job) {
+  return (job.requiredEnvAlternatives ?? []).map((alternative) => ({
+    label: alternative.label ?? null,
+    coversEnv: requiredEnvAlternativeCoveredEnvNames(alternative),
+    inputs: buildHandoffInputs(job, alternative.env ?? [], []),
+  }));
 }
 
 function buildHandoffEnvArtifacts(job, envName) {
@@ -576,7 +586,11 @@ function buildHandoffArtifactContracts(job) {
 }
 
 function printJsonPlan(plan) {
-  console.log(JSON.stringify(plan, null, 2));
+  writeStdout(`${JSON.stringify(plan, null, 2)}\n`);
+}
+
+function writeStdout(output) {
+  writeFileSync(1, output);
 }
 
 function percent(numerator, denominator) {
@@ -721,23 +735,36 @@ function isMissingSelectionValue(value) {
 
 function missingRequiredEnv(job) {
   const missingEnv = job.requiredEnv.filter((envName) => !hasEnv(envName));
-  const alternativeEnvNames = new Set((job.requiredEnvAlternatives ?? []).flatMap((alternative) => alternative.env ?? []));
-  if (alternativeEnvNames.size === 0 || !hasSatisfiedRequiredEnvAlternative(job)) {
+  const coveredEnvNames = new Set(satisfiedRequiredEnvAlternatives(job).flatMap(requiredEnvAlternativeCoveredEnvNames));
+  if (coveredEnvNames.size === 0) {
     return missingEnv;
   }
 
-  return missingEnv.filter((envName) => !alternativeEnvNames.has(envName));
+  return missingEnv.filter((envName) => !coveredEnvNames.has(envName));
 }
 
 function missingOptionalEnvNames(job) {
   return job.optionalEnv.filter((envName) => process.env[envName]?.trim() === undefined || process.env[envName]?.trim() === '');
 }
 
-function hasSatisfiedRequiredEnvAlternative(job) {
-  return (job.requiredEnvAlternatives ?? []).some((alternative) => {
+function satisfiedRequiredEnvAlternatives(job) {
+  return (job.requiredEnvAlternatives ?? []).filter((alternative) => {
     const envNames = alternative.env ?? [];
     return envNames.length > 0 && envNames.every((envName) => hasEnv(envName));
   });
+}
+
+function requiredEnvAlternativeCoveredEnvNames(alternative) {
+  const coveredEnv = alternative.coversEnv ?? alternative.env ?? [];
+  return Array.isArray(coveredEnv) ? coveredEnv : [];
+}
+
+function jobInputEnvNames(job) {
+  return [
+    ...(job.requiredEnv ?? []),
+    ...(job.optionalEnv ?? []),
+    ...(job.requiredEnvAlternatives ?? []).flatMap((alternative) => alternative.env ?? []),
+  ];
 }
 
 function hasEnv(envName) {
@@ -988,7 +1015,7 @@ function validateEvidenceValueEnv(job, missingEnvSet, violations, options = {}) 
     return;
   }
 
-  const envNames = new Set([...(job.requiredEnv ?? []), ...(job.optionalEnv ?? [])]);
+  const envNames = new Set(jobInputEnvNames(job));
   for (const envName of envNames) {
     if (missingEnvSet.has(envName) || envName.endsWith('_PATH')) {
       continue;
@@ -1060,7 +1087,7 @@ function validatePlannedEvidencePathEnv(job, missingEnvSet, violations) {
     return;
   }
 
-  const pathEnvNames = new Set([...(job.requiredEnv ?? []), ...(job.optionalEnv ?? [])]);
+  const pathEnvNames = new Set(jobInputEnvNames(job));
   for (const envName of pathEnvNames) {
     if (!envName.endsWith('_PATH') || missingEnvSet.has(envName)) {
       continue;
@@ -1277,7 +1304,7 @@ function isRawSecretValueReference(value) {
 
 function validateEvidencePathEnv(job, missingEnvSet, violations) {
   const invalidPathEnv = new Set();
-  const pathEnvNames = new Set([...(job.requiredEnv ?? []), ...(job.optionalEnv ?? [])]);
+  const pathEnvNames = new Set(jobInputEnvNames(job));
 
   for (const envName of pathEnvNames) {
     if (!envName.endsWith('_PATH') || missingEnvSet.has(envName)) {
@@ -1933,7 +1960,9 @@ function formatRequiredEnvAlternatives(job) {
       const label = typeof alternative.label === 'string' && alternative.label.trim().length > 0
         ? `${alternative.label}: `
         : '';
-      return `${label}${(alternative.env ?? []).join(' + ')}`;
+      const env = (alternative.env ?? []).join(' + ');
+      const coversEnv = (alternative.coversEnv ?? []).join(' + ');
+      return coversEnv.length > 0 ? `${label}${env} covers ${coversEnv}` : `${label}${env}`;
     })
     .join(' | ');
 }
