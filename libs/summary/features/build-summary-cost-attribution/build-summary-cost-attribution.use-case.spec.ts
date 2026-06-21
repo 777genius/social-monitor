@@ -57,6 +57,7 @@ const fixture: SummaryEvalFixture = {
           feedItemId: 'feed-cost-1',
           sourceItemId: 'source-cost-1',
           sourceBindingId: 'binding-cost-1',
+          providerKey: 'github',
           title: 'Cost attribution fixture',
           bodyPreview: 'Summary model usage should be attributed to every release fixture.',
           observedAt: new Date('2026-06-06T00:00:10.000Z'),

@@ -10,6 +10,10 @@ import type {
   ScanQueuePort,
   SourceBindingConfigProtectorPort,
   SourceBindingRepositoryPort,
+  SourceCredentialRefreshPort,
+  SourceCredentialRepositoryPort,
+  SourceCredentialResolverPort,
+  SourceCredentialVaultPort,
   SourceCatalogPort,
   TopicRepositoryPort,
 } from '../../ports';
@@ -31,6 +35,10 @@ export const MONITORING_OUTBOX = Symbol('MONITORING_OUTBOX');
 export const MONITORING_IDEMPOTENCY = Symbol('MONITORING_IDEMPOTENCY');
 export const MONITORING_SOURCE_CATALOG = Symbol('MONITORING_SOURCE_CATALOG');
 export const MONITORING_CONFIG_PROTECTOR = Symbol('MONITORING_CONFIG_PROTECTOR');
+export const MONITORING_SOURCE_CREDENTIAL_REPOSITORY = Symbol('MONITORING_SOURCE_CREDENTIAL_REPOSITORY');
+export const MONITORING_SOURCE_CREDENTIAL_VAULT = Symbol('MONITORING_SOURCE_CREDENTIAL_VAULT');
+export const MONITORING_SOURCE_CREDENTIAL_REFRESHER = Symbol('MONITORING_SOURCE_CREDENTIAL_REFRESHER');
+export const MONITORING_SOURCE_CREDENTIAL_RESOLVER = Symbol('MONITORING_SOURCE_CREDENTIAL_RESOLVER');
 
 export type MonitoringProviderTokenMap = {
   readonly [MONITORING_PERSISTENCE_MODE]: MonitoringPersistenceMode;
@@ -46,6 +54,10 @@ export type MonitoringProviderTokenMap = {
   readonly [MONITORING_IDEMPOTENCY]: IdempotencyPort;
   readonly [MONITORING_SOURCE_CATALOG]: SourceCatalogPort;
   readonly [MONITORING_CONFIG_PROTECTOR]: SourceBindingConfigProtectorPort;
+  readonly [MONITORING_SOURCE_CREDENTIAL_REPOSITORY]: SourceCredentialRepositoryPort;
+  readonly [MONITORING_SOURCE_CREDENTIAL_VAULT]: SourceCredentialVaultPort;
+  readonly [MONITORING_SOURCE_CREDENTIAL_REFRESHER]: SourceCredentialRefreshPort;
+  readonly [MONITORING_SOURCE_CREDENTIAL_RESOLVER]: SourceCredentialResolverPort;
 };
 
 export const monitoringPersistenceModeProvider: Provider<MonitoringPersistenceMode> = {

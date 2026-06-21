@@ -205,7 +205,10 @@
         "npm run check:write-api-key-scope"
       ],
       "requiredEnv": [],
-      "optionalEnv": [],
+      "optionalEnv": [
+        "MONITORING_MAX_ENABLED_SOURCES_PER_TOPIC",
+        "MONITORING_MAX_TOPICS_PER_WORKSPACE"
+      ],
       "outputArtifacts": [
         {
           "path": "ops/security/production-auth-matrix.json",

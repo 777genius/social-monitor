@@ -18,6 +18,7 @@ import type {
   SourceFetcherPort,
   SourceItemRepositoryPort,
 } from '../../ports';
+import { SourceFetchError } from '../../ports';
 import type { ExecuteScanCommand } from './execute-scan.command';
 import { ExecuteScanUseCase } from './execute-scan.use-case';
 
@@ -78,6 +79,17 @@ class FixedSourceFetcher implements SourceFetcherPort {
 class FailingSourceFetcher implements SourceFetcherPort {
   async fetch(): Promise<FetchSourceItemsResult> {
     throw new Error('Provider unavailable');
+  }
+}
+
+class ClassifiedFailingSourceFetcher implements SourceFetcherPort {
+  async fetch(): Promise<FetchSourceItemsResult> {
+    throw new SourceFetchError({
+      providerKey: 'reddit',
+      kind: 'auth_failed',
+      retryable: false,
+      message: 'Reddit OAuth token expired',
+    });
   }
 }
 
@@ -422,6 +434,50 @@ describe('ExecuteScanUseCase', () => {
     expect(result.ok).toBe(false);
     expect(failures.retries).toHaveLength(0);
     expect(failures.deadLetters).toHaveLength(1);
+  });
+
+  it('keeps classified provider failure metadata and stops downstream writes', async () => {
+    const repository = new FakeSourceItemRepository();
+    const projection = new FakeFeedProjection();
+    const attempts = new FakeScanAttemptRepository();
+    const cursors = new FakeScanCursorRepository();
+    const reporter = new FakeScanExecutionReporter();
+    const failures = new FakeScanFailureQueue();
+    const useCase = new ExecuteScanUseCase(
+      new ClassifiedFailingSourceFetcher(),
+      repository,
+      projection,
+      attempts,
+      cursors,
+      reporter,
+      failures,
+      new FakeScanLease(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute(makeExecuteScanCommand({
+      providerKey: 'reddit',
+      scanJobId: 'scan-job-auth-failed',
+    }));
+
+    expect(result.ok).toBe(false);
+    const failureReason = (await attempts.findByScanJob({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-auth-failed',
+    }))?.toSnapshot().failureReason;
+    expect(failureReason).toContain('provider=reddit');
+    expect(failureReason).toContain('kind=auth_failed');
+    expect(failureReason).toContain('retryable=false');
+    expect(failureReason).toContain('message=Reddit OAuth token expired');
+    expect((reporter.failed[0] as { readonly failureReason?: string }).failureReason).toBe(failureReason);
+    expect(failures.retries).toHaveLength(0);
+    expect(failures.deadLetters).toHaveLength(1);
+    expect((failures.deadLetters[0] as { readonly failureReason?: string }).failureReason).toBe(failureReason);
+    expect(repository.all()).toHaveLength(0);
+    expect(projection.commands).toHaveLength(0);
+    expect(cursors.saved).toHaveLength(0);
   });
 
   it('rejects execution before provider fetch when scan job is already leased', async () => {

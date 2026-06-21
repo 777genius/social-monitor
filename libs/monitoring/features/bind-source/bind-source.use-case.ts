@@ -19,6 +19,7 @@ import type {
   SourceCatalogPort,
   TopicRepositoryPort,
 } from '../../ports';
+import type { MonitoringCapacityLimits } from '../shared/monitoring-capacity-limits';
 import type { BindSourceCommand } from './bind-source.command';
 import type { BindSourceResult } from './bind-source.result';
 
@@ -34,6 +35,7 @@ export class BindSourceUseCase {
     private readonly configProtector: SourceBindingConfigProtectorPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
+    private readonly capacityLimits: MonitoringCapacityLimits = {},
   ) {}
 
   async execute(command: BindSourceCommand): Promise<Result<BindSourceResult, BindSourceFailure>> {
@@ -92,6 +94,23 @@ export class BindSourceUseCase {
         value: result,
       });
       return ok(result);
+    }
+
+    const maxEnabledSourcesPerTopic = this.capacityLimits.maxEnabledSourcesPerTopic;
+    if (maxEnabledSourcesPerTopic !== undefined) {
+      const currentBindings = await this.bindings.listByTopic({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        topicId: command.topicId,
+        limit: 100,
+      });
+      const enabledCount = currentBindings.sourceBindings.filter((binding) =>
+        binding.toSnapshot().status === 'enabled').length;
+      if (enabledCount >= maxEnabledSourcesPerTopic) {
+        return err(new DomainError('operation.quota_exceeded', 'Topic source binding capacity limit reached', {
+          limit: String(maxEnabledSourcesPerTopic),
+        }));
+      }
     }
 
     const protectedConfig = await this.configProtector.protect(command.config);

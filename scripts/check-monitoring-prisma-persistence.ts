@@ -10,12 +10,14 @@ import {
 
 import { resolveIngestionScanReporterMode } from '../apps/ingestion-worker/src/ingestion-worker-provider-tokens';
 import { PrismaIdempotencyAdapter } from '../libs/monitoring/adapters/idempotency/prisma/prisma-idempotency.adapter';
-import { ScanJob, ScanPolicy, SourceBinding, Topic } from '../libs/monitoring/domain';
+import { ScanJob, ScanPolicy, SourceBinding, SourceCredential, Topic } from '../libs/monitoring/domain';
 import { PrismaScanJobRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-job.repository';
 import { PrismaScanPolicyRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-policy.repository';
 import { PrismaSourceBindingRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-source-binding.repository';
+import { PrismaSourceCredentialRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-source-credential.repository';
 import { PrismaTopicRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-topic.repository';
 import { PrismaMonitoringOutboxAdapter } from '../libs/monitoring/adapters/persistence/prisma/prisma-monitoring-outbox.adapter';
+import { PrismaSourceCredentialVault } from '../libs/monitoring/adapters/secrets/prisma/prisma-source-credential.vault';
 import {
   resolveMonitoringPersistenceMode,
   resolveMonitoringScanQueueMode,
@@ -29,6 +31,8 @@ import type {
   PrismaScanPolicyRecord,
   PrismaSourceBindingRecord,
   PrismaSourceCatalogEntryRecord,
+  PrismaSourceCredentialRecord,
+  PrismaSourceCredentialSecretRecord,
   PrismaTopicRecord,
 } from '../libs/monitoring/adapters/persistence/prisma/prisma-monitoring-records';
 
@@ -102,6 +106,8 @@ async function main(): Promise<void> {
   const policies = new PrismaScanPolicyRepository(prisma);
   const scanJobs = new PrismaScanJobRepository(prisma);
   const outbox = new PrismaMonitoringOutboxAdapter(prisma);
+  const sourceCredentials = new PrismaSourceCredentialRepository(prisma);
+  const sourceCredentialVault = new PrismaSourceCredentialVault(prisma, Buffer.alloc(32, 3));
   const ids = new SequenceIdGenerator();
   const idempotency = new PrismaIdempotencyAdapter(prisma, ids);
 
@@ -315,6 +321,58 @@ async function main(): Promise<void> {
   assert(storedIdempotency.responseStatus === 200, 'idempotency records must persist response status');
   assert(storedIdempotency.expiresAt === null, 'monitoring idempotency records must not expire implicitly');
 
+  await sourceCredentialVault.put({
+    secretKeyId: 'source-credential-secret-prisma-smoke',
+    secret: {
+      accessToken: 'prisma-source-access-token',
+      refreshToken: 'prisma-source-refresh-token',
+    },
+  });
+  await sourceCredentials.save(SourceCredential.create({
+    id: '00000000-0000-7000-8000-000000000070',
+    tenantId: tenant,
+    workspaceId: workspace,
+    providerKey: 'reddit',
+    kind: 'oauth2',
+    secretKeyId: 'source-credential-secret-prisma-smoke',
+    secretPreview: 'smoke-token',
+    scopes: ['identity', 'read'],
+    expiresAt: new Date('2026-06-06T01:00:00.000Z'),
+    createdAt: clock.now(),
+  }));
+
+  const foundSourceCredential = await sourceCredentials.findById({
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceCredentialId: '00000000-0000-7000-8000-000000000070',
+  });
+  assert(foundSourceCredential?.toSnapshot().providerKey === 'reddit', 'source credential metadata must persist');
+  assert(
+    foundSourceCredential.toSnapshot().expiresAt?.toISOString() === '2026-06-06T01:00:00.000Z',
+    'source credential expiration must persist',
+  );
+
+  const listedSourceCredentials = await sourceCredentials.list({
+    tenantId: tenant,
+    workspaceId: workspace,
+    providerKey: 'reddit',
+    limit: 10,
+  });
+  assert(listedSourceCredentials.sourceCredentials.length === 1, 'source credential list must filter by provider');
+
+  const sourceCredentialSecret = await sourceCredentialVault.get({
+    secretKeyId: 'source-credential-secret-prisma-smoke',
+  });
+  assert(
+    sourceCredentialSecret?.accessToken === 'prisma-source-access-token',
+    'source credential secret must decrypt from Prisma vault',
+  );
+  await sourceCredentialVault.delete({ secretKeyId: 'source-credential-secret-prisma-smoke' });
+  assert(
+    await sourceCredentialVault.get({ secretKeyId: 'source-credential-secret-prisma-smoke' }) === null,
+    'source credential secret delete must remove encrypted payload',
+  );
+
   console.log('Monitoring Prisma persistence smoke OK');
 }
 
@@ -323,6 +381,8 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   private readonly sourceCatalogEntriesById = new Map<string, PrismaSourceCatalogEntryRecord>();
   private readonly topics = new Map<string, PrismaTopicRecord>();
   private readonly sourceBindings = new Map<string, PrismaSourceBindingRecord>();
+  private readonly sourceCredentials = new Map<string, PrismaSourceCredentialRecord>();
+  private readonly sourceCredentialSecrets = new Map<string, PrismaSourceCredentialSecretRecord>();
   private readonly scanPolicies = new Map<string, PrismaScanPolicyRecord>();
   private readonly scanJobs = new Map<string, PrismaScanJobRecord>();
   private readonly scanAttempts = new Map<string, PrismaScanAttemptRecord>();
@@ -411,6 +471,80 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         ))
         .sort(compareRecordsByCreationDesc)
         .slice(args.skip, args.skip + args.take),
+  };
+
+  readonly sourceCredential: PrismaMonitoringClient['sourceCredential'] = {
+    upsert: async (args) => {
+      const existing = this.sourceCredentials.get(args.where.id);
+      const record: PrismaSourceCredentialRecord = {
+        id: args.where.id,
+        tenantId: existing?.tenantId ?? args.create.tenantId,
+        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
+        providerKey: existing?.providerKey ?? args.create.providerKey,
+        kind: existing === undefined ? args.create.kind : args.update.kind,
+        status: existing === undefined ? args.create.status : args.update.status,
+        secretKeyId: existing === undefined ? args.create.secretKeyId : args.update.secretKeyId,
+        secretPreview: existing === undefined ? args.create.secretPreview : args.update.secretPreview,
+        scopes: existing === undefined ? args.create.scopes : args.update.scopes,
+        expiresAt: existing === undefined ? args.create.expiresAt ?? null : args.update.expiresAt ?? null,
+        createdAt: existing?.createdAt ?? args.create.createdAt,
+        updatedAt: existing === undefined ? args.create.updatedAt : clock.now(),
+        rotatedAt: existing === undefined ? args.create.rotatedAt ?? null : args.update.rotatedAt ?? null,
+        revokedAt: existing === undefined ? args.create.revokedAt ?? null : args.update.revokedAt ?? null,
+      };
+      this.sourceCredentials.set(record.id, record);
+
+      return record;
+    },
+    findFirst: async (args) =>
+      [...this.sourceCredentials.values()].find((record) => (
+        record.tenantId === args.where.tenantId &&
+        record.workspaceId === args.where.workspaceId &&
+        (args.where.id === undefined || record.id === args.where.id) &&
+        (args.where.providerKey === undefined || record.providerKey === args.where.providerKey)
+      )) ?? null,
+    findMany: async (args) =>
+      [...this.sourceCredentials.values()]
+        .filter((record) => (
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          (args.where.providerKey === undefined || record.providerKey === args.where.providerKey)
+        ))
+        .sort((left, right) => {
+          const updatedDiff = right.updatedAt.getTime() - left.updatedAt.getTime();
+
+          return updatedDiff === 0 ? right.id.localeCompare(left.id) : updatedDiff;
+        })
+        .slice(args.skip, args.skip + args.take),
+  };
+
+  readonly sourceCredentialSecret: PrismaMonitoringClient['sourceCredentialSecret'] = {
+    upsert: async (args) => {
+      const existing = this.sourceCredentialSecrets.get(args.where.id);
+      const record: PrismaSourceCredentialSecretRecord = {
+        id: args.where.id,
+        algorithm: args.update.algorithm,
+        ciphertext: args.update.ciphertext,
+        iv: args.update.iv,
+        authTag: args.update.authTag,
+        createdAt: existing?.createdAt ?? clock.now(),
+        updatedAt: clock.now(),
+      };
+      this.sourceCredentialSecrets.set(record.id, record);
+
+      return record;
+    },
+    findUnique: async (args) => this.sourceCredentialSecrets.get(args.where.id) ?? null,
+    delete: async (args) => {
+      const existing = this.sourceCredentialSecrets.get(args.where.id);
+      if (existing === undefined) {
+        throw new Error('No SourceCredentialSecret found');
+      }
+
+      this.sourceCredentialSecrets.delete(args.where.id);
+
+      return existing;
+    },
   };
 
   readonly scanPolicy: PrismaMonitoringClient['scanPolicy'] = {

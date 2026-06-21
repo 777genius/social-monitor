@@ -10,6 +10,9 @@ const publicRestControllers = new Set([
 
 const productionLineBudgets = new Map([
   ['libs/delivery/interfaces/rest/delivery-rest.module.ts', 600],
+  ['libs/monitoring/interfaces/rest/monitoring-rest.module.ts', 700],
+  ['libs/summary/interfaces/rest/summary-rest.module.ts', 600],
+  ['libs/summary/adapters/model/openai-responses-summary-model.adapter.ts', 1000],
 ]);
 
 const directIdentityGenerationAllowedFiles = new Set([

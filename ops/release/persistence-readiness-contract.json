@@ -17,10 +17,12 @@
       "moduleFile": "libs/monitoring/interfaces/rest/monitoring-rest.module.ts",
       "context": "monitoring-api",
       "owner": "monitoring-owner",
-      "inMemoryStateAdapters": [
-        "InMemoryTopicRepository",
-        "InMemorySourceBindingRepository",
-        "InMemoryScanPolicyRepository",
+    "inMemoryStateAdapters": [
+      "InMemoryTopicRepository",
+      "InMemorySourceBindingRepository",
+      "InMemorySourceCredentialRepository",
+      "InMemorySourceCredentialSecretVault",
+      "InMemoryScanPolicyRepository",
         "InMemoryScanJobRepository",
         "InMemoryQueuePublisher",
         "InMemoryScanQueueAdapter",

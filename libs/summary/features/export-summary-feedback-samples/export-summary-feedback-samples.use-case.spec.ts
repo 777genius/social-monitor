@@ -179,6 +179,7 @@ function createFeedback(overrides: {
     readonly citationId?: string;
     readonly feedItemId?: string;
     readonly sourceItemId?: string;
+    readonly providerKey?: string;
   };
   readonly createdAt?: Date;
 }): SummaryFeedback {
@@ -199,6 +200,7 @@ function createFeedback(overrides: {
       citationId: `citation:${overrides.id}`,
       feedItemId: `feed:${overrides.id}`,
       sourceItemId: `source:${overrides.id}`,
+      providerKey: 'github',
     },
     triageOwner: 'summary-owner',
     eligibleForEvalFixture: true,

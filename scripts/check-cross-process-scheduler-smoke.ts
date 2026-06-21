@@ -183,6 +183,18 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
       )) ?? null,
   };
 
+  readonly sourceCredential: PrismaMonitoringClient['sourceCredential'] = {
+    upsert: async () => unsupported('sourceCredential.upsert'),
+    findFirst: async () => unsupported('sourceCredential.findFirst'),
+    findMany: async () => unsupported('sourceCredential.findMany'),
+  };
+
+  readonly sourceCredentialSecret: PrismaMonitoringClient['sourceCredentialSecret'] = {
+    upsert: async () => unsupported('sourceCredentialSecret.upsert'),
+    findUnique: async () => unsupported('sourceCredentialSecret.findUnique'),
+    delete: async () => unsupported('sourceCredentialSecret.delete'),
+  };
+
   readonly sourceBinding: PrismaMonitoringClient['sourceBinding'] = {
     upsert: async (args) => {
       const existing = this.sourceBindings.get(args.where.id);

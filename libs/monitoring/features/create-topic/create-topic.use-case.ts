@@ -3,14 +3,16 @@ import {
   type IdGenerator,
   causationId,
   correlationId,
+  DomainError,
   eventId,
+  err,
   ok,
   type Result,
-  type DomainError,
 } from '@social-monitor/shared-kernel';
 
 import { Topic, type TopicCreatedEvent } from '../../domain';
 import type { IdempotencyPort, OutboxPort, TopicRepositoryPort } from '../../ports';
+import type { MonitoringCapacityLimits } from '../shared/monitoring-capacity-limits';
 import type { CreateTopicCommand } from './create-topic.command';
 import type { CreateTopicResult } from './create-topic.result';
 
@@ -23,6 +25,7 @@ export class CreateTopicUseCase {
     private readonly idempotency: IdempotencyPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
+    private readonly capacityLimits: MonitoringCapacityLimits = {},
   ) {}
 
   async execute(command: CreateTopicCommand): Promise<Result<CreateTopicResult, CreateTopicFailure>> {
@@ -54,6 +57,20 @@ export class CreateTopicUseCase {
         value: result,
       });
       return ok(result);
+    }
+
+    const maxTopicsPerWorkspace = this.capacityLimits.maxTopicsPerWorkspace;
+    if (maxTopicsPerWorkspace !== undefined) {
+      const currentTopics = await this.topics.list({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        limit: maxTopicsPerWorkspace,
+      });
+      if (currentTopics.topics.length >= maxTopicsPerWorkspace) {
+        return err(new DomainError('operation.quota_exceeded', 'Workspace topic capacity limit reached', {
+          limit: String(maxTopicsPerWorkspace),
+        }));
+      }
     }
 
     const topic = Topic.create({

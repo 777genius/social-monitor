@@ -6,6 +6,9 @@ import type {
   PrismaScanPolicyRecord,
   PrismaSourceBindingRecord,
   PrismaSourceCatalogEntryRecord,
+  PrismaSourceCredentialRecord,
+  PrismaSourceCredentialSecretRecord,
+  PrismaSourceCredentialSecretWriteData,
   PrismaTopicRecord,
 } from './prisma-monitoring-records';
 
@@ -96,6 +99,71 @@ export type PrismaMonitoringClient = {
       readonly skip: number;
       readonly take: number;
     }): Promise<readonly PrismaSourceBindingRecord[]>;
+  };
+  readonly sourceCredential: {
+    upsert(args: {
+      readonly where: { readonly id: string };
+      readonly update: {
+        readonly kind: PrismaSourceCredentialRecord['kind'];
+        readonly status: PrismaSourceCredentialRecord['status'];
+        readonly secretKeyId: string;
+        readonly secretPreview: string;
+        readonly scopes: readonly string[];
+        readonly expiresAt?: Date | null;
+        readonly rotatedAt?: Date | null;
+        readonly revokedAt?: Date | null;
+      };
+      readonly create: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly providerKey: string;
+        readonly kind: PrismaSourceCredentialRecord['kind'];
+        readonly status: PrismaSourceCredentialRecord['status'];
+        readonly secretKeyId: string;
+        readonly secretPreview: string;
+        readonly scopes: readonly string[];
+        readonly expiresAt?: Date | null;
+        readonly rotatedAt?: Date | null;
+        readonly revokedAt?: Date | null;
+        readonly createdAt: Date;
+        readonly updatedAt: Date;
+      };
+    }): Promise<PrismaSourceCredentialRecord>;
+    findFirst(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly id?: string;
+        readonly providerKey?: string;
+      };
+    }): Promise<PrismaSourceCredentialRecord | null>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly providerKey?: string;
+      };
+      readonly orderBy: readonly [
+        { readonly updatedAt: 'desc' },
+        { readonly id: 'desc' },
+      ];
+      readonly skip: number;
+      readonly take: number;
+    }): Promise<readonly PrismaSourceCredentialRecord[]>;
+  };
+  readonly sourceCredentialSecret: {
+    upsert(args: {
+      readonly where: { readonly id: string };
+      readonly update: PrismaSourceCredentialSecretWriteData;
+      readonly create: { readonly id: string } & PrismaSourceCredentialSecretWriteData;
+    }): Promise<PrismaSourceCredentialSecretRecord>;
+    findUnique(args: {
+      readonly where: { readonly id: string };
+    }): Promise<PrismaSourceCredentialSecretRecord | null>;
+    delete(args: {
+      readonly where: { readonly id: string };
+    }): Promise<PrismaSourceCredentialSecretRecord>;
   };
   readonly scanPolicy: {
     upsert(args: {

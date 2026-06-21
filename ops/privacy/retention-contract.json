@@ -94,6 +94,26 @@
       "purgeTrigger": "source_binding_deleted_or_workspace_offboarding_completed"
     },
     {
+      "table": "source_credentials",
+      "dataClass": "source_credential_metadata",
+      "owner": "monitoring-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_credential_revocation_or_workspace_offboarding",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "source_credential_revoked_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "source_credential_secrets",
+      "dataClass": "encrypted_secret_vault",
+      "owner": "security-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_source_credential_deleted",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "source_credential_revoked_or_workspace_offboarding_completed"
+    },
+    {
       "table": "source_targets",
       "dataClass": "user_source_configuration",
       "owner": "monitoring-owner",

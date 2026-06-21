@@ -89,6 +89,7 @@ validatePolicyAndDecision();
 validateGoPrerequisites();
 validateLoadCostGuardrails();
 requireWiring();
+requireRuntimeCapacityEnforcement();
 
 if (violations.length > 0) {
   console.error(violations.join('\n'));
@@ -334,5 +335,61 @@ function requireWiring() {
   }
   if (!baselineArtifacts.has(contractPath)) {
     violations.push(`${baselinePath}: trackedArtifacts must include ${contractPath}`);
+  }
+}
+
+function requireRuntimeCapacityEnforcement() {
+  const monitoringModulePath = 'libs/monitoring/interfaces/rest/monitoring-rest.module.ts';
+  const createTopicPath = 'libs/monitoring/features/create-topic/create-topic.use-case.ts';
+  const bindSourcePath = 'libs/monitoring/features/bind-source/bind-source.use-case.ts';
+  const capacityLimitsPath = 'libs/monitoring/features/shared/monitoring-capacity-limits.ts';
+  const monitoringModule = readFileSync(monitoringModulePath, 'utf8');
+  const createTopic = readFileSync(createTopicPath, 'utf8');
+  const bindSource = readFileSync(bindSourcePath, 'utf8');
+  const capacityLimits = readFileSync(capacityLimitsPath, 'utf8');
+  const envExample = readFileSync('ops/release/external-beta-evidence.env.example', 'utf8');
+
+  for (const marker of [
+    'MONITORING_MAX_TOPICS_PER_WORKSPACE',
+    'MONITORING_MAX_ENABLED_SOURCES_PER_TOPIC',
+    'resolveMonitoringCapacityLimits(process.env)',
+    'defaultMonitoringCapacityLimits',
+  ]) {
+    if (!monitoringModule.includes(marker)) {
+      violations.push(`${monitoringModulePath}: runtime capacity enforcement missing "${marker}"`);
+    }
+    if (marker.startsWith('MONITORING_') && !envExample.includes(`${marker}=`)) {
+      violations.push(`ops/release/external-beta-evidence.env.example: missing "${marker}"`);
+    }
+  }
+
+  for (const [field, expectedValue] of [
+    ['maxTopicsPerWorkspace', contract.limits.maxTopicsPerWorkspace],
+    ['maxEnabledSourcesPerTopic', contract.limits.maxEnabledSourcesPerTopic],
+  ]) {
+    if (!capacityLimits.includes(`${field}: ${expectedValue}`)) {
+      violations.push(`${capacityLimitsPath}: ${field} must default to capacity envelope value ${expectedValue}`);
+    }
+  }
+
+  for (const marker of [
+    'this.capacityLimits.maxTopicsPerWorkspace',
+    'operation.quota_exceeded',
+    'Workspace topic capacity limit reached',
+  ]) {
+    if (!createTopic.includes(marker)) {
+      violations.push(`${createTopicPath}: topic capacity enforcement missing "${marker}"`);
+    }
+  }
+
+  for (const marker of [
+    'this.capacityLimits.maxEnabledSourcesPerTopic',
+    "binding.toSnapshot().status === 'enabled'",
+    'operation.quota_exceeded',
+    'Topic source binding capacity limit reached',
+  ]) {
+    if (!bindSource.includes(marker)) {
+      violations.push(`${bindSourcePath}: source binding capacity enforcement missing "${marker}"`);
+    }
   }
 }

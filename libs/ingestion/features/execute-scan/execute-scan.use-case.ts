@@ -152,18 +152,18 @@ export class ExecuteScanUseCase {
         projected: projectionResult.projected,
       });
     } catch (error) {
+      const safeFailureReason = formatScanFailureReason(error);
       attempt = attempt.fail({
         finishedAt: this.clock.now(),
-        failureReason: error instanceof Error ? error.message : 'Unknown scan execution failure',
+        failureReason: safeFailureReason,
       });
       await this.scanAttempts.save(attempt);
-      const failureReason = attempt.toSnapshot().failureReason ?? 'Unknown scan execution failure';
       await this.scanExecutionReporter.reportFailed({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         scanJobId: command.scanJobId,
         completedAt: this.clock.now(),
-        failureReason,
+        failureReason: safeFailureReason,
       });
       const failedCommand = {
         tenantId: command.tenantId,
@@ -178,7 +178,7 @@ export class ExecuteScanUseCase {
         causationId: command.causationId,
         attemptNumber,
         retryBudget,
-        failureReason,
+        failureReason: safeFailureReason,
       };
 
       if (isRetryableScanFailure(error) && attemptNumber < retryBudget) {
@@ -199,3 +199,16 @@ export class ExecuteScanUseCase {
 
 const isRetryableScanFailure = (error: unknown): boolean =>
   error instanceof SourceFetchError ? error.retryable : true;
+
+const formatScanFailureReason = (error: unknown): string => {
+  if (error instanceof SourceFetchError) {
+    return [
+      `provider=${error.providerKey}`,
+      `kind=${error.kind}`,
+      `retryable=${String(error.retryable)}`,
+      `message=${error.message}`,
+    ].join(' ');
+  }
+
+  return error instanceof Error ? error.message : 'Unknown scan execution failure';
+};

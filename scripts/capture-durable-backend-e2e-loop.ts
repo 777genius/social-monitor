@@ -253,9 +253,17 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
       runId: runtimeIds.runId,
     }),
   ));
+  const scheduledTopic = await requestJson<JsonRecord>('POST', '/topics', {
+    headers: withIdempotency(headers, scheduledTopicIdempotencyKey(runtimeIds.runId)),
+    body: {
+      name: `Durable Scheduled Backend Loop ${runtimeIds.runId}`,
+      query: 'backend release notes reliability newest',
+    },
+  });
+  const scheduledTopicId = readString(scheduledTopic, 'topicId');
   const scheduledScan = await createScheduledSourceBindingAndWait({
     headers,
-    topicId,
+    topicId: scheduledTopicId,
     target: scheduledScanTarget(),
     runId: runtimeIds.runId,
   });
@@ -509,6 +517,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
     wrongWorkspaceStatus,
     idempotencyKeys: [
       topicKey,
+      scheduledTopicIdempotencyKey(runtimeIds.runId),
       scheduledBindingIdempotencyKey(runtimeIds.runId),
       scheduledPolicyIdempotencyKey(runtimeIds.runId),
       scheduledScan.scheduledIdempotencyKey,
@@ -1029,6 +1038,19 @@ function withIdempotency(headers: Readonly<Record<string, string>>, key: string)
 
 function durableScanTargets(): readonly DurableScanTarget[] {
   const githubAccessToken = emptyToUndefined(process.env.GITHUB_ACCESS_TOKEN);
+  const redditTarget = hasRedditAppOnlyCredentials()
+    ? {
+        providerKey: 'reddit' as const,
+        config: {
+          mode: 'listing',
+          subreddit: 'programming',
+          listing: 'hot',
+          maxItems: 2,
+          userAgent: process.env.REDDIT_APP_USER_AGENT ?? process.env.REDDIT_USER_AGENT ??
+            'social-monitor-mvp/0.1 reddit-app-only',
+        },
+      }
+    : undefined;
 
   return [
     {
@@ -1048,25 +1070,13 @@ function durableScanTargets(): readonly DurableScanTarget[] {
         ...(githubAccessToken === undefined ? {} : { accessToken: githubAccessToken }),
       },
     },
-    {
+    redditTarget ?? {
       providerKey: 'rss',
       config: {
         feedUrl: 'https://hnrss.org/frontpage',
         maxItems: 2,
       },
     },
-    ...hasRedditAppOnlyCredentials()
-      ? [{
-          providerKey: 'reddit' as const,
-          config: {
-            mode: 'listing',
-            subreddit: 'programming',
-            listing: 'hot',
-            maxItems: 2,
-            userAgent: process.env.REDDIT_APP_USER_AGENT ?? process.env.REDDIT_USER_AGENT ?? 'social-monitor-mvp/0.1 reddit-app-only',
-          },
-        }]
-      : [],
   ];
 }
 
@@ -1078,6 +1088,10 @@ function scheduledScanTarget(): DurableScanTarget {
       maxItems: 2,
     },
   };
+}
+
+function scheduledTopicIdempotencyKey(runId: string): string {
+  return `scheduled-topic-${runId}`;
 }
 
 function hasRedditAppOnlyCredentials(): boolean {

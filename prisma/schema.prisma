@@ -28,6 +28,19 @@ enum SourceBindingStatus {
   FAILED
 }
 
+enum SourceCredentialKind {
+  OAUTH2
+  API_TOKEN
+  BEARER_TOKEN
+  APP_OAUTH
+}
+
+enum SourceCredentialStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
 enum ScanJobStatus {
   REQUESTED
   ENQUEUED
@@ -257,6 +270,39 @@ model SourceBinding {
 
   @@index([tenantId, workspaceId, topicId, status])
   @@map("source_bindings")
+}
+
+model SourceCredential {
+  id            String                 @id @db.Uuid
+  tenantId      String                 @map("tenant_id") @db.Uuid
+  workspaceId   String                 @map("workspace_id") @db.Uuid
+  providerKey   String                 @map("provider_key")
+  kind          SourceCredentialKind
+  status        SourceCredentialStatus @default(ACTIVE)
+  secretKeyId   String                 @unique @map("secret_key_id")
+  secretPreview String                 @map("secret_preview")
+  scopes        String[]
+  expiresAt     DateTime?              @map("expires_at") @db.Timestamptz(6)
+  rotatedAt     DateTime?              @map("rotated_at") @db.Timestamptz(6)
+  revokedAt     DateTime?              @map("revoked_at") @db.Timestamptz(6)
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, providerKey, status])
+  @@index([tenantId, workspaceId, updatedAt])
+  @@map("source_credentials")
+}
+
+model SourceCredentialSecret {
+  id         String   @id
+  algorithm  String
+  ciphertext String
+  iv         String
+  authTag    String   @map("auth_tag")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("source_credential_secrets")
 }
 
 model ScanPolicy {

@@ -303,4 +303,53 @@ describe('BindSourceUseCase', () => {
       providerKey: 'rss',
     })).resolves.toBeNull();
   });
+
+  it('rejects new source bindings after enabled source capacity limit is reached', async () => {
+    const topics = new FakeTopics();
+    topics.add(makeTopic());
+    const bindings = new FakeBindings();
+    const useCase = new BindSourceUseCase(
+      topics,
+      bindings,
+      new FakeCatalog({
+        providerKey: 'source-1',
+        version: 1,
+        productionSafe: true,
+        supportsCursor: true,
+      }),
+      new FakeOutbox(),
+      new FakeIdempotency(),
+      new FakeConfigProtector(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+      { maxEnabledSourcesPerTopic: 1 },
+    );
+
+    const first = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      providerKey: 'source-1',
+      config: { query: 'openai monitoring' },
+      idempotencyKey: 'bind-1',
+      correlationId: 'correlation-1',
+    });
+    const second = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      providerKey: 'source-2',
+      config: { query: 'postgres rabbitmq' },
+      idempotencyKey: 'bind-2',
+      correlationId: 'correlation-2',
+    });
+
+    expect(first.ok).toBe(true);
+    expect(second).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'operation.quota_exceeded',
+      }),
+    }));
+  });
 });

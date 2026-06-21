@@ -19,6 +19,7 @@
     "scan_leases",
     "scan_policies",
     "source_bindings",
+    "source_credentials",
     "source_items",
     "summary_artifacts",
     "summary_feedback",
@@ -70,6 +71,10 @@
     {
       "table": "source_catalog_entries",
       "reason": "Source catalog metadata is shared reference data."
+    },
+    {
+      "table": "source_credential_secrets",
+      "reason": "Encrypted source credential vault is addressed through source credential secret_key_id and never queried directly by tenant workloads."
     },
     {
       "table": "tenants",

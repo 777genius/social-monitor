@@ -9,10 +9,12 @@ import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest
 import {
   MONITORING_CONFIG_PROTECTOR,
   MONITORING_SOURCE_BINDING_REPOSITORY,
+  MONITORING_SOURCE_CREDENTIAL_RESOLVER,
 } from '@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens';
 import type {
   SourceBindingConfigProtectorPort,
   SourceBindingRepositoryPort,
+  SourceCredentialResolverPort,
 } from '@social-monitor/monitoring/ports';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
@@ -215,8 +217,13 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
       useFactory: (
         sourceBindings: SourceBindingRepositoryPort,
         configProtector: SourceBindingConfigProtectorPort,
-      ) => new MonitoringSourceConfigReaderAdapter(sourceBindings, configProtector),
-      inject: [MONITORING_SOURCE_BINDING_REPOSITORY, MONITORING_CONFIG_PROTECTOR],
+        sourceCredentials: SourceCredentialResolverPort,
+      ) => new MonitoringSourceConfigReaderAdapter(sourceBindings, configProtector, sourceCredentials),
+      inject: [
+        MONITORING_SOURCE_BINDING_REPOSITORY,
+        MONITORING_CONFIG_PROTECTOR,
+        MONITORING_SOURCE_CREDENTIAL_RESOLVER,
+      ],
     },
     {
       provide: CircuitBreakerSourceFetcherAdapter,

@@ -130,4 +130,40 @@ describe('CreateTopicUseCase', () => {
     expect(first.ok && second.ok && first.value.topicId).toBe(second.ok && second.value.topicId);
     expect(second.ok && second.value.created).toBe(false);
   });
+
+  it('rejects new topics after workspace capacity limit is reached', async () => {
+    const useCase = new CreateTopicUseCase(
+      new FakeTopicRepository(),
+      new FakeOutbox(),
+      new FakeIdempotency(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+      { maxTopicsPerWorkspace: 1 },
+    );
+
+    const first = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      name: 'AI Monitoring',
+      query: 'openai monitoring',
+      idempotencyKey: 'request-1',
+      correlationId: 'correlation-1',
+    });
+    const second = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      name: 'Infra Monitoring',
+      query: 'postgres rabbitmq',
+      idempotencyKey: 'request-2',
+      correlationId: 'correlation-2',
+    });
+
+    expect(first.ok).toBe(true);
+    expect(second).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'operation.quota_exceeded',
+      }),
+    }));
+  });
 });

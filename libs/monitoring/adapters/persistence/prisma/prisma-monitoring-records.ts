@@ -9,6 +9,10 @@ import {
   SourceBinding,
   type SourceBindingProps,
   type SourceBindingStatus,
+  SourceCredential,
+  type SourceCredentialKind,
+  type SourceCredentialProps,
+  type SourceCredentialStatus,
   Topic,
   type TopicProps,
 } from '../../../domain';
@@ -37,6 +41,40 @@ export type PrismaSourceBindingRecord = {
 export type PrismaSourceCatalogEntryRecord = {
   readonly id: string;
   readonly providerKey: string;
+};
+
+export type PrismaSourceCredentialRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly providerKey: string;
+  readonly kind: 'OAUTH2' | 'API_TOKEN' | 'BEARER_TOKEN' | 'APP_OAUTH';
+  readonly status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+  readonly secretKeyId: string;
+  readonly secretPreview: string;
+  readonly scopes: readonly string[];
+  readonly expiresAt: Date | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+  readonly rotatedAt: Date | null;
+  readonly revokedAt: Date | null;
+};
+
+export type PrismaSourceCredentialSecretRecord = {
+  readonly id: string;
+  readonly algorithm: string;
+  readonly ciphertext: string;
+  readonly iv: string;
+  readonly authTag: string;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+};
+
+export type PrismaSourceCredentialSecretWriteData = {
+  readonly algorithm: string;
+  readonly ciphertext: string;
+  readonly iv: string;
+  readonly authTag: string;
 };
 
 export type PrismaScanPolicyRecord = {
@@ -147,6 +185,24 @@ export const scanPolicyFromPrisma = (record: PrismaScanPolicyRecord): ScanPolicy
     createdAt: record.createdAt,
   } satisfies ScanPolicyProps);
 
+export const sourceCredentialFromPrisma = (record: PrismaSourceCredentialRecord): SourceCredential =>
+  SourceCredential.rehydrate({
+    id: record.id,
+    tenantId: tenantId(record.tenantId),
+    workspaceId: workspaceId(record.workspaceId),
+    providerKey: record.providerKey,
+    kind: sourceCredentialKindFromPrisma(record.kind),
+    status: sourceCredentialStatusFromPrisma(record.status),
+    secretKeyId: record.secretKeyId,
+    secretPreview: record.secretPreview,
+    scopes: record.scopes,
+    expiresAt: record.expiresAt ?? undefined,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    rotatedAt: record.rotatedAt ?? undefined,
+    revokedAt: record.revokedAt ?? undefined,
+  } satisfies SourceCredentialProps);
+
 export const scanJobFromPrisma = (record: PrismaScanJobRecord): ScanJob =>
   ScanJob.rehydrate({
     id: record.id,
@@ -183,6 +239,35 @@ export const scanJobStatusToPrisma = (
   return 'FAILED';
 };
 
+export const sourceCredentialKindToPrisma = (
+  kind: SourceCredentialKind,
+): PrismaSourceCredentialRecord['kind'] => {
+  if (kind === 'oauth2') {
+    return 'OAUTH2';
+  }
+  if (kind === 'api_token') {
+    return 'API_TOKEN';
+  }
+  if (kind === 'bearer_token') {
+    return 'BEARER_TOKEN';
+  }
+
+  return 'APP_OAUTH';
+};
+
+export const sourceCredentialStatusToPrisma = (
+  status: SourceCredentialStatus,
+): PrismaSourceCredentialRecord['status'] => {
+  if (status === 'active') {
+    return 'ACTIVE';
+  }
+  if (status === 'revoked') {
+    return 'REVOKED';
+  }
+
+  return 'EXPIRED';
+};
+
 const sourceBindingStatusFromPrisma = (status: PrismaSourceBindingRecord['status']): SourceBindingStatus => {
   if (status === 'ENABLED') {
     return 'enabled';
@@ -193,6 +278,33 @@ const sourceBindingStatusFromPrisma = (status: PrismaSourceBindingRecord['status
   }
 
   throw new Error(`Cannot rehydrate unsupported source binding status "${status}"`);
+};
+
+const sourceCredentialKindFromPrisma = (kind: PrismaSourceCredentialRecord['kind']): SourceCredentialKind => {
+  if (kind === 'OAUTH2') {
+    return 'oauth2';
+  }
+  if (kind === 'API_TOKEN') {
+    return 'api_token';
+  }
+  if (kind === 'BEARER_TOKEN') {
+    return 'bearer_token';
+  }
+
+  return 'app_oauth';
+};
+
+const sourceCredentialStatusFromPrisma = (
+  status: PrismaSourceCredentialRecord['status'],
+): SourceCredentialStatus => {
+  if (status === 'ACTIVE') {
+    return 'active';
+  }
+  if (status === 'REVOKED') {
+    return 'revoked';
+  }
+
+  return 'expired';
 };
 
 const scanJobStatusFromPrisma = (status: PrismaScanJobRecord['status']): ScanJobStatus => {

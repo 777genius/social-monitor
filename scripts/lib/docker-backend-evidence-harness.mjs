@@ -49,6 +49,8 @@ export async function withDockerBackendEvidenceStack(options, callback) {
   const jwksJson = JSON.stringify({ keys: [publicJwk] });
   const sourceConfigEncryptionKey =
     process.env.SOURCE_CONFIG_ENCRYPTION_KEY ?? 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  const sourceCredentialSecretEncryptionKey =
+    process.env.SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY ?? 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
   const webhookSecretEncryptionKey =
     process.env.DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY ?? 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
@@ -57,6 +59,7 @@ export async function withDockerBackendEvidenceStack(options, callback) {
     audience,
     jwksJson,
     sourceConfigEncryptionKey,
+    sourceCredentialSecretEncryptionKey,
     webhookSecretEncryptionKey,
     hostStorageRoot,
   }), 'utf8');
@@ -70,6 +73,7 @@ export async function withDockerBackendEvidenceStack(options, callback) {
     RABBITMQ_MANAGEMENT_PORT: rabbitMqManagementPort,
     REDIS_PORT: redisPort,
     SOURCE_CONFIG_ENCRYPTION_KEY: sourceConfigEncryptionKey,
+    SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY: sourceCredentialSecretEncryptionKey,
     DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY: webhookSecretEncryptionKey,
     COMPOSE_PROJECT_NAME: projectName,
     COMPOSE_FILE: composeFile,
@@ -112,6 +116,7 @@ export async function withDockerBackendEvidenceStack(options, callback) {
       SOCIAL_MONITOR_OIDC_AUDIENCE: audience,
       DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY: webhookSecretEncryptionKey,
       SOURCE_CONFIG_ENCRYPTION_KEY: sourceConfigEncryptionKey,
+      SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY: sourceCredentialSecretEncryptionKey,
       COMPOSE_PROJECT_NAME: projectName,
       COMPOSE_FILE: composeFile,
       API_PORT: apiPort,
@@ -666,6 +671,7 @@ function buildComposeOverride(values) {
     ['SOCIAL_MONITOR_OIDC_AUDIENCE', values.audience],
     ['SOCIAL_MONITOR_OIDC_JWKS_JSON', values.jwksJson],
     ['SOURCE_CONFIG_ENCRYPTION_KEY', values.sourceConfigEncryptionKey],
+    ['SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY', values.sourceCredentialSecretEncryptionKey],
     ['DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY', values.webhookSecretEncryptionKey],
     ['SUBSCRIPTIONS_PERSISTENCE', 'prisma'],
     ['REDDIT_APP_CLIENT_ID', process.env.REDDIT_APP_CLIENT_ID],

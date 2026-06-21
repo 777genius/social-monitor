@@ -11,6 +11,12 @@ CREATE TYPE "TopicStatus" AS ENUM ('ENABLED', 'DISABLED', 'ARCHIVED');
 CREATE TYPE "SourceBindingStatus" AS ENUM ('DRAFT', 'ENABLED', 'PAUSED', 'FAILED');
 
 -- CreateEnum
+CREATE TYPE "SourceCredentialKind" AS ENUM ('OAUTH2', 'API_TOKEN', 'BEARER_TOKEN', 'APP_OAUTH');
+
+-- CreateEnum
+CREATE TYPE "SourceCredentialStatus" AS ENUM ('ACTIVE', 'REVOKED', 'EXPIRED');
+
+-- CreateEnum
 CREATE TYPE "ScanJobStatus" AS ENUM ('REQUESTED', 'ENQUEUED', 'SUCCEEDED', 'FAILED', 'CANCELLED');
 
 -- CreateEnum
@@ -176,6 +182,39 @@ CREATE TABLE "source_bindings" (
     "deleted_at" TIMESTAMPTZ(6),
 
     CONSTRAINT "source_bindings_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "source_credentials" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "provider_key" TEXT NOT NULL,
+    "kind" "SourceCredentialKind" NOT NULL,
+    "status" "SourceCredentialStatus" NOT NULL DEFAULT 'ACTIVE',
+    "secret_key_id" TEXT NOT NULL,
+    "secret_preview" TEXT NOT NULL,
+    "scopes" TEXT[],
+    "expires_at" TIMESTAMPTZ(6),
+    "rotated_at" TIMESTAMPTZ(6),
+    "revoked_at" TIMESTAMPTZ(6),
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "source_credentials_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "source_credential_secrets" (
+    "id" TEXT NOT NULL,
+    "algorithm" TEXT NOT NULL,
+    "ciphertext" TEXT NOT NULL,
+    "iv" TEXT NOT NULL,
+    "auth_tag" TEXT NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "source_credential_secrets_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -782,6 +821,15 @@ CREATE UNIQUE INDEX "capability_profiles_source_id_version_key" ON "capability_p
 
 -- CreateIndex
 CREATE INDEX "source_bindings_tenant_id_workspace_id_topic_id_status_idx" ON "source_bindings"("tenant_id", "workspace_id", "topic_id", "status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "source_credentials_secret_key_id_key" ON "source_credentials"("secret_key_id");
+
+-- CreateIndex
+CREATE INDEX "source_credentials_tenant_id_workspace_id_provider_key_stat_idx" ON "source_credentials"("tenant_id", "workspace_id", "provider_key", "status");
+
+-- CreateIndex
+CREATE INDEX "source_credentials_tenant_id_workspace_id_updated_at_idx" ON "source_credentials"("tenant_id", "workspace_id", "updated_at");
 
 -- CreateIndex
 CREATE INDEX "scan_policies_tenant_id_workspace_id_idx" ON "scan_policies"("tenant_id", "workspace_id");

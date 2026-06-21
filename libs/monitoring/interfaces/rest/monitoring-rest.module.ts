@@ -18,12 +18,14 @@ import { ReserveUsageQuotaUseCase } from '@social-monitor/usage/features/reserve
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
 import { InMemoryIdempotencyAdapter } from '../../adapters/idempotency/in-memory-idempotency.adapter';
+import { OAuth2SourceCredentialRefresher } from '../../adapters/credentials/oauth2-source-credential-refresher';
 import { PrismaIdempotencyAdapter } from '../../adapters/idempotency/prisma/prisma-idempotency.adapter';
 import { InMemoryOutboxAdapter } from '../../adapters/messaging/in-memory-outbox.adapter';
 import { InMemoryScanJobRepository } from '../../adapters/persistence/in-memory-scan-job.repository';
 import { InMemoryScanExecutionAttemptReadModel } from '../../adapters/persistence/in-memory-scan-execution-attempt-read-model';
 import { InMemoryScanPolicyRepository } from '../../adapters/persistence/in-memory-scan-policy.repository';
 import { InMemorySourceBindingRepository } from '../../adapters/persistence/in-memory-source-binding.repository';
+import { InMemorySourceCredentialRepository } from '../../adapters/persistence/in-memory-source-credential.repository';
 import { InMemoryTopicRepository } from '../../adapters/persistence/in-memory-topic.repository';
 import { PrismaMonitoringConnection } from '../../adapters/persistence/prisma/prisma-monitoring-connection';
 import type { PrismaMonitoringClient } from '../../adapters/persistence/prisma/prisma-monitoring-client';
@@ -31,10 +33,16 @@ import { PrismaScanJobRepository } from '../../adapters/persistence/prisma/prism
 import { PrismaScanExecutionAttemptReadModel } from '../../adapters/persistence/prisma/prisma-scan-execution-attempt-read-model';
 import { PrismaScanPolicyRepository } from '../../adapters/persistence/prisma/prisma-scan-policy.repository';
 import { PrismaSourceBindingRepository } from '../../adapters/persistence/prisma/prisma-source-binding.repository';
+import { PrismaSourceCredentialRepository } from '../../adapters/persistence/prisma/prisma-source-credential.repository';
 import { PrismaTopicRepository } from '../../adapters/persistence/prisma/prisma-topic.repository';
 import { PrismaMonitoringOutboxAdapter } from '../../adapters/persistence/prisma/prisma-monitoring-outbox.adapter';
 import { UsageScanRequestQuotaAdapter } from '../../adapters/quota/usage-scan-request-quota.adapter';
 import { InMemoryScanQueueAdapter } from '../../adapters/queue/in-memory-scan-queue.adapter';
+import { InMemorySourceCredentialSecretVault } from '../../adapters/secrets/in-memory-source-credential.vault';
+import {
+  PrismaSourceCredentialVault,
+  resolveSourceCredentialSecretEncryptionKey,
+} from '../../adapters/secrets/prisma/prisma-source-credential.vault';
 import { AesGcmSourceBindingConfigProtector } from '../../adapters/security/aes-gcm-source-binding-config-protector';
 import {
   FakeSourceCatalogAdapter,
@@ -42,16 +50,25 @@ import {
 } from '../../adapters/source-catalog/fake-source-catalog.adapter';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
+import { CreateSourceCredentialUseCase } from '../../features/create-source-credential/create-source-credential.use-case';
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
 import { GetScanPolicyUseCase } from '../../features/get-scan-policy/get-scan-policy.use-case';
 import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
 import { GetSourceBindingHealthUseCase } from '../../features/get-source-binding-health/get-source-binding-health.use-case';
+import { ListSourceCredentialsUseCase } from '../../features/list-source-credentials/list-source-credentials.use-case';
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
 import { ListTopicsUseCase } from '../../features/list-topics/list-topics.use-case';
 import { RecordScanExecutionUseCase } from '../../features/record-scan-execution/record-scan-execution.use-case';
 import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
+import { ResolveSourceCredentialUseCase } from '../../features/resolve-source-credential/resolve-source-credential.use-case';
+import { RevokeSourceCredentialUseCase } from '../../features/revoke-source-credential/revoke-source-credential.use-case';
+import { RotateSourceCredentialUseCase } from '../../features/rotate-source-credential/rotate-source-credential.use-case';
 import { ScheduleDueScansUseCase } from '../../features/schedule-due-scans/schedule-due-scans.use-case';
 import { SetScanPolicyUseCase } from '../../features/set-scan-policy/set-scan-policy.use-case';
+import {
+  defaultMonitoringCapacityLimits,
+  type MonitoringCapacityLimits,
+} from '../../features/shared/monitoring-capacity-limits';
 import type {
   IdempotencyPort,
   OutboxPort,
@@ -61,6 +78,10 @@ import type {
   ScanQueuePort,
   SourceBindingConfigProtectorPort,
   SourceBindingRepositoryPort,
+  SourceCredentialRefreshPort,
+  SourceCredentialRepositoryPort,
+  SourceCredentialResolverPort,
+  SourceCredentialVaultPort,
   SourceCatalogPort,
   TopicRepositoryPort,
 } from '../../ports';
@@ -77,6 +98,10 @@ import {
   MONITORING_SCAN_QUEUE,
   MONITORING_SOURCE_BINDING_REPOSITORY,
   MONITORING_SOURCE_CATALOG,
+  MONITORING_SOURCE_CREDENTIAL_REFRESHER,
+  MONITORING_SOURCE_CREDENTIAL_REPOSITORY,
+  MONITORING_SOURCE_CREDENTIAL_RESOLVER,
+  MONITORING_SOURCE_CREDENTIAL_VAULT,
   MONITORING_TOPIC_REPOSITORY,
   type MonitoringPersistenceMode,
   type MonitoringScanQueueMode,
@@ -88,6 +113,7 @@ import { ScanPolicyController } from './scan-policy.controller';
 import { ScanRequestController } from './scan-request.controller';
 import { ScanStatusController } from './scan-status.controller';
 import { SourceBindingController } from './source-binding.controller';
+import { SourceCredentialController } from './source-credential.controller';
 import { TopicController } from './topic.controller';
 
 const MONITORING_RABBITMQ_CHANNEL = Symbol('MONITORING_RABBITMQ_CHANNEL');
@@ -101,6 +127,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
     ScanPolicyController,
     ScanRequestController,
     ScanStatusController,
+    SourceCredentialController,
   ],
   providers: [
     monitoringPersistenceModeProvider,
@@ -132,6 +159,53 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
           ? new PrismaSourceBindingRepository(requirePrismaMonitoringClient(prisma))
           : new InMemorySourceBindingRepository(),
       inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
+    },
+    {
+      provide: MONITORING_SOURCE_CREDENTIAL_REPOSITORY,
+      useFactory: (
+        mode: MonitoringPersistenceMode,
+        prisma: PrismaMonitoringClient | null,
+      ): SourceCredentialRepositoryPort =>
+        mode === 'prisma'
+          ? new PrismaSourceCredentialRepository(requirePrismaMonitoringClient(prisma))
+          : new InMemorySourceCredentialRepository(),
+      inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
+    },
+    {
+      provide: MONITORING_SOURCE_CREDENTIAL_VAULT,
+      useFactory: (
+        mode: MonitoringPersistenceMode,
+        prisma: PrismaMonitoringClient | null,
+      ): SourceCredentialVaultPort =>
+        mode === 'prisma'
+          ? new PrismaSourceCredentialVault(
+              requirePrismaMonitoringClient(prisma),
+              resolveSourceCredentialSecretEncryptionKey(process.env),
+            )
+          : new InMemorySourceCredentialSecretVault(),
+      inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
+    },
+    {
+      provide: MONITORING_SOURCE_CREDENTIAL_REFRESHER,
+      useFactory: (): SourceCredentialRefreshPort =>
+        new OAuth2SourceCredentialRefresher({
+          timeoutMs: parseOptionalPositiveInteger(process.env.SOURCE_CREDENTIAL_REFRESH_TIMEOUT_MS),
+          refreshSkewMs: parseOptionalPositiveInteger(process.env.SOURCE_CREDENTIAL_REFRESH_SKEW_MS),
+        }),
+    },
+    {
+      provide: MONITORING_SOURCE_CREDENTIAL_RESOLVER,
+      useFactory: (
+        credentials: SourceCredentialRepositoryPort,
+        vault: SourceCredentialVaultPort,
+        refresher: SourceCredentialRefreshPort,
+      ): SourceCredentialResolverPort =>
+        new ResolveSourceCredentialUseCase(credentials, vault, refresher, new SystemClock()),
+      inject: [
+        MONITORING_SOURCE_CREDENTIAL_REPOSITORY,
+        MONITORING_SOURCE_CREDENTIAL_VAULT,
+        MONITORING_SOURCE_CREDENTIAL_REFRESHER,
+      ],
     },
     {
       provide: MONITORING_SCAN_POLICY_REPOSITORY,
@@ -252,6 +326,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
           idempotency,
           new CryptoIdGenerator(),
           new SystemClock(),
+          resolveMonitoringCapacityLimits(process.env),
       ),
       inject: [MONITORING_TOPIC_REPOSITORY, MONITORING_OUTBOX, MONITORING_IDEMPOTENCY],
     },
@@ -279,6 +354,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
           configProtector,
           new CryptoIdGenerator(),
           new SystemClock(),
+          resolveMonitoringCapacityLimits(process.env),
         ),
       inject: [
         MONITORING_TOPIC_REPOSITORY,
@@ -296,6 +372,48 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
         bindings: SourceBindingRepositoryPort,
       ) => new ListSourceBindingsUseCase(topics, bindings),
       inject: [MONITORING_TOPIC_REPOSITORY, MONITORING_SOURCE_BINDING_REPOSITORY],
+    },
+    {
+      provide: CreateSourceCredentialUseCase,
+      useFactory: (
+        credentials: SourceCredentialRepositoryPort,
+        vault: SourceCredentialVaultPort,
+      ) =>
+        new CreateSourceCredentialUseCase(
+          credentials,
+          vault,
+          new CryptoIdGenerator(),
+          new SystemClock(),
+        ),
+      inject: [MONITORING_SOURCE_CREDENTIAL_REPOSITORY, MONITORING_SOURCE_CREDENTIAL_VAULT],
+    },
+    {
+      provide: RotateSourceCredentialUseCase,
+      useFactory: (
+        credentials: SourceCredentialRepositoryPort,
+        vault: SourceCredentialVaultPort,
+      ) =>
+        new RotateSourceCredentialUseCase(
+          credentials,
+          vault,
+          new CryptoIdGenerator(),
+          new SystemClock(),
+        ),
+      inject: [MONITORING_SOURCE_CREDENTIAL_REPOSITORY, MONITORING_SOURCE_CREDENTIAL_VAULT],
+    },
+    {
+      provide: RevokeSourceCredentialUseCase,
+      useFactory: (
+        credentials: SourceCredentialRepositoryPort,
+        vault: SourceCredentialVaultPort,
+      ) => new RevokeSourceCredentialUseCase(credentials, vault, new SystemClock()),
+      inject: [MONITORING_SOURCE_CREDENTIAL_REPOSITORY, MONITORING_SOURCE_CREDENTIAL_VAULT],
+    },
+    {
+      provide: ListSourceCredentialsUseCase,
+      useFactory: (credentials: SourceCredentialRepositoryPort) =>
+        new ListSourceCredentialsUseCase(credentials),
+      inject: [MONITORING_SOURCE_CREDENTIAL_REPOSITORY],
     },
     {
       provide: GetSourceBindingHealthUseCase,
@@ -442,6 +560,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
     InMemoryQueuePublisher,
     MONITORING_CONFIG_PROTECTOR,
     MONITORING_SOURCE_BINDING_REPOSITORY,
+    MONITORING_SOURCE_CREDENTIAL_RESOLVER,
   ],
 })
 export class MonitoringRestModule {}
@@ -483,3 +602,16 @@ const envValue = (value: string | undefined, fallback: string): string => {
 
   return trimmed === undefined || trimmed.length === 0 ? fallback : trimmed;
 };
+
+const parseOptionalPositiveInteger = (value: string | undefined): number | undefined => {
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+const resolveMonitoringCapacityLimits = (env: NodeJS.ProcessEnv): Required<MonitoringCapacityLimits> => ({
+  maxTopicsPerWorkspace: parseOptionalPositiveInteger(env.MONITORING_MAX_TOPICS_PER_WORKSPACE) ??
+    defaultMonitoringCapacityLimits.maxTopicsPerWorkspace,
+  maxEnabledSourcesPerTopic: parseOptionalPositiveInteger(env.MONITORING_MAX_ENABLED_SOURCES_PER_TOPIC) ??
+    defaultMonitoringCapacityLimits.maxEnabledSourcesPerTopic,
+});

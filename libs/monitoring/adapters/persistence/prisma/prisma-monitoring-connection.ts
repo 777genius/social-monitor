@@ -23,6 +23,8 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
   readonly topic: PrismaMonitoringClient['topic'];
   readonly sourceCatalogEntry: PrismaMonitoringClient['sourceCatalogEntry'];
   readonly sourceBinding: PrismaMonitoringClient['sourceBinding'];
+  readonly sourceCredential: PrismaMonitoringClient['sourceCredential'];
+  readonly sourceCredentialSecret: PrismaMonitoringClient['sourceCredentialSecret'];
   readonly scanPolicy: PrismaMonitoringClient['scanPolicy'];
   readonly scanJob: PrismaMonitoringClient['scanJob'];
   readonly scanAttempt: PrismaMonitoringClient['scanAttempt'];
@@ -44,6 +46,8 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
     this.topic = this.client.topic;
     this.sourceCatalogEntry = this.client.sourceCatalogEntry;
     this.sourceBinding = this.client.sourceBinding;
+    this.sourceCredential = this.client.sourceCredential;
+    this.sourceCredentialSecret = this.client.sourceCredentialSecret;
     this.scanPolicy = this.client.scanPolicy;
     this.scanJob = this.client.scanJob;
     this.scanAttempt = this.client.scanAttempt;

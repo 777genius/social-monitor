@@ -1,6 +1,7 @@
 export * from './entities/scan-job';
 export * from './entities/scan-policy';
 export * from './entities/source-binding';
+export * from './entities/source-credential';
 export * from './entities/topic';
 export * from './events/scan-requested.event';
 export * from './events/scan-policy-set.event';

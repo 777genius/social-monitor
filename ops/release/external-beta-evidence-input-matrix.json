@@ -121,6 +121,8 @@
       "inputClass": "numeric_limit",
       "description": "Positive integer limit used by an operator-side evidence export workflow.",
       "env": [
+        "MONITORING_MAX_ENABLED_SOURCES_PER_TOPIC",
+        "MONITORING_MAX_TOPICS_PER_WORKSPACE",
         "SUMMARY_FEEDBACK_EXPORT_LIMIT",
         "SUMMARY_FEEDBACK_MIN_SAMPLES"
       ]
