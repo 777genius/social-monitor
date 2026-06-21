@@ -1351,6 +1351,10 @@ function stagingReliabilityArtifact(config) {
       observedAt,
     };
     refreshStagingReliabilityEvidenceTimestamps(refreshed.evidence, observedAt);
+    if (refreshed.signalId === 'backend-loop-scheduled-scan' && refreshed.evidence?.scheduledScan !== undefined) {
+      refreshed.evidence.scheduledScan.completedAt = observedAt;
+      refreshed.evidence.scheduledScan.nextRunAtAfterSchedule = new Date(Date.parse(observedAt) + 60 * 1000).toISOString();
+    }
     return refreshed;
   });
 

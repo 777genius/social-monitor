@@ -361,6 +361,30 @@
           }
         },
         {
+          "signalId": "backend-loop-scheduled-scan",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:09:00.000Z",
+          "evidence": {
+            "summary": "redacted scan policy executed by scheduler without a manual scan request",
+            "scheduledScan": {
+              "providerKey": "rss",
+              "sourceBindingId": "source-binding-scheduled-example",
+              "scanPolicyId": "scan-policy-scheduled-example",
+              "scanJobId": "scan-job-scheduled-example",
+              "scheduledIdempotencyKey": "scheduled:scan-policy-scheduled-example:2026-06-18T01:07:00.000Z",
+              "status": "SUCCEEDED",
+              "completedAt": "2026-06-18T01:08:30.000Z",
+              "nextRunAtAfterSchedule": "2026-06-18T01:09:00.000Z",
+              "feedItemCount": 2,
+              "feedItemIds": [
+                "feed-item-scheduled-example-1",
+                "feed-item-scheduled-example-2"
+              ]
+            },
+            "manualScanIdempotencyKeyUsed": false
+          }
+        },
+        {
           "signalId": "backend-loop-idempotency",
           "status": "passed",
           "observedAt": "2026-06-18T01:11:00.000Z",

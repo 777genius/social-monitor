@@ -313,8 +313,19 @@
       "verificationCommand": "npm run check:mvp-core-loop",
       "contractArtifact": "scripts/check-mvp-core-loop-smoke.ts",
       "stagingArtifactId": "durable-backend-e2e-output",
-      "requiredSignal": "create topic to source binding to scheduled scan to feed to summary to feedback to digest/webhook/realtime to audit passes on durable runtime",
+      "requiredSignal": "create topic to source binding to scan to feed to summary to feedback to digest/webhook/realtime to audit passes on durable runtime",
       "exitCondition": "staging artifact records redacted object ids for every backend step and no raw provider payloads"
+    },
+    {
+      "signalId": "backend-loop-scheduled-scan",
+      "domain": "durable-backend-e2e",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:scan-scheduler-loop",
+      "contractArtifact": "scripts/check-scan-scheduler-loop-smoke.ts",
+      "stagingArtifactId": "durable-backend-e2e-output",
+      "requiredSignal": "scan policy is executed by the ingestion scheduler without a manual scan request on durable runtime",
+      "exitCondition": "staging artifact records source binding id, scan policy id, scheduled scan job id, scheduled idempotency key, next run timestamp and feed item ids"
     },
     {
       "signalId": "backend-loop-tenant-isolation",

@@ -76,6 +76,7 @@ const requiredSignalIds = new Set([
   'postgres-worker-pause-resume',
   'postgres-no-duplicate-side-effects',
   'backend-loop-topic-to-delivery-audit',
+  'backend-loop-scheduled-scan',
   'backend-loop-tenant-isolation',
   'backend-loop-idempotency',
 ]);
@@ -261,6 +262,23 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['wrongTenantStatus', 'positive_integer'],
       ['wrongWorkspaceStatus', 'positive_integer'],
       ['leakageObserved', 'boolean_false'],
+    ],
+  ],
+  [
+    'backend-loop-scheduled-scan',
+    [
+      ['summary', 'non_empty_string'],
+      ['scheduledScan.providerKey', 'durable_provider_key'],
+      ['scheduledScan.sourceBindingId', 'non_empty_string'],
+      ['scheduledScan.scanPolicyId', 'non_empty_string'],
+      ['scheduledScan.scanJobId', 'non_empty_string'],
+      ['scheduledScan.scheduledIdempotencyKey', 'scheduled_idempotency_key'],
+      ['scheduledScan.status', 'scan_status_succeeded'],
+      ['scheduledScan.completedAt', 'iso_timestamp'],
+      ['scheduledScan.nextRunAtAfterSchedule', 'iso_timestamp'],
+      ['scheduledScan.feedItemCount', 'positive_integer'],
+      ['scheduledScan.feedItemIds', 'non_empty_string_array'],
+      ['manualScanIdempotencyKeyUsed', 'boolean_false'],
     ],
   ],
   [
@@ -1002,6 +1020,9 @@ function validateSignalEvidenceShape(artifactPath, result) {
       );
     }
   }
+  if (result.signalId === 'backend-loop-scheduled-scan') {
+    validateScheduledScanEvidence(artifactPath, result.evidence);
+  }
 }
 
 function getPath(value, path) {
@@ -1036,8 +1057,22 @@ function matchesEvidenceType(value, fieldType) {
       return isRecord(value) && Object.keys(value).length > 0;
     case 'non_empty_object_array':
       return Array.isArray(value) && value.length > 0 && value.every((item) => isRecord(item) && Object.keys(item).length > 0);
+    case 'durable_provider_key':
+      return ['github', 'hn', 'reddit', 'rss'].includes(value);
+    case 'scheduled_idempotency_key':
+      return typeof value === 'string' && value.startsWith('scheduled:') && value.trim().length > 'scheduled:'.length;
+    case 'scan_status_succeeded':
+      return value === 'SUCCEEDED';
     default:
       return false;
+  }
+}
+
+function validateScheduledScanEvidence(artifactPath, evidenceValue) {
+  const completedAtMs = parseIsoTimestampMs(getPath(evidenceValue, 'scheduledScan.completedAt'));
+  const nextRunAtMs = parseIsoTimestampMs(getPath(evidenceValue, 'scheduledScan.nextRunAtAfterSchedule'));
+  if (completedAtMs !== undefined && nextRunAtMs !== undefined && nextRunAtMs <= completedAtMs) {
+    violations.push(`${artifactPath}: signal result "backend-loop-scheduled-scan" evidence.scheduledScan.nextRunAtAfterSchedule must be after completedAt`);
   }
 }
 
@@ -1089,6 +1124,9 @@ function isSupportedEvidenceType(fieldType) {
     'non_empty_string_array',
     'non_empty_object',
     'non_empty_object_array',
+    'durable_provider_key',
+    'scheduled_idempotency_key',
+    'scan_status_succeeded',
   ]).has(fieldType);
 }
 

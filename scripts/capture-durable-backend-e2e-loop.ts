@@ -61,6 +61,19 @@ type SourceBindingEvidence = {
   readonly feedProviderKeys: readonly string[];
 };
 
+type ScheduledScanEvidence = {
+  readonly providerKey: DurableScanProviderKey;
+  readonly sourceBindingId: string;
+  readonly scanPolicyId: string;
+  readonly scanJobId: string;
+  readonly scheduledIdempotencyKey: string;
+  readonly status: 'SUCCEEDED';
+  readonly completedAt: string;
+  readonly nextRunAtAfterSchedule: string;
+  readonly feedItemCount: number;
+  readonly feedItemIds: readonly string[];
+};
+
 const config = loadConfig();
 const ids: RuntimeIds = {
   runId: `run-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`,
@@ -132,6 +145,11 @@ async function main(): Promise<void> {
           realtimeEventId: evidence.realtimeEventId,
           auditEventIds: evidence.auditEventIds,
         }, signalObservedAt),
+        signalResult('backend-loop-scheduled-scan', {
+          summary: 'scan policy was executed by the ingestion scheduler without a manual scan request',
+          scheduledScan: evidence.scheduledScan,
+          manualScanIdempotencyKeyUsed: false,
+        }, signalObservedAt),
         signalResult('backend-loop-tenant-isolation', {
           summary: 'wrong tenant and wrong workspace checks denied durable data access',
           negativeChecks: evidence.negativeChecks,
@@ -163,6 +181,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
   readonly sourceBindingId: string;
   readonly sourceBindings: readonly SourceBindingEvidence[];
   readonly providerFeedCounts: readonly JsonRecord[];
+  readonly scheduledScan: ScheduledScanEvidence;
   readonly scanId: string;
   readonly feedItemIds: readonly string[];
   readonly summaryId: string;
@@ -203,6 +222,12 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
       runId: runtimeIds.runId,
     }),
   ));
+  const scheduledScan = await createScheduledSourceBindingAndWait({
+    headers,
+    topicId,
+    target: scheduledScanTarget(),
+    runId: runtimeIds.runId,
+  });
 
   const feed = await pollJson<JsonRecord>(
     `/feed/items?topicId=${encodeURIComponent(topicId)}&limit=100`,
@@ -422,6 +447,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
       feedProviderKeys: binding.feedProviderKeys,
       scanId: binding.scanId,
     })),
+    scheduledScan,
     scanId: primaryBinding.scanId,
     feedItemIds,
     summaryId,
@@ -442,6 +468,9 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
     wrongWorkspaceStatus,
     idempotencyKeys: [
       topicKey,
+      scheduledBindingIdempotencyKey(runtimeIds.runId),
+      scheduledPolicyIdempotencyKey(runtimeIds.runId),
+      scheduledScan.scheduledIdempotencyKey,
       ...scanTargets.flatMap((target) => [
         bindingIdempotencyKey(target.providerKey, runtimeIds.runId),
         policyIdempotencyKey(target.providerKey, runtimeIds.runId),
@@ -452,6 +481,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
     ],
     responseIds: [
       readString(replayedTopic, 'topicId'),
+      scheduledScan.scanJobId,
       readString(replayedScan, 'scanJobId'),
       readString(replayedSummary, 'summaryJobId'),
       webhookDeliveryAttemptId,
@@ -507,6 +537,42 @@ async function createSourceBindingAndScan(params: {
     scanPolicyId,
     scanId,
   };
+}
+
+async function createScheduledSourceBindingAndWait(params: {
+  readonly headers: Readonly<Record<string, string>>;
+  readonly topicId: string;
+  readonly target: DurableScanTarget;
+  readonly runId: string;
+}): Promise<ScheduledScanEvidence> {
+  const binding = await requestJson<JsonRecord>('POST', `/topics/${encodeURIComponent(params.topicId)}/source-bindings`, {
+    headers: withIdempotency(params.headers, scheduledBindingIdempotencyKey(params.runId)),
+    body: {
+      providerKey: params.target.providerKey,
+      config: params.target.config,
+    },
+  });
+  const sourceBindingId = readString(binding, 'sourceBindingId');
+  const policy = await requestJson<JsonRecord>('POST', `/source-bindings/${encodeURIComponent(sourceBindingId)}/scan-policy`, {
+    headers: withIdempotency(params.headers, scheduledPolicyIdempotencyKey(params.runId)),
+    body: {
+      intervalSeconds: 60,
+      freshnessSeconds: 300,
+      retryBudget: 3,
+    },
+  });
+  const scanPolicyId = readString(policy, 'scanPolicyId');
+
+  return pollScheduledScanEvidence({
+    tenantId: ids.tenantId,
+    workspaceId: ids.workspaceId,
+    providerKey: params.target.providerKey,
+    sourceBindingId,
+    scanPolicyId,
+  }, {
+    timeoutMs: 180_000,
+    label: `${params.target.providerKey} scheduled scan completion`,
+  });
 }
 
 async function assertReady(): Promise<void> {
@@ -607,6 +673,114 @@ async function durableCounts(db: Pool, tenantId: string, workspaceId: string): P
   });
 }
 
+async function pollScheduledScanEvidence(
+  params: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly providerKey: DurableScanProviderKey;
+    readonly sourceBindingId: string;
+    readonly scanPolicyId: string;
+  },
+  options: { readonly timeoutMs: number; readonly label: string },
+): Promise<ScheduledScanEvidence> {
+  const deadline = Date.now() + options.timeoutMs;
+  let lastValue: JsonRecord | undefined;
+
+  while (Date.now() < deadline) {
+    const value = await scheduledScanEvidenceSnapshot(params);
+    lastValue = value;
+
+    if (value !== undefined) {
+      const status = readString(value, 'status');
+      if (status === 'FAILED' || status === 'CANCELLED') {
+        throw new Error(`${options.label} ended with ${status}: ${String(value.failureReason ?? '')}`);
+      }
+
+      const feedItemCount = readNumber(value, 'feedItemCount');
+      if (status === 'SUCCEEDED' && feedItemCount > 0) {
+        return {
+          providerKey: params.providerKey,
+          sourceBindingId: params.sourceBindingId,
+          scanPolicyId: params.scanPolicyId,
+          scanJobId: readString(value, 'scanJobId'),
+          scheduledIdempotencyKey: readString(value, 'scheduledIdempotencyKey'),
+          status: 'SUCCEEDED',
+          completedAt: readString(value, 'completedAt'),
+          nextRunAtAfterSchedule: readString(value, 'nextRunAtAfterSchedule'),
+          feedItemCount,
+          feedItemIds: readStringArray(value, 'feedItemIds'),
+        };
+      }
+    }
+
+    await delay(1_000);
+  }
+
+  throw new Error(`${options.label} did not complete before timeout; last=${JSON.stringify(lastValue ?? {})}`);
+}
+
+async function scheduledScanEvidenceSnapshot(params: {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly sourceBindingId: string;
+  readonly scanPolicyId: string;
+}): Promise<JsonRecord | undefined> {
+  return withClient(pool, async (client) => {
+    const result = await client.query<{
+      scan_job_id: string;
+      status: string;
+      scheduled_idempotency_key: string;
+      completed_at: Date | null;
+      failure_reason: string | null;
+      next_run_at_after_schedule: Date;
+      feed_item_count: number;
+      feed_item_ids: string[] | null;
+    }>(
+      `
+        select
+          j.id as scan_job_id,
+          j.status,
+          j.idempotency_key as scheduled_idempotency_key,
+          j.completed_at,
+          j.failure_reason,
+          p.next_run_at as next_run_at_after_schedule,
+          count(fi.id)::int as feed_item_count,
+          coalesce(array_agg(fi.id::text order by fi.observed_at desc) filter (where fi.id is not null), array[]::text[]) as feed_item_ids
+        from scan_jobs j
+        join scan_policies p on p.id = j.scan_policy_id
+        left join feed_items fi
+          on fi.tenant_id = j.tenant_id
+          and fi.workspace_id = j.workspace_id
+          and fi.source_binding_id = j.source_binding_id
+        where j.tenant_id = $1
+          and j.workspace_id = $2
+          and j.source_binding_id = $3
+          and j.scan_policy_id = $4
+          and j.idempotency_key like 'scheduled:%'
+        group by j.id, j.status, j.idempotency_key, j.completed_at, j.failure_reason, p.next_run_at, j.created_at
+        order by j.created_at desc
+        limit 1
+      `,
+      [params.tenantId, params.workspaceId, params.sourceBindingId, params.scanPolicyId],
+    );
+    const row = result.rows[0];
+    if (row === undefined) {
+      return undefined;
+    }
+
+    return {
+      scanJobId: row.scan_job_id,
+      status: row.status,
+      scheduledIdempotencyKey: row.scheduled_idempotency_key,
+      completedAt: row.completed_at?.toISOString() ?? '',
+      failureReason: row.failure_reason,
+      nextRunAtAfterSchedule: row.next_run_at_after_schedule.toISOString(),
+      feedItemCount: Number(row.feed_item_count),
+      feedItemIds: row.feed_item_ids ?? [],
+    };
+  });
+}
+
 async function withClient<T>(db: Pool, callback: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await db.connect();
   try {
@@ -664,6 +838,8 @@ function withIdempotency(headers: Readonly<Record<string, string>>, key: string)
 }
 
 function durableScanTargets(): readonly DurableScanTarget[] {
+  const githubAccessToken = emptyToUndefined(process.env.GITHUB_ACCESS_TOKEN);
+
   return [
     {
       providerKey: 'hacker-news',
@@ -678,6 +854,8 @@ function durableScanTargets(): readonly DurableScanTarget[] {
       config: {
         query: 'repo:microsoft/TypeScript is:issue',
         maxItems: 2,
+        userAgent: emptyToUndefined(process.env.GITHUB_USER_AGENT) ?? 'social-monitor-mvp/0.1 github-live-smoke',
+        ...(githubAccessToken === undefined ? {} : { accessToken: githubAccessToken }),
       },
     },
     {
@@ -702,6 +880,16 @@ function durableScanTargets(): readonly DurableScanTarget[] {
   ];
 }
 
+function scheduledScanTarget(): DurableScanTarget {
+  return {
+    providerKey: 'rss',
+    config: {
+      feedUrl: 'https://hnrss.org/newest',
+      maxItems: 2,
+    },
+  };
+}
+
 function hasRedditAppOnlyCredentials(): boolean {
   return (
     emptyToUndefined(process.env.REDDIT_APP_CLIENT_ID) !== undefined &&
@@ -719,6 +907,14 @@ function policyIdempotencyKey(providerKey: DurableScanProviderKey, runId: string
 
 function scanIdempotencyKey(providerKey: DurableScanProviderKey, runId: string): string {
   return `scan-${providerKey}-${runId}`;
+}
+
+function scheduledBindingIdempotencyKey(runId: string): string {
+  return `scheduled-binding-rss-${runId}`;
+}
+
+function scheduledPolicyIdempotencyKey(runId: string): string {
+  return `scheduled-policy-rss-${runId}`;
 }
 
 async function pollJson<T extends JsonRecord>(
@@ -860,6 +1056,24 @@ function readString(source: JsonRecord, field: string): string {
   const value = source[field];
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error(`Expected ${field} to be a non-empty string`);
+  }
+
+  return value;
+}
+
+function readNumber(source: JsonRecord, field: string): number {
+  const value = source[field];
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`Expected ${field} to be a finite number`);
+  }
+
+  return value;
+}
+
+function readStringArray(source: JsonRecord, field: string): readonly string[] {
+  const value = source[field];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || item.trim().length === 0)) {
+    throw new Error(`Expected ${field} to be a string array`);
   }
 
   return value;
