@@ -267,12 +267,20 @@
         {
           "label": "reddit_access_token",
           "env": ["REDDIT_ACCESS_TOKEN"],
-          "coversEnv": ["REDDIT_ACCESS_TOKEN"]
+          "coversEnv": ["REDDIT_ACCESS_TOKEN"],
+          "mode": "live_command_credential"
         },
         {
           "label": "reddit_refresh_token_flow",
           "env": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_REFRESH_TOKEN"],
-          "coversEnv": ["REDDIT_ACCESS_TOKEN"]
+          "coversEnv": ["REDDIT_ACCESS_TOKEN"],
+          "mode": "live_command_credential"
+        },
+        {
+          "label": "reddit_captured_live_artifacts",
+          "env": ["REDDIT_LIVE_EVIDENCE_PATH", "REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH"],
+          "coversEnv": ["REDDIT_ACCESS_TOKEN"],
+          "mode": "captured_artifact"
         }
       ],
       "requiredEnv": [

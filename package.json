@@ -47,6 +47,7 @@
     "capture:release-deploy-smoke": "node scripts/capture-release-deploy-smoke.mjs",
     "capture:live-open-connectors": "node scripts/capture-live-open-connectors.mjs",
     "capture:live-reddit-oauth": "node scripts/capture-live-reddit-oauth.mjs",
+    "reddit:oauth:local-callback": "node scripts/reddit-oauth-local-callback.mjs",
     "capture:github-live-summary-smoke": "node scripts/capture-github-live-summary-smoke.mjs",
     "capture:summary-feedback-samples": "node scripts/capture-summary-feedback-samples.mjs",
     "export:summary-feedback-samples": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/export-summary-feedback-samples.ts",

@@ -250,6 +250,7 @@ function buildPlan(planJobs) {
     liveCommandJobCount: 0,
     manualArtifactJobCount: 0,
     executableLiveJobCount: 0,
+    liveArtifactReadyForValidationJobCount: 0,
     externalBlockerJobCount: 0,
     missingEnvCount: 0,
     missingOptionalEnvCount: 0,
@@ -305,6 +306,9 @@ function buildPlan(planJobs) {
       if (executionReadiness === 'live_command_executable') {
         plan.executableLiveJobCount += 1;
       }
+      if (executionReadiness === 'live_artifact_ready_for_validation') {
+        plan.liveArtifactReadyForValidationJobCount += 1;
+      }
     }
     if (job.runPolicy === 'manual_artifact_then_validator') {
       plan.manualArtifactJobCount += 1;
@@ -329,7 +333,7 @@ function buildPlan(planJobs) {
   plan.uniqueMissingOptionalEnv = [...new Set(plan.jobs.flatMap((job) => job.missingOptionalEnv))].sort();
   plan.contractClosurePercent = percent(plan.localContractJobCount, plan.jobCount);
   plan.externalEvidenceEnvReadinessPercent = percent(
-    plan.executableLiveJobCount + plan.manualArtifactReadyForValidationJobCount,
+    plan.executableLiveJobCount + plan.liveArtifactReadyForValidationJobCount + plan.manualArtifactReadyForValidationJobCount,
     plan.liveCommandJobCount + plan.manualArtifactJobCount,
   );
 
@@ -344,6 +348,7 @@ function printPlan(plan) {
     `Run policies: local=${plan.localContractJobCount}, live=${plan.liveCommandJobCount}, manual=${plan.manualArtifactJobCount}`,
   );
   console.log(`Executable live jobs: ${plan.executableLiveJobCount}`);
+  console.log(`Live artifact ready jobs: ${plan.liveArtifactReadyForValidationJobCount}`);
   console.log(`External beta blocker jobs: ${plan.externalBlockerJobCount}`);
 
   for (const job of plan.jobs) {
@@ -380,7 +385,7 @@ function printSummary(plan) {
   console.log(`Jobs: ${plan.jobCount}`);
   console.log(`Contract closure: ${plan.localContractJobCount}/${plan.jobCount} jobs (${plan.contractClosurePercent}%)`);
   console.log(
-    `External evidence env readiness: ${plan.executableLiveJobCount + plan.manualArtifactReadyForValidationJobCount}/${plan.liveCommandJobCount + plan.manualArtifactJobCount} live/manual jobs (${plan.externalEvidenceEnvReadinessPercent}%)`,
+    `External evidence env readiness: ${plan.executableLiveJobCount + plan.liveArtifactReadyForValidationJobCount + plan.manualArtifactReadyForValidationJobCount}/${plan.liveCommandJobCount + plan.manualArtifactJobCount} live/manual jobs (${plan.externalEvidenceEnvReadinessPercent}%)`,
   );
   console.log(`External beta blocker jobs: ${plan.externalBlockerJobCount}`);
   console.log(`Blocked by missing required env: ${plan.blockedMissingRequiredEnvJobCount}`);
@@ -424,7 +429,7 @@ function printHandoff(plan) {
   console.log('');
   console.log(`Current closure: ${plan.localContractJobCount}/${plan.jobCount} local-contract jobs (${plan.contractClosurePercent}%)`);
   console.log(
-    `Current external evidence env readiness: ${plan.executableLiveJobCount + plan.manualArtifactReadyForValidationJobCount}/${plan.liveCommandJobCount + plan.manualArtifactJobCount} live/manual jobs (${plan.externalEvidenceEnvReadinessPercent}%)`,
+    `Current external evidence env readiness: ${plan.executableLiveJobCount + plan.liveArtifactReadyForValidationJobCount + plan.manualArtifactReadyForValidationJobCount}/${plan.liveCommandJobCount + plan.manualArtifactJobCount} live/manual jobs (${plan.externalEvidenceEnvReadinessPercent}%)`,
   );
   console.log(`Blocked by missing required env: ${plan.blockedMissingRequiredEnvJobCount}`);
   console.log(`Blocked by invalid env/path: ${plan.blockedInvalidInputJobCount}`);
@@ -496,9 +501,10 @@ function buildHandoff(plan) {
       localContractJobs: plan.localContractJobCount,
       totalJobs: plan.jobCount,
       contractClosurePercent: plan.contractClosurePercent,
-      externalEvidenceReadyJobs: plan.executableLiveJobCount + plan.manualArtifactReadyForValidationJobCount,
+      externalEvidenceReadyJobs: plan.executableLiveJobCount + plan.liveArtifactReadyForValidationJobCount + plan.manualArtifactReadyForValidationJobCount,
       externalEvidenceTotalJobs: plan.liveCommandJobCount + plan.manualArtifactJobCount,
       externalEvidenceEnvReadinessPercent: plan.externalEvidenceEnvReadinessPercent,
+      liveArtifactReadyForValidationJobCount: plan.liveArtifactReadyForValidationJobCount,
       externalBlockerJobCount: plan.externalBlockerJobCount,
       blockedMissingRequiredEnvJobCount: plan.blockedMissingRequiredEnvJobCount,
       blockedInvalidInputJobCount: plan.blockedInvalidInputJobCount,
@@ -733,9 +739,9 @@ function isMissingSelectionValue(value) {
   return value === undefined || value.trim() === '' || value.startsWith('--');
 }
 
-function missingRequiredEnv(job) {
+function missingRequiredEnv(job, options = {}) {
   const missingEnv = job.requiredEnv.filter((envName) => !hasEnv(envName));
-  const coveredEnvNames = new Set(satisfiedRequiredEnvAlternatives(job).flatMap(requiredEnvAlternativeCoveredEnvNames));
+  const coveredEnvNames = new Set(satisfiedRequiredEnvAlternatives(job, options).flatMap(requiredEnvAlternativeCoveredEnvNames));
   if (coveredEnvNames.size === 0) {
     return missingEnv;
   }
@@ -747,8 +753,12 @@ function missingOptionalEnvNames(job) {
   return job.optionalEnv.filter((envName) => process.env[envName]?.trim() === undefined || process.env[envName]?.trim() === '');
 }
 
-function satisfiedRequiredEnvAlternatives(job) {
+function satisfiedRequiredEnvAlternatives(job, options = {}) {
+  const allowCapturedArtifactAlternatives = options.allowCapturedArtifactAlternatives !== false;
   return (job.requiredEnvAlternatives ?? []).filter((alternative) => {
+    if (alternative.mode === 'captured_artifact' && !allowCapturedArtifactAlternatives) {
+      return false;
+    }
     const envNames = alternative.env ?? [];
     return envNames.length > 0 && envNames.every((envName) => hasEnv(envName));
   });
@@ -786,9 +796,17 @@ function jobExecutionReadiness(job, missingEnv, preflightViolations) {
     return 'manual_artifact_required';
   }
   if (job.runPolicy === 'live_command') {
+    if (hasSatisfiedCapturedArtifactAlternative(job)) {
+      return 'live_artifact_ready_for_validation';
+    }
     return 'live_command_executable';
   }
   return 'local_contract_ready';
+}
+
+function hasSatisfiedCapturedArtifactAlternative(job) {
+  return satisfiedRequiredEnvAlternatives(job)
+    .some((alternative) => alternative.mode === 'captured_artifact');
 }
 
 function hasOnlyLocalRuntimeEnvViolations(job, preflightViolations) {
@@ -813,7 +831,7 @@ function executableJobViolations(candidateJobs) {
   const violations = [];
   violations.push(...duplicateEvidencePathViolations(candidateJobs));
   for (const job of candidateJobs) {
-    const missingEnv = missingRequiredEnv(job);
+    const missingEnv = missingRequiredEnv(job, { allowCapturedArtifactAlternatives: false });
     if (missingEnv.length > 0) {
       violations.push(`${job.jobId}: missing required env ${missingEnv.join(', ')}`);
     }

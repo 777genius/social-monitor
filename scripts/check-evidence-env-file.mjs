@@ -134,6 +134,7 @@ function validatePrivateEnvRead() {
 function validateCurrentEvidencePackage() {
   const dockerEnvPath = join(tempDirectory, 'docker-import.env');
   const liveOpenEnvPath = join(tempDirectory, 'live-open.env');
+  const redditEnvPath = join(tempDirectory, 'live-reddit-oauth.env');
   const outputEnvPath = join(tempDirectory, 'current-package.env');
   const outputReportPath = join(tempDirectory, 'current-package-report.json');
   const artifactPath = (name) => {
@@ -182,6 +183,7 @@ function validateCurrentEvidencePackage() {
       ...process.env,
       DOCKER_BACKEND_STAGING_IMPORTED_ENV_PATH: dockerEnvPath,
       LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH: liveOpenEnvPath,
+      REDDIT_LIVE_EVIDENCE_ENV_PATH: redditEnvPath,
       EXTERNAL_BETA_CURRENT_ENV_PATH: outputEnvPath,
       EXTERNAL_BETA_CURRENT_REPORT_PATH: outputReportPath,
       EXTERNAL_BETA_CURRENT_PACKAGE_EXPECTED_COMMIT_SHA: commitSha,
@@ -258,6 +260,7 @@ function validateCurrentEvidencePackageRejectsStaleCommit() {
         ...process.env,
         DOCKER_BACKEND_STAGING_IMPORTED_ENV_PATH: dockerEnvPath,
         LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH: join(tempDirectory, 'missing-live-open.env'),
+        REDDIT_LIVE_EVIDENCE_ENV_PATH: join(tempDirectory, 'missing-live-reddit.env'),
         EXTERNAL_BETA_CURRENT_ENV_PATH: outputEnvPath,
         EXTERNAL_BETA_CURRENT_REPORT_PATH: outputReportPath,
         EXTERNAL_BETA_CURRENT_PACKAGE_EXPECTED_COMMIT_SHA: expectedCommitSha,

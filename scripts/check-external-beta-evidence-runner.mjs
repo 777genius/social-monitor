@@ -201,11 +201,19 @@ const requiredJobEnvAlternatives = new Map([
       label: 'reddit_access_token',
       env: ['REDDIT_ACCESS_TOKEN'],
       coversEnv: ['REDDIT_ACCESS_TOKEN'],
+      mode: 'live_command_credential',
     },
     {
       label: 'reddit_refresh_token_flow',
       env: ['REDDIT_CLIENT_ID', 'REDDIT_CLIENT_SECRET', 'REDDIT_REFRESH_TOKEN'],
       coversEnv: ['REDDIT_ACCESS_TOKEN'],
+      mode: 'live_command_credential',
+    },
+    {
+      label: 'reddit_captured_live_artifacts',
+      env: ['REDDIT_LIVE_EVIDENCE_PATH', 'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH'],
+      coversEnv: ['REDDIT_ACCESS_TOKEN'],
+      mode: 'captured_artifact',
     },
   ]],
   ['rabbitmq-staging-reliability-drill', [
@@ -621,6 +629,7 @@ function validateRunnerImplementation() {
     'Import Docker bundle env',
     'contractClosurePercent',
     'externalEvidenceEnvReadinessPercent',
+    'liveArtifactReadyForValidationJobCount',
     'readinessCounts',
     'manualArtifactReadyForValidationJobCount',
     'blockedMissingRequiredEnvJobCount',
@@ -647,10 +656,14 @@ function validateRunnerImplementation() {
     'jobInputEnvNames',
     'requiredAlternativeInputs',
     'coversEnv',
+    'allowCapturedArtifactAlternatives',
+    'hasSatisfiedCapturedArtifactAlternative',
+    'captured_artifact',
     'jobExecutionReadiness',
     'blocked_missing_required_env',
     'blocked_invalid_env',
     'blocked_local_runtime_env',
+    'live_artifact_ready_for_validation',
     'hasOnlyLocalRuntimeEnvViolations',
     'localRuntimeEnvNames',
     'isLocalRuntimeEnvValue',
@@ -3579,6 +3592,12 @@ function validateJobEnvironment(job, label) {
         violations.push(`${alternativeLabel}: coversEnv "${envName}" must be listed in requiredEnv`);
       }
     }
+    if (
+      alternative.mode !== undefined
+      && !['live_command_credential', 'captured_artifact'].includes(alternative.mode)
+    ) {
+      violations.push(`${alternativeLabel}: mode must be live_command_credential or captured_artifact when set`);
+    }
   }
 
   if (job.runPolicy !== 'local_contract' && job.requiredEnv.length === 0) {
@@ -3661,6 +3680,7 @@ function validateRequiredJobEvidence(job, label) {
       alternative.label === requiredAlternative.label
       && providerKeysEqual(alternative.env, requiredAlternative.env)
       && providerKeysEqual(alternative.coversEnv ?? alternative.env, requiredAlternative.coversEnv)
+      && (alternative.mode ?? null) === (requiredAlternative.mode ?? null)
     ));
     if (!hasAlternative) {
       violations.push(
