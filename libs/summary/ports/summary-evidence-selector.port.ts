@@ -11,7 +11,25 @@ export type SummaryEvidenceItem = {
   readonly bodyPreview?: string;
   readonly canonicalUrl?: string;
   readonly extractedSummaries?: readonly SummaryEvidenceExtractedSummary[];
+  readonly relevance?: SummaryEvidenceRelevance;
+  readonly safety?: SummaryEvidenceSafety;
   readonly observedAt: Date;
+};
+
+export type SummaryEvidenceRelevance = {
+  readonly score: number;
+  readonly rank: number;
+  readonly clusterId: string;
+  readonly clusterSize: number;
+  readonly duplicateFeedItemIds: readonly string[];
+  readonly whyImportant: readonly string[];
+};
+
+export type SummaryEvidenceSafety = {
+  readonly status: 'allowed' | 'sanitized' | 'blocked';
+  readonly categories: readonly string[];
+  readonly rawPayloadRetained: false;
+  readonly retentionPolicy: 'normalized_preview_only';
 };
 
 export type SummaryEvidenceExtractedSummary = {
@@ -42,6 +60,8 @@ export interface SummaryEvidenceSelectorPort {
     tenantId: TenantId;
     workspaceId: WorkspaceId;
     topicId: string;
+    userId?: string;
+    subscriptionId?: string;
     maxItems: number;
   }): Promise<SummaryEvidenceSelection>;
 }

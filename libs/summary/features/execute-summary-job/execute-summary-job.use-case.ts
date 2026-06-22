@@ -172,6 +172,8 @@ export class ExecuteSummaryJobUseCase {
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
       topicId: snapshot.topicId,
+      userId: snapshot.userId,
+      subscriptionId: snapshot.subscriptionId,
       maxItems: maxEvidenceItems,
     });
     const summaryPolicy = await this.summaryPolicies.findByTopic({

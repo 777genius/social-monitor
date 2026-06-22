@@ -119,7 +119,7 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
               },
             ]
           : [],
-        sourceHighlights: input.policy.includeSourceHighlights ? selectedItems.map((item) => item.title) : [],
+        sourceHighlights: input.policy.includeSourceHighlights ? selectedItems.map(formatSourceHighlight) : [],
         citationMap,
         qualityFlags: input.evidence.items.length < 3 ? ['limited_sources'] : [],
         confidence: {
@@ -186,6 +186,12 @@ const buildExecutiveSummary = (input: SummaryModelInput): string => {
   }
 
   return `${base} Custom focus: ${input.policy.customInstructions}`;
+};
+
+const formatSourceHighlight = (item: SummaryModelInput['evidence']['items'][number]): string => {
+  const why = item.relevance?.whyImportant[0];
+
+  return why === undefined ? item.title : `${item.title} (${why})`;
 };
 
 const buildNoSignalSummary = (input: SummaryModelInput): string => {

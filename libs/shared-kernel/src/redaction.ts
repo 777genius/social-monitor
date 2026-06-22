@@ -7,6 +7,10 @@ const bearerPattern = /^bearer\s+\S+/i;
 const basicPattern = /^basic\s+\S+/i;
 const generatedSecretPattern = /^(?:smk|whsec)_[A-Za-z0-9_-]+/;
 const urlWithPasswordPattern = /^[a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:[^@\s]+@/i;
+const inlineCredentialPattern =
+  /\b((?:access|refresh|id)[_-]?token|api[_-]?key|client[_-]?secret|authorization|password|session|cookie|signature)\s*[:=]\s*([^\s'",<>{}]+)/gi;
+const inlineBearerPattern = /\b(?:bearer|basic)\s+[A-Za-z0-9._~+/-]+=*/gi;
+const inlineGeneratedSecretPattern = /\b(?:smk|whsec)_[A-Za-z0-9_-]+\b/g;
 
 export const isSensitiveKey = (key: string): boolean => sensitiveKeyPattern.test(key);
 
@@ -15,6 +19,12 @@ export const isSensitiveString = (value: string): boolean =>
   basicPattern.test(value) ||
   generatedSecretPattern.test(value) ||
   urlWithPasswordPattern.test(value);
+
+export const redactSensitiveText = (value: string): string =>
+  value
+    .replace(inlineCredentialPattern, (_match, key: string) => `${key}=${REDACTED_VALUE}`)
+    .replace(inlineBearerPattern, REDACTED_VALUE)
+    .replace(inlineGeneratedSecretPattern, REDACTED_VALUE);
 
 export const redactSensitiveRecord = (
   record: Readonly<Record<string, unknown>>,

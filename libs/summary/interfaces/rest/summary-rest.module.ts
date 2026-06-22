@@ -12,6 +12,8 @@ import {
   type RabbitMqQueuePublisherOptions,
 } from '@social-monitor/platform-queue/adapters/rabbitmq';
 import { RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
+import { RelevanceRestModule } from '@social-monitor/relevance/interfaces/rest/relevance-rest.module';
+import { RankFeedItemsUseCase } from '@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { SubscriptionUserSummaryPreferenceReaderAdapter } from '@social-monitor/subscriptions/adapters/summary/subscription-user-summary-preference.reader';
 import { SubscriptionsRestModule } from '@social-monitor/subscriptions/interfaces/rest/subscriptions-rest.module';
@@ -25,6 +27,7 @@ import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-res
 import { UsageSummaryQuotaAdapter } from '../../adapters/quota/usage-summary-quota.adapter';
 import { FeedSummaryEvidenceSelector } from '../../adapters/evidence/feed-summary-evidence.selector';
 import { FeedSummaryFreshnessProbe } from '../../adapters/evidence/feed-summary-freshness.probe';
+import { RelevanceSummaryEvidenceSelector } from '../../adapters/evidence/relevance-summary-evidence.selector';
 import { YoutubeVideoSummaryEvidenceSelector } from '../../adapters/evidence/youtube-video-summary-evidence.selector';
 import { InMemorySummaryEventPublisher } from '../../adapters/messaging/in-memory-summary-event-publisher';
 import {
@@ -116,7 +119,7 @@ import { SummaryRequestController } from './summary-request.controller';
 import { SummaryController } from './summary.controller';
 
 @Module({
-  imports: [UsageRestModule, IdentityRestModule, FeedRestModule, SubscriptionsRestModule],
+  imports: [UsageRestModule, IdentityRestModule, FeedRestModule, SubscriptionsRestModule, RelevanceRestModule],
   controllers: [
     SummaryController,
     SummaryFeedbackController,
@@ -286,9 +289,15 @@ import { SummaryController } from './summary.controller';
       inject: [SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE],
     },
     {
+      provide: RelevanceSummaryEvidenceSelector,
+      useFactory: (rankFeedItems: RankFeedItemsUseCase) =>
+        new RelevanceSummaryEvidenceSelector(rankFeedItems, new SystemClock()),
+      inject: [RankFeedItemsUseCase],
+    },
+    {
       provide: SUMMARY_EVIDENCE_SELECTOR,
       useFactory: (
-        feedEvidenceSelector: FeedSummaryEvidenceSelector,
+        feedEvidenceSelector: RelevanceSummaryEvidenceSelector,
         youtubeVideoSummaryProvider: YoutubeVideoSummaryProviderPort,
       ): SummaryEvidenceSelectorPort =>
         new YoutubeVideoSummaryEvidenceSelector(feedEvidenceSelector, youtubeVideoSummaryProvider, {
@@ -296,7 +305,7 @@ import { SummaryController } from './summary.controller';
           maxPreviewCharacters: resolveSummaryYoutubeVideoSummaryMaxPreviewCharacters(process.env),
           continueOnProviderError: true,
         }),
-      inject: [FeedSummaryEvidenceSelector, SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER],
+      inject: [RelevanceSummaryEvidenceSelector, SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER],
     },
     {
       provide: FeedSummaryFreshnessProbe,
