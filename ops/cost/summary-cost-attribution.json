@@ -18,10 +18,10 @@
   },
   "blockingPassed": true,
   "totals": {
-    "fixtureCount": 5,
-    "attributedFixtureCount": 5,
-    "inputTokens": 244,
-    "outputTokens": 688,
+    "fixtureCount": 7,
+    "attributedFixtureCount": 7,
+    "inputTokens": 313,
+    "outputTokens": 1008,
     "estimatedCostUsd": 0,
     "estimatedCostMicroUsd": 0
   },
@@ -84,6 +84,25 @@
       "maxFixtureCostUsd": 0
     },
     {
+      "fixtureId": "rss-secret-redaction-boundary",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "tenantId": "eval-tenant",
+      "workspaceId": "eval-workspace",
+      "topicId": "credential-safety",
+      "sourceWindowId": "eval-rss-secret-window",
+      "provider": "deterministic-local",
+      "model": "summary-fake-v1",
+      "promptVersion": "summary.prompt.v1",
+      "schemaVersion": "summary.artifact.v1",
+      "usage": {
+        "inputTokens": 39,
+        "outputTokens": 160,
+        "estimatedCostUsd": 0,
+        "estimatedCostMicroUsd": 0
+      },
+      "maxFixtureCostUsd": 0
+    },
+    {
       "fixtureId": "feedback-wrong-fact-grounding",
       "datasetVersion": "summary.eval.mvp.v1",
       "tenantId": "eval-tenant",
@@ -115,6 +134,25 @@
       "schemaVersion": "summary.artifact.v1",
       "usage": {
         "inputTokens": 74,
+        "outputTokens": 160,
+        "estimatedCostUsd": 0,
+        "estimatedCostMicroUsd": 0
+      },
+      "maxFixtureCostUsd": 0
+    },
+    {
+      "fixtureId": "stale-window-marker-regression",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "tenantId": "eval-tenant",
+      "workspaceId": "eval-workspace",
+      "topicId": "freshness-regression",
+      "sourceWindowId": "eval-stale-window",
+      "provider": "deterministic-local",
+      "model": "summary-fake-v1",
+      "promptVersion": "summary.prompt.v1",
+      "schemaVersion": "summary.artifact.v1",
+      "usage": {
+        "inputTokens": 30,
         "outputTokens": 160,
         "estimatedCostUsd": 0,
         "estimatedCostMicroUsd": 0
@@ -163,6 +201,18 @@
       {
         "tenantId": "eval-tenant",
         "workspaceId": "eval-workspace",
+        "topicId": "credential-safety",
+        "fixtureCount": 1,
+        "usage": {
+          "inputTokens": 39,
+          "outputTokens": 160,
+          "estimatedCostUsd": 0,
+          "estimatedCostMicroUsd": 0
+        }
+      },
+      {
+        "tenantId": "eval-tenant",
+        "workspaceId": "eval-workspace",
         "topicId": "feedback-grounding",
         "fixtureCount": 1,
         "usage": {
@@ -183,16 +233,28 @@
           "estimatedCostUsd": 0,
           "estimatedCostMicroUsd": 0
         }
+      },
+      {
+        "tenantId": "eval-tenant",
+        "workspaceId": "eval-workspace",
+        "topicId": "freshness-regression",
+        "fixtureCount": 1,
+        "usage": {
+          "inputTokens": 30,
+          "outputTokens": 160,
+          "estimatedCostUsd": 0,
+          "estimatedCostMicroUsd": 0
+        }
       }
     ],
     "byProviderModel": [
       {
         "provider": "deterministic-local",
         "model": "summary-fake-v1",
-        "fixtureCount": 5,
+        "fixtureCount": 7,
         "usage": {
-          "inputTokens": 244,
-          "outputTokens": 688,
+          "inputTokens": 313,
+          "outputTokens": 1008,
           "estimatedCostUsd": 0,
           "estimatedCostMicroUsd": 0
         }

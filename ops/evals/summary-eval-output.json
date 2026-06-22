@@ -22,14 +22,51 @@
   "datasetVersions": [
     "summary.eval.mvp.v1"
   ],
+  "fixtureGroups": [
+    "citation_regression",
+    "empty_no_signal",
+    "hn_golden",
+    "prompt_injection",
+    "secret_redaction",
+    "stale_marker"
+  ],
   "blockingPassed": true,
   "totals": {
-    "fixtureCount": 5,
-    "passedFixtureCount": 5,
+    "fixtureCount": 7,
+    "passedFixtureCount": 7,
     "failedFixtureCount": 0,
-    "inputTokens": 244,
-    "outputTokens": 688,
-    "estimatedCostUsd": 0
+    "inputTokens": 313,
+    "outputTokens": 1008,
+    "estimatedCostUsd": 0,
+    "checkedKeyPointCount": 9,
+    "groundedKeyPointCount": 9,
+    "secretLeakCount": 0
+  },
+  "qualityGates": {
+    "requiredFixtureGroups": [
+      "citation_regression",
+      "empty_no_signal",
+      "hn_golden",
+      "prompt_injection",
+      "secret_redaction",
+      "stale_marker"
+    ],
+    "missingFixtureGroups": [],
+    "hallucinationGuard": {
+      "checkedKeyPointCount": 9,
+      "groundedKeyPointCount": 9,
+      "blockingPassed": true
+    },
+    "secretRedactionGuard": {
+      "secretLeakCount": 0,
+      "blockingPassed": true
+    },
+    "staleMarkerGuard": {
+      "fixtureIds": [
+        "stale-window-marker-regression"
+      ],
+      "blockingPassed": true
+    }
   },
   "fixtureResults": [
     {
@@ -42,7 +79,10 @@
         "outputTokens": 48,
         "estimatedCostUsd": 0,
         "keyPointCount": 0,
-        "citationCount": 0
+        "citationCount": 0,
+        "checkedKeyPointCount": 0,
+        "groundedKeyPointCount": 0,
+        "secretLeakCount": 0
       }
     },
     {
@@ -55,7 +95,10 @@
         "outputTokens": 160,
         "estimatedCostUsd": 0,
         "keyPointCount": 2,
-        "citationCount": 2
+        "citationCount": 2,
+        "checkedKeyPointCount": 2,
+        "groundedKeyPointCount": 2,
+        "secretLeakCount": 0
       }
     },
     {
@@ -68,7 +111,26 @@
         "outputTokens": 160,
         "estimatedCostUsd": 0,
         "keyPointCount": 1,
-        "citationCount": 1
+        "citationCount": 1,
+        "checkedKeyPointCount": 1,
+        "groundedKeyPointCount": 1,
+        "secretLeakCount": 0
+      }
+    },
+    {
+      "fixtureId": "rss-secret-redaction-boundary",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "blockingPassed": true,
+      "failures": [],
+      "metrics": {
+        "inputTokens": 39,
+        "outputTokens": 160,
+        "estimatedCostUsd": 0,
+        "keyPointCount": 1,
+        "citationCount": 1,
+        "checkedKeyPointCount": 1,
+        "groundedKeyPointCount": 1,
+        "secretLeakCount": 0
       }
     },
     {
@@ -81,7 +143,10 @@
         "outputTokens": 160,
         "estimatedCostUsd": 0,
         "keyPointCount": 2,
-        "citationCount": 2
+        "citationCount": 2,
+        "checkedKeyPointCount": 2,
+        "groundedKeyPointCount": 2,
+        "secretLeakCount": 0
       }
     },
     {
@@ -94,7 +159,26 @@
         "outputTokens": 160,
         "estimatedCostUsd": 0,
         "keyPointCount": 2,
-        "citationCount": 2
+        "citationCount": 2,
+        "checkedKeyPointCount": 2,
+        "groundedKeyPointCount": 2,
+        "secretLeakCount": 0
+      }
+    },
+    {
+      "fixtureId": "stale-window-marker-regression",
+      "datasetVersion": "summary.eval.mvp.v1",
+      "blockingPassed": true,
+      "failures": [],
+      "metrics": {
+        "inputTokens": 30,
+        "outputTokens": 160,
+        "estimatedCostUsd": 0,
+        "keyPointCount": 1,
+        "citationCount": 1,
+        "checkedKeyPointCount": 1,
+        "groundedKeyPointCount": 1,
+        "secretLeakCount": 0
       }
     }
   ]

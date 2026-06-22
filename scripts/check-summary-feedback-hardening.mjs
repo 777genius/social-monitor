@@ -108,6 +108,11 @@ const requiredFeedbackFixtureIds = new Set([
   'feedback-wrong-fact-grounding',
   'feedback-bad-citation-grounding',
 ]);
+const requiredSummaryQualityFixtureIds = new Set([
+  ...requiredFeedbackFixtureIds,
+  'rss-secret-redaction-boundary',
+  'stale-window-marker-regression',
+]);
 const forbiddenSerializedFragments = [
   'access_token',
   'refresh_token',
@@ -364,9 +369,9 @@ for (const action of evidence.watchActions ?? []) {
   validateAction(action, new Set(), 'watchActions');
 }
 
-for (const fixtureId of requiredFeedbackFixtureIds) {
+for (const fixtureId of requiredSummaryQualityFixtureIds) {
   if (!evalFixtureIds.has(fixtureId)) {
-    violations.push(`${evalOutputPath}: missing required feedback hardening fixture "${fixtureId}"`);
+    violations.push(`${evalOutputPath}: missing required summary quality hardening fixture "${fixtureId}"`);
   }
   if (!costFixtureIds.has(fixtureId)) {
     violations.push(`${costPath}: missing cost attribution for feedback hardening fixture "${fixtureId}"`);

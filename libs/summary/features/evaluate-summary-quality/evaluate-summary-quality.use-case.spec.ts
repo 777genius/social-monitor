@@ -137,6 +137,34 @@ class LeakingEvalModel extends SafeEvalModel {
   }
 }
 
+class UnsupportedClaimEvalModel extends SafeEvalModel {
+  override async summarize(input: SummaryModelInput, route: SummaryModelRoute): Promise<ProviderSummaryAttempt> {
+    const attempt = await super.summarize(input, route);
+
+    return {
+      ...attempt,
+      draft: {
+        ...attempt.draft,
+        keyPoints: [{ claim: 'Public launch is available for every customer today', citationIds: ['c1'] }],
+      },
+    };
+  }
+}
+
+class SecretLeakingEvalModel extends SafeEvalModel {
+  override async summarize(input: SummaryModelInput, route: SummaryModelRoute): Promise<ProviderSummaryAttempt> {
+    const attempt = await super.summarize(input, route);
+
+    return {
+      ...attempt,
+      draft: {
+        ...attempt.draft,
+        sourceHighlights: [...attempt.draft.sourceHighlights, 'access_token=summary-leak'],
+      },
+    };
+  }
+}
+
 const baseFixture: SummaryEvalFixture = {
   fixtureId: 'eval-fixture-1',
   datasetVersion: 'summary.eval.test.v1',
@@ -171,6 +199,7 @@ const baseFixture: SummaryEvalFixture = {
     expectedNoSignal: false,
     requiredQualityFlags: ['limited_sources'],
     forbiddenOutputFragments: ['ignore previous instructions'],
+    minGroundedKeyPointRatio: 0.65,
     maxEstimatedCostUsd: 0,
   },
 };
@@ -197,6 +226,9 @@ describe('EvaluateSummaryQualityUseCase', () => {
 
     expect(result.blockingPassed).toBe(true);
     expect(result.fixtureResults[0]?.failures).toEqual([]);
+    expect(result.fixtureResults[0]?.metrics.checkedKeyPointCount).toBe(1);
+    expect(result.fixtureResults[0]?.metrics.groundedKeyPointCount).toBe(1);
+    expect(result.fixtureResults[0]?.metrics.secretLeakCount).toBe(0);
   });
 
   it('blocks prompt-injection text leaking into generated output', async () => {
@@ -213,5 +245,39 @@ describe('EvaluateSummaryQualityUseCase', () => {
         message: 'Forbidden output fragment leaked: ignore previous instructions',
       },
     ]);
+  });
+
+  it('blocks cited key points that are not grounded in their cited evidence', async () => {
+    const result = await new EvaluateSummaryQualityUseCase(new UnsupportedClaimEvalModel()).execute({
+      fixtures: [baseFixture],
+      policy,
+      budget,
+    });
+
+    expect(result.blockingPassed).toBe(false);
+    expect(result.fixtureResults[0]?.failures).toEqual([
+      {
+        code: 'claim_not_grounded',
+        message: 'Key point 1 is not grounded in its cited evidence',
+      },
+    ]);
+    expect(result.fixtureResults[0]?.metrics.groundedKeyPointCount).toBe(0);
+  });
+
+  it('blocks secret-like values leaking into generated output', async () => {
+    const result = await new EvaluateSummaryQualityUseCase(new SecretLeakingEvalModel()).execute({
+      fixtures: [baseFixture],
+      policy,
+      budget,
+    });
+
+    expect(result.blockingPassed).toBe(false);
+    expect(result.fixtureResults[0]?.failures).toEqual([
+      {
+        code: 'secret_leaked',
+        message: 'Summary output contains 1 sensitive fragment(s)',
+      },
+    ]);
+    expect(result.fixtureResults[0]?.metrics.secretLeakCount).toBe(1);
   });
 });

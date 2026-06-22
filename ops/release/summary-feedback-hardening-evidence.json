@@ -193,9 +193,9 @@
   "releaseBlockingInvariants": [
     {
       "invariantId": "claims-and-citations-grounded",
-      "command": "npm run check:summary-evals",
-      "artifact": "ops/evals/summary-eval-output.json",
-      "requiredSignal": "blocking eval fixtures pass and include feedback grounding/citation regression cases"
+      "command": "npm run check:summary-quality-loop",
+      "artifact": "ops/evals/summary-quality-loop-output.json",
+      "requiredSignal": "production summary quality loop passes grounded claims, valid citations, secret redaction, prompt injection and stale marker checks"
     },
     {
       "invariantId": "summary-evidence-citations-valid",

@@ -49,8 +49,13 @@ describe('Summary eval quality gates (e2e)', () => {
       'empty-window-no-signal',
       'hn-citation-golden',
       'rss-prompt-injection-boundary',
+      'rss-secret-redaction-boundary',
       'feedback-wrong-fact-grounding',
       'feedback-bad-citation-grounding',
+      'stale-window-marker-regression',
     ]);
+    expect(result.fixtureResults.reduce((total, fixture) => total + fixture.metrics.checkedKeyPointCount, 0)).toBe(9);
+    expect(result.fixtureResults.reduce((total, fixture) => total + fixture.metrics.groundedKeyPointCount, 0)).toBe(9);
+    expect(result.fixtureResults.reduce((total, fixture) => total + fixture.metrics.secretLeakCount, 0)).toBe(0);
   });
 });

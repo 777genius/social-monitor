@@ -1,3 +1,5 @@
+import { redactSensitiveText } from '@social-monitor/shared-kernel';
+
 import { SummaryArtifact } from '../../domain';
 import type { ProviderSummaryAttempt, SummaryModelPort } from '../../ports';
 import type { EvaluateSummaryQualityCommand, SummaryEvalFixture } from './evaluate-summary-quality.command';
@@ -11,6 +13,12 @@ import { validateSummaryCitationsAgainstEvidence } from '../shared/summary-citat
 type MutableEvalFailure = {
   readonly code: SummaryEvalFailureCode;
   readonly message: string;
+};
+
+type QualityGateMetrics = {
+  readonly checkedKeyPointCount: number;
+  readonly groundedKeyPointCount: number;
+  readonly secretLeakCount: number;
 };
 
 export class EvaluateSummaryQualityUseCase {
@@ -36,6 +44,11 @@ export class EvaluateSummaryQualityUseCase {
   ): Promise<SummaryEvalFixtureResult> {
     const failures: MutableEvalFailure[] = [];
     let attempt: ProviderSummaryAttempt | null = null;
+    let qualityGateMetrics: QualityGateMetrics = {
+      checkedKeyPointCount: 0,
+      groundedKeyPointCount: 0,
+      secretLeakCount: 0,
+    };
 
     try {
       const route = this.summaryModel.route(fixture.input, command.policy, command.budget);
@@ -61,7 +74,7 @@ export class EvaluateSummaryQualityUseCase {
         ...attempt.draft,
       });
 
-      this.checkExpectations(fixture, attempt, failures);
+      qualityGateMetrics = this.checkExpectations(fixture, attempt, failures);
     } catch (error) {
       failures.push({
         code: this.failureCodeFromError(error),
@@ -80,6 +93,7 @@ export class EvaluateSummaryQualityUseCase {
       estimatedCostUsd: usage.estimatedCostUsd,
       keyPointCount: attempt?.draft.keyPoints.length ?? 0,
       citationCount: attempt?.draft.citationMap.length ?? 0,
+      ...qualityGateMetrics,
     };
 
     return {
@@ -95,8 +109,14 @@ export class EvaluateSummaryQualityUseCase {
     fixture: SummaryEvalFixture,
     attempt: ProviderSummaryAttempt,
     failures: MutableEvalFailure[],
-  ): void {
+  ): QualityGateMetrics {
     const draft = attempt.draft;
+    const grounding = evaluateGroundedKeyPoints(attempt, fixture);
+    const secretLeakCount = countSensitiveLeaks(visibleOutputFor(draft));
+
+    for (const failure of grounding.failures) {
+      failures.push(failure);
+    }
 
     if (fixture.expectation.expectedNoSignal) {
       if (!draft.qualityFlags.includes('no_signal') || draft.keyPoints.length !== 0) {
@@ -116,13 +136,16 @@ export class EvaluateSummaryQualityUseCase {
       }
     }
 
-    const visibleOutput = [
-      draft.headline,
-      draft.executiveSummary,
-      ...draft.keyPoints.map((point) => point.claim),
-      ...draft.risksAndUnknowns.map((risk) => risk.description),
-      ...draft.sourceHighlights,
-    ].join('\n').toLowerCase();
+    const visibleOutput = visibleOutputFor(draft).toLowerCase();
+
+    for (const requiredFragment of fixture.expectation.requiredOutputFragments ?? []) {
+      if (!visibleOutput.includes(requiredFragment.toLowerCase())) {
+        failures.push({
+          code: 'required_output_missing',
+          message: `Required output fragment missing: ${requiredFragment}`,
+        });
+      }
+    }
 
     for (const forbiddenFragment of fixture.expectation.forbiddenOutputFragments) {
       if (visibleOutput.includes(forbiddenFragment.toLowerCase())) {
@@ -133,12 +156,35 @@ export class EvaluateSummaryQualityUseCase {
       }
     }
 
+    if (secretLeakCount > 0) {
+      failures.push({
+        code: 'secret_leaked',
+        message: `Summary output contains ${secretLeakCount} sensitive fragment(s)`,
+      });
+    }
+
+    if (
+      fixture.expectation.expectedFreshnessStatus !== undefined &&
+      fixture.freshness?.status !== fixture.expectation.expectedFreshnessStatus
+    ) {
+      failures.push({
+        code: 'stale_marker_missing',
+        message: `Expected freshness ${fixture.expectation.expectedFreshnessStatus}, got ${fixture.freshness?.status ?? 'missing'}`,
+      });
+    }
+
     if (draft.usage.estimatedCostUsd > fixture.expectation.maxEstimatedCostUsd) {
       failures.push({
         code: 'cost_budget_exceeded',
         message: `Estimated cost ${draft.usage.estimatedCostUsd} exceeds ${fixture.expectation.maxEstimatedCostUsd}`,
       });
     }
+
+    return {
+      checkedKeyPointCount: grounding.checkedKeyPointCount,
+      groundedKeyPointCount: grounding.groundedKeyPointCount,
+      secretLeakCount,
+    };
   }
 
   private failureCodeFromError(error: unknown): SummaryEvalFailureCode {
@@ -155,3 +201,112 @@ export class EvaluateSummaryQualityUseCase {
     return 'provider_failure';
   }
 }
+
+const visibleOutputFor = (draft: ProviderSummaryAttempt['draft']): string =>
+  [
+    draft.headline,
+    draft.executiveSummary,
+    ...draft.keyPoints.map((point) => point.claim),
+    ...draft.risksAndUnknowns.map((risk) => risk.description),
+    ...draft.sourceHighlights,
+  ].join('\n');
+
+const countSensitiveLeaks = (value: string): number => {
+  const redacted = redactSensitiveText(value);
+
+  if (redacted === value) {
+    return 0;
+  }
+
+  return [...value.matchAll(sensitiveLeakPattern)].length || 1;
+};
+
+const sensitiveLeakPattern =
+  /\b(?:(?:access|refresh|id)[_-]?token|api[_-]?key|client[_-]?secret|authorization|password|session|cookie|signature)\s*[:=]\s*[^\s'",<>{}]+|\b(?:bearer|basic)\s+[A-Za-z0-9._~+/-]+=*|\b(?:smk|whsec)_[A-Za-z0-9_-]+\b/gi;
+
+const evaluateGroundedKeyPoints = (
+  attempt: ProviderSummaryAttempt,
+  fixture: SummaryEvalFixture,
+): QualityGateMetrics & { readonly failures: readonly MutableEvalFailure[] } => {
+  const citationById = new Map(attempt.draft.citationMap.map((citation) => [citation.citationId, citation]));
+  const evidenceByFeedItemId = new Map(fixture.input.evidence.items.map((item) => [item.feedItemId, item]));
+  const failures: MutableEvalFailure[] = [];
+  let checkedKeyPointCount = 0;
+  let groundedKeyPointCount = 0;
+
+  for (const [index, keyPoint] of attempt.draft.keyPoints.entries()) {
+    checkedKeyPointCount += 1;
+
+    const claimTokens = signalTokens(keyPoint.claim);
+    const citedEvidenceText = keyPoint.citationIds
+      .map((citationId) => citationById.get(citationId))
+      .map((citation) => {
+        if (citation === undefined) {
+          return '';
+        }
+
+        const evidence = evidenceByFeedItemId.get(citation.feedItemId);
+
+        if (evidence === undefined) {
+          return '';
+        }
+
+        if (citation.field === 'bodyPreview') {
+          return evidence.bodyPreview ?? '';
+        }
+
+        if (citation.field === 'canonicalUrl') {
+          return evidence.canonicalUrl ?? '';
+        }
+
+        return evidence.title;
+      })
+      .join(' ');
+    const evidenceTokens = new Set(signalTokens(citedEvidenceText));
+    const groundedTokenCount = claimTokens.filter((token) => evidenceTokens.has(token)).length;
+    const ratio = claimTokens.length === 0 ? 1 : groundedTokenCount / claimTokens.length;
+    const minRatio = fixture.expectation.minGroundedKeyPointRatio ?? 0.65;
+
+    if (ratio >= minRatio) {
+      groundedKeyPointCount += 1;
+      continue;
+    }
+
+    failures.push({
+      code: 'claim_not_grounded',
+      message: `Key point ${index + 1} is not grounded in its cited evidence`,
+    });
+  }
+
+  return {
+    checkedKeyPointCount,
+    groundedKeyPointCount,
+    secretLeakCount: 0,
+    failures,
+  };
+};
+
+const signalTokens = (value: string): readonly string[] =>
+  [...new Set(value
+    .toLocaleLowerCase('en-US')
+    .replace(/https?:\/\/\S+/gu, ' ')
+    .replace(/[^a-z0-9а-яё_ -]+/giu, ' ')
+    .split(/\s+/u)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 4)
+    .filter((part) => !claimStopWords.has(part)))]
+    .sort((left, right) => left.localeCompare(right));
+
+const claimStopWords = new Set([
+  'about',
+  'after',
+  'against',
+  'from',
+  'into',
+  'only',
+  'that',
+  'this',
+  'uses',
+  'with',
+  'your',
+]);

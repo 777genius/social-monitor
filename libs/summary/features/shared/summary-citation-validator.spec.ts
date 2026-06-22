@@ -105,4 +105,24 @@ describe('validateSummaryCitationsAgainstEvidence', () => {
       ],
     }), evidence)).toThrow('Summary citation validation failed: citation c1 provider key mismatch');
   });
+
+  it('rejects citations to absent optional evidence fields', () => {
+    expect(() => validateSummaryCitationsAgainstEvidence(draft({
+      citationMap: [
+        {
+          citationId: 'c1',
+          feedItemId: 'feed-1',
+          sourceItemId: 'source-1',
+          providerKey: 'rss',
+          field: 'canonicalUrl',
+        },
+      ],
+    }), {
+      ...evidence,
+      items: [{
+        ...evidence.items[0]!,
+        canonicalUrl: undefined,
+      }],
+    })).toThrow('Summary citation validation failed: citation c1 references missing canonical URL');
+  });
 });

@@ -42,6 +42,14 @@ export const validateSummaryCitationsAgainstEvidence = (
     if (evidenceItem.providerKey !== citation.providerKey) {
       throw new Error(`Summary citation validation failed: citation ${citation.citationId} provider key mismatch`);
     }
+
+    if (citation.field === 'bodyPreview' && (evidenceItem.bodyPreview ?? '').trim().length === 0) {
+      throw new Error(`Summary citation validation failed: citation ${citation.citationId} references missing body preview`);
+    }
+
+    if (citation.field === 'canonicalUrl' && (evidenceItem.canonicalUrl ?? '').trim().length === 0) {
+      throw new Error(`Summary citation validation failed: citation ${citation.citationId} references missing canonical URL`);
+    }
   }
 
   for (const keyPoint of draft.keyPoints) {

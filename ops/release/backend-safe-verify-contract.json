@@ -116,6 +116,7 @@
     "check:beta-feedback-report",
     "check:summary-evidence-smoke",
     "check:summary-evals",
+    "check:summary-quality-loop",
     "check:summary-cost",
     "check:summary-window",
     "check:summary-retry",

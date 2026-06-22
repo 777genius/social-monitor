@@ -460,6 +460,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "summary-production-quality-loop",
+      "command": "npm run check:summary-quality-loop",
+      "blocksRelease": true
+    },
+    {
       "gateId": "summary-cost-attribution",
       "command": "npm run check:summary-cost",
       "blocksRelease": true
