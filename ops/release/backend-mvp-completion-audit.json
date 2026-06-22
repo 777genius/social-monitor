@@ -96,15 +96,17 @@
       "blocksMvpExit": true,
       "authoritativeArtifacts": [
         "ops/ingestion/source-provider-certification.json",
+        "ops/ingestion/source-provider-runtime-contract.json",
         "ops/ingestion/source-live-certification-evidence.json"
       ],
       "backendSafeVerificationCommands": [
         "npm run check:source-certification",
+        "npm run check:source-provider-runtime-contract",
         "npm run check:source-live-certification-evidence"
       ],
       "externalVerificationCommands": ["npm run check:live-open-connectors", "npm run capture:live-reddit-oauth"],
-      "releaseGateIds": ["source-provider-certification", "source-live-certification-evidence"],
-      "exitCondition": "HN, RSS, GitHub and Reddit have live smoke, auth, rate-limit and credential lifecycle evidence attached",
+      "releaseGateIds": ["source-provider-certification", "source-provider-runtime-contract", "source-live-certification-evidence"],
+      "exitCondition": "HN, RSS, GitHub and Reddit have runtime token/cache/rate-limit/outage guarantees plus live smoke, auth, rate-limit and credential lifecycle evidence attached",
       "goCondition": "Telegram and X stay deferred while enabled external providers are live-certified"
     },
     {

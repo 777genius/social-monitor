@@ -100,6 +100,7 @@
     "check:relevance-persistence",
     "check:load-cost",
     "check:source-certification",
+    "check:source-provider-runtime-contract",
     "check:source-live-certification-evidence",
     "check:hn-smoke",
     "check:github-smoke",

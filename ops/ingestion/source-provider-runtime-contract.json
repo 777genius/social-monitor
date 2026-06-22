@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "contractId": "source-provider-runtime-contract-v1",
+  "scope": "backend-only",
+  "fixtureMode": "mocked_http_no_network",
+  "releaseGate": "npm run check:source-provider-runtime-contract",
+  "blockingPassed": true,
+  "providers": [
+    {
+      "providerKey": "hacker-news",
+      "credentialMode": "public_no_secret",
+      "requiredRuntimeInvariants": [
+        "official public HTTP adapters normalize listing and search results",
+        "HTTP 429 is classified as retryable rate_limited",
+        "HTTP 5xx and transport failures are classified as retryable unavailable"
+      ],
+      "liveEvidenceSignals": ["hn-live-http-smoke", "hn-rate-limit-evidence"]
+    },
+    {
+      "providerKey": "rss",
+      "credentialMode": "public_allowlisted_feed_polling",
+      "requiredRuntimeInvariants": [
+        "feed URLs are SSRF checked before fetch and after redirects",
+        "ETag and Last-Modified cursors become conditional HTTP headers",
+        "HTTP 304 produces notModified without parsing a feed body",
+        "HTTP 429 is classified as retryable rate_limited"
+      ],
+      "liveEvidenceSignals": ["rss-allowlisted-live-feeds", "rss-http-cache-evidence", "rss-ssrf-proof"]
+    },
+    {
+      "providerKey": "github",
+      "credentialMode": "anonymous_or_read_only_token",
+      "requiredRuntimeInvariants": [
+        "anonymous public API requests omit Authorization",
+        "token mode trims and uses Bearer Authorization without leaking token values",
+        "REST API version and User-Agent headers are sent",
+        "401 is classified as non-retryable auth_failed and 403/429 as retryable rate_limited"
+      ],
+      "liveEvidenceSignals": ["github-live-api-smoke", "github-rate-limit-budget"]
+    },
+    {
+      "providerKey": "reddit",
+      "credentialMode": "app_only_or_permanent_refresh_token",
+      "requiredRuntimeInvariants": [
+        "tenant refresh-token credentials use grant_type=refresh_token",
+        "short-lived access tokens are cached only until expiry minus refresh skew",
+        "OAuth failure bodies redact access_token, refresh_token and client_secret fields",
+        "tenant refresh-token credentials override app-only token acquisition",
+        "401/403/OAuth failures are classified as non-retryable auth_failed and 429 as retryable rate_limited"
+      ],
+      "liveEvidenceSignals": [
+        "reddit-tenant-oauth-smoke",
+        "reddit-auth-failure",
+        "reddit-rate-limit-budget",
+        "reddit-credential-lifecycle"
+      ]
+    }
+  ]
+}

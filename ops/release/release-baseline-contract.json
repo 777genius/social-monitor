@@ -15,6 +15,7 @@
     "check:production-secret-boundary",
     "check:credential-secret-runtime-flow",
     "check:security-final-sweep",
+    "check:source-provider-runtime-contract",
     "check:source-live-certification-evidence",
     "check:staging-reliability-evidence",
     "check:summary-feedback-hardening",
@@ -128,6 +129,10 @@
     {
       "artifactId": "source-live-certification-evidence",
       "path": "ops/ingestion/source-live-certification-evidence.json"
+    },
+    {
+      "artifactId": "source-provider-runtime-contract",
+      "path": "ops/ingestion/source-provider-runtime-contract.json"
     },
     {
       "artifactId": "source-live-certification-artifact-examples",

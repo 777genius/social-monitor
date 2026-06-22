@@ -78,10 +78,21 @@ export class RssSourceProvider implements SourceProviderPort {
   }
 
   classifyError(error: unknown): ProviderFailure {
+    const message = error instanceof Error ? error.message : 'Unknown RSS provider error';
+    const lowerMessage = message.toLowerCase();
+
+    if (message.includes('429') || lowerMessage.includes('rate limit')) {
+      return {
+        kind: 'rate_limited',
+        retryable: true,
+        message,
+      };
+    }
+
     return {
-      kind: error instanceof Error && error.message.includes('Feed URL') ? 'invalid_query' : 'unavailable',
-      retryable: !(error instanceof Error && error.message.includes('Feed URL')),
-      message: error instanceof Error ? error.message : 'Unknown RSS provider error',
+      kind: message.includes('Feed URL') ? 'invalid_query' : 'unavailable',
+      retryable: !message.includes('Feed URL'),
+      message,
     };
   }
 }

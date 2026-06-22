@@ -380,6 +380,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "source-provider-runtime-contract",
+      "command": "npm run check:source-provider-runtime-contract",
+      "blocksRelease": true
+    },
+    {
       "gateId": "source-live-certification-evidence",
       "command": "npm run check:source-live-certification-evidence",
       "blocksRelease": true
