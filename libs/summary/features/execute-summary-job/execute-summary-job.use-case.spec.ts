@@ -6,6 +6,8 @@ import type {
   ListSummaryArtifactsResult,
   ProviderSummaryAttempt,
   SummaryArtifactRepositoryPort,
+  SummaryMemoryContext,
+  SummaryMemoryPort,
   SummaryEvidenceSelection,
   SummaryEvidenceSelectorPort,
   SummaryEventPublisherPort,
@@ -214,6 +216,35 @@ class NoSignalSummaryModel implements SummaryModelPort {
       kind: 'unknown',
       retryable: false,
       message: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+class CapturingSummaryModel extends NoSignalSummaryModel {
+  readonly routedInputs: SummaryModelInput[] = [];
+
+  override route(input: SummaryModelInput, policy: SummaryModelPolicy, budget: SummaryModelBudget): SummaryModelRoute {
+    this.routedInputs.push(input);
+
+    return super.route(input, policy, budget);
+  }
+}
+
+class CapturingSummaryMemory implements SummaryMemoryPort {
+  readonly buildQueries: Parameters<SummaryMemoryPort['buildContext']>[0][] = [];
+
+  constructor(private readonly context: SummaryMemoryContext) {}
+
+  async buildContext(query: Parameters<SummaryMemoryPort['buildContext']>[0]): Promise<SummaryMemoryContext> {
+    this.buildQueries.push(query);
+
+    return this.context;
+  }
+
+  async recordSummaryFeedback(): Promise<Awaited<ReturnType<SummaryMemoryPort['recordSummaryFeedback']>>> {
+    return {
+      status: 'skipped',
+      diagnostics: { reason: 'not-used-in-summary-job' },
     };
   }
 }
@@ -447,6 +478,75 @@ describe('ExecuteSummaryJobUseCase', () => {
     }))?.toSnapshot()).toMatchObject({
       status: 'failed',
       failureReason: 'Summary citation validation failed: citation c1 references unselected feed item',
+    });
+  });
+
+  it('passes memory context into the summary model without owning memo-stack details', async () => {
+    const jobs = new FakeSummaryJobs();
+    const artifacts = new FakeSummaryArtifacts();
+    const events = new FakeSummaryEvents();
+    const tenant = tenantId('tenant-1');
+    const workspace = workspaceId('workspace-1');
+    const model = new CapturingSummaryModel();
+    const memory = new CapturingSummaryMemory({
+      status: 'available',
+      renderedText: 'Memory: prioritize auth and security regressions.',
+      diagnostics: {
+        vector_status: 'ok',
+        graph_status: 'ok',
+        query_decomposition_derived_query_count: 2,
+      },
+      retrievedAt: new Date('2026-06-06T00:00:01.000Z'),
+    });
+    await jobs.save(
+      SummaryJob.request({
+        id: 'summary-job-memory',
+        tenantId: tenant,
+        workspaceId: workspace,
+        topicId: 'topic-1',
+        idempotencyKey: 'summary-request-memory',
+        requestedAt: new Date('2026-06-06T00:00:00.000Z'),
+        userId: 'user-1',
+        subscriptionId: 'subscription-1',
+      }),
+    );
+    const useCase = new ExecuteSummaryJobUseCase(
+      jobs,
+      artifacts,
+      new FakeSummaryPolicies(),
+      new FakeUserSummaryPreferenceReader(),
+      new SelectedEvidenceSelector(),
+      model,
+      events,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-06T00:00:02.000Z')),
+      memory,
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: 'summary-job-memory',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(memory.buildQueries).toHaveLength(1);
+    expect(memory.buildQueries[0]).toMatchObject({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: 'topic-1',
+      userId: 'user-1',
+      subscriptionId: 'subscription-1',
+    });
+    expect(memory.buildQueries[0]?.evidence.items).toHaveLength(1);
+    expect(model.routedInputs[0]?.memoryContext).toMatchObject({
+      status: 'available',
+      renderedText: 'Memory: prioritize auth and security regressions.',
+      diagnostics: {
+        vector_status: 'ok',
+        graph_status: 'ok',
+        query_decomposition_derived_query_count: 2,
+      },
     });
   });
 

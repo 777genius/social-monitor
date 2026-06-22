@@ -17,17 +17,21 @@ import {
   type SummaryJob,
   type SummaryReadyEvent,
 } from '../../domain';
-import type {
-  SummaryArtifactRepositoryPort,
-  SummaryEvidenceSelectorPort,
-  SummaryEventPublisherPort,
-  SummaryJobRepositoryPort,
-  SummaryModelBudget,
-  SummaryModelFailure,
-  SummaryModelPolicy,
-  SummaryModelPort,
-  SummaryPolicyRepositoryPort,
-  UserSummaryPreferenceReaderPort,
+import {
+  NOOP_SUMMARY_MEMORY,
+  type SummaryArtifactRepositoryPort,
+  type SummaryEvidenceSelection,
+  type SummaryEvidenceSelectorPort,
+  type SummaryEventPublisherPort,
+  type SummaryJobRepositoryPort,
+  type SummaryModelBudget,
+  type SummaryModelFailure,
+  type SummaryModelPolicy,
+  type SummaryModelPort,
+  type SummaryMemoryContext,
+  type SummaryMemoryPort,
+  type SummaryPolicyRepositoryPort,
+  type UserSummaryPreferenceReaderPort,
 } from '../../ports';
 import type { ExecuteSummaryJobCommand } from './execute-summary-job.command';
 import type { ExecuteSummaryJobResult } from './execute-summary-job.result';
@@ -59,6 +63,7 @@ export class ExecuteSummaryJobUseCase {
     private readonly events: SummaryEventPublisherPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
+    private readonly memory: SummaryMemoryPort = NOOP_SUMMARY_MEMORY,
   ) {}
 
   async execute(command: ExecuteSummaryJobCommand): Promise<Result<ExecuteSummaryJobResult, ExecuteSummaryJobFailure>> {
@@ -191,6 +196,7 @@ export class ExecuteSummaryJobUseCase {
           topicId: snapshot.topicId,
         });
     const basePolicy = summaryPolicy?.toGenerationPolicy() ?? defaultSummaryGenerationPolicy();
+    const memoryContext = await this.safeBuildMemoryContext(snapshot, evidence);
     const input = {
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
@@ -198,6 +204,7 @@ export class ExecuteSummaryJobUseCase {
       userId: snapshot.userId,
       subscriptionId: snapshot.subscriptionId,
       evidence,
+      memoryContext,
       policy: resolveEffectiveSummaryPolicy(basePolicy, userPreference),
       requestedAt: snapshot.requestedAt,
     };
@@ -229,4 +236,39 @@ export class ExecuteSummaryJobUseCase {
 
     return ok({ artifact });
   }
+
+  private async safeBuildMemoryContext(
+    snapshot: ReturnType<SummaryJob['toSnapshot']>,
+    evidence: SummaryEvidenceSelection,
+  ): Promise<SummaryMemoryContext> {
+    try {
+      return await this.memory.buildContext({
+        tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId,
+        topicId: snapshot.topicId,
+        userId: snapshot.userId,
+        subscriptionId: snapshot.subscriptionId,
+        evidence,
+        requestedAt: snapshot.requestedAt,
+      });
+    } catch (error) {
+      return {
+        status: 'unavailable',
+        diagnostics: {
+          code: 'summary.memory.unavailable',
+          message: safeMemoryErrorMessage(error),
+        },
+        retrievedAt: this.clock.now(),
+      };
+    }
+  }
 }
+
+const safeMemoryErrorMessage = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : 'Summary memory context unavailable';
+
+  return message
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
+    .replace(/([?&](?:token|api_key|apikey|secret|password)=)[^&\s]+/gi, '$1[REDACTED]')
+    .slice(0, 240);
+};

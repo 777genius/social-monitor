@@ -30,6 +30,8 @@ import { FeedSummaryFreshnessProbe } from '../../adapters/evidence/feed-summary-
 import { RelevanceSummaryEvidenceSelector } from '../../adapters/evidence/relevance-summary-evidence.selector';
 import { YoutubeVideoSummaryEvidenceSelector } from '../../adapters/evidence/youtube-video-summary-evidence.selector';
 import { InMemorySummaryEventPublisher } from '../../adapters/messaging/in-memory-summary-event-publisher';
+import { MemoStackSummaryMemoryAdapter, resolveMemoStackSummaryMemoryOptions } from '../../adapters/memory/memo-stack-summary-memory.adapter';
+import { NoopSummaryMemoryAdapter } from '../../adapters/memory/noop-summary-memory.adapter';
 import {
   InMemorySummaryJobQueueAdapter,
   SummaryJobQueuePublisherAdapter,
@@ -76,6 +78,7 @@ import type {
   SummaryFeedbackRepositoryPort,
   SummaryJobQueuePort,
   SummaryJobRepositoryPort,
+  SummaryMemoryPort,
   SummaryPolicyRepositoryPort,
   UserSummaryPreferenceReaderPort,
   YoutubeVideoSummaryProviderPort,
@@ -90,6 +93,8 @@ import {
   SUMMARY_EVENT_PUBLISHER,
   SUMMARY_JOB_QUEUE_MODE,
   SUMMARY_MODEL_PROVIDER_MODE,
+  SUMMARY_MEMORY,
+  SUMMARY_MEMORY_MODE,
   SUMMARY_FEEDBACK_REPOSITORY,
   SUMMARY_JOB_QUEUE,
   SUMMARY_JOB_REPOSITORY,
@@ -103,6 +108,7 @@ import {
   SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE,
   type SummaryJobQueueMode,
   type SummaryModelProviderMode,
+  type SummaryMemoryMode,
   type SummaryPersistenceMode,
   type SummaryYoutubeVideoSummaryProviderMode,
   resolveSummaryGeminiYoutubeVideoSummaryTimeoutMs,
@@ -110,6 +116,7 @@ import {
   resolveSummaryYoutubeVideoSummaryMaxItems,
   resolveSummaryYoutubeVideoSummaryMaxPreviewCharacters,
   summaryJobQueueModeProvider,
+  summaryMemoryModeProvider,
   summaryModelProviderModeProvider,
   summaryPersistenceModeProvider,
   summaryRabbitMqJobQueueOptionsProvider,
@@ -131,6 +138,7 @@ import { SummaryController } from './summary.controller';
     summaryPersistenceModeProvider,
     summaryJobQueueModeProvider,
     summaryModelProviderModeProvider,
+    summaryMemoryModeProvider,
     summaryYoutubeVideoSummaryProviderModeProvider,
     summaryRabbitMqJobQueueOptionsProvider,
     {
@@ -250,6 +258,15 @@ import { SummaryController } from './summary.controller';
       ],
     },
     InMemorySummaryEventPublisher,
+    NoopSummaryMemoryAdapter,
+    {
+      provide: SUMMARY_MEMORY,
+      useFactory: (mode: SummaryMemoryMode, noop: NoopSummaryMemoryAdapter): SummaryMemoryPort =>
+        mode === 'memo-stack'
+          ? new MemoStackSummaryMemoryAdapter(resolveMemoStackSummaryMemoryOptions(process.env))
+          : noop,
+      inject: [SUMMARY_MEMORY_MODE, NoopSummaryMemoryAdapter],
+    },
     {
       provide: SUMMARY_EVENT_PUBLISHER,
       useFactory: (
@@ -393,6 +410,7 @@ import { SummaryController } from './summary.controller';
         evidenceSelector: SummaryEvidenceSelectorPort,
         summaryModel: MeteredSummaryModelAdapter,
         events: SummaryEventPublisherPort,
+        memory: SummaryMemoryPort,
       ) =>
         new ExecuteSummaryJobUseCase(
           summaryJobs,
@@ -404,6 +422,7 @@ import { SummaryController } from './summary.controller';
           events,
           new CryptoIdGenerator(),
           new SystemClock(),
+          memory,
         ),
       inject: [
         SUMMARY_JOB_REPOSITORY,
@@ -413,6 +432,7 @@ import { SummaryController } from './summary.controller';
         SUMMARY_EVIDENCE_SELECTOR,
         MeteredSummaryModelAdapter,
         SUMMARY_EVENT_PUBLISHER,
+        SUMMARY_MEMORY,
       ],
     },
     {
@@ -466,14 +486,16 @@ import { SummaryController } from './summary.controller';
       useFactory: (
         summaryArtifacts: SummaryArtifactRepositoryPort,
         feedback: SummaryFeedbackRepositoryPort,
+        memory: SummaryMemoryPort,
       ) =>
         new RecordSummaryFeedbackUseCase(
           summaryArtifacts,
           feedback,
           new CryptoIdGenerator(),
           new SystemClock(),
+          memory,
         ),
-      inject: [SUMMARY_ARTIFACT_REPOSITORY, SUMMARY_FEEDBACK_REPOSITORY],
+      inject: [SUMMARY_ARTIFACT_REPOSITORY, SUMMARY_FEEDBACK_REPOSITORY, SUMMARY_MEMORY],
     },
     {
       provide: RegenerateSummaryUseCase,

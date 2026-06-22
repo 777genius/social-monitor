@@ -15,6 +15,7 @@ import type {
   ListSummaryFeedbackResult,
   SummaryArtifactRepositoryPort,
   SummaryFeedbackRepositoryPort,
+  SummaryMemoryPort,
 } from '../../ports';
 import { RecordSummaryFeedbackUseCase } from './record-summary-feedback.use-case';
 
@@ -93,6 +94,35 @@ class FakeSummaryFeedback implements SummaryFeedbackRepositoryPort {
   }
 }
 
+class CapturingSummaryMemory implements SummaryMemoryPort {
+  readonly commands: Parameters<SummaryMemoryPort['recordSummaryFeedback']>[0][] = [];
+
+  async buildContext(): Promise<Awaited<ReturnType<SummaryMemoryPort['buildContext']>>> {
+    return {
+      status: 'disabled',
+      diagnostics: { reason: 'not-used-in-feedback-recording' },
+      retrievedAt: new Date('2026-06-06T00:10:00.000Z'),
+    };
+  }
+
+  async recordSummaryFeedback(
+    command: Parameters<SummaryMemoryPort['recordSummaryFeedback']>[0],
+  ): Promise<Awaited<ReturnType<SummaryMemoryPort['recordSummaryFeedback']>>> {
+    this.commands.push(command);
+
+    return {
+      status: 'written',
+      diagnostics: { provider: 'memo-stack' },
+    };
+  }
+}
+
+class FailingSummaryMemory extends CapturingSummaryMemory {
+  override async recordSummaryFeedback(): Promise<Awaited<ReturnType<SummaryMemoryPort['recordSummaryFeedback']>>> {
+    throw new Error('memo-stack unavailable');
+  }
+}
+
 describe('RecordSummaryFeedbackUseCase', () => {
   it('records classified feedback with citation evidence and eval eligibility idempotently', async () => {
     const tenant = tenantId('tenant-1');
@@ -150,6 +180,93 @@ describe('RecordSummaryFeedbackUseCase', () => {
       value: {
         ...first.value,
         created: false,
+      },
+    });
+    expect(feedback.all()).toHaveLength(1);
+  });
+
+  it('projects canonical feedback into summary memory with citation evidence', async () => {
+    const tenant = tenantId('tenant-1');
+    const workspace = workspaceId('workspace-1');
+    const summaries = new FakeSummaryArtifacts();
+    const feedback = new FakeSummaryFeedback();
+    const memory = new CapturingSummaryMemory();
+    await summaries.save(makeSummary({ tenantId: tenant, workspaceId: workspace }));
+    const useCase = new RecordSummaryFeedbackUseCase(
+      summaries,
+      feedback,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-06T00:10:00.000Z')),
+      memory,
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryId: 'summary-1',
+      idempotencyKey: 'feedback-key-1',
+      submittedBy: 'beta-user-1',
+      rating: 2,
+      category: 'bad_citation',
+      citationId: 'citation-1',
+      comment: 'Citation points to the wrong claim.',
+      correlationId: 'request-1',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(memory.commands).toEqual([
+      {
+        tenantId: tenant,
+        workspaceId: workspace,
+        topicId: 'topic-1',
+        summaryId: 'summary-1',
+        feedbackId: 'feedback-1',
+        idempotencyKey: 'feedback-key-1',
+        submittedBy: 'beta-user-1',
+        rating: 2,
+        category: 'bad_citation',
+        comment: 'Citation points to the wrong claim.',
+        citationId: 'citation-1',
+        feedItemId: 'feed-1',
+        sourceItemId: 'source-1',
+        providerKey: 'rss',
+        createdAt: new Date('2026-06-06T00:10:00.000Z'),
+      },
+    ]);
+  });
+
+  it('keeps feedback canonical when memory projection fails', async () => {
+    const tenant = tenantId('tenant-1');
+    const workspace = workspaceId('workspace-1');
+    const summaries = new FakeSummaryArtifacts();
+    const feedback = new FakeSummaryFeedback();
+    await summaries.save(makeSummary({ tenantId: tenant, workspaceId: workspace }));
+    const useCase = new RecordSummaryFeedbackUseCase(
+      summaries,
+      feedback,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-06T00:10:00.000Z')),
+      new FailingSummaryMemory(),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryId: 'summary-1',
+      idempotencyKey: 'feedback-key-1',
+      submittedBy: 'beta-user-1',
+      rating: 2,
+      category: 'bad_citation',
+      citationId: 'citation-1',
+      comment: 'Citation points to the wrong claim.',
+      correlationId: 'request-1',
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        feedbackId: 'feedback-1',
+        created: true,
       },
     });
     expect(feedback.all()).toHaveLength(1);

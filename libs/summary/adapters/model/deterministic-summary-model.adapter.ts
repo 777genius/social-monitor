@@ -41,7 +41,8 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
       (total, item) => total + item.title.length + (item.bodyPreview?.length ?? 0),
       0,
     );
-    const inputTokens = Math.ceil((input.topicId.length + evidenceTextLength) / 4);
+    const memoryTextLength = input.memoryContext?.renderedText?.length ?? 0;
+    const inputTokens = Math.ceil((input.topicId.length + evidenceTextLength + memoryTextLength) / 4);
     const outputTokens = input.evidence.items.length === 0 ? 48 : 160;
 
     return {
@@ -182,10 +183,10 @@ const buildExecutiveSummary = (input: SummaryModelInput): string => {
   const base = `Current ${formatLabel} uses ${input.evidence.items.length} selected item(s), ${toneLabel} tone, ${languageLabel}.`;
 
   if (input.policy.customInstructions === undefined) {
-    return base;
+    return appendMemoryContext(base, input);
   }
 
-  return `${base} Custom focus: ${input.policy.customInstructions}`;
+  return appendMemoryContext(`${base} Custom focus: ${input.policy.customInstructions}`, input);
 };
 
 const formatSourceHighlight = (item: SummaryModelInput['evidence']['items'][number]): string => {
@@ -198,8 +199,17 @@ const buildNoSignalSummary = (input: SummaryModelInput): string => {
   const base = 'No eligible evidence items were available for this topic window.';
 
   if (input.policy.customInstructions === undefined) {
+    return appendMemoryContext(base, input);
+  }
+
+  return appendMemoryContext(`${base} Custom focus: ${input.policy.customInstructions}`, input);
+};
+
+const appendMemoryContext = (base: string, input: SummaryModelInput): string => {
+  const memory = input.memoryContext;
+  if (memory?.status !== 'available' || memory.renderedText === undefined || memory.renderedText.trim().length === 0) {
     return base;
   }
 
-  return `${base} Custom focus: ${input.policy.customInstructions}`;
+  return `${base} Memory context: ${memory.renderedText.trim().slice(0, 500)}`;
 };

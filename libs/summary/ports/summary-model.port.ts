@@ -2,6 +2,7 @@ import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { SummaryArtifactProps, SummaryGenerationPolicy, SummaryLineage, SummaryUsage } from '../domain';
 import type { SummaryEvidenceSelection } from './summary-evidence-selector.port';
+import type { SummaryMemoryContext } from './summary-memory.port';
 
 export type SummaryModelRoute = {
   readonly provider: string;
@@ -26,9 +27,10 @@ export type SummaryModelInput = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly topicId: string;
-  readonly userId?: string;
-  readonly subscriptionId?: string;
+  readonly userId?: string | undefined;
+  readonly subscriptionId?: string | undefined;
   readonly evidence: SummaryEvidenceSelection;
+  readonly memoryContext?: SummaryMemoryContext | undefined;
   readonly policy: SummaryGenerationPolicy;
   readonly requestedAt: Date;
 };

@@ -34,6 +34,7 @@ import {
 import { resolveRelevancePersistenceMode } from '../libs/relevance/interfaces/rest/relevance-provider-tokens';
 import {
   resolveSummaryJobQueueMode,
+  resolveSummaryMemoryMode,
   resolveSummaryRabbitMqJobQueueOptions,
   resolveSummaryPersistenceMode,
 } from '../libs/summary/interfaces/rest/summary-provider-tokens';
@@ -162,6 +163,20 @@ assert(
 assert(
   resolveSummaryRabbitMqJobQueueOptions(rabbitMqEnv).routes?.['summary.job.execute']?.queueType === 'quorum',
   'summary beta RabbitMQ publisher must carry quorum queue type',
+);
+assert(resolveSummaryMemoryMode(betaEnv) === 'disabled', 'summary memory must default to disabled');
+assertThrows(
+  () => resolveSummaryMemoryMode({ ...betaEnv, SUMMARY_MEMORY_MODE: 'memo-stack' }),
+  'SUMMARY_MEMORY_MODE=memo-stack must require memo-stack URL and token',
+);
+assert(
+  resolveSummaryMemoryMode({
+    ...betaEnv,
+    SUMMARY_MEMORY_MODE: 'memo-stack',
+    INFINITY_CONTEXT_URL: 'https://memory.example.test',
+    INFINITY_CONTEXT_TOKEN: 'test-token',
+  }) === 'memo-stack',
+  'summary memory must accept explicit memo-stack mode with URL and token',
 );
 assertThrows(
   () => resolveIntelligenceSummaryQueueReaderMode(betaEnv),

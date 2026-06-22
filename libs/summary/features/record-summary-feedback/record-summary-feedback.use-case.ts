@@ -14,7 +14,12 @@ import {
   type SummaryFeedbackEvidence,
   type SummaryFeedbackTriageOwner,
 } from '../../domain';
-import type { SummaryArtifactRepositoryPort, SummaryFeedbackRepositoryPort } from '../../ports';
+import {
+  NOOP_SUMMARY_MEMORY,
+  type SummaryArtifactRepositoryPort,
+  type SummaryFeedbackRepositoryPort,
+  type SummaryMemoryPort,
+} from '../../ports';
 import type { RecordSummaryFeedbackCommand } from './record-summary-feedback.command';
 import type { RecordSummaryFeedbackResult } from './record-summary-feedback.result';
 
@@ -33,6 +38,7 @@ export class RecordSummaryFeedbackUseCase {
     private readonly feedback: SummaryFeedbackRepositoryPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
+    private readonly memory: SummaryMemoryPort = NOOP_SUMMARY_MEMORY,
   ) {}
 
   async execute(
@@ -129,8 +135,34 @@ export class RecordSummaryFeedbackUseCase {
     });
 
     await this.feedback.save(feedback);
+    await this.rememberFeedback(feedback);
 
     return ok(presentFeedback(feedback, true));
+  }
+
+  private async rememberFeedback(feedback: SummaryFeedback): Promise<void> {
+    const snapshot = feedback.toSnapshot();
+    try {
+      await this.memory.recordSummaryFeedback({
+        tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId,
+        topicId: snapshot.topicId,
+        summaryId: snapshot.summaryId,
+        feedbackId: snapshot.id,
+        idempotencyKey: snapshot.idempotencyKey,
+        submittedBy: snapshot.submittedBy,
+        rating: snapshot.rating,
+        category: snapshot.category,
+        comment: snapshot.comment,
+        citationId: snapshot.evidence.citationId,
+        feedItemId: snapshot.evidence.feedItemId,
+        sourceItemId: snapshot.evidence.sourceItemId,
+        providerKey: snapshot.evidence.providerKey,
+        createdAt: snapshot.createdAt,
+      });
+    } catch {
+      // Feedback is canonical in Social Monitor; memory projection is best-effort.
+    }
   }
 }
 

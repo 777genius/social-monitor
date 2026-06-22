@@ -15,6 +15,7 @@ import type {
   SummaryFeedbackRepositoryPort,
   SummaryJobQueuePort,
   SummaryJobRepositoryPort,
+  SummaryMemoryPort,
   SummaryPolicyRepositoryPort,
   UserSummaryPreferenceReaderPort,
   YoutubeVideoSummaryProviderPort,
@@ -23,11 +24,13 @@ import type {
 export type SummaryPersistenceMode = 'in-memory' | 'prisma';
 export type SummaryJobQueueMode = 'in-memory' | 'rabbitmq';
 export type SummaryModelProviderMode = 'deterministic' | 'openai-responses';
+export type SummaryMemoryMode = 'disabled' | 'memo-stack';
 export type SummaryYoutubeVideoSummaryProviderMode = 'disabled' | 'deterministic' | 'google-gemini';
 
 export const SUMMARY_PERSISTENCE_MODE = Symbol('SUMMARY_PERSISTENCE_MODE');
 export const SUMMARY_JOB_QUEUE_MODE = Symbol('SUMMARY_JOB_QUEUE_MODE');
 export const SUMMARY_MODEL_PROVIDER_MODE = Symbol('SUMMARY_MODEL_PROVIDER_MODE');
+export const SUMMARY_MEMORY_MODE = Symbol('SUMMARY_MEMORY_MODE');
 export const SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE = Symbol('SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE');
 export const SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS = Symbol('SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS');
 export const SUMMARY_RABBITMQ_QUEUE_CHANNEL = Symbol('SUMMARY_RABBITMQ_QUEUE_CHANNEL');
@@ -40,6 +43,7 @@ export const SUMMARY_ARTIFACT_REPOSITORY = Symbol('SUMMARY_ARTIFACT_REPOSITORY')
 export const SUMMARY_FEEDBACK_REPOSITORY = Symbol('SUMMARY_FEEDBACK_REPOSITORY');
 export const SUMMARY_POLICY_REPOSITORY = Symbol('SUMMARY_POLICY_REPOSITORY');
 export const SUMMARY_EVENT_PUBLISHER = Symbol('SUMMARY_EVENT_PUBLISHER');
+export const SUMMARY_MEMORY = Symbol('SUMMARY_MEMORY');
 export const SUMMARY_USER_SUMMARY_PREFERENCE_READER = Symbol('SUMMARY_USER_SUMMARY_PREFERENCE_READER');
 export const SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY = Symbol('SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY');
 
@@ -47,6 +51,7 @@ export type SummaryProviderTokenMap = {
   readonly [SUMMARY_PERSISTENCE_MODE]: SummaryPersistenceMode;
   readonly [SUMMARY_JOB_QUEUE_MODE]: SummaryJobQueueMode;
   readonly [SUMMARY_MODEL_PROVIDER_MODE]: SummaryModelProviderMode;
+  readonly [SUMMARY_MEMORY_MODE]: SummaryMemoryMode;
   readonly [SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE]: SummaryYoutubeVideoSummaryProviderMode;
   readonly [SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS]: RabbitMqQueuePublisherOptions;
   readonly [SUMMARY_RABBITMQ_QUEUE_CHANNEL]: unknown;
@@ -59,6 +64,7 @@ export type SummaryProviderTokenMap = {
   readonly [SUMMARY_FEEDBACK_REPOSITORY]: SummaryFeedbackRepositoryPort;
   readonly [SUMMARY_POLICY_REPOSITORY]: SummaryPolicyRepositoryPort;
   readonly [SUMMARY_EVENT_PUBLISHER]: SummaryEventPublisherPort;
+  readonly [SUMMARY_MEMORY]: SummaryMemoryPort;
   readonly [SUMMARY_USER_SUMMARY_PREFERENCE_READER]: UserSummaryPreferenceReaderPort;
   readonly [SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY]: AutoSummaryCandidateRepositoryPort;
 };
@@ -76,6 +82,11 @@ export const summaryJobQueueModeProvider: Provider<SummaryJobQueueMode> = {
 export const summaryModelProviderModeProvider: Provider<SummaryModelProviderMode> = {
   provide: SUMMARY_MODEL_PROVIDER_MODE,
   useFactory: () => resolveSummaryModelProviderMode(process.env),
+};
+
+export const summaryMemoryModeProvider: Provider<SummaryMemoryMode> = {
+  provide: SUMMARY_MEMORY_MODE,
+  useFactory: () => resolveSummaryMemoryMode(process.env),
 };
 
 export const summaryYoutubeVideoSummaryProviderModeProvider: Provider<SummaryYoutubeVideoSummaryProviderMode> = {
@@ -160,6 +171,26 @@ export const resolveSummaryModelProviderMode = (env: NodeJS.ProcessEnv): Summary
   }
 
   throw new Error('SUMMARY_MODEL_PROVIDER must be "deterministic" or "openai-responses"');
+};
+
+export const resolveSummaryMemoryMode = (env: NodeJS.ProcessEnv): SummaryMemoryMode => {
+  const value = env.SUMMARY_MEMORY_MODE ?? 'disabled';
+
+  if (value === 'disabled') {
+    return 'disabled';
+  }
+
+  if (value === 'memo-stack') {
+    if ((env.INFINITY_CONTEXT_URL ?? '').trim().length === 0) {
+      throw new Error('SUMMARY_MEMORY_MODE=memo-stack requires INFINITY_CONTEXT_URL');
+    }
+    if ((env.INFINITY_CONTEXT_TOKEN ?? '').trim().length === 0) {
+      throw new Error('SUMMARY_MEMORY_MODE=memo-stack requires INFINITY_CONTEXT_TOKEN');
+    }
+    return 'memo-stack';
+  }
+
+  throw new Error('SUMMARY_MEMORY_MODE must be "disabled" or "memo-stack"');
 };
 
 export const resolveSummaryYoutubeVideoSummaryProviderMode = (
