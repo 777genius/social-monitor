@@ -1,4 +1,5 @@
 import type { FeedItemReadRepositoryPort } from '@social-monitor/feed/ports';
+import { SourceContentSafetyPolicy } from '@social-monitor/relevance/domain';
 import type { Clock } from '@social-monitor/shared-kernel';
 
 import type { SummaryEvidenceItem, SummaryEvidenceSelection, SummaryEvidenceSelectorPort } from '../../ports';
@@ -6,6 +7,8 @@ import type { SummaryEvidenceItem, SummaryEvidenceSelection, SummaryEvidenceSele
 const MAX_EVIDENCE_ITEMS = 50;
 
 export class FeedSummaryEvidenceSelector implements SummaryEvidenceSelectorPort {
+  private readonly safetyPolicy = new SourceContentSafetyPolicy();
+
   constructor(
     private readonly feedItems: FeedItemReadRepositoryPort,
     private readonly clock: Clock,
@@ -23,16 +26,18 @@ export class FeedSummaryEvidenceSelector implements SummaryEvidenceSelectorPort 
     const items = selectProviderBalancedEvidence(
       result.items.map((item): SummaryEvidenceItem => {
         const snapshot = item.toSnapshot();
+        const safety = this.safetyPolicy.evaluate(snapshot);
 
         return {
           feedItemId: snapshot.id,
           sourceItemId: snapshot.sourceItemId,
           sourceBindingId: snapshot.sourceBindingId,
           providerKey: snapshot.providerKey,
-          title: snapshot.title,
-          bodyPreview: snapshot.bodyPreview,
-          canonicalUrl: snapshot.canonicalUrl,
+          title: safety.sanitizedTitle,
+          bodyPreview: safety.sanitizedBodyPreview,
+          canonicalUrl: safety.sanitizedCanonicalUrl ?? snapshot.canonicalUrl,
           observedAt: snapshot.observedAt,
+          safety,
         };
       }),
       normalizeLimit(params.maxItems),

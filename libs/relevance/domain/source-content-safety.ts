@@ -40,6 +40,7 @@ export class SourceContentSafetyPolicy {
   evaluate(input: SourceContentSafetyInput): SourceContentSafetyVerdict {
     const title = sanitizeSourceText(input.title);
     const bodyPreview = input.bodyPreview === undefined ? undefined : sanitizeSourceText(input.bodyPreview);
+    const canonicalUrl = sanitizeSourceUrl(input.canonicalUrl);
     const categories = new Set<SourceContentSafetyCategory>(['raw_payload_retention_disabled']);
 
     if (title.hadPromptInjection || bodyPreview?.hadPromptInjection === true) {
@@ -47,7 +48,7 @@ export class SourceContentSafetyPolicy {
       categories.add('untrusted_instruction');
     }
 
-    if (title.hadSensitiveData || bodyPreview?.hadSensitiveData === true) {
+    if (title.hadSensitiveData || bodyPreview?.hadSensitiveData === true || canonicalUrl.hadSensitiveData) {
       categories.add('sensitive_data');
     }
 
@@ -60,7 +61,7 @@ export class SourceContentSafetyPolicy {
       categories: [...categories].sort((left, right) => left.localeCompare(right)),
       sanitizedTitle,
       sanitizedBodyPreview,
-      sanitizedCanonicalUrl: normalizeOptional(input.canonicalUrl),
+      sanitizedCanonicalUrl: canonicalUrl.value,
       rawPayloadRetained: false,
       retentionPolicy: 'normalized_preview_only',
     };
@@ -101,6 +102,41 @@ const sanitizeSourceText = (value: string): {
     hadPromptInjection,
     hadSensitiveData: redacted !== value,
   };
+};
+
+const sanitizeSourceUrl = (value: string | undefined): {
+  readonly value?: string;
+  readonly hadSensitiveData: boolean;
+} => {
+  const normalized = normalizeOptional(value);
+
+  if (normalized === undefined) {
+    return { value: undefined, hadSensitiveData: false };
+  }
+
+  const redacted = redactSensitiveText(normalized);
+
+  try {
+    const parsed = new URL(redacted);
+    parsed.username = '';
+    parsed.password = '';
+    parsed.search = '';
+    parsed.hash = '';
+
+    const sanitized = parsed.toString();
+
+    return {
+      value: sanitized.endsWith('/') && parsed.pathname === '/' ? sanitized.slice(0, -1) : sanitized,
+      hadSensitiveData: sanitized !== normalized || redacted !== normalized,
+    };
+  } catch {
+    const sanitized = normalizeOptional(redacted);
+
+    return {
+      value: sanitized,
+      hadSensitiveData: sanitized !== normalized,
+    };
+  }
 };
 
 const normalizeOptional = (value: string | undefined): string | undefined => {

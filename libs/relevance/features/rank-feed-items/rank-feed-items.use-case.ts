@@ -125,7 +125,7 @@ const scoreFeedItem = (
       recencyScore,
       safety,
     }),
-    clusterKey: canonicalClusterKey(snapshot.canonicalUrl, title),
+    clusterKey: canonicalClusterKey(safety.sanitizedCanonicalUrl ?? snapshot.canonicalUrl, title),
     titleTokens: titleTokens(title),
     duplicateFeedItemIds: [],
     clusterSize: 1,

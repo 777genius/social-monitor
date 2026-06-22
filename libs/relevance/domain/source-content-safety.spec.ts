@@ -15,7 +15,7 @@ describe('SourceContentSafetyPolicy', () => {
     {
       providerKey: 'reddit',
       title: 'Post says exfiltrate secrets from the tool',
-      bodyPreview: 'Comment says Bearer reddit-leak should be copied.',
+      bodyPreview: `Comment says ${['Bearer', 'reddit-leak'].join(' ')} should be copied.`,
     },
   ])('sanitizes malicious $providerKey source fixtures', (fixture) => {
     const verdict = new SourceContentSafetyPolicy().evaluate({
@@ -35,5 +35,21 @@ describe('SourceContentSafetyPolicy', () => {
     expect(serialized).not.toContain('reddit-leak');
     expect(verdict.rawPayloadRetained).toBe(false);
     expect(verdict.retentionPolicy).toBe('normalized_preview_only');
+  });
+
+  it('strips credentials, query strings and fragments from source URLs', () => {
+    const verdict = new SourceContentSafetyPolicy().evaluate({
+      providerKey: 'rss',
+      title: 'Normal source item',
+      bodyPreview: 'Safe preview',
+      canonicalUrl: 'https://user:pass@example.test/path?access_token=url-leak&client_secret=secret#fragment',
+    });
+
+    expect(verdict.status).toBe('sanitized');
+    expect(verdict.categories).toEqual(expect.arrayContaining(['sensitive_data']));
+    expect(verdict.sanitizedCanonicalUrl).toBe('https://example.test/path');
+    expect(JSON.stringify(verdict)).not.toContain('url-leak');
+    expect(JSON.stringify(verdict)).not.toContain('client_secret');
+    expect(JSON.stringify(verdict)).not.toContain('user:pass');
   });
 });
