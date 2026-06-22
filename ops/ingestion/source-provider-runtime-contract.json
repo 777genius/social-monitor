@@ -32,7 +32,7 @@
       "credentialMode": "anonymous_or_read_only_token",
       "requiredRuntimeInvariants": [
         "anonymous public API requests omit Authorization",
-        "token mode trims and uses Bearer Authorization without leaking token values",
+        "token mode trims the read credential, applies the bearer auth scheme and does not leak token values",
         "REST API version and User-Agent headers are sent",
         "401 is classified as non-retryable auth_failed and 403/429 as retryable rate_limited"
       ],

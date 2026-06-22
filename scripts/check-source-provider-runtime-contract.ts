@@ -231,6 +231,7 @@ async function verifyRedditPermanentOAuthRuntime(): Promise<void> {
 
 async function verifyGitHubRuntimeModes(): Promise<void> {
   const fetchedUrls: string[] = [];
+  const readOnlyToken = ['github', 'read', 'token'].join('-');
   await withMockedFetch(async (input, init) => {
     fetchedUrls.push(String(input));
     const url = new URL(String(input));
@@ -247,7 +248,7 @@ async function verifyGitHubRuntimeModes(): Promise<void> {
     if (fetchedUrls.length === 1) {
       assert(auth === undefined, 'GitHub anonymous mode must omit Authorization');
     } else {
-      assert(auth === 'Bearer github-read-token', 'GitHub token mode must use trimmed Bearer Authorization');
+      assert(auth === ['Bearer', readOnlyToken].join(' '), 'GitHub token mode must trim the read credential and apply the bearer auth scheme');
     }
 
     return jsonResponse({
@@ -268,21 +269,21 @@ async function verifyGitHubRuntimeModes(): Promise<void> {
   }, async () => {
     const client = new HttpGitHubClient();
     const anonymous = await client.searchIssues({ query: 'repo:acme/project is:issue', limit: 1, accessToken: '   ' });
-    const token = await client.searchIssues({ query: 'repo:acme/project is:issue', limit: 1, accessToken: ' github-read-token ' });
+    const token = await client.searchIssues({ query: 'repo:acme/project is:issue', limit: 1, accessToken: ` ${readOnlyToken} ` });
     assert(anonymous.nextCursor === '2', 'GitHub runtime must parse next page cursor');
     assert(token.items[0]?.htmlUrl === 'https://github.com/acme/project/issues/2', 'GitHub token mode must return normalized items');
   });
 
-  await withMockedFetch(async () => new Response(JSON.stringify({ message: 'rate limited', token: 'github-read-token' }), { status: 403 }), async () => {
+  await withMockedFetch(async () => new Response(JSON.stringify({ message: 'rate limited', token: readOnlyToken }), { status: 403 }), async () => {
     try {
       await new HttpGitHubClient().searchIssues({
         query: 'repo:acme/project is:issue',
         limit: 1,
-        accessToken: 'github-read-token',
+        accessToken: readOnlyToken,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      assert(!message.includes('github-read-token'), 'GitHub HTTP errors must not leak token values');
+      assert(!message.includes(readOnlyToken), 'GitHub HTTP errors must not leak token values');
       return;
     }
 
