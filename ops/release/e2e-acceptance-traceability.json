@@ -52,6 +52,10 @@
         },
         {
           "kind": "command",
+          "command": "npm run check:autonomous-monitoring-loop"
+        },
+        {
+          "kind": "command",
           "command": "npm run test:e2e"
         }
       ]
@@ -550,6 +554,7 @@
           "path": "ops/release/mvp-release-evidence-contract.json",
           "markers": [
             "mvp-core-loop",
+            "autonomous-monitoring-loop",
             "beta-launch-support",
             "persistence-readiness"
           ]

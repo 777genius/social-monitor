@@ -108,6 +108,7 @@
     "check:delivery-replay",
     "check:write-idempotency",
     "check:mvp-core-loop",
+    "check:autonomous-monitoring-loop",
     "check:beta-scope-policy",
     "check:beta-ring-policy",
     "check:beta-ring-decision",

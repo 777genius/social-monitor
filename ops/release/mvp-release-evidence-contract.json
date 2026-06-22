@@ -420,6 +420,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "autonomous-monitoring-loop",
+      "command": "npm run check:autonomous-monitoring-loop",
+      "blocksRelease": true
+    },
+    {
       "gateId": "beta-scope-policy",
       "command": "npm run check:beta-scope-policy",
       "blocksRelease": true

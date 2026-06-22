@@ -208,16 +208,18 @@
       "authoritativeArtifacts": [
         "libs/contracts/rest/openapi.snapshot.json",
         "ops/release/e2e-acceptance-traceability.json",
+        "ops/release/autonomous-monitoring-loop-evidence.json",
         "ops/drills/staging-reliability-evidence.json"
       ],
       "backendSafeVerificationCommands": [
         "npm run check:mvp-core-loop",
+        "npm run check:autonomous-monitoring-loop",
         "npm run check:openapi",
         "npm run check:e2e-traceability",
         "npm run check:staging-reliability-evidence"
       ],
       "externalVerificationCommands": [],
-      "releaseGateIds": ["mvp-core-loop", "openapi-drift", "staging-reliability-evidence"],
+      "releaseGateIds": ["mvp-core-loop", "autonomous-monitoring-loop", "openapi-drift", "staging-reliability-evidence"],
       "exitCondition": "topic to source binding to scheduled scan to feed to summary to feedback to digest/webhook/realtime to audit passes on durable runtime",
       "goCondition": "tenant isolation and idempotency are proven through the full durable loop"
     },

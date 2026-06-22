@@ -93,6 +93,7 @@ const requiredGateIds = new Set([
   'delivery-replay-idempotency',
   'write-idempotency-proof',
   'mvp-core-loop',
+  'autonomous-monitoring-loop',
   'beta-scope-policy',
   'beta-ring-policy',
   'beta-ring-decision',

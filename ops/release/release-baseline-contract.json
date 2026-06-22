@@ -27,6 +27,7 @@
     "check:docker-backend-staging-evidence-bundle",
     "check:operational-support-package",
     "check:capacity-envelope-beta-ring-decision",
+    "check:autonomous-monitoring-loop",
     "check:no-go-cleanup",
     "check:release-artifact-evidence",
     "check:release",
@@ -143,6 +144,10 @@
     {
       "artifactId": "staging-reliability-artifact-examples",
       "path": "ops/drills/fixtures/staging-reliability-artifact-examples.json"
+    },
+    {
+      "artifactId": "autonomous-monitoring-loop-evidence",
+      "path": "ops/release/autonomous-monitoring-loop-evidence.json"
     },
     {
       "artifactId": "summary-feedback-hardening",
