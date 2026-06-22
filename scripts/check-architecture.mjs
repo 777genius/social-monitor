@@ -72,6 +72,7 @@ const boundedContexts = new Set([
   'launch',
   'monitoring',
   'privacy',
+  'relevance',
   'summary',
   'usage',
 ]);

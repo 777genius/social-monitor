@@ -710,6 +710,41 @@ model UserSummaryPreference {
   @@map("user_summary_preferences")
 }
 
+model UserRelevanceProfile {
+  id                  String   @id @db.Uuid
+  tenantId            String   @map("tenant_id") @db.Uuid
+  workspaceId         String   @map("workspace_id") @db.Uuid
+  userId              String   @map("user_id")
+  topicWeights        Json     @map("topic_weights")
+  sourceWeights       Json     @map("source_weights")
+  keywordWeights      Json     @map("keyword_weights")
+  mutedKeywords       String[] @map("muted_keywords")
+  blockedProviderKeys String[] @map("blocked_provider_keys")
+  rulesVersion        String   @map("rules_version")
+  createdAt           DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, userId])
+  @@index([tenantId, workspaceId, updatedAt])
+  @@map("user_relevance_profiles")
+}
+
+model RelevanceFeedbackSignal {
+  id             String   @id @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  userId         String   @map("user_id")
+  idempotencyKey String   @map("idempotency_key")
+  action         String
+  rating         Int?
+  target         Json
+  createdAt      DateTime @map("created_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, idempotencyKey])
+  @@index([tenantId, workspaceId, userId, createdAt])
+  @@map("relevance_feedback_signals")
+}
+
 model RealtimeEvent {
   id              String   @id @db.Uuid
   protocolVersion Int      @map("protocol_version")

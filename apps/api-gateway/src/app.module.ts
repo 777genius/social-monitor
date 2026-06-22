@@ -7,6 +7,7 @@ import { sourceReadinessProfiles } from '@social-monitor/ingestion/adapters/sour
 import { IngestionRestModule } from '@social-monitor/ingestion/interfaces/rest/ingestion-rest.module';
 import { LaunchRestModule } from '@social-monitor/launch/interfaces/rest/launch-rest.module';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
+import { RelevanceRestModule } from '@social-monitor/relevance/interfaces/rest/relevance-rest.module';
 import { SystemClock } from '@social-monitor/shared-kernel';
 import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summary-rest.module';
 import { SubscriptionsRestModule } from '@social-monitor/subscriptions/interfaces/rest/subscriptions-rest.module';
@@ -28,6 +29,7 @@ import { RequestContextMiddleware } from './request-context.middleware';
     FeedRestModule,
     IngestionRestModule,
     LaunchRestModule,
+    RelevanceRestModule,
     SubscriptionsRestModule,
     SummaryRestModule,
     DeliveryRestModule,

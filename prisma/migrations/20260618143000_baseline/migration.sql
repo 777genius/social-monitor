@@ -598,6 +598,39 @@ CREATE TABLE "user_summary_preferences" (
 );
 
 -- CreateTable
+CREATE TABLE "user_relevance_profiles" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "topic_weights" JSONB NOT NULL,
+    "source_weights" JSONB NOT NULL,
+    "keyword_weights" JSONB NOT NULL,
+    "muted_keywords" TEXT[],
+    "blocked_provider_keys" TEXT[],
+    "rules_version" TEXT NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "user_relevance_profiles_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "relevance_feedback_signals" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "idempotency_key" TEXT NOT NULL,
+    "action" TEXT NOT NULL,
+    "rating" INTEGER,
+    "target" JSONB NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "relevance_feedback_signals_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "realtime_events" (
     "id" UUID NOT NULL,
     "protocol_version" INTEGER NOT NULL,
@@ -947,6 +980,18 @@ CREATE UNIQUE INDEX "user_summary_preferences_tenant_id_workspace_id_user_id_sub
 
 -- CreateIndex
 CREATE UNIQUE INDEX "user_summary_preferences_tenant_id_workspace_id_user_id_top_key" ON "user_summary_preferences"("tenant_id", "workspace_id", "user_id", "topic_id");
+
+-- CreateIndex
+CREATE INDEX "user_relevance_profiles_tenant_id_workspace_id_updated_at_idx" ON "user_relevance_profiles"("tenant_id", "workspace_id", "updated_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "user_relevance_profiles_tenant_id_workspace_id_user_id_key" ON "user_relevance_profiles"("tenant_id", "workspace_id", "user_id");
+
+-- CreateIndex
+CREATE INDEX "relevance_feedback_signals_tenant_id_workspace_id_user_id_c_idx" ON "relevance_feedback_signals"("tenant_id", "workspace_id", "user_id", "created_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "relevance_feedback_signals_tenant_id_workspace_id_idempoten_key" ON "relevance_feedback_signals"("tenant_id", "workspace_id", "idempotency_key");
 
 -- CreateIndex
 CREATE INDEX "realtime_events_tenant_id_workspace_id_channel_sequence_idx" ON "realtime_events"("tenant_id", "workspace_id", "channel", "sequence");
