@@ -96,6 +96,8 @@
     "check:digest-scheduler-loop",
     "check:digest-schedule-rest",
     "check:notification-preference-rest",
+    "check:personalized-relevance-engine",
+    "check:relevance-persistence",
     "check:load-cost",
     "check:source-certification",
     "check:source-live-certification-evidence",

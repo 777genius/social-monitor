@@ -79,6 +79,7 @@ const requiredServiceSelectorValues = new Map([
     MONITORING_PERSISTENCE: 'prisma',
     MONITORING_SCAN_QUEUE: 'rabbitmq',
     FEED_PERSISTENCE: 'prisma',
+    RELEVANCE_PERSISTENCE: 'prisma',
     SUMMARY_PERSISTENCE: 'prisma',
     SUMMARY_JOB_QUEUE_MODE: 'rabbitmq',
     DELIVERY_PERSISTENCE: 'prisma',

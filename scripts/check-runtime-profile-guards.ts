@@ -31,6 +31,7 @@ import {
   resolveMonitoringPersistenceMode,
   resolveMonitoringScanQueueMode,
 } from '../libs/monitoring/interfaces/rest/monitoring-provider-tokens';
+import { resolveRelevancePersistenceMode } from '../libs/relevance/interfaces/rest/relevance-provider-tokens';
 import {
   resolveSummaryJobQueueMode,
   resolveSummaryRabbitMqJobQueueOptions,
@@ -74,6 +75,15 @@ assertThrows(
   'FEED_PERSISTENCE must reject in-memory mode in beta runtime',
 );
 assert(resolveFeedPersistenceMode({ ...databaseEnv, FEED_PERSISTENCE: 'prisma' }) === 'prisma', 'feed beta mode');
+
+assertThrows(
+  () => resolveRelevancePersistenceMode(betaEnv),
+  'RELEVANCE_PERSISTENCE must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveRelevancePersistenceMode({ ...databaseEnv, RELEVANCE_PERSISTENCE: 'prisma' }) === 'prisma',
+  'relevance beta persistence',
+);
 
 assertThrows(
   () => resolveMonitoringPersistenceMode(betaEnv),

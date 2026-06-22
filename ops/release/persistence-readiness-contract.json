@@ -41,6 +41,17 @@
       "durableReplacementPlan": "FeedRestModule can opt into Prisma read persistence with FEED_PERSISTENCE=prisma; worker runtime can share Prisma source/cursor/feed projection state with INGESTION_WORKER_PERSISTENCE=prisma"
     },
     {
+      "moduleFile": "libs/relevance/interfaces/rest/relevance-rest.module.ts",
+      "context": "relevance-api",
+      "owner": "summary-owner",
+      "inMemoryStateAdapters": [
+        "InMemoryUserRelevanceProfileRepository",
+        "InMemoryRelevanceFeedbackRepository"
+      ],
+      "risk": "per-user relevance weights, source/topic preferences, muted providers and feedback-learning signals are process-local unless relevance persistence is durable",
+      "durableReplacementPlan": "RelevanceRestModule can opt into Prisma user relevance profiles and feedback signals with RELEVANCE_PERSISTENCE=prisma; beta runtime must keep this selector durable so personalized ranking, digest selection and summary evidence weighting survive restarts"
+    },
+    {
       "moduleFile": "libs/summary/interfaces/rest/summary-rest.module.ts",
       "context": "summary-api",
       "owner": "summary-owner",

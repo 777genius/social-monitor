@@ -244,6 +244,26 @@
       "purgeTrigger": "subscription_topic_user_or_workspace_offboarding_completed"
     },
     {
+      "table": "user_relevance_profiles",
+      "dataClass": "user_personalization_configuration",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_user_or_workspace_offboarding",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "user_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "relevance_feedback_signals",
+      "dataClass": "user_feedback",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_or_anonymize",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "feedback_retention_expired_or_user_deleted"
+    },
+    {
       "table": "summary_feedback",
       "dataClass": "user_feedback",
       "owner": "summary-owner",
