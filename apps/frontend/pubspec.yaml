@@ -1,0 +1,21 @@
+name: social_monitor_frontend_workspace
+description: Social Monitor Flutter frontend workspace.
+publish_to: none
+
+environment:
+  sdk: ^3.11.5
+
+workspace:
+  - app
+  - packages/shared_kernel
+  - packages/generated_api
+  - packages/design_system
+  - features/auth
+  - features/topics
+  - features/sources
+  - features/feed
+  - features/summaries
+  - features/settings
+
+dev_dependencies:
+  flutter_lints: ^6.0.0

@@ -1,0 +1,14 @@
+import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
+
+abstract interface class GeneratedApiClient {
+  Future<Result<T>> send<T extends Object>(
+    WorkspaceRequest request,
+    Future<T> Function() operation,
+  );
+}
+
+final class WorkspaceRequest {
+  const WorkspaceRequest({required this.scope});
+
+  final WorkspaceScope scope;
+}

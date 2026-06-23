@@ -1,0 +1,22 @@
+name: social_monitor_design_system
+description: Social Monitor Flutter design system and headless boundary.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  headless: ^1.1.0
+  headless_adaptive:
+    git:
+      url: https://github.com/777genius/flutter_headless.git
+      path: packages/headless_adaptive
+      ref: eda0637
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter

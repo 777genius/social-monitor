@@ -1,0 +1,14 @@
+name: social_monitor_generated_api
+description: Generated REST client boundary for the Social Monitor frontend.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  social_monitor_shared_kernel: any
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.0

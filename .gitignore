@@ -37,5 +37,7 @@ CLAUDE.local.md
 .vscode/
 
 # mobile/deferred frontend
+.dart_tool/
+.flutter-plugins-dependencies
 android/.gradle/
 ios/Pods/

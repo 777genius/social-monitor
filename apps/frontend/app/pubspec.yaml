@@ -1,0 +1,34 @@
+name: social_monitor_app
+description: Social Monitor web-first Flutter application shell.
+publish_to: none
+resolution: workspace
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  go_router: ^17.3.0
+  marionette_flutter: ^0.5.0
+  modularity_flutter: ^0.3.1
+  social_monitor_auth: any
+  social_monitor_design_system: any
+  social_monitor_feed: any
+  social_monitor_generated_api: any
+  social_monitor_settings: any
+  social_monitor_shared_kernel: any
+  social_monitor_sources: any
+  social_monitor_summaries: any
+  social_monitor_topics: any
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
