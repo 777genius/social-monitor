@@ -1,81 +1,106 @@
+import {
+  InfinityContextClient,
+  type ContextBundleData,
+  type ContextEnvelope,
+  type JsonObject,
+  type SourceRef,
+} from '@infinity-context/sdk';
+import { redactSensitiveText } from '@social-monitor/shared-kernel';
+
 import type {
   BuildSummaryMemoryContextQuery,
   RecordSummaryFeedbackMemoryCommand,
   SummaryMemoryContext,
   SummaryMemoryDiagnostics,
   SummaryMemoryPort,
+  SummaryMemoryRetrieval,
+  SummaryMemorySourceRef,
+  SummaryMemoryStaleMarkers,
+  SummaryMemorySupport,
   SummaryMemoryWriteResult,
 } from '../../ports';
+import {
+  createMemoStackMemoryClient,
+  defaultMemoStackTimeoutMs,
+  memoStackSourceRef,
+  memoStackWorkflowIdempotencyKey,
+  type MemoStackFetchLike,
+  normalizeMemoStackBaseUrl,
+  parsePositiveInteger,
+  positiveIntegerOrFallback,
+} from './memo-stack-memory-client';
+import {
+  feedbackMemoryMapping,
+  feedbackMemoryText,
+  feedbackTags,
+  providerQualitySignal,
+  providerQualityTags,
+} from './memo-stack-summary-feedback-memory';
 
-type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
+type MemoStackSummaryMemoryClient = Pick<InfinityContextClient, 'context' | 'workflows'>;
 
 export type MemoStackSummaryMemoryAdapterOptions = {
   readonly baseUrl: string;
   readonly token: string;
   readonly timeoutMs?: number;
-  readonly fetchFn?: FetchLike;
+  readonly fetchFn?: MemoStackFetchLike;
+  readonly client?: MemoStackSummaryMemoryClient;
 };
 
-type MemoStackContextResponse = {
-  readonly data?: {
-    readonly rendered_text?: unknown;
-    readonly diagnostics?: unknown;
-  };
-};
-
-const defaultTimeoutMs = 10_000;
 const contextTokenBudget = 900;
 const maxMemoryFacts = 12;
 const maxMemoryChunks = 8;
 
 export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
-  private readonly baseUrl: string;
-  private readonly token: string;
-  private readonly timeoutMs: number;
-  private readonly fetchFn: FetchLike;
+  private readonly client: MemoStackSummaryMemoryClient;
 
   constructor(options: MemoStackSummaryMemoryAdapterOptions) {
-    this.baseUrl = normalizeBaseUrl(options.baseUrl);
-    this.token = options.token.trim();
-    this.timeoutMs = positiveIntegerOrFallback(options.timeoutMs, defaultTimeoutMs);
-    this.fetchFn = options.fetchFn ?? fetch;
+    const baseUrl = normalizeMemoStackBaseUrl(options.baseUrl);
+    const token = options.token.trim();
+    const timeoutMs = positiveIntegerOrFallback(options.timeoutMs, defaultMemoStackTimeoutMs);
 
-    if (this.baseUrl.length === 0) {
-      throw new Error('Memo-stack summary memory baseUrl must be non-empty');
-    }
-    if (this.token.length === 0) {
-      throw new Error('Memo-stack summary memory token must be non-empty');
-    }
+    if (baseUrl.length === 0) throw new Error('Memo-stack summary memory baseUrl must be non-empty');
+    if (token.length === 0) throw new Error('Memo-stack summary memory token must be non-empty');
+
+    this.client = options.client ?? createMemoStackMemoryClient({
+      baseUrl,
+      token,
+      timeoutMs,
+      fetchFn: options.fetchFn,
+    });
   }
 
   async buildContext(query: BuildSummaryMemoryContextQuery): Promise<SummaryMemoryContext> {
-    const response = await this.post<MemoStackContextResponse>('/v1/context', this.contextRequest(query));
-    const renderedText = stringOrUndefined(response.data?.rendered_text);
-    const diagnostics = asDiagnostics(response.data?.diagnostics);
-    const status = renderedText === undefined || renderedText.trim().length === 0 ? 'empty' : 'available';
+    const response = await this.client.context.buildContext(this.contextRequest(query));
+    const context = presentMemoryContext(response, query.requestedAt);
 
-    if (status === 'empty' && diagnostics.scope_not_found === true) {
-      const fallback = await this.post<MemoStackContextResponse>('/v1/context', this.contextRequest(query, {
-        memoryScopeExternalRefs: [topicFeedbackScope(query.topicId)],
-      }));
-      const fallbackRenderedText = stringOrUndefined(fallback.data?.rendered_text);
-      return {
-        status: fallbackRenderedText === undefined || fallbackRenderedText.trim().length === 0 ? 'empty' : 'available',
-        renderedText: fallbackRenderedText,
-        diagnostics: {
-          ...asDiagnostics(fallback.data?.diagnostics),
-          fallbackFromScopeNotFound: true,
-        },
-        retrievedAt: query.requestedAt,
-      };
+    if (context.status === 'empty' && context.diagnostics.scope_not_found === true) {
+      return this.buildScopeFallbackContext(query);
     }
 
-    return {
-      status,
-      renderedText,
-      diagnostics,
-      retrievedAt: query.requestedAt,
-    };
+    return context;
+  }
+
+  private async buildScopeFallbackContext(query: BuildSummaryMemoryContextQuery): Promise<SummaryMemoryContext> {
+    const scopes = [...providerQualityScopes(query), topicFeedbackScope(query.topicId)];
+    const contexts: SummaryMemoryContext[] = [];
+    for (const scope of scopes) {
+      const response = await this.client.context.buildContext(this.contextRequest(query, {
+        memoryScopeExternalRefs: [scope],
+      }));
+      const context = presentMemoryContext(response, query.requestedAt);
+      if (context.status === 'available') {
+        contexts.push(context);
+      }
+    }
+
+    return contexts.length === 0
+      ? {
+          status: 'empty',
+          diagnostics: { fallbackFromScopeNotFound: true, fallbackScopesUsed: [] },
+          retrievedAt: query.requestedAt,
+        }
+      : mergeFallbackContexts(contexts, query.requestedAt);
   }
 
   async recordSummaryFeedback(command: RecordSummaryFeedbackMemoryCommand): Promise<SummaryMemoryWriteResult> {
@@ -86,97 +111,134 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
       };
     }
 
-    const response = await this.post<Record<string, unknown>>('/v1/facts', {
-      space_slug: spaceSlug(command.tenantId, command.workspaceId),
-      memory_scope_external_ref: topicFeedbackScope(command.topicId),
-      text: feedbackMemoryText(command),
-      kind: 'summary_feedback',
-      classification: 'internal',
-      category: 'summary_feedback',
-      tags: feedbackTags(command),
-      ttl_policy: 'durable',
-      source_refs: [
-        {
-          source_type: 'social-monitor.summary-feedback',
-          source_id: command.feedbackId,
-          summary_id: command.summaryId,
-          citation_id: command.citationId,
-          feed_item_id: command.feedItemId,
-          source_item_id: command.sourceItemId,
-          provider_key: command.providerKey,
-        },
-      ],
-    }, {
-      idempotencyKey: `social-monitor:summary-feedback:${command.tenantId}:${command.workspaceId}:${command.idempotencyKey}`,
+    const idempotencyKey = memoStackWorkflowIdempotencyKey(
+      'social-monitor',
+      'summary-feedback',
+      command.tenantId,
+      command.workspaceId,
+      command.idempotencyKey,
+    );
+    const mapping = feedbackMemoryMapping(command.category);
+    const providerQuality = providerQualitySignal(command);
+    const memoryText = feedbackMemoryText(command, mapping, providerQuality);
+    const providerScope = providerQuality === undefined || command.providerKey === undefined
+      ? undefined
+      : providerQualityScope(command.topicId, command.providerKey);
+    const response = await this.client.workflows.recordFeedback({
+      spaceSlug: spaceSlug(command.tenantId, command.workspaceId),
+      memoryScopeExternalRef: topicFeedbackScope(command.topicId),
+      sourceAgent: 'social-monitor.summary-feedback',
+      text: memoryText,
+      idempotencyKey,
+      sourceId: command.feedbackId,
+      sourceRefs: feedbackSourceRefs(command),
+      eventType: 'social-monitor.summary_feedback.recorded',
+      actorRole: 'user',
+      sourceActorExternalRef: command.submittedBy,
+      occurredAt: command.createdAt.toISOString(),
+      metadata: withoutUndefined({
+        summary_id: command.summaryId,
+        topic_id: command.topicId,
+        rating: command.rating,
+        category: command.category,
+        provider_key: command.providerKey,
+        citation_id: command.citationId,
+        memory_action: mapping.action,
+        memory_fact_category: mapping.factCategory,
+        provider_quality_action: providerQuality?.action,
+        provider_quality_scope: providerScope,
+      }),
+      rememberAsFact: true,
+      factText: memoryText,
+      factKind: mapping.factKind,
+      factCategory: mapping.factCategory,
+      factTags: feedbackTags(command, mapping),
+      factTtlPolicy: 'durable',
+      factMemoryScopeExternalRef: topicFeedbackScope(command.topicId),
     });
+    const providerQualityResponse = providerQuality === undefined || command.providerKey === undefined
+      ? undefined
+      : await this.recordProviderQualityFeedback(command, providerQuality, memoryText);
 
     return {
       status: 'written',
       diagnostics: {
         provider: 'memo-stack',
-        responseStatus: nestedString(response, ['data', 'indexing_status']),
+        workflow: 'recordFeedback',
+        captureId: nestedString(response.capture, ['data', 'id']),
+        factId: nestedString(response.fact, ['data', 'id']),
+        memoryScopeExternalRef: topicFeedbackScope(command.topicId),
+        factMemoryScopeExternalRef: topicFeedbackScope(command.topicId),
+        providerQualityCaptureId: nestedString(providerQualityResponse?.capture, ['data', 'id']),
+        providerQualityFactId: nestedString(providerQualityResponse?.fact, ['data', 'id']),
+        providerQualityScopeExternalRef: providerScope,
       },
     };
+  }
+
+  private async recordProviderQualityFeedback(
+    command: RecordSummaryFeedbackMemoryCommand,
+    providerQuality: NonNullable<ReturnType<typeof providerQualitySignal>>,
+    memoryText: string,
+  ): Promise<Awaited<ReturnType<MemoStackSummaryMemoryClient['workflows']['recordFeedback']>>> {
+    const providerScope = providerQualityScope(command.topicId, command.providerKey ?? 'unknown');
+
+    return this.client.workflows.recordFeedback({
+      spaceSlug: spaceSlug(command.tenantId, command.workspaceId),
+      memoryScopeExternalRef: providerScope,
+      sourceAgent: 'social-monitor.summary-provider-quality',
+      text: memoryText,
+      idempotencyKey: memoStackWorkflowIdempotencyKey(
+        'social-monitor',
+        'summary-provider-quality',
+        command.tenantId,
+        command.workspaceId,
+        command.idempotencyKey,
+      ),
+      sourceId: `${command.feedbackId}:provider-quality`,
+      sourceRefs: feedbackSourceRefs(command),
+      eventType: 'social-monitor.summary_feedback.provider_quality_recorded',
+      actorRole: 'user',
+      sourceActorExternalRef: command.submittedBy,
+      occurredAt: command.createdAt.toISOString(),
+      metadata: withoutUndefined({
+        parent_feedback_id: command.feedbackId,
+        summary_id: command.summaryId,
+        topic_id: command.topicId,
+        rating: command.rating,
+        category: command.category,
+        provider_key: command.providerKey,
+        citation_id: command.citationId,
+        memory_action: providerQuality.action,
+        memory_fact_category: 'provider_quality',
+        provider_quality_action: providerQuality.action,
+        provider_quality_scope: providerScope,
+      }),
+      rememberAsFact: true,
+      factText: memoryText,
+      factKind: 'user_preference',
+      factCategory: 'provider_quality',
+      factTags: providerQualityTags(command, providerQuality),
+      factTtlPolicy: 'durable',
+      factMemoryScopeExternalRef: providerScope,
+    });
   }
 
   private contextRequest(
     query: BuildSummaryMemoryContextQuery,
     overrides: { readonly memoryScopeExternalRefs?: readonly string[] } = {},
-  ): Record<string, unknown> {
+  ): Parameters<MemoStackSummaryMemoryClient['context']['buildContext']>[0] {
     return {
-      space_slug: spaceSlug(query.tenantId, query.workspaceId),
-      memory_scope_external_refs: overrides.memoryScopeExternalRefs ?? readMemoryScopes(query),
+      spaceSlug: spaceSlug(query.tenantId, query.workspaceId),
+      memoryScopeExternalRefs: overrides.memoryScopeExternalRefs ?? readMemoryScopes(query),
       query: contextQuery(query),
-      token_budget: contextTokenBudget,
-      max_facts: maxMemoryFacts,
-      max_chunks: maxMemoryChunks,
-      max_evidence_items: 5,
-      consistency_mode: 'best_effort',
-      include_stale: false,
+      tokenBudget: contextTokenBudget,
+      maxFacts: maxMemoryFacts,
+      maxChunks: maxMemoryChunks,
+      maxEvidenceItems: 5,
+      consistencyMode: 'best_effort',
+      includeStale: false,
     };
-  }
-
-  private async post<T>(
-    path: string,
-    body: Record<string, unknown>,
-    options: { readonly idempotencyKey?: string } = {},
-  ): Promise<T> {
-    const response = await this.request(path, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${this.token}`,
-        'content-type': 'application/json',
-        ...(options.idempotencyKey === undefined ? {} : { 'idempotency-key': options.idempotencyKey }),
-      },
-      body: JSON.stringify(withoutUndefined(body)),
-    });
-    return await readJson<T>(response);
-  }
-
-  private async request(path: string, init: RequestInit): Promise<Response> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-    timeout.unref?.();
-
-    try {
-      const response = await this.fetchFn(new URL(`${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`), {
-        ...init,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`Memo-stack memory request failed with status ${response.status}: ${safeResponseBody(await response.text())}`);
-      }
-
-      return response;
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Memo-stack memory request timed out');
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
-    }
   }
 }
 
@@ -193,13 +255,38 @@ export const spaceSlug = (tenantId: string, workspaceId: string): string =>
 
 export const topicFeedbackScope = (topicId: string): string => `topic:${topicId}:feedback`;
 
+export const providerQualityScope = (topicId: string, providerKey: string): string =>
+  `topic:${topicId}:provider:${providerKey}:quality`;
+
+export const topicPreferenceScope = (topicId: string): string => `topic:${topicId}:preferences`;
+
+export const userPreferenceScope = (userId: string): string => `user:${userId}:preferences`;
+
+export const subscriptionPreferenceScope = (subscriptionId: string): string =>
+  `subscription:${subscriptionId}:preferences`;
+
+export {
+  createMemoStackMemoryClient,
+  memoStackSourceRef,
+  memoStackWorkflowIdempotencyKey,
+  type MemoStackFetchLike,
+} from './memo-stack-memory-client';
+
 const readMemoryScopes = (query: BuildSummaryMemoryContextQuery): readonly string[] => [
-  topicFeedbackScope(query.topicId),
-  `topic:${query.topicId}:preferences`,
-  ...(query.userId === undefined ? [] : [`user:${query.userId}:preferences`]),
-  ...(query.subscriptionId === undefined ? [] : [`subscription:${query.subscriptionId}:preferences`]),
+  ...(query.subscriptionId === undefined ? [] : [subscriptionPreferenceScope(query.subscriptionId)]),
+  ...(query.userId === undefined ? [] : [userPreferenceScope(query.userId)]),
+  topicPreferenceScope(query.topicId),
   'workspace-global',
+  ...providerQualityScopes(query),
+  topicFeedbackScope(query.topicId),
 ];
+
+const providerQualityScopes = (query: BuildSummaryMemoryContextQuery): readonly string[] =>
+  [...new Set(query.evidence.items
+    .map((item) => item.providerKey.trim())
+    .filter((providerKey) => providerKey.length > 0)
+    .sort((left, right) => left.localeCompare(right))
+    .map((providerKey) => providerQualityScope(query.topicId, providerKey)))];
 
 const contextQuery = (query: BuildSummaryMemoryContextQuery): string => {
   const evidenceTitles = query.evidence.items
@@ -207,37 +294,161 @@ const contextQuery = (query: BuildSummaryMemoryContextQuery): string => {
     .map((item) => item.title.trim())
     .filter((title) => title.length > 0)
     .join(' | ');
+  const providerDistribution = [...query.evidence.items.reduce<Map<string, number>>(
+    (counts, item) => counts.set(item.providerKey, (counts.get(item.providerKey) ?? 0) + 1),
+    new Map(),
+  ).entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([providerKey, count]) => `${providerKey}=${count}`)
+    .join(', ');
   const userPart = query.userId === undefined ? '' : ` user:${query.userId}`;
 
-  return [`summary guidance topic:${query.topicId}${userPart}`, evidenceTitles].filter((part) => part.length > 0).join(' evidence: ');
+  return redactSensitiveText([
+    `summary guidance topic:${query.topicId}${userPart}`,
+    providerDistribution.length === 0 ? '' : `provider distribution: ${providerDistribution}`,
+    evidenceTitles.length === 0 ? '' : `evidence: ${evidenceTitles}`,
+  ].filter((part) => part.length > 0).join(' '));
 };
 
-const feedbackMemoryText = (command: RecordSummaryFeedbackMemoryCommand): string => [
-  `Summary feedback for topic ${command.topicId}: rating ${command.rating}/5, category ${command.category}.`,
-  command.comment === undefined ? '' : `User note: ${command.comment}`,
-  command.citationId === undefined ? '' : `Citation ${command.citationId} was involved.`,
-  command.providerKey === undefined ? '' : `Provider ${command.providerKey} was involved.`,
-].filter((line) => line.length > 0).join(' ');
+const presentMemoryContext = (
+  response: ContextEnvelope<ContextBundleData>,
+  retrievedAt: Date,
+): SummaryMemoryContext => {
+  const renderedText = stringOrUndefined(response.data?.rendered_text);
+  const diagnostics = asDiagnostics(response.data?.diagnostics);
 
-const feedbackTags = (command: RecordSummaryFeedbackMemoryCommand): readonly string[] => [
-  'summary-feedback',
-  `rating-${command.rating}`,
-  `category-${command.category}`,
-  ...(command.providerKey === undefined ? [] : [`provider-${command.providerKey}`]),
-];
-
-const normalizeBaseUrl = (value: string): string => value.trim().replace(/\/+$/u, '');
-
-const positiveIntegerOrFallback = (value: number | undefined, fallback: number): number =>
-  value !== undefined && Number.isInteger(value) && value > 0 ? value : fallback;
-
-const parsePositiveInteger = (value: string | undefined): number | undefined => {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+  return {
+    status: renderedText === undefined || renderedText.trim().length === 0 ? 'empty' : 'available',
+    renderedText,
+    sourceRefs: summaryMemorySourceRefs(response.data),
+    retrieval: summaryMemoryRetrieval(response.data?.diagnostics),
+    staleMarkers: summaryMemoryStaleMarkers(response.data?.diagnostics),
+    support: summaryMemorySupport(response.data?.answer_support),
+    diagnostics,
+    retrievedAt,
+  };
 };
+
+const mergeFallbackContexts = (
+  contexts: readonly SummaryMemoryContext[],
+  retrievedAt: Date,
+): SummaryMemoryContext => {
+  const renderedText = [...new Set(contexts
+    .map((context) => context.renderedText?.trim())
+    .filter((text): text is string => text !== undefined && text.length > 0))]
+    .join('\n');
+  const sourceRefs = mergeSourceRefs(contexts);
+
+  return {
+    status: renderedText.length === 0 ? 'empty' : 'available',
+    renderedText: renderedText.length === 0 ? undefined : renderedText,
+    sourceRefs: sourceRefs.length === 0 ? undefined : sourceRefs,
+    diagnostics: {
+      fallbackFromScopeNotFound: true,
+      fallbackScopesUsed: contexts.length,
+    },
+    retrievedAt,
+  };
+};
+
+const mergeSourceRefs = (contexts: readonly SummaryMemoryContext[]): readonly SummaryMemorySourceRef[] => {
+  const refs = new Map<string, SummaryMemorySourceRef>();
+  for (const context of contexts) {
+    for (const ref of context.sourceRefs ?? []) {
+      const sourceType = typeof ref.source_type === 'string' ? ref.source_type : 'unknown';
+      const sourceId = typeof ref.source_id === 'string' ? ref.source_id : JSON.stringify(ref);
+      refs.set(`${sourceType}:${sourceId}`, ref);
+    }
+  }
+
+  return [...refs.values()];
+};
+
+const summaryMemorySourceRefs = (data: ContextBundleData | undefined): readonly SummaryMemorySourceRef[] | undefined => {
+  const refs = new Map<string, SummaryMemorySourceRef>();
+  for (const item of data?.items ?? []) {
+    addSourceRefs(refs, item.source_refs);
+  }
+  for (const evidence of data?.top_evidence ?? []) {
+    addSourceRefs(refs, evidence.item?.source_refs);
+  }
+
+  return refs.size === 0 ? undefined : [...refs.values()];
+};
+
+const addSourceRefs = (
+  refs: Map<string, SummaryMemorySourceRef>,
+  values: readonly SourceRef[] | undefined,
+): void => {
+  for (const value of values ?? []) {
+    const sourceType = typeof value.source_type === 'string' ? value.source_type : 'unknown';
+    const sourceId = typeof value.source_id === 'string' ? value.source_id : JSON.stringify(value);
+    refs.set(`${sourceType}:${sourceId}`, value as SummaryMemorySourceRef);
+  }
+};
+
+const summaryMemoryRetrieval = (diagnostics: unknown): SummaryMemoryRetrieval | undefined => {
+  const source = asDiagnostics(diagnostics);
+  return emptyObjectAsUndefined(withoutUndefined({
+    vectorStatus: stringOrUndefined(source.vector_status),
+    graphStatus: stringOrUndefined(source.graph_status),
+    ragStatus: stringOrUndefined(source.rag_status),
+    retrievalSourcesUsed: stringArrayOrUndefined(source.retrieval_sources_used),
+    retrievalSourcesTotal: numberOrUndefined(source.retrieval_sources_total),
+    retrievalSourcesReturned: numberOrUndefined(source.retrieval_sources_returned),
+    itemsConsidered: numberOrUndefined(source.items_considered),
+    itemsUsed: numberOrUndefined(source.items_used),
+    factsConsidered: numberOrUndefined(source.facts_considered),
+    factsUsed: numberOrUndefined(source.facts_used),
+    sourceRefsTotal: numberOrUndefined(source.source_refs_total),
+    sourceRefsReturned: numberOrUndefined(source.source_refs_returned),
+  })) as SummaryMemoryRetrieval | undefined;
+};
+
+const summaryMemoryStaleMarkers = (diagnostics: unknown): SummaryMemoryStaleMarkers | undefined => {
+  const source = asDiagnostics(diagnostics);
+  return emptyObjectAsUndefined(withoutUndefined({
+    supersededFactsConsidered: numberOrUndefined(source.superseded_facts_considered),
+    supersededFactsUsed: numberOrUndefined(source.superseded_facts_used),
+    staleFactsConsidered: numberOrUndefined(source.stale_facts_considered),
+    staleFactsUsed: numberOrUndefined(source.stale_facts_used),
+    staleVectorDropCount: numberOrUndefined(source.stale_vector_drop_count),
+    staleGraphDropCount: numberOrUndefined(source.stale_graph_drop_count),
+    staleRagDropCount: numberOrUndefined(source.stale_rag_drop_count),
+  })) as SummaryMemoryStaleMarkers | undefined;
+};
+
+const summaryMemorySupport = (support: unknown): SummaryMemorySupport | undefined => {
+  if (support === null || typeof support !== 'object' || Array.isArray(support)) {
+    return undefined;
+  }
+  const source = support as Record<string, unknown>;
+  return emptyObjectAsUndefined(withoutUndefined({
+    status: stringOrUndefined(source.status),
+    itemsReturned: numberOrUndefined(source.items_returned),
+    warnings: stringArrayOrUndefined(source.warnings),
+  })) as SummaryMemorySupport | undefined;
+};
+
+const feedbackSourceRefs = (command: RecordSummaryFeedbackMemoryCommand): readonly SourceRef[] =>
+  compactSourceRefs(
+    memoStackSourceRef('social-monitor.summary-feedback', command.feedbackId),
+    memoStackSourceRef('social-monitor.summary', command.summaryId),
+    memoStackSourceRef('social-monitor.citation', command.citationId),
+    memoStackSourceRef('social-monitor.feed-item', command.feedItemId),
+    memoStackSourceRef('social-monitor.source-item', command.sourceItemId),
+  );
+
+const compactSourceRefs = (...refs: readonly (SourceRef | undefined)[]): readonly SourceRef[] =>
+  refs.filter((ref): ref is SourceRef => ref !== undefined);
 
 const stringOrUndefined = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+
+const numberOrUndefined = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+const stringArrayOrUndefined = (value: unknown): readonly string[] | undefined =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string') ? value : undefined;
 
 const asDiagnostics = (value: unknown): SummaryMemoryDiagnostics =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -255,19 +466,8 @@ const nestedString = (value: unknown, path: readonly string[]): string | undefin
   return typeof current === 'string' ? current : undefined;
 };
 
-const withoutUndefined = (value: Record<string, unknown>): Record<string, unknown> =>
-  Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+const withoutUndefined = (value: Record<string, unknown>): JsonObject =>
+  Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as JsonObject;
 
-const readJson = async <T>(response: Response): Promise<T> => {
-  const text = await response.text();
-  if (text.trim().length === 0) {
-    return {} as T;
-  }
-  return JSON.parse(text) as T;
-};
-
-const safeResponseBody = (body: string): string =>
-  body
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
-    .replace(/([?&](?:token|api_key|apikey|secret|password)=)[^&\s]+/gi, '$1[REDACTED]')
-    .slice(0, 240);
+const emptyObjectAsUndefined = (value: JsonObject): JsonObject | undefined =>
+  Object.keys(value).length === 0 ? undefined : value;

@@ -6,9 +6,49 @@ export type SummaryMemoryStatus = 'disabled' | 'available' | 'empty' | 'unavaila
 
 export type SummaryMemoryDiagnostics = Readonly<Record<string, unknown>>;
 
+export type SummaryMemorySourceRef = Readonly<Record<string, unknown>> & {
+  readonly source_type?: string | undefined;
+  readonly source_id?: string | undefined;
+};
+
+export type SummaryMemoryRetrieval = {
+  readonly vectorStatus?: string | undefined;
+  readonly graphStatus?: string | undefined;
+  readonly ragStatus?: string | undefined;
+  readonly retrievalSourcesUsed?: readonly string[] | undefined;
+  readonly retrievalSourcesTotal?: number | undefined;
+  readonly retrievalSourcesReturned?: number | undefined;
+  readonly itemsConsidered?: number | undefined;
+  readonly itemsUsed?: number | undefined;
+  readonly factsConsidered?: number | undefined;
+  readonly factsUsed?: number | undefined;
+  readonly sourceRefsTotal?: number | undefined;
+  readonly sourceRefsReturned?: number | undefined;
+};
+
+export type SummaryMemoryStaleMarkers = {
+  readonly supersededFactsConsidered?: number | undefined;
+  readonly supersededFactsUsed?: number | undefined;
+  readonly staleFactsConsidered?: number | undefined;
+  readonly staleFactsUsed?: number | undefined;
+  readonly staleVectorDropCount?: number | undefined;
+  readonly staleGraphDropCount?: number | undefined;
+  readonly staleRagDropCount?: number | undefined;
+};
+
+export type SummaryMemorySupport = {
+  readonly status?: string | undefined;
+  readonly itemsReturned?: number | undefined;
+  readonly warnings?: readonly string[] | undefined;
+};
+
 export type SummaryMemoryContext = {
   readonly status: SummaryMemoryStatus;
   readonly renderedText?: string | undefined;
+  readonly sourceRefs?: readonly SummaryMemorySourceRef[] | undefined;
+  readonly retrieval?: SummaryMemoryRetrieval | undefined;
+  readonly staleMarkers?: SummaryMemoryStaleMarkers | undefined;
+  readonly support?: SummaryMemorySupport | undefined;
   readonly diagnostics: SummaryMemoryDiagnostics;
   readonly retrievedAt: Date;
 };

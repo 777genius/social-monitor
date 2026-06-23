@@ -91,6 +91,103 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
   });
 
+  it('passes structured memory context into the Responses prompt payload', async () => {
+    const capturedCalls: CapturedFetchCall[] = [];
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async (url, init) => {
+        capturedCalls.push({ url: String(url), init });
+
+        return jsonResponse(200, {
+          output_text: JSON.stringify(validProviderDraft()),
+          usage: {
+            input_tokens: 321,
+            output_tokens: 123,
+          },
+        });
+      },
+    });
+    const input = buildInput({
+      memoryContext: {
+        status: 'available',
+        renderedText: 'Memory: prefer security fixes and concise phrasing.',
+        sourceRefs: [
+          {
+            source_type: 'social-monitor.summary-feedback',
+            source_id: 'feedback-1',
+          },
+        ],
+        retrieval: {
+          vectorStatus: 'ok',
+          graphStatus: 'ok',
+          itemsUsed: 1,
+          factsUsed: 1,
+        },
+        staleMarkers: {
+          staleFactsConsidered: 1,
+          staleFactsUsed: 0,
+        },
+        support: {
+          status: 'supported',
+          itemsReturned: 1,
+          warnings: ['memory-preference-only'],
+        },
+        diagnostics: {
+          vector_status: 'ok',
+          graph_status: 'ok',
+        },
+        retrievedAt: new Date('2026-06-21T09:59:00.000Z'),
+      },
+    });
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 1_500,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    await adapter.summarize(input, route);
+
+    const request = JSON.parse(String(capturedCalls[0]?.init?.body)) as { readonly input: string };
+    const promptPayload = JSON.parse(request.input) as {
+      readonly memoryContext?: Record<string, unknown>;
+    };
+    expect(promptPayload.memoryContext).toMatchObject({
+      status: 'available',
+      renderedText: 'Memory: prefer security fixes and concise phrasing.',
+      sourceRefs: [
+        {
+          source_type: 'social-monitor.summary-feedback',
+          source_id: 'feedback-1',
+        },
+      ],
+      retrieval: {
+        vectorStatus: 'ok',
+        graphStatus: 'ok',
+        itemsUsed: 1,
+        factsUsed: 1,
+      },
+      staleMarkers: {
+        staleFactsConsidered: 1,
+        staleFactsUsed: 0,
+      },
+      support: {
+        status: 'supported',
+        itemsReturned: 1,
+        warnings: ['memory-preference-only'],
+      },
+      diagnostics: {
+        vector_status: 'ok',
+        graph_status: 'ok',
+      },
+      retrievedAt: '2026-06-21T09:59:00.000Z',
+    });
+  });
+
   it('classifies provider rate limits as retryable failures', async () => {
     const adapter = new OpenAiResponsesSummaryModelAdapter({
       apiKey: fakeOpenAiApiKey,
@@ -172,6 +269,7 @@ const fakeOpenAiApiKey = ['test', 'openai', 'key'].join('-');
 
 const buildInput = (params: {
   readonly evidenceItems?: SummaryModelInput['evidence']['items'];
+  readonly memoryContext?: SummaryModelInput['memoryContext'];
 } = {}): SummaryModelInput => {
   const now = new Date('2026-06-21T10:00:00.000Z');
   const evidenceItems = params.evidenceItems ?? [
@@ -210,6 +308,7 @@ const buildInput = (params: {
       },
       items: evidenceItems,
     },
+    memoryContext: params.memoryContext,
     policy: {
       language: 'en',
       format: 'executive_brief',

@@ -398,6 +398,10 @@ const buildPromptPayload = (input: SummaryModelInput): string => JSON.stringify(
   memoryContext: input.memoryContext === undefined ? undefined : {
     status: input.memoryContext.status,
     renderedText: input.memoryContext.renderedText,
+    sourceRefs: input.memoryContext.sourceRefs,
+    retrieval: input.memoryContext.retrieval,
+    staleMarkers: input.memoryContext.staleMarkers,
+    support: input.memoryContext.support,
     diagnostics: input.memoryContext.diagnostics,
     retrievedAt: input.memoryContext.retrievedAt.toISOString(),
   },
