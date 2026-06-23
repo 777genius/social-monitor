@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../composition/app_runtime.dart';
+import '../composition/app_theme_mode_controller.dart';
 import 'app_shell_page.dart';
 import 'feature_catalog.dart';
 
@@ -9,6 +10,7 @@ GoRouter createAppRouter({
   required List<AppFeatureDescriptor> features,
   required List<NavigatorObserver> observers,
   required AppShellRuntime runtime,
+  required AppThemeModeController themeModeController,
 }) {
   return GoRouter(
     initialLocation: AppRoutes.dashboard,
@@ -36,6 +38,7 @@ GoRouter createAppRouter({
           return AppShellPage(
             features: features,
             runtime: runtime,
+            themeModeController: themeModeController,
             location: state.uri.path,
             child: child,
           );
@@ -43,14 +46,18 @@ GoRouter createAppRouter({
         routes: [
           GoRoute(
             path: AppRoutes.dashboard,
-            builder: (context, state) {
-              return FeatureOverviewPage(features: features, runtime: runtime);
-            },
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: FeatureOverviewPage(features: features, runtime: runtime),
+            ),
           ),
           for (final feature in features)
             GoRoute(
               path: feature.route.path,
-              builder: (context, state) => feature.buildPage(context),
+              pageBuilder: (context, state) => NoTransitionPage<void>(
+                key: state.pageKey,
+                child: feature.buildPage(context),
+              ),
             ),
         ],
       ),

@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../composition/app_runtime.dart';
+import '../composition/app_theme_mode_controller.dart';
+import 'app_shell_header.dart';
 import 'feature_catalog.dart';
 
 class AppShellPage extends StatelessWidget {
@@ -10,12 +12,14 @@ class AppShellPage extends StatelessWidget {
     super.key,
     required this.features,
     required this.runtime,
+    required this.themeModeController,
     required this.location,
     required this.child,
   });
 
   final List<AppFeatureDescriptor> features;
   final AppShellRuntime runtime;
+  final AppThemeModeController themeModeController;
   final String location;
   final Widget child;
 
@@ -38,16 +42,10 @@ class AppShellPage extends StatelessWidget {
       ],
       selectedPath: location,
       onDestinationSelected: (path) => context.go(path),
-      header: AppWorkspaceSwitcher(
-        workspaceName: runtime.workspace.workspaceName,
-        tenantName: runtime.workspace.tenantName,
-        status: AppStatusBadge(
-          label: runtime.workspace.statusLabel,
-          tone: runtime.workspace.isAvailable
-              ? AppStatusTone.success
-              : AppStatusTone.warning,
-        ),
-        onPressed: () => context.go(_settingsPath),
+      header: AppShellHeader(
+        runtime: runtime,
+        themeModeController: themeModeController,
+        onOpenSettings: () => context.go(_settingsPath),
       ),
       child: child,
     );

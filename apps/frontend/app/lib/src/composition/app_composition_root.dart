@@ -12,6 +12,7 @@ import 'package:social_monitor_topics/social_monitor_topics.dart';
 import '../routing/app_router.dart';
 import '../routing/feature_catalog.dart';
 import 'app_runtime.dart';
+import 'app_theme_mode_controller.dart';
 
 final class AppCompositionRoot {
   const AppCompositionRoot._({
@@ -19,36 +20,55 @@ final class AppCompositionRoot {
     required this.features,
     required this.routeObserver,
     required this.runtime,
+    required this.themeModeController,
   });
 
   final GoRouter router;
   final List<AppFeatureDescriptor> features;
   final RouteObserver<ModalRoute<dynamic>> routeObserver;
   final AppShellRuntime runtime;
+  final AppThemeModeController themeModeController;
 
-  factory AppCompositionRoot.production({AppShellRuntime? runtime}) {
+  factory AppCompositionRoot.production({
+    AppShellRuntime? runtime,
+    AppThemeModeController? themeModeController,
+  }) {
     return AppCompositionRoot._build(
       runtime: runtime ?? AppShellRuntime.productionPending(),
+      themeModeController: themeModeController,
       useDemoRoutes: false,
     );
   }
 
-  factory AppCompositionRoot.demo({AppShellRuntime? runtime}) {
+  factory AppCompositionRoot.demo({
+    AppShellRuntime? runtime,
+    AppThemeModeController? themeModeController,
+  }) {
     return AppCompositionRoot._build(
       runtime: runtime ?? AppShellRuntime.demo(),
+      themeModeController: themeModeController,
       useDemoRoutes: true,
     );
   }
 
-  factory AppCompositionRoot.bootstrap({AppShellRuntime? runtime}) {
-    return AppCompositionRoot.production(runtime: runtime);
+  factory AppCompositionRoot.bootstrap({
+    AppShellRuntime? runtime,
+    AppThemeModeController? themeModeController,
+  }) {
+    return AppCompositionRoot.production(
+      runtime: runtime,
+      themeModeController: themeModeController,
+    );
   }
 
   factory AppCompositionRoot._build({
     required AppShellRuntime runtime,
+    AppThemeModeController? themeModeController,
     required bool useDemoRoutes,
   }) {
     final resolvedRuntime = runtime;
+    final resolvedThemeModeController =
+        themeModeController ?? AppThemeModeController();
     final routeObserver = RouteObserver<ModalRoute<dynamic>>();
     final features = <AppFeatureDescriptor>[
       _RouteFeatureDescriptor(
@@ -148,10 +168,12 @@ final class AppCompositionRoot {
       features: features,
       routeObserver: routeObserver,
       runtime: resolvedRuntime,
+      themeModeController: resolvedThemeModeController,
       router: createAppRouter(
         features: features,
         observers: [routeObserver],
         runtime: resolvedRuntime,
+        themeModeController: resolvedThemeModeController,
       ),
     );
   }

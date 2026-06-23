@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_app/src/app/social_monitor_app.dart';
 import 'package:social_monitor_app/src/composition/app_composition_root.dart';
@@ -102,6 +102,67 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Social Monitor'), findsWidgets);
     }
+  });
+
+  testWidgets('switches shell routes without overlapping page content', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final composition = AppCompositionRoot.demo();
+    await tester.pumpWidget(SocialMonitorApp(composition: composition));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Monitoring command center'), findsOneWidget);
+
+    composition.router.go('/topics');
+    await tester.pump();
+
+    expect(find.text('Monitoring command center'), findsNothing);
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Monitoring command center'), findsNothing);
+    expect(find.text('Market risk'), findsWidgets);
+  });
+
+  testWidgets('exposes and applies the app theme switcher', (tester) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final composition = AppCompositionRoot.demo();
+    await tester.pumpWidget(SocialMonitorApp(composition: composition));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Theme'), findsOneWidget);
+    expect(composition.themeModeController.themeMode, ThemeMode.system);
+
+    await tester.tap(find.byKey(const ValueKey('app-theme-mode-dark')));
+    await tester.pumpAndSettle();
+
+    expect(composition.themeModeController.themeMode, ThemeMode.dark);
+    expect(
+      Theme.of(
+        tester.element(find.text('Monitoring command center')),
+      ).brightness,
+      Brightness.dark,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('app-theme-mode-light')));
+    await tester.pumpAndSettle();
+
+    expect(composition.themeModeController.themeMode, ThemeMode.light);
+    expect(
+      Theme.of(
+        tester.element(find.text('Monitoring command center')),
+      ).brightness,
+      Brightness.light,
+    );
   });
 
   testWidgets('completes the MVP acceptance workflow', (tester) async {

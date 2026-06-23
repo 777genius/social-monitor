@@ -85,39 +85,33 @@ void main() {
     tester,
   ) async {
     String? selectedPath;
+    tester.view.physicalSize = const Size(1180, 780);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
-        home: OverflowBox(
-          minWidth: 1180,
-          maxWidth: 1180,
-          minHeight: 780,
-          maxHeight: 780,
-          child: SizedBox(
-            width: 1180,
-            height: 780,
-            child: AppAdaptiveShell(
-              title: 'Social Monitor',
-              selectedPath: '/',
-              destinations: const [
-                AppShellDestination(
-                  label: 'Overview',
-                  path: '/',
-                  icon: Icons.monitor_heart_outlined,
-                ),
-                AppShellDestination(
-                  label: 'Settings',
-                  path: '/settings',
-                  icon: Icons.tune_outlined,
-                ),
-              ],
-              onDestinationSelected: (path) {
-                selectedPath = path;
-              },
-              child: const SizedBox(),
+        home: AppAdaptiveShell(
+          title: 'Social Monitor',
+          selectedPath: '/',
+          destinations: const [
+            AppShellDestination(
+              label: 'Overview',
+              path: '/',
+              icon: Icons.monitor_heart_outlined,
             ),
-          ),
+            AppShellDestination(
+              label: 'Settings',
+              path: '/settings',
+              icon: Icons.tune_outlined,
+            ),
+          ],
+          onDestinationSelected: (path) {
+            selectedPath = path;
+          },
+          child: const SizedBox(),
         ),
       ),
     );

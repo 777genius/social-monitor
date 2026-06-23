@@ -16,19 +16,26 @@ class SocialMonitorApp extends StatelessWidget {
 
     return ModularityRoot(
       observer: composition.routeObserver,
-      child: AppHeadlessScope(
-        theme: theme,
-        darkTheme: darkTheme,
-        themeMode: ThemeMode.system,
-        appBuilder: (overlayBuilder) => MaterialApp.router(
-          title: 'Social Monitor',
-          debugShowCheckedModeBanner: false,
-          theme: theme,
-          darkTheme: darkTheme,
-          themeMode: ThemeMode.system,
-          builder: overlayBuilder,
-          routerConfig: composition.router,
-        ),
+      child: AnimatedBuilder(
+        animation: composition.themeModeController,
+        builder: (context, _) {
+          final themeMode = composition.themeModeController.themeMode;
+
+          return AppHeadlessScope(
+            theme: theme,
+            darkTheme: darkTheme,
+            themeMode: themeMode,
+            appBuilder: (overlayBuilder) => MaterialApp.router(
+              title: 'Social Monitor',
+              debugShowCheckedModeBanner: false,
+              theme: theme,
+              darkTheme: darkTheme,
+              themeMode: themeMode,
+              builder: overlayBuilder,
+              routerConfig: composition.router,
+            ),
+          );
+        },
       ),
     );
   }
