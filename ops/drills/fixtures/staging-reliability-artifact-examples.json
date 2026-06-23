@@ -61,6 +61,8 @@
             "messageId": "msg-rabbitmq-ack-example",
             "ackAt": "2026-06-18T00:03:04.000Z",
             "scanAttemptId": "scan-attempt-ack-example",
+            "queueDepthBeforeAck": 1,
+            "queueDepthAfterAck": 0,
             "duplicateSideEffectsObserved": false
           }
         },
@@ -73,6 +75,8 @@
             "messageId": "msg-rabbitmq-nack-example",
             "nackAt": "2026-06-18T00:04:03.000Z",
             "redeliveryCount": 1,
+            "redeliveredFlag": true,
+            "deliveryCountObserved": 2,
             "finalStatus": "acked-after-retry",
             "correlationIdPreserved": true
           }
@@ -86,6 +90,8 @@
             "dlxExchange": "delivery.commands.dlx",
             "deadLetterRoutingKey": "delivery.attempt.send.dead",
             "deliveryAttemptId": "delivery-attempt-poison-example",
+            "dlqMessageId": "msg-rabbitmq-poison-example",
+            "sourceQueueDepthAfterDeadLetter": 0,
             "deadLetteredAt": "2026-06-18T00:05:06.000Z"
           }
         },
@@ -113,7 +119,8 @@
             "workerService": "ingestion-worker",
             "restartWindow": "2026-06-18T00:06:30.000Z/2026-06-18T00:07:00.000Z",
             "recoveredMessageId": "msg-rabbitmq-restart-example",
-            "idempotentResultId": "scan-attempt-restart-example"
+            "idempotentResultId": "scan-attempt-restart-example",
+            "serviceRunningAfterRestart": true
           }
         },
         {
@@ -148,7 +155,8 @@
             "outboxEventId": "outbox-event-relay-example",
             "retryCount": 1,
             "finalDeliveryResult": "published",
-            "idempotencyPreserved": true
+            "idempotencyPreserved": true,
+            "duplicatePublishObserved": false
           }
         }
       ]
@@ -183,8 +191,10 @@
             "summary": "redacted backup id and mapped table count observed",
             "backupId": "backup-staging-example",
             "schemaVersion": "20260618002000",
+            "backupFormat": "pg_dump custom",
             "includedTableCount": 32,
-            "operationalTablesIncluded": true
+            "operationalTablesIncluded": true,
+            "backupArtifactCleanedUp": true
           }
         },
         {
@@ -196,7 +206,8 @@
             "restoreStartedAt": "2026-06-18T00:22:00.000Z",
             "restoreCompletedAt": "2026-06-18T00:24:00.000Z",
             "rpoMinutes": 5,
-            "rtoMinutes": 2
+            "rtoMinutes": 2,
+            "workersPausedBeforeRestore": true
           }
         },
         {
@@ -234,7 +245,8 @@
               "audit",
               "usage"
             ],
-            "failedQueryCount": 0
+            "failedQueryCount": 0,
+            "queryResultsHash": "9f3f3632ad14f9b40c7293d2cedc482e5b129944d60f40ca43f37d6a7d4d06cf"
           }
         },
         {
@@ -253,7 +265,20 @@
               "inbox": 7,
               "idempotency": 19
             },
-            "countsMatched": true
+            "countsMatched": true,
+            "beforeFingerprints": {
+              "outbox": "e3b0c44298fc1c149afbf4c8996fb924",
+              "inbox": "e3b0c44298fc1c149afbf4c8996fb924",
+              "idempotency": "e3b0c44298fc1c149afbf4c8996fb924",
+              "delivery": "e3b0c44298fc1c149afbf4c8996fb924"
+            },
+            "afterFingerprints": {
+              "outbox": "e3b0c44298fc1c149afbf4c8996fb924",
+              "inbox": "e3b0c44298fc1c149afbf4c8996fb924",
+              "idempotency": "e3b0c44298fc1c149afbf4c8996fb924",
+              "delivery": "e3b0c44298fc1c149afbf4c8996fb924"
+            },
+            "fingerprintsMatched": true
           }
         },
         {
@@ -264,6 +289,18 @@
             "summary": "redacted worker pause and resume window observed",
             "pauseCommandId": "pause-workers-example",
             "resumeCommandId": "resume-workers-example",
+            "pausedServices": [
+              "ingestion-worker",
+              "intelligence-worker",
+              "delivery-service",
+              "event-relay"
+            ],
+            "resumedServices": [
+              "event-relay",
+              "ingestion-worker",
+              "intelligence-worker",
+              "delivery-service"
+            ],
             "workAcceptedDuringValidation": false
           }
         },
@@ -284,6 +321,23 @@
               "summaries": 3,
               "deliveryAttempts": 2
             },
+            "beforeResumeCounts": {
+              "scanAttempts": 4,
+              "feedItems": 11,
+              "summaries": 3,
+              "deliveryAttempts": 2
+            },
+            "afterResumeCounts": {
+              "scanAttempts": 4,
+              "feedItems": 11,
+              "summaries": 3,
+              "deliveryAttempts": 2
+            },
+            "deliveryIdempotencyKey": "delivery:example",
+            "duplicateProbeBeforeCount": 1,
+            "duplicateProbeAfterCount": 1,
+            "duplicateInsertSuppressed": true,
+            "replayWindow": "2026-06-18T00:24:00.000Z/2026-06-18T00:39:00.000Z",
             "duplicateSideEffectsObserved": false
           }
         }

@@ -102,5 +102,16 @@
     "select count(*) from inbox_records",
     "select count(*) from idempotency_keys"
   ],
+  "restoreReplayProof": {
+    "requiresWorkersPaused": true,
+    "requiresReplayStateFingerprints": true,
+    "requiresDuplicateDeliveryProbe": true,
+    "requiresNoDuplicateDeliveryAfterRestore": true,
+    "requiredEvidenceSignalIds": [
+      "postgres-outbox-inbox-idempotency",
+      "postgres-worker-pause-resume",
+      "postgres-no-duplicate-side-effects"
+    ]
+  },
   "manualDrillRunbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#backup-restore-drill"
 }

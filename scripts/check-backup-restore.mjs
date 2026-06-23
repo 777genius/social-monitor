@@ -1,8 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 
 const contractPath = 'ops/recovery/backup-restore-contract.json';
+const stagingReliabilityPath = 'ops/drills/staging-reliability-evidence.json';
 const schemaPath = 'prisma/schema.prisma';
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
+const stagingReliability = JSON.parse(readFileSync(stagingReliabilityPath, 'utf8'));
 const schema = readFileSync(schemaPath, 'utf8');
 const violations = [];
 
@@ -50,6 +52,8 @@ if (!Array.isArray(contract.restoreValidationQueries) || contract.restoreValidat
   violations.push(`${contractPath}: restoreValidationQueries must include core validation queries`);
 }
 
+validateRestoreReplayProof();
+
 const [runbookPath, runbookAnchor] = String(contract.manualDrillRunbook ?? '').split('#');
 if (!runbookPath || !existsSync(runbookPath)) {
   violations.push(`${contractPath}: manualDrillRunbook path must exist`);
@@ -63,3 +67,44 @@ if (violations.length > 0) {
 }
 
 console.log('Backup restore contract OK');
+
+function validateRestoreReplayProof() {
+  const proof = contract.restoreReplayProof;
+  if (!isRecord(proof)) {
+    violations.push(`${contractPath}: restoreReplayProof must define replay/idempotency proof requirements`);
+    return;
+  }
+
+  for (const field of [
+    'requiresWorkersPaused',
+    'requiresReplayStateFingerprints',
+    'requiresDuplicateDeliveryProbe',
+    'requiresNoDuplicateDeliveryAfterRestore',
+  ]) {
+    if (proof[field] !== true) {
+      violations.push(`${contractPath}: restoreReplayProof.${field} must be true`);
+    }
+  }
+
+  const requiredSignalIds = new Set(proof.requiredEvidenceSignalIds ?? []);
+  for (const signalId of [
+    'postgres-outbox-inbox-idempotency',
+    'postgres-worker-pause-resume',
+    'postgres-no-duplicate-side-effects',
+  ]) {
+    if (!requiredSignalIds.has(signalId)) {
+      violations.push(`${contractPath}: restoreReplayProof.requiredEvidenceSignalIds must include ${signalId}`);
+    }
+  }
+
+  const stagingSignalIds = new Set((stagingReliability.requiredSignals ?? []).map((signal) => signal.signalId));
+  for (const signalId of requiredSignalIds) {
+    if (!stagingSignalIds.has(signalId)) {
+      violations.push(`${contractPath}: restoreReplayProof signal "${signalId}" is missing from ${stagingReliabilityPath}`);
+    }
+  }
+}
+
+function isRecord(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}

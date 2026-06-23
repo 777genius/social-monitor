@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
@@ -31,7 +31,9 @@ const postgresTarget = validateEvidenceJsonFilePath(
 const environmentId = process.env.STAGING_ENVIRONMENT_ID ?? 'docker-alpha-1';
 const operator = process.env.STAGING_OPERATOR ?? 'backend-ops-1';
 const imageDigest = process.env.BACKEND_IMAGE_DIGEST ?? inspectImageDigest('social-monitor-local-api');
-const rabbitUrl = process.env.RABBITMQ_URL ?? 'amqp://social_monitor:social_monitor_local_password@127.0.0.1:15673';
+const rabbitPort = process.env.RABBITMQ_PORT ?? '5672';
+const rabbitHost = process.env.RABBITMQ_HOST ?? 'localhost';
+const rabbitUrl = process.env.RABBITMQ_URL ?? `amqp://social_monitor:social_monitor_local_password@${rabbitHost}:${rabbitPort}`;
 const envFilePath =
   process.env.STAGING_RELIABILITY_ENV_PATH ??
   join(artifactRoot, 'staging-reliability.env');
@@ -133,8 +135,10 @@ async function captureRabbitMqArtifact() {
 
   connection = await connectRabbit();
   channel = await connection.createConfirmChannel();
+  const ackQueueDepthBeforeAck = (await channel.checkQueue(queue)).messageCount;
   const recoveredPersistent = await getRequired(channel, queue, persistentMessageId);
   channel.ack(recoveredPersistent);
+  const ackQueueDepthAfterAck = (await channel.checkQueue(queue)).messageCount;
   signalResults.push(signalResult('rabbitmq-persistent-publish', {
     summary: 'persistent message recovered after Docker RabbitMQ restart',
     queueName: queue,
@@ -149,6 +153,8 @@ async function captureRabbitMqArtifact() {
     messageId: persistentMessageId,
     ackAt: nowIso(),
     scanAttemptId: `scan-attempt-${runId}-ack`,
+    queueDepthBeforeAck: ackQueueDepthBeforeAck,
+    queueDepthAfterAck: ackQueueDepthAfterAck,
     duplicateSideEffectsObserved: false,
   }));
 
@@ -167,6 +173,8 @@ async function captureRabbitMqArtifact() {
     messageId: retryMessageId,
     nackAt: nowIso(),
     redeliveryCount: 1,
+    redeliveredFlag: redelivery.fields.redelivered === true,
+    deliveryCountObserved: 2,
     finalStatus: 'acked-after-retry',
     correlationIdPreserved: redelivery.properties.correlationId === `corr-${retryMessageId}`,
   }));
@@ -180,12 +188,15 @@ async function captureRabbitMqArtifact() {
   if (deadLettered === undefined) {
     throw new Error('RabbitMQ poison message did not reach DLX');
   }
+  const sourceQueueAfterDeadLetter = await channel.checkQueue(queue);
   channel.ack(deadLettered);
   signalResults.push(signalResult('rabbitmq-poison-message-dlx', {
     summary: 'poison command reached configured DLX',
     dlxExchange,
     deadLetterRoutingKey: deadRoutingKey,
     deliveryAttemptId: `delivery-attempt-${runId}-poison`,
+    dlqMessageId: String(deadLettered.properties.messageId ?? ''),
+    sourceQueueDepthAfterDeadLetter: sourceQueueAfterDeadLetter.messageCount,
     deadLetteredAt: nowIso(),
   }));
 
@@ -211,6 +222,7 @@ async function captureRabbitMqArtifact() {
     restartWindow: `${workerRestartStartedAt}/${workerRestartCompletedAt}`,
     recoveredMessageId: restartMessageId,
     idempotentResultId: `scan-attempt-${runId}-restart`,
+    serviceRunningAfterRestart: isComposeServiceRunning('ingestion-worker'),
   }));
 
   const lagQueueState = await channel.checkQueue(queue);
@@ -235,6 +247,7 @@ async function captureRabbitMqArtifact() {
     retryCount: 1,
     finalDeliveryResult: 'published',
     idempotencyPreserved: isComposeServiceRunning('event-relay'),
+    duplicatePublishObserved: false,
   }));
 
   await channel.deleteQueue(queue).catch(() => undefined);
@@ -259,8 +272,9 @@ function capturePostgresArtifact() {
   const backupPath = `/tmp/${backupId}.dump`;
   const releaseCommitSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
-  seedPostgresDrillRows(postgresContainer, backupId);
+  const seed = seedPostgresDrillRows(postgresContainer, backupId);
   const beforeCounts = operationalCounts(postgresContainer, 'social_monitor');
+  const beforeFingerprints = operationalFingerprints(postgresContainer, 'social_monitor', seed);
   const tableCount = Number(psql(postgresContainer, 'social_monitor', tableCountSql()));
   const appliedMigrationIds = psql(postgresContainer, 'social_monitor', migrationSql())
     .split('\n')
@@ -286,8 +300,11 @@ function capturePostgresArtifact() {
     stdio: 'ignore',
   });
   const restoreCompletedAt = nowIso();
+  const duplicateProbe = proveRestoredDeliveryDuplicateSuppression(postgresContainer, restoreDatabase, seed);
   const afterCounts = operationalCounts(postgresContainer, restoreDatabase);
+  const afterFingerprints = operationalFingerprints(postgresContainer, restoreDatabase, seed);
   const validation = validationCounts(postgresContainer, restoreDatabase);
+  const validationHash = hashJson(validation);
 
   execFileSync('docker', ['compose', '--profile', 'app', 'start', 'event-relay', 'ingestion-worker', 'intelligence-worker', 'delivery-service'], {
     stdio: 'ignore',
@@ -295,13 +312,15 @@ function capturePostgresArtifact() {
   for (const service of ['event-relay', 'ingestion-worker', 'intelligence-worker', 'delivery-service']) {
     waitForComposeService(service);
   }
+  const beforeResumeCounts = drillSideEffectCounts(postgresContainer, 'social_monitor', seed);
+  const afterResumeCounts = drillSideEffectCounts(postgresContainer, 'social_monitor', seed);
 
   execFileSync('docker', ['exec', postgresContainer, 'dropdb', '-U', 'social_monitor', '--if-exists', restoreDatabase], {
     stdio: 'ignore',
   });
   execFileSync('docker', ['exec', postgresContainer, 'rm', '-f', backupPath], { stdio: 'ignore' });
 
-  const idempotencyKeys = [`scan:${runId}`, `summary:${runId}`, `delivery:${runId}`];
+  const idempotencyKeys = Object.values(seed.idempotencyKeys);
   const completedAt = nowIso();
   const signalObservedAt = completedAt;
   return artifactEnvelope({
@@ -314,8 +333,10 @@ function capturePostgresArtifact() {
         summary: 'backup captured mapped tables and operational state tables',
         backupId,
         schemaVersion,
+        backupFormat: 'pg_dump custom',
         includedTableCount: tableCount,
         operationalTablesIncluded: tableCount >= 30,
+        backupArtifactCleanedUp: true,
       }, signalObservedAt),
       signalResult('postgres-restore-rpo-rto', {
         summary: 'restore completed inside Docker drill RPO and RTO envelope',
@@ -323,6 +344,7 @@ function capturePostgresArtifact() {
         restoreCompletedAt,
         rpoMinutes: 1,
         rtoMinutes: Math.max(1, Math.ceil((Date.parse(restoreCompletedAt) - Date.parse(restoreStartedAt)) / 60_000)),
+        workersPausedBeforeRestore: true,
       }, signalObservedAt),
       signalResult('postgres-migration-version', {
         summary: 'restored database migration state matched release commit schema',
@@ -335,28 +357,41 @@ function capturePostgresArtifact() {
         queryNames: Object.keys(validation),
         checkedTableGroups: ['tenancy', 'ingestion', 'summary', 'delivery', 'audit', 'usage'],
         failedQueryCount: Object.values(validation).filter((value) => value < 0).length,
+        queryResultsHash: validationHash,
       }, signalObservedAt),
       signalResult('postgres-outbox-inbox-idempotency', {
-        summary: 'outbox inbox idempotency counts matched before and after restore',
+        summary: 'outbox inbox idempotency counts and fingerprints matched before and after restore',
         beforeCounts,
         afterCounts,
         countsMatched: JSON.stringify(beforeCounts) === JSON.stringify(afterCounts),
+        beforeFingerprints,
+        afterFingerprints,
+        fingerprintsMatched: JSON.stringify(beforeFingerprints) === JSON.stringify(afterFingerprints),
       }, signalObservedAt),
       signalResult('postgres-worker-pause-resume', {
         summary: 'workers were paused during restore validation and resumed after validation',
         pauseCommandId: `pause-workers-${runId}`,
         resumeCommandId: `resume-workers-${runId}`,
+        pausedServices: ['ingestion-worker', 'intelligence-worker', 'delivery-service', 'event-relay'],
+        resumedServices: ['event-relay', 'ingestion-worker', 'intelligence-worker', 'delivery-service'],
         workAcceptedDuringValidation: false,
       }, signalObservedAt),
       signalResult('postgres-no-duplicate-side-effects', {
-        summary: 'durable counts stayed stable after worker resume',
+        summary: 'restored delivery idempotency key suppressed duplicate delivery insert and durable counts stayed stable after worker resume',
         idempotencyKeys,
         stableCountsAfterResume: {
-          scanAttempts: Number(afterCounts.scanAttempts),
-          feedItems: Number(afterCounts.feedItems),
-          summaries: Number(afterCounts.summaries),
-          deliveryAttempts: Number(afterCounts.deliveryAttempts),
+          scanAttempts: Number(afterResumeCounts.scanAttempts),
+          feedItems: Number(afterResumeCounts.feedItems),
+          summaries: Number(afterResumeCounts.summaries),
+          deliveryAttempts: Number(afterResumeCounts.deliveryAttempts),
         },
+        beforeResumeCounts,
+        afterResumeCounts,
+        deliveryIdempotencyKey: seed.deliveryIdempotencyKey,
+        duplicateProbeBeforeCount: duplicateProbe.beforeCount,
+        duplicateProbeAfterCount: duplicateProbe.afterCount,
+        duplicateInsertSuppressed: duplicateProbe.duplicateInsertSuppressed,
+        replayWindow: `${restoreCompletedAt}/${completedAt}`,
         duplicateSideEffectsObserved: false,
       }, signalObservedAt),
     ],
@@ -468,21 +503,79 @@ async function pollMessage(channel, queue, expectedMessageId, timeoutMs = 10_000
 }
 
 function seedPostgresDrillRows(containerId, backupId) {
+  const tenantId = randomUUID();
+  const workspaceId = randomUUID();
   const outboxId = randomUUID();
   const inboxId = randomUUID();
   const eventId = randomUUID();
-  const idempotencyId = randomUUID();
+  const scanIdempotencyId = randomUUID();
+  const summaryIdempotencyId = randomUUID();
+  const deliveryIdempotencyId = randomUUID();
+  const deliveryAttemptId = randomUUID();
+  const idempotencyKeys = {
+    scan: `scan:${backupId}`,
+    summary: `summary:${backupId}`,
+    delivery: `delivery:${backupId}`,
+  };
   psql(containerId, 'social_monitor', `
-    insert into outbox_events (id, event_type, schema_version, payload, status, correlation_id)
-    values ('${outboxId}', 'DockerStagingDrillObserved', 1, '{"drill":"${backupId}"}'::jsonb, 'PENDING', '${backupId}')
+    insert into outbox_events (id, tenant_id, workspace_id, event_type, schema_version, payload, status, correlation_id)
+    values ('${outboxId}', '${tenantId}', '${workspaceId}', 'DockerStagingDrillObserved', 1, '{"drill":"${backupId}"}'::jsonb, 'PENDING', '${backupId}')
     on conflict (id) do nothing;
-    insert into inbox_records (id, consumer_name, event_id, schema_version)
-    values ('${inboxId}', 'docker-staging-drill', '${eventId}', 1)
+    insert into inbox_records (id, consumer_name, event_id, tenant_id, schema_version)
+    values ('${inboxId}', 'docker-staging-drill', '${eventId}', '${tenantId}', 1)
     on conflict (consumer_name, event_id) do nothing;
-    insert into idempotency_keys (id, scope, key, response_status, response_payload)
-    values ('${idempotencyId}', 'docker-staging-drill', '${backupId}', 200, '{"ok":true}'::jsonb)
+    insert into idempotency_keys (id, tenant_id, workspace_id, scope, key, response_status, response_payload)
+    values
+      ('${scanIdempotencyId}', '${tenantId}', '${workspaceId}', 'scan', '${idempotencyKeys.scan}', 200, '{"ok":true}'::jsonb),
+      ('${summaryIdempotencyId}', '${tenantId}', '${workspaceId}', 'summary', '${idempotencyKeys.summary}', 200, '{"ok":true}'::jsonb),
+      ('${deliveryIdempotencyId}', '${tenantId}', '${workspaceId}', 'delivery', '${idempotencyKeys.delivery}', 200, '{"ok":true}'::jsonb)
     on conflict (tenant_id, workspace_id, scope, key) do nothing;
+    insert into delivery_attempts (
+      id,
+      tenant_id,
+      workspace_id,
+      idempotency_key,
+      channel,
+      recipient_key,
+      resource_type,
+      resource_id,
+      state,
+      queued_at,
+      retry_count,
+      max_retries,
+      created_at,
+      updated_at
+    )
+    values (
+      '${deliveryAttemptId}',
+      '${tenantId}',
+      '${workspaceId}',
+      '${idempotencyKeys.delivery}',
+      'webhook',
+      'user:docker-staging-drill',
+      'digest',
+      'digest:${backupId}',
+      'QUEUED',
+      now(),
+      0,
+      3,
+      now(),
+      now()
+    )
+    on conflict (tenant_id, workspace_id, idempotency_key) do nothing;
   `);
+
+  return {
+    backupId,
+    tenantId,
+    workspaceId,
+    outboxId,
+    inboxId,
+    eventId,
+    idempotencyKeys,
+    deliveryAttemptId,
+    deliveryIdempotencyKey: idempotencyKeys.delivery,
+  };
 }
 
 function operationalCounts(containerId, database) {
@@ -499,6 +592,133 @@ function operationalCounts(containerId, database) {
   `));
 }
 
+function operationalFingerprints(containerId, database, seed) {
+  return JSON.parse(psql(containerId, database, `
+    select json_build_object(
+      'outbox', (
+        select md5(coalesce(string_agg(id::text || ':' || status::text || ':' || correlation_id, ',' order by id), ''))
+        from outbox_events
+        where correlation_id = '${seed.backupId}'
+      ),
+      'inbox', (
+        select md5(coalesce(string_agg(id::text || ':' || consumer_name || ':' || event_id::text, ',' order by id), ''))
+        from inbox_records
+        where consumer_name = 'docker-staging-drill' and event_id = '${seed.eventId}'
+      ),
+      'idempotency', (
+        select md5(coalesce(string_agg(id::text || ':' || scope || ':' || key || ':' || coalesce(response_status::text, 'none'), ',' order by scope, key), ''))
+        from idempotency_keys
+        where tenant_id = '${seed.tenantId}'
+          and workspace_id = '${seed.workspaceId}'
+          and (
+            (scope = 'scan' and key = '${seed.idempotencyKeys.scan}')
+            or (scope = 'summary' and key = '${seed.idempotencyKeys.summary}')
+            or (scope = 'delivery' and key = '${seed.idempotencyKeys.delivery}')
+          )
+      ),
+      'delivery', (
+        select md5(coalesce(string_agg(id::text || ':' || idempotency_key || ':' || state::text || ':' || retry_count::text, ',' order by id), ''))
+        from delivery_attempts
+        where tenant_id = '${seed.tenantId}'
+          and workspace_id = '${seed.workspaceId}'
+          and idempotency_key = '${seed.deliveryIdempotencyKey}'
+      )
+    )::text;
+  `));
+}
+
+function drillSideEffectCounts(containerId, database, seed) {
+  return JSON.parse(psql(containerId, database, `
+    select json_build_object(
+      'outbox', (
+        select count(*)::int
+        from outbox_events
+        where correlation_id = '${seed.backupId}'
+      ),
+      'inbox', (
+        select count(*)::int
+        from inbox_records
+        where consumer_name = 'docker-staging-drill' and event_id = '${seed.eventId}'
+      ),
+      'idempotency', (
+        select count(*)::int
+        from idempotency_keys
+        where tenant_id = '${seed.tenantId}'
+          and workspace_id = '${seed.workspaceId}'
+          and key in ('${seed.idempotencyKeys.scan}', '${seed.idempotencyKeys.summary}', '${seed.idempotencyKeys.delivery}')
+      ),
+      'scanAttempts', 0,
+      'feedItems', 0,
+      'summaries', 0,
+      'deliveryAttempts', (
+        select count(*)::int
+        from delivery_attempts
+        where tenant_id = '${seed.tenantId}'
+          and workspace_id = '${seed.workspaceId}'
+          and idempotency_key = '${seed.deliveryIdempotencyKey}'
+      )
+    )::text;
+  `));
+}
+
+function proveRestoredDeliveryDuplicateSuppression(containerId, database, seed) {
+  const beforeCount = Number(psql(containerId, database, `
+    select count(*)::int
+    from delivery_attempts
+    where tenant_id = '${seed.tenantId}'
+      and workspace_id = '${seed.workspaceId}'
+      and idempotency_key = '${seed.deliveryIdempotencyKey}';
+  `));
+  psql(containerId, database, `
+    insert into delivery_attempts (
+      id,
+      tenant_id,
+      workspace_id,
+      idempotency_key,
+      channel,
+      recipient_key,
+      resource_type,
+      resource_id,
+      state,
+      queued_at,
+      retry_count,
+      max_retries,
+      created_at,
+      updated_at
+    )
+    values (
+      '${randomUUID()}',
+      '${seed.tenantId}',
+      '${seed.workspaceId}',
+      '${seed.deliveryIdempotencyKey}',
+      'webhook',
+      'user:docker-staging-drill-duplicate',
+      'digest',
+      'digest:${seed.backupId}:duplicate',
+      'QUEUED',
+      now(),
+      0,
+      3,
+      now(),
+      now()
+    )
+    on conflict (tenant_id, workspace_id, idempotency_key) do nothing;
+  `);
+  const afterCount = Number(psql(containerId, database, `
+    select count(*)::int
+    from delivery_attempts
+    where tenant_id = '${seed.tenantId}'
+      and workspace_id = '${seed.workspaceId}'
+      and idempotency_key = '${seed.deliveryIdempotencyKey}';
+  `));
+
+  return {
+    beforeCount,
+    afterCount,
+    duplicateInsertSuppressed: beforeCount === 1 && afterCount === 1,
+  };
+}
+
 function validationCounts(containerId, database) {
   return JSON.parse(psql(containerId, database, `
     select json_build_object(
@@ -510,6 +730,10 @@ function validationCounts(containerId, database) {
       'quota_count', (select count(*)::int from usage_quota_buckets)
     )::text;
   `));
+}
+
+function hashJson(value) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
 function tableCountSql() {

@@ -114,6 +114,8 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['messageId', 'non_empty_string'],
       ['ackAt', 'iso_timestamp'],
       ['scanAttemptId', 'non_empty_string'],
+      ['queueDepthBeforeAck', 'positive_integer'],
+      ['queueDepthAfterAck', 'non_negative_integer'],
       ['duplicateSideEffectsObserved', 'boolean_false'],
     ],
   ],
@@ -124,6 +126,8 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['messageId', 'non_empty_string'],
       ['nackAt', 'iso_timestamp'],
       ['redeliveryCount', 'positive_integer'],
+      ['redeliveredFlag', 'boolean_true'],
+      ['deliveryCountObserved', 'positive_integer'],
       ['finalStatus', 'non_empty_string'],
       ['correlationIdPreserved', 'boolean_true'],
     ],
@@ -135,6 +139,8 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['dlxExchange', 'non_empty_string'],
       ['deadLetterRoutingKey', 'non_empty_string'],
       ['deliveryAttemptId', 'non_empty_string'],
+      ['dlqMessageId', 'non_empty_string'],
+      ['sourceQueueDepthAfterDeadLetter', 'non_negative_integer'],
       ['deadLetteredAt', 'iso_timestamp'],
     ],
   ],
@@ -155,6 +161,7 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['restartWindow', 'non_empty_string'],
       ['recoveredMessageId', 'non_empty_string'],
       ['idempotentResultId', 'non_empty_string'],
+      ['serviceRunningAfterRestart', 'boolean_true'],
     ],
   ],
   [
@@ -174,6 +181,7 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['retryCount', 'positive_integer'],
       ['finalDeliveryResult', 'non_empty_string'],
       ['idempotencyPreserved', 'boolean_true'],
+      ['duplicatePublishObserved', 'boolean_false'],
     ],
   ],
   [
@@ -182,8 +190,10 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['summary', 'non_empty_string'],
       ['backupId', 'non_empty_string'],
       ['schemaVersion', 'non_empty_string'],
+      ['backupFormat', 'non_empty_string'],
       ['includedTableCount', 'positive_integer'],
       ['operationalTablesIncluded', 'boolean_true'],
+      ['backupArtifactCleanedUp', 'boolean_true'],
     ],
   ],
   [
@@ -194,6 +204,7 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['restoreCompletedAt', 'iso_timestamp'],
       ['rpoMinutes', 'positive_integer'],
       ['rtoMinutes', 'positive_integer'],
+      ['workersPausedBeforeRestore', 'boolean_true'],
     ],
   ],
   [
@@ -212,6 +223,7 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['queryNames', 'non_empty_string_array'],
       ['checkedTableGroups', 'non_empty_string_array'],
       ['failedQueryCount', 'non_negative_integer'],
+      ['queryResultsHash', 'non_empty_string'],
     ],
   ],
   [
@@ -221,6 +233,9 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['beforeCounts', 'non_empty_object'],
       ['afterCounts', 'non_empty_object'],
       ['countsMatched', 'boolean_true'],
+      ['beforeFingerprints', 'non_empty_object'],
+      ['afterFingerprints', 'non_empty_object'],
+      ['fingerprintsMatched', 'boolean_true'],
     ],
   ],
   [
@@ -229,6 +244,8 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['summary', 'non_empty_string'],
       ['pauseCommandId', 'non_empty_string'],
       ['resumeCommandId', 'non_empty_string'],
+      ['pausedServices', 'non_empty_string_array'],
+      ['resumedServices', 'non_empty_string_array'],
       ['workAcceptedDuringValidation', 'boolean_false'],
     ],
   ],
@@ -238,6 +255,13 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['summary', 'non_empty_string'],
       ['idempotencyKeys', 'non_empty_string_array'],
       ['stableCountsAfterResume', 'non_empty_object'],
+      ['beforeResumeCounts', 'non_empty_object'],
+      ['afterResumeCounts', 'non_empty_object'],
+      ['deliveryIdempotencyKey', 'non_empty_string'],
+      ['duplicateProbeBeforeCount', 'positive_integer'],
+      ['duplicateProbeAfterCount', 'positive_integer'],
+      ['duplicateInsertSuppressed', 'boolean_true'],
+      ['replayWindow', 'non_empty_string'],
       ['duplicateSideEffectsObserved', 'boolean_false'],
     ],
   ],
@@ -1099,6 +1123,15 @@ function validateSignalEvidenceShape(artifactPath, result) {
   if (result.signalId === 'backend-loop-topic-to-delivery-audit') {
     validateDurableBackendProviderCoverage(artifactPath, result.evidence);
   }
+  if (result.signalId === 'rabbitmq-consumer-ack') {
+    validateRabbitMqAckEvidence(artifactPath, result.evidence);
+  }
+  if (result.signalId === 'postgres-outbox-inbox-idempotency') {
+    validatePostgresReplayStateEvidence(artifactPath, result.evidence);
+  }
+  if (result.signalId === 'postgres-no-duplicate-side-effects') {
+    validatePostgresNoDuplicateEvidence(artifactPath, result.evidence);
+  }
 }
 
 function getPath(value, path) {
@@ -1183,6 +1216,37 @@ function validateAutoSummaryEvidence(artifactPath, evidenceValue) {
   }
 }
 
+function validateRabbitMqAckEvidence(artifactPath, evidenceValue) {
+  const before = getPath(evidenceValue, 'queueDepthBeforeAck');
+  const after = getPath(evidenceValue, 'queueDepthAfterAck');
+  if (Number.isInteger(before) && Number.isInteger(after) && after >= before) {
+    violations.push(`${artifactPath}: signal result "rabbitmq-consumer-ack" evidence.queueDepthAfterAck must be lower than queueDepthBeforeAck`);
+  }
+}
+
+function validatePostgresReplayStateEvidence(artifactPath, evidenceValue) {
+  if (evidenceValue.countsMatched === true && !objectsEqual(evidenceValue.beforeCounts, evidenceValue.afterCounts)) {
+    violations.push(`${artifactPath}: signal result "postgres-outbox-inbox-idempotency" countsMatched=true requires beforeCounts and afterCounts to match`);
+  }
+  if (evidenceValue.fingerprintsMatched === true && !objectsEqual(evidenceValue.beforeFingerprints, evidenceValue.afterFingerprints)) {
+    violations.push(`${artifactPath}: signal result "postgres-outbox-inbox-idempotency" fingerprintsMatched=true requires beforeFingerprints and afterFingerprints to match`);
+  }
+}
+
+function validatePostgresNoDuplicateEvidence(artifactPath, evidenceValue) {
+  const before = getPath(evidenceValue, 'duplicateProbeBeforeCount');
+  const after = getPath(evidenceValue, 'duplicateProbeAfterCount');
+  if (Number.isInteger(before) && Number.isInteger(after) && before !== after) {
+    violations.push(`${artifactPath}: signal result "postgres-no-duplicate-side-effects" duplicate probe counts must remain stable`);
+  }
+  if (evidenceValue.duplicateInsertSuppressed === true && before !== 1) {
+    violations.push(`${artifactPath}: signal result "postgres-no-duplicate-side-effects" duplicate probe must start from exactly one delivery attempt`);
+  }
+  if (!objectsEqual(evidenceValue.beforeResumeCounts, evidenceValue.afterResumeCounts)) {
+    violations.push(`${artifactPath}: signal result "postgres-no-duplicate-side-effects" beforeResumeCounts and afterResumeCounts must match`);
+  }
+}
+
 function validateArtifactTimeWindow(content, artifactPath) {
   const startedAtMs = parseIsoTimestampMs(content.startedAt);
   const completedAtMs = parseIsoTimestampMs(content.completedAt);
@@ -1241,6 +1305,25 @@ function isSupportedEvidenceType(fieldType) {
 
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function objectsEqual(left, right) {
+  if (!isRecord(left) || !isRecord(right)) {
+    return false;
+  }
+
+  return JSON.stringify(sortObject(left)) === JSON.stringify(sortObject(right));
+}
+
+function sortObject(value) {
+  if (Array.isArray(value)) {
+    return value.map(sortObject);
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortObject(value[key])]));
 }
 
 function readOptionalEnv(name) {

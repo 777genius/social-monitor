@@ -110,6 +110,10 @@ Scan status API responses expose support-safe fields for beta triage:
 - Backup must include operational replay/idempotency state: `outbox_events`, `inbox_records`, `idempotency_keys`, `scan_jobs` and `cursor_checkpoints`.
 - After restore, run validation queries for tenant/workspace counts plus outbox, inbox and idempotency state before resuming workers.
 - Keep workers paused during restore validation; resume only after migration version, replay state and idempotency state are consistent.
+- Required local durable drill: run `docker compose --profile app up -d --build`, then `npm run capture:docker-staging-reliability-evidence`, then load the printed env file and run `npm run check:staging-reliability-evidence`.
+- Treat restore as unsafe unless the Postgres artifact includes `postgres-outbox-inbox-idempotency`, `postgres-worker-pause-resume` and `postgres-no-duplicate-side-effects` with matching counts and fingerprints.
+- The duplicate delivery proof must show a restored `delivery_attempts` idempotency key remains at count `1` after a duplicate insert probe. If it changes, keep workers stopped and do not replay delivery queues.
+- Resume order after a valid restore is `event-relay`, `ingestion-worker`, `intelligence-worker`, `delivery-service`; capture before/after resume counts in the staging reliability artifact.
 - If restore loses operational state, do not replay provider/AI jobs blindly; classify affected jobs and rebuild queues from durable records.
 
 ## Retention And DSAR Triage
