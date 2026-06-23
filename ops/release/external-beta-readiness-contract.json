@@ -35,7 +35,7 @@
     "maxWorkspacesPerTenant": 2,
     "maxUsers": 5,
     "maxTopicsPerWorkspace": 10,
-    "maxEnabledSourcesPerTopic": 3,
+    "maxEnabledSourcesPerTopic": 4,
     "minScheduledScanIntervalMinutes": 60,
     "maxManualScansPerWorkspacePerHour": 50,
     "maxSummaryRequestsPerWorkspacePerHour": 20,
@@ -175,7 +175,7 @@
         "ops/release/e2e-acceptance-traceability.json",
         "ops/drills/staging-reliability-evidence.json"
       ],
-      "exitCondition": "topic -> source binding -> scheduled scan -> feed -> summary -> feedback -> digest/webhook/realtime -> audit passes on durable runtime"
+      "exitCondition": "topic -> source bindings -> scheduler -> Reddit/GitHub/Hacker News/RSS scans -> feed -> summary -> memo-stack memory -> feedback -> digest/webhook/realtime -> audit passes on durable runtime"
     },
     {
       "groupId": "summary-quality-feedback-hardening",

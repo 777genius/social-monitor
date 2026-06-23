@@ -124,8 +124,8 @@ function validateCapacityEnvelope() {
     }
   }
 
-  if (limits.maxEnabledSourcesPerTopic > 3) {
-    violations.push(`${contractPath}: maxEnabledSourcesPerTopic must stay <= 3 for MVP`);
+  if (limits.maxEnabledSourcesPerTopic > 4) {
+    violations.push(`${contractPath}: maxEnabledSourcesPerTopic must stay <= 4 for MVP`);
   }
   if (limits.minScheduledScanIntervalMinutes < 60) {
     violations.push(`${contractPath}: minScheduledScanIntervalMinutes must stay >= 60 before external beta go`);

@@ -92,8 +92,8 @@ for (const ring of rings) {
   }
   previousMaxUsers = ring.maxUsers;
 
-  if (ring.maxEnabledSourcesPerTopic > 3) {
-    violations.push(`${policyPath}: ring "${ring.ringId}" maxEnabledSourcesPerTopic must stay <= 3 for MVP`);
+  if (ring.maxEnabledSourcesPerTopic > 4) {
+    violations.push(`${policyPath}: ring "${ring.ringId}" maxEnabledSourcesPerTopic must stay <= 4 for MVP`);
   }
 
   const requiredGates = requiredGatesByRing.get(ring.ringId) ?? [];
