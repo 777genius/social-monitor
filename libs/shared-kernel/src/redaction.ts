@@ -8,7 +8,7 @@ const basicPattern = /^basic\s+\S+/i;
 const generatedSecretPattern = /^(?:smk|whsec)_[A-Za-z0-9_-]+/;
 const urlWithPasswordPattern = /^[a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:[^@\s]+@/i;
 const inlineCredentialPattern =
-  /\b((?:access|refresh|id)[_-]?token|api[_-]?key|client[_-]?secret|authorization|password|session|cookie|signature)\s*[:=]\s*([^\s'",<>{}]+)/gi;
+  /\b((?:access|refresh|id)?[_-]?token|api[_-]?key|client[_-]?secret|secret|credential|authorization|password|session|cookie|signature|private[_-]?key)\s*[:=]\s*([^\s'",<>{}]+)/gi;
 const inlineBearerPattern = /\b(?:bearer|basic)\s+[A-Za-z0-9._~+/-]+=*/gi;
 const inlineGeneratedSecretPattern = /\b(?:smk|whsec)_[A-Za-z0-9_-]+\b/g;
 

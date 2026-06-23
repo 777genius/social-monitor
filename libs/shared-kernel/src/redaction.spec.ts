@@ -4,6 +4,7 @@ import {
   isSensitiveString,
   redactSensitiveMetadataRecord,
   redactSensitiveRecord,
+  redactSensitiveText,
 } from './redaction';
 
 describe('redaction helpers', () => {
@@ -50,5 +51,13 @@ describe('redaction helpers', () => {
       attempts: 2,
       evidence: ['safe', REDACTED_VALUE],
     });
+  });
+
+  it('redacts inline credentials before text leaves the trust boundary', () => {
+    expect(redactSensitiveText(
+      'See token=memory-leak, secret=another-leak and private_key=key-leak.',
+    )).toBe(
+      `See token=${REDACTED_VALUE}, secret=${REDACTED_VALUE} and private_key=${REDACTED_VALUE}`,
+    );
   });
 });
