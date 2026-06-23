@@ -22,7 +22,7 @@ Detect mobile architecture and UX risks before realtime and beta work depend on 
 - QA owner owns store and UI state tests.
 
 ## Mitigations
-- Keep DTO mapping in infrastructure adapters.
+- Keep DTO mapping in infrastructure.
 - Test stores separately from widgets.
 - Define domain-safe error models.
 - Build citation and source-failure states before polish.

@@ -3,7 +3,7 @@
 ## Priority 1 - Generated Client Boundary
 
 - Risk: API DTOs leak into domain and make changes expensive.
-- Do First: Wrap generated client in infrastructure adapters.
+- Do First: Wrap generated client in infrastructure repositories/clients.
 - Do Not Defer: DTO/domain mapping.
 
 ## Priority 2 - Operational Failure States

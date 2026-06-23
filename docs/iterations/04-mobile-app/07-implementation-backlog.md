@@ -41,12 +41,12 @@ Build the Flutter MVP as a real operational app: feature-scoped Clean Architectu
 
 ## Architecture Backlog
 
-1. Use feature-scoped domain/application/infrastructure/presentation folders.
+1. Use feature packages as bounded contexts with full tactical DDD folders.
 2. Keep MobX stores in presentation layer.
-3. Keep API DTO mapping inside infrastructure adapters.
+3. Keep API DTO mapping inside infrastructure.
 4. Keep domain entities independent from Flutter widgets.
 5. Use headless components from `flutter_headless` as required.
-6. Add generated client wrapper ports.
+6. Add domain/application contracts for generated client wrappers.
 
 ## UX Edge Cases
 

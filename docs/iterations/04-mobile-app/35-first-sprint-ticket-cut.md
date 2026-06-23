@@ -9,13 +9,13 @@ Implement the Flutter MVP shell and first feature slices with generated REST cli
 - Edge cases: shell must support auth/tenant context later without rewrite.
 
 ## Ticket 2 - Generated Client Wrapper
-- Generate REST client from OpenAPI and wrap it in infrastructure adapters.
+- Generate REST client from OpenAPI and wrap it in infrastructure repositories/clients.
 - Acceptance: generated DTOs do not leak into feature domain.
 - Edge cases: backend contract changes must fail visibly in build/tests.
 
 ## Ticket 3 - Topic Feature Slice
 - Implement topic list/create/edit flow.
-- Acceptance: domain entities, use cases, adapters and MobX store stay feature-scoped.
+- Acceptance: domain entities, use cases, infrastructure and MobX store stay feature-scoped.
 - Edge cases: duplicate topic names, validation errors, empty state and stale data.
 
 ## Ticket 4 - Source Binding Feature Slice

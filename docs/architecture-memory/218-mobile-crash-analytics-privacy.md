@@ -14,6 +14,8 @@ Crashlytics can be used for stability. Analytics can be used for product quality
 - Firebase privacy and security: https://firebase.google.com/support/privacy
 - Apple privacy manifests: https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
 - Google Play data safety: https://support.google.com/googleplay/android-developer/answer/10787469
+- Frontend observability decision: `../../apps/frontend/docs/frontend-observability-decision.md`
+- Frontend security/privacy policy: `../../apps/frontend/docs/frontend-security-privacy-policy.md`
 
 ## Collection Defaults
 

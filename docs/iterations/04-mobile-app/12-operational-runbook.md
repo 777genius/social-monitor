@@ -4,7 +4,7 @@
 
 1. Regenerate API client when OpenAPI changes.
 2. Run store tests after feature logic changes.
-3. Verify DTO mapping stays in infrastructure adapters.
+3. Verify DTO mapping stays in infrastructure.
 4. Check loading, empty, error, stale and offline states for touched screens.
 5. Run full MVP mobile flow after backend contract changes.
 6. Record UX gaps that are actually backend/source status gaps.

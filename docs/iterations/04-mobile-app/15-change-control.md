@@ -17,6 +17,11 @@
 3. Do not remove failure states without support review.
 4. Do not change navigation for core loop without full-flow smoke.
 5. Do not change `flutter_headless` version/commit without wrapper and accessibility evidence.
+6. Do not reintroduce local `apps/frontend/packages/headless_adaptive`; upstream package changes belong in `777genius/flutter_headless` first.
+7. Do not weaken frontend architecture boundary tests without replacing them with equal or stronger executable gates.
+8. Do not add feature-to-feature package dependencies. Use app composition, shared kernel primitives or backend/API contracts.
+9. Do not expand feature public barrels beyond route entrypoints without architecture review.
+10. Do not bypass `design_system` for headless, adaptive, charting or third-party UI primitives.
 
 ## Rollback
 

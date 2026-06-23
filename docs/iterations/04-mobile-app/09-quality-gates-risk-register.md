@@ -4,7 +4,7 @@
 
 1. Flutter app shell runs.
 2. Feature-scoped folder structure is in place.
-3. Generated REST client is wrapped by infrastructure adapters.
+3. Generated REST client is wrapped by infrastructure repositories/clients.
 4. MobX stores are presentation-level only.
 5. Topic creation flow works.
 6. Source binding and interval flow works.

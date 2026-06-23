@@ -9,6 +9,7 @@ Locked for Flutter quality baseline.
 - Flutter widget testing: https://docs.flutter.dev/cookbook/testing/widget/introduction
 - Flutter integration testing: https://docs.flutter.dev/testing/integration-tests
 - Flutter performance profiling: https://docs.flutter.dev/perf/ui-performance
+- Frontend testing strategy: `../../apps/frontend/docs/frontend-testing-strategy.md`
 
 ## Decision
 
@@ -41,4 +42,3 @@ Before mobile release:
 ## Best-Fact Choice
 
 For this app, store/use-case tests and generated-client freshness are more important than trying to cover every screen with slow integration tests.
-

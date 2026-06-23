@@ -22,7 +22,7 @@ Deferred frontend track. When frontend work is resumed, build the Flutter app as
 4. Add routing with auth guards.
 5. Add generated OpenAPI REST client.
 6. Add API error mapping.
-7. Add WebSocket client port.
+7. Add realtime connection contract.
 8. Add secure token storage.
 9. Add app-level session store.
 10. Add Problem Details to domain-safe failure mapper.
@@ -31,16 +31,16 @@ Deferred frontend track. When frontend work is resumed, build the Flutter app as
 
 ### Architecture Implementation Baseline
 
-1. Create composition root for API client, repositories, stores, cache and WebSocket adapter.
+1. Create composition root for API client, repositories, stores, cache and realtime implementation.
 2. Define `AppFailure` and `RecoveryAction` in shared layer.
-3. Wrap generated REST client behind repository adapters per feature.
+3. Wrap generated REST client behind feature infrastructure repositories.
 4. Add mappers from generated DTOs to domain/application models.
 5. Add MobX store base conventions: state, failure, lastRefreshAt, activeWorkspaceId, dispose/cancel.
 6. Add route guards for auth and workspace selection.
 7. Add late-response guard for workspace switch.
 8. Add lints/import checks preventing feature-private imports and generated DTO leakage.
 9. Add fake repository implementations for store tests.
-10. Add WebSocket port as status hint, with REST resync on critical transitions.
+10. Add realtime connection contract as status hint, with REST resync on critical transitions.
 
 ### Edge Cases
 
@@ -48,7 +48,7 @@ Deferred frontend track. When frontend work is resumed, build the Flutter app as
 - Generated client has nullable mismatch.
 - Workspace switch while requests are in flight.
 - Backend error code is unknown to mobile.
-- Feature imports another feature's infrastructure adapter.
+- Feature imports another feature's infrastructure implementation.
 - Late API response writes data into disposed store.
 - WebSocket event references inactive workspace.
 - Generated DTO contains unknown enum value.

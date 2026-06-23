@@ -1,11 +1,11 @@
 # Iteration 04 - Architecture Compliance Audit
 
 ## Audit Goal
-Verify that Flutter implementation follows feature-scoped Clean Architecture, ports/adapters, MobX presentation stores and required headless component usage.
+Verify that Flutter implementation follows feature-scoped Clean Architecture, DDD folder names, MobX presentation stores and required headless component usage.
 
 ## Required Checks
 - Feature folders contain domain, application, infrastructure and presentation boundaries.
-- Generated DTOs stay in infrastructure adapters.
+- Generated DTOs stay in infrastructure.
 - MobX stores orchestrate UI state and do not own business rules.
 - `flutter_headless` is pinned and wrapped by design_system before feature code depends on it.
 - UI covers loading, empty, error, stale and offline states.
@@ -19,8 +19,8 @@ Verify that Flutter implementation follows feature-scoped Clean Architecture, po
 
 ## SOLID And Clean Architecture Focus
 - Single responsibility: widgets render, stores orchestrate, use cases decide.
-- Dependency inversion: feature use cases depend on repositories/ports.
-- Interface segregation: mobile ports expose feature needs, not whole backend clients.
+- Dependency inversion: feature use cases depend on contracts/repositories.
+- Interface segregation: mobile contracts expose feature needs, not whole backend clients.
 
 ## Evidence Required
 - Feature folder examples.

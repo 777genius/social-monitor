@@ -4,7 +4,7 @@
 
 1. Flutter app uses feature-scoped Clean Architecture.
 2. MobX stores are presentation orchestration only.
-3. Generated REST clients are wrapped by infrastructure adapters.
+3. Generated REST clients are wrapped by infrastructure repositories/clients.
 4. Headless components from `flutter_headless` are required.
 
 ## Open Questions

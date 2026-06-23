@@ -13,7 +13,7 @@ Prove that the Flutter app executes the MVP loop through feature-scoped Clean Ar
 
 ## Evidence To Show
 - Generated DTOs are isolated in infrastructure.
-- Feature slices contain domain, application, adapters and MobX stores.
+- Feature slices contain domain, application, infrastructure and MobX stores.
 - MobX stores orchestrate presentation only.
 - Headless components are used where required.
 

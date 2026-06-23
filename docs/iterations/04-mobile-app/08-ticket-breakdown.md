@@ -8,7 +8,7 @@
 - Layer: Flutter app shell
 - Artifacts: app structure, DI, navigation, generated API client boundary
 - Steps:
-  1. Create feature folders with domain/application/infrastructure/presentation.
+  1. Create feature bounded contexts with full tactical DDD folders.
   2. Add app navigation shell.
   3. Add API client generation setup.
   4. Add environment config.

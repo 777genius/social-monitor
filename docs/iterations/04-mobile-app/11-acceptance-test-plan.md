@@ -3,7 +3,7 @@
 ## Acceptance Scenarios
 
 1. App starts with configured environment.
-2. Generated REST client is wrapped by feature infrastructure adapters.
+2. Generated REST client is wrapped by feature infrastructure repositories/clients.
 3. Topic creation screen creates a topic.
 4. Source binding screen configures allowed source and interval.
 5. Feed screen shows items, filters and provenance.

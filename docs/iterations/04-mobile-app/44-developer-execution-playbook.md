@@ -18,7 +18,7 @@
 ## Checks Before PR
 - DTOs stay in infrastructure.
 - MobX stores orchestrate presentation only.
-- Feature use cases depend on ports/repositories.
+- Feature use cases depend on domain/application contracts and repositories.
 - Loading, empty, error, stale and offline states are testable.
 - Required headless component usage is preserved.
 

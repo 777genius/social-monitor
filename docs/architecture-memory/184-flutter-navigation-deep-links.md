@@ -12,23 +12,24 @@ Locked for Flutter architecture baseline.
 
 ## Decision
 
-Use declarative navigation with route ownership per feature. Deep links are parsed into intents and passed through auth/tenant guards before navigation.
+Use declarative navigation with typed route contracts owned by the app shell. Features expose route entrypoints and typed route inputs. Deep links are parsed into safe intents and passed through auth/workspace guards before navigation.
 
 ## Route Ownership
 
 Each feature owns:
 
-- route names/paths;
-- route parameter parsing;
-- deep-link intent mapping;
-- required auth/tenant state;
-- fallback screen for missing/unauthorized resources.
+- route entrypoint widget;
+- typed feature route input objects when needed;
+- feature-local fallback surfaces for missing or unauthorized resources after app guards pass.
 
 Core shell owns:
 
 - app-level router;
+- typed `FeatureRouteContract` registry;
+- route names and path strings;
+- route parameter and query contract validation;
 - auth redirects;
-- tenant selection;
+- tenant/workspace selection;
 - unknown route handling;
 - app link/bootstrap handling.
 
@@ -44,4 +45,3 @@ Core shell owns:
 ## Best-Fact Choice
 
 Deep links are product entry points, not just navigation shortcuts. They must go through the same authorization and tenant-state rules as normal UI flows.
-

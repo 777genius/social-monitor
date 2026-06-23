@@ -14,11 +14,52 @@ The app should feel like an operational monitoring tool, not a landing page.
 
 ## Frontend Architecture
 
-Each feature slice contains:
+Each feature package is a bounded context created through `npm run frontend:create-feature`. Every feature starts with local `AGENTS.md`, DDD docs, a route/module boundary and a page shell. Behavior grows inside tactical DDD folders:
 
 ```text
-domain -> application -> ports -> adapters -> presentation -> store -> ui
+AGENTS.md
+docs/
+  ubiquitous_language.md
+  context_map.md
+domain/
+  aggregates/
+  entities/
+  value_objects/
+  domain_events/
+  policies/
+  specifications/
+  repositories/
+  domain_services/
+application/
+  use_cases/
+  commands/
+  queries/
+  handlers/
+  results/
+  contracts/
+infrastructure/
+  api/
+  api_clients/
+  persistence/
+  realtime/
+  storage/
+  mappers/
+  repositories/
+  data_sources/
+  anti_corruption/
+presentation/
+  routes/
+  composition/
+  pages/
+  layout/
+  components/
+  stores/
+  view_models/
+  workflows/
+  formatters/
 ```
+
+Use full tactical DDD folders. `port` and `adapter` are roles, not default folder names.
 
 Required feature slices:
 
@@ -87,7 +128,7 @@ Rules:
 1. Inspect `https://github.com/777genius/flutter_headless` patterns and lock component usage.
 2. Create feature folder structure.
 3. Add generated OpenAPI REST client.
-4. Add WebSocket client port.
+4. Add realtime connection contract.
 5. Add MobX stores per feature.
 6. Add Result/Error mapping from API to presentation states.
 7. Build auth/session flow.
@@ -132,7 +173,7 @@ Rules:
 ## Quality Gates
 
 - Feature slices do not import unrelated feature internals.
-- MobX stores are presentation-only and call use cases/ports.
+- MobX stores are presentation-only and call use cases through domain/application contracts.
 - OpenAPI client is generated, not manually duplicated.
 - Core screens have loading/error/empty/success states.
 - Golden tests cover key responsive layouts.

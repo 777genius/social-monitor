@@ -5,8 +5,8 @@ Approve movement from core mobile MVP into realtime delivery.
 
 ## Required Evidence
 - Flutter app shell runs.
-- Generated client is isolated behind adapters.
-- Feature slices preserve domain/application/infrastructure/presentation boundaries.
+- Generated client is isolated behind infrastructure repositories/clients.
+- Feature slices preserve bounded context and tactical DDD boundaries.
 - Topic, source binding, feed and summary flows work.
 - Loading, empty, error, stale and offline states are covered.
 

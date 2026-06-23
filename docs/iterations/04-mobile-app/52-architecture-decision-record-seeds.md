@@ -5,7 +5,7 @@ List mobile architecture decisions that must be stable before realtime and beta 
 
 ## ADR Seeds
 - Use feature-scoped Clean Architecture.
-- Keep generated DTOs inside infrastructure adapters.
+- Keep generated DTOs inside infrastructure.
 - Use MobX stores for presentation orchestration only.
 - Use generated REST client from OpenAPI.
 - Require loading, empty, error, stale and offline states.
