@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
+import { MemoStackUserSummaryPreferenceMemoryProjector } from '@social-monitor/summary/adapters/memory/memo-stack-user-summary-preference-memory.projector';
+import { resolveMemoStackSummaryMemoryOptions } from '@social-monitor/summary/adapters/memory/memo-stack-summary-memory.adapter';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { InMemorySourceTargetRepository } from '../../adapters/persistence/in-memory-source-target.repository';
@@ -16,12 +18,14 @@ import { StaticSourceTargetCatalogAdapter } from '../../adapters/target-catalog/
 import { CreateUserSubscriptionUseCase } from '../../features/create-user-subscription/create-user-subscription.use-case';
 import { ListUserSubscriptionsUseCase } from '../../features/list-user-subscriptions/list-user-subscriptions.use-case';
 import { UpsertUserSummaryPreferenceUseCase } from '../../features/upsert-user-summary-preference/upsert-user-summary-preference.use-case';
-import type {
-  SourceTargetCatalogPort,
-  SourceTargetRepositoryPort,
-  UserSubscriptionRepositoryPort,
-  UserSubscriptionScheduleRepositoryPort,
-  UserSummaryPreferenceRepositoryPort,
+import {
+  NOOP_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR,
+  type SourceTargetCatalogPort,
+  type SourceTargetRepositoryPort,
+  type UserSubscriptionRepositoryPort,
+  type UserSubscriptionScheduleRepositoryPort,
+  type UserSummaryPreferenceMemoryProjectorPort,
+  type UserSummaryPreferenceRepositoryPort,
 } from '../../ports';
 import {
   SUBSCRIPTIONS_PERSISTENCE_MODE,
@@ -30,6 +34,7 @@ import {
   SUBSCRIPTIONS_SOURCE_TARGET_REPOSITORY,
   SUBSCRIPTIONS_USER_SUBSCRIPTION_REPOSITORY,
   SUBSCRIPTIONS_USER_SUBSCRIPTION_SCHEDULE_REPOSITORY,
+  SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR,
   SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY,
   type SubscriptionsPersistenceMode,
   subscriptionsPersistenceModeProvider,
@@ -110,6 +115,13 @@ import { UserSubscriptionsController } from './user-subscriptions.controller';
       useExisting: StaticSourceTargetCatalogAdapter,
     },
     {
+      provide: SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR,
+      useFactory: (): UserSummaryPreferenceMemoryProjectorPort =>
+        process.env.SUMMARY_MEMORY_MODE === 'memo-stack'
+          ? new MemoStackUserSummaryPreferenceMemoryProjector(resolveMemoStackSummaryMemoryOptions(process.env))
+          : NOOP_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR,
+    },
+    {
       provide: CreateUserSubscriptionUseCase,
       useFactory: (
         targets: SourceTargetRepositoryPort,
@@ -155,14 +167,20 @@ import { UserSubscriptionsController } from './user-subscriptions.controller';
       useFactory: (
         subscriptions: UserSubscriptionRepositoryPort,
         preferences: UserSummaryPreferenceRepositoryPort,
+        memoryProjector: UserSummaryPreferenceMemoryProjectorPort,
       ) =>
         new UpsertUserSummaryPreferenceUseCase(
           subscriptions,
           preferences,
           new CryptoIdGenerator(),
           new SystemClock(),
+          memoryProjector,
         ),
-      inject: [SUBSCRIPTIONS_USER_SUBSCRIPTION_REPOSITORY, SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY],
+      inject: [
+        SUBSCRIPTIONS_USER_SUBSCRIPTION_REPOSITORY,
+        SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY,
+        SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR,
+      ],
     },
   ],
   exports: [
@@ -175,6 +193,7 @@ import { UserSubscriptionsController } from './user-subscriptions.controller';
     SUBSCRIPTIONS_SOURCE_TARGET_REPOSITORY,
     SUBSCRIPTIONS_USER_SUBSCRIPTION_REPOSITORY,
     SUBSCRIPTIONS_USER_SUBSCRIPTION_SCHEDULE_REPOSITORY,
+    SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR,
     SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY,
     UpsertUserSummaryPreferenceUseCase,
   ],

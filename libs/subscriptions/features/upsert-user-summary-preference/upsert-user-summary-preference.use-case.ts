@@ -2,9 +2,12 @@ import { type Clock, DomainError, err, type IdGenerator, ok, type Result } from 
 
 import { UserSummaryPreference } from '../../domain';
 import type {
+  RecordUserSummaryPreferenceMemoryCommand,
   UserSubscriptionRepositoryPort,
+  UserSummaryPreferenceMemoryProjectorPort,
   UserSummaryPreferenceRepositoryPort,
 } from '../../ports';
+import { NOOP_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR } from '../../ports';
 import { presentUserSummaryPreference } from '../shared/subscription-presenter';
 import type { UpsertUserSummaryPreferenceCommand } from './upsert-user-summary-preference.command';
 import type { UpsertUserSummaryPreferenceResult } from './upsert-user-summary-preference.result';
@@ -17,6 +20,8 @@ export class UpsertUserSummaryPreferenceUseCase {
     private readonly preferences: UserSummaryPreferenceRepositoryPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
+    private readonly memoryProjector: UserSummaryPreferenceMemoryProjectorPort =
+      NOOP_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR,
   ) {}
 
   async execute(
@@ -90,6 +95,7 @@ export class UpsertUserSummaryPreferenceUseCase {
           });
 
       await this.preferences.save(preference);
+      await this.rememberPreference(preference);
 
       return ok({
         summaryPreference: presentUserSummaryPreference(preference),
@@ -97,6 +103,32 @@ export class UpsertUserSummaryPreferenceUseCase {
       });
     } catch (error) {
       return err(error instanceof Error ? new DomainError('validation.failed', error.message) : new Error('Summary preference upsert failed'));
+    }
+  }
+
+  private async rememberPreference(preference: UserSummaryPreference): Promise<void> {
+    const snapshot = preference.toSnapshot();
+    try {
+      await this.memoryProjector.recordUserSummaryPreference({
+        tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId,
+        preferenceId: snapshot.id,
+        userId: snapshot.userId,
+        subscriptionId: snapshot.subscriptionId,
+        topicId: snapshot.topicId,
+        language: snapshot.language,
+        format: snapshot.format,
+        tone: snapshot.tone,
+        maxKeyPoints: snapshot.maxKeyPoints,
+        includeRisks: snapshot.includeRisks,
+        includeSourceHighlights: snapshot.includeSourceHighlights,
+        customInstructions: snapshot.customInstructions,
+        rulesVersion: snapshot.rulesVersion,
+        createdAt: snapshot.createdAt,
+        updatedAt: snapshot.updatedAt,
+      } satisfies RecordUserSummaryPreferenceMemoryCommand);
+    } catch {
+      // Preferences are canonical in Social Monitor; memory projection is best-effort.
     }
   }
 }

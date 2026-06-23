@@ -3,7 +3,10 @@ import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-mon
 import { UserSubscription, UserSummaryPreference } from '../../domain';
 import type {
   ListUserSubscriptionsResult,
+  RecordUserSummaryPreferenceMemoryCommand,
   UserSubscriptionRepositoryPort,
+  UserSummaryPreferenceMemoryProjectorPort,
+  UserSummaryPreferenceMemoryProjectionResult,
   UserSummaryPreferenceRepositoryPort,
 } from '../../ports';
 import { UpsertUserSummaryPreferenceUseCase } from './upsert-user-summary-preference.use-case';
@@ -64,6 +67,23 @@ class FakeUserSubscriptions implements UserSubscriptionRepositoryPort {
   }
 }
 
+class CapturingSummaryPreferenceMemoryProjector implements UserSummaryPreferenceMemoryProjectorPort {
+  readonly commands: RecordUserSummaryPreferenceMemoryCommand[] = [];
+
+  async recordUserSummaryPreference(
+    command: RecordUserSummaryPreferenceMemoryCommand,
+  ): Promise<UserSummaryPreferenceMemoryProjectionResult> {
+    this.commands.push(command);
+    return { status: 'written', diagnostics: { provider: 'memo-stack' } };
+  }
+}
+
+class FailingSummaryPreferenceMemoryProjector implements UserSummaryPreferenceMemoryProjectorPort {
+  async recordUserSummaryPreference(): Promise<UserSummaryPreferenceMemoryProjectionResult> {
+    throw new Error('memo-stack unavailable');
+  }
+}
+
 const tenant = tenantId('tenant-1');
 const workspace = workspaceId('workspace-1');
 const now = new Date('2026-06-21T10:00:00.000Z');
@@ -86,11 +106,13 @@ const saveSubscription = async (
 describe('UpsertUserSummaryPreferenceUseCase', () => {
   it('creates a topic-level summary preference', async () => {
     const preferences = new FakeUserSummaryPreferences();
+    const memoryProjector = new CapturingSummaryPreferenceMemoryProjector();
     const useCase = new UpsertUserSummaryPreferenceUseCase(
       new FakeUserSubscriptions(),
       preferences,
       new SequenceIdGenerator(),
       new FixedClock(now),
+      memoryProjector,
     );
 
     const result = await useCase.execute({
@@ -120,6 +142,25 @@ describe('UpsertUserSummaryPreferenceUseCase', () => {
         maxKeyPoints: 4,
       }),
     });
+    expect(memoryProjector.commands).toEqual([
+      expect.objectContaining({
+        tenantId: tenant,
+        workspaceId: workspace,
+        preferenceId: 'summary-preference-1',
+        userId: 'user-1',
+        topicId: 'topic-1',
+        language: 'ru',
+        format: 'bullet_digest',
+        tone: 'concise',
+        maxKeyPoints: 4,
+        includeRisks: true,
+        includeSourceHighlights: true,
+        customInstructions: 'Prefer product launch signals.',
+        rulesVersion: 'summary.rules.user-preference.v1',
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ]);
   });
 
   it('updates an existing subscription-level summary preference', async () => {
@@ -204,5 +245,29 @@ describe('UpsertUserSummaryPreferenceUseCase', () => {
 
     expect(result.ok).toBe(false);
     expect(result.ok ? undefined : result.error).toEqual(expect.objectContaining({ code: 'validation.failed' }));
+  });
+
+  it('keeps preference writes canonical when memory projection fails', async () => {
+    const preferences = new FakeUserSummaryPreferences();
+    const result = await new UpsertUserSummaryPreferenceUseCase(
+      new FakeUserSubscriptions(),
+      preferences,
+      new SequenceIdGenerator(),
+      new FixedClock(now),
+      new FailingSummaryPreferenceMemoryProjector(),
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      userId: 'user-1',
+      topicId: 'topic-1',
+      language: 'ru',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(preferences.preferences.get('topic-1')?.toSnapshot()).toEqual(expect.objectContaining({
+      userId: 'user-1',
+      topicId: 'topic-1',
+      language: 'ru',
+    }));
   });
 });

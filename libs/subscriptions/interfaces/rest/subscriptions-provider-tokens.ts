@@ -6,6 +6,7 @@ import type {
   SourceTargetRepositoryPort,
   UserSubscriptionRepositoryPort,
   UserSubscriptionScheduleRepositoryPort,
+  UserSummaryPreferenceMemoryProjectorPort,
   UserSummaryPreferenceRepositoryPort,
 } from '../../ports';
 
@@ -19,6 +20,8 @@ export const SUBSCRIPTIONS_USER_SUBSCRIPTION_SCHEDULE_REPOSITORY =
   Symbol('SUBSCRIPTIONS_USER_SUBSCRIPTION_SCHEDULE_REPOSITORY');
 export const SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY =
   Symbol('SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY');
+export const SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR =
+  Symbol('SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR');
 export const SUBSCRIPTIONS_SOURCE_TARGET_CATALOG = Symbol('SUBSCRIPTIONS_SOURCE_TARGET_CATALOG');
 
 export type SubscriptionsProviderTokenMap = {
@@ -28,6 +31,7 @@ export type SubscriptionsProviderTokenMap = {
   readonly [SUBSCRIPTIONS_USER_SUBSCRIPTION_REPOSITORY]: UserSubscriptionRepositoryPort;
   readonly [SUBSCRIPTIONS_USER_SUBSCRIPTION_SCHEDULE_REPOSITORY]: UserSubscriptionScheduleRepositoryPort;
   readonly [SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY]: UserSummaryPreferenceRepositoryPort;
+  readonly [SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR]: UserSummaryPreferenceMemoryProjectorPort;
   readonly [SUBSCRIPTIONS_SOURCE_TARGET_CATALOG]: SourceTargetCatalogPort;
 };
 
