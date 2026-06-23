@@ -59,7 +59,7 @@ const client = new InfinityContextClient({
           data: {
             id: 'summary-memory-sdk-smoke-fact',
             text: 'Prefer concise security summaries.',
-            kind: 'summary_feedback',
+            kind: 'user_preference',
             status: 'active',
             version: 1,
           },
@@ -98,7 +98,7 @@ const feedback = await client.workflows.recordFeedback({
     },
   ],
   rememberAsFact: true,
-  factKind: 'summary_feedback',
+  factKind: 'user_preference',
   factCategory: 'summary_feedback',
   factTags: ['summary-feedback', 'category-bad_citation'],
   factTtlPolicy: 'durable',
