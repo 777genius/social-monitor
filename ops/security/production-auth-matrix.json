@@ -162,6 +162,11 @@
       "requiredSnippet": "Bearer JWT tenant or workspace does not match request scope"
     },
     {
+      "caseId": "wrong-workspace",
+      "evidenceFile": "test/e2e/user-jwt-auth-boundary.e2e-spec.ts",
+      "requiredSnippet": "other-workspace-user-jwt-auth-boundary-e2e"
+    },
+    {
       "caseId": "wrong-workspace-api-key",
       "evidenceFile": "test/e2e/webhook-endpoints.api-key-scope.e2e-spec.ts",
       "requiredSnippet": "different-workspace"

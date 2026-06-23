@@ -28,6 +28,7 @@ const requiredSurfaces = new Set([
 ]);
 const requiredNegativeCases = new Set([
   'wrong-tenant',
+  'wrong-workspace',
   'wrong-workspace-api-key',
   'expired-jwt',
   'wrong-audience',

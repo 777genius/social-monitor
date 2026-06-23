@@ -12,7 +12,7 @@ import {
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import { parsePaginationLimit, RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
-import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
+import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { ListSummaryFeedbackUseCase } from '../../features/list-summary-feedback/list-summary-feedback.use-case';
 import { RecordSummaryFeedbackUseCase } from '../../features/record-summary-feedback/record-summary-feedback.use-case';
@@ -124,7 +124,7 @@ export class SummaryFeedbackController {
       workspaceId: scope.workspaceId,
       summaryId,
       idempotencyKey,
-      submittedBy: actorHeader ?? authorization?.actorId ?? '',
+      submittedBy: resolveSubmittedBy(actorHeader, authorization),
       rating: body.rating,
       category: body.category,
       comment: body.comment,
@@ -199,3 +199,18 @@ export class SummaryFeedbackController {
     return undefined;
   }
 }
+
+const resolveSubmittedBy = (
+  actorHeader: string | undefined,
+  authorization: BearerRequestAuthorization | undefined,
+): string => {
+  if (authorization?.actorType === 'user') {
+    if (actorHeader !== undefined && actorHeader.trim() !== authorization.userId) {
+      throw new DomainError('authorization.denied', 'Bearer JWT user cannot submit summary feedback for another actor');
+    }
+
+    return authorization.userId;
+  }
+
+  return actorHeader ?? authorization?.actorId ?? '';
+};

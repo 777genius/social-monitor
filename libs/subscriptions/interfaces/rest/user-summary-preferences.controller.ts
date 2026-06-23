@@ -6,13 +6,14 @@ import {
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
+  type BearerRequestAuthorization,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
-import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
+import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { UpsertUserSummaryPreferenceUseCase } from '../../features/upsert-user-summary-preference/upsert-user-summary-preference.use-case';
 import {
@@ -51,12 +52,18 @@ export class UserSummaryPreferencesController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    await this.authorizeSummaryWrite(scope.tenantId, scope.workspaceId, workspaceRoleHeader, authorizationHeader);
+    const authorization = await this.authorizeSummaryWrite(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
+    const targetUserId = resolveUserOwnedTarget(body.userId, authorization);
 
     const result = await this.upsertUserSummaryPreference.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      userId: body.userId,
+      userId: targetUserId,
       topicId,
       language: body.language,
       format: body.format,
@@ -79,9 +86,9 @@ export class UserSummaryPreferencesController {
     workspaceId: WorkspaceId,
     workspaceRoleHeader: string | undefined,
     authorizationHeader: string | undefined,
-  ): Promise<void> {
+  ): Promise<BearerRequestAuthorization | undefined> {
     if (hasBearerAuthorizationHeader(authorizationHeader)) {
-      await this.apiKeyRequestAuthorizer.authorize({
+      return this.apiKeyRequestAuthorizer.authorize({
         authorizationHeader,
         tenantId,
         workspaceId,
@@ -101,5 +108,22 @@ export class UserSummaryPreferencesController {
     if (!authorization.ok) {
       throw authorization.error;
     }
+
+    return undefined;
   }
 }
+
+const resolveUserOwnedTarget = (
+  requestedUserId: string,
+  authorization: BearerRequestAuthorization | undefined,
+): string => {
+  if (authorization?.actorType !== 'user') {
+    return requestedUserId;
+  }
+
+  if (requestedUserId.trim() !== authorization.userId) {
+    throw new DomainError('authorization.denied', 'Bearer JWT user cannot write another user summary preference');
+  }
+
+  return authorization.userId;
+};

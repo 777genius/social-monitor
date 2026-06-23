@@ -6,6 +6,7 @@ import {
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
+  type BearerRequestAuthorization,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
 import {
@@ -58,12 +59,18 @@ export class UserSubscriptionsController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    await this.authorizeWrite(scope.tenantId, scope.workspaceId, workspaceRoleHeader, authorizationHeader);
+    const authorization = await this.authorizeWrite(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
+    const targetUserId = resolveUserOwnedTarget(body.userId, authorization);
 
     const result = await this.createUserSubscription.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      userId: body.userId,
+      userId: targetUserId,
       providerKey: body.providerKey,
       targetKind: body.targetKind,
       targetValue: body.targetValue,
@@ -109,12 +116,18 @@ export class UserSubscriptionsController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    await this.authorizeRead(scope.tenantId, scope.workspaceId, workspaceRoleHeader, authorizationHeader);
+    const authorization = await this.authorizeRead(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
+    const targetUserId = resolveUserOwnedTarget(userId ?? '', authorization);
 
     const result = await this.listUserSubscriptions.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      userId: userId ?? '',
+      userId: targetUserId,
       limit: parsePaginationLimit(limitQuery, {
         defaultLimit: 50,
         invalidMessage: 'User subscription list limit must be between 1 and 100',
@@ -149,12 +162,18 @@ export class UserSubscriptionsController {
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
     });
-    await this.authorizeSummaryWrite(scope.tenantId, scope.workspaceId, workspaceRoleHeader, authorizationHeader);
+    const authorization = await this.authorizeSummaryWrite(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
+    const targetUserId = resolveUserOwnedTarget(body.userId, authorization);
 
     const result = await this.upsertUserSummaryPreference.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      userId: body.userId,
+      userId: targetUserId,
       subscriptionId,
       language: body.language,
       format: body.format,
@@ -177,9 +196,9 @@ export class UserSubscriptionsController {
     workspaceId: WorkspaceId,
     workspaceRoleHeader: string | undefined,
     authorizationHeader: string | undefined,
-  ): Promise<void> {
+  ): Promise<BearerRequestAuthorization | undefined> {
     if (hasBearerAuthorizationHeader(authorizationHeader)) {
-      await this.apiKeyRequestAuthorizer.authorize({
+      return this.apiKeyRequestAuthorizer.authorize({
         authorizationHeader,
         tenantId,
         workspaceId,
@@ -199,6 +218,8 @@ export class UserSubscriptionsController {
     if (!authorization.ok) {
       throw authorization.error;
     }
+
+    return undefined;
   }
 
   private async authorizeWrite(
@@ -206,9 +227,9 @@ export class UserSubscriptionsController {
     workspaceId: WorkspaceId,
     workspaceRoleHeader: string | undefined,
     authorizationHeader: string | undefined,
-  ): Promise<void> {
+  ): Promise<BearerRequestAuthorization | undefined> {
     if (hasBearerAuthorizationHeader(authorizationHeader)) {
-      await this.apiKeyRequestAuthorizer.authorize({
+      return this.apiKeyRequestAuthorizer.authorize({
         authorizationHeader,
         tenantId,
         workspaceId,
@@ -228,6 +249,8 @@ export class UserSubscriptionsController {
     if (!authorization.ok) {
       throw authorization.error;
     }
+
+    return undefined;
   }
 
   private async authorizeSummaryWrite(
@@ -235,9 +258,9 @@ export class UserSubscriptionsController {
     workspaceId: WorkspaceId,
     workspaceRoleHeader: string | undefined,
     authorizationHeader: string | undefined,
-  ): Promise<void> {
+  ): Promise<BearerRequestAuthorization | undefined> {
     if (hasBearerAuthorizationHeader(authorizationHeader)) {
-      await this.apiKeyRequestAuthorizer.authorize({
+      return this.apiKeyRequestAuthorizer.authorize({
         authorizationHeader,
         tenantId,
         workspaceId,
@@ -257,8 +280,25 @@ export class UserSubscriptionsController {
     if (!authorization.ok) {
       throw authorization.error;
     }
+
+    return undefined;
   }
 }
+
+const resolveUserOwnedTarget = (
+  requestedUserId: string,
+  authorization: BearerRequestAuthorization | undefined,
+): string => {
+  if (authorization?.actorType !== 'user') {
+    return requestedUserId;
+  }
+
+  if (requestedUserId.trim() !== authorization.userId) {
+    throw new DomainError('authorization.denied', 'Bearer JWT user cannot access another user subscription preference');
+  }
+
+  return authorization.userId;
+};
 
 const parseDate = (value: string, fieldName: string): Date => {
   const parsed = new Date(value);

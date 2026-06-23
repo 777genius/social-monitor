@@ -64,6 +64,11 @@ describe('User JWT auth boundary (e2e)', () => {
       tenant: tenantId('other-tenant-user-jwt-auth-boundary-e2e'),
       roles: ['admin'],
     });
+    const otherWorkspaceToken = tokenFor({
+      subject: 'other-workspace-user',
+      workspace: workspaceId('other-workspace-user-jwt-auth-boundary-e2e'),
+      roles: ['admin'],
+    });
     const expiredToken = tokenFor({
       subject: 'expired-user',
       roles: ['admin'],
@@ -131,6 +136,16 @@ describe('User JWT auth boundary (e2e)', () => {
       detail: 'Bearer JWT tenant or workspace does not match request scope',
     });
 
+    const workspaceMismatch = await request(app.getHttpServer())
+      .get('/topics')
+      .set(jwtHeaders(otherWorkspaceToken))
+      .expect(403);
+
+    expect(workspaceMismatch.body).toMatchObject({
+      code: 'authorization.denied',
+      detail: 'Bearer JWT tenant or workspace does not match request scope',
+    });
+
     const expired = await request(app.getHttpServer())
       .get('/topics')
       .set(jwtHeaders(expiredToken))
@@ -175,6 +190,149 @@ describe('User JWT auth boundary (e2e)', () => {
         }),
       ]),
     );
+  });
+
+  it('binds user personalization writes to the authenticated JWT subject', async () => {
+    const memberToken = tokenFor({ subject: 'personalization-user', roles: ['member'] });
+
+    await request(app.getHttpServer())
+      .put('/topics/topic-jwt-user-preference/user-summary-preference')
+      .set(jwtHeaders(memberToken))
+      .send({
+        userId: 'another-user',
+        language: 'ru',
+        tone: 'concise',
+        customInstructions: 'This must not be written for another user.',
+      })
+      .expect(403)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'authorization.denied',
+          detail: 'Bearer JWT user cannot write another user summary preference',
+        });
+      });
+
+    const preference = await request(app.getHttpServer())
+      .put('/topics/topic-jwt-user-preference/user-summary-preference')
+      .set(jwtHeaders(memberToken))
+      .send({
+        userId: 'personalization-user',
+        language: 'ru',
+        tone: 'concise',
+        customInstructions: 'Prioritize concise security updates.',
+      })
+      .expect(200);
+
+    expect(preference.body).toEqual({
+      created: true,
+      summaryPreference: expect.objectContaining({
+        userId: 'personalization-user',
+        topicId: 'topic-jwt-user-preference',
+        language: 'ru',
+        tone: 'concise',
+        customInstructions: 'Prioritize concise security updates.',
+      }),
+    });
+  });
+
+  it('binds user subscription writes and reads to the authenticated JWT subject', async () => {
+    const memberToken = tokenFor({ subject: 'subscription-user', roles: ['member'] });
+
+    await request(app.getHttpServer())
+      .post('/user-subscriptions')
+      .set(jwtHeaders(memberToken))
+      .send({
+        userId: 'another-user',
+        providerKey: 'reddit',
+        targetKind: 'subreddit',
+        targetValue: 'programming',
+        schedule: {
+          recipientKey: 'another-user',
+          channel: 'in_app',
+          intervalSeconds: 3600,
+          includeNoSignal: true,
+        },
+      })
+      .expect(403)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'authorization.denied',
+          detail: 'Bearer JWT user cannot access another user subscription preference',
+        });
+      });
+
+    const created = await request(app.getHttpServer())
+      .post('/user-subscriptions')
+      .set(jwtHeaders(memberToken))
+      .send({
+        userId: 'subscription-user',
+        providerKey: 'reddit',
+        targetKind: 'subreddit',
+        targetValue: 'programming',
+        schedule: {
+          recipientKey: 'subscription-user',
+          channel: 'in_app',
+          intervalSeconds: 3600,
+          includeNoSignal: true,
+        },
+      })
+      .expect(201);
+
+    expect(created.body).toEqual(expect.objectContaining({
+      created: true,
+      subscription: expect.objectContaining({
+        userId: 'subscription-user',
+      }),
+    }));
+
+    await request(app.getHttpServer())
+      .get('/user-subscriptions')
+      .query({ userId: 'another-user' })
+      .set(jwtHeaders(memberToken))
+      .expect(403)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'authorization.denied',
+          detail: 'Bearer JWT user cannot access another user subscription preference',
+        });
+      });
+
+    const listed = await request(app.getHttpServer())
+      .get('/user-subscriptions')
+      .query({ userId: 'subscription-user' })
+      .set(jwtHeaders(memberToken))
+      .expect(200);
+
+    expect(listed.body.subscriptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        subscription: expect.objectContaining({
+          userId: 'subscription-user',
+        }),
+      }),
+    ]));
+  });
+
+  it('binds summary feedback actors to the authenticated JWT subject', async () => {
+    const memberToken = tokenFor({ subject: 'feedback-user', roles: ['member'] });
+
+    await request(app.getHttpServer())
+      .post('/summaries/summary-jwt-feedback-actor/feedback')
+      .set(jwtHeaders(memberToken))
+      .set('x-actor-id', 'another-user')
+      .set('x-request-id', 'jwt-feedback-actor-mismatch')
+      .set('idempotency-key', 'jwt-feedback-actor-mismatch')
+      .send({
+        category: 'too_verbose',
+        rating: 2,
+        comment: 'This actor override must be rejected before memory learns it.',
+      })
+      .expect(403)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'authorization.denied',
+          detail: 'Bearer JWT user cannot submit summary feedback for another actor',
+        });
+      });
   });
 });
 

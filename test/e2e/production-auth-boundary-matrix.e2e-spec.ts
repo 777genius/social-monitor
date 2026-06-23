@@ -120,7 +120,7 @@ describe('Production auth boundary matrix (e2e)', () => {
 
   it('rejects JWT users when durable workspace membership is missing', async () => {
     const harness = await createHarness({
-      runtimeProfile: 'deterministic-test',
+      runtimeProfile: 'beta',
       membership: null,
     });
     const token = tokenFor({
