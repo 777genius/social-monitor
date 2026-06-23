@@ -46,7 +46,7 @@ export class SetScanPolicyUseCase {
       key: command.idempotencyKey,
     });
     if (cached) {
-      return ok({ ...cached.value, created: false });
+      return ok(replayedResult(cached.value));
     }
 
     const binding = await this.sourceBindings.findById({
@@ -69,7 +69,28 @@ export class SetScanPolicyUseCase {
     });
     if (existing) {
       const snapshot = existing.toSnapshot();
-      const result = { scanPolicyId: snapshot.id, created: false };
+      if (existing.hasConfiguration(command)) {
+        const result = { scanPolicyId: snapshot.id, created: false, updated: false };
+        await this.idempotency.set({
+          tenantId: command.tenantId,
+          workspaceId: command.workspaceId,
+          scope: 'monitoring.set-scan-policy',
+          key: command.idempotencyKey,
+          value: result,
+        });
+        return ok(result);
+      }
+
+      const updated = existing.reconfigure({
+        intervalSeconds: command.intervalSeconds,
+        freshnessSeconds: command.freshnessSeconds,
+        retryBudget: command.retryBudget,
+        nextRunAt: nextRunAfterUpdate(snapshot, command, this.clock.now()),
+      });
+      const updatedSnapshot = updated.toSnapshot();
+      await this.scanPolicies.save(updated);
+      await this.outbox.append(this.scanPolicySetEvent(command, updatedSnapshot));
+      const result = { scanPolicyId: updatedSnapshot.id, created: false, updated: true };
       await this.idempotency.set({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
@@ -94,8 +115,22 @@ export class SetScanPolicyUseCase {
     const snapshot = policy.toSnapshot();
 
     await this.scanPolicies.save(policy);
+    await this.outbox.append(this.scanPolicySetEvent(command, snapshot));
 
-    const event: ScanPolicySetEvent = {
+    const result = { scanPolicyId: snapshot.id, created: true, updated: false };
+    await this.idempotency.set({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      scope: 'monitoring.set-scan-policy',
+      key: command.idempotencyKey,
+      value: result,
+    });
+
+    return ok(result);
+  }
+
+  private scanPolicySetEvent(command: SetScanPolicyCommand, snapshot: ReturnType<ScanPolicy['toSnapshot']>): ScanPolicySetEvent {
+    return {
       eventId: eventId(this.ids.generate()),
       eventType: 'monitoring.scan-policy.set',
       schemaVersion: 1,
@@ -114,20 +149,23 @@ export class SetScanPolicyUseCase {
         retryBudget: snapshot.retryBudget,
       },
     };
-    await this.outbox.append(event);
-
-    const result = { scanPolicyId: snapshot.id, created: true };
-    await this.idempotency.set({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      scope: 'monitoring.set-scan-policy',
-      key: command.idempotencyKey,
-      value: result,
-    });
-
-    return ok(result);
   }
 }
+
+const replayedResult = (result: SetScanPolicyResult): SetScanPolicyResult => ({
+  scanPolicyId: result.scanPolicyId,
+  created: false,
+  updated: false,
+});
+
+const nextRunAfterUpdate = (
+  previous: ReturnType<ScanPolicy['toSnapshot']>,
+  command: SetScanPolicyCommand,
+  now: Date,
+): Date =>
+  previous.intervalSeconds === command.intervalSeconds
+    ? previous.nextRunAt
+    : new Date(now.getTime() + command.intervalSeconds * 1000);
 
 const validate = (command: SetScanPolicyCommand): DomainError | null => {
   if (command.sourceBindingId.trim().length === 0) {

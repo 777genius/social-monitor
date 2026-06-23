@@ -141,6 +141,124 @@ describe('SetScanPolicyUseCase', () => {
 
     expect(result.ok).toBe(true);
     expect(result.ok && result.value.created).toBe(true);
+    expect(result.ok && result.value.updated).toBe(false);
+    expect(outbox.events).toHaveLength(1);
+  });
+
+  it('updates an existing scan policy when timing changes', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    const outbox = new FakeOutbox();
+    const idempotency = new FakeIdempotency();
+    const ids = new SequenceIdGenerator();
+
+    const created = await new SetScanPolicyUseCase(
+      bindings,
+      policies,
+      outbox,
+      idempotency,
+      ids,
+      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+    ).execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      intervalSeconds: 3600,
+      freshnessSeconds: 7200,
+      retryBudget: 3,
+      idempotencyKey: 'scan-policy-create',
+      correlationId: 'correlation-1',
+    });
+    expect(created.ok && created.value.created).toBe(true);
+
+    const updated = await new SetScanPolicyUseCase(
+      bindings,
+      policies,
+      outbox,
+      idempotency,
+      ids,
+      new FixedClock(new Date('2026-06-05T01:00:00.000Z')),
+    ).execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      intervalSeconds: 28800,
+      freshnessSeconds: 28800,
+      retryBudget: 5,
+      idempotencyKey: 'scan-policy-update',
+      correlationId: 'correlation-2',
+    });
+
+    expect(updated).toEqual({
+      ok: true,
+      value: {
+        scanPolicyId: created.ok ? created.value.scanPolicyId : expect.any(String),
+        created: false,
+        updated: true,
+      },
+    });
+    expect(outbox.events).toHaveLength(2);
+
+    const stored = await policies.findBySourceBinding({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+    });
+    expect(stored?.toSnapshot()).toMatchObject({
+      intervalSeconds: 28800,
+      freshnessSeconds: 28800,
+      retryBudget: 5,
+      nextRunAt: new Date('2026-06-05T09:00:00.000Z'),
+    });
+  });
+
+  it('does not append an event when an existing scan policy is unchanged', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    const outbox = new FakeOutbox();
+    const idempotency = new FakeIdempotency();
+    const ids = new SequenceIdGenerator();
+    const clock = new FixedClock(new Date('2026-06-05T00:00:00.000Z'));
+    const useCase = new SetScanPolicyUseCase(
+      bindings,
+      policies,
+      outbox,
+      idempotency,
+      ids,
+      clock,
+    );
+
+    await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      intervalSeconds: 3600,
+      freshnessSeconds: 7200,
+      retryBudget: 3,
+      idempotencyKey: 'scan-policy-create',
+      correlationId: 'correlation-1',
+    });
+    const unchanged = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      intervalSeconds: 3600,
+      freshnessSeconds: 7200,
+      retryBudget: 3,
+      idempotencyKey: 'scan-policy-same-values',
+      correlationId: 'correlation-2',
+    });
+
+    expect(unchanged).toEqual({
+      ok: true,
+      value: {
+        scanPolicyId: expect.any(String),
+        created: false,
+        updated: false,
+      },
+    });
     expect(outbox.events).toHaveLength(1);
   });
 

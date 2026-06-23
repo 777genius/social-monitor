@@ -79,17 +79,19 @@ export class ScanPolicyController {
       throw result.error;
     }
 
-    if (result.value.created) {
+    if (result.value.created || result.value.updated) {
       await this.recordScanPolicyAuditEvent({
         tenantId: scope.tenantId,
         workspaceId: scope.workspaceId,
         resourceId: result.value.scanPolicyId,
+        action: result.value.created ? 'scan_policy.created' : 'scan_policy.updated',
         metadata: {
           sourceBindingId,
           intervalSeconds: body.intervalSeconds,
           freshnessSeconds: body.freshnessSeconds,
           retryBudget: body.retryBudget,
           created: result.value.created,
+          updated: result.value.updated,
         },
       });
     }
@@ -140,6 +142,7 @@ export class ScanPolicyController {
     readonly tenantId: TenantId;
     readonly workspaceId: WorkspaceId;
     readonly resourceId: string;
+    readonly action: string;
     readonly metadata?: Readonly<Record<string, PublicApiAuditMetadataValue>>;
   }): Promise<void> {
     const result = await this.recordPublicApiAuditEvent.execute({
@@ -147,7 +150,7 @@ export class ScanPolicyController {
       workspaceId: params.workspaceId,
       actorType: 'system',
       actorId: 'monitoring.scan-policies',
-      action: 'scan_policy.created',
+      action: params.action,
       outcome: 'succeeded',
       resourceType: 'scan_policy',
       resourceId: params.resourceId,

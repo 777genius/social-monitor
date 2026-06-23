@@ -18,4 +18,5 @@ export class SetScanPolicyRequestDto {
 export type SetScanPolicyResponseDto = {
   readonly scanPolicyId: string;
   readonly created: boolean;
+  readonly updated: boolean;
 };
