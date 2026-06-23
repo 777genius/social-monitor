@@ -137,6 +137,8 @@ const requiredJobEnvNames = new Map([
       'STAGING_ENVIRONMENT_ID',
       'BACKEND_IMAGE_DIGEST',
       'DURABLE_BACKEND_E2E_ARTIFACT_PATH',
+      'INFINITY_CONTEXT_URL',
+      'INFINITY_CONTEXT_TOKEN',
     ],
   ],
   [
@@ -1447,6 +1449,8 @@ function stagingReliabilitySmokeConfigs() {
       runner: 'scripts/capture-durable-backend-e2e-loop.ts',
       requiredEnv: {
         API_BASE_URL: 'https://api.staging.social-monitor.invalid',
+        INFINITY_CONTEXT_TOKEN: 'secret-ref:infinity-context-token',
+        INFINITY_CONTEXT_URL: 'https://memory.staging.social-monitor.invalid',
       },
     },
   ];
@@ -2986,6 +2990,8 @@ function durableBackendE2ePreflightEnv(tempDirectory, overrides = {}) {
     API_BASE_URL: 'https://api.staging.social-monitor.invalid',
     BACKEND_IMAGE_DIGEST: `sha256:${'b'.repeat(64)}`,
     DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(tempDirectory, 'durable-backend-e2e.json'),
+    INFINITY_CONTEXT_TOKEN: 'secret-ref:infinity-context-token',
+    INFINITY_CONTEXT_URL: 'https://memory.staging.social-monitor.invalid',
     STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
     ...overrides,
   };
@@ -3090,6 +3096,8 @@ function completeExternalEvidencePreflightEnv(tempDirectory) {
     DATABASE_URL: 'postgresql://release:...@db.staging.social-monitor.invalid:5432/social_monitor',
     DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(tempDirectory, 'durable-backend-e2e.json'),
     DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: join(tempDirectory, 'durable-runtime-selector.json'),
+    INFINITY_CONTEXT_TOKEN: 'secret-ref:infinity-context-token',
+    INFINITY_CONTEXT_URL: 'https://memory.staging.social-monitor.invalid',
     LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: join(tempDirectory, 'live-open-connectors.json'),
     LOG_EXPORT_PATH: join(tempDirectory, 'security-log-export.json'),
     METRICS_EXPORT_PATH: join(tempDirectory, 'security-metrics-export.json'),

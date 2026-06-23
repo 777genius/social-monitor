@@ -167,6 +167,13 @@
   ],
   "runtimeNoopAdapters": [
     {
+      "moduleFile": "libs/summary/interfaces/rest/summary-rest.module.ts",
+      "adapter": "NoopSummaryMemoryAdapter",
+      "owner": "summary-owner",
+      "risk": "summary memory context and feedback learning are disabled when SUMMARY_MEMORY_MODE is left at the local default",
+      "durableReplacementPlan": "beta runtime must set SUMMARY_MEMORY_MODE=memo-stack with INFINITY_CONTEXT_URL and INFINITY_CONTEXT_TOKEN so summary context and feedback memory survive outside the API process"
+    },
+    {
       "moduleFile": "apps/ingestion-worker/src/ingestion-worker.module.ts",
       "adapter": "NoopScanExecutionReporterAdapter",
       "owner": "ingestion-owner",

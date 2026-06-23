@@ -250,6 +250,19 @@ export function assertDockerEvidencePrerequisites(options = {}) {
   }
 }
 
+export function assertDurableAutomaticLoopExternalEnv() {
+  const missing = [
+    'REDDIT_APP_CLIENT_ID',
+    'REDDIT_APP_CLIENT_SECRET',
+    'INFINITY_CONTEXT_URL',
+    'INFINITY_CONTEXT_TOKEN',
+  ].filter((name) => nonEmptyEnvValue(name) === undefined);
+
+  if (missing.length > 0) {
+    throw new Error(`${missing.join(', ')} must be set before Docker durable backend E2E because the loop must prove Reddit and memo-stack memory`);
+  }
+}
+
 function assertDockerStorageAvailable({ cwd, phase, storageMode, hostStorageRoot }) {
   const volumeProbeBytes = positiveIntegerEnv(
     'DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES',
@@ -677,6 +690,7 @@ function buildComposeOverride(values) {
     ['REDDIT_APP_CLIENT_ID', process.env.REDDIT_APP_CLIENT_ID],
     ['REDDIT_APP_CLIENT_SECRET', process.env.REDDIT_APP_CLIENT_SECRET],
     ['REDDIT_APP_USER_AGENT', process.env.REDDIT_APP_USER_AGENT],
+    ...memoStackEnvironmentEntries(),
   ];
   const fastLoopEnvironment = [
     ...commonEnvironment,
@@ -703,6 +717,46 @@ function buildComposeOverride(values) {
     serviceEnvironment('event-relay', fastLoopEnvironment),
     '',
   ].join('\n');
+}
+
+function memoStackEnvironmentEntries() {
+  const baseUrl = nonEmptyEnvValue('INFINITY_CONTEXT_URL');
+  const token = nonEmptyEnvValue('INFINITY_CONTEXT_TOKEN');
+  if (baseUrl === undefined && token === undefined) {
+    return [];
+  }
+  if (baseUrl === undefined || token === undefined) {
+    throw new Error('INFINITY_CONTEXT_URL and INFINITY_CONTEXT_TOKEN must be set together for Docker backend evidence memory mode');
+  }
+
+  return [
+    ['SUMMARY_MEMORY_MODE', 'memo-stack'],
+    ['INFINITY_CONTEXT_URL', dockerReachableHttpUrl(baseUrl, 'INFINITY_CONTEXT_URL')],
+    ['INFINITY_CONTEXT_TOKEN', token],
+    ['SUMMARY_MEMORY_TIMEOUT_MS', process.env.SUMMARY_MEMORY_TIMEOUT_MS ?? '30000'],
+  ];
+}
+
+function nonEmptyEnvValue(name) {
+  const value = process.env[name]?.trim();
+  return value === undefined || value.length === 0 ? undefined : value;
+}
+
+function dockerReachableHttpUrl(value, name) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${name} must be an http(s) URL`);
+  }
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error(`${name} must be an http(s) URL`);
+  }
+  if (['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) {
+    url.hostname = 'host.docker.internal';
+  }
+
+  return url.toString().replace(/\/$/u, '');
 }
 
 function hostBindStorageServiceSections(hostStorageRoot) {

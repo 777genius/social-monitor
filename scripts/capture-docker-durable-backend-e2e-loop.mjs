@@ -1,6 +1,7 @@
 import { dirname, join, resolve } from 'node:path';
 
 import {
+  assertDurableAutomaticLoopExternalEnv,
   runNpmScript,
   withDockerBackendEvidenceStack,
 } from './lib/docker-backend-evidence-harness.mjs';
@@ -19,6 +20,8 @@ const envFilePath =
   process.env.DURABLE_BACKEND_E2E_ENV_PATH ??
   join(dirname(artifactTarget), 'durable-backend-e2e.env');
 const envFileTarget = validateEvidenceEnvFilePath(envFilePath);
+
+assertDurableAutomaticLoopExternalEnv();
 
 await withDockerBackendEvidenceStack({
   projectEnvName: 'DURABLE_BACKEND_E2E_COMPOSE_PROJECT',

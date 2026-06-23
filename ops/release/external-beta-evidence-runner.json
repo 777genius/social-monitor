@@ -462,7 +462,9 @@
         "API_BASE_URL",
         "STAGING_ENVIRONMENT_ID",
         "BACKEND_IMAGE_DIGEST",
-        "DURABLE_BACKEND_E2E_ARTIFACT_PATH"
+        "DURABLE_BACKEND_E2E_ARTIFACT_PATH",
+        "INFINITY_CONTEXT_URL",
+        "INFINITY_CONTEXT_TOKEN"
       ],
       "requiredEnvAlternatives": [
         {
@@ -482,7 +484,7 @@
           "expectedArtifactId": "durable-backend-e2e-output"
         }
       ],
-      "exitCondition": "Topic to source binding to scheduled scan to feed to summary to feedback to digest/webhook/realtime to audit passes on durable runtime with tenant isolation."
+      "exitCondition": "Topic to source binding to scheduled scans across Reddit/GitHub/Hacker News/RSS to feed to summary to memo-stack memory to feedback to digest/webhook/realtime to audit passes on durable runtime with tenant isolation."
     },
     {
       "jobId": "summary-real-feedback-import",

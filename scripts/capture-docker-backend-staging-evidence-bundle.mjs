@@ -3,6 +3,7 @@ import { chmodSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 import {
+  assertDurableAutomaticLoopExternalEnv,
   restartBackendServices,
   runNodeScript,
   runNpmScript,
@@ -100,6 +101,7 @@ const bundleTarget = validateEvidenceJsonFilePath(
   'BACKEND_STAGING_EVIDENCE_BUNDLE_PATH',
 );
 const envFileTarget = validateEvidenceEnvFilePath(envFilePath);
+assertDurableAutomaticLoopExternalEnv();
 const commitSha = readGitCommitSha();
 
 await withDockerBackendEvidenceStack({

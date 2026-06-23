@@ -2,6 +2,10 @@ import { createPrivateKey, randomUUID, sign as signJwt } from 'node:crypto';
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { defaultMemoStackTimeoutMs } from '@social-monitor/summary/adapters/memory/memo-stack-memory-client';
+import { MemoStackSummaryMemoryAdapter } from '@social-monitor/summary/adapters/memory/memo-stack-summary-memory.adapter';
+import type { SummaryMemoryContext } from '@social-monitor/summary/ports';
 import { Pool, type PoolClient } from 'pg';
 
 type JsonRecord = Record<string, unknown>;
@@ -21,6 +25,9 @@ type RunnerConfig = {
   readonly keyId?: string;
   readonly accessToken?: string;
   readonly webhookUrl: string;
+  readonly memoryBaseUrl: string;
+  readonly memoryToken: string;
+  readonly memoryTimeoutMs: number;
 };
 
 type RuntimeIds = {
@@ -84,6 +91,20 @@ type AutoSummaryEvidence = {
   readonly completedAt: string;
   readonly latestFeedItemObservedAt: string;
   readonly newFeedItemCount: number;
+};
+
+type SummaryMemoryEvidence = {
+  readonly status: 'available';
+  readonly memoryBaseUrlOrigin: string;
+  readonly topicScopeExternalRef: string;
+  readonly providerScopeExternalRef: string;
+  readonly sourceRefTypes: readonly string[];
+  readonly sourceRefCount: number;
+  readonly renderedTextChars: number;
+  readonly factsUsed?: number | undefined;
+  readonly itemsUsed?: number | undefined;
+  readonly retrievalSourcesUsed?: readonly string[] | undefined;
+  readonly memoryEffectMatched: boolean;
 };
 
 const config = loadConfig();
@@ -167,6 +188,14 @@ async function main(): Promise<void> {
           autoSummary: evidence.autoSummary,
           manualSummaryRequestUsed: false,
         }, signalObservedAt),
+        signalResult('backend-loop-summary-memory', {
+          summary: 'summary feedback was projected into memo-stack and retrieved by topic and provider memory scopes',
+          summaryId: evidence.summaryId,
+          feedbackId: evidence.feedbackId,
+          feedbackProviderKey: evidence.feedbackProviderKey,
+          memory: evidence.memoryEvidence,
+          rawMemoryTextIncluded: false,
+        }, signalObservedAt),
         signalResult('backend-loop-tenant-isolation', {
           summary: 'wrong tenant and wrong workspace checks denied durable data access',
           negativeChecks: evidence.negativeChecks,
@@ -206,6 +235,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
   readonly summaryCitationProviderKeys: readonly string[];
   readonly feedbackId: string;
   readonly feedbackProviderKey: string;
+  readonly memoryEvidence: SummaryMemoryEvidence;
   readonly digestId: string;
   readonly webhookEndpointId: string;
   readonly webhookDeliveryAttemptId: string;
@@ -237,7 +267,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
       language: 'auto',
       format: 'bullet_digest',
       tone: 'concise',
-      maxKeyPoints: 5,
+      maxKeyPoints: 10,
       includeRisks: true,
       includeSourceHighlights: true,
       customInstructions: 'Automatically summarize stable feed evidence across all configured backend sources.',
@@ -384,6 +414,19 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
   if (firstCitationId !== undefined && !summaryCitationProviderKeys.includes(feedbackProviderKey)) {
     throw new Error(`feedback provider key ${feedbackProviderKey} must match a summary citation provider`);
   }
+  const memoryEvidence = await pollSummaryMemoryEvidence({
+    tenantId: auth.tenantId,
+    workspaceId: auth.workspaceId,
+    userId: runtimeIds.userId,
+    topicId,
+    summaryId,
+    feedbackId,
+    feedbackProviderKey,
+    feedItems,
+  }, {
+    timeoutMs: 90_000,
+    label: 'summary feedback memory projection',
+  });
 
   const webhook = await requestJson<JsonRecord>('POST', '/delivery/webhook-endpoints', {
     headers,
@@ -503,6 +546,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
     summaryCitationProviderKeys,
     feedbackId,
     feedbackProviderKey,
+    memoryEvidence,
     digestId,
     webhookEndpointId,
     webhookDeliveryAttemptId,
@@ -565,9 +609,14 @@ async function createSourceBindingAndScan(params: {
     },
   });
   const scanPolicyId = readString(policy, 'scanPolicyId');
-  const scan = await requestJson<JsonRecord>('POST', `/source-bindings/${encodeURIComponent(sourceBindingId)}/scan-requests`, {
-    headers: withIdempotency(params.headers, scanIdempotencyKey(params.target.providerKey, params.runId)),
-  });
+  const scan = await requestJsonWithContext<JsonRecord>(
+    `manual ${params.target.providerKey} scan request for source binding ${sourceBindingId}`,
+    'POST',
+    `/source-bindings/${encodeURIComponent(sourceBindingId)}/scan-requests`,
+    {
+      headers: withIdempotency(params.headers, scanIdempotencyKey(params.target.providerKey, params.runId)),
+    },
+  );
   const scanId = readString(scan, 'scanJobId');
   await pollJson<JsonRecord>(
     `/scan-requests/${encodeURIComponent(scanId)}/status`,
@@ -723,6 +772,130 @@ async function durableCounts(db: Pool, tenantId: string, workspaceId: string): P
       deliveryAttempts: Number(row.delivery_attempts),
     };
   });
+}
+
+async function pollSummaryMemoryEvidence(
+  params: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly userId: string;
+    readonly topicId: string;
+    readonly summaryId: string;
+    readonly feedbackId: string;
+    readonly feedbackProviderKey: string;
+    readonly feedItems: readonly JsonRecord[];
+  },
+  options: { readonly timeoutMs: number; readonly label: string },
+): Promise<SummaryMemoryEvidence> {
+  const deadline = Date.now() + options.timeoutMs;
+  const memory = new MemoStackSummaryMemoryAdapter({
+    baseUrl: config.memoryBaseUrl,
+    token: config.memoryToken,
+    timeoutMs: config.memoryTimeoutMs,
+  });
+  let latest: SummaryMemoryContext | undefined;
+
+  while (Date.now() < deadline) {
+    latest = await memory.buildContext(summaryMemoryContextQuery(params));
+    const evidence = summaryMemoryEvidenceSnapshot(params, latest);
+    if (evidence !== undefined) {
+      return evidence;
+    }
+    await delay(1_000);
+  }
+
+  throw new Error(`${options.label} did not produce retrievable memo-stack context; last=${safeMemoryContextDebug(latest)}`);
+}
+
+function summaryMemoryContextQuery(
+  params: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly userId: string;
+    readonly topicId: string;
+    readonly feedItems: readonly JsonRecord[];
+  },
+): Parameters<MemoStackSummaryMemoryAdapter['buildContext']>[0] {
+  const requestedAt = new Date();
+  const evidenceItems = params.feedItems.slice(0, 12).map((item, index) => {
+    const providerKey = readString(item, 'providerKey');
+    const feedItemId = readString(item, 'id');
+    const bodyPreview = optionalString(item, 'bodyPreview');
+    const canonicalUrl = optionalString(item, 'canonicalUrl');
+
+    return {
+      feedItemId,
+      sourceItemId: optionalString(item, 'sourceItemId') ?? `source-${providerKey}-${index}`,
+      sourceBindingId: readString(item, 'sourceBindingId'),
+      providerKey,
+      title: optionalString(item, 'title') ?? `${providerKey} feed item ${index + 1}`,
+      ...(bodyPreview === undefined ? {} : { bodyPreview }),
+      ...(canonicalUrl === undefined ? {} : { canonicalUrl }),
+      observedAt: parseDateOrFallback(optionalString(item, 'observedAt'), requestedAt),
+    };
+  });
+
+  return {
+    tenantId: tenantId(params.tenantId),
+    workspaceId: workspaceId(params.workspaceId),
+    topicId: params.topicId,
+    userId: params.userId,
+    requestedAt,
+    evidence: {
+      sourceWindow: {
+        windowId: `durable-backend-loop-memory-${params.topicId}`,
+        startedAt: requestedAt,
+        endedAt: requestedAt,
+        selectedFeedItemIds: evidenceItems.map((item) => item.feedItemId),
+      },
+      items: evidenceItems,
+    },
+  };
+}
+
+function summaryMemoryEvidenceSnapshot(
+  params: {
+    readonly topicId: string;
+    readonly feedbackId: string;
+    readonly feedbackProviderKey: string;
+  },
+  context: SummaryMemoryContext,
+): SummaryMemoryEvidence | undefined {
+  if (context.status !== 'available') {
+    return undefined;
+  }
+
+  const sourceRefs = context.sourceRefs ?? [];
+  const sourceRefTypes = [...new Set(sourceRefs
+    .map((ref) => typeof ref.source_type === 'string' ? ref.source_type : undefined)
+    .filter((value): value is string => value !== undefined && value.trim().length > 0))]
+    .sort((left, right) => left.localeCompare(right));
+  const renderedText = context.renderedText ?? '';
+  const rendered = renderedText.toLocaleLowerCase('en-US');
+  const matchedBySourceRef = sourceRefs.some((ref) =>
+    ref.source_type === 'social-monitor.summary-feedback' && ref.source_id === params.feedbackId);
+  const matchedByText = rendered.includes(`summary feedback for topic ${params.topicId}`.toLocaleLowerCase('en-US')) ||
+    rendered.includes(`provider ${params.feedbackProviderKey}`.toLocaleLowerCase('en-US'));
+  const matchedByDiagnostics = Number(context.retrieval?.factsUsed ?? context.diagnostics.facts_used ?? 0) > 0 ||
+    Number(context.retrieval?.itemsUsed ?? context.diagnostics.items_used ?? 0) > 0;
+  const memoryEffectMatched = matchedBySourceRef || matchedByText || matchedByDiagnostics;
+  if (!memoryEffectMatched) {
+    return undefined;
+  }
+
+  return {
+    status: 'available',
+    memoryBaseUrlOrigin: safeUrlOrigin(config.memoryBaseUrl),
+    topicScopeExternalRef: `topic:${params.topicId}:feedback`,
+    providerScopeExternalRef: `topic:${params.topicId}:provider:${params.feedbackProviderKey}:quality`,
+    sourceRefTypes,
+    sourceRefCount: sourceRefs.length,
+    renderedTextChars: renderedText.length,
+    factsUsed: numberOrUndefined(context.retrieval?.factsUsed ?? context.diagnostics.facts_used),
+    itemsUsed: numberOrUndefined(context.retrieval?.itemsUsed ?? context.diagnostics.items_used),
+    retrievalSourcesUsed: stringArrayOrUndefined(context.retrieval?.retrievalSourcesUsed ?? context.diagnostics.retrieval_sources_used),
+    memoryEffectMatched,
+  };
 }
 
 async function pollScheduledScanEvidence(
@@ -1038,19 +1211,11 @@ function withIdempotency(headers: Readonly<Record<string, string>>, key: string)
 
 function durableScanTargets(): readonly DurableScanTarget[] {
   const githubAccessToken = emptyToUndefined(process.env.GITHUB_ACCESS_TOKEN);
-  const redditTarget = hasRedditAppOnlyCredentials()
-    ? {
-        providerKey: 'reddit' as const,
-        config: {
-          mode: 'listing',
-          subreddit: 'programming',
-          listing: 'hot',
-          maxItems: 2,
-          userAgent: process.env.REDDIT_APP_USER_AGENT ?? process.env.REDDIT_USER_AGENT ??
-            'social-monitor-mvp/0.1 reddit-app-only',
-        },
-      }
-    : undefined;
+  if (!hasRedditAppOnlyCredentials()) {
+    throw new Error(
+      'REDDIT_APP_CLIENT_ID and REDDIT_APP_CLIENT_SECRET are required because durable backend E2E must scan Reddit, GitHub, Hacker News and RSS in one loop',
+    );
+  }
 
   return [
     {
@@ -1070,7 +1235,18 @@ function durableScanTargets(): readonly DurableScanTarget[] {
         ...(githubAccessToken === undefined ? {} : { accessToken: githubAccessToken }),
       },
     },
-    redditTarget ?? {
+    {
+      providerKey: 'reddit',
+      config: {
+        mode: 'listing',
+        subreddit: 'programming',
+        listing: 'hot',
+        maxItems: 2,
+        userAgent: process.env.REDDIT_APP_USER_AGENT ?? process.env.REDDIT_USER_AGENT ??
+          'social-monitor-mvp/0.1 reddit-app-only',
+      },
+    },
+    {
       providerKey: 'rss',
       config: {
         feedUrl: 'https://hnrss.org/frontpage',
@@ -1152,6 +1328,23 @@ async function requestStatus(path: string, headers: Readonly<Record<string, stri
   return response.status;
 }
 
+async function requestJsonWithContext<T extends JsonRecord>(
+  context: string,
+  method: HttpMethod,
+  path: string,
+  options: {
+    readonly headers: Readonly<Record<string, string>>;
+    readonly body?: JsonRecord;
+  },
+): Promise<T> {
+  try {
+    return await requestJson<T>(method, path, options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${context}: ${message}`);
+  }
+}
+
 async function requestJson<T extends JsonRecord>(
   method: HttpMethod,
   path: string,
@@ -1223,6 +1416,9 @@ function loadConfig(): RunnerConfig {
     keyId: emptyToUndefined(process.env.DURABLE_BACKEND_E2E_JWT_KID),
     accessToken: emptyToUndefined(process.env.DURABLE_BACKEND_E2E_ACCESS_TOKEN),
     webhookUrl: process.env.DURABLE_BACKEND_E2E_WEBHOOK_URL ?? 'https://httpbingo.org/post',
+    memoryBaseUrl: requireEnv('INFINITY_CONTEXT_URL'),
+    memoryToken: requireEnv('INFINITY_CONTEXT_TOKEN'),
+    memoryTimeoutMs: readPositiveIntegerEnv('SUMMARY_MEMORY_TIMEOUT_MS', defaultMemoStackTimeoutMs, 1_000, 120_000),
   };
 
   if (!/^https?:\/\//.test(configValue.apiBaseUrl)) {
@@ -1263,6 +1459,11 @@ function readString(source: JsonRecord, field: string): string {
   }
 
   return value;
+}
+
+function optionalString(source: JsonRecord, field: string): string | undefined {
+  const value = source[field];
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
 }
 
 function readNumber(source: JsonRecord, field: string): number {
@@ -1312,6 +1513,59 @@ function encodeJson(value: JsonRecord): string {
 function emptyToUndefined(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function stringArrayOrUndefined(value: unknown): readonly string[] | undefined {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string') ? value : undefined;
+}
+
+function parseDateOrFallback(value: string | undefined, fallback: Date): Date {
+  if (value === undefined) {
+    return fallback;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+}
+
+function safeMemoryContextDebug(context: SummaryMemoryContext | undefined): string {
+  if (context === undefined) {
+    return '{}';
+  }
+
+  return JSON.stringify({
+    status: context.status,
+    sourceRefTypes: [...new Set((context.sourceRefs ?? [])
+      .map((ref) => typeof ref.source_type === 'string' ? ref.source_type : undefined)
+      .filter((value): value is string => value !== undefined))],
+    factsUsed: context.retrieval?.factsUsed ?? context.diagnostics.facts_used,
+    itemsUsed: context.retrieval?.itemsUsed ?? context.diagnostics.items_used,
+    renderedTextChars: context.renderedText?.length ?? 0,
+  });
+}
+
+function safeUrlOrigin(value: string): string {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return 'invalid-url-redacted';
+  }
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number, min: number, max: number): number {
+  const value = process.env[name]?.trim();
+  if (value === undefined || value.length === 0) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  }
+
+  return parsed;
 }
 
 function nowIso(): string {

@@ -79,6 +79,7 @@ const requiredSignalIds = new Set([
   'backend-loop-topic-to-delivery-audit',
   'backend-loop-scheduled-scan',
   'backend-loop-auto-summary-scheduler',
+  'backend-loop-summary-memory',
   'backend-loop-tenant-isolation',
   'backend-loop-idempotency',
 ]);
@@ -247,8 +248,10 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['topicId', 'non_empty_string'],
       ['sourceBindingId', 'non_empty_string'],
       ['scanId', 'non_empty_string'],
+      ['providerFeedCounts', 'non_empty_object_array'],
       ['feedItemIds', 'non_empty_string_array'],
       ['summaryId', 'non_empty_string'],
+      ['summaryCitationProviderKeys', 'non_empty_string_array'],
       ['feedbackId', 'non_empty_string'],
       ['digestId', 'non_empty_string'],
       ['webhookDeliveryAttemptId', 'non_empty_string'],
@@ -280,6 +283,23 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['autoSummary.latestFeedItemObservedAt', 'iso_timestamp'],
       ['autoSummary.newFeedItemCount', 'positive_integer'],
       ['manualSummaryRequestUsed', 'boolean_false'],
+    ],
+  ],
+  [
+    'backend-loop-summary-memory',
+    [
+      ['summary', 'non_empty_string'],
+      ['summaryId', 'non_empty_string'],
+      ['feedbackId', 'non_empty_string'],
+      ['feedbackProviderKey', 'non_empty_string'],
+      ['memory.status', 'non_empty_string'],
+      ['memory.memoryBaseUrlOrigin', 'non_empty_string'],
+      ['memory.topicScopeExternalRef', 'non_empty_string'],
+      ['memory.providerScopeExternalRef', 'non_empty_string'],
+      ['memory.sourceRefCount', 'non_negative_integer'],
+      ['memory.renderedTextChars', 'positive_integer'],
+      ['memory.memoryEffectMatched', 'boolean_true'],
+      ['rawMemoryTextIncluded', 'boolean_false'],
     ],
   ],
   [
@@ -1076,6 +1096,9 @@ function validateSignalEvidenceShape(artifactPath, result) {
   if (result.signalId === 'backend-loop-auto-summary-scheduler') {
     validateAutoSummaryEvidence(artifactPath, result.evidence);
   }
+  if (result.signalId === 'backend-loop-topic-to-delivery-audit') {
+    validateDurableBackendProviderCoverage(artifactPath, result.evidence);
+  }
 }
 
 function getPath(value, path) {
@@ -1111,7 +1134,7 @@ function matchesEvidenceType(value, fieldType) {
     case 'non_empty_object_array':
       return Array.isArray(value) && value.length > 0 && value.every((item) => isRecord(item) && Object.keys(item).length > 0);
     case 'durable_provider_key':
-      return ['github', 'hn', 'reddit', 'rss'].includes(value);
+      return ['github', 'hacker-news', 'hn', 'reddit', 'rss'].includes(value);
     case 'scheduled_idempotency_key':
       return typeof value === 'string' && value.startsWith('scheduled:') && value.trim().length > 'scheduled:'.length;
     case 'auto_summary_idempotency_key':
@@ -1122,6 +1145,21 @@ function matchesEvidenceType(value, fieldType) {
       return value === 'completed' || value === 'no_signal';
     default:
       return false;
+  }
+}
+
+function validateDurableBackendProviderCoverage(artifactPath, evidenceValue) {
+  const values = getPath(evidenceValue, 'providerFeedCounts');
+  if (!Array.isArray(values)) {
+    return;
+  }
+  const providerKeys = new Set(values
+    .map((item) => isRecord(item) ? item.providerKey : undefined)
+    .filter((value) => typeof value === 'string' && value.trim().length > 0));
+  for (const providerKey of ['github', 'hacker-news', 'reddit', 'rss']) {
+    if (!providerKeys.has(providerKey)) {
+      violations.push(`${artifactPath}: signal result "backend-loop-topic-to-delivery-audit" must include ${providerKey} provider feed evidence`);
+    }
   }
 }
 

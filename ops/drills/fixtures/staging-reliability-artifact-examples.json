@@ -320,11 +320,47 @@
             "topicId": "topic-e2e-example",
             "sourceBindingId": "source-binding-e2e-example",
             "scanId": "scan-e2e-example",
+            "providerFeedCounts": [
+              {
+                "providerKey": "github",
+                "sourceBindingId": "source-binding-github-example",
+                "feedItemCount": 2,
+                "feedProviderKeys": ["github"],
+                "scanId": "scan-github-example"
+              },
+              {
+                "providerKey": "hacker-news",
+                "sourceBindingId": "source-binding-hacker-news-example",
+                "feedItemCount": 2,
+                "feedProviderKeys": ["hacker-news"],
+                "scanId": "scan-hacker-news-example"
+              },
+              {
+                "providerKey": "reddit",
+                "sourceBindingId": "source-binding-reddit-example",
+                "feedItemCount": 2,
+                "feedProviderKeys": ["reddit"],
+                "scanId": "scan-reddit-example"
+              },
+              {
+                "providerKey": "rss",
+                "sourceBindingId": "source-binding-rss-example",
+                "feedItemCount": 2,
+                "feedProviderKeys": ["rss"],
+                "scanId": "scan-rss-example"
+              }
+            ],
             "feedItemIds": [
               "feed-item-e2e-example-1",
               "feed-item-e2e-example-2"
             ],
             "summaryId": "summary-e2e-example",
+            "summaryCitationProviderKeys": [
+              "github",
+              "hacker-news",
+              "reddit",
+              "rss"
+            ],
             "feedbackId": "feedback-e2e-example",
             "digestId": "digest-e2e-example",
             "webhookDeliveryAttemptId": "delivery-attempt-e2e-example",
@@ -402,6 +438,35 @@
               "newFeedItemCount": 2
             },
             "manualSummaryRequestUsed": false
+          }
+        },
+        {
+          "signalId": "backend-loop-summary-memory",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:10:30.000Z",
+          "evidence": {
+            "summary": "redacted summary feedback was projected into memo-stack and retrieved by topic and provider memory scopes",
+            "summaryId": "summary-e2e-example",
+            "feedbackId": "feedback-e2e-example",
+            "feedbackProviderKey": "reddit",
+            "memory": {
+              "status": "available",
+              "memoryBaseUrlOrigin": "https://memory.staging.social-monitor.invalid",
+              "topicScopeExternalRef": "topic:topic-e2e-example:feedback",
+              "providerScopeExternalRef": "topic:topic-e2e-example:provider:reddit:quality",
+              "sourceRefTypes": [
+                "social-monitor.summary-feedback"
+              ],
+              "sourceRefCount": 1,
+              "renderedTextChars": 128,
+              "factsUsed": 1,
+              "itemsUsed": 1,
+              "retrievalSourcesUsed": [
+                "vector"
+              ],
+              "memoryEffectMatched": true
+            },
+            "rawMemoryTextIncluded": false
           }
         },
         {

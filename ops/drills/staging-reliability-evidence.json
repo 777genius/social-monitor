@@ -313,8 +313,8 @@
       "verificationCommand": "npm run check:mvp-core-loop",
       "contractArtifact": "scripts/check-mvp-core-loop-smoke.ts",
       "stagingArtifactId": "durable-backend-e2e-output",
-      "requiredSignal": "create topic to source binding to scan to feed to summary to feedback to digest/webhook/realtime to audit passes on durable runtime",
-      "exitCondition": "staging artifact records redacted object ids for every backend step and no raw provider payloads"
+      "requiredSignal": "create topic to source bindings to scans across Reddit/GitHub/Hacker News/RSS to feed to summary to feedback to digest/webhook/realtime to audit passes on durable runtime",
+      "exitCondition": "staging artifact records redacted object ids and provider feed counts for every backend step and no raw provider payloads"
     },
     {
       "signalId": "backend-loop-scheduled-scan",
@@ -337,6 +337,17 @@
       "stagingArtifactId": "durable-backend-e2e-output",
       "requiredSignal": "summary policy automatically requests a summary job after stable feed evidence appears on durable runtime",
       "exitCondition": "staging artifact records summary policy id, auto-summary job id, summary id, auto-summary idempotency key, feed evidence timestamp and terminal summary status"
+    },
+    {
+      "signalId": "backend-loop-summary-memory",
+      "domain": "durable-backend-e2e",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run check:summary-memory-runtime-canary",
+      "contractArtifact": "ops/release/summary-memory-runtime-canary.json",
+      "stagingArtifactId": "durable-backend-e2e-output",
+      "requiredSignal": "summary feedback is projected into memo-stack and retrieved by topic/provider memory scopes during durable backend loop",
+      "exitCondition": "staging artifact records memory scope refs, retrieval counters and redaction proof without raw memory text"
     },
     {
       "signalId": "backend-loop-tenant-isolation",

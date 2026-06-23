@@ -222,8 +222,8 @@
       ],
       "externalVerificationCommands": [],
       "releaseGateIds": ["mvp-core-loop", "autonomous-monitoring-loop", "openapi-drift", "staging-reliability-evidence"],
-      "exitCondition": "topic to source binding to scheduled scan to feed to summary to feedback to digest/webhook/realtime to audit passes on durable runtime",
-      "goCondition": "tenant isolation and idempotency are proven through the full durable loop"
+      "exitCondition": "topic to source bindings to scheduler to Reddit/GitHub/Hacker News/RSS scans to feed to summary to memo-stack memory to feedback to digest/webhook/realtime to audit passes on durable runtime",
+      "goCondition": "tenant isolation, idempotency and memory projection are proven through the full durable loop"
     },
     {
       "requirementId": "summary-quality-feedback-hardening",

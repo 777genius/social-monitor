@@ -523,6 +523,8 @@ function validateLocalRuntimeStatusSmoke() {
         BACKEND_IMAGE_DIGEST: `sha256:${'a'.repeat(64)}`,
         DATABASE_URL: 'postgresql://status_user:...@127.0.0.1:54329/social_monitor',
         DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(tempDirectory, 'durable-backend-e2e.json'),
+        INFINITY_CONTEXT_TOKEN: 'memory-status-token-value-1234567890',
+        INFINITY_CONTEXT_URL: 'http://127.0.0.1:27788',
         RABBITMQ_URL: 'amqp://status_user:...@127.0.0.1:56729/social_monitor',
         REDDIT_ACCESS_TOKEN: 'reddit-status-access-value-1234567890',
         STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
@@ -544,6 +546,7 @@ function validateLocalRuntimeStatusSmoke() {
     assertNoStatusOutputSecrets(JSON.stringify(localStatus), [
       'status-api-token-value-1234567890',
       'reddit-status-access-value-1234567890',
+      'memory-status-token-value-1234567890',
       'postgresql://status_user:...@127.0.0.1:54329/social_monitor',
       'amqp://status_user:...@127.0.0.1:56729/social_monitor',
       '127.0.0.1:54329',
@@ -563,6 +566,8 @@ function validateEnvFileStatusSmoke() {
       BACKEND_IMAGE_DIGEST: `sha256:${'b'.repeat(64)}`,
       DATABASE_URL: 'postgresql://status_env_file_user:...@127.0.0.1:54339/social_monitor',
       DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(tempDirectory, 'durable-backend-e2e.json'),
+      INFINITY_CONTEXT_TOKEN: 'memory-status-env-file-token-value-1234567890',
+      INFINITY_CONTEXT_URL: 'http://127.0.0.1:27788',
       RABBITMQ_URL: 'amqp://status_env_file_user:...@127.0.0.1:56739/social_monitor',
       REDDIT_ACCESS_TOKEN: 'reddit-status-env-file-access-value-1234567890',
       STAGING_ENVIRONMENT_ID: 'docker-alpha-env-file-1',
@@ -591,6 +596,7 @@ function validateEnvFileStatusSmoke() {
     assertNoStatusOutputSecrets(JSON.stringify(envFileStatus), [
       'status-env-file-api-token-value-1234567890',
       'reddit-status-env-file-access-value-1234567890',
+      'memory-status-env-file-token-value-1234567890',
       'postgresql://status_env_file_user:...@127.0.0.1:54339/social_monitor',
       'amqp://status_env_file_user:...@127.0.0.1:56739/social_monitor',
       '127.0.0.1:54339',
