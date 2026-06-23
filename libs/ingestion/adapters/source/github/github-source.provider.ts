@@ -10,9 +10,12 @@ import type {
 } from '../../../ports';
 import type { GitHubClientPort, GitHubIssueSearchItem } from './github-client.port';
 
+export const GITHUB_ISSUES_PROVIDER_KEY = 'github-issues';
+export const LEGACY_GITHUB_ISSUES_PROVIDER_KEY = 'github';
+
 const capabilityProfile: SourceCapabilityProfile = {
-  providerKey: 'github',
-  displayName: 'GitHub',
+  providerKey: GITHUB_ISSUES_PROVIDER_KEY,
+  displayName: 'GitHub Issues',
   version: 1,
   productionSafe: true,
   supportedContentUnits: ['post', 'comment', 'link'],
@@ -43,7 +46,7 @@ export class GitHubSourceProvider implements SourceProviderPort {
     }
 
     if (query.query.trim().length === 0) {
-      return { ok: false, reason: 'GitHub search query must be non-empty' };
+      return { ok: false, reason: 'GitHub issues search query must be non-empty' };
     }
 
     return { ok: true };
@@ -74,13 +77,13 @@ export class GitHubSourceProvider implements SourceProviderPort {
       items: normalized,
       nextCursor: page.nextCursor,
       warnings: page.items.length !== normalized.length
-        ? ['Some GitHub search items were skipped because they were pull requests or incomplete.']
+        ? ['Some GitHub issues search items were skipped because they were pull requests or incomplete.']
         : [],
     };
   }
 
   classifyError(error: unknown): ProviderFailure {
-    const message = error instanceof Error ? error.message : 'Unknown GitHub provider error';
+    const message = error instanceof Error ? error.message : 'Unknown GitHub issues provider error';
     const lowerMessage = message.toLowerCase();
 
     if (message.includes('401') || lowerMessage.includes('bad credentials')) {
@@ -155,7 +158,7 @@ const readPositiveInteger = (
   }
 
   if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
-    throw new Error(`GitHub source config integer must be between ${min} and ${max}`);
+    throw new Error(`GitHub issues source config integer must be between ${min} and ${max}`);
   }
 
   return value;

@@ -66,32 +66,24 @@ void main() {
 
       if (isPresentation) {
         _expectNoImportsStartingWith(path, imports, const [
-          'package:social_monitor_auth/src/',
-          'package:social_monitor_feed/src/',
-          'package:social_monitor_settings/src/',
-          'package:social_monitor_sources/src/',
-          'package:social_monitor_summaries/src/',
-          'package:social_monitor_topics/src/',
+          ..._featureCrossPackageImportPrefixes,
         ], allowSelfFeatureFor: path);
         if (!isFeatureComposition) {
           _expectNoFeatureLayerImports(path, imports, const ['infrastructure']);
         }
       }
 
-      if (!isInfrastructure) {
+      if (!_allowsGeneratedApiImportInFeature(path)) {
         _expectNoImportsStartingWith(path, imports, const [
           'package:social_monitor_generated_api',
         ]);
       }
 
-      _expectNoImportsStartingWith(path, imports, const [
-        'dart:io',
-        'package:flutter_modular',
-        'package:get_it',
-        'package:headless',
-        'package:headless_adaptive',
-        'package:naked_ui',
-      ]);
+      _expectNoImportsStartingWith(
+        path,
+        imports,
+        _featureGlobalForbiddenImportPrefixes,
+      );
       if (!_allowsFeatureModularityImport(path)) {
         _expectNoImportsStartingWith(path, imports, const [
           'package:modularity_flutter',
@@ -353,14 +345,11 @@ void main() {
 
     final appPubspecPath = '$frontendRoot/app/pubspec.yaml';
     final appPubspec = File(appPubspecPath).readAsStringSync();
-    _expectNoPubspecEntries(appPubspecPath, appPubspec, [
-      'mobx:',
-      'flutter_mobx:',
-      'flutter_modular:',
-      'get_it:',
-      'headless:',
-      'headless_adaptive:',
-    ]);
+    _expectNoPubspecEntries(
+      appPubspecPath,
+      appPubspec,
+      _appForbiddenPubspecEntries,
+    );
     _expectPubspecEntries(appPubspecPath, appPubspec, ['modularity_flutter:']);
 
     for (final featurePackage in featurePackages) {
@@ -372,11 +361,7 @@ void main() {
       });
 
       _expectNoPubspecEntries(pubspecPath, pubspec, [
-        'go_router:',
-        'flutter_modular:',
-        'get_it:',
-        'headless:',
-        'headless_adaptive:',
+        ..._featureForbiddenPubspecEntries,
         for (final feature in otherFeatures) '$feature:',
       ]);
       _expectPubspecEntries(pubspecPath, pubspec, ['modularity_flutter:']);
@@ -388,14 +373,7 @@ void main() {
       designSystemPubspecPath,
     ).readAsStringSync();
     _expectNoPubspecEntries(designSystemPubspecPath, designSystemPubspec, [
-      'go_router:',
-      'mobx:',
-      'flutter_mobx:',
-      'flutter_modular:',
-      'get_it:',
-      'modularity_flutter:',
-      'social_monitor_generated_api:',
-      'social_monitor_shared_kernel:',
+      ..._designSystemForbiddenPubspecEntries,
       for (final feature in featurePackages) '$feature:',
     ]);
 
@@ -405,18 +383,7 @@ void main() {
       sharedKernelPubspecPath,
     ).readAsStringSync();
     _expectNoPubspecEntries(sharedKernelPubspecPath, sharedKernelPubspec, [
-      'flutter:',
-      'go_router:',
-      'mobx:',
-      'flutter_mobx:',
-      'flutter_modular:',
-      'get_it:',
-      'headless:',
-      'headless_adaptive:',
-      'modularity_flutter:',
-      'social_monitor_app:',
-      'social_monitor_design_system:',
-      'social_monitor_generated_api:',
+      ..._sharedKernelForbiddenPubspecEntries,
       for (final feature in featurePackages) '$feature:',
     ]);
 
@@ -426,14 +393,7 @@ void main() {
       generatedApiPubspecPath,
     ).readAsStringSync();
     _expectNoPubspecEntries(generatedApiPubspecPath, generatedApiPubspec, [
-      'flutter:',
-      'go_router:',
-      'mobx:',
-      'flutter_mobx:',
-      'flutter_modular:',
-      'get_it:',
-      'modularity_flutter:',
-      'social_monitor_design_system:',
+      ..._generatedApiForbiddenPubspecEntries,
       for (final feature in featurePackages) '$feature:',
     ]);
   });
@@ -444,20 +404,11 @@ void main() {
 
     for (final entry in importsByFile.entries) {
       final path = _normalizePath(entry.key);
-      _expectNoImportsStartingWith(path, entry.value, const [
-        'dart:io',
-        'package:headless',
-        'package:headless_adaptive',
-        'package:flutter_modular',
-        'package:get_it',
-        'package:naked_ui',
-        'package:social_monitor_auth/src/',
-        'package:social_monitor_feed/src/',
-        'package:social_monitor_settings/src/',
-        'package:social_monitor_sources/src/',
-        'package:social_monitor_summaries/src/',
-        'package:social_monitor_topics/src/',
-      ]);
+      _expectNoImportsStartingWith(
+        path,
+        entry.value,
+        _appForbiddenImportPrefixes,
+      );
       if (!_allowsAppModularityImport(path)) {
         _expectNoImportsStartingWith(path, entry.value, const [
           'package:modularity_flutter',
@@ -478,23 +429,11 @@ void main() {
 
     for (final entry in importsByFile.entries) {
       final path = _normalizePath(entry.key);
-      _expectNoImportsStartingWith(path, entry.value, const [
-        'package:go_router',
-        'package:get_it',
-        'package:mobx',
-        'package:modularity_flutter',
-        'package:flutter_modular',
-        'package:flutter_mobx',
-        'package:social_monitor_app',
-        'package:social_monitor_auth',
-        'package:social_monitor_feed',
-        'package:social_monitor_generated_api',
-        'package:social_monitor_settings',
-        'package:social_monitor_shared_kernel',
-        'package:social_monitor_sources',
-        'package:social_monitor_summaries',
-        'package:social_monitor_topics',
-      ]);
+      _expectNoImportsStartingWith(
+        path,
+        entry.value,
+        _designSystemForbiddenImportPrefixes,
+      );
     }
   });
 
@@ -506,28 +445,11 @@ void main() {
 
     for (final entry in importsByFile.entries) {
       final path = _normalizePath(entry.key);
-      _expectNoImportsStartingWith(path, entry.value, const [
-        'dart:io',
-        'dart:ui',
-        'package:flutter',
-        'package:flutter_mobx',
-        'package:go_router',
-        'package:headless',
-        'package:headless_adaptive',
-        'package:flutter_modular',
-        'package:get_it',
-        'package:mobx',
-        'package:modularity_flutter',
-        'package:naked_ui',
-        'package:social_monitor_app',
-        'package:social_monitor_auth',
-        'package:social_monitor_design_system',
-        'package:social_monitor_feed',
-        'package:social_monitor_settings',
-        'package:social_monitor_sources',
-        'package:social_monitor_summaries',
-        'package:social_monitor_topics',
-      ]);
+      _expectNoImportsStartingWith(
+        path,
+        entry.value,
+        _generatedApiForbiddenImportPrefixes,
+      );
     }
   });
 
@@ -539,29 +461,11 @@ void main() {
 
     for (final entry in importsByFile.entries) {
       final path = _normalizePath(entry.key);
-      _expectNoImportsStartingWith(path, entry.value, const [
-        'dart:io',
-        'dart:ui',
-        'package:flutter',
-        'package:flutter_mobx',
-        'package:go_router',
-        'package:headless',
-        'package:headless_adaptive',
-        'package:flutter_modular',
-        'package:get_it',
-        'package:mobx',
-        'package:modularity_flutter',
-        'package:naked_ui',
-        'package:social_monitor_app',
-        'package:social_monitor_auth',
-        'package:social_monitor_design_system',
-        'package:social_monitor_feed',
-        'package:social_monitor_generated_api',
-        'package:social_monitor_settings',
-        'package:social_monitor_sources',
-        'package:social_monitor_summaries',
-        'package:social_monitor_topics',
-      ]);
+      _expectNoImportsStartingWith(
+        path,
+        entry.value,
+        _sharedKernelForbiddenImportPrefixes,
+      );
     }
   });
 

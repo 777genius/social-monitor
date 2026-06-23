@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { normalizeJsonObject, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import {
   ScanAttempt,
@@ -25,6 +25,7 @@ export type PrismaSourceItemRecord = {
   readonly publishedAt: Date;
   readonly observedAt: Date;
   readonly createdAt: Date;
+  readonly metadata: unknown;
 };
 
 export type PrismaCursorCheckpointRecord = {
@@ -99,6 +100,7 @@ export const sourceItemFromPrisma = (record: PrismaSourceItemRecord): SourceItem
     authorHandle: record.authorHandle ?? undefined,
     publishedAt: record.publishedAt,
     ingestedAt: record.observedAt,
+    metadata: normalizeJsonObject(record.metadata),
   } satisfies SourceItemProps);
 
 export const cursorFromPrisma = (record: PrismaCursorCheckpointRecord): ScanCursorRecord | null => {

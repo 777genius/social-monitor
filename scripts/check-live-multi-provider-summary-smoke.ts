@@ -38,7 +38,7 @@ import { InMemoryScanAttemptRepository } from '../libs/ingestion/adapters/persis
 import { InMemoryScanCursorRepository } from '../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
 import { InMemorySourceItemRepository } from '../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { InMemoryScanFailureQueueAdapter } from '../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
-import { GitHubSourceProvider } from '../libs/ingestion/adapters/source/github/github-source.provider';
+import { GITHUB_ISSUES_PROVIDER_KEY, GitHubSourceProvider } from '../libs/ingestion/adapters/source/github/github-source.provider';
 import { HttpGitHubClient } from '../libs/ingestion/adapters/source/github/http-github-client';
 import { HackerNewsSourceProvider } from '../libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
 import { HttpHackerNewsClient } from '../libs/ingestion/adapters/source/hacker-news/http-hacker-news-client';
@@ -65,7 +65,7 @@ import type {
 } from '../libs/ingestion/ports';
 import { writeLiveEvidenceArtifactAtomically } from './lib/live-evidence-artifact';
 
-type LiveProviderKey = 'reddit' | 'github' | 'hacker-news' | 'rss';
+type LiveProviderKey = 'reddit' | 'github-issues' | 'hacker-news' | 'rss';
 
 type ScanTarget = {
   readonly providerKey: LiveProviderKey;
@@ -400,7 +400,7 @@ const buildScanTargets = (): readonly ScanTarget[] => {
       },
     },
     {
-      providerKey: 'github',
+      providerKey: GITHUB_ISSUES_PROVIDER_KEY,
       sourceBindingId: 'source-binding-live-multi-provider-github',
       scanPolicyId: 'scan-policy-live-multi-provider-github',
       sourceQuery: { mode: 'search', query: githubQuery },
@@ -468,7 +468,7 @@ const writeOptionalEvidenceArtifact = (input: {
       rawQueryIncluded: false,
       authMode: target.providerKey === 'reddit'
         ? 'app_only_oauth'
-        : target.providerKey === 'github' && readOptionalEnv('GITHUB_ACCESS_TOKEN') !== undefined
+        : target.providerKey === GITHUB_ISSUES_PROVIDER_KEY && readOptionalEnv('GITHUB_ACCESS_TOKEN') !== undefined
           ? 'token_redacted'
           : 'public_or_anonymous',
     })),

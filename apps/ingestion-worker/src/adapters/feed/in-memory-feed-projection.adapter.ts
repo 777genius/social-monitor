@@ -30,6 +30,7 @@ export class InMemoryFeedProjectionAdapter implements FeedProjectionPort {
           authorHandle: snapshot.authorHandle,
           publishedAt: snapshot.publishedAt,
           observedAt: snapshot.ingestedAt,
+          providerMetadata: snapshot.metadata,
         }),
       );
       projected += 1;

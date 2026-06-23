@@ -9,7 +9,14 @@ import { PrismaScanFailureQueueAdapter } from '../../adapters/persistence/prisma
 import { InMemoryScanFailureQueueAdapter } from '../../adapters/queue/in-memory-scan-failure-queue.adapter';
 import { FakeSourceProvider } from '../../adapters/source/fake-source.provider';
 import { FixtureGitHubClient } from '../../adapters/source/github/fixture-github-client';
-import { GitHubSourceProvider } from '../../adapters/source/github/github-source.provider';
+import {
+  GITHUB_ISSUES_PROVIDER_KEY,
+  GitHubSourceProvider,
+  LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
+} from '../../adapters/source/github/github-source.provider';
+import { FixtureGitHubRepoRadarClient } from '../../adapters/source/github-repo-radar/fixture-github-repo-radar-client';
+import { FixtureGitHubRepositoryLiveVerifier } from '../../adapters/source/github-repo-radar/fixture-github-repository-live-verifier';
+import { GitHubRepoRadarSourceProvider } from '../../adapters/source/github-repo-radar/github-repo-radar-source.provider';
 import { FixtureHackerNewsClient } from '../../adapters/source/hacker-news/fixture-hacker-news-client';
 import { HackerNewsSourceProvider } from '../../adapters/source/hacker-news/hacker-news-source.provider';
 import { InMemorySourceProviderRegistry } from '../../adapters/source/in-memory-source-provider.registry';
@@ -70,6 +77,8 @@ import { SourceProfileController } from './source-profile.controller';
     },
     FakeSourceProvider,
     FixtureGitHubClient,
+    FixtureGitHubRepoRadarClient,
+    FixtureGitHubRepositoryLiveVerifier,
     FixtureHackerNewsClient,
     FixtureRedditClient,
     {
@@ -86,6 +95,16 @@ import { SourceProfileController } from './source-profile.controller';
       provide: GitHubSourceProvider,
       useFactory: (client: FixtureGitHubClient) => new GitHubSourceProvider(client),
       inject: [FixtureGitHubClient],
+    },
+    {
+      provide: GitHubRepoRadarSourceProvider,
+      useFactory: (
+        radarClient: FixtureGitHubRepoRadarClient,
+        liveVerifier: FixtureGitHubRepositoryLiveVerifier,
+      ) => new GitHubRepoRadarSourceProvider(radarClient, liveVerifier, {
+        now: () => new Date('2026-06-23T12:00:00.000Z'),
+      }),
+      inject: [FixtureGitHubRepoRadarClient, FixtureGitHubRepositoryLiveVerifier],
     },
     {
       provide: RssSourceProvider,
@@ -105,20 +124,23 @@ import { SourceProfileController } from './source-profile.controller';
       useFactory: (
         fakeProvider: FakeSourceProvider,
         githubProvider: GitHubSourceProvider,
+        githubRepoRadarProvider: GitHubRepoRadarSourceProvider,
         hackerNewsProvider: HackerNewsSourceProvider,
         redditProvider: RedditSourceProvider,
         rssProvider: RssSourceProvider,
       ) =>
         new InMemorySourceProviderRegistry(
           selectRuntimeSourceProviders(
-            [fakeProvider, githubProvider, hackerNewsProvider, redditProvider, rssProvider],
+            [fakeProvider, githubProvider, githubRepoRadarProvider, hackerNewsProvider, redditProvider, rssProvider],
             process.env,
           ),
           sourceReadinessProfiles,
+          [{ providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY, canonicalProviderKey: GITHUB_ISSUES_PROVIDER_KEY }],
         ),
       inject: [
         FakeSourceProvider,
         GitHubSourceProvider,
+        GitHubRepoRadarSourceProvider,
         HackerNewsSourceProvider,
         RedditSourceProvider,
         RssSourceProvider,

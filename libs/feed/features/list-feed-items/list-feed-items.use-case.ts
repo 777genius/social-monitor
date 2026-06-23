@@ -8,6 +8,8 @@ type ListFeedItemsFailure = DomainError | Error;
 
 const MAX_LIMIT = 100;
 const MAX_SEARCH_QUERY_LENGTH = 200;
+const MAX_FILTER_VALUE_LENGTH = 80;
+const REPOSITORY_TREND_WINDOWS = new Set(['24h', '7d', '30d', '90d']);
 
 export class ListFeedItemsUseCase {
   constructor(private readonly feedItems: FeedItemReadRepositoryPort) {}
@@ -25,6 +27,12 @@ export class ListFeedItemsUseCase {
       return err(new DomainError('validation.failed', 'Feed search query is too long', {
         maxLength: MAX_SEARCH_QUERY_LENGTH,
       }));
+    }
+
+    const invalidFilter = validateListFilter(query);
+
+    if (invalidFilter !== undefined) {
+      return err(invalidFilter);
     }
 
     const result = await this.feedItems.list(query);
@@ -45,9 +53,36 @@ export class ListFeedItemsUseCase {
           authorHandle: snapshot.authorHandle,
           publishedAt: snapshot.publishedAt.toISOString(),
           observedAt: snapshot.observedAt.toISOString(),
+          providerMetadata: snapshot.providerMetadata,
         };
       }),
       nextCursor: result.nextCursor,
     });
   }
 }
+
+const validateListFilter = (query: ListFeedItemsUseCaseQuery): DomainError | undefined => {
+  for (const [field, value] of [
+    ['providerKey', query.providerKey],
+    ['repositoryLanguage', query.repositoryLanguage],
+    ['repositoryTopic', query.repositoryTopic],
+  ] as const) {
+    if (value !== undefined && value.trim().length > MAX_FILTER_VALUE_LENGTH) {
+      return new DomainError('validation.failed', `Feed ${field} filter is too long`, {
+        field,
+        maxLength: MAX_FILTER_VALUE_LENGTH,
+      });
+    }
+  }
+
+  if (
+    query.repositoryTrendWindow !== undefined &&
+    !REPOSITORY_TREND_WINDOWS.has(query.repositoryTrendWindow.trim())
+  ) {
+    return new DomainError('validation.failed', 'Feed repository trend window filter is invalid', {
+      allowedValues: [...REPOSITORY_TREND_WINDOWS],
+    });
+  }
+
+  return undefined;
+};

@@ -20,6 +20,7 @@ export type PrismaFeedClient = {
         readonly authorHandle?: string | null;
         readonly publishedAt: Date;
         readonly observedAt: Date;
+        readonly providerMetadata?: Readonly<Record<string, unknown>> | null;
         readonly status: 'VISIBLE';
       };
       readonly create: {
@@ -37,6 +38,7 @@ export type PrismaFeedClient = {
         readonly authorHandle?: string | null;
         readonly publishedAt: Date;
         readonly observedAt: Date;
+        readonly providerMetadata?: Readonly<Record<string, unknown>> | null;
         readonly status: 'VISIBLE';
       };
     }): Promise<PrismaFeedItemRecord>;
@@ -47,6 +49,7 @@ export type PrismaFeedClient = {
         readonly status: 'VISIBLE';
         readonly topicId?: string;
         readonly observedAt?: { readonly gt: Date };
+        readonly providerKey?: string;
       };
       readonly orderBy: readonly [{ readonly publishedAt: 'desc' }, { readonly id: 'desc' }];
       readonly skip: number;
@@ -59,6 +62,7 @@ export type PrismaFeedClient = {
         readonly status: 'VISIBLE';
         readonly topicId?: string;
         readonly observedAt?: { readonly gt: Date };
+        readonly providerKey?: string;
       };
     }): Promise<number>;
     findFirst(args: {

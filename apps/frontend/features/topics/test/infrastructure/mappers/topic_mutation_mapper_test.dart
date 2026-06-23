@@ -4,7 +4,7 @@ import 'package:social_monitor_topics/src/application/commands/create_topic_comm
 import 'package:social_monitor_topics/src/application/commands/update_topic_command.dart';
 import 'package:social_monitor_topics/src/domain/value_objects/topic_id.dart';
 import 'package:social_monitor_topics/src/domain/value_objects/topic_name.dart';
-import 'package:social_monitor_topics/src/domain/value_objects/topic_rules.dart';
+import 'package:social_monitor_topics/src/domain/value_objects/topic_query.dart';
 import 'package:social_monitor_topics/src/infrastructure/mappers/topic_mutation_mapper.dart';
 
 import '../../support/topics_test_fixtures.dart';
@@ -17,7 +17,8 @@ void main() {
       const CreateTopicCommand(
         scope: testWorkspaceScope,
         name: TopicName(' Market risk '),
-        rules: TopicRules(keywords: [' risk ', 'pricing', 'risk']),
+        query: TopicQuery(' risk OR pricing '),
+        idempotencyKey: 'topic-create-1',
       ),
     );
     final update = mapper.updateRequest(
@@ -25,7 +26,7 @@ void main() {
         scope: testWorkspaceScope,
         topicId: TopicId('topic-market-risk'),
         name: TopicName('Market risk updated'),
-        rules: TopicRules(keywords: ['risk']),
+        query: TopicQuery('risk'),
       ),
     );
     final archive = mapper.archiveRequest(
@@ -36,8 +37,11 @@ void main() {
     );
 
     expect(create.name, 'Market risk');
-    expect(create.keywords, ['risk', 'pricing']);
+    expect(create.query, 'risk OR pricing');
+    expect(create.idempotencyKey, 'topic-create-1');
+    expect(create.scope, testWorkspaceScope);
     expect(update.id, 'topic-market-risk');
+    expect(update.query, 'risk');
     expect(archive.id, 'topic-market-risk');
   });
 }

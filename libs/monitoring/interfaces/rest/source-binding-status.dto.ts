@@ -1,14 +1,22 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { IsIn } from 'class-validator';
 
 import type { SourceBindingStatus } from '../../domain';
+import { sourceBindingStatusValues } from './list-source-bindings.dto';
 
 export class ChangeSourceBindingStatusRequestDto {
+  @ApiProperty({ enum: sourceBindingStatusValues })
   @IsIn(['enabled', 'paused'])
-  status!: SourceBindingStatus;
+  declare readonly status: SourceBindingStatus;
 }
 
-export type ChangeSourceBindingStatusResponseDto = {
-  readonly sourceBindingId: string;
-  readonly status: SourceBindingStatus;
-  readonly changed: boolean;
-};
+export class ChangeSourceBindingStatusResponseDto {
+  @ApiProperty()
+  declare readonly sourceBindingId: string;
+
+  @ApiProperty({ enum: sourceBindingStatusValues })
+  declare readonly status: SourceBindingStatus;
+
+  @ApiProperty()
+  declare readonly changed: boolean;
+}

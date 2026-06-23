@@ -43,6 +43,7 @@ These rules exist so agents build Flutter frontend code that does not collapse i
 - Feature code imports `design_system`, not raw `headless`, Syncfusion, charting packages or package-specific UI primitives.
 - Domain and application layers never import Flutter, MobX, `go_router`, generated API clients, DTOs or third-party UI packages.
 - Feature packages may declare MobX for presentation stores and `generated_api` for infrastructure adapters, but imports are layer-gated.
+- Frontend REST generation uses `openapi_retrofit_generator` with `Dio`/`Retrofit` inside `packages/generated_api` only. Features consume generated REST through infrastructure anti-corruption adapters and never import `Dio`, `Retrofit` or generator packages directly.
 - `modularity_flutter` is the default feature route/module boundary. Use it only in app root, `presentation/routes` and `presentation/composition`.
 - Do not add `flutter_modular` or `get_it` to frontend packages by default. Extra DI/module libraries require an ADR and an architecture test exception.
 - Generated API clients are outer-boundary details. Feature code may use them only inside infrastructure.
@@ -213,7 +214,7 @@ Layer responsibilities:
 - `app` owns `MaterialApp`, `GoRouter`, route registration and composition roots only.
 - `design_system` owns tokens, themes, headless wrappers and reusable product UI.
 - `shared_kernel` owns framework-neutral primitives: `Result`, failures, ids, scope, clocks, pagination, async state.
-- `generated_api` owns generated REST client wrappers and Problem Details mapping.
+- `generated_api` owns generated REST client wrappers, `Dio`/`Retrofit` transport setup and Problem Details mapping.
 - `domain` owns bounded-context language, aggregates, entities, value objects, domain events, policies, specifications, repositories and domain services.
 - `application` owns use cases, commands, queries, application contracts and typed workflow results.
 - `infrastructure` owns generated API clients, DTO mapping, persistence/cache/realtime implementations and external SDKs.
@@ -255,6 +256,7 @@ Forbidden:
 - `application` importing infrastructure or presentation.
 - `infrastructure` importing presentation, Flutter UI, routing, MobX or design-system packages.
 - `presentation` pages, components and stores importing infrastructure implementation files.
+- Feature packages importing `Dio`, `Retrofit`, OpenAPI generator packages, `headless`, Syncfusion/chart packages, `dart:io`, platform channels or direct HTTP clients.
 - Feature widgets importing `generated_api`, `headless`, Syncfusion/chart packages, `dart:io`, platform channels or direct HTTP clients.
 - Feature packages importing another feature's `src/` internals.
 - `design_system` importing app, features, MobX, DI, generated API, persistence or source-specific implementations.
@@ -380,6 +382,8 @@ Mapper rules:
 API rules:
 
 - Do not manually patch generated clients.
+- Default Flutter REST generation is `openapi_retrofit_generator` plus `Dio`/`Retrofit` inside `packages/generated_api`; switching generator families requires an ADR, current package research and architecture-test updates.
+- `Dio` interceptors, auth headers, base URL, timeout, retry, cancellation, correlation id and redacted logging are configured through generated-api composition helpers, not inside features.
 - Do not expose DTOs to widgets or stores.
 - Regenerate clients from contracts and commit generated output only when project policy requires it.
 - Problem Details or API error payloads map into shared failures before reaching presentation.
@@ -529,6 +533,7 @@ Feature screens need:
 ## Dependency Rules
 
 - Before adding a Dart/Flutter package, check current stable version and maintenance state.
+- `Dio`, `Retrofit`, `retrofit_generator` and `openapi_retrofit_generator` may be added only to `packages/generated_api`; feature packages get only `social_monitor_generated_api` as their REST dependency.
 - Prefer hosted pinned versions for portable workspace resolution.
 - Local `dependency_overrides` are allowed only when the sibling repo path is documented and available in the expected workspace.
 - Do not add a package to solve one tiny helper unless the maintenance and bundle cost is justified.

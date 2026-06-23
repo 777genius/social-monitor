@@ -15,6 +15,27 @@ final class ApiProblem {
   final String? type;
   final String? instance;
 
+  static ApiProblem fromResponse({
+    required int? statusCode,
+    required Object? data,
+  }) {
+    if (data case final Map<Object?, Object?> problem) {
+      return ApiProblem(
+        title: _stringValue(problem['title']) ?? 'Request failed',
+        status: _intValue(problem['status']) ?? statusCode ?? 500,
+        detail: _stringValue(problem['detail']),
+        type: _stringValue(problem['type']),
+        instance: _stringValue(problem['instance']),
+      );
+    }
+
+    return ApiProblem(
+      title: 'Request failed',
+      status: statusCode ?? 500,
+      detail: data is String && data.trim().isNotEmpty ? data : null,
+    );
+  }
+
   AppFailure toFailure() {
     final message = detail == null || detail!.isEmpty ? title : detail!;
 
@@ -26,4 +47,20 @@ final class ApiProblem {
       _ => ValidationFailure(message: message, code: 'validation_error'),
     };
   }
+}
+
+String? _stringValue(Object? value) {
+  return value is String && value.trim().isNotEmpty ? value : null;
+}
+
+int? _intValue(Object? value) {
+  if (value is int) {
+    return value;
+  }
+
+  if (value is num) {
+    return value.toInt();
+  }
+
+  return null;
 }

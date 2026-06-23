@@ -366,11 +366,81 @@ CREATE TABLE "feed_items" (
     "author_handle" TEXT,
     "published_at" TIMESTAMPTZ(6) NOT NULL,
     "observed_at" TIMESTAMPTZ(6) NOT NULL,
+    "provider_metadata" JSONB,
     "status" "FeedItemStatus" NOT NULL DEFAULT 'VISIBLE',
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
 
     CONSTRAINT "feed_items_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "github_repository_trend_candidates" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "topic_id" UUID NOT NULL,
+    "source_binding_id" UUID NOT NULL,
+    "scan_job_id" UUID NOT NULL,
+    "repository_full_name" TEXT NOT NULL,
+    "primary_window" TEXT NOT NULL,
+    "stars_24h" INTEGER NOT NULL,
+    "stars_7d" INTEGER NOT NULL,
+    "stars_30d" INTEGER NOT NULL,
+    "stars_90d" INTEGER NOT NULL,
+    "rank" INTEGER NOT NULL,
+    "observed_at" TIMESTAMPTZ(6) NOT NULL,
+    "source" TEXT NOT NULL,
+    "metadata" JSONB NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "github_repository_trend_candidates_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "github_repository_trend_snapshots" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "repository_full_name" TEXT NOT NULL,
+    "repository_url" TEXT NOT NULL,
+    "description" TEXT,
+    "language" TEXT,
+    "topics" JSONB NOT NULL,
+    "license" TEXT,
+    "total_stars" INTEGER NOT NULL,
+    "stars_24h" INTEGER NOT NULL,
+    "stars_7d" INTEGER NOT NULL,
+    "stars_30d" INTEGER NOT NULL,
+    "stars_90d" INTEGER NOT NULL,
+    "checked_at" TIMESTAMPTZ(6) NOT NULL,
+    "source" TEXT NOT NULL,
+    "metadata" JSONB NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "github_repository_trend_snapshots_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "github_repository_trend_results" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "topic_id" UUID NOT NULL,
+    "source_binding_id" UUID NOT NULL,
+    "scan_job_id" UUID NOT NULL,
+    "source_item_id" UUID NOT NULL,
+    "repository_full_name" TEXT NOT NULL,
+    "repository_url" TEXT NOT NULL,
+    "primary_window" TEXT NOT NULL,
+    "rank" INTEGER NOT NULL,
+    "checked_at" TIMESTAMPTZ(6) NOT NULL,
+    "observed_at" TIMESTAMPTZ(6) NOT NULL,
+    "source" TEXT NOT NULL,
+    "metadata" JSONB NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "github_repository_trend_results_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -456,6 +526,79 @@ CREATE TABLE "summary_feedback" (
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "summary_feedback_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "briefing_artifacts" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "scope_type" TEXT NOT NULL,
+    "scope_key" TEXT NOT NULL,
+    "topic_id" UUID,
+    "user_id" TEXT,
+    "subscription_id" UUID,
+    "status" "SummaryStatus" NOT NULL DEFAULT 'COMPLETED',
+    "schema_version" INTEGER NOT NULL DEFAULT 1,
+    "model_version" TEXT NOT NULL,
+    "prompt_version" TEXT NOT NULL,
+    "headline" TEXT NOT NULL,
+    "summary_text" TEXT,
+    "artifact_payload" JSONB NOT NULL,
+    "citations" JSONB NOT NULL,
+    "quality_signals" JSONB NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "briefing_artifacts_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "briefing_jobs" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "scope_type" TEXT NOT NULL,
+    "scope_key" TEXT NOT NULL,
+    "topic_id" UUID,
+    "user_id" TEXT,
+    "subscription_id" UUID,
+    "status" "SummaryStatus" NOT NULL DEFAULT 'REQUESTED',
+    "idempotency_key" TEXT NOT NULL,
+    "requested_at" TIMESTAMPTZ(6) NOT NULL,
+    "started_at" TIMESTAMPTZ(6),
+    "completed_at" TIMESTAMPTZ(6),
+    "failed_at" TIMESTAMPTZ(6),
+    "briefing_artifact_id" UUID,
+    "failure_reason" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "briefing_jobs_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "briefing_policies" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "scope_type" TEXT NOT NULL,
+    "scope_key" TEXT NOT NULL,
+    "topic_id" UUID,
+    "language" TEXT NOT NULL,
+    "format" TEXT NOT NULL,
+    "tone" TEXT NOT NULL,
+    "max_stories" INTEGER NOT NULL,
+    "include_risks" BOOLEAN NOT NULL,
+    "include_topic_highlights" BOOLEAN NOT NULL,
+    "include_repeated_signals" BOOLEAN NOT NULL,
+    "dedupe_strategy" TEXT NOT NULL,
+    "custom_instructions" TEXT,
+    "rules_version" TEXT NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "briefing_policies_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -913,6 +1056,24 @@ CREATE INDEX "feed_items_tenant_id_workspace_id_provider_key_observed_at_idx" ON
 CREATE UNIQUE INDEX "feed_items_tenant_id_topic_id_dedupe_key_key" ON "feed_items"("tenant_id", "topic_id", "dedupe_key");
 
 -- CreateIndex
+CREATE INDEX "github_repository_trend_candidates_tenant_id_workspace_id_s_idx" ON "github_repository_trend_candidates"("tenant_id", "workspace_id", "source_binding_id", "observed_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "github_repository_trend_candidates_tenant_id_workspace_id_s_key" ON "github_repository_trend_candidates"("tenant_id", "workspace_id", "scan_job_id", "repository_full_name", "primary_window");
+
+-- CreateIndex
+CREATE INDEX "github_repository_trend_snapshots_tenant_id_workspace_id_ch_idx" ON "github_repository_trend_snapshots"("tenant_id", "workspace_id", "checked_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "github_repository_trend_snapshots_tenant_id_workspace_id_re_key" ON "github_repository_trend_snapshots"("tenant_id", "workspace_id", "repository_full_name", "checked_at");
+
+-- CreateIndex
+CREATE INDEX "github_repository_trend_results_tenant_id_workspace_id_topi_idx" ON "github_repository_trend_results"("tenant_id", "workspace_id", "topic_id", "checked_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "github_repository_trend_results_tenant_id_workspace_id_scan_key" ON "github_repository_trend_results"("tenant_id", "workspace_id", "scan_job_id", "repository_full_name", "primary_window");
+
+-- CreateIndex
 CREATE INDEX "summary_artifacts_tenant_id_workspace_id_topic_id_status_cr_idx" ON "summary_artifacts"("tenant_id", "workspace_id", "topic_id", "status", "created_at");
 
 -- CreateIndex
@@ -938,6 +1099,27 @@ CREATE INDEX "summary_feedback_tenant_id_workspace_id_summary_artifact_id_idx" O
 
 -- CreateIndex
 CREATE UNIQUE INDEX "summary_feedback_tenant_id_idempotency_key_key" ON "summary_feedback"("tenant_id", "idempotency_key");
+
+-- CreateIndex
+CREATE INDEX "briefing_artifacts_tenant_id_workspace_id_scope_key_status__idx" ON "briefing_artifacts"("tenant_id", "workspace_id", "scope_key", "status", "created_at");
+
+-- CreateIndex
+CREATE INDEX "briefing_artifacts_tenant_id_workspace_id_user_id_scope_key_idx" ON "briefing_artifacts"("tenant_id", "workspace_id", "user_id", "scope_key", "created_at");
+
+-- CreateIndex
+CREATE INDEX "briefing_jobs_tenant_id_workspace_id_scope_key_status_creat_idx" ON "briefing_jobs"("tenant_id", "workspace_id", "scope_key", "status", "created_at");
+
+-- CreateIndex
+CREATE INDEX "briefing_jobs_tenant_id_workspace_id_user_id_scope_key_crea_idx" ON "briefing_jobs"("tenant_id", "workspace_id", "user_id", "scope_key", "created_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "briefing_jobs_tenant_id_idempotency_key_key" ON "briefing_jobs"("tenant_id", "idempotency_key");
+
+-- CreateIndex
+CREATE INDEX "briefing_policies_tenant_id_workspace_id_updated_at_idx" ON "briefing_policies"("tenant_id", "workspace_id", "updated_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "briefing_policies_tenant_id_workspace_id_scope_key_key" ON "briefing_policies"("tenant_id", "workspace_id", "scope_key");
 
 -- CreateIndex
 CREATE INDEX "delivery_attempts_tenant_id_workspace_id_state_queued_at_idx" ON "delivery_attempts"("tenant_id", "workspace_id", "state", "queued_at");

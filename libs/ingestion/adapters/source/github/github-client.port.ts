@@ -24,6 +24,30 @@ export type GitHubIssueSearchRequest = {
   readonly userAgent?: string;
 };
 
+export type GitHubRepositoryDetails = {
+  readonly fullName: string;
+  readonly htmlUrl: string;
+  readonly description?: string;
+  readonly language?: string;
+  readonly topics: readonly string[];
+  readonly licenseSpdxId?: string;
+  readonly stargazersCount: number;
+  readonly fork: boolean;
+  readonly archived: boolean;
+  readonly pushedAt?: string;
+  readonly updatedAt?: string;
+};
+
+export type GitHubRepositoryDetailsRequest = {
+  readonly fullName: string;
+  readonly accessToken?: string;
+  readonly userAgent?: string;
+};
+
 export interface GitHubClientPort {
   searchIssues(request: GitHubIssueSearchRequest): Promise<GitHubIssueSearchPage>;
+}
+
+export interface GitHubRepositoryDetailsClientPort {
+  getRepository(request: GitHubRepositoryDetailsRequest): Promise<GitHubRepositoryDetails | null>;
 }

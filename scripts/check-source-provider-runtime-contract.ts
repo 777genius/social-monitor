@@ -3,9 +3,16 @@ import { readFileSync } from 'node:fs';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { HttpGitHubClient } from '../libs/ingestion/adapters/source/github/http-github-client';
-import { GitHubSourceProvider } from '../libs/ingestion/adapters/source/github/github-source.provider';
+import {
+  GITHUB_ISSUES_PROVIDER_KEY,
+  GitHubSourceProvider,
+} from '../libs/ingestion/adapters/source/github/github-source.provider';
 import { HttpHackerNewsClient } from '../libs/ingestion/adapters/source/hacker-news/http-hacker-news-client';
 import { HackerNewsSourceProvider } from '../libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
+import { BigQueryGitHubRepoRadarClient } from '../libs/ingestion/adapters/source/github-repo-radar/bigquery-github-repo-radar-client';
+import { GitHubRepoRadarSourceProvider } from '../libs/ingestion/adapters/source/github-repo-radar/github-repo-radar-source.provider';
+import { GitHubRepositoryLiveVerifierAdapter } from '../libs/ingestion/adapters/source/github-repo-radar/github-repository-live-verifier.adapter';
+import { GITHUB_REPO_RADAR_PROVIDER_KEY, parseGitHubRepositoryTrendMetadata } from '../libs/ingestion/domain';
 import { RedditSourceProvider } from '../libs/ingestion/adapters/source/reddit/reddit-source.provider';
 import { RedditRefreshTokenProvider } from '../libs/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider';
 import type { RedditClientPort } from '../libs/ingestion/adapters/source/reddit/reddit-client.port';
@@ -50,10 +57,17 @@ const requiredProviders = new Map([
     },
   ],
   [
-    'github',
+    GITHUB_ISSUES_PROVIDER_KEY,
     {
       credentialMode: 'anonymous_or_read_only_token',
       signals: ['github-live-api-smoke', 'github-rate-limit-budget'],
+    },
+  ],
+  [
+    GITHUB_REPO_RADAR_PROVIDER_KEY,
+    {
+      credentialMode: 'bigquery_service_account_and_optional_read_only_token',
+      signals: ['github-repo-radar-gh-archive-query', 'github-repo-radar-live-verification', 'github-repo-radar-live-smoke'],
     },
   ],
   [
@@ -80,7 +94,8 @@ void main().catch((error) => {
 async function main(): Promise<void> {
   validateContract();
   await verifyRedditPermanentOAuthRuntime();
-  await verifyGitHubRuntimeModes();
+  await verifyGitHubIssuesRuntimeModes();
+  await verifyGitHubRepoRadarRuntimeModes();
   await verifyRssRuntimeGuards();
   await verifyHackerNewsRuntime();
 
@@ -229,26 +244,26 @@ async function verifyRedditPermanentOAuthRuntime(): Promise<void> {
   assertFailure(sourceProvider, 'Reddit API returned 503', 'unavailable', true);
 }
 
-async function verifyGitHubRuntimeModes(): Promise<void> {
+async function verifyGitHubIssuesRuntimeModes(): Promise<void> {
   const fetchedUrls: string[] = [];
   const readOnlyToken = ['github', 'read', 'token'].join('-');
   await withMockedFetch(async (input, init) => {
     fetchedUrls.push(String(input));
     const url = new URL(String(input));
-    assert(url.hostname === 'api.github.com', 'GitHub runtime must use the GitHub REST API host');
-    assert(url.pathname === '/search/issues', 'GitHub runtime must use search/issues endpoint');
-    assert(url.searchParams.get('sort') === 'updated', 'GitHub runtime must request updated sorting');
-    assert(url.searchParams.get('order') === 'desc', 'GitHub runtime must request descending order');
-    assert(readHeader(init?.headers, 'accept') === 'application/vnd.github+json', 'GitHub runtime must request GitHub JSON');
-    assert(readHeader(init?.headers, 'x-github-api-version') === '2022-11-28', 'GitHub runtime must pin GitHub REST API version');
+    assert(url.hostname === 'api.github.com', 'GitHub issues runtime must use the GitHub REST API host');
+    assert(url.pathname === '/search/issues', 'GitHub issues runtime must use search/issues endpoint');
+    assert(url.searchParams.get('sort') === 'updated', 'GitHub issues runtime must request updated sorting');
+    assert(url.searchParams.get('order') === 'desc', 'GitHub issues runtime must request descending order');
+    assert(readHeader(init?.headers, 'accept') === 'application/vnd.github+json', 'GitHub issues runtime must request GitHub JSON');
+    assert(readHeader(init?.headers, 'x-github-api-version') === '2022-11-28', 'GitHub issues runtime must pin GitHub REST API version');
     const userAgent = readHeader(init?.headers, 'user-agent');
-    assert(userAgent !== undefined && userAgent.length > 0, 'GitHub runtime must set User-Agent');
+    assert(userAgent !== undefined && userAgent.length > 0, 'GitHub issues runtime must set User-Agent');
 
     const auth = readHeader(init?.headers, 'authorization');
     if (fetchedUrls.length === 1) {
-      assert(auth === undefined, 'GitHub anonymous mode must omit Authorization');
+      assert(auth === undefined, 'GitHub issues anonymous mode must omit Authorization');
     } else {
-      assert(auth === ['Bearer', readOnlyToken].join(' '), 'GitHub token mode must trim the read credential and apply the bearer auth scheme');
+      assert(auth === ['Bearer', readOnlyToken].join(' '), 'GitHub issues token mode must trim the read credential and apply the bearer auth scheme');
     }
 
     return jsonResponse({
@@ -270,8 +285,8 @@ async function verifyGitHubRuntimeModes(): Promise<void> {
     const client = new HttpGitHubClient();
     const anonymous = await client.searchIssues({ query: 'repo:acme/project is:issue', limit: 1, accessToken: '   ' });
     const token = await client.searchIssues({ query: 'repo:acme/project is:issue', limit: 1, accessToken: ` ${readOnlyToken} ` });
-    assert(anonymous.nextCursor === '2', 'GitHub runtime must parse next page cursor');
-    assert(token.items[0]?.htmlUrl === 'https://github.com/acme/project/issues/2', 'GitHub token mode must return normalized items');
+    assert(anonymous.nextCursor === '2', 'GitHub issues runtime must parse next page cursor');
+    assert(token.items[0]?.htmlUrl === 'https://github.com/acme/project/issues/2', 'GitHub issues token mode must return normalized items');
   });
 
   await withMockedFetch(async () => new Response(JSON.stringify({ message: 'rate limited', token: readOnlyToken }), { status: 403 }), async () => {
@@ -283,17 +298,121 @@ async function verifyGitHubRuntimeModes(): Promise<void> {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      assert(!message.includes(readOnlyToken), 'GitHub HTTP errors must not leak token values');
+      assert(!message.includes(readOnlyToken), 'GitHub issues HTTP errors must not leak token values');
       return;
     }
 
-    throw new Error('GitHub client must fail closed on HTTP errors');
+    throw new Error('GitHub issues client must fail closed on HTTP errors');
   });
 
   const sourceProvider = new GitHubSourceProvider(new HttpGitHubClient());
   assertFailure(sourceProvider, 'GitHub API returned 401 bad credentials', 'auth_failed', false);
   assertFailure(sourceProvider, 'GitHub API returned 403 rate limit exceeded', 'rate_limited', true);
   assertFailure(sourceProvider, 'GitHub API returned 429', 'rate_limited', true);
+  assertFailure(sourceProvider, 'GitHub API returned 503', 'unavailable', true);
+}
+
+async function verifyGitHubRepoRadarRuntimeModes(): Promise<void> {
+  let observedBigQueryJob = false;
+  let observedGitHubRepositoryFetch = false;
+  const readOnlyToken = ['github', 'repo-radar', 'read', 'token'].join('-');
+  const bigQueryClient = {
+    async createQueryJob(options: {
+      readonly query?: unknown;
+      readonly location?: unknown;
+      readonly maximumBytesBilled?: unknown;
+      readonly jobTimeoutMs?: unknown;
+      readonly params?: Readonly<Record<string, unknown>>;
+    }) {
+      observedBigQueryJob = true;
+      assert(typeof options.query === 'string', 'GitHub repo radar must submit a BigQuery SQL string');
+      assert(options.query.includes('githubarchive.day.20*'), 'GitHub repo radar must query only GH Archive numeric day tables');
+      assert(options.query.includes("type = 'WatchEvent'"), 'GitHub repo radar must aggregate WatchEvent records');
+      assert(options.location === 'US', 'GitHub repo radar BigQuery location must be explicit');
+      assert(options.maximumBytesBilled === '123456789', 'GitHub repo radar must bound BigQuery bytes billed');
+      assert(options.jobTimeoutMs === 456, 'GitHub repo radar must pass a BigQuery job timeout');
+      assert(options.params?.query === '', 'topic/language searches must not be incorrectly filtered by repository name');
+      assert(options.params?.limit === 3, 'GitHub repo radar must bound BigQuery candidate count');
+      assert(options.params?.startTableSuffix === '260325', 'GitHub repo radar must query the 90d start table suffix');
+      assert(options.params?.endTableSuffix === '260623', 'GitHub repo radar must query the checked-at table suffix');
+      return [{
+        async getQueryResults(getOptions: { readonly timeoutMs?: unknown } = {}) {
+          assert(getOptions.timeoutMs === 123, 'GitHub repo radar must bound BigQuery result wait time');
+          return [[{
+            full_name: 'openai/codex',
+            stars_24h: '210',
+            stars_7d: '1200',
+            stars_30d: '4800',
+            stars_90d: '11000',
+          }]];
+        },
+      }];
+    },
+  };
+
+  await withMockedFetch(async (input, init) => {
+    observedGitHubRepositoryFetch = true;
+    const url = new URL(String(input));
+    assert(url.hostname === 'api.github.com', 'GitHub repo radar live verifier must use GitHub REST API host');
+    assert(url.pathname === '/repos/openai/codex', 'GitHub repo radar live verifier must fetch repository details');
+    assert(readHeader(init?.headers, 'accept') === 'application/vnd.github+json', 'GitHub repo radar must request GitHub JSON');
+    assert(readHeader(init?.headers, 'x-github-api-version') === '2022-11-28', 'GitHub repo radar must pin GitHub REST API version');
+    assert(readHeader(init?.headers, 'authorization') === `Bearer ${readOnlyToken}`, 'GitHub repo radar must use read-only token when supplied');
+    assert(readHeader(init?.headers, 'user-agent') === 'social-monitor-runtime-contract', 'GitHub repo radar must pass configured User-Agent');
+    return jsonResponse({
+      full_name: 'openai/codex',
+      html_url: 'https://github.com/openai/codex',
+      description: 'AI coding agent CLI and developer workflow tooling.',
+      language: 'TypeScript',
+      topics: ['ai', 'agents', 'developer-tools'],
+      license: { spdx_id: 'Apache-2.0' },
+      stargazers_count: 54000,
+      fork: false,
+      archived: false,
+      pushed_at: '2026-06-23T08:00:00.000Z',
+      updated_at: '2026-06-23T08:30:00.000Z',
+    });
+  }, async () => {
+    const provider = new GitHubRepoRadarSourceProvider(
+      new BigQueryGitHubRepoRadarClient({
+        client: bigQueryClient as never,
+        maximumBytesBilled: '123456789',
+        timeoutMs: 123,
+        jobTimeoutMs: 456,
+      }),
+      new GitHubRepositoryLiveVerifierAdapter(new HttpGitHubClient()),
+      { now: () => new Date('2026-06-23T12:00:00.000Z') },
+    );
+    const context = contextFor(GITHUB_REPO_RADAR_PROVIDER_KEY, {
+      topics: ['agents'],
+      languages: ['TypeScript'],
+      minStars: 100,
+      maxItems: 1,
+      maxCandidates: 3,
+      accessToken: ` ${readOnlyToken} `,
+      userAgent: 'social-monitor-runtime-contract',
+    });
+    const plan = provider.planScan({ mode: 'search', query: 'agents' }, context);
+    const result = await provider.scan(plan, context);
+    const metadata = parseGitHubRepositoryTrendMetadata(result.items[0]?.metadata);
+    assert(result.items.length === 1, 'GitHub repo radar runtime must emit a verified repository trend item');
+    assert(metadata !== null, 'GitHub repo radar runtime must emit repository trend metadata');
+    assert(metadata.repository.fullName === 'openai/codex', 'GitHub repo radar metadata must keep repository full name');
+    assert(metadata.trend.stars7d === 1200, 'GitHub repo radar metadata must keep 7d star delta');
+    assert(metadata.trend.source === 'gh_archive_bigquery_plus_github_live', 'GitHub repo radar metadata must identify runtime source');
+  });
+
+  assert(observedBigQueryJob, 'GitHub repo radar runtime contract must observe BigQuery query creation');
+  assert(observedGitHubRepositoryFetch, 'GitHub repo radar runtime contract must observe GitHub repository fetch');
+
+  const sourceProvider = new GitHubRepoRadarSourceProvider(
+    new BigQueryGitHubRepoRadarClient({ client: bigQueryClient as never }),
+    new GitHubRepositoryLiveVerifierAdapter(new HttpGitHubClient()),
+    { now: () => new Date('2026-06-23T12:00:00.000Z') },
+  );
+  assertFailure(sourceProvider, 'GitHub API returned 401 bad credentials', 'auth_failed', false);
+  assertFailure(sourceProvider, 'GitHub API returned 403 rate limit exceeded', 'rate_limited', true);
+  assertFailure(sourceProvider, 'BigQuery quota exceeded', 'rate_limited', true);
   assertFailure(sourceProvider, 'GitHub API returned 503', 'unavailable', true);
 }
 

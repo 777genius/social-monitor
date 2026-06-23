@@ -1,29 +1,53 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Inject,
+  Param,
+  Post,
+  Query,
+} from "@nestjs/common";
+import {
+  ApiCreatedResponse,
+  ApiHeader,
+  ApiOkResponse,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from "@nestjs/swagger";
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
   type WorkspaceAuthorizationPolicyPort,
-} from '@social-monitor/identity/ports';
-import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
+} from "@social-monitor/identity/ports";
+import { WorkspaceRoleHeaderParser } from "@social-monitor/identity/interfaces/authorization/workspace-role-header.parser";
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
   type BearerRequestAuthorization,
-} from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
-import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
-import { parsePaginationLimit, RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
-import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
+} from "@social-monitor/identity/interfaces/rest/api-key-request-authorizer";
+import { ApiKeyOrWorkspaceRoleAuth } from "@social-monitor/identity/interfaces/rest/api-key-openapi.decorators";
+import {
+  parsePaginationLimit,
+  RequestCorrelationIdFactory,
+} from "@social-monitor/platform-request-context";
+import {
+  DomainError,
+  requireTenantScope,
+  type TenantId,
+  type WorkspaceId,
+} from "@social-monitor/shared-kernel";
 
-import { ListSummaryFeedbackUseCase } from '../../features/list-summary-feedback/list-summary-feedback.use-case';
-import { RecordSummaryFeedbackUseCase } from '../../features/record-summary-feedback/record-summary-feedback.use-case';
-import type {
+import { ListSummaryFeedbackUseCase } from "../../features/list-summary-feedback/list-summary-feedback.use-case";
+import { RecordSummaryFeedbackUseCase } from "../../features/record-summary-feedback/record-summary-feedback.use-case";
+import {
   ListSummaryFeedbackResponseDto,
+  RecordSummaryFeedbackRequestDto,
   RecordSummaryFeedbackResponseDto,
-} from './summary-feedback.dto';
-import { RecordSummaryFeedbackRequestDto } from './summary-feedback.dto';
+} from "./summary-feedback.dto";
 
-@ApiTags('summaries')
-@Controller('summaries/:summaryId/feedback')
+@ApiTags("summaries")
+@Controller("summaries/:summaryId/feedback")
 export class SummaryFeedbackController {
   constructor(
     private readonly listSummaryFeedback: ListSummaryFeedbackUseCase,
@@ -36,23 +60,27 @@ export class SummaryFeedbackController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'List classified feedback for one summary with cursor pagination.' })
-  @ApiHeader({ name: 'x-tenant-id', required: true })
-  @ApiHeader({ name: 'x-workspace-id', required: true })
-  @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'read:summaries',
-    workspaceRoleDescription: 'Comma-separated workspace roles. Summary feedback reads allow owner, admin, member or viewer.',
+  @ApiOperation({
+    summary: "List classified feedback for one summary with cursor pagination.",
   })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'cursor', required: false, type: String })
+  @ApiHeader({ name: "x-tenant-id", required: true })
+  @ApiHeader({ name: "x-workspace-id", required: true })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: "read:summaries",
+    workspaceRoleDescription:
+      "Comma-separated workspace roles. Summary feedback reads allow owner, admin, member or viewer.",
+  })
+  @ApiQuery({ name: "limit", required: false, type: Number })
+  @ApiQuery({ name: "cursor", required: false, type: String })
+  @ApiOkResponse({ type: ListSummaryFeedbackResponseDto })
   async list(
-    @Param('summaryId') summaryId: string,
-    @Headers('x-tenant-id') tenantHeader: string | undefined,
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
-    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
-    @Headers('authorization') authorizationHeader: string | undefined,
-    @Query('limit') limitQuery: string | undefined,
-    @Query('cursor') cursor: string | undefined,
+    @Param("summaryId") summaryId: string,
+    @Headers("x-tenant-id") tenantHeader: string | undefined,
+    @Headers("x-workspace-id") workspaceHeader: string | undefined,
+    @Headers("x-workspace-role") workspaceRoleHeader: string | undefined,
+    @Headers("authorization") authorizationHeader: string | undefined,
+    @Query("limit") limitQuery: string | undefined,
+    @Query("cursor") cursor: string | undefined,
   ): Promise<ListSummaryFeedbackResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
@@ -71,7 +99,7 @@ export class SummaryFeedbackController {
       summaryId,
       limit: parsePaginationLimit(limitQuery, {
         defaultLimit: 20,
-        invalidMessage: 'Summary feedback page limit must be between 1 and 100',
+        invalidMessage: "Summary feedback page limit must be between 1 and 100",
       }),
       cursor,
     });
@@ -84,28 +112,34 @@ export class SummaryFeedbackController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Record classified feedback for a summary without mutating the artifact.' })
-  @ApiHeader({ name: 'x-tenant-id', required: true })
-  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiOperation({
+    summary:
+      "Record classified feedback for a summary without mutating the artifact.",
+  })
+  @ApiHeader({ name: "x-tenant-id", required: true })
+  @ApiHeader({ name: "x-workspace-id", required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'write:summaries',
-    workspaceRoleDescription: 'Comma-separated workspace roles. Summary feedback allows owner, admin, member or viewer.',
+    apiKeyScope: "write:summaries",
+    workspaceRoleDescription:
+      "Comma-separated workspace roles. Summary feedback allows owner, admin, member or viewer.",
   })
   @ApiHeader({
-    name: 'x-actor-id',
+    name: "x-actor-id",
     required: false,
-    description: 'Optional actor id. API-key requests fall back to the API key id when omitted.',
+    description:
+      "Optional actor id. API-key requests fall back to the API key id when omitted.",
   })
-  @ApiHeader({ name: 'idempotency-key', required: true })
+  @ApiHeader({ name: "idempotency-key", required: true })
+  @ApiCreatedResponse({ type: RecordSummaryFeedbackResponseDto })
   async create(
-    @Param('summaryId') summaryId: string,
-    @Headers('x-tenant-id') tenantHeader: string | undefined,
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
-    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
-    @Headers('authorization') authorizationHeader: string | undefined,
-    @Headers('x-actor-id') actorHeader: string | undefined,
-    @Headers('idempotency-key') idempotencyKey: string,
-    @Headers('x-request-id') requestId: string | undefined,
+    @Param("summaryId") summaryId: string,
+    @Headers("x-tenant-id") tenantHeader: string | undefined,
+    @Headers("x-workspace-id") workspaceHeader: string | undefined,
+    @Headers("x-workspace-role") workspaceRoleHeader: string | undefined,
+    @Headers("authorization") authorizationHeader: string | undefined,
+    @Headers("x-actor-id") actorHeader: string | undefined,
+    @Headers("idempotency-key") idempotencyKey: string,
+    @Headers("x-request-id") requestId: string | undefined,
     @Body() body: RecordSummaryFeedbackRequestDto,
   ): Promise<RecordSummaryFeedbackResponseDto> {
     const scope = requireTenantScope({
@@ -150,15 +184,15 @@ export class SummaryFeedbackController {
         authorizationHeader,
         tenantId,
         workspaceId,
-        requiredScope: 'read:summaries',
-        operation: 'summary_feedback.read',
+        requiredScope: "read:summaries",
+        operation: "summary_feedback.read",
       });
     }
 
     const authorization = this.workspaceAuthorization.authorize({
       tenantId,
       workspaceId,
-      action: 'summary_feedback.read',
+      action: "summary_feedback.read",
       roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
@@ -180,15 +214,15 @@ export class SummaryFeedbackController {
         authorizationHeader,
         tenantId,
         workspaceId,
-        requiredScope: 'write:summaries',
-        operation: 'summary_feedback.create',
+        requiredScope: "write:summaries",
+        operation: "summary_feedback.create",
       });
     }
 
     const authorization = this.workspaceAuthorization.authorize({
       tenantId,
       workspaceId,
-      action: 'summary_feedback.create',
+      action: "summary_feedback.create",
       roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
     });
 
@@ -204,13 +238,19 @@ const resolveSubmittedBy = (
   actorHeader: string | undefined,
   authorization: BearerRequestAuthorization | undefined,
 ): string => {
-  if (authorization?.actorType === 'user') {
-    if (actorHeader !== undefined && actorHeader.trim() !== authorization.userId) {
-      throw new DomainError('authorization.denied', 'Bearer JWT user cannot submit summary feedback for another actor');
+  if (authorization?.actorType === "user") {
+    if (
+      actorHeader !== undefined &&
+      actorHeader.trim() !== authorization.userId
+    ) {
+      throw new DomainError(
+        "authorization.denied",
+        "Bearer JWT user cannot submit summary feedback for another actor",
+      );
     }
 
     return authorization.userId;
   }
 
-  return actorHeader ?? authorization?.actorId ?? '';
+  return actorHeader ?? authorization?.actorId ?? "";
 };

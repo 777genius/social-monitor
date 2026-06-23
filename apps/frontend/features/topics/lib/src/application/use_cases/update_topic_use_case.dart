@@ -42,13 +42,13 @@ final class UpdateTopicUseCase {
         ),
       );
     }
-    if (!command.rules.isValid) {
+    if (!command.query.isValid) {
       return Future.value(
         const Result.failure(
           ValidationFailure(
-            message: 'Add at least one keyword before saving the topic',
-            code: 'topics.rules_invalid',
-            field: 'keywords',
+            message: 'Topic query must contain at least two characters',
+            code: 'topics.query_invalid',
+            field: 'query',
           ),
         ),
       );

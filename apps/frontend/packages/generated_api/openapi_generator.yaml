@@ -1,0 +1,19 @@
+openapi_generator:
+  schema_path: ../../../../libs/contracts/rest/openapi.snapshot.json
+  output_directory: lib/src/generated
+  json_serializer: json_serializable
+  root_client: true
+  root_client_name: SocialMonitorRestClient
+  client_postfix: Client
+  put_clients_in_folder: true
+  export_file: true
+  unknown_enum_value: true
+  include_tags:
+    - topics
+    - sources
+    - source-bindings
+    - scan-policies
+    - scan-requests
+    - feed
+    - summaries
+    - briefings

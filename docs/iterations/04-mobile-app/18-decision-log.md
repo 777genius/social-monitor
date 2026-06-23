@@ -81,3 +81,13 @@
 - Consequences: Frontend agents must read the playbook index before substantial feature growth. New feature scaffolds link to it. Architecture and agent-quality checks keep the playbooks discoverable.
 - Required Evidence: `apps/frontend/docs/README.md`, the seven playbook files and frontend architecture/agent-quality checks.
 - Revisit When: Real feature implementation proves a playbook rule too weak or too heavy and a stronger pattern is ready.
+
+## Decision 010 - Generated API Uses OpenAPI Retrofit Boundary
+
+- Decision: Use `openapi_retrofit_generator` with `Dio`/`Retrofit` inside `apps/frontend/packages/generated_api` as the default Flutter REST client generation strategy.
+- Alternatives: Handwritten feature-local REST clients, official OpenAPI Generator `dart-dio`, `swagger_dart_code_generator` with Chopper, or one handwritten app-wide API service.
+- Rationale: Frontend features need contract freshness without leaking transport details. `Dio` is a strong Dart HTTP client, Retrofit declarations are readable, and keeping both inside `generated_api` preserves Clean Architecture dependency direction.
+- Consequences: Feature use cases depend on feature-owned repositories/gateways, not generated clients. Feature infrastructure imports `social_monitor_generated_api` only in anti-corruption, mapper, api-client or data-source folders. App and feature packages must not depend on or import `dio`, `retrofit`, `retrofit_generator` or `openapi_retrofit_generator` directly.
+- Boundary: `generated_api` is a contract-wide transport package, not a feature package. It may contain many generated endpoint declarations, but it must not own product decisions, domain invariants, use-case interfaces, UI state, endpoint-specific mapping policy or cross-context business facades.
+- Required Evidence: `apps/frontend/docs/frontend-api-contract-playbook.md`, generated-api package tests, mapper tests for affected endpoints and `apps/frontend/app/test/architecture/frontend_architecture_boundaries_test.dart`.
+- Revisit When: The generator cannot reliably handle the project OpenAPI contract, produces unstable generated output, blocks unknown enum behavior, or the package becomes unmaintained. Replacement stays behind `packages/generated_api`.

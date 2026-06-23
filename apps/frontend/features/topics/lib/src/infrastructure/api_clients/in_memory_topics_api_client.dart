@@ -81,7 +81,8 @@ final class InMemoryTopicsApiClient implements TopicsApiClient {
         .where((item) {
           final matchesSearch =
               search.isEmpty ||
-              (item.name ?? '').toLowerCase().contains(search);
+              (item.name ?? '').toLowerCase().contains(search) ||
+              (item.query ?? '').toLowerCase().contains(search);
           final matchesStatus = status == null || _statusMatches(item, status);
           return matchesSearch && matchesStatus;
         })
@@ -103,6 +104,7 @@ final class InMemoryTopicsApiClient implements TopicsApiClient {
     final created = TopicSummaryApiDto(
       id: _nextId(request.name),
       name: request.name,
+      query: request.query,
       status: 'draft',
       weeklyMentionCount: 0,
     );
@@ -123,6 +125,7 @@ final class InMemoryTopicsApiClient implements TopicsApiClient {
     final updated = TopicSummaryApiDto(
       id: current.id,
       name: request.name,
+      query: request.query,
       status: current.status,
       weeklyMentionCount: current.weeklyMentionCount,
     );
@@ -143,6 +146,7 @@ final class InMemoryTopicsApiClient implements TopicsApiClient {
     final archived = TopicSummaryApiDto(
       id: current.id,
       name: current.name,
+      query: current.query,
       status: 'archived',
       weeklyMentionCount: current.weeklyMentionCount,
     );

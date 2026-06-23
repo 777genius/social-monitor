@@ -56,7 +56,7 @@ GoRouter createAppRouter({
               path: feature.route.path,
               pageBuilder: (context, state) => NoTransitionPage<void>(
                 key: state.pageKey,
-                child: feature.buildPage(context),
+                child: feature.buildPage(context, state.uri),
               ),
             ),
         ],

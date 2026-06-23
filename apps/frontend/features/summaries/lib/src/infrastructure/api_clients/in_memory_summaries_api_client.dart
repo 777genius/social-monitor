@@ -1,10 +1,12 @@
-import 'package:social_monitor_generated_api/social_monitor_generated_api.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../application/commands/regenerate_summary_command.dart';
+import '../../application/commands/request_workspace_briefing_command.dart';
 import '../../application/commands/submit_summary_feedback_command.dart';
 import '../../application/queries/list_summaries_query.dart';
 import '../../application/queries/load_summary_detail_query.dart';
+import '../../application/queries/load_workspace_briefing_job_status_query.dart';
+import '../../application/queries/load_workspace_briefing_query.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
 import '../api/summary_api_dto.dart';
 
@@ -23,6 +25,18 @@ abstract interface class SummariesApiClient {
 
   Future<Result<SummaryApiDto>> submitFeedback(
     SubmitSummaryFeedbackApiRequest request,
+  );
+
+  Future<Result<WorkspaceBriefingApiDto>> loadWorkspaceBriefing(
+    LoadWorkspaceBriefingApiRequest request,
+  );
+
+  Future<Result<BriefingJobApiDto>> requestWorkspaceBriefing(
+    RequestWorkspaceBriefingApiRequest request,
+  );
+
+  Future<Result<BriefingJobApiDto>> loadWorkspaceBriefingJobStatus(
+    LoadWorkspaceBriefingJobStatusApiRequest request,
   );
 }
 
@@ -62,6 +76,56 @@ final class LoadSummaryDetailApiRequest {
 
   final WorkspaceScope scope;
   final String summaryId;
+}
+
+final class LoadWorkspaceBriefingApiRequest {
+  const LoadWorkspaceBriefingApiRequest({required this.scope});
+
+  factory LoadWorkspaceBriefingApiRequest.fromQuery(
+    LoadWorkspaceBriefingQuery query,
+  ) {
+    return LoadWorkspaceBriefingApiRequest(scope: query.scope);
+  }
+
+  final WorkspaceScope scope;
+}
+
+final class RequestWorkspaceBriefingApiRequest {
+  const RequestWorkspaceBriefingApiRequest({
+    required this.scope,
+    required this.idempotencyKey,
+  });
+
+  factory RequestWorkspaceBriefingApiRequest.fromCommand(
+    RequestWorkspaceBriefingCommand command,
+  ) {
+    return RequestWorkspaceBriefingApiRequest(
+      scope: command.scope,
+      idempotencyKey: command.idempotencyKey,
+    );
+  }
+
+  final WorkspaceScope scope;
+  final String idempotencyKey;
+}
+
+final class LoadWorkspaceBriefingJobStatusApiRequest {
+  const LoadWorkspaceBriefingJobStatusApiRequest({
+    required this.scope,
+    required this.briefingJobId,
+  });
+
+  factory LoadWorkspaceBriefingJobStatusApiRequest.fromQuery(
+    LoadWorkspaceBriefingJobStatusQuery query,
+  ) {
+    return LoadWorkspaceBriefingJobStatusApiRequest(
+      scope: query.scope,
+      briefingJobId: query.briefingJobId,
+    );
+  }
+
+  final WorkspaceScope scope;
+  final String briefingJobId;
 }
 
 final class RegenerateSummaryApiRequest {
@@ -106,10 +170,15 @@ final class SubmitSummaryFeedbackApiRequest {
 }
 
 final class InMemorySummariesApiClient implements SummariesApiClient {
-  InMemorySummariesApiClient({required List<SummaryApiDto> items})
-    : _items = List<SummaryApiDto>.of(items);
+  InMemorySummariesApiClient({
+    required List<SummaryApiDto> items,
+    BriefingApiDto? workspaceBriefing,
+  }) : _items = List<SummaryApiDto>.of(items),
+       _workspaceBriefing = workspaceBriefing;
 
   final List<SummaryApiDto> _items;
+  final BriefingApiDto? _workspaceBriefing;
+  final Map<String, BriefingJobApiDto> _briefingJobs = {};
 
   @override
   Future<Result<SummaryPageApiDto>> listSummaries(
@@ -140,6 +209,66 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
       return Result.failure(failure);
     }
     return _findSummary(request.summaryId);
+  }
+
+  @override
+  Future<Result<WorkspaceBriefingApiDto>> loadWorkspaceBriefing(
+    LoadWorkspaceBriefingApiRequest request,
+  ) async {
+    final failure = _workspaceFailure(request.scope);
+    if (failure != null) {
+      return Result.failure(failure);
+    }
+    return Result.success(WorkspaceBriefingApiDto(current: _workspaceBriefing));
+  }
+
+  @override
+  Future<Result<BriefingJobApiDto>> requestWorkspaceBriefing(
+    RequestWorkspaceBriefingApiRequest request,
+  ) async {
+    final failure = _workspaceFailure(request.scope);
+    if (failure != null) {
+      return Result.failure(failure);
+    }
+    final job = BriefingJobApiDto(
+      id: 'briefing-job-${request.idempotencyKey.hashCode.abs()}',
+      status: 'requested',
+      created: true,
+      requestedAt: DateTime.now(),
+    );
+    _briefingJobs[job.id] = job;
+    return Result.success(job);
+  }
+
+  @override
+  Future<Result<BriefingJobApiDto>> loadWorkspaceBriefingJobStatus(
+    LoadWorkspaceBriefingJobStatusApiRequest request,
+  ) async {
+    final failure = _workspaceFailure(request.scope);
+    if (failure != null) {
+      return Result.failure(failure);
+    }
+    final current = _briefingJobs[request.briefingJobId];
+    if (current == null) {
+      return Result.failure(
+        NotFoundFailure(
+          message: 'Briefing job ${request.briefingJobId} is not available',
+          code: 'summaries.briefing_job_not_found',
+        ),
+      );
+    }
+
+    final completed = BriefingJobApiDto(
+      id: current.id,
+      status: _workspaceBriefing == null ? 'no_signal' : 'completed',
+      created: current.created,
+      briefingId: _workspaceBriefing?.id,
+      requestedAt: current.requestedAt,
+      startedAt: current.startedAt ?? DateTime.now(),
+      completedAt: DateTime.now(),
+    );
+    _briefingJobs[current.id] = completed;
+    return Result.success(completed);
   }
 
   @override
@@ -186,11 +315,10 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
     if (scope.isValid) {
       return null;
     }
-    return const ApiProblem(
-      title: 'Workspace required',
-      status: 403,
-      detail: 'A valid workspace is required to review summaries',
-    ).toFailure();
+    return const ForbiddenFailure(
+      message: 'A valid workspace is required to review summaries',
+      code: 'summaries.workspace_required',
+    );
   }
 
   Result<SummaryApiDto> _findSummary(String summaryId) {
@@ -200,11 +328,10 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
       }
     }
     return Result.failure(
-      ApiProblem(
-        title: 'Summary not found',
-        status: 404,
-        detail: 'Summary $summaryId is not available',
-      ).toFailure(),
+      NotFoundFailure(
+        message: 'Summary $summaryId is not available',
+        code: 'summaries.not_found',
+      ),
     );
   }
 

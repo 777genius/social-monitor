@@ -25,6 +25,7 @@ Read these before any code change:
 - Do not add behavior to human-written Dart files over 500 lines. Split first.
 - Do not let any human-written Dart file exceed 600 lines.
 - Do not add raw `headless`, `headless_adaptive`, generated API clients or heavy renderer packages directly to feature widgets.
+- Do not add `dio`, `retrofit`, `retrofit_generator` or `openapi_retrofit_generator` to frontend app or feature packages. The frontend REST generator and HTTP transport implementation live only in `apps/frontend/packages/generated_api` unless an ADR and architecture-test exception approve a replacement.
 - Do not model frontend async state as loose `isLoading`/`error` fields. Use shared typed state and failures.
 - Do not let async stores apply stale results after workspace, query, filter, route or selection changes.
 - Do not add raw route path strings, route parsing or deep-link policy inside frontend features. App composition owns typed `FeatureRouteContract` registration.

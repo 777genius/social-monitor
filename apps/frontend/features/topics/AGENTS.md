@@ -30,12 +30,12 @@ lib/src/presentation/pages/topics_feature_page.dart
 
 ## Bounded Context Purpose
 
-Owns monitoring intent, topic rules, keywords, markets, languages and topic lifecycle language.
+Owns monitoring intent, topic name, backend query and topic lifecycle language.
 
 ## Growth Triggers
 
 - create/edit/archive topic becomes a use case;
-- topic rules, keywords or monitoring intent need aggregates/value objects;
+- advanced topic rules, markets, languages or monitoring intent need aggregates/value objects;
 - validation, quota or policy decisions appear;
 - generated API DTOs need anti-corruption mapping;
 - a store spans list, editor, details or validation workflows;

@@ -3,6 +3,7 @@ import 'package:social_monitor_topics/src/domain/entities/topic_summary.dart';
 import 'package:social_monitor_topics/src/domain/value_objects/topic_id.dart';
 import 'package:social_monitor_topics/src/domain/value_objects/topic_lifecycle_status.dart';
 import 'package:social_monitor_topics/src/domain/value_objects/topic_name.dart';
+import 'package:social_monitor_topics/src/domain/value_objects/topic_query.dart';
 import 'package:social_monitor_topics/src/infrastructure/api/topic_summary_api_dto.dart';
 
 const testWorkspaceScope = WorkspaceScope(
@@ -13,12 +14,14 @@ const testWorkspaceScope = WorkspaceScope(
 TopicSummaryApiDto topicSummaryApiDto({
   String id = 'topic-market-risk',
   String? name = 'Market risk',
+  String? query = 'market risk OR volatility',
   String status = 'active',
   int? weeklyMentionCount = 24,
 }) {
   return TopicSummaryApiDto(
     id: id,
     name: name,
+    query: query,
     status: status,
     weeklyMentionCount: weeklyMentionCount,
   );
@@ -27,12 +30,14 @@ TopicSummaryApiDto topicSummaryApiDto({
 TopicSummary topicSummary({
   String id = 'topic-market-risk',
   String name = 'Market risk',
+  String query = 'market risk OR volatility',
   TopicLifecycleStatus status = TopicLifecycleStatus.active,
   int weeklyMentionCount = 24,
 }) {
   return TopicSummary(
     id: TopicId(id),
     name: TopicName(name),
+    query: TopicQuery(query),
     status: status,
     weeklyMentionCount: weeklyMentionCount,
   );

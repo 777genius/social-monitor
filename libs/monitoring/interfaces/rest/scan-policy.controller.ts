@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Headers, Inject, Param, Post } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiHeader, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
   type WorkspaceAuthorizationPolicyPort,
@@ -17,8 +17,8 @@ import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
 
 import { GetScanPolicyUseCase } from '../../features/get-scan-policy/get-scan-policy.use-case';
 import { SetScanPolicyUseCase } from '../../features/set-scan-policy/set-scan-policy.use-case';
-import type { GetScanPolicyResponseDto } from './get-scan-policy.dto';
-import { SetScanPolicyRequestDto, type SetScanPolicyResponseDto } from './set-scan-policy.dto';
+import { GetScanPolicyResponseDto } from './get-scan-policy.dto';
+import { SetScanPolicyRequestDto, SetScanPolicyResponseDto } from './set-scan-policy.dto';
 
 @ApiTags('scan-policies')
 @Controller('source-bindings/:sourceBindingId/scan-policy')
@@ -43,6 +43,7 @@ export class ScanPolicyController {
     workspaceRoleDescription: 'Comma-separated workspace roles. Scan policy changes require owner or admin.',
   })
   @ApiHeader({ name: 'idempotency-key', required: true })
+  @ApiCreatedResponse({ type: SetScanPolicyResponseDto })
   async create(
     @Param('sourceBindingId') sourceBindingId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -107,6 +108,7 @@ export class ScanPolicyController {
     apiKeyScope: 'read:topics',
     workspaceRoleDescription: 'Comma-separated workspace roles. Scan policy reads allow owner, admin, member or viewer.',
   })
+  @ApiOkResponse({ type: GetScanPolicyResponseDto })
   async get(
     @Param('sourceBindingId') sourceBindingId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,

@@ -65,9 +65,9 @@ describe('sourceBindingScanQuery', () => {
     }))).toEqual({ mode: 'listing', query: 'observability' });
   });
 
-  it('maps GitHub search bindings without exposing optional credentials', () => {
+  it('maps GitHub issues search bindings without exposing optional credentials', () => {
     expect(sourceBindingScanQuery(makeBinding({
-      providerKey: 'github',
+      providerKey: 'github-issues',
       config: {
         mode: 'listing',
         query: 'social monitoring repo:777genius/social-monitor',
@@ -81,5 +81,12 @@ describe('sourceBindingScanQuery', () => {
         },
       },
     }))).toEqual({ mode: 'search', query: 'social monitoring repo:777genius/social-monitor' });
+  });
+
+  it('keeps legacy GitHub issue bindings compatible', () => {
+    expect(sourceBindingScanQuery(makeBinding({
+      providerKey: 'github',
+      config: { query: 'legacy github issue query' },
+    }))).toEqual({ mode: 'search', query: 'legacy github issue query' });
   });
 });

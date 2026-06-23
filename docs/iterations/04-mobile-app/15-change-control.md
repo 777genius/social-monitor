@@ -22,6 +22,8 @@
 8. Do not add feature-to-feature package dependencies. Use app composition, shared kernel primitives or backend/API contracts.
 9. Do not expand feature public barrels beyond route entrypoints without architecture review.
 10. Do not bypass `design_system` for headless, adaptive, charting or third-party UI primitives.
+11. Do not add `dio`, `retrofit`, `retrofit_generator` or `openapi_retrofit_generator` outside `apps/frontend/packages/generated_api`.
+12. Do not change the Flutter REST generator family without ADR, current dependency research, generated-api tests and frontend architecture-test updates.
 
 ## Rollback
 

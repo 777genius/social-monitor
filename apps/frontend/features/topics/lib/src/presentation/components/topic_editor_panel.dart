@@ -55,16 +55,16 @@ class TopicEditorPanel extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.sm),
             TextField(
-              key: const ValueKey('topic-keywords-field'),
-              controller: TextEditingController(text: store.keywordsText)
+              key: const ValueKey('topic-query-field'),
+              controller: TextEditingController(text: store.queryText)
                 ..selection = TextSelection.collapsed(
-                  offset: store.keywordsText.length,
+                  offset: store.queryText.length,
                 ),
               decoration: const InputDecoration(
-                labelText: 'Keywords',
-                hintText: 'risk, pricing, launch',
+                labelText: 'Query',
+                hintText: 'pricing OR launch',
               ),
-              onChanged: store.updateKeywordsText,
+              onChanged: store.updateQueryText,
             ),
             if (failure != null)
               Padding(

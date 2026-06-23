@@ -234,6 +234,174 @@ const _requiredFrontendAgentsPhrases =
 const _requiredAnalysisOptionsPhrases =
     'strict-casts: true|strict-inference: true|strict-raw-types: true|unawaited_futures: true|avoid_print: true';
 
+const _frontendRestImportPrefixes = <String>[
+  'package:dio',
+  'package:openapi_retrofit_generator',
+  'package:retrofit',
+];
+
+const _frontendRestPubspecEntries = <String>[
+  'dio:',
+  'openapi_retrofit_generator:',
+  'retrofit:',
+  'retrofit_generator:',
+];
+
+const _featureGlobalForbiddenImportPrefixes = <String>[
+  'dart:io',
+  ..._frontendRestImportPrefixes,
+  'package:flutter_modular',
+  'package:get_it',
+  'package:headless',
+  'package:headless_adaptive',
+  'package:naked_ui',
+];
+
+const _featureCrossPackageImportPrefixes = <String>[
+  'package:social_monitor_auth/src/',
+  'package:social_monitor_feed/src/',
+  'package:social_monitor_settings/src/',
+  'package:social_monitor_sources/src/',
+  'package:social_monitor_summaries/src/',
+  'package:social_monitor_topics/src/',
+];
+
+const _appForbiddenImportPrefixes = <String>[
+  'dart:io',
+  ..._frontendRestImportPrefixes,
+  'package:headless',
+  'package:headless_adaptive',
+  'package:flutter_modular',
+  'package:get_it',
+  'package:naked_ui',
+  ..._featureCrossPackageImportPrefixes,
+];
+
+const _designSystemForbiddenImportPrefixes = <String>[
+  ..._frontendRestImportPrefixes,
+  'package:go_router',
+  'package:get_it',
+  'package:mobx',
+  'package:modularity_flutter',
+  'package:flutter_modular',
+  'package:flutter_mobx',
+  'package:social_monitor_app',
+  'package:social_monitor_auth',
+  'package:social_monitor_feed',
+  'package:social_monitor_generated_api',
+  'package:social_monitor_settings',
+  'package:social_monitor_shared_kernel',
+  'package:social_monitor_sources',
+  'package:social_monitor_summaries',
+  'package:social_monitor_topics',
+];
+
+const _generatedApiForbiddenImportPrefixes = <String>[
+  'dart:io',
+  'dart:ui',
+  'package:flutter',
+  'package:flutter_mobx',
+  'package:go_router',
+  'package:headless',
+  'package:headless_adaptive',
+  'package:flutter_modular',
+  'package:get_it',
+  'package:mobx',
+  'package:modularity_flutter',
+  'package:naked_ui',
+  'package:social_monitor_app',
+  'package:social_monitor_auth',
+  'package:social_monitor_design_system',
+  'package:social_monitor_feed',
+  'package:social_monitor_settings',
+  'package:social_monitor_sources',
+  'package:social_monitor_summaries',
+  'package:social_monitor_topics',
+];
+
+const _sharedKernelForbiddenImportPrefixes = <String>[
+  'dart:io',
+  'dart:ui',
+  ..._frontendRestImportPrefixes,
+  'package:flutter',
+  'package:flutter_mobx',
+  'package:go_router',
+  'package:headless',
+  'package:headless_adaptive',
+  'package:flutter_modular',
+  'package:get_it',
+  'package:mobx',
+  'package:modularity_flutter',
+  'package:naked_ui',
+  'package:social_monitor_app',
+  'package:social_monitor_auth',
+  'package:social_monitor_design_system',
+  'package:social_monitor_feed',
+  'package:social_monitor_generated_api',
+  'package:social_monitor_settings',
+  'package:social_monitor_sources',
+  'package:social_monitor_summaries',
+  'package:social_monitor_topics',
+];
+
+const _appForbiddenPubspecEntries = <String>[
+  ..._frontendRestPubspecEntries,
+  'mobx:',
+  'flutter_mobx:',
+  'flutter_modular:',
+  'get_it:',
+  'headless:',
+  'headless_adaptive:',
+];
+
+const _featureForbiddenPubspecEntries = <String>[
+  ..._frontendRestPubspecEntries,
+  'go_router:',
+  'flutter_modular:',
+  'get_it:',
+  'headless:',
+  'headless_adaptive:',
+];
+
+const _designSystemForbiddenPubspecEntries = <String>[
+  ..._frontendRestPubspecEntries,
+  'go_router:',
+  'mobx:',
+  'flutter_mobx:',
+  'flutter_modular:',
+  'get_it:',
+  'modularity_flutter:',
+  'social_monitor_generated_api:',
+  'social_monitor_shared_kernel:',
+];
+
+const _sharedKernelForbiddenPubspecEntries = <String>[
+  ..._frontendRestPubspecEntries,
+  'flutter:',
+  'go_router:',
+  'mobx:',
+  'flutter_mobx:',
+  'flutter_modular:',
+  'get_it:',
+  'headless:',
+  'headless_adaptive:',
+  'modularity_flutter:',
+  'social_monitor_app:',
+  'social_monitor_design_system:',
+  'social_monitor_generated_api:',
+];
+
+const _generatedApiForbiddenPubspecEntries = <String>[
+  'flutter:',
+  'go_router:',
+  'mobx:',
+  'flutter_mobx:',
+  'flutter_modular:',
+  'get_it:',
+  'modularity_flutter:',
+  'social_monitor_design_system:',
+];
+
 String? _featureSourceLayer(String path) {
   final match = RegExp(
     r'/features/[^/]+/lib/src/(domain|application|infrastructure|presentation)(?:/|$)',

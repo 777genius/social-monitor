@@ -11,7 +11,7 @@ import 'package:social_monitor_topics/src/application/use_cases/update_topic_use
 import 'package:social_monitor_topics/src/domain/entities/topic_summary.dart';
 import 'package:social_monitor_topics/src/domain/value_objects/topic_id.dart';
 import 'package:social_monitor_topics/src/domain/value_objects/topic_name.dart';
-import 'package:social_monitor_topics/src/domain/value_objects/topic_rules.dart';
+import 'package:social_monitor_topics/src/domain/value_objects/topic_query.dart';
 
 import '../../support/topics_test_fixtures.dart';
 
@@ -26,7 +26,8 @@ void main() {
         const CreateTopicCommand(
           scope: testWorkspaceScope,
           name: TopicName('A'),
-          rules: TopicRules(keywords: ['risk']),
+          query: TopicQuery('market risk'),
+          idempotencyKey: 'topic-create-1',
         ),
       );
 
@@ -42,7 +43,8 @@ void main() {
       const CreateTopicCommand(
         scope: testWorkspaceScope,
         name: TopicName('Market risk'),
-        rules: TopicRules(keywords: ['risk']),
+        query: TopicQuery('market risk'),
+        idempotencyKey: 'topic-create-1',
       ),
     );
     await UpdateTopicUseCase(catalog)(
@@ -50,7 +52,7 @@ void main() {
         scope: testWorkspaceScope,
         topicId: TopicId('topic-market-risk'),
         name: TopicName('Market risk updated'),
-        rules: TopicRules(keywords: ['risk', 'pricing']),
+        query: TopicQuery('market risk OR pricing'),
       ),
     );
     await ArchiveTopicUseCase(catalog)(

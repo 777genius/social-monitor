@@ -122,6 +122,128 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'successResponseSchemaRefs': [],
   },
   {
+    'operationId': 'BriefingJobController_getStatus',
+    'clientName': 'BriefingJobController_getStatus',
+    'method': 'GET',
+    'path': '/briefing-jobs/{briefingJobId}/status',
+    'tags': [
+      'briefings',
+    ],
+    'summary': 'Get briefing job status and safe timeline.',
+    'pathParameters': [
+      'briefingJobId',
+    ],
+    'queryParameters': [],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': null,
+    'successResponseSchemaRefs': [
+      '#/components/schemas/BriefingJobStatusResponseDto',
+    ],
+  },
+  {
+    'operationId': 'BriefingRequestController_create',
+    'clientName': 'BriefingRequestController_create',
+    'method': 'POST',
+    'path': '/briefing-requests',
+    'tags': [
+      'briefings',
+    ],
+    'summary': 'Request a briefing for a workspace or topic scope.',
+    'pathParameters': [],
+    'queryParameters': [],
+    'requiredHeaders': [
+      'idempotency-key',
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': '#/components/schemas/RequestBriefingRequestDto',
+    'successResponseSchemaRefs': [
+      '#/components/schemas/RequestBriefingResponseDto',
+    ],
+  },
+  {
+    'operationId': 'BriefingController_list',
+    'clientName': 'BriefingController_list',
+    'method': 'GET',
+    'path': '/briefings',
+    'tags': [
+      'briefings',
+    ],
+    'summary': 'List tenant/workspace briefings with cursor pagination.',
+    'pathParameters': [],
+    'queryParameters': [
+      'cursor',
+      'limit',
+      'scopeType',
+      'topicId',
+    ],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': null,
+    'successResponseSchemaRefs': [
+      '#/components/schemas/ListBriefingsResponseDto',
+    ],
+  },
+  {
+    'operationId': 'BriefingController_get',
+    'clientName': 'BriefingController_get',
+    'method': 'GET',
+    'path': '/briefings/{briefingId}',
+    'tags': [
+      'briefings',
+    ],
+    'summary': 'Get one tenant/workspace briefing by id.',
+    'pathParameters': [
+      'briefingId',
+    ],
+    'queryParameters': [],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': null,
+    'successResponseSchemaRefs': [
+      '#/components/schemas/BriefingResponseDto',
+    ],
+  },
+  {
     'operationId': 'DeliveryAttemptsController_list',
     'clientName': 'DeliveryAttemptsController_list',
     'method': 'GET',
@@ -487,7 +609,11 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'queryParameters': [
       'cursor',
       'limit',
+      'providerKey',
       'q',
+      'repositoryLanguage',
+      'repositoryTopic',
+      'repositoryTrendWindow',
       'topicId',
     ],
     'requiredHeaders': [
@@ -503,7 +629,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/ListFeedItemsResponseDto',
+    ],
   },
   {
     'operationId': 'FeedController_get',
@@ -531,7 +659,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/GetFeedItemResponseDto',
+    ],
   },
   {
     'operationId': 'HealthController_health[0]',
@@ -775,7 +905,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/ScanStatusResponseDto',
+    ],
   },
   {
     'operationId': 'ScanPolicyController_get',
@@ -803,7 +935,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/GetScanPolicyResponseDto',
+    ],
   },
   {
     'operationId': 'ScanPolicyController_create',
@@ -832,7 +966,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': '#/components/schemas/SetScanPolicyRequestDto',
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/SetScanPolicyResponseDto',
+    ],
   },
   {
     'operationId': 'ScanRequestController_create',
@@ -862,7 +998,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/RequestScanResponseDto',
+    ],
   },
   {
     'operationId': 'SourceProfileController_list',
@@ -882,7 +1020,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': false,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/ListSourceProfilesResponseDto',
+    ],
   },
   {
     'operationId': 'SummaryController_list',
@@ -912,7 +1052,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/ListSummariesResponseDto',
+    ],
   },
   {
     'operationId': 'SummaryController_get',
@@ -940,7 +1082,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/SummaryResponseDto',
+    ],
   },
   {
     'operationId': 'SummaryFeedbackController_list',
@@ -971,7 +1115,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/ListSummaryFeedbackResponseDto',
+    ],
   },
   {
     'operationId': 'SummaryFeedbackController_create',
@@ -1001,7 +1147,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': '#/components/schemas/RecordSummaryFeedbackRequestDto',
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/RecordSummaryFeedbackResponseDto',
+    ],
   },
   {
     'operationId': 'SummaryController_regenerate',
@@ -1030,7 +1178,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/RegenerateSummaryResponseDto',
+    ],
   },
   {
     'operationId': 'SummaryJobController_getStatus',
@@ -1058,7 +1208,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/SummaryJobStatusResponseDto',
+    ],
   },
   {
     'operationId': 'TopicController_list',
@@ -1087,7 +1239,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/ListTopicsResponseDto',
+    ],
   },
   {
     'operationId': 'TopicController_create',
@@ -1114,7 +1268,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': '#/components/schemas/CreateTopicRequestDto',
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/CreateTopicResponseDto',
+    ],
   },
   {
     'operationId': 'SourceBindingController_list',
@@ -1145,7 +1301,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/ListSourceBindingsResponseDto',
+    ],
   },
   {
     'operationId': 'SourceBindingController_create',
@@ -1174,7 +1332,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': '#/components/schemas/BindSourceRequestDto',
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/BindSourceResponseDto',
+    ],
   },
   {
     'operationId': 'SourceBindingController_health',
@@ -1203,7 +1363,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/SourceBindingHealthResponseDto',
+    ],
   },
   {
     'operationId': 'SourceBindingController_updateStatus',
@@ -1233,7 +1395,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': '#/components/schemas/ChangeSourceBindingStatusRequestDto',
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/ChangeSourceBindingStatusResponseDto',
+    ],
   },
   {
     'operationId': 'SummaryPolicyController_get',
@@ -1318,7 +1482,9 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'usesDevOnlyWorkspaceRoleHeader': true,
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [],
+    'successResponseSchemaRefs': [
+      '#/components/schemas/RequestSummaryResponseDto',
+    ],
   },
   {
     'operationId': 'PublicApiAuditEventsController_list',

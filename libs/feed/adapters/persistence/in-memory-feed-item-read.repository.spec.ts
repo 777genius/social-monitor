@@ -1,4 +1,4 @@
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { tenantId, workspaceId, type JsonObject } from '@social-monitor/shared-kernel';
 
 import { FeedItem } from '../../domain';
 import { InMemoryFeedItemReadRepository } from './in-memory-feed-item-read.repository';
@@ -8,6 +8,8 @@ const makeItem = (params: {
   readonly sourceItemId: string;
   readonly tenant?: string;
   readonly topicId?: string;
+  readonly providerKey?: string;
+  readonly providerMetadata?: JsonObject;
   readonly canonicalUrl: string;
 }) =>
   FeedItem.publish({
@@ -17,13 +19,14 @@ const makeItem = (params: {
     topicId: params.topicId ?? 'topic-1',
     sourceItemId: params.sourceItemId,
     sourceBindingId: 'binding-1',
-    providerKey: 'rss',
+    providerKey: params.providerKey ?? 'rss',
     canonicalUrl: params.canonicalUrl,
     title: `Title ${params.id}`,
     bodyPreview: `Body ${params.id}`,
     authorHandle: 'author',
     publishedAt: new Date('2026-06-05T00:00:00.000Z'),
     observedAt: new Date('2026-06-05T00:01:00.000Z'),
+    providerMetadata: params.providerMetadata,
   });
 
 describe('InMemoryFeedItemReadRepository', () => {
@@ -119,5 +122,63 @@ describe('InMemoryFeedItemReadRepository', () => {
       ],
       nextCursor: undefined,
     });
+  });
+
+  it('filters repository radar items by provider and trend metadata', async () => {
+    const repository = new InMemoryFeedItemReadRepository();
+    repository.upsert(makeItem({
+      id: 'feed-codex',
+      sourceItemId: 'source-codex',
+      providerKey: 'github-repo-radar',
+      canonicalUrl: 'https://github.com/openai/codex',
+      providerMetadata: {
+        kind: 'github_repository_trend',
+        repository: {
+          fullName: 'openai/codex',
+          url: 'https://github.com/openai/codex',
+          language: 'TypeScript',
+          topics: ['ai', 'agents'],
+        },
+        trend: {
+          primaryWindow: '24h',
+        },
+      },
+    }));
+    repository.upsert(makeItem({
+      id: 'feed-rust',
+      sourceItemId: 'source-rust',
+      providerKey: 'github-repo-radar',
+      canonicalUrl: 'https://github.com/astral-sh/uv',
+      providerMetadata: {
+        kind: 'github_repository_trend',
+        repository: {
+          fullName: 'astral-sh/uv',
+          url: 'https://github.com/astral-sh/uv',
+          language: 'Rust',
+          topics: ['python'],
+        },
+        trend: {
+          primaryWindow: '7d',
+        },
+      },
+    }));
+    repository.upsert(makeItem({
+      id: 'feed-reddit',
+      sourceItemId: 'source-reddit',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://reddit.com/comments/demo',
+    }));
+
+    const result = await repository.list({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      providerKey: 'github-repo-radar',
+      repositoryTrendWindow: '24h',
+      repositoryLanguage: 'typescript',
+      repositoryTopic: 'Agents',
+      limit: 10,
+    });
+
+    expect(result.items.map((item) => item.toSnapshot().id)).toEqual(['feed-codex']);
   });
 });

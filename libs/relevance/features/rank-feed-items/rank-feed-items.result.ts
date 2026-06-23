@@ -1,3 +1,5 @@
+import type { JsonObject } from '@social-monitor/shared-kernel';
+
 import type { SourceContentSafetyView, UserRelevanceProfileView } from '../shared/relevance-presenter';
 
 export type RankedFeedItemView = {
@@ -9,6 +11,7 @@ export type RankedFeedItemView = {
   readonly canonicalUrl: string;
   readonly title: string;
   readonly bodyPreview?: string;
+  readonly providerMetadata?: JsonObject;
   readonly authorHandle?: string;
   readonly publishedAt: string;
   readonly observedAt: string;

@@ -1,4 +1,4 @@
-import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import type { JsonObject, TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { SummarySourceWindow } from '../domain';
 
@@ -10,6 +10,7 @@ export type SummaryEvidenceItem = {
   readonly title: string;
   readonly bodyPreview?: string;
   readonly canonicalUrl?: string;
+  readonly providerMetadata?: JsonObject;
   readonly extractedSummaries?: readonly SummaryEvidenceExtractedSummary[];
   readonly relevance?: SummaryEvidenceRelevance;
   readonly safety?: SummaryEvidenceSafety;

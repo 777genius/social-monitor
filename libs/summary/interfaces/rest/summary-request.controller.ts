@@ -1,23 +1,35 @@
-import { Body, Controller, Headers, Inject, Param, Post } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Headers, Inject, Param, Post } from "@nestjs/common";
+import {
+  ApiCreatedResponse,
+  ApiHeader,
+  ApiOperation,
+  ApiTags,
+} from "@nestjs/swagger";
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
   type WorkspaceAuthorizationPolicyPort,
-} from '@social-monitor/identity/ports';
-import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
+} from "@social-monitor/identity/ports";
+import { WorkspaceRoleHeaderParser } from "@social-monitor/identity/interfaces/authorization/workspace-role-header.parser";
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
-} from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
-import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
-import { RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
-import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
+} from "@social-monitor/identity/interfaces/rest/api-key-request-authorizer";
+import { ApiKeyOrWorkspaceRoleAuth } from "@social-monitor/identity/interfaces/rest/api-key-openapi.decorators";
+import { RequestCorrelationIdFactory } from "@social-monitor/platform-request-context";
+import {
+  requireTenantScope,
+  type TenantId,
+  type WorkspaceId,
+} from "@social-monitor/shared-kernel";
 
-import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
-import { RequestSummaryRequestDto, type RequestSummaryResponseDto } from './request-summary.dto';
+import { RequestSummaryUseCase } from "../../features/request-summary/request-summary.use-case";
+import {
+  RequestSummaryRequestDto,
+  RequestSummaryResponseDto,
+} from "./request-summary.dto";
 
-@ApiTags('summaries')
-@Controller('topics/:topicId/summary-requests')
+@ApiTags("summaries")
+@Controller("topics/:topicId/summary-requests")
 export class SummaryRequestController {
   constructor(
     private readonly requestSummary: RequestSummaryUseCase,
@@ -29,22 +41,24 @@ export class SummaryRequestController {
   ) {}
 
   @Post()
-  @ApiOperation({ summary: 'Request a summary for a topic.' })
-  @ApiHeader({ name: 'x-tenant-id', required: true })
-  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiOperation({ summary: "Request a summary for a topic." })
+  @ApiHeader({ name: "x-tenant-id", required: true })
+  @ApiHeader({ name: "x-workspace-id", required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'write:summaries',
-    workspaceRoleDescription: 'Comma-separated workspace roles. Summary requests require owner, admin or member.',
+    apiKeyScope: "write:summaries",
+    workspaceRoleDescription:
+      "Comma-separated workspace roles. Summary requests require owner, admin or member.",
   })
-  @ApiHeader({ name: 'idempotency-key', required: true })
+  @ApiHeader({ name: "idempotency-key", required: true })
+  @ApiCreatedResponse({ type: RequestSummaryResponseDto })
   async create(
-    @Param('topicId') topicId: string,
-    @Headers('x-tenant-id') tenantHeader: string | undefined,
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
-    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
-    @Headers('authorization') authorizationHeader: string | undefined,
-    @Headers('idempotency-key') idempotencyKey: string,
-    @Headers('x-request-id') requestId: string | undefined,
+    @Param("topicId") topicId: string,
+    @Headers("x-tenant-id") tenantHeader: string | undefined,
+    @Headers("x-workspace-id") workspaceHeader: string | undefined,
+    @Headers("x-workspace-role") workspaceRoleHeader: string | undefined,
+    @Headers("authorization") authorizationHeader: string | undefined,
+    @Headers("idempotency-key") idempotencyKey: string,
+    @Headers("x-request-id") requestId: string | undefined,
     @Body() body: RequestSummaryRequestDto | undefined,
   ): Promise<RequestSummaryResponseDto> {
     const scope = requireTenantScope({
@@ -56,7 +70,7 @@ export class SummaryRequestController {
       scope.workspaceId,
       workspaceRoleHeader,
       authorizationHeader,
-      'summary_requests.create',
+      "summary_requests.create",
     );
 
     const result = await this.requestSummary.execute({
@@ -81,14 +95,14 @@ export class SummaryRequestController {
     workspaceId: WorkspaceId,
     workspaceRoleHeader: string | undefined,
     authorizationHeader: string | undefined,
-    operation: 'summary_requests.create',
+    operation: "summary_requests.create",
   ): Promise<void> {
     if (hasBearerAuthorizationHeader(authorizationHeader)) {
       await this.apiKeyRequestAuthorizer.authorize({
         authorizationHeader,
         tenantId,
         workspaceId,
-        requiredScope: 'write:summaries',
+        requiredScope: "write:summaries",
         operation,
       });
       return;

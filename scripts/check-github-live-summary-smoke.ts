@@ -35,7 +35,7 @@ import { InMemoryScanAttemptRepository } from '../libs/ingestion/adapters/persis
 import { InMemoryScanCursorRepository } from '../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
 import { InMemorySourceItemRepository } from '../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { InMemoryScanFailureQueueAdapter } from '../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
-import { GitHubSourceProvider } from '../libs/ingestion/adapters/source/github/github-source.provider';
+import { GITHUB_ISSUES_PROVIDER_KEY, GitHubSourceProvider } from '../libs/ingestion/adapters/source/github/github-source.provider';
 import { HttpGitHubClient } from '../libs/ingestion/adapters/source/github/http-github-client';
 import { InMemorySourceProviderRegistry } from '../libs/ingestion/adapters/source/in-memory-source-provider.registry';
 import { RegistrySourceFetcherAdapter } from '../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
@@ -151,7 +151,7 @@ const main = async (): Promise<void> => {
       topicId,
       sourceBindingId,
       scanPolicyId: 'github-live-summary-policy',
-      providerKey: 'github',
+      providerKey: GITHUB_ISSUES_PROVIDER_KEY,
       sourceQuery: { mode: 'search', query: githubQuery },
       correlationId: 'corr-github-live-summary-smoke',
       causationId: 'manual-live-github-summary-smoke',
@@ -233,7 +233,7 @@ const main = async (): Promise<void> => {
   const artifactSnapshot = artifact.toSnapshot();
   assert(artifactSnapshot.citationMap.length > 0, 'live GitHub summary must include citations');
   assert(
-    artifactSnapshot.citationMap.every((citation) => citation.providerKey === 'github'),
+    artifactSnapshot.citationMap.every((citation) => citation.providerKey === GITHUB_ISSUES_PROVIDER_KEY),
     'live GitHub summary citations must retain provider key',
   );
   assert(
@@ -297,7 +297,7 @@ function writeOptionalEvidenceArtifact(input: {
       operator: readOptionalEnv('SOURCE_LIVE_OPERATOR') ?? null,
     },
     provider: {
-      providerKey: 'github',
+      providerKey: GITHUB_ISSUES_PROVIDER_KEY,
       authMode,
       accessTokenIncluded: false,
     },

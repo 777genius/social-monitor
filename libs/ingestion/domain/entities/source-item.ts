@@ -1,4 +1,4 @@
-import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import type { JsonObject, TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 export type SourceItemProps = {
   readonly id: string;
@@ -12,6 +12,7 @@ export type SourceItemProps = {
   readonly authorHandle?: string;
   readonly publishedAt: Date;
   readonly ingestedAt: Date;
+  readonly metadata?: JsonObject;
 };
 
 export class SourceItem {

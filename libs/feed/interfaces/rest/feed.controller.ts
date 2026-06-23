@@ -1,5 +1,5 @@
 import { Controller, Get, Headers, Inject, Param, Query } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiHeader, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
   type WorkspaceAuthorizationPolicyPort,
@@ -15,7 +15,7 @@ import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-mon
 
 import { GetFeedItemUseCase } from '../../features/get-feed-item/get-feed-item.use-case';
 import { ListFeedItemsUseCase } from '../../features/list-feed-items/list-feed-items.use-case';
-import type { GetFeedItemResponseDto, ListFeedItemsResponseDto } from './list-feed-items.dto';
+import { GetFeedItemResponseDto, ListFeedItemsResponseDto } from './list-feed-items.dto';
 
 @ApiTags('feed')
 @Controller('feed/items')
@@ -41,6 +41,11 @@ export class FeedController {
   @ApiQuery({ name: 'cursor', required: false, type: String })
   @ApiQuery({ name: 'topicId', required: false, type: String })
   @ApiQuery({ name: 'q', required: false, type: String })
+  @ApiQuery({ name: 'providerKey', required: false, type: String })
+  @ApiQuery({ name: 'repositoryTrendWindow', required: false, enum: ['24h', '7d', '30d', '90d'] })
+  @ApiQuery({ name: 'repositoryLanguage', required: false, type: String })
+  @ApiQuery({ name: 'repositoryTopic', required: false, type: String })
+  @ApiOkResponse({ type: ListFeedItemsResponseDto })
   async list(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -50,6 +55,10 @@ export class FeedController {
     @Query('cursor') cursor: string | undefined,
     @Query('topicId') topicId: string | undefined,
     @Query('q') searchQuery: string | undefined,
+    @Query('providerKey') providerKey: string | undefined,
+    @Query('repositoryTrendWindow') repositoryTrendWindow: string | undefined,
+    @Query('repositoryLanguage') repositoryLanguage: string | undefined,
+    @Query('repositoryTopic') repositoryTopic: string | undefined,
   ): Promise<ListFeedItemsResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
@@ -66,6 +75,10 @@ export class FeedController {
       cursor,
       topicId: normalizeTopicId(topicId),
       searchQuery: normalizeSearchQuery(searchQuery),
+      providerKey: normalizeKeyFilter(providerKey),
+      repositoryTrendWindow: normalizeSearchQuery(repositoryTrendWindow),
+      repositoryLanguage: normalizeSearchQuery(repositoryLanguage),
+      repositoryTopic: normalizeSearchQuery(repositoryTopic),
     });
 
     if (!result.ok) {
@@ -83,6 +96,7 @@ export class FeedController {
     apiKeyScope: 'read:feed',
     workspaceRoleDescription: 'Comma-separated workspace roles. Feed reads allow owner, admin, member or viewer.',
   })
+  @ApiOkResponse({ type: GetFeedItemResponseDto })
   async get(
     @Param('feedItemId') feedItemId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -156,4 +170,10 @@ const normalizeTopicId = (value: string | undefined): string | undefined => {
   const trimmed = value.trim();
 
   return trimmed.length === 0 ? undefined : trimmed;
+};
+
+const normalizeKeyFilter = (value: string | undefined): string | undefined => {
+  const normalized = normalizeSearchQuery(value);
+
+  return normalized?.toLocaleLowerCase('en-US');
 };

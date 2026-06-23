@@ -4,8 +4,12 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/list_summaries_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_summary_detail_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_briefing_job_status_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_briefing_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/regenerate_summary_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/request_workspace_briefing_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/submit_summary_feedback_use_case.dart';
+import 'package:social_monitor_summaries/src/domain/entities/briefing_job_snapshot.dart';
 import 'package:social_monitor_summaries/src/domain/entities/generated_summary.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api_clients/in_memory_summaries_api_client.dart';
@@ -93,6 +97,30 @@ void main() {
 
     expect(find.text('Summary 119'), findsOneWidget);
   });
+
+  testWidgets('shows terminal briefing job failure instead of hiding panel', (
+    tester,
+  ) async {
+    final store = _store([summaryApiDto()]);
+    store.briefingJobState = const ReadyViewState<BriefingJobSnapshot>(
+      BriefingJobSnapshot(
+        id: 'briefing-job-failed',
+        status: BriefingJobStatus.failed,
+        failureReason: 'Provider unavailable',
+      ),
+    );
+
+    await _pumpSizedFeature(
+      tester,
+      store: store,
+      size: const Size(1280, 820),
+      autoload: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Briefing generation failed'), findsOneWidget);
+    expect(find.text('Provider unavailable'), findsOneWidget);
+  });
 }
 
 SummariesReviewStore _store(List<SummaryApiDto> items) {
@@ -101,10 +129,16 @@ SummariesReviewStore _store(List<SummaryApiDto> items) {
   );
   return SummariesReviewStore(
     listSummaries: ListSummariesUseCase(catalog),
+    loadWorkspaceBriefing: LoadWorkspaceBriefingUseCase(catalog),
+    requestWorkspaceBriefing: RequestWorkspaceBriefingUseCase(catalog),
+    loadWorkspaceBriefingJobStatus: LoadWorkspaceBriefingJobStatusUseCase(
+      catalog,
+    ),
     loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
     regenerateSummary: RegenerateSummaryUseCase(catalog),
     submitFeedback: SubmitSummaryFeedbackUseCase(catalog),
     scope: summaryWorkspaceScope,
+    briefingPollInterval: Duration.zero,
   );
 }
 

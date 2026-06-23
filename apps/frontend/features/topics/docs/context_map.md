@@ -6,7 +6,7 @@
 
 ## Upstream Contexts
 
-- Backend monitoring APIs provide topic and rule data.
+- Backend monitoring APIs provide topic name/query data.
 
 ## Downstream Contexts
 
@@ -15,4 +15,4 @@
 ## Integration Rules
 
 - Do not import sources, feed or summaries feature packages directly.
-- Map backend rule DTOs into topic language before reaching domain or presentation.
+- Map backend topic DTOs into topic language before reaching domain or presentation.

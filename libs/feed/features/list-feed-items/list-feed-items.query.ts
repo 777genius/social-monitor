@@ -7,4 +7,8 @@ export type ListFeedItemsUseCaseQuery = {
   readonly cursor?: string;
   readonly topicId?: string;
   readonly searchQuery?: string;
+  readonly providerKey?: string;
+  readonly repositoryTrendWindow?: string;
+  readonly repositoryLanguage?: string;
+  readonly repositoryTopic?: string;
 };

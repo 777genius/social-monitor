@@ -15,7 +15,11 @@ import { InMemorySourceItemRepository } from '../libs/ingestion/adapters/persist
 import { InMemoryScanFailureQueueAdapter } from '../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
 import { CircuitBreakerSourceFetcherAdapter } from '../libs/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
 import { FixtureGitHubClient } from '../libs/ingestion/adapters/source/github/fixture-github-client';
-import { GitHubSourceProvider } from '../libs/ingestion/adapters/source/github/github-source.provider';
+import {
+  GITHUB_ISSUES_PROVIDER_KEY,
+  GitHubSourceProvider,
+  LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
+} from '../libs/ingestion/adapters/source/github/github-source.provider';
 import { InMemorySourceProviderRegistry } from '../libs/ingestion/adapters/source/in-memory-source-provider.registry';
 import { RegistrySourceFetcherAdapter } from '../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
 import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
@@ -140,7 +144,11 @@ const run = async (): Promise<void> => {
   const scanFailures = new InMemoryScanFailureQueueAdapter(metrics);
   const scanLeases = new InMemoryScanLeaseAdapter();
   const clock = new SystemClock();
-  const registry = new InMemorySourceProviderRegistry([provider], sourceReadinessProfiles);
+  const registry = new InMemorySourceProviderRegistry(
+    [provider],
+    sourceReadinessProfiles,
+    [{ providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY, canonicalProviderKey: GITHUB_ISSUES_PROVIDER_KEY }],
+  );
   const sourceFetcher = new CircuitBreakerSourceFetcherAdapter(
     new RegistrySourceFetcherAdapter(registry, new StaticSourceConfigReader()),
     clock,
@@ -177,7 +185,7 @@ const run = async (): Promise<void> => {
         topicId: 'topic-github-smoke',
         sourceBindingId: 'github-binding-smoke',
         scanPolicyId: 'github-policy-smoke',
-        providerKey: 'github',
+        providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
         sourceQuery: { mode: 'search', query: 'social monitoring repo:777genius/social-monitor' },
       },
       schemaVersion: 1,
@@ -202,7 +210,7 @@ const run = async (): Promise<void> => {
         topicId: 'topic-github-smoke',
         sourceBindingId: 'github-binding-smoke',
         scanPolicyId: 'github-policy-smoke',
-        providerKey: 'github',
+        providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
         sourceQuery: { mode: 'search', query: 'social monitoring repo:777genius/social-monitor' },
       },
       schemaVersion: 1,
@@ -266,7 +274,7 @@ const proveScheduledGitHubCollection = async ({
     tenantId: tenant,
     workspaceId: workspace,
     topicId,
-    providerKey: 'github',
+    providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
     capabilityProfileVersion: 1,
     config: {
       mode: 'search',
@@ -420,14 +428,21 @@ const runScheduledGitHubTick = async ({
   await schedulerRuntime.onApplicationShutdown(`${signal}-schedule-complete`);
 
   assert(queuePublisher.all().length === 1, `${signal}: expected one queued GitHub scan`);
-  assert(queuePublisher.all()[0]?.payload.providerKey === 'github', `${signal}: queued scan must target GitHub`);
+  assert(
+    queuePublisher.all()[0]?.payload.providerKey === LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
+    `${signal}: queued scan must target legacy GitHub issues alias`,
+  );
 
   const drainRuntime = new WorkerRuntime({ serviceName: 'ingestion-worker' });
   drainRuntime.onModuleInit();
   const handler = new ExecuteScanCommandHandler(
     new ExecuteScanUseCase(
       new RegistrySourceFetcherAdapter(
-        new InMemorySourceProviderRegistry([provider], sourceReadinessProfiles),
+        new InMemorySourceProviderRegistry(
+          [provider],
+          sourceReadinessProfiles,
+          [{ providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY, canonicalProviderKey: GITHUB_ISSUES_PROVIDER_KEY }],
+        ),
         new StaticSourceConfigReader(),
       ),
       sourceItems,

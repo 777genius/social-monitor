@@ -8,6 +8,7 @@ import '../../domain/entities/generated_summary.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
 import '../../domain/value_objects/summary_generation_status.dart';
+import '../components/workspace_briefing_panel.dart';
 import '../stores/summaries_review_store.dart';
 
 class SummariesFeaturePage extends StatefulWidget {
@@ -83,7 +84,7 @@ class _SummariesBody extends StatelessWidget {
         ? null
         : selected;
 
-    return switch (state) {
+    final content = switch (state) {
       FailureViewState<PageResult<GeneratedSummary>>(:final failure) =>
         AppInlineProblem(
           title: 'Summaries unavailable',
@@ -131,6 +132,20 @@ class _SummariesBody extends StatelessWidget {
             : _SummaryDetail(store: store, summary: detailSummary),
       ),
     };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        WorkspaceBriefingPanel(
+          state: store.briefingState,
+          jobState: store.briefingJobState,
+          onRetry: () => unawaited(store.loadWorkspaceBriefing()),
+          onGenerate: () => unawaited(store.requestWorkspaceBriefing()),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        content,
+      ],
+    );
   }
 }
 

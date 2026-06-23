@@ -2,12 +2,14 @@ final class TopicSummaryApiDto {
   const TopicSummaryApiDto({
     required this.id,
     required this.name,
+    required this.query,
     required this.status,
     this.weeklyMentionCount,
   });
 
   final String id;
   final String? name;
+  final String? query;
   final String status;
   final int? weeklyMentionCount;
 }

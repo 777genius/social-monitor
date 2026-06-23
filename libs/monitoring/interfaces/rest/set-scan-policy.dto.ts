@@ -1,22 +1,31 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { IsInt, Max, Min } from 'class-validator';
 
 export class SetScanPolicyRequestDto {
+  @ApiProperty({ minimum: 60 })
   @IsInt()
   @Min(60)
-  intervalSeconds!: number;
+  declare readonly intervalSeconds: number;
 
+  @ApiProperty({ minimum: 60 })
   @IsInt()
   @Min(60)
-  freshnessSeconds!: number;
+  declare readonly freshnessSeconds: number;
 
+  @ApiProperty({ minimum: 0, maximum: 10 })
   @IsInt()
   @Min(0)
   @Max(10)
-  retryBudget!: number;
+  declare readonly retryBudget: number;
 }
 
-export type SetScanPolicyResponseDto = {
-  readonly scanPolicyId: string;
-  readonly created: boolean;
-  readonly updated: boolean;
-};
+export class SetScanPolicyResponseDto {
+  @ApiProperty()
+  declare readonly scanPolicyId: string;
+
+  @ApiProperty()
+  declare readonly created: boolean;
+
+  @ApiProperty()
+  declare readonly updated: boolean;
+}

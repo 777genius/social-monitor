@@ -1,5 +1,6 @@
 import type { FeedItem } from '../../domain';
 import type { FeedItemReadRepositoryPort, ListFeedItemsQuery, ListFeedItemsResult } from '../../ports';
+import { matchesFeedItemReadFilters } from './feed-item-query-filter';
 
 export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPort {
   private readonly itemsByKey = new Map<string, FeedItem>();
@@ -47,7 +48,7 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
           snapshot.workspaceId === query.workspaceId &&
           (query.topicId === undefined || snapshot.topicId === query.topicId) &&
           (query.observedAfter === undefined || snapshot.observedAt.getTime() > query.observedAfter.getTime()) &&
-          matchesSearch(item, query.searchQuery)
+          matchesFeedItemReadFilters(item, query)
         );
       })
       .sort(compareFeedItems);
@@ -90,33 +91,6 @@ const compareFeedItems = (left: FeedItem, right: FeedItem): number => {
 
   return rightSnapshot.id.localeCompare(leftSnapshot.id);
 };
-
-const matchesSearch = (item: FeedItem, searchQuery: string | undefined): boolean => {
-  if (searchQuery === undefined) {
-    return true;
-  }
-
-  const normalizedQuery = normalizeSearchText(searchQuery);
-
-  if (normalizedQuery.length === 0) {
-    return true;
-  }
-
-  const snapshot = item.toSnapshot();
-  const haystack = normalizeSearchText([
-    snapshot.title,
-    snapshot.bodyPreview,
-    snapshot.canonicalUrl,
-    snapshot.providerKey,
-    snapshot.authorHandle ?? '',
-  ].join(' '));
-
-  return normalizedQuery
-    .split(/\s+/u)
-    .every((term) => haystack.includes(term));
-};
-
-const normalizeSearchText = (value: string): string => value.trim().toLocaleLowerCase('en-US');
 
 const normalizeCanonicalUrl = (value: string): string => {
   try {

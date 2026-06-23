@@ -13,7 +13,8 @@ final class CreateTopicUseCase {
     final failure = _validate(
       scope: command.scope,
       isNameValid: command.name.isValid,
-      areRulesValid: command.rules.isValid,
+      isQueryValid: command.query.isValid,
+      idempotencyKey: command.idempotencyKey,
     );
     if (failure != null) {
       return Future.value(Result.failure(failure));
@@ -25,7 +26,8 @@ final class CreateTopicUseCase {
 AppFailure? _validate({
   required WorkspaceScope scope,
   required bool isNameValid,
-  required bool areRulesValid,
+  required bool isQueryValid,
+  required String idempotencyKey,
 }) {
   if (!scope.isValid) {
     return const ValidationFailure(
@@ -40,11 +42,18 @@ AppFailure? _validate({
       field: 'name',
     );
   }
-  if (!areRulesValid) {
+  if (!isQueryValid) {
     return const ValidationFailure(
-      message: 'Add at least one keyword before saving the topic',
-      code: 'topics.rules_invalid',
-      field: 'keywords',
+      message: 'Topic query must contain at least two characters',
+      code: 'topics.query_invalid',
+      field: 'query',
+    );
+  }
+  if (idempotencyKey.trim().isEmpty) {
+    return const ValidationFailure(
+      message: 'Topic create action must include an idempotency key',
+      code: 'topics.idempotency_key_required',
+      field: 'idempotencyKey',
     );
   }
   return null;

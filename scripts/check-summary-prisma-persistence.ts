@@ -16,6 +16,11 @@ import { PrismaSummaryJobRepository } from '../libs/summary/adapters/persistence
 import { PrismaSummaryPolicyRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-policy.repository';
 import { resolveSummaryPersistenceMode } from '../libs/summary/interfaces/rest/summary-provider-tokens';
 import type {
+  PrismaBriefingArtifactRecord,
+  PrismaBriefingJobRecord,
+  PrismaBriefingPolicyRecord,
+} from '../libs/summary/adapters/persistence/prisma/prisma-briefing-records';
+import type {
   PrismaSummaryArtifactRecord,
   PrismaSummaryFeedbackRecord,
   PrismaSummaryJobRecord,
@@ -330,6 +335,9 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
   private readonly artifacts = new Map<string, PrismaSummaryArtifactRecord>();
   private readonly feedback = new Map<string, PrismaSummaryFeedbackRecord>();
   private readonly policies = new Map<string, PrismaSummaryPolicyRecord>();
+  private readonly briefingJobs = new Map<string, PrismaBriefingJobRecord>();
+  private readonly briefingArtifacts = new Map<string, PrismaBriefingArtifactRecord>();
+  private readonly briefingPolicies = new Map<string, PrismaBriefingPolicyRecord>();
   readonly outboxEvents = new Map<string, PrismaSummaryOutboxEventRecord>();
 
   readonly $queryRaw: PrismaSummaryClient['$queryRaw'] = async () => {
@@ -495,6 +503,156 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
       )) ?? null,
   };
 
+  readonly briefingJob: PrismaSummaryClient['briefingJob'] = {
+    upsert: async (args) => {
+      const existing = this.briefingJobs.get(args.where.id);
+      const record: PrismaBriefingJobRecord = {
+        id: existing?.id ?? args.create.id,
+        tenantId: existing?.tenantId ?? args.create.tenantId,
+        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
+        scopeType: args.update.scopeType,
+        scopeKey: args.update.scopeKey,
+        topicId: args.update.topicId ?? existing?.topicId ?? args.create.topicId ?? null,
+        userId: args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
+        subscriptionId: args.update.subscriptionId ?? existing?.subscriptionId ?? args.create.subscriptionId ?? null,
+        status: args.update.status,
+        idempotencyKey: args.update.idempotencyKey,
+        requestedAt: args.update.requestedAt,
+        startedAt: args.update.startedAt ?? null,
+        completedAt: args.update.completedAt ?? null,
+        failedAt: args.update.failedAt ?? null,
+        briefingArtifactId: args.update.briefingArtifactId ?? null,
+        failureReason: args.update.failureReason ?? null,
+        createdAt: existing?.createdAt ?? clock.now(),
+        updatedAt: clock.now(),
+      };
+      this.briefingJobs.set(record.id, record);
+
+      return record;
+    },
+    findFirst: async (args) =>
+      [...this.briefingJobs.values()].find((record) => (
+        record.tenantId === args.where.tenantId &&
+        record.workspaceId === args.where.workspaceId &&
+        (args.where.id === undefined || record.id === args.where.id) &&
+        (args.where.idempotencyKey === undefined || record.idempotencyKey === args.where.idempotencyKey) &&
+        briefingJobStatusMatches(record.status, args.where.status)
+      )) ?? null,
+    updateMany: async (args) => {
+      const record = this.briefingJobs.get(args.where.id);
+      if (
+        record === undefined ||
+        record.tenantId !== args.where.tenantId ||
+        record.workspaceId !== args.where.workspaceId ||
+        record.status !== args.where.status
+      ) {
+        return { count: 0 };
+      }
+
+      this.briefingJobs.set(record.id, {
+        ...record,
+        ...args.data,
+        updatedAt: clock.now(),
+      });
+
+      return { count: 1 };
+    },
+    findMany: async (args) =>
+      [...this.briefingJobs.values()]
+        .filter((record) => (
+          record.status === args.where.status &&
+          (args.where.tenantId === undefined || record.tenantId === args.where.tenantId) &&
+          (args.where.workspaceId === undefined || record.workspaceId === args.where.workspaceId)
+        ))
+        .sort((left, right) => {
+          const requestedDiff = left.requestedAt.getTime() - right.requestedAt.getTime();
+
+          return requestedDiff === 0 ? left.id.localeCompare(right.id) : requestedDiff;
+        })
+        .slice(0, args.take),
+  };
+
+  readonly briefingArtifact: PrismaSummaryClient['briefingArtifact'] = {
+    upsert: async (args) => {
+      const existing = this.briefingArtifacts.get(args.where.id);
+      const record: PrismaBriefingArtifactRecord = {
+        id: existing?.id ?? args.create.id,
+        tenantId: existing?.tenantId ?? args.create.tenantId,
+        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
+        scopeType: args.update.scopeType,
+        scopeKey: args.update.scopeKey,
+        topicId: args.update.topicId ?? existing?.topicId ?? args.create.topicId ?? null,
+        userId: args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
+        subscriptionId: args.update.subscriptionId ?? existing?.subscriptionId ?? args.create.subscriptionId ?? null,
+        schemaVersion: existing?.schemaVersion ?? args.create.schemaVersion,
+        status: args.update.status,
+        modelVersion: args.update.modelVersion,
+        promptVersion: args.update.promptVersion,
+        headline: args.update.headline,
+        summaryText: args.update.summaryText,
+        artifactPayload: args.update.artifactPayload,
+        citations: args.update.citations,
+        qualitySignals: args.update.qualitySignals,
+        createdAt: existing?.createdAt ?? clock.now(),
+        updatedAt: clock.now(),
+      };
+      this.briefingArtifacts.set(record.id, record);
+
+      return record;
+    },
+    findFirst: async (args) =>
+      [...this.briefingArtifacts.values()].find((record) => (
+        record.tenantId === args.where.tenantId &&
+        record.workspaceId === args.where.workspaceId &&
+        record.id === args.where.id
+      )) ?? null,
+    findMany: async (args) =>
+      this.filterBriefingArtifacts(args.where)
+        .sort(compareBriefingArtifacts)
+        .slice(args.skip, args.skip + args.take),
+    count: async (args) => this.filterBriefingArtifacts(args.where).length,
+  };
+
+  readonly briefingPolicy: PrismaSummaryClient['briefingPolicy'] = {
+    upsert: async (args) => {
+      const key = [
+        args.where.tenantId_workspaceId_scopeKey.tenantId,
+        args.where.tenantId_workspaceId_scopeKey.workspaceId,
+        args.where.tenantId_workspaceId_scopeKey.scopeKey,
+      ].join(':');
+      const existing = this.briefingPolicies.get(key);
+      const record: PrismaBriefingPolicyRecord = {
+        id: existing?.id ?? args.create.id,
+        tenantId: existing?.tenantId ?? args.create.tenantId,
+        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
+        scopeType: args.update.scopeType,
+        scopeKey: args.update.scopeKey,
+        topicId: args.update.topicId ?? existing?.topicId ?? args.create.topicId ?? null,
+        language: args.update.language,
+        format: args.update.format,
+        tone: args.update.tone,
+        maxStories: args.update.maxStories,
+        includeRisks: args.update.includeRisks,
+        includeTopicHighlights: args.update.includeTopicHighlights,
+        includeRepeatedSignals: args.update.includeRepeatedSignals,
+        dedupeStrategy: args.update.dedupeStrategy,
+        customInstructions: args.update.customInstructions,
+        rulesVersion: args.update.rulesVersion,
+        createdAt: existing?.createdAt ?? args.create.createdAt,
+        updatedAt: args.update.updatedAt,
+      };
+      this.briefingPolicies.set(key, record);
+
+      return record;
+    },
+    findFirst: async (args) =>
+      [...this.briefingPolicies.values()].find((record) => (
+        record.tenantId === args.where.tenantId &&
+        record.workspaceId === args.where.workspaceId &&
+        record.scopeKey === args.where.scopeKey
+      )) ?? null,
+  };
+
   readonly outboxEvent: PrismaSummaryClient['outboxEvent'] = {
     create: async (args) => {
       const record: PrismaSummaryOutboxEventRecord = {
@@ -547,6 +705,20 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
       (where.createdAt?.lte === undefined || record.createdAt.getTime() <= where.createdAt.lte.getTime())
     ));
   }
+
+  private filterBriefingArtifacts(where: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly scopeKey?: string;
+    readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
+  }): PrismaBriefingArtifactRecord[] {
+    return [...this.briefingArtifacts.values()].filter((record) => (
+      record.tenantId === where.tenantId &&
+      record.workspaceId === where.workspaceId &&
+      (where.scopeKey === undefined || record.scopeKey === where.scopeKey) &&
+      (where.status === undefined || where.status.in.includes(record.status))
+    ));
+  }
 }
 
 const compareArtifacts = (left: PrismaSummaryArtifactRecord, right: PrismaSummaryArtifactRecord): number => {
@@ -567,6 +739,33 @@ const compareFeedback = (left: PrismaSummaryFeedbackRecord, right: PrismaSummary
   }
 
   return right.id.localeCompare(left.id);
+};
+
+const compareBriefingArtifacts = (
+  left: PrismaBriefingArtifactRecord,
+  right: PrismaBriefingArtifactRecord,
+): number => {
+  const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
+
+  if (createdDiff !== 0) {
+    return createdDiff;
+  }
+
+  return right.id.localeCompare(left.id);
+};
+
+const briefingJobStatusMatches = (
+  recordStatus: PrismaSummaryStatus,
+  filter: PrismaSummaryStatus | { readonly in: readonly PrismaSummaryStatus[] } | undefined,
+): boolean => {
+  if (filter === undefined) {
+    return true;
+  }
+  if (typeof filter === 'string') {
+    return recordStatus === filter;
+  }
+
+  return filter.in.includes(recordStatus);
 };
 
 function assert(condition: unknown, message: string): asserts condition {

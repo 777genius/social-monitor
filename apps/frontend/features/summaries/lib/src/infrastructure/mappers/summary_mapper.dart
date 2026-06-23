@@ -1,3 +1,5 @@
+import '../../domain/entities/briefing_job_snapshot.dart';
+import '../../domain/entities/generated_briefing.dart';
 import '../../domain/entities/generated_summary.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../../domain/value_objects/summary_generation_status.dart';
@@ -19,6 +21,40 @@ final class SummaryMapper {
     );
   }
 
+  GeneratedBriefing briefingToDomain(BriefingApiDto dto) {
+    return GeneratedBriefing(
+      id: _nonEmpty(dto.id, fallback: 'briefing-unknown'),
+      title: _nonEmpty(dto.title, fallback: 'Workspace briefing'),
+      executiveSummary: _safeText(
+        dto.executiveSummary,
+        fallback: 'No briefing available',
+      ),
+      topStories: dto.topStories
+          .map(_briefingStoryToDomain)
+          .toList(growable: false),
+      repeatedSignals: dto.repeatedSignals
+          .map(_briefingSignalToDomain)
+          .toList(growable: false),
+      citations: dto.citations.map(_citationToDomain).toList(growable: false),
+      freshnessLabel: _nonEmpty(dto.freshnessLabel, fallback: 'Unknown'),
+      isDegraded: dto.isDegraded,
+    );
+  }
+
+  BriefingJobSnapshot briefingJobToDomain(BriefingJobApiDto dto) {
+    return BriefingJobSnapshot(
+      id: _nonEmpty(dto.id, fallback: 'briefing-job-unknown'),
+      status: _briefingJobStatusFromApi(dto.status),
+      created: dto.created,
+      briefingId: dto.briefingId,
+      failureReason: dto.failureReason,
+      requestedAt: dto.requestedAt,
+      startedAt: dto.startedAt,
+      completedAt: dto.completedAt,
+      failedAt: dto.failedAt,
+    );
+  }
+
   SummaryCitation _citationToDomain(SummaryCitationApiDto dto) {
     return SummaryCitation(
       id: _nonEmpty(dto.id, fallback: 'citation-unknown'),
@@ -30,6 +66,26 @@ final class SummaryMapper {
     );
   }
 
+  BriefingStory _briefingStoryToDomain(BriefingStoryApiDto dto) {
+    return BriefingStory(
+      title: _nonEmpty(dto.title, fallback: 'Untitled story'),
+      summary: _safeText(dto.summary, fallback: 'No story summary available'),
+      topicCount: dto.topicCount,
+      providerCount: dto.providerCount,
+      citationIds: dto.citationIds,
+    );
+  }
+
+  BriefingRepeatedSignal _briefingSignalToDomain(
+    BriefingRepeatedSignalApiDto dto,
+  ) {
+    return BriefingRepeatedSignal(
+      title: _nonEmpty(dto.title, fallback: 'Repeated signal'),
+      topicIds: dto.topicIds,
+      citationIds: dto.citationIds,
+    );
+  }
+
   SummaryGenerationStatus _statusFromApi(String value) {
     return switch (value.trim().toLowerCase()) {
       'ready' => SummaryGenerationStatus.ready,
@@ -37,6 +93,17 @@ final class SummaryMapper {
       'degraded' => SummaryGenerationStatus.degraded,
       'failed' => SummaryGenerationStatus.failed,
       _ => SummaryGenerationStatus.unknown,
+    };
+  }
+
+  BriefingJobStatus _briefingJobStatusFromApi(String value) {
+    return switch (value.trim().toLowerCase()) {
+      'requested' => BriefingJobStatus.requested,
+      'running' => BriefingJobStatus.running,
+      'completed' => BriefingJobStatus.completed,
+      'no_signal' => BriefingJobStatus.noSignal,
+      'failed' => BriefingJobStatus.failed,
+      _ => BriefingJobStatus.unknown,
     };
   }
 

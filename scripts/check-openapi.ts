@@ -60,12 +60,19 @@ import { TopicController } from '@social-monitor/monitoring/interfaces/rest/topi
 import { GetSummaryJobStatusUseCase } from '@social-monitor/summary/features/get-summary-job-status/get-summary-job-status.use-case';
 import { GetSummaryPolicyUseCase } from '@social-monitor/summary/features/get-summary-policy/get-summary-policy.use-case';
 import { GetSummaryUseCase } from '@social-monitor/summary/features/get-summary/get-summary.use-case';
+import { GetBriefingJobStatusUseCase } from '@social-monitor/summary/features/get-briefing-job-status/get-briefing-job-status.use-case';
+import { GetBriefingUseCase } from '@social-monitor/summary/features/get-briefing/get-briefing.use-case';
 import { ListSummariesUseCase } from '@social-monitor/summary/features/list-summaries/list-summaries.use-case';
 import { ListSummaryFeedbackUseCase } from '@social-monitor/summary/features/list-summary-feedback/list-summary-feedback.use-case';
+import { ListBriefingsUseCase } from '@social-monitor/summary/features/list-briefings/list-briefings.use-case';
 import { RecordSummaryFeedbackUseCase } from '@social-monitor/summary/features/record-summary-feedback/record-summary-feedback.use-case';
 import { RegenerateSummaryUseCase } from '@social-monitor/summary/features/regenerate-summary/regenerate-summary.use-case';
+import { RequestBriefingUseCase } from '@social-monitor/summary/features/request-briefing/request-briefing.use-case';
 import { RequestSummaryUseCase } from '@social-monitor/summary/features/request-summary/request-summary.use-case';
 import { UpsertSummaryPolicyUseCase } from '@social-monitor/summary/features/upsert-summary-policy/upsert-summary-policy.use-case';
+import { BriefingController } from '@social-monitor/summary/interfaces/rest/briefing.controller';
+import { BriefingJobController } from '@social-monitor/summary/interfaces/rest/briefing-job.controller';
+import { BriefingRequestController } from '@social-monitor/summary/interfaces/rest/briefing-request.controller';
 import { SummaryFeedbackController } from '@social-monitor/summary/interfaces/rest/summary-feedback.controller';
 import { SummaryJobController } from '@social-monitor/summary/interfaces/rest/summary-job.controller';
 import { SummaryPolicyController } from '@social-monitor/summary/interfaces/rest/summary-policy.controller';
@@ -160,6 +167,8 @@ const useCaseProviders = [
   GetSummaryJobStatusUseCase,
   GetSummaryPolicyUseCase,
   GetSummaryUseCase,
+  GetBriefingJobStatusUseCase,
+  GetBriefingUseCase,
   GetWebhookEndpointUseCase,
   GetBetaLaunchSupportUseCase,
   ListApiKeysUseCase,
@@ -173,12 +182,14 @@ const useCaseProviders = [
   ListSourceProfilesUseCase,
   ListSummariesUseCase,
   ListSummaryFeedbackUseCase,
+  ListBriefingsUseCase,
   ListTopicsUseCase,
   ListWebhookEndpointsUseCase,
   RecordPublicApiAuditEventUseCase,
   RecordSummaryFeedbackUseCase,
   RegenerateSummaryUseCase,
   RequestScanUseCase,
+  RequestBriefingUseCase,
   RequestSummaryUseCase,
   RetryDeliveryAttemptUseCase,
   RevokeApiKeyUseCase,
@@ -203,6 +214,9 @@ const useCaseProviders = [
     ScanDeadLetterController,
     BetaLaunchSupportController,
     SummaryController,
+    BriefingController,
+    BriefingJobController,
+    BriefingRequestController,
     SummaryFeedbackController,
     SummaryJobController,
     SummaryPolicyController,

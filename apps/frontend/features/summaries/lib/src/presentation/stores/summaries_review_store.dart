@@ -2,44 +2,83 @@ import 'package:flutter/foundation.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../application/commands/regenerate_summary_command.dart';
+import '../../application/commands/request_workspace_briefing_command.dart';
 import '../../application/commands/submit_summary_feedback_command.dart';
 import '../../application/queries/list_summaries_query.dart';
 import '../../application/queries/load_summary_detail_query.dart';
+import '../../application/queries/load_workspace_briefing_job_status_query.dart';
+import '../../application/queries/load_workspace_briefing_query.dart';
 import '../../application/use_cases/list_summaries_use_case.dart';
 import '../../application/use_cases/load_summary_detail_use_case.dart';
+import '../../application/use_cases/load_workspace_briefing_job_status_use_case.dart';
+import '../../application/use_cases/load_workspace_briefing_use_case.dart';
 import '../../application/use_cases/regenerate_summary_use_case.dart';
+import '../../application/use_cases/request_workspace_briefing_use_case.dart';
 import '../../application/use_cases/submit_summary_feedback_use_case.dart';
+import '../../domain/entities/briefing_job_snapshot.dart';
+import '../../domain/entities/generated_briefing.dart';
 import '../../domain/entities/generated_summary.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
 import '../../domain/value_objects/summary_generation_status.dart';
 import '../../domain/value_objects/summary_id.dart';
 
+part 'summaries_review_store_briefing_workflow.dart';
+
+typedef BriefingRequestIdempotencyKeyFactory =
+    String Function(WorkspaceScope scope);
+
 final class SummariesReviewStore extends ChangeNotifier {
   SummariesReviewStore({
     required ListSummariesUseCase listSummaries,
+    required LoadWorkspaceBriefingUseCase loadWorkspaceBriefing,
+    required RequestWorkspaceBriefingUseCase requestWorkspaceBriefing,
+    required LoadWorkspaceBriefingJobStatusUseCase
+    loadWorkspaceBriefingJobStatus,
     required LoadSummaryDetailUseCase loadSummaryDetail,
     required RegenerateSummaryUseCase regenerateSummary,
     required SubmitSummaryFeedbackUseCase submitFeedback,
     required WorkspaceScope scope,
+    BriefingRequestIdempotencyKeyFactory? briefingRequestIdempotencyKeyFactory,
+    Duration briefingPollInterval = const Duration(seconds: 2),
+    int briefingPollAttempts = 12,
     OperationGenerationGuard? listGenerationGuard,
+    OperationGenerationGuard? briefingGenerationGuard,
     OperationGenerationGuard? detailGenerationGuard,
     OperationGenerationGuard? mutationGenerationGuard,
   }) : _listSummaries = listSummaries,
+       _loadWorkspaceBriefing = loadWorkspaceBriefing,
+       _requestWorkspaceBriefing = requestWorkspaceBriefing,
+       _loadWorkspaceBriefingJobStatus = loadWorkspaceBriefingJobStatus,
        _loadSummaryDetail = loadSummaryDetail,
        _regenerateSummary = regenerateSummary,
        _submitFeedback = submitFeedback,
        _scope = scope,
+       _briefingRequestIdempotencyKeyFactory =
+           briefingRequestIdempotencyKeyFactory ??
+           _defaultBriefingRequestIdempotencyKey,
+       _briefingPollInterval = briefingPollInterval,
+       _briefingPollAttempts = briefingPollAttempts,
        _listGenerationGuard = listGenerationGuard ?? OperationGenerationGuard(),
+       _briefingGenerationGuard =
+           briefingGenerationGuard ?? OperationGenerationGuard(),
        _detailGenerationGuard =
            detailGenerationGuard ?? OperationGenerationGuard(),
        _mutationGenerationGuard =
            mutationGenerationGuard ?? OperationGenerationGuard();
 
   final ListSummariesUseCase _listSummaries;
+  final LoadWorkspaceBriefingUseCase _loadWorkspaceBriefing;
+  final RequestWorkspaceBriefingUseCase _requestWorkspaceBriefing;
+  final LoadWorkspaceBriefingJobStatusUseCase _loadWorkspaceBriefingJobStatus;
   final LoadSummaryDetailUseCase _loadSummaryDetail;
   final RegenerateSummaryUseCase _regenerateSummary;
   final SubmitSummaryFeedbackUseCase _submitFeedback;
+  final BriefingRequestIdempotencyKeyFactory
+  _briefingRequestIdempotencyKeyFactory;
+  final Duration _briefingPollInterval;
+  final int _briefingPollAttempts;
   final OperationGenerationGuard _listGenerationGuard;
+  final OperationGenerationGuard _briefingGenerationGuard;
   final OperationGenerationGuard _detailGenerationGuard;
   final OperationGenerationGuard _mutationGenerationGuard;
 
@@ -48,6 +87,10 @@ final class SummariesReviewStore extends ChangeNotifier {
 
   AsyncViewState<PageResult<GeneratedSummary>> listState =
       const InitialViewState<PageResult<GeneratedSummary>>();
+  AsyncViewState<WorkspaceBriefingSnapshot> briefingState =
+      const InitialViewState<WorkspaceBriefingSnapshot>();
+  AsyncViewState<BriefingJobSnapshot> briefingJobState =
+      const InitialViewState<BriefingJobSnapshot>();
   AsyncViewState<GeneratedSummary> detailState =
       const InitialViewState<GeneratedSummary>();
   AsyncViewState<GeneratedSummary> regenerationState =
@@ -105,16 +148,23 @@ final class SummariesReviewStore extends ChangeNotifier {
     );
   }
 
+  void _notifyStateChanged() {
+    notifyListeners();
+  }
+
   void updateScope(WorkspaceScope nextScope) {
     if (nextScope == _scope) {
       return;
     }
     _scope = nextScope;
     _listGenerationGuard.invalidate();
+    _briefingGenerationGuard.invalidate();
     _detailGenerationGuard.invalidate();
     _mutationGenerationGuard.invalidate();
     _selectedSummaryId = null;
     listState = const InitialViewState<PageResult<GeneratedSummary>>();
+    briefingState = const InitialViewState<WorkspaceBriefingSnapshot>();
+    briefingJobState = const InitialViewState<BriefingJobSnapshot>();
     detailState = const InitialViewState<GeneratedSummary>();
     regenerationState = const InitialViewState<GeneratedSummary>();
     feedbackState = const InitialViewState<GeneratedSummary>();
@@ -131,6 +181,8 @@ final class SummariesReviewStore extends ChangeNotifier {
   }
 
   Future<void> load() async {
+    await loadWorkspaceBriefing();
+
     final generation = _listGenerationGuard.markOperationStarted();
     final previous = switch (listState) {
       ReadyViewState<PageResult<GeneratedSummary>>(:final value) => value,
@@ -171,6 +223,11 @@ final class SummariesReviewStore extends ChangeNotifier {
           FailureViewState<PageResult<GeneratedSummary>>(failure: failure),
     );
     notifyListeners();
+  }
+
+  Future<void> loadWorkspaceBriefing() async {
+    final generation = _briefingGenerationGuard.markOperationStarted();
+    await _loadWorkspaceBriefingForStore(this, generation);
   }
 
   bool selectSummaryById(SummaryId summaryId) {

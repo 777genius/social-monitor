@@ -32,12 +32,12 @@
       ]
     },
     {
-      "providerKey": "github",
+      "providerKey": "github-issues",
       "readinessState": "enabled_beta",
       "runtimeReadiness": "fixture_ready",
       "liveBetaReady": false,
       "liveBetaBlockers": [
-        "Live GitHub API smoke and deployed rate-limit budget evidence required before external beta."
+        "Live GitHub issues API smoke and deployed rate-limit budget evidence required before external beta."
       ],
       "productionSafe": true,
       "cursorModel": "page_token",
@@ -46,6 +46,32 @@
       "warningCount": 0,
       "firstExternalId": "github:I_github_fixture_9001",
       "nextCursor": "1",
+      "repeatedScanItemCount": 1,
+      "failureKind": "unavailable",
+      "checks": [
+        "capability_profile_matches_readiness",
+        "unsupported_query_rejected_before_scan",
+        "normalized_items_have_stable_identity",
+        "cursor_contract_is_non_empty_for_cursor_models",
+        "fixture_repeated_scan_is_deterministic",
+        "provider_errors_are_classified"
+      ]
+    },
+    {
+      "providerKey": "github-repo-radar",
+      "readinessState": "enabled_beta",
+      "runtimeReadiness": "fixture_ready",
+      "liveBetaReady": false,
+      "liveBetaBlockers": [
+        "BigQuery GH Archive credentials/quota evidence, npm run check:github-repo-radar-live-smoke and GitHub live verification rate-limit budget required before external beta."
+      ],
+      "productionSafe": true,
+      "cursorModel": "time",
+      "quotaModel": "per_app",
+      "itemCount": 1,
+      "warningCount": 0,
+      "firstExternalId": "github-repo-radar:openai/codex:2026-06-23T12:00:00.000Z",
+      "nextCursor": "2026-06-23T12:00:00.000Z",
       "repeatedScanItemCount": 1,
       "failureKind": "unavailable",
       "checks": [

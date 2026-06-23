@@ -5,7 +5,10 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { FakeSourceProvider } from '../libs/ingestion/adapters/source/fake-source.provider';
 import { FixtureGitHubClient } from '../libs/ingestion/adapters/source/github/fixture-github-client';
-import { GitHubSourceProvider } from '../libs/ingestion/adapters/source/github/github-source.provider';
+import { GITHUB_ISSUES_PROVIDER_KEY, GitHubSourceProvider } from '../libs/ingestion/adapters/source/github/github-source.provider';
+import { FixtureGitHubRepoRadarClient } from '../libs/ingestion/adapters/source/github-repo-radar/fixture-github-repo-radar-client';
+import { FixtureGitHubRepositoryLiveVerifier } from '../libs/ingestion/adapters/source/github-repo-radar/fixture-github-repository-live-verifier';
+import { GitHubRepoRadarSourceProvider } from '../libs/ingestion/adapters/source/github-repo-radar/github-repo-radar-source.provider';
 import { FixtureHackerNewsClient } from '../libs/ingestion/adapters/source/hacker-news/fixture-hacker-news-client';
 import { HackerNewsSourceProvider } from '../libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
 import { FixtureRedditClient } from '../libs/ingestion/adapters/source/reddit/fixture-reddit-client';
@@ -94,11 +97,31 @@ const cases: readonly ProviderCase[] = [
     providerFactory: () => new GitHubSourceProvider(new FixtureGitHubClient()),
     validQuery: { mode: 'search', query: 'social monitoring repo:777genius/social-monitor' },
     unsupportedQueryMode: 'thread',
-    expectedProviderKey: 'github',
+    expectedProviderKey: GITHUB_ISSUES_PROVIDER_KEY,
     expectedReadinessState: 'enabled_beta',
     expectedFailureKind: 'unavailable',
     contextConfig: {
       maxItems: 1,
+    },
+  },
+  {
+    providerFactory: () => new GitHubRepoRadarSourceProvider(
+      new FixtureGitHubRepoRadarClient(),
+      new FixtureGitHubRepositoryLiveVerifier(),
+      { now: () => new Date('2026-06-23T12:00:00.000Z') },
+    ),
+    validQuery: { mode: 'search', query: 'agents' },
+    unsupportedQueryMode: 'listing',
+    expectedProviderKey: 'github-repo-radar',
+    expectedReadinessState: 'enabled_beta',
+    expectedFailureKind: 'unavailable',
+    contextConfig: {
+      topics: ['ai', 'agents', 'developer-tools'],
+      languages: ['TypeScript', 'Rust'],
+      windows: ['24h', '7d', '30d', '90d'],
+      minStars: 100,
+      maxItems: 2,
+      fixtureMode: true,
     },
   },
   {

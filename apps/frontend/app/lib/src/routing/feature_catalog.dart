@@ -14,5 +14,5 @@ abstract interface class AppFeatureDescriptor {
 
   String get status;
 
-  Widget buildPage(BuildContext context);
+  Widget buildPage(BuildContext context, Uri uri);
 }

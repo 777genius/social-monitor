@@ -34,6 +34,7 @@ export class GetFeedItemUseCase {
       authorHandle: snapshot.authorHandle,
       publishedAt: snapshot.publishedAt.toISOString(),
       observedAt: snapshot.observedAt.toISOString(),
+      providerMetadata: snapshot.providerMetadata,
     });
   }
 }

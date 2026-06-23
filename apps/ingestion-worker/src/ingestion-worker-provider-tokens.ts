@@ -13,7 +13,9 @@ import type {
   ScanFailureQueuePort,
   ScanRetryQueuePort,
   ScanLeasePort,
+  SourceItemMetadataProjectionPort,
   SourceItemRepositoryPort,
+  GitHubRepositoryTrendHistoryRepositoryPort,
 } from '@social-monitor/ingestion/ports';
 
 export type IngestionScanReporterMode = 'noop' | 'monitoring';
@@ -50,6 +52,9 @@ export const INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS = Symbol('INGESTION_SCAN_SCHE
 export const INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS = Symbol('INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS');
 export const INGESTION_SCAN_EXECUTION_REPORTER = Symbol('INGESTION_SCAN_EXECUTION_REPORTER');
 export const INGESTION_SOURCE_ITEM_REPOSITORY = Symbol('INGESTION_SOURCE_ITEM_REPOSITORY');
+export const INGESTION_SOURCE_ITEM_METADATA_PROJECTION = Symbol('INGESTION_SOURCE_ITEM_METADATA_PROJECTION');
+export const INGESTION_GITHUB_REPOSITORY_TREND_HISTORY_REPOSITORY =
+  Symbol('INGESTION_GITHUB_REPOSITORY_TREND_HISTORY_REPOSITORY');
 export const INGESTION_SCAN_ATTEMPT_REPOSITORY = Symbol('INGESTION_SCAN_ATTEMPT_REPOSITORY');
 export const INGESTION_SCAN_CURSOR_REPOSITORY = Symbol('INGESTION_SCAN_CURSOR_REPOSITORY');
 export const INGESTION_FEED_PROJECTION = Symbol('INGESTION_FEED_PROJECTION');
@@ -66,6 +71,8 @@ export type IngestionWorkerProviderTokenMap = {
   readonly [INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS]: IngestionScanQueueDrainLoopOptions;
   readonly [INGESTION_SCAN_EXECUTION_REPORTER]: ScanExecutionReporterPort;
   readonly [INGESTION_SOURCE_ITEM_REPOSITORY]: SourceItemRepositoryPort;
+  readonly [INGESTION_SOURCE_ITEM_METADATA_PROJECTION]: SourceItemMetadataProjectionPort;
+  readonly [INGESTION_GITHUB_REPOSITORY_TREND_HISTORY_REPOSITORY]: GitHubRepositoryTrendHistoryRepositoryPort;
   readonly [INGESTION_SCAN_ATTEMPT_REPOSITORY]: ScanAttemptRepositoryPort;
   readonly [INGESTION_SCAN_CURSOR_REPOSITORY]: ScanCursorRepositoryPort;
   readonly [INGESTION_FEED_PROJECTION]: FeedProjectionPort;

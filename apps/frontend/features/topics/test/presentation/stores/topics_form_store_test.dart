@@ -16,7 +16,7 @@ void main() {
 
     store.beginCreate();
     store.updateName('A');
-    store.updateKeywordsText('risk');
+    store.updateQueryText('market risk');
     final result = await store.save();
 
     expect(result, isA<ResultFailure<TopicSummary>>());
@@ -28,7 +28,7 @@ void main() {
 
     store.beginCreate();
     store.updateName('Market risk');
-    store.updateKeywordsText('risk, pricing');
+    store.updateQueryText('market risk OR pricing');
     final created = await store.save();
 
     expect(created, isA<ResultSuccess<TopicSummary>>());
@@ -36,7 +36,7 @@ void main() {
     final topic = (created as ResultSuccess<TopicSummary>).value;
     store.beginEdit(topic);
     store.updateName('Market risk updated');
-    store.updateKeywordsText('risk');
+    store.updateQueryText('market risk');
     final updated = await store.save();
 
     expect(updated, isA<ResultSuccess<TopicSummary>>());

@@ -1,10 +1,15 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../application/commands/regenerate_summary_command.dart';
+import '../../application/commands/request_workspace_briefing_command.dart';
 import '../../application/commands/submit_summary_feedback_command.dart';
 import '../../application/contracts/summary_review_catalog.dart';
 import '../../application/queries/list_summaries_query.dart';
 import '../../application/queries/load_summary_detail_query.dart';
+import '../../application/queries/load_workspace_briefing_job_status_query.dart';
+import '../../application/queries/load_workspace_briefing_query.dart';
+import '../../domain/entities/briefing_job_snapshot.dart';
+import '../../domain/entities/generated_briefing.dart';
 import '../../domain/entities/generated_summary.dart';
 import '../api/summary_api_dto.dart';
 import '../api_clients/in_memory_summaries_api_client.dart';
@@ -68,6 +73,51 @@ final class GeneratedSummaryReviewCatalog implements SummaryReviewCatalog {
       SubmitSummaryFeedbackApiRequest.fromCommand(command),
     );
     return _mapSummary(result);
+  }
+
+  @override
+  Future<Result<WorkspaceBriefingSnapshot>> loadWorkspaceBriefing(
+    LoadWorkspaceBriefingQuery query,
+  ) async {
+    final result = await _apiClient.loadWorkspaceBriefing(
+      LoadWorkspaceBriefingApiRequest.fromQuery(query),
+    );
+    return result.fold(
+      onSuccess: (dto) => Result.success(
+        WorkspaceBriefingSnapshot(
+          current: dto.current == null
+              ? null
+              : _mapper.briefingToDomain(dto.current!),
+        ),
+      ),
+      onFailure: Result<WorkspaceBriefingSnapshot>.failure,
+    );
+  }
+
+  @override
+  Future<Result<BriefingJobSnapshot>> requestWorkspaceBriefing(
+    RequestWorkspaceBriefingCommand command,
+  ) async {
+    final result = await _apiClient.requestWorkspaceBriefing(
+      RequestWorkspaceBriefingApiRequest.fromCommand(command),
+    );
+    return result.fold(
+      onSuccess: (dto) => Result.success(_mapper.briefingJobToDomain(dto)),
+      onFailure: Result<BriefingJobSnapshot>.failure,
+    );
+  }
+
+  @override
+  Future<Result<BriefingJobSnapshot>> loadWorkspaceBriefingJobStatus(
+    LoadWorkspaceBriefingJobStatusQuery query,
+  ) async {
+    final result = await _apiClient.loadWorkspaceBriefingJobStatus(
+      LoadWorkspaceBriefingJobStatusApiRequest.fromQuery(query),
+    );
+    return result.fold(
+      onSuccess: (dto) => Result.success(_mapper.briefingJobToDomain(dto)),
+      onFailure: Result<BriefingJobSnapshot>.failure,
+    );
   }
 
   Result<GeneratedSummary> _mapSummary(Result<SummaryApiDto> result) {

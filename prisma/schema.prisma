@@ -459,6 +459,7 @@ model FeedItem {
   authorHandle  String?        @map("author_handle")
   publishedAt   DateTime       @map("published_at") @db.Timestamptz(6)
   observedAt    DateTime       @map("observed_at") @db.Timestamptz(6)
+  providerMetadata Json?        @map("provider_metadata")
   status        FeedItemStatus @default(VISIBLE)
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -467,6 +468,78 @@ model FeedItem {
   @@index([tenantId, workspaceId, status, createdAt])
   @@index([tenantId, workspaceId, providerKey, observedAt])
   @@map("feed_items")
+}
+
+model GitHubRepositoryTrendCandidate {
+  id                 String   @id @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  workspaceId        String   @map("workspace_id") @db.Uuid
+  topicId            String   @map("topic_id") @db.Uuid
+  sourceBindingId    String   @map("source_binding_id") @db.Uuid
+  scanJobId          String   @map("scan_job_id") @db.Uuid
+  repositoryFullName String   @map("repository_full_name")
+  primaryWindow      String   @map("primary_window")
+  stars24h           Int      @map("stars_24h")
+  stars7d            Int      @map("stars_7d")
+  stars30d           Int      @map("stars_30d")
+  stars90d           Int      @map("stars_90d")
+  rank               Int
+  observedAt         DateTime @map("observed_at") @db.Timestamptz(6)
+  source             String
+  metadata           Json
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, scanJobId, repositoryFullName, primaryWindow])
+  @@index([tenantId, workspaceId, sourceBindingId, observedAt])
+  @@map("github_repository_trend_candidates")
+}
+
+model GitHubRepositoryTrendSnapshot {
+  id                 String   @id @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  workspaceId        String   @map("workspace_id") @db.Uuid
+  repositoryFullName String   @map("repository_full_name")
+  repositoryUrl      String   @map("repository_url")
+  description        String?
+  language           String?
+  topics             Json
+  license            String?
+  totalStars         Int      @map("total_stars")
+  stars24h           Int      @map("stars_24h")
+  stars7d            Int      @map("stars_7d")
+  stars30d           Int      @map("stars_30d")
+  stars90d           Int      @map("stars_90d")
+  checkedAt          DateTime @map("checked_at") @db.Timestamptz(6)
+  source             String
+  metadata           Json
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, repositoryFullName, checkedAt])
+  @@index([tenantId, workspaceId, checkedAt])
+  @@map("github_repository_trend_snapshots")
+}
+
+model GitHubRepositoryTrendResult {
+  id                 String   @id @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  workspaceId        String   @map("workspace_id") @db.Uuid
+  topicId            String   @map("topic_id") @db.Uuid
+  sourceBindingId    String   @map("source_binding_id") @db.Uuid
+  scanJobId          String   @map("scan_job_id") @db.Uuid
+  sourceItemId       String   @map("source_item_id") @db.Uuid
+  repositoryFullName String   @map("repository_full_name")
+  repositoryUrl      String   @map("repository_url")
+  primaryWindow      String   @map("primary_window")
+  rank               Int
+  checkedAt          DateTime @map("checked_at") @db.Timestamptz(6)
+  observedAt         DateTime @map("observed_at") @db.Timestamptz(6)
+  source             String
+  metadata           Json
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, scanJobId, repositoryFullName, primaryWindow])
+  @@index([tenantId, workspaceId, topicId, checkedAt])
+  @@map("github_repository_trend_results")
 }
 
 model SummaryArtifact {
@@ -557,6 +630,83 @@ model SummaryFeedback {
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, workspaceId, summaryArtifactId])
   @@map("summary_feedback")
+}
+
+model BriefingArtifact {
+  id              String        @id @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  workspaceId     String        @map("workspace_id") @db.Uuid
+  scopeType       String        @map("scope_type")
+  scopeKey        String        @map("scope_key")
+  topicId         String?       @map("topic_id") @db.Uuid
+  userId          String?       @map("user_id")
+  subscriptionId  String?       @map("subscription_id") @db.Uuid
+  status          SummaryStatus @default(COMPLETED)
+  schemaVersion   Int           @default(1) @map("schema_version")
+  modelVersion    String        @map("model_version")
+  promptVersion   String        @map("prompt_version")
+  headline        String
+  summaryText     String?       @map("summary_text")
+  artifactPayload Json          @map("artifact_payload")
+  citations       Json
+  qualitySignals  Json          @map("quality_signals")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, scopeKey, status, createdAt])
+  @@index([tenantId, workspaceId, userId, scopeKey, createdAt])
+  @@map("briefing_artifacts")
+}
+
+model BriefingJob {
+  id                 String        @id @db.Uuid
+  tenantId           String        @map("tenant_id") @db.Uuid
+  workspaceId        String        @map("workspace_id") @db.Uuid
+  scopeType          String        @map("scope_type")
+  scopeKey           String        @map("scope_key")
+  topicId            String?       @map("topic_id") @db.Uuid
+  userId             String?       @map("user_id")
+  subscriptionId     String?       @map("subscription_id") @db.Uuid
+  status             SummaryStatus @default(REQUESTED)
+  idempotencyKey     String        @map("idempotency_key")
+  requestedAt        DateTime      @map("requested_at") @db.Timestamptz(6)
+  startedAt          DateTime?     @map("started_at") @db.Timestamptz(6)
+  completedAt        DateTime?     @map("completed_at") @db.Timestamptz(6)
+  failedAt           DateTime?     @map("failed_at") @db.Timestamptz(6)
+  briefingArtifactId String?       @map("briefing_artifact_id") @db.Uuid
+  failureReason      String?       @map("failure_reason")
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, workspaceId, scopeKey, status, createdAt])
+  @@index([tenantId, workspaceId, userId, scopeKey, createdAt])
+  @@map("briefing_jobs")
+}
+
+model BriefingPolicy {
+  id                       String   @id @db.Uuid
+  tenantId                 String   @map("tenant_id") @db.Uuid
+  workspaceId              String   @map("workspace_id") @db.Uuid
+  scopeType                String   @map("scope_type")
+  scopeKey                 String   @map("scope_key")
+  topicId                  String?  @map("topic_id") @db.Uuid
+  language                 String
+  format                   String
+  tone                     String
+  maxStories               Int      @map("max_stories")
+  includeRisks             Boolean  @map("include_risks")
+  includeTopicHighlights   Boolean  @map("include_topic_highlights")
+  includeRepeatedSignals   Boolean  @map("include_repeated_signals")
+  dedupeStrategy           String   @map("dedupe_strategy")
+  customInstructions       String?  @map("custom_instructions")
+  rulesVersion             String   @map("rules_version")
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, scopeKey])
+  @@index([tenantId, workspaceId, updatedAt])
+  @@map("briefing_policies")
 }
 
 model DeliveryAttempt {

@@ -190,10 +190,49 @@ const buildExecutiveSummary = (input: SummaryModelInput): string => {
 };
 
 const formatSourceHighlight = (item: SummaryModelInput['evidence']['items'][number]): string => {
+  const repoTrend = formatRepositoryTrendHighlight(item.providerMetadata);
+  if (repoTrend !== undefined) {
+    return repoTrend;
+  }
+
   const why = item.relevance?.whyImportant[0];
 
   return why === undefined ? item.title : `${item.title} (${why})`;
 };
+
+const formatRepositoryTrendHighlight = (metadata: unknown): string | undefined => {
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
+    return undefined;
+  }
+
+  const record = metadata as Readonly<Record<string, unknown>>;
+  if (record.kind !== 'github_repository_trend') {
+    return undefined;
+  }
+
+  const repository = readRecord(record.repository);
+  const trend = readRecord(record.trend);
+  const fullName = readString(repository?.fullName);
+  const totalStars = readNumber(trend?.totalStars);
+  const stars7d = readNumber(trend?.stars7d);
+
+  if (fullName === undefined || totalStars === undefined || stars7d === undefined) {
+    return undefined;
+  }
+
+  return `${fullName}: ${totalStars} stars, +${stars7d} in 7d`;
+};
+
+const readRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Readonly<Record<string, unknown>>
+    : undefined;
+
+const readString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+
+const readNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
 const buildNoSignalSummary = (input: SummaryModelInput): string => {
   const base = 'No eligible evidence items were available for this topic window.';

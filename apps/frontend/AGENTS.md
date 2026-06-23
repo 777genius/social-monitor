@@ -30,6 +30,7 @@ Read it before changing frontend code, then read the nearest feature or package 
 - `design_system` owns product UI wrappers, headless integration, tokens and responsive primitives.
 - `shared_kernel` stays framework-neutral and must not import Flutter, routing, MobX, generated API, design system or feature packages.
 - `generated_api` stays an outer API boundary and must not import Flutter, app, design system or feature packages.
+- `generated_api` owns OpenAPI generated REST clients, `Dio`, `Retrofit` and `openapi_retrofit_generator` configuration. App and feature packages must not depend on or import those packages directly.
 - Feature packages import `design_system`, not raw `headless`, `headless_adaptive` or third-party UI primitives.
 - Feature stores use typed shared async state, typed failures and stale-result guards for async/realtime flows.
 - Feature use cases return `Result` for expected failures and expose risky actions through explicit action intent/policy state.

@@ -20,6 +20,7 @@ class AppCommandBar extends StatelessWidget {
             child: AppButton(
               label: action.label,
               icon: action.icon,
+              controlKeyBase: action.controlKeyBase,
               onPressed: action.enabled ? action.onPressed : null,
               variant: action.variant,
             ),
@@ -34,6 +35,7 @@ final class AppCommandAction {
     required this.label,
     required this.onPressed,
     this.icon,
+    this.controlKeyBase,
     this.enabled = true,
     this.reason,
     this.variant = AppButtonVariant.primary,
@@ -42,6 +44,7 @@ final class AppCommandAction {
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
+  final String? controlKeyBase;
   final bool enabled;
   final String? reason;
   final AppButtonVariant variant;

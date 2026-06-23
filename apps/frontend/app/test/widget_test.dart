@@ -66,11 +66,13 @@ void main() {
 
     composition.router.go('/sources');
     await tester.pumpAndSettle();
-    expect(find.text('RSS feeds credential attention'), findsOneWidget);
+    expect(find.text('Source profiles'), findsOneWidget);
+    expect(find.text('Reddit'), findsWidgets);
 
     composition.router.go('/feed');
     await tester.pumpAndSettle();
-    expect(find.text('Pricing concern on Reddit'), findsWidgets);
+    expect(find.text('Feed'), findsWidgets);
+    expect(find.text('Search posts'), findsOneWidget);
 
     composition.router.go('/summaries');
     await tester.pumpAndSettle();
@@ -190,24 +192,34 @@ void main() {
       'Competitor watch',
     );
     await tester.enterText(
-      find.byKey(const ValueKey('topic-keywords-field')),
-      'pricing, launch',
+      find.byKey(const ValueKey('topic-query-field')),
+      'pricing OR launch',
     );
     await _tapText(tester, 'Save topic');
     expect(find.text('Competitor watch'), findsWidgets);
 
     composition.router.go('/sources');
     await tester.pumpAndSettle();
-    await _tapText(tester, 'Reconnect');
-    expect(find.text('Credential attention required'), findsNothing);
-    await _tapText(tester, 'Connect source');
-    expect(find.text('Web mentions'), findsWidgets);
+    expect(find.text('Source profiles'), findsOneWidget);
+    expect(find.text('GitHub'), findsWidgets);
+
+    composition.router.go('/topics');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Market risk').first);
+    await tester.pumpAndSettle();
+    await _tapText(tester, 'Sources');
+    expect(find.text('Topic sources'), findsWidgets);
+    expect(find.text('Reddit - Listing'), findsWidgets);
+    expect(find.text('Uses platform Reddit app credential'), findsOneWidget);
+    expect(find.text('Scan policy'), findsOneWidget);
+    expect(find.text('Start scan'), findsOneWidget);
+    await _tapText(tester, 'Start scan');
+    expect(find.text('Scan request failed'), findsNothing);
 
     composition.router.go('/feed');
     await tester.pumpAndSettle();
-    expect(find.text('Pricing concern on Reddit'), findsWidgets);
-    await _tapText(tester, 'Mark reviewed');
-    expect(find.text('Positive launch mention'), findsWidgets);
+    expect(find.text('Feed'), findsWidgets);
+    expect(find.text('Search posts'), findsOneWidget);
 
     composition.router.go('/summaries');
     await tester.pumpAndSettle();

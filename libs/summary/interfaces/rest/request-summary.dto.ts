@@ -1,21 +1,35 @@
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { IsOptional, IsString, MinLength } from "class-validator";
 
-import type { SummaryJobStatus } from '../../domain';
+const summaryJobStatuses = [
+  "requested",
+  "running",
+  "completed",
+  "no_signal",
+  "failed",
+] as const;
 
 export class RequestSummaryRequestDto {
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   @MinLength(1)
   userId?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   @MinLength(1)
   subscriptionId?: string;
 }
 
-export type RequestSummaryResponseDto = {
-  readonly summaryJobId: string;
-  readonly status: SummaryJobStatus;
-  readonly created: boolean;
-};
+export class RequestSummaryResponseDto {
+  @ApiProperty()
+  declare readonly summaryJobId: string;
+
+  @ApiProperty({ enum: summaryJobStatuses })
+  declare readonly status: (typeof summaryJobStatuses)[number];
+
+  @ApiProperty()
+  declare readonly created: boolean;
+}

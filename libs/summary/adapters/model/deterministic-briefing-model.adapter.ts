@@ -1,0 +1,262 @@
+import type {
+  BriefingModelBudget,
+  BriefingModelEstimate,
+  BriefingModelFailure,
+  BriefingModelInput,
+  BriefingModelPolicy,
+  BriefingModelPort,
+  BriefingModelRoute,
+  BriefingModelValidationResult,
+  ProviderBriefingAttempt,
+} from '../../ports';
+
+const route: BriefingModelRoute = {
+  provider: 'deterministic-local',
+  model: 'briefing-fake-v1',
+  promptVersion: 'briefing.prompt.v1',
+  schemaVersion: 'briefing.artifact.v1',
+};
+
+export class DeterministicBriefingModelAdapter implements BriefingModelPort {
+  route(input: BriefingModelInput, policy: BriefingModelPolicy, budget: BriefingModelBudget): BriefingModelRoute {
+    const estimate = this.estimate(input, route);
+
+    if (
+      estimate.inputTokens > policy.maxInputTokens ||
+      estimate.outputTokens > policy.maxOutputTokens ||
+      estimate.estimatedCostUsd > policy.maxEstimatedCostUsd ||
+      estimate.inputTokens + estimate.outputTokens > budget.remainingTokens ||
+      estimate.estimatedCostUsd > budget.remainingCostUsd
+    ) {
+      throw new Error('Briefing model budget exceeded');
+    }
+
+    return route;
+  }
+
+  estimate(input: BriefingModelInput, selectedRoute: BriefingModelRoute): BriefingModelEstimate {
+    void selectedRoute;
+
+    const evidenceTextLength = input.evidence.selectedEvidence.reduce(
+      (total, item) => total + item.title.length + (item.bodyPreview?.length ?? 0),
+      0,
+    );
+    const contextTextLength = input.contextArtifacts.reduce(
+      (total, artifact) => total + artifact.summaryText.length,
+      0,
+    );
+    const inputTokens = Math.ceil((evidenceTextLength + contextTextLength) / 4);
+    const outputTokens = input.evidence.selectedEvidence.length === 0 ? 64 : 260;
+
+    return {
+      inputTokens,
+      outputTokens,
+      estimatedCostUsd: 0,
+    };
+  }
+
+  async generate(input: BriefingModelInput, selectedRoute: BriefingModelRoute): Promise<ProviderBriefingAttempt> {
+    const usage = this.estimate(input, selectedRoute);
+    const lineage = {
+      promptVersion: selectedRoute.promptVersion,
+      schemaVersion: selectedRoute.schemaVersion,
+      modelVersion: selectedRoute.model,
+      providerVersion: selectedRoute.provider,
+      rulesVersion: input.policy.rulesVersion,
+      evalDatasetVersion: 'briefing.eval.mvp.v1',
+    } as const;
+    const firstItem = input.evidence.selectedEvidence[0];
+
+    if (firstItem === undefined) {
+      return {
+        route: selectedRoute,
+        draft: {
+          headline: 'No reliable workspace signal yet',
+          executiveSummary: 'No eligible feed items were available for this briefing window.',
+          topStories: [],
+          topicHighlights: [],
+          repeatedSignals: [],
+          risksAndUnknowns: [
+            {
+              description: 'The briefing window did not contain enough primary evidence to produce claims.',
+              reason: 'insufficient_evidence',
+            },
+          ],
+          citationMap: [],
+          qualityFlags: ['no_signal', 'limited_sources'],
+          confidence: {
+            level: 'none',
+            score: 0,
+            rationale: 'No primary evidence was selected for the briefing window.',
+          },
+          lineage,
+          usage,
+          noSignalReason: 'No eligible evidence items selected for this briefing scope.',
+        },
+      };
+    }
+
+    const selectedEvidence = input.evidence.selectedEvidence.slice(0, input.policy.maxStories);
+    const citationMap = selectedEvidence.map((item, index) => ({
+      citationId: `c${index + 1}`,
+      feedItemId: item.feedItemId,
+      sourceItemId: item.sourceItemId,
+      providerKey: item.providerKey,
+      field: 'title' as const,
+    }));
+    const topStories = input.evidence.clusters
+      .slice(0, input.policy.maxStories)
+      .map((cluster, index) => {
+        const representative = selectedEvidence.find((item) => item.feedItemId === cluster.representativeFeedItemId)
+          ?? selectedEvidence[index]
+          ?? firstItem;
+        const citationId = citationMap.find((citation) => citation.feedItemId === representative.feedItemId)
+          ?.citationId
+          ?? 'c1';
+
+        return {
+          storyClusterId: cluster.id,
+          title: representative.title,
+          summary: buildStorySummary(representative.title, cluster.topicIds, cluster.providerKeys),
+          topicIds: cluster.topicIds,
+          providerKeys: cluster.providerKeys,
+          citationIds: [citationId],
+        };
+      });
+    const topicHighlights = input.policy.includeTopicHighlights
+      ? buildTopicHighlights(selectedEvidence, citationMap)
+      : [];
+    const repeatedSignals = input.policy.includeRepeatedSignals
+      ? input.evidence.clusters
+        .filter((cluster) => cluster.topicIds.length >= 2)
+        .slice(0, 5)
+        .map((cluster) => {
+          const representative = selectedEvidence.find((item) => item.feedItemId === cluster.representativeFeedItemId)
+            ?? firstItem;
+          const citationId = citationMap.find((citation) => citation.feedItemId === representative.feedItemId)
+            ?.citationId
+            ?? 'c1';
+
+          return {
+            storyClusterId: cluster.id,
+            title: representative.title,
+            topicIds: cluster.topicIds,
+            citationIds: [citationId],
+          };
+        })
+      : [];
+
+    return {
+      route: selectedRoute,
+      draft: {
+        headline: firstItem.title,
+        executiveSummary: buildExecutiveSummary(input),
+        topStories,
+        topicHighlights,
+        repeatedSignals,
+        risksAndUnknowns: input.policy.includeRisks
+          ? [
+              {
+                description: 'This deterministic briefing only uses selected primary evidence titles.',
+                citationIds: ['c1'],
+                reason: 'source_limit',
+              },
+            ]
+          : [],
+        citationMap,
+        qualityFlags: selectedEvidence.length < 3 ? ['limited_sources'] : [],
+        confidence: {
+          level: selectedEvidence.length < 3 ? 'low' : 'medium',
+          score: selectedEvidence.length < 3 ? 0.35 : 0.65,
+          rationale: 'Confidence is derived from selected primary evidence count in this deterministic adapter.',
+        },
+        lineage,
+        usage,
+      },
+    };
+  }
+
+  validateRawProviderResponse(attempt: ProviderBriefingAttempt): BriefingModelValidationResult {
+    if (attempt.route.schemaVersion !== 'briefing.artifact.v1') {
+      return {
+        ok: false,
+        failure: {
+          kind: 'invalid_schema',
+          retryable: false,
+          message: 'Unsupported briefing schema version',
+        },
+      };
+    }
+
+    return { ok: true };
+  }
+
+  classifyError(error: unknown): BriefingModelFailure {
+    const message = error instanceof Error ? error.message : 'Unknown briefing model error';
+
+    if (message.toLowerCase().includes('budget')) {
+      return {
+        kind: 'budget_exceeded',
+        retryable: false,
+        message,
+      };
+    }
+
+    if (message.toLowerCase().includes('citation')) {
+      return {
+        kind: 'citation_validation_failed',
+        retryable: false,
+        message,
+      };
+    }
+
+    return {
+      kind: 'unknown',
+      retryable: false,
+      message,
+    };
+  }
+}
+
+const buildExecutiveSummary = (input: BriefingModelInput): string => {
+  const formatLabel = input.policy.format.replace('_', ' ');
+  const toneLabel = input.policy.tone;
+  const scopeLabel = input.scope.type === 'workspace' ? 'workspace' : `topic ${input.scope.topicId}`;
+  const repeatedCount = input.evidence.clusters.filter((cluster) => cluster.topicIds.length >= 2).length;
+  const base = `Current ${formatLabel} covers ${input.evidence.selectedEvidence.length} selected story/stories for ${scopeLabel} in a ${toneLabel} tone.`;
+  const repeated = repeatedCount === 0 ? 'No repeated cross-topic signals were detected.' : `${repeatedCount} repeated cross-topic signal(s) were detected.`;
+
+  if (input.policy.customInstructions === undefined) {
+    return `${base} ${repeated}`;
+  }
+
+  return `${base} ${repeated} Custom focus: ${input.policy.customInstructions}`;
+};
+
+const buildStorySummary = (
+  title: string,
+  topicIds: readonly string[],
+  providerKeys: readonly string[],
+): string =>
+  `${title} appeared across ${topicIds.length} topic(s) and ${providerKeys.length} provider(s).`;
+
+const buildTopicHighlights = (
+  selectedEvidence: BriefingModelInput['evidence']['selectedEvidence'],
+  citationMap: ProviderBriefingAttempt['draft']['citationMap'],
+) => {
+  const firstByTopic = new Map<string, BriefingModelInput['evidence']['selectedEvidence'][number]>();
+  for (const item of selectedEvidence) {
+    if (!firstByTopic.has(item.topicId)) {
+      firstByTopic.set(item.topicId, item);
+    }
+  }
+
+  return [...firstByTopic.entries()].slice(0, 8).map(([topicId, item]) => ({
+    topicId,
+    title: item.title,
+    summary: item.whyImportant[0] ?? 'Selected as a relevant briefing signal.',
+    citationIds: [
+      citationMap.find((citation) => citation.feedItemId === item.feedItemId)?.citationId ?? 'c1',
+    ],
+  }));
+};

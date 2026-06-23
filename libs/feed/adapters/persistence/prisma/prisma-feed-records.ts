@@ -1,4 +1,4 @@
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { emptyJsonObjectAsUndefined, normalizeJsonObject, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { FeedItem, type FeedItemProps } from '../../../domain';
 
@@ -19,6 +19,7 @@ export type PrismaFeedItemRecord = {
   readonly observedAt: Date;
   readonly status: 'VISIBLE' | 'HIDDEN' | 'TOMBSTONED';
   readonly createdAt: Date;
+  readonly providerMetadata: unknown | null;
 };
 
 export const feedItemFromPrisma = (record: PrismaFeedItemRecord): FeedItem =>
@@ -36,6 +37,7 @@ export const feedItemFromPrisma = (record: PrismaFeedItemRecord): FeedItem =>
     authorHandle: record.authorHandle ?? undefined,
     publishedAt: record.publishedAt,
     observedAt: record.observedAt,
+    providerMetadata: emptyJsonObjectAsUndefined(normalizeJsonObject(record.providerMetadata)),
   } satisfies FeedItemProps);
 
 export const normalizeFeedCanonicalUrl = (value: string): string => {

@@ -2,11 +2,841 @@
   "components": {
     "schemas": {
       "BindSourceRequestDto": {
-        "properties": {},
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "providerKey": {
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "providerKey"
+        ],
+        "type": "object"
+      },
+      "BindSourceResponseDto": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceBindingId",
+          "created"
+        ],
+        "type": "object"
+      },
+      "BriefingArtifactResponseDto": {
+        "properties": {
+          "briefingId": {
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingCitationViewDto"
+            },
+            "type": "array"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/BriefingConfidenceDto"
+          },
+          "contextArtifacts": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingContextArtifactDto"
+            },
+            "type": "array"
+          },
+          "executiveSummary": {
+            "type": "string"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/BriefingFreshnessDto"
+          },
+          "headline": {
+            "type": "string"
+          },
+          "lineage": {
+            "$ref": "#/components/schemas/BriefingLineageDto"
+          },
+          "noSignalReason": {
+            "type": "string"
+          },
+          "qualityFlags": {
+            "items": {
+              "enum": [
+                "no_signal",
+                "low_confidence",
+                "conflicting_evidence",
+                "limited_sources",
+                "partial_evidence",
+                "context_unavailable"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "repeatedSignals": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingRepeatedSignalDto"
+            },
+            "type": "array"
+          },
+          "risksAndUnknowns": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingRiskDto"
+            },
+            "type": "array"
+          },
+          "schemaVersion": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/BriefingScopeDto"
+          },
+          "sourceWindow": {
+            "$ref": "#/components/schemas/BriefingSourceWindowDto"
+          },
+          "storyClusters": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingStoryClusterDto"
+            },
+            "type": "array"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "topicHighlights": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingTopicHighlightDto"
+            },
+            "type": "array"
+          },
+          "topStories": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingTopStoryDto"
+            },
+            "type": "array"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/BriefingUsageDto"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "briefingId",
+          "tenantId",
+          "workspaceId",
+          "scope",
+          "sourceWindow",
+          "storyClusters",
+          "contextArtifacts",
+          "headline",
+          "executiveSummary",
+          "topStories",
+          "topicHighlights",
+          "repeatedSignals",
+          "risksAndUnknowns",
+          "citations",
+          "qualityFlags",
+          "confidence",
+          "lineage",
+          "usage",
+          "freshness"
+        ],
+        "type": "object"
+      },
+      "BriefingCitationViewDto": {
+        "properties": {
+          "citationId": {
+            "type": "string"
+          },
+          "feedItemId": {
+            "type": "string"
+          },
+          "field": {
+            "enum": [
+              "title",
+              "bodyPreview",
+              "canonicalUrl"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "sourceItemId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "citationId",
+          "label",
+          "feedItemId",
+          "sourceItemId",
+          "providerKey",
+          "field"
+        ],
+        "type": "object"
+      },
+      "BriefingConfidenceDto": {
+        "properties": {
+          "level": {
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high"
+            ],
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "level",
+          "score",
+          "rationale"
+        ],
+        "type": "object"
+      },
+      "BriefingContextArtifactDto": {
+        "properties": {
+          "artifactId": {
+            "type": "string"
+          },
+          "freshness": {
+            "enum": [
+              "fresh",
+              "stale",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/BriefingScopeDto"
+          },
+          "summaryText": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifactId",
+          "scope",
+          "summaryText",
+          "generatedAt",
+          "freshness"
+        ],
+        "type": "object"
+      },
+      "BriefingFreshnessDto": {
+        "properties": {
+          "checkedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "newestFeedItemId": {
+            "type": "string"
+          },
+          "newestObservedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "new_evidence_after_window",
+              "topic_bindings_changed",
+              "briefing_policy_changed",
+              "ranking_policy_changed"
+            ],
+            "type": "string"
+          },
+          "staleMarkedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "fresh",
+              "stale"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checkedAt"
+        ],
+        "type": "object"
+      },
+      "BriefingJobStatusResponseDto": {
+        "properties": {
+          "briefingId": {
+            "type": "string"
+          },
+          "briefingJobId": {
+            "type": "string"
+          },
+          "completedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failureReason": {
+            "type": "string"
+          },
+          "requestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/BriefingScopeDto"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "running",
+              "completed",
+              "no_signal",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingJobTimelineEventDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "briefingJobId",
+          "scope",
+          "status",
+          "requestedAt",
+          "timeline"
+        ],
+        "type": "object"
+      },
+      "BriefingJobTimelineEventDto": {
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "running",
+              "completed",
+              "no_signal",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "occurredAt",
+          "message"
+        ],
+        "type": "object"
+      },
+      "BriefingLineageDto": {
+        "properties": {
+          "evalDatasetVersion": {
+            "type": "string"
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "promptVersion": {
+            "type": "string"
+          },
+          "providerVersion": {
+            "type": "string"
+          },
+          "rulesVersion": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "promptVersion",
+          "schemaVersion",
+          "modelVersion",
+          "providerVersion",
+          "rulesVersion",
+          "evalDatasetVersion"
+        ],
+        "type": "object"
+      },
+      "BriefingObservedAtRangeDto": {
+        "properties": {
+          "endedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "startedAt",
+          "endedAt"
+        ],
+        "type": "object"
+      },
+      "BriefingRepeatedSignalDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "storyClusterId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "topicIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "storyClusterId",
+          "title",
+          "topicIds",
+          "citationIds"
+        ],
+        "type": "object"
+      },
+      "BriefingResponseDto": {
+        "properties": {
+          "briefingId": {
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingCitationViewDto"
+            },
+            "type": "array"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/BriefingConfidenceDto"
+          },
+          "contextArtifacts": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingContextArtifactDto"
+            },
+            "type": "array"
+          },
+          "executiveSummary": {
+            "type": "string"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/BriefingFreshnessDto"
+          },
+          "headline": {
+            "type": "string"
+          },
+          "lineage": {
+            "$ref": "#/components/schemas/BriefingLineageDto"
+          },
+          "noSignalReason": {
+            "type": "string"
+          },
+          "qualityFlags": {
+            "items": {
+              "enum": [
+                "no_signal",
+                "low_confidence",
+                "conflicting_evidence",
+                "limited_sources",
+                "partial_evidence",
+                "context_unavailable"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "repeatedSignals": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingRepeatedSignalDto"
+            },
+            "type": "array"
+          },
+          "risksAndUnknowns": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingRiskDto"
+            },
+            "type": "array"
+          },
+          "schemaVersion": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/BriefingScopeDto"
+          },
+          "sourceWindow": {
+            "$ref": "#/components/schemas/BriefingSourceWindowDto"
+          },
+          "storyClusters": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingStoryClusterDto"
+            },
+            "type": "array"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "topicHighlights": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingTopicHighlightDto"
+            },
+            "type": "array"
+          },
+          "topStories": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingTopStoryDto"
+            },
+            "type": "array"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/BriefingUsageDto"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "briefingId",
+          "tenantId",
+          "workspaceId",
+          "scope",
+          "sourceWindow",
+          "storyClusters",
+          "contextArtifacts",
+          "headline",
+          "executiveSummary",
+          "topStories",
+          "topicHighlights",
+          "repeatedSignals",
+          "risksAndUnknowns",
+          "citations",
+          "qualityFlags",
+          "confidence",
+          "lineage",
+          "usage",
+          "freshness"
+        ],
+        "type": "object"
+      },
+      "BriefingRiskDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "insufficient_evidence",
+              "conflicting_evidence",
+              "source_limit",
+              "provider_outage"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "description"
+        ],
+        "type": "object"
+      },
+      "BriefingScopeDto": {
+        "properties": {
+          "topicId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "workspace",
+              "topic"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "BriefingSourceWindowDto": {
+        "properties": {
+          "endedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "selectedFeedItemIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "storyClusterIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "windowId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "windowId",
+          "startedAt",
+          "endedAt",
+          "selectedFeedItemIds",
+          "storyClusterIds"
+        ],
+        "type": "object"
+      },
+      "BriefingStoryClusterDto": {
+        "properties": {
+          "duplicateFeedItemIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "observedAtRange": {
+            "$ref": "#/components/schemas/BriefingObservedAtRangeDto"
+          },
+          "providerKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "representativeFeedItemId": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "storyKey": {
+            "type": "string"
+          },
+          "topicIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "whyImportant": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "storyKey",
+          "representativeFeedItemId",
+          "duplicateFeedItemIds",
+          "topicIds",
+          "providerKeys",
+          "score",
+          "observedAtRange",
+          "whyImportant"
+        ],
+        "type": "object"
+      },
+      "BriefingTopicHighlightDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "topicId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "topicId",
+          "title",
+          "summary",
+          "citationIds"
+        ],
+        "type": "object"
+      },
+      "BriefingTopStoryDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "providerKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "storyClusterId": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "topicIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "storyClusterId",
+          "title",
+          "summary",
+          "topicIds",
+          "providerKeys",
+          "citationIds"
+        ],
+        "type": "object"
+      },
+      "BriefingUsageDto": {
+        "properties": {
+          "estimatedCostUsd": {
+            "type": "number"
+          },
+          "inputTokens": {
+            "type": "number"
+          },
+          "outputTokens": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "inputTokens",
+          "outputTokens",
+          "estimatedCostUsd"
+        ],
         "type": "object"
       },
       "ChangeSourceBindingStatusRequestDto": {
-        "properties": {},
+        "properties": {
+          "status": {
+            "enum": [
+              "enabled",
+              "paused"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "ChangeSourceBindingStatusResponseDto": {
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "enabled",
+              "paused"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceBindingId",
+          "status",
+          "changed"
+        ],
         "type": "object"
       },
       "CreateApiKeyRequestDto": {
@@ -18,11 +848,312 @@
         "type": "object"
       },
       "CreateTopicRequestDto": {
-        "properties": {},
+        "properties": {
+          "name": {
+            "minLength": 2,
+            "type": "string"
+          },
+          "query": {
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "query"
+        ],
+        "type": "object"
+      },
+      "CreateTopicResponseDto": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "topicId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "topicId",
+          "created"
+        ],
         "type": "object"
       },
       "CreateWebhookEndpointRequestDto": {
         "properties": {},
+        "type": "object"
+      },
+      "FeedItemDto": {
+        "properties": {
+          "authorHandle": {
+            "type": "string"
+          },
+          "bodyPreview": {
+            "type": "string"
+          },
+          "canonicalUrl": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "observedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "providerMetadata": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "publishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          },
+          "sourceItemId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "topicId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "topicId",
+          "sourceItemId",
+          "sourceBindingId",
+          "providerKey",
+          "canonicalUrl",
+          "title",
+          "bodyPreview",
+          "publishedAt",
+          "observedAt"
+        ],
+        "type": "object"
+      },
+      "GetFeedItemResponseDto": {
+        "properties": {
+          "authorHandle": {
+            "type": "string"
+          },
+          "bodyPreview": {
+            "type": "string"
+          },
+          "canonicalUrl": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "observedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "providerMetadata": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "publishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          },
+          "sourceItemId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "topicId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "topicId",
+          "sourceItemId",
+          "sourceBindingId",
+          "providerKey",
+          "canonicalUrl",
+          "title",
+          "bodyPreview",
+          "publishedAt",
+          "observedAt"
+        ],
+        "type": "object"
+      },
+      "GetScanPolicyResponseDto": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "freshnessSeconds": {
+            "type": "number"
+          },
+          "id": {
+            "type": "string"
+          },
+          "intervalSeconds": {
+            "type": "number"
+          },
+          "nextRunAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "retryBudget": {
+            "type": "number"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "object"
+          },
+          "workspaceId": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "workspaceId",
+          "sourceBindingId",
+          "intervalSeconds",
+          "freshnessSeconds",
+          "retryBudget",
+          "nextRunAt",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "ListBriefingsResponseDto": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingArtifactResponseDto"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ListFeedItemsResponseDto": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedItemDto"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ListSourceBindingsResponseDto": {
+        "properties": {
+          "nextCursor": {
+            "type": "string"
+          },
+          "sourceBindings": {
+            "items": {
+              "$ref": "#/components/schemas/SourceBindingResponseDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sourceBindings"
+        ],
+        "type": "object"
+      },
+      "ListSourceProfilesResponseDto": {
+        "properties": {
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceProfileDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources"
+        ],
+        "type": "object"
+      },
+      "ListSummariesResponseDto": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryArtifactResponseDto"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ListSummaryFeedbackResponseDto": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryFeedbackResponseDto"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ListTopicsResponseDto": {
+        "properties": {
+          "nextCursor": {
+            "type": "string"
+          },
+          "topics": {
+            "items": {
+              "$ref": "#/components/schemas/TopicResponseDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "topics"
+        ],
         "type": "object"
       },
       "RecordSummaryFeedbackRequestDto": {
@@ -60,8 +1191,300 @@
         ],
         "type": "object"
       },
+      "RecordSummaryFeedbackResponseDto": {
+        "properties": {
+          "category": {
+            "enum": [
+              "wrong_fact",
+              "missing_source",
+              "bad_citation",
+              "low_relevance",
+              "too_verbose",
+              "too_terse",
+              "source_request",
+              "ux_confusing",
+              "other"
+            ],
+            "type": "string"
+          },
+          "created": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "eligibleForEvalFixture": {
+            "type": "boolean"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/SummaryFeedbackEvidenceDto"
+          },
+          "feedbackId": {
+            "type": "string"
+          },
+          "triageOwner": {
+            "enum": [
+              "product-owner",
+              "source-owner",
+              "summary-owner",
+              "support-owner"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "feedbackId",
+          "created",
+          "category",
+          "triageOwner",
+          "evidence",
+          "eligibleForEvalFixture",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "RegenerateSummaryResponseDto": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "running",
+              "completed",
+              "no_signal",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "summaryJobId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summaryJobId",
+          "status",
+          "created"
+        ],
+        "type": "object"
+      },
+      "RequestBriefingRequestDto": {
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/BriefingScopeDto"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "type": "object"
+      },
+      "RequestBriefingResponseDto": {
+        "properties": {
+          "briefingJobId": {
+            "type": "string"
+          },
+          "created": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "running",
+              "completed",
+              "no_signal",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "briefingJobId",
+          "status",
+          "created"
+        ],
+        "type": "object"
+      },
+      "RequestScanResponseDto": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "scanJobId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "enqueued",
+              "succeeded",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "scanJobId",
+          "status",
+          "created"
+        ],
+        "type": "object"
+      },
+      "RequestSummaryResponseDto": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "running",
+              "completed",
+              "no_signal",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "summaryJobId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summaryJobId",
+          "status",
+          "created"
+        ],
+        "type": "object"
+      },
       "RetryDeliveryAttemptRequestDto": {
         "properties": {},
+        "type": "object"
+      },
+      "ScanExecutionAttemptResponseDto": {
+        "properties": {
+          "failureReason": {
+            "type": "string"
+          },
+          "fetched": {
+            "type": "number"
+          },
+          "finishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "inserted": {
+            "type": "number"
+          },
+          "projected": {
+            "type": "number"
+          },
+          "skippedDuplicates": {
+            "type": "number"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceBindingId",
+          "status",
+          "startedAt",
+          "fetched",
+          "inserted",
+          "skippedDuplicates",
+          "projected"
+        ],
+        "type": "object"
+      },
+      "ScanStatusResponseDto": {
+        "properties": {
+          "completedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "enqueuedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failureClass": {
+            "enum": [
+              "provider_unavailable",
+              "provider_rate_limited",
+              "worker_conflict",
+              "system_failure"
+            ],
+            "type": "string"
+          },
+          "failureReason": {
+            "type": "string"
+          },
+          "latestAttempt": {
+            "$ref": "#/components/schemas/ScanExecutionAttemptResponseDto"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "requestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scanJobId": {
+            "type": "string"
+          },
+          "scanPolicyId": {
+            "type": "string"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "enqueued",
+              "succeeded",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "userState": {
+            "enum": [
+              "scan_pending",
+              "scan_in_progress",
+              "content_current",
+              "scan_degraded"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "scanJobId",
+          "sourceBindingId",
+          "scanPolicyId",
+          "status",
+          "userState",
+          "operatorAction",
+          "requestedAt"
+        ],
         "type": "object"
       },
       "SetNotificationPreferenceRequestDto": {
@@ -69,7 +1492,1049 @@
         "type": "object"
       },
       "SetScanPolicyRequestDto": {
-        "properties": {},
+        "properties": {
+          "freshnessSeconds": {
+            "minimum": 60,
+            "type": "number"
+          },
+          "intervalSeconds": {
+            "minimum": 60,
+            "type": "number"
+          },
+          "retryBudget": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "intervalSeconds",
+          "freshnessSeconds",
+          "retryBudget"
+        ],
+        "type": "object"
+      },
+      "SetScanPolicyResponseDto": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "scanPolicyId": {
+            "type": "string"
+          },
+          "updated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "scanPolicyId",
+          "created",
+          "updated"
+        ],
+        "type": "object"
+      },
+      "SourceBindingHealthAttemptResponseDto": {
+        "properties": {
+          "failureReason": {
+            "type": "string"
+          },
+          "fetched": {
+            "type": "number"
+          },
+          "finishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "inserted": {
+            "type": "number"
+          },
+          "projected": {
+            "type": "number"
+          },
+          "skippedDuplicates": {
+            "type": "number"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceBindingId",
+          "status",
+          "startedAt",
+          "fetched",
+          "inserted",
+          "skippedDuplicates",
+          "projected"
+        ],
+        "type": "object"
+      },
+      "SourceBindingHealthFreshnessResponseDto": {
+        "properties": {
+          "ageSeconds": {
+            "type": "number"
+          },
+          "freshnessDeadlineAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "isFresh": {
+            "type": "boolean"
+          },
+          "staleBySeconds": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "isFresh"
+        ],
+        "type": "object"
+      },
+      "SourceBindingHealthPolicyResponseDto": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "freshnessSeconds": {
+            "type": "number"
+          },
+          "id": {
+            "type": "string"
+          },
+          "intervalSeconds": {
+            "type": "number"
+          },
+          "isDue": {
+            "type": "boolean"
+          },
+          "nextRunAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "retryBudget": {
+            "type": "number"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "object"
+          },
+          "workspaceId": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "workspaceId",
+          "sourceBindingId",
+          "intervalSeconds",
+          "freshnessSeconds",
+          "retryBudget",
+          "nextRunAt",
+          "createdAt",
+          "isDue"
+        ],
+        "type": "object"
+      },
+      "SourceBindingHealthResponseDto": {
+        "properties": {
+          "evaluatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/SourceBindingHealthFreshnessResponseDto"
+          },
+          "healthState": {
+            "enum": [
+              "paused",
+              "not_configured",
+              "scheduled",
+              "scanning",
+              "healthy",
+              "stale",
+              "degraded"
+            ],
+            "type": "string"
+          },
+          "latestScan": {
+            "$ref": "#/components/schemas/SourceBindingHealthScanResponseDto"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "scanPolicy": {
+            "$ref": "#/components/schemas/SourceBindingHealthPolicyResponseDto"
+          },
+          "sourceBinding": {
+            "$ref": "#/components/schemas/SourceBindingResponseDto"
+          }
+        },
+        "required": [
+          "sourceBinding",
+          "healthState",
+          "operatorAction",
+          "evaluatedAt"
+        ],
+        "type": "object"
+      },
+      "SourceBindingHealthScanResponseDto": {
+        "properties": {
+          "completedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "enqueuedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failureClass": {
+            "enum": [
+              "provider_unavailable",
+              "provider_rate_limited",
+              "worker_conflict",
+              "system_failure"
+            ],
+            "type": "string"
+          },
+          "failureReason": {
+            "type": "string"
+          },
+          "latestAttempt": {
+            "$ref": "#/components/schemas/SourceBindingHealthAttemptResponseDto"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "requestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scanJobId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "enqueued",
+              "succeeded",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "userState": {
+            "enum": [
+              "scan_pending",
+              "scan_in_progress",
+              "content_current",
+              "scan_degraded"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "scanJobId",
+          "status",
+          "userState",
+          "operatorAction",
+          "requestedAt"
+        ],
+        "type": "object"
+      },
+      "SourceBindingResponseDto": {
+        "properties": {
+          "capabilityProfileVersion": {
+            "type": "number"
+          },
+          "configPreview": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "enabled",
+              "paused"
+            ],
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "object"
+          },
+          "topicId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "workspaceId",
+          "topicId",
+          "providerKey",
+          "capabilityProfileVersion",
+          "status",
+          "configPreview",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "SourceProfileDto": {
+        "properties": {
+          "acquisitionMode": {
+            "type": "string"
+          },
+          "capabilityVersion": {
+            "type": "number"
+          },
+          "cursorModel": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "liveBetaBlockers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "productionSafe": {
+            "type": "boolean"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "quotaModel": {
+            "type": "string"
+          },
+          "readinessState": {
+            "enum": [
+              "research_only",
+              "profiled",
+              "certification_ready",
+              "enabled_beta",
+              "provider_only",
+              "manual_only",
+              "rejected"
+            ],
+            "type": "string"
+          },
+          "runtimeReadiness": {
+            "enum": [
+              "fixture_ready",
+              "live_beta_ready",
+              "deferred"
+            ],
+            "type": "string"
+          },
+          "supportedContentUnits": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "supportedQueryModes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "providerKey",
+          "productionSafe",
+          "readinessState",
+          "runtimeReadiness",
+          "liveBetaBlockers",
+          "acquisitionMode",
+          "supportedContentUnits",
+          "supportedQueryModes",
+          "cursorModel",
+          "quotaModel",
+          "limitations"
+        ],
+        "type": "object"
+      },
+      "SummaryArtifactResponseDto": {
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryCitationViewDto"
+            },
+            "type": "array"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/SummaryConfidenceDto"
+          },
+          "executiveSummary": {
+            "type": "string"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/SummaryFreshnessDto"
+          },
+          "headline": {
+            "type": "string"
+          },
+          "keyPoints": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryKeyPointDto"
+            },
+            "type": "array"
+          },
+          "lineage": {
+            "$ref": "#/components/schemas/SummaryLineageDto"
+          },
+          "noSignalReason": {
+            "type": "string"
+          },
+          "qualityFlags": {
+            "items": {
+              "enum": [
+                "no_signal",
+                "low_confidence",
+                "conflicting_evidence",
+                "limited_sources"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "risksAndUnknowns": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryRiskDto"
+            },
+            "type": "array"
+          },
+          "schemaVersion": {
+            "type": "string"
+          },
+          "sourceHighlights": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sourceWindow": {
+            "$ref": "#/components/schemas/SummarySourceWindowDto"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "summaryId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "topicId": {
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/SummaryUsageDto"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "summaryId",
+          "tenantId",
+          "workspaceId",
+          "topicId",
+          "sourceWindow",
+          "headline",
+          "executiveSummary",
+          "keyPoints",
+          "risksAndUnknowns",
+          "sourceHighlights",
+          "citations",
+          "qualityFlags",
+          "confidence",
+          "lineage",
+          "usage",
+          "freshness"
+        ],
+        "type": "object"
+      },
+      "SummaryCitationViewDto": {
+        "properties": {
+          "citationId": {
+            "type": "string"
+          },
+          "feedItemId": {
+            "type": "string"
+          },
+          "field": {
+            "enum": [
+              "title",
+              "bodyPreview",
+              "canonicalUrl"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "sourceItemId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "citationId",
+          "label",
+          "feedItemId",
+          "sourceItemId",
+          "providerKey",
+          "field"
+        ],
+        "type": "object"
+      },
+      "SummaryConfidenceDto": {
+        "properties": {
+          "level": {
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high"
+            ],
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "level",
+          "score",
+          "rationale"
+        ],
+        "type": "object"
+      },
+      "SummaryFeedbackEvidenceDto": {
+        "properties": {
+          "citationId": {
+            "type": "string"
+          },
+          "feedItemId": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "sourceItemId": {
+            "type": "string"
+          },
+          "summaryId": {
+            "type": "string"
+          },
+          "topicId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summaryId",
+          "topicId"
+        ],
+        "type": "object"
+      },
+      "SummaryFeedbackResponseDto": {
+        "properties": {
+          "category": {
+            "enum": [
+              "wrong_fact",
+              "missing_source",
+              "bad_citation",
+              "low_relevance",
+              "too_verbose",
+              "too_terse",
+              "source_request",
+              "ux_confusing",
+              "other"
+            ],
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "eligibleForEvalFixture": {
+            "type": "boolean"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/SummaryFeedbackEvidenceDto"
+          },
+          "feedbackId": {
+            "type": "string"
+          },
+          "rating": {
+            "maximum": 5,
+            "minimum": 1,
+            "type": "number"
+          },
+          "submittedBy": {
+            "type": "string"
+          },
+          "summaryId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "topicId": {
+            "type": "string"
+          },
+          "triageOwner": {
+            "enum": [
+              "product-owner",
+              "source-owner",
+              "summary-owner",
+              "support-owner"
+            ],
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "feedbackId",
+          "tenantId",
+          "workspaceId",
+          "summaryId",
+          "topicId",
+          "submittedBy",
+          "rating",
+          "category",
+          "evidence",
+          "triageOwner",
+          "eligibleForEvalFixture",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "SummaryFreshnessDto": {
+        "properties": {
+          "checkedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "newestFeedItemId": {
+            "type": "string"
+          },
+          "newestObservedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "new_evidence_after_window"
+            ],
+            "type": "string"
+          },
+          "staleMarkedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "fresh",
+              "stale"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checkedAt"
+        ],
+        "type": "object"
+      },
+      "SummaryJobStatusResponseDto": {
+        "properties": {
+          "completedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failureReason": {
+            "type": "string"
+          },
+          "requestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "running",
+              "completed",
+              "no_signal",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "summaryId": {
+            "type": "string"
+          },
+          "summaryJobId": {
+            "type": "string"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryJobTimelineEventDto"
+            },
+            "type": "array"
+          },
+          "topicId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summaryJobId",
+          "topicId",
+          "status",
+          "requestedAt",
+          "timeline"
+        ],
+        "type": "object"
+      },
+      "SummaryJobTimelineEventDto": {
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "running",
+              "completed",
+              "no_signal",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "occurredAt",
+          "message"
+        ],
+        "type": "object"
+      },
+      "SummaryKeyPointDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "claim": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim",
+          "citationIds"
+        ],
+        "type": "object"
+      },
+      "SummaryLineageDto": {
+        "properties": {
+          "evalDatasetVersion": {
+            "type": "string"
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "promptVersion": {
+            "type": "string"
+          },
+          "providerVersion": {
+            "type": "string"
+          },
+          "rulesVersion": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "promptVersion",
+          "schemaVersion",
+          "modelVersion",
+          "providerVersion",
+          "rulesVersion",
+          "evalDatasetVersion"
+        ],
+        "type": "object"
+      },
+      "SummaryResponseDto": {
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryCitationViewDto"
+            },
+            "type": "array"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/SummaryConfidenceDto"
+          },
+          "executiveSummary": {
+            "type": "string"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/SummaryFreshnessDto"
+          },
+          "headline": {
+            "type": "string"
+          },
+          "keyPoints": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryKeyPointDto"
+            },
+            "type": "array"
+          },
+          "lineage": {
+            "$ref": "#/components/schemas/SummaryLineageDto"
+          },
+          "noSignalReason": {
+            "type": "string"
+          },
+          "qualityFlags": {
+            "items": {
+              "enum": [
+                "no_signal",
+                "low_confidence",
+                "conflicting_evidence",
+                "limited_sources"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "risksAndUnknowns": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryRiskDto"
+            },
+            "type": "array"
+          },
+          "schemaVersion": {
+            "type": "string"
+          },
+          "sourceHighlights": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sourceWindow": {
+            "$ref": "#/components/schemas/SummarySourceWindowDto"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "summaryId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "topicId": {
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/SummaryUsageDto"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "summaryId",
+          "tenantId",
+          "workspaceId",
+          "topicId",
+          "sourceWindow",
+          "headline",
+          "executiveSummary",
+          "keyPoints",
+          "risksAndUnknowns",
+          "sourceHighlights",
+          "citations",
+          "qualityFlags",
+          "confidence",
+          "lineage",
+          "usage",
+          "freshness"
+        ],
+        "type": "object"
+      },
+      "SummaryRiskDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "insufficient_evidence",
+              "conflicting_evidence",
+              "source_limit"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "description"
+        ],
+        "type": "object"
+      },
+      "SummarySourceWindowDto": {
+        "properties": {
+          "endedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "selectedFeedItemIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "windowId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "windowId",
+          "startedAt",
+          "endedAt",
+          "selectedFeedItemIds"
+        ],
+        "type": "object"
+      },
+      "SummaryUsageDto": {
+        "properties": {
+          "estimatedCostUsd": {
+            "type": "number"
+          },
+          "inputTokens": {
+            "type": "number"
+          },
+          "outputTokens": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "inputTokens",
+          "outputTokens",
+          "estimatedCostUsd"
+        ],
+        "type": "object"
+      },
+      "TopicResponseDto": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "object"
+          },
+          "workspaceId": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "workspaceId",
+          "name",
+          "query",
+          "createdAt"
+        ],
         "type": "object"
       },
       "UpsertSummaryPolicyRequestDto": {
@@ -179,6 +2644,304 @@
         "summary": "List post-MVP backlog classification with architecture guardrails.",
         "tags": [
           "beta"
+        ]
+      }
+    },
+    "/briefing-jobs/{briefingJobId}/status": {
+      "get": {
+        "operationId": "BriefingJobController_getStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "briefingJobId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Briefing job reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingJobStatusResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Get briefing job status and safe timeline.",
+        "tags": [
+          "briefings"
+        ]
+      }
+    },
+    "/briefing-requests": {
+      "post": {
+        "operationId": "BriefingRequestController_create",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Briefing requests require owner, admin or member. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestBriefingRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestBriefingResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Request a briefing for a workspace or topic scope.",
+        "tags": [
+          "briefings"
+        ]
+      }
+    },
+    "/briefings": {
+      "get": {
+        "operationId": "BriefingController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "topicId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "workspace",
+                "topic"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Briefing reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBriefingsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "List tenant/workspace briefings with cursor pagination.",
+        "tags": [
+          "briefings"
+        ]
+      }
+    },
+    "/briefings/{briefingId}": {
+      "get": {
+        "operationId": "BriefingController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "briefingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Briefing reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Get one tenant/workspace briefing by id.",
+        "tags": [
+          "briefings"
         ]
       }
     },
@@ -934,6 +3697,44 @@
         "parameters": [
           {
             "in": "query",
+            "name": "repositoryTopic",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repositoryLanguage",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repositoryTrendWindow",
+            "required": false,
+            "schema": {
+              "enum": [
+                "24h",
+                "7d",
+                "30d",
+                "90d"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "q",
             "required": false,
             "schema": {
@@ -1001,6 +3802,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListFeedItemsResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -1059,6 +3867,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetFeedItemResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -1467,6 +4282,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanStatusResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -1525,6 +4347,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetScanPolicyResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -1599,6 +4428,13 @@
         },
         "responses": {
           "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetScanPolicyResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -1673,6 +4509,13 @@
         ],
         "responses": {
           "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestScanResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -1688,6 +4531,13 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSourceProfilesResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -1762,6 +4612,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSummariesResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -1820,6 +4677,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -1894,6 +4758,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSummaryFeedbackResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -1977,6 +4848,13 @@
         },
         "responses": {
           "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordSummaryFeedbackResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -2043,6 +4921,13 @@
         ],
         "responses": {
           "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegenerateSummaryResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -2101,6 +4986,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryJobStatusResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -2167,6 +5059,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListTopicsResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -2233,6 +5132,13 @@
         },
         "responses": {
           "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateTopicResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -2307,6 +5213,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSourceBindingsResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -2381,6 +5294,13 @@
         },
         "responses": {
           "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindSourceResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -2447,6 +5367,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceBindingHealthResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -2531,6 +5458,13 @@
         },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeSourceBindingStatusResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -2721,6 +5655,13 @@
         ],
         "responses": {
           "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestSummaryResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },

@@ -1,16 +1,22 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { IsString, MinLength } from 'class-validator';
 
 export class CreateTopicRequestDto {
+  @ApiProperty({ minLength: 2 })
   @IsString()
   @MinLength(2)
-  name!: string;
+  declare readonly name: string;
 
+  @ApiProperty({ minLength: 2 })
   @IsString()
   @MinLength(2)
-  query!: string;
+  declare readonly query: string;
 }
 
-export type CreateTopicResponseDto = {
-  readonly topicId: string;
-  readonly created: boolean;
-};
+export class CreateTopicResponseDto {
+  @ApiProperty()
+  declare readonly topicId: string;
+
+  @ApiProperty()
+  declare readonly created: boolean;
+}

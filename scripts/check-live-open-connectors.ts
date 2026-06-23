@@ -173,7 +173,7 @@ async function main(): Promise<void> {
       ],
     },
     {
-      providerKey: 'github',
+      providerKey: 'github-issues',
       status: 'passed',
       signalResults: [
         {

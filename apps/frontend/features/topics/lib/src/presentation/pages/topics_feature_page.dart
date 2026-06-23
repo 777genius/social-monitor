@@ -16,11 +16,17 @@ class TopicsFeaturePage extends StatefulWidget {
     required this.store,
     required this.formStore,
     this.autoload = true,
+    this.showLifecycleFilters = true,
+    this.showEditArchiveActions = true,
+    this.onOpenTopicSources,
   });
 
   final TopicsListStore store;
   final TopicsFormStore formStore;
   final bool autoload;
+  final bool showLifecycleFilters;
+  final bool showEditArchiveActions;
+  final void Function(String topicId, String topicTitle)? onOpenTopicSources;
 
   @override
   State<TopicsFeaturePage> createState() => _TopicsFeaturePageState();
@@ -48,7 +54,7 @@ class _TopicsFeaturePageState extends State<TopicsFeaturePage> {
                   eyebrow: 'Signals',
                   title: 'Topics and monitoring intents',
                   description:
-                      'Create monitoring intents, tune keywords and review topic coverage before connecting sources.',
+                      'Create monitoring intents, tune queries and review topic coverage before connecting sources.',
                   trailing: AppCommandBar(
                     actions: [
                       AppCommandAction(
@@ -71,32 +77,40 @@ class _TopicsFeaturePageState extends State<TopicsFeaturePage> {
                     onSearchChanged: (value) {
                       unawaited(widget.store.updateSearch(value));
                     },
-                    filters: [
-                      AppFilterChipData(
-                        label: 'Active',
-                        selected:
-                            widget.store.status == TopicLifecycleStatus.active,
-                        onSelected: (selected) {
-                          unawaited(
-                            widget.store.updateStatus(
-                              selected ? TopicLifecycleStatus.active : null,
+                    filters: widget.showLifecycleFilters
+                        ? [
+                            AppFilterChipData(
+                              label: 'Active',
+                              selected:
+                                  widget.store.status ==
+                                  TopicLifecycleStatus.active,
+                              onSelected: (selected) {
+                                unawaited(
+                                  widget.store.updateStatus(
+                                    selected
+                                        ? TopicLifecycleStatus.active
+                                        : null,
+                                  ),
+                                );
+                              },
                             ),
-                          );
-                        },
-                      ),
-                      AppFilterChipData(
-                        label: 'Draft',
-                        selected:
-                            widget.store.status == TopicLifecycleStatus.draft,
-                        onSelected: (selected) {
-                          unawaited(
-                            widget.store.updateStatus(
-                              selected ? TopicLifecycleStatus.draft : null,
+                            AppFilterChipData(
+                              label: 'Draft',
+                              selected:
+                                  widget.store.status ==
+                                  TopicLifecycleStatus.draft,
+                              onSelected: (selected) {
+                                unawaited(
+                                  widget.store.updateStatus(
+                                    selected
+                                        ? TopicLifecycleStatus.draft
+                                        : null,
+                                  ),
+                                );
+                              },
                             ),
-                          );
-                        },
-                      ),
-                    ],
+                          ]
+                        : const [],
                     onClear: () {
                       unawaited(widget.store.updateSearch(''));
                       unawaited(widget.store.updateStatus(null));
@@ -124,6 +138,8 @@ class _TopicsFeaturePageState extends State<TopicsFeaturePage> {
                   child: _TopicsBody(
                     store: widget.store,
                     formStore: widget.formStore,
+                    showEditArchiveActions: widget.showEditArchiveActions,
+                    onOpenTopicSources: widget.onOpenTopicSources,
                   ),
                 ),
               ),
@@ -136,10 +152,17 @@ class _TopicsFeaturePageState extends State<TopicsFeaturePage> {
 }
 
 class _TopicsBody extends StatelessWidget {
-  const _TopicsBody({required this.store, required this.formStore});
+  const _TopicsBody({
+    required this.store,
+    required this.formStore,
+    required this.showEditArchiveActions,
+    required this.onOpenTopicSources,
+  });
 
   final TopicsListStore store;
   final TopicsFormStore formStore;
+  final bool showEditArchiveActions;
+  final void Function(String topicId, String topicTitle)? onOpenTopicSources;
 
   @override
   Widget build(BuildContext context) {
@@ -204,8 +227,7 @@ class _TopicsBody extends StatelessWidget {
               )
             : AppEntityHeader(
                 title: selected.name.value,
-                subtitle:
-                    'Tracks keywords, markets and languages for the MVP monitoring loop.',
+                subtitle: selected.query.value,
                 status: AppStatusBadge(
                   label: _statusLabel(selected.status),
                   tone: selected.status == TopicLifecycleStatus.active
@@ -217,30 +239,51 @@ class _TopicsBody extends StatelessWidget {
                     label: 'Mentions',
                     value: '${selected.weeklyMentionCount}',
                   ),
-                  const AppEntityMetadata(label: 'Languages', value: 'EN, ES'),
+                  AppEntityMetadata(
+                    label: 'Query',
+                    value: selected.query.value,
+                  ),
                 ],
-                actions: AppCommandBar(
-                  actions: [
-                    AppCommandAction(
-                      label: 'Edit',
-                      icon: Icons.edit_outlined,
-                      onPressed: () => formStore.beginEdit(selected),
-                    ),
-                    AppCommandAction(
-                      label: 'Archive',
-                      icon: Icons.archive_outlined,
-                      variant: AppButtonVariant.secondary,
-                      onPressed: store.archiveIntentFor(selected).isEnabled
-                          ? () async {
-                              final result = await formStore.archive(selected);
-                              if (result is ResultSuccess<TopicSummary>) {
-                                await store.load();
-                              }
-                            }
-                          : null,
-                    ),
-                  ],
-                ),
+                actions: showEditArchiveActions || onOpenTopicSources != null
+                    ? AppCommandBar(
+                        actions: [
+                          if (onOpenTopicSources != null)
+                            AppCommandAction(
+                              label: 'Sources',
+                              icon: Icons.hub_outlined,
+                              variant: AppButtonVariant.secondary,
+                              onPressed: () => onOpenTopicSources!(
+                                selected.id.value,
+                                selected.name.value,
+                              ),
+                            ),
+                          if (showEditArchiveActions) ...[
+                            AppCommandAction(
+                              label: 'Edit',
+                              icon: Icons.edit_outlined,
+                              onPressed: () => formStore.beginEdit(selected),
+                            ),
+                            AppCommandAction(
+                              label: 'Archive',
+                              icon: Icons.archive_outlined,
+                              variant: AppButtonVariant.secondary,
+                              onPressed:
+                                  store.archiveIntentFor(selected).isEnabled
+                                  ? () async {
+                                      final result = await formStore.archive(
+                                        selected,
+                                      );
+                                      if (result
+                                          is ResultSuccess<TopicSummary>) {
+                                        await store.load();
+                                      }
+                                    }
+                                  : null,
+                            ),
+                          ],
+                        ],
+                      )
+                    : null,
               ),
       ),
     };

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Headers, Inject, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiHeader, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
@@ -19,13 +19,13 @@ import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-ca
 import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
 import { GetSourceBindingHealthUseCase } from '../../features/get-source-binding-health/get-source-binding-health.use-case';
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
-import { BindSourceRequestDto, normalizeSourceBindingConfig, type BindSourceResponseDto } from './bind-source.dto';
-import type { ListSourceBindingsResponseDto } from './list-source-bindings.dto';
+import { BindSourceRequestDto, BindSourceResponseDto, normalizeSourceBindingConfig } from './bind-source.dto';
+import { ListSourceBindingsResponseDto } from './list-source-bindings.dto';
 import {
   ChangeSourceBindingStatusRequestDto,
-  type ChangeSourceBindingStatusResponseDto,
+  ChangeSourceBindingStatusResponseDto,
 } from './source-binding-status.dto';
-import type { SourceBindingHealthResponseDto } from './source-binding-health.dto';
+import { SourceBindingHealthResponseDto } from './source-binding-health.dto';
 
 @ApiTags('source-bindings')
 @Controller('topics/:topicId/source-bindings')
@@ -52,6 +52,7 @@ export class SourceBindingController {
     workspaceRoleDescription: 'Comma-separated workspace roles. Source binding creation requires owner or admin.',
   })
   @ApiHeader({ name: 'idempotency-key', required: true })
+  @ApiCreatedResponse({ type: BindSourceResponseDto })
   async create(
     @Param('topicId') topicId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -115,6 +116,7 @@ export class SourceBindingController {
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
+  @ApiOkResponse({ type: ListSourceBindingsResponseDto })
   async list(
     @Param('topicId') topicId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -161,6 +163,7 @@ export class SourceBindingController {
     apiKeyScope: 'read:topics',
     workspaceRoleDescription: 'Comma-separated workspace roles. Source binding health reads allow owner, admin, member or viewer.',
   })
+  @ApiOkResponse({ type: SourceBindingHealthResponseDto })
   async health(
     @Param('topicId') topicId: string,
     @Param('sourceBindingId') sourceBindingId: string,
@@ -232,6 +235,7 @@ export class SourceBindingController {
     workspaceRoleDescription: 'Comma-separated workspace roles. Source binding status updates require owner or admin.',
   })
   @ApiHeader({ name: 'idempotency-key', required: true })
+  @ApiOkResponse({ type: ChangeSourceBindingStatusResponseDto })
   async updateStatus(
     @Param('topicId') topicId: string,
     @Param('sourceBindingId') sourceBindingId: string,

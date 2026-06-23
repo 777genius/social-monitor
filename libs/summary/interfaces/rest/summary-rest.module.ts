@@ -59,7 +59,9 @@ import { DeterministicYoutubeVideoSummaryProvider } from '../../adapters/video/d
 import { DisabledYoutubeVideoSummaryProvider } from '../../adapters/video/disabled-youtube-video-summary.provider';
 import { GoogleGeminiYoutubeVideoSummaryProvider } from '../../adapters/video/google-gemini-youtube-video-summary.provider';
 import { EvaluateSummaryQualityUseCase } from '../../features/evaluate-summary-quality/evaluate-summary-quality.use-case';
+import { ExecuteBriefingJobUseCase } from '../../features/execute-briefing-job/execute-briefing-job.use-case';
 import { ExecuteSummaryJobUseCase } from '../../features/execute-summary-job/execute-summary-job.use-case';
+import { GetBriefingJobStatusUseCase } from '../../features/get-briefing-job-status/get-briefing-job-status.use-case';
 import { GetSummaryPolicyUseCase } from '../../features/get-summary-policy/get-summary-policy.use-case';
 import { GetSummaryJobStatusUseCase } from '../../features/get-summary-job-status/get-summary-job-status.use-case';
 import { GetSummaryUseCase } from '../../features/get-summary/get-summary.use-case';
@@ -70,34 +72,44 @@ import { RegenerateSummaryUseCase } from '../../features/regenerate-summary/rege
 import { RequestSummaryUseCase } from '../../features/request-summary/request-summary.use-case';
 import { ScheduleAutoSummariesUseCase } from '../../features/schedule-auto-summaries/schedule-auto-summaries.use-case';
 import { UpsertSummaryPolicyUseCase } from '../../features/upsert-summary-policy/upsert-summary-policy.use-case';
-import type {
-  AutoSummaryCandidateRepositoryPort,
-  SummaryArtifactRepositoryPort,
-  SummaryEvidenceSelectorPort,
-  SummaryEventPublisherPort,
-  SummaryFeedbackRepositoryPort,
-  SummaryJobQueuePort,
-  SummaryJobRepositoryPort,
-  SummaryMemoryPort,
-  SummaryPolicyRepositoryPort,
-  UserSummaryPreferenceReaderPort,
-  YoutubeVideoSummaryProviderPort,
+import {
+  type AutoSummaryCandidateRepositoryPort,
+  type SummaryArtifactRepositoryPort,
+  type SummaryEvidenceSelectorPort,
+  type SummaryEventPublisherPort,
+  type SummaryFeedbackRepositoryPort,
+  type SummaryJobQueuePort,
+  type SummaryJobRepositoryPort,
+  type SummaryMemoryPort,
+  type SummaryPolicyRepositoryPort,
+  type UserSummaryPreferenceReaderPort,
+  type YoutubeVideoSummaryProviderPort,
 } from '../../ports';
+import { BriefingController } from './briefing.controller';
+import { BriefingJobController } from './briefing-job.controller';
+import { BriefingRequestController } from './briefing-request.controller';
 import { SummaryFeedbackController } from './summary-feedback.controller';
 import { SummaryJobController } from './summary-job.controller';
 import { SummaryPolicyController } from './summary-policy.controller';
+import { summaryBriefingProviders } from './summary-briefing.providers';
 import {
+  BRIEFING_ARTIFACT_REPOSITORY,
+  BRIEFING_CONTEXT_PROVIDER,
+  BRIEFING_EVIDENCE_SELECTOR,
+  BRIEFING_JOB_QUEUE,
+  BRIEFING_JOB_REPOSITORY,
+  BRIEFING_POLICY_REPOSITORY,
   SUMMARY_ARTIFACT_REPOSITORY,
   SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY,
   SUMMARY_EVIDENCE_SELECTOR,
   SUMMARY_EVENT_PUBLISHER,
-  SUMMARY_JOB_QUEUE_MODE,
-  SUMMARY_MODEL_PROVIDER_MODE,
-  SUMMARY_MEMORY,
-  SUMMARY_MEMORY_MODE,
   SUMMARY_FEEDBACK_REPOSITORY,
   SUMMARY_JOB_QUEUE,
+  SUMMARY_JOB_QUEUE_MODE,
   SUMMARY_JOB_REPOSITORY,
+  SUMMARY_MEMORY,
+  SUMMARY_MEMORY_MODE,
+  SUMMARY_MODEL_PROVIDER_MODE,
   SUMMARY_PERSISTENCE_MODE,
   SUMMARY_POLICY_REPOSITORY,
   SUMMARY_PRISMA_CLIENT,
@@ -115,6 +127,8 @@ import {
   resolveSummaryJobQuotaPerHour,
   resolveSummaryYoutubeVideoSummaryMaxItems,
   resolveSummaryYoutubeVideoSummaryMaxPreviewCharacters,
+  briefingOpenAiResponsesModelOptionsProvider,
+  briefingModelProviderModeProvider,
   summaryJobQueueModeProvider,
   summaryMemoryModeProvider,
   summaryModelProviderModeProvider,
@@ -128,6 +142,9 @@ import { SummaryController } from './summary.controller';
 @Module({
   imports: [UsageRestModule, IdentityRestModule, FeedRestModule, SubscriptionsRestModule, RelevanceRestModule],
   controllers: [
+    BriefingController,
+    BriefingJobController,
+    BriefingRequestController,
     SummaryController,
     SummaryFeedbackController,
     SummaryJobController,
@@ -138,6 +155,8 @@ import { SummaryController } from './summary.controller';
     summaryPersistenceModeProvider,
     summaryJobQueueModeProvider,
     summaryModelProviderModeProvider,
+    briefingModelProviderModeProvider,
+    briefingOpenAiResponsesModelOptionsProvider,
     summaryMemoryModeProvider,
     summaryYoutubeVideoSummaryProviderModeProvider,
     summaryRabbitMqJobQueueOptionsProvider,
@@ -152,6 +171,7 @@ import { SummaryController } from './summary.controller';
     InMemorySummaryFeedbackRepository,
     InMemorySummaryPolicyRepository,
     InMemoryQueuePublisher,
+    ...summaryBriefingProviders,
     {
       provide: SUMMARY_RABBITMQ_QUEUE_CHANNEL,
       useFactory: (mode: SummaryJobQueueMode): RabbitMqQueueChannelPort | null =>
@@ -515,8 +535,10 @@ import { SummaryController } from './summary.controller';
     },
   ],
   exports: [
+    ExecuteBriefingJobUseCase,
     EvaluateSummaryQualityUseCase,
     ExecuteSummaryJobUseCase,
+    GetBriefingJobStatusUseCase,
     GetSummaryJobStatusUseCase,
     InMemoryMetricsRecorder,
     InMemoryQueuePublisher,
@@ -526,6 +548,12 @@ import { SummaryController } from './summary.controller';
     InMemorySummaryJobRepository,
     InMemorySummaryPolicyRepository,
     ListSummaryFeedbackUseCase,
+    BRIEFING_ARTIFACT_REPOSITORY,
+    BRIEFING_CONTEXT_PROVIDER,
+    BRIEFING_EVIDENCE_SELECTOR,
+    BRIEFING_JOB_QUEUE,
+    BRIEFING_JOB_REPOSITORY,
+    BRIEFING_POLICY_REPOSITORY,
     SUMMARY_ARTIFACT_REPOSITORY,
     SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY,
     SUMMARY_EVIDENCE_SELECTOR,

@@ -1,20 +1,49 @@
-export type FeedItemDto = {
-  readonly id: string;
-  readonly topicId: string;
-  readonly sourceItemId: string;
-  readonly sourceBindingId: string;
-  readonly providerKey: string;
-  readonly canonicalUrl: string;
-  readonly title: string;
-  readonly bodyPreview: string;
-  readonly authorHandle?: string;
-  readonly publishedAt: string;
-  readonly observedAt: string;
-};
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export type ListFeedItemsResponseDto = {
-  readonly items: readonly FeedItemDto[];
-  readonly nextCursor?: string;
-};
+export class FeedItemDto {
+  @ApiProperty()
+  declare readonly id: string;
 
-export type GetFeedItemResponseDto = FeedItemDto;
+  @ApiProperty()
+  declare readonly topicId: string;
+
+  @ApiProperty()
+  declare readonly sourceItemId: string;
+
+  @ApiProperty()
+  declare readonly sourceBindingId: string;
+
+  @ApiProperty()
+  declare readonly providerKey: string;
+
+  @ApiProperty()
+  declare readonly canonicalUrl: string;
+
+  @ApiProperty()
+  declare readonly title: string;
+
+  @ApiProperty()
+  declare readonly bodyPreview: string;
+
+  @ApiPropertyOptional()
+  declare readonly authorHandle?: string;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly publishedAt: string;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly observedAt: string;
+
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  declare readonly providerMetadata?: Readonly<Record<string, unknown>>;
+}
+
+export class ListFeedItemsResponseDto {
+  @ApiProperty({ type: () => [FeedItemDto] })
+  declare readonly items: readonly FeedItemDto[];
+
+  @ApiPropertyOptional()
+  declare readonly nextCursor?: string;
+}
+
+export class GetFeedItemResponseDto extends FeedItemDto {}

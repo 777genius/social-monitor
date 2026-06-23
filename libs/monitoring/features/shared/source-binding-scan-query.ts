@@ -33,10 +33,22 @@ export const sourceBindingScanQuery = (
     };
   }
 
-  if (binding.providerKey === 'github') {
+  if (binding.providerKey === 'github' || binding.providerKey === 'github-issues') {
     return {
       mode: 'search',
       query: firstNonEmptyString(binding.config.query, binding.config.term) ?? binding.id,
+    };
+  }
+
+  if (binding.providerKey === 'github-repo-radar') {
+    return {
+      mode: 'search',
+      query: firstNonEmptyString(
+        binding.config.query,
+        binding.config.term,
+        firstStringArrayItem(binding.config.topics),
+        firstStringArrayItem(binding.config.languages),
+      ) ?? binding.id,
     };
   }
 
@@ -45,6 +57,11 @@ export const sourceBindingScanQuery = (
     query: firstNonEmptyString(binding.config.query, binding.config.term) ?? binding.id,
   };
 };
+
+const firstStringArrayItem = (value: unknown): string | undefined =>
+  Array.isArray(value)
+    ? value.find((item): item is string => typeof item === 'string' && item.trim().length > 0)?.trim()
+    : undefined;
 
 const firstNonEmptyString = (...values: readonly unknown[]): string | undefined => {
   for (const value of values) {

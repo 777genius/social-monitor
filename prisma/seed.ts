@@ -95,8 +95,8 @@ const sourceCatalogEntries = [
   {
     id: '00000000-0000-7000-8000-000000000301',
     profileId: '00000000-0000-7000-8000-000000000302',
-    providerKey: 'github',
-    displayName: 'GitHub',
+    providerKey: 'github-issues',
+    displayName: 'GitHub Issues',
     acquisitionMode: 'api',
     readiness: 'mvp-certified',
     config: {
@@ -105,6 +105,23 @@ const sourceCatalogEntries = [
       productionSafe: true,
       requiresCredentials: false,
       tokenRecommended: true,
+    },
+  },
+  {
+    id: '00000000-0000-7000-8000-000000000321',
+    profileId: '00000000-0000-7000-8000-000000000322',
+    providerKey: 'github-repo-radar',
+    displayName: 'GitHub Repo Radar',
+    acquisitionMode: 'api',
+    readiness: 'mvp-certified',
+    config: {
+      supportsSearch: true,
+      supportsCursor: false,
+      productionSafe: true,
+      requiresCredentials: true,
+      bigQueryRequired: true,
+      githubTokenRecommended: true,
+      trendWindows: ['24h', '7d', '30d', '90d'],
     },
   },
   {

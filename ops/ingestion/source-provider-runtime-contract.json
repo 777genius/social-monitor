@@ -28,7 +28,7 @@
       "liveEvidenceSignals": ["rss-allowlisted-live-feeds", "rss-http-cache-evidence", "rss-ssrf-proof"]
     },
     {
-      "providerKey": "github",
+      "providerKey": "github-issues",
       "credentialMode": "anonymous_or_read_only_token",
       "requiredRuntimeInvariants": [
         "anonymous public API requests omit Authorization",
@@ -37,6 +37,22 @@
         "401 is classified as non-retryable auth_failed and 403/429 as retryable rate_limited"
       ],
       "liveEvidenceSignals": ["github-live-api-smoke", "github-rate-limit-budget"]
+    },
+    {
+      "providerKey": "github-repo-radar",
+      "credentialMode": "bigquery_service_account_and_optional_read_only_token",
+      "requiredRuntimeInvariants": [
+        "GH Archive BigQuery queries are bounded by maximum bytes billed, job timeout and result timeout",
+        "WatchEvent aggregation computes 24h, 7d, 30d and 90d star deltas from observed events",
+        "topic and language searches are live-verified through GitHub REST repository details instead of filtering only by repository name",
+        "read-only GitHub token mode trims the credential, applies bearer auth and does not leak token values",
+        "401 is classified as non-retryable auth_failed and GitHub 403/429 or BigQuery quota failures as retryable rate_limited"
+      ],
+      "liveEvidenceSignals": [
+        "github-repo-radar-gh-archive-query",
+        "github-repo-radar-live-verification",
+        "github-repo-radar-live-smoke"
+      ]
     },
     {
       "providerKey": "reddit",

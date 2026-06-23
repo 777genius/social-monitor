@@ -60,8 +60,8 @@ void main() {
       'Competitor watch',
     );
     await tester.enterText(
-      find.byKey(const ValueKey('topic-keywords-field')),
-      'pricing, launch',
+      find.byKey(const ValueKey('topic-query-field')),
+      'pricing OR launch',
     );
     await tester.tap(find.text('Save topic'), warnIfMissed: false);
     await tester.pumpAndSettle();
@@ -97,7 +97,7 @@ void main() {
     final formStore = _formStore(catalog);
     formStore.beginCreate();
     formStore.updateName('A');
-    formStore.updateKeywordsText('risk');
+    formStore.updateQueryText('market risk');
     await formStore.save();
 
     await tester.pumpWidget(

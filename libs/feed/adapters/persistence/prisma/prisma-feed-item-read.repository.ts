@@ -1,9 +1,10 @@
 import type { FeedItem } from '../../../domain';
 import type { FeedItemReadRepositoryPort, ListFeedItemsQuery, ListFeedItemsResult } from '../../../ports';
+import { matchesFeedItemReadFilters, requiresFeedItemScanFilter } from '../feed-item-query-filter';
 import type { PrismaFeedClient } from './prisma-feed-client';
 import { encodeFeedCursor, feedItemFromPrisma, parseFeedCursor } from './prisma-feed-records';
 
-const MAX_SEARCH_SCAN = 500;
+const MAX_FILTER_SCAN = 500;
 
 export class PrismaFeedItemReadRepository implements FeedItemReadRepositoryPort {
   constructor(private readonly prisma: PrismaFeedClient) {}
@@ -16,18 +17,19 @@ export class PrismaFeedItemReadRepository implements FeedItemReadRepositoryPort 
       status: 'VISIBLE' as const,
       topicId: query.topicId,
       observedAt: query.observedAfter === undefined ? undefined : { gt: query.observedAfter },
+      providerKey: query.providerKey,
     };
 
-    if (query.searchQuery !== undefined && query.searchQuery.trim().length > 0) {
+    if (requiresFeedItemScanFilter(query)) {
       const records = await this.prisma.feedItem.findMany({
         where,
         orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
         skip: 0,
-        take: MAX_SEARCH_SCAN,
+        take: MAX_FILTER_SCAN,
       });
       const filtered = records
         .map((record) => feedItemFromPrisma(record))
-        .filter((item) => matchesSearch(item, query.searchQuery));
+        .filter((item) => matchesFeedItemReadFilters(item, query));
       const items = filtered.slice(offset, offset + query.limit);
       const nextOffset = offset + items.length;
 
@@ -72,30 +74,3 @@ export class PrismaFeedItemReadRepository implements FeedItemReadRepositoryPort 
     return record === null ? null : feedItemFromPrisma(record);
   }
 }
-
-const matchesSearch = (item: FeedItem, searchQuery: string | undefined): boolean => {
-  if (searchQuery === undefined) {
-    return true;
-  }
-
-  const normalizedQuery = normalizeSearchText(searchQuery);
-
-  if (normalizedQuery.length === 0) {
-    return true;
-  }
-
-  const snapshot = item.toSnapshot();
-  const haystack = normalizeSearchText([
-    snapshot.title,
-    snapshot.bodyPreview,
-    snapshot.canonicalUrl,
-    snapshot.providerKey,
-    snapshot.authorHandle ?? '',
-  ].join(' '));
-
-  return normalizedQuery
-    .split(/\s+/u)
-    .every((term) => haystack.includes(term));
-};
-
-const normalizeSearchText = (value: string): string => value.trim().toLocaleLowerCase('en-US');

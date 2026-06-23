@@ -1,0 +1,39 @@
+// coverage:ignore-file
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, unused_import, invalid_annotation_target, unnecessary_import
+
+import 'package:json_annotation/json_annotation.dart';
+
+import 'source_binding_health_freshness_response_dto.dart';
+import 'source_binding_health_policy_response_dto.dart';
+import 'source_binding_health_response_dto_health_state_health_state.dart';
+import 'source_binding_health_scan_response_dto.dart';
+import 'source_binding_response_dto.dart';
+
+part 'source_binding_health_response_dto.g.dart';
+
+@JsonSerializable()
+class SourceBindingHealthResponseDto {
+  const SourceBindingHealthResponseDto({
+    required this.evaluatedAt,
+    required this.healthState,
+    required this.operatorAction,
+    required this.sourceBinding,
+    this.freshness,
+    this.latestScan,
+    this.scanPolicy,
+  });
+
+  factory SourceBindingHealthResponseDto.fromJson(Map<String, Object?> json) =>
+      _$SourceBindingHealthResponseDtoFromJson(json);
+
+  final DateTime evaluatedAt;
+  final SourceBindingHealthFreshnessResponseDto? freshness;
+  final SourceBindingHealthResponseDtoHealthStateHealthState healthState;
+  final SourceBindingHealthScanResponseDto? latestScan;
+  final String operatorAction;
+  final SourceBindingHealthPolicyResponseDto? scanPolicy;
+  final SourceBindingResponseDto sourceBinding;
+
+  Map<String, Object?> toJson() => _$SourceBindingHealthResponseDtoToJson(this);
+}

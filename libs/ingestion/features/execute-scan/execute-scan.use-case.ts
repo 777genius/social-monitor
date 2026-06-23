@@ -8,17 +8,19 @@ import {
 } from '@social-monitor/shared-kernel';
 
 import { ScanAttempt, SourceItem } from '../../domain';
-import type {
-  FeedProjectionPort,
-  ScanAttemptRepositoryPort,
-  ScanCursorRepositoryPort,
-  ScanExecutionReporterPort,
-  ScanFailureQueuePort,
-  ScanLeasePort,
-  SourceFetcherPort,
-  SourceItemRepositoryPort,
+import {
+  noopSourceItemMetadataProjection,
+  SourceFetchError,
+  type FeedProjectionPort,
+  type ScanAttemptRepositoryPort,
+  type ScanCursorRepositoryPort,
+  type ScanExecutionReporterPort,
+  type ScanFailureQueuePort,
+  type ScanLeasePort,
+  type SourceFetcherPort,
+  type SourceItemMetadataProjectionPort,
+  type SourceItemRepositoryPort,
 } from '../../ports';
-import { SourceFetchError } from '../../ports';
 import type { ExecuteScanCommand } from './execute-scan.command';
 import type { ExecuteScanResult } from './execute-scan.result';
 
@@ -36,6 +38,7 @@ export class ExecuteScanUseCase {
     private readonly scanLeases: ScanLeasePort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
+    private readonly sourceItemMetadataProjection: SourceItemMetadataProjectionPort = noopSourceItemMetadataProjection,
   ) {}
 
   async execute(command: ExecuteScanCommand): Promise<Result<ExecuteScanResult, ExecuteScanFailure>> {
@@ -103,6 +106,7 @@ export class ExecuteScanUseCase {
           authorHandle: item.authorHandle,
           publishedAt: item.publishedAt,
           ingestedAt,
+          metadata: item.metadata,
         }),
       );
 
@@ -117,6 +121,15 @@ export class ExecuteScanUseCase {
         workspaceId: command.workspaceId,
         topicId: command.topicId,
         sourceBindingId: command.sourceBindingId,
+        providerKey: command.providerKey,
+        sourceItems: items,
+      });
+      await this.sourceItemMetadataProjection.project({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        topicId: command.topicId,
+        sourceBindingId: command.sourceBindingId,
+        scanJobId: command.scanJobId,
         providerKey: command.providerKey,
         sourceItems: items,
       });

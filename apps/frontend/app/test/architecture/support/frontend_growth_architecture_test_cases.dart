@@ -296,7 +296,11 @@ bool _allowsGeneratedApiImportInFeature(String path) {
       path.contains('/lib/src/infrastructure/api_clients/') ||
       path.contains('/lib/src/infrastructure/anti_corruption/') ||
       path.contains('/lib/src/infrastructure/data_sources/') ||
-      path.contains('/lib/src/infrastructure/mappers/');
+      path.contains('/lib/src/infrastructure/mappers/') ||
+      path.contains('/test/infrastructure/api_clients/') ||
+      path.contains('/test/infrastructure/anti_corruption/') ||
+      path.contains('/test/infrastructure/data_sources/') ||
+      path.contains('/test/infrastructure/mappers/');
 }
 
 bool _isInnerFeatureLayer(String path) {

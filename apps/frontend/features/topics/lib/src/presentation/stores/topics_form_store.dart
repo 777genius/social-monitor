@@ -10,7 +10,7 @@ import '../../application/use_cases/update_topic_use_case.dart';
 import '../../domain/entities/topic_summary.dart';
 import '../../domain/value_objects/topic_id.dart';
 import '../../domain/value_objects/topic_name.dart';
-import '../../domain/value_objects/topic_rules.dart';
+import '../../domain/value_objects/topic_query.dart';
 
 enum TopicEditorMode { closed, create, edit }
 
@@ -37,7 +37,7 @@ final class TopicsFormStore extends ChangeNotifier {
   AsyncViewState<TopicSummary> state = const InitialViewState<TopicSummary>();
   TopicId? editingTopicId;
   String name = '';
-  String keywordsText = '';
+  String queryText = '';
 
   WorkspaceScope get scope => _scope;
 
@@ -68,7 +68,7 @@ final class TopicsFormStore extends ChangeNotifier {
     mode = TopicEditorMode.create;
     editingTopicId = null;
     name = '';
-    keywordsText = '';
+    queryText = '';
     state = const InitialViewState<TopicSummary>();
     notifyListeners();
   }
@@ -77,7 +77,7 @@ final class TopicsFormStore extends ChangeNotifier {
     mode = TopicEditorMode.edit;
     editingTopicId = topic.id;
     name = topic.name.value;
-    keywordsText = topic.name.value;
+    queryText = topic.query.value;
     state = const InitialViewState<TopicSummary>();
     notifyListeners();
   }
@@ -86,7 +86,7 @@ final class TopicsFormStore extends ChangeNotifier {
     mode = TopicEditorMode.closed;
     editingTopicId = null;
     name = '';
-    keywordsText = '';
+    queryText = '';
     state = const InitialViewState<TopicSummary>();
     notifyListeners();
   }
@@ -96,8 +96,8 @@ final class TopicsFormStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateKeywordsText(String value) {
-    keywordsText = value;
+  void updateQueryText(String value) {
+    queryText = value;
     notifyListeners();
   }
 
@@ -119,14 +119,19 @@ final class TopicsFormStore extends ChangeNotifier {
 
     final result = switch (mode) {
       TopicEditorMode.create => await _createTopic(
-        CreateTopicCommand(scope: _scope, name: _topicName(), rules: _rules()),
+        CreateTopicCommand(
+          scope: _scope,
+          name: _topicName(),
+          query: _topicQuery(),
+          idempotencyKey: saveIntent.idempotencyKey ?? _fallbackCreateKey(),
+        ),
       ),
       TopicEditorMode.edit => await _updateTopic(
         UpdateTopicCommand(
           scope: _scope,
           topicId: editingTopicId!,
           name: _topicName(),
-          rules: _rules(),
+          query: _topicQuery(),
         ),
       ),
       TopicEditorMode.closed => const Result<TopicSummary>.failure(
@@ -185,8 +190,10 @@ final class TopicsFormStore extends ChangeNotifier {
 
   TopicName _topicName() => TopicName(name);
 
-  TopicRules _rules() {
-    return TopicRules(keywords: keywordsText.split(','));
+  TopicQuery _topicQuery() => TopicQuery(queryText);
+
+  String _fallbackCreateKey() {
+    return '${_scope.workspaceId}:$mode:${_topicName().normalized}';
   }
 
   AppFailure? _validationFailure() {
@@ -203,11 +210,11 @@ final class TopicsFormStore extends ChangeNotifier {
         field: 'name',
       );
     }
-    if (!_rules().isValid) {
+    if (!_topicQuery().isValid) {
       return const ValidationFailure(
-        message: 'Add at least one keyword before saving the topic',
-        code: 'topics.rules_invalid',
-        field: 'keywords',
+        message: 'Topic query must contain at least two characters',
+        code: 'topics.query_invalid',
+        field: 'query',
       );
     }
     if (mode == TopicEditorMode.edit && editingTopicId == null) {

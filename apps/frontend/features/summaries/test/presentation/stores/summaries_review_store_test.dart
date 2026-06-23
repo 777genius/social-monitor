@@ -3,14 +3,22 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import 'package:social_monitor_summaries/src/application/commands/regenerate_summary_command.dart';
+import 'package:social_monitor_summaries/src/application/commands/request_workspace_briefing_command.dart';
 import 'package:social_monitor_summaries/src/application/commands/submit_summary_feedback_command.dart';
 import 'package:social_monitor_summaries/src/application/contracts/summary_review_catalog.dart';
 import 'package:social_monitor_summaries/src/application/queries/list_summaries_query.dart';
 import 'package:social_monitor_summaries/src/application/queries/load_summary_detail_query.dart';
+import 'package:social_monitor_summaries/src/application/queries/load_workspace_briefing_job_status_query.dart';
+import 'package:social_monitor_summaries/src/application/queries/load_workspace_briefing_query.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/list_summaries_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_summary_detail_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_briefing_job_status_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_briefing_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/regenerate_summary_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/request_workspace_briefing_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/submit_summary_feedback_use_case.dart';
+import 'package:social_monitor_summaries/src/domain/entities/briefing_job_snapshot.dart';
+import 'package:social_monitor_summaries/src/domain/entities/generated_briefing.dart';
 import 'package:social_monitor_summaries/src/domain/entities/generated_summary.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/summary_feedback_kind.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/summary_id.dart';
@@ -66,6 +74,53 @@ void main() {
     );
   });
 
+  test('requests workspace briefing and refreshes it after polling', () async {
+    final store = _store([
+      summaryApiDto(),
+    ], workspaceBriefing: briefingApiDto());
+
+    await store.requestWorkspaceBriefing();
+
+    final jobState =
+        store.briefingJobState as ReadyViewState<BriefingJobSnapshot>;
+    expect(jobState.value.status, BriefingJobStatus.completed);
+    final briefingState =
+        store.briefingState as ReadyViewState<WorkspaceBriefingSnapshot>;
+    expect(briefingState.value.current?.title, 'AI workspace briefing');
+    expect(store.isBriefingGenerationInProgress, isFalse);
+  });
+
+  test('briefing request tolerates reentrant workspace switch', () async {
+    final store = _store([
+      summaryApiDto(),
+    ], workspaceBriefing: briefingApiDto());
+    var switchedScope = false;
+    store.addListener(() {
+      if (switchedScope) {
+        return;
+      }
+      if (store.briefingJobState is ReadyViewState<BriefingJobSnapshot>) {
+        switchedScope = true;
+        store.updateScope(
+          const WorkspaceScope(tenantId: 'tenant-demo', workspaceId: 'next'),
+        );
+      }
+    });
+
+    await store.requestWorkspaceBriefing();
+
+    expect(switchedScope, isTrue);
+    expect(store.scope.workspaceId, 'next');
+    expect(
+      store.briefingJobState,
+      isA<InitialViewState<BriefingJobSnapshot>>(),
+    );
+    expect(
+      store.briefingState,
+      isA<InitialViewState<WorkspaceBriefingSnapshot>>(),
+    );
+  });
+
   test('detail load rejects stale result from older selection', () async {
     final catalog = _DeferredSummaryReviewCatalog([
       generatedSummary(id: 's-1', title: 'First summary'),
@@ -111,9 +166,15 @@ void main() {
   });
 }
 
-SummariesReviewStore _store(List<SummaryApiDto> items) {
+SummariesReviewStore _store(
+  List<SummaryApiDto> items, {
+  BriefingApiDto? workspaceBriefing,
+}) {
   final catalog = GeneratedSummaryReviewCatalog(
-    apiClient: InMemorySummariesApiClient(items: items),
+    apiClient: InMemorySummariesApiClient(
+      items: items,
+      workspaceBriefing: workspaceBriefing,
+    ),
   );
   return _storeFromCatalog(catalog);
 }
@@ -121,10 +182,17 @@ SummariesReviewStore _store(List<SummaryApiDto> items) {
 SummariesReviewStore _storeFromCatalog(SummaryReviewCatalog catalog) {
   return SummariesReviewStore(
     listSummaries: ListSummariesUseCase(catalog),
+    loadWorkspaceBriefing: LoadWorkspaceBriefingUseCase(catalog),
+    requestWorkspaceBriefing: RequestWorkspaceBriefingUseCase(catalog),
+    loadWorkspaceBriefingJobStatus: LoadWorkspaceBriefingJobStatusUseCase(
+      catalog,
+    ),
     loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
     regenerateSummary: RegenerateSummaryUseCase(catalog),
     submitFeedback: SubmitSummaryFeedbackUseCase(catalog),
     scope: summaryWorkspaceScope,
+    briefingRequestIdempotencyKeyFactory: (_) => 'briefing-test-key',
+    briefingPollInterval: Duration.zero,
   );
 }
 
@@ -164,6 +232,35 @@ final class _DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
     return Future.value(
       Result.success(
         generatedSummary(id: command.summaryId.value, feedbackSubmitted: true),
+      ),
+    );
+  }
+
+  @override
+  Future<Result<WorkspaceBriefingSnapshot>> loadWorkspaceBriefing(
+    LoadWorkspaceBriefingQuery query,
+  ) {
+    return Future.value(const Result.success(WorkspaceBriefingSnapshot()));
+  }
+
+  @override
+  Future<Result<BriefingJobSnapshot>> requestWorkspaceBriefing(
+    RequestWorkspaceBriefingCommand command,
+  ) {
+    return Future.value(
+      const Result.failure(
+        UnexpectedFailure(message: 'Unexpected briefing request in test'),
+      ),
+    );
+  }
+
+  @override
+  Future<Result<BriefingJobSnapshot>> loadWorkspaceBriefingJobStatus(
+    LoadWorkspaceBriefingJobStatusQuery query,
+  ) {
+    return Future.value(
+      const Result.failure(
+        UnexpectedFailure(message: 'Unexpected briefing status read in test'),
       ),
     );
   }

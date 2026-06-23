@@ -41,7 +41,7 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
             publishedAt: snapshot.publishedAt,
             contentHash: contentHashForSourceItem(snapshot),
             observedAt: snapshot.ingestedAt,
-            metadata: {},
+            metadata: snapshot.metadata ?? {},
           },
         }));
         inserted += 1;

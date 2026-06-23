@@ -20,7 +20,6 @@ import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import { AmqplibRabbitMqChannel } from '@social-monitor/platform-queue/adapters/rabbitmq';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
-
 import { WorkerRuntime, WorkerRuntimeModule } from '@social-monitor/platform-worker';
 import { InMemoryScanLeaseAdapter } from '@social-monitor/ingestion/adapters/lease/in-memory-scan-lease.adapter';
 import { InMemoryScanAttemptRepository } from '@social-monitor/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
@@ -35,8 +34,13 @@ import { InMemoryScanFailureQueueAdapter } from '@social-monitor/ingestion/adapt
 import { NoopScanExecutionReporterAdapter } from '@social-monitor/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter';
 import { CircuitBreakerSourceFetcherAdapter } from '@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
 import { FakeSourceProvider } from '@social-monitor/ingestion/adapters/source/fake-source.provider';
-import { GitHubSourceProvider } from '@social-monitor/ingestion/adapters/source/github/github-source.provider';
+import {
+  GITHUB_ISSUES_PROVIDER_KEY,
+  GitHubSourceProvider,
+  LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
+} from '@social-monitor/ingestion/adapters/source/github/github-source.provider';
 import { HttpGitHubClient } from '@social-monitor/ingestion/adapters/source/github/http-github-client';
+import { GitHubRepoRadarSourceProvider } from '@social-monitor/ingestion/adapters/source/github-repo-radar/github-repo-radar-source.provider';
 import { HackerNewsSourceProvider } from '@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
 import { HttpHackerNewsClient } from '@social-monitor/ingestion/adapters/source/hacker-news/http-hacker-news-client';
 import { InMemorySourceProviderRegistry } from '@social-monitor/ingestion/adapters/source/in-memory-source-provider.registry';
@@ -60,6 +64,7 @@ import type {
   ScanFailureQueuePort,
   ScanRetryQueuePort,
   ScanLeasePort,
+  SourceItemMetadataProjectionPort,
   SourceItemRepositoryPort,
 } from '@social-monitor/ingestion/ports';
 import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-projection.adapter';
@@ -80,6 +85,7 @@ import {
   INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS,
   INGESTION_SCAN_REPORTER_MODE,
   INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS,
+  INGESTION_SOURCE_ITEM_METADATA_PROJECTION,
   INGESTION_SOURCE_ITEM_REPOSITORY,
   INGESTION_WORKER_PERSISTENCE_MODE,
   INGESTION_WORKER_PRISMA_CLIENT,
@@ -93,6 +99,7 @@ import {
   resolveIngestionScanQueueDrainLoopOptions,
   resolveIngestionScanSchedulerLoopOptions,
 } from './ingestion-worker-provider-tokens';
+import { githubRepoRadarProviders } from './github-repo-radar.module';
 import {
   INGESTION_SCAN_COMMAND_QUEUE_READER,
   InMemoryScanCommandQueueReader,
@@ -142,6 +149,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
       provide: HttpGitHubClient,
       useFactory: () => new HttpGitHubClient(),
     },
+    ...githubRepoRadarProviders,
     {
       provide: GitHubSourceProvider,
       useFactory: (client: HttpGitHubClient) => new GitHubSourceProvider(client),
@@ -191,20 +199,23 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
       useFactory: (
         fakeProvider: FakeSourceProvider,
         githubProvider: GitHubSourceProvider,
+        githubRepoRadarProvider: GitHubRepoRadarSourceProvider,
         hackerNewsProvider: HackerNewsSourceProvider,
         redditProvider: RedditSourceProvider,
         rssProvider: RssSourceProvider,
       ) =>
         new InMemorySourceProviderRegistry(
           selectRuntimeSourceProviders(
-            [fakeProvider, githubProvider, hackerNewsProvider, redditProvider, rssProvider],
+            [fakeProvider, githubProvider, githubRepoRadarProvider, hackerNewsProvider, redditProvider, rssProvider],
             process.env,
           ),
           sourceReadinessProfiles,
+          [{ providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY, canonicalProviderKey: GITHUB_ISSUES_PROVIDER_KEY }],
         ),
       inject: [
         FakeSourceProvider,
         GitHubSourceProvider,
+        GitHubRepoRadarSourceProvider,
         HackerNewsSourceProvider,
         RedditSourceProvider,
         RssSourceProvider,
@@ -386,6 +397,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         scanExecutionReporter: ScanExecutionReporterPort,
         scanFailures: ScanFailureQueuePort,
         scanLeases: ScanLeasePort,
+        sourceItemMetadataProjection: SourceItemMetadataProjectionPort,
       ) =>
         new ExecuteScanUseCase(
           sourceFetcher,
@@ -398,6 +410,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
           scanLeases,
           new CryptoIdGenerator(),
           new SystemClock(),
+          sourceItemMetadataProjection,
         ),
       inject: [
         CircuitBreakerSourceFetcherAdapter,
@@ -408,6 +421,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         INGESTION_SCAN_EXECUTION_REPORTER,
         INGESTION_SCAN_FAILURE_QUEUE,
         INGESTION_SCAN_LEASE,
+        INGESTION_SOURCE_ITEM_METADATA_PROJECTION,
       ],
     },
     {
@@ -469,19 +483,14 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
 })
 export class IngestionWorkerModule {}
 
-const requirePrismaIngestionWorkerClient = (
-  client: PrismaIngestionWorkerClient | null,
-): PrismaIngestionWorkerClient => {
+const requirePrismaIngestionWorkerClient = (client: PrismaIngestionWorkerClient | null): PrismaIngestionWorkerClient => {
   if (client === null) {
     throw new Error('Prisma ingestion worker client is required when INGESTION_WORKER_PERSISTENCE=prisma');
   }
-
   return client;
 };
 
-const requireRabbitMqScanQueueChannel = (
-  channel: AmqplibRabbitMqChannel | null,
-): AmqplibRabbitMqChannel => {
+const requireRabbitMqScanQueueChannel = (channel: AmqplibRabbitMqChannel | null): AmqplibRabbitMqChannel => {
   if (channel === null) {
     throw new Error('RabbitMQ scan queue channel is required when INGESTION_SCAN_QUEUE_READER=rabbitmq');
   }

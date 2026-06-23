@@ -7,6 +7,7 @@ final class AppShellRuntime {
     required this.capabilities,
     required this.observability,
     required this.correlationId,
+    this.generatedApiRuntime,
   });
 
   final AppSessionSnapshot session;
@@ -14,6 +15,32 @@ final class AppShellRuntime {
   final FeatureFlagSet capabilities;
   final FrontendObservability observability;
   final String correlationId;
+  final Object? generatedApiRuntime;
+
+  factory AppShellRuntime.connected({
+    required AppWorkspaceSnapshot workspace,
+    required Object generatedApiRuntime,
+    AppSessionSnapshot session = const AppSessionSnapshot(
+      isSignedIn: true,
+      isRestoring: false,
+      userLabel: 'MVP Operator',
+    ),
+    FeatureFlagSet capabilities = const FeatureFlagSet({
+      'topics': FeatureCapability(key: 'topics', isEnabled: true),
+      'sources': FeatureCapability(key: 'sources', isEnabled: true),
+    }),
+    FrontendObservability observability = const NoopFrontendObservability(),
+    String correlationId = 'frontend-generated-api-session',
+  }) {
+    return AppShellRuntime(
+      session: session,
+      workspace: workspace,
+      capabilities: capabilities,
+      observability: observability,
+      correlationId: correlationId,
+      generatedApiRuntime: generatedApiRuntime,
+    );
+  }
 
   factory AppShellRuntime.productionPending() {
     return const AppShellRuntime(

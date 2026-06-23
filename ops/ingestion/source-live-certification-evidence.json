@@ -10,7 +10,7 @@
     "requiredLiveProviders": [
       "hacker-news",
       "rss",
-      "github",
+      "github-issues",
       "reddit"
     ],
     "forbiddenBindingProviders": [
@@ -93,7 +93,7 @@
         "requiredProviders": [
           "hacker-news",
           "rss",
-          "github"
+          "github-issues"
         ],
         "requiredEnv": [
           "SOURCE_LIVE_ENVIRONMENT_ID",
@@ -237,7 +237,7 @@
       "exitCondition": "Attach allowlisted feed, HTTP cache and SSRF evidence for RSS before external beta."
     },
     {
-      "providerKey": "github",
+      "providerKey": "github-issues",
       "status": "pending_live_evidence",
       "requiredForExternalBeta": true,
       "owner": "source-owner",

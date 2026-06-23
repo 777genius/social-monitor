@@ -25,6 +25,9 @@ export class PrismaIngestionConnection implements PrismaIngestionClient {
   readonly scanFailureQueueEntry: PrismaIngestionClient['scanFailureQueueEntry'];
   readonly scanAttempt: PrismaIngestionClient['scanAttempt'];
   readonly scanLeaseEntry: PrismaIngestionClient['scanLeaseEntry'];
+  readonly githubRepositoryTrendCandidate: PrismaIngestionClient['githubRepositoryTrendCandidate'];
+  readonly githubRepositoryTrendSnapshot: PrismaIngestionClient['githubRepositoryTrendSnapshot'];
+  readonly githubRepositoryTrendResult: PrismaIngestionClient['githubRepositoryTrendResult'];
 
   private readonly pool: Pool;
   private readonly client: PrismaIngestionRuntimeClient;
@@ -43,6 +46,9 @@ export class PrismaIngestionConnection implements PrismaIngestionClient {
     this.scanFailureQueueEntry = this.client.scanFailureQueueEntry;
     this.scanAttempt = this.client.scanAttempt;
     this.scanLeaseEntry = this.client.scanLeaseEntry;
+    this.githubRepositoryTrendCandidate = this.client.githubRepositoryTrendCandidate;
+    this.githubRepositoryTrendSnapshot = this.client.githubRepositoryTrendSnapshot;
+    this.githubRepositoryTrendResult = this.client.githubRepositoryTrendResult;
   }
 
   async close(): Promise<void> {

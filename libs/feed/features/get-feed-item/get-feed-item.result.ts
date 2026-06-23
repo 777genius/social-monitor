@@ -1,3 +1,5 @@
+import type { JsonObject } from '@social-monitor/shared-kernel';
+
 export type GetFeedItemResult = {
   readonly id: string;
   readonly topicId: string;
@@ -10,4 +12,5 @@ export type GetFeedItemResult = {
   readonly authorHandle?: string;
   readonly publishedAt: string;
   readonly observedAt: string;
+  readonly providerMetadata?: JsonObject;
 };

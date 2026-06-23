@@ -47,8 +47,13 @@ class AppFeatureCard extends StatelessWidget {
                 Row(
                   children: [
                     Icon(icon, color: colorScheme.primary, size: 24),
-                    const Spacer(),
-                    AppStatusBadge(label: status),
+                    const SizedBox(width: AppSpacing.sm),
+                    Flexible(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: AppStatusBadge(label: status),
+                      ),
+                    ),
                   ],
                 ),
                 const Spacer(),

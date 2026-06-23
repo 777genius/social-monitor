@@ -6,6 +6,47 @@ import type {
   PrismaSourceItemRecord,
 } from './prisma-ingestion-records';
 
+type GitHubRepositoryTrendCandidateKey = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly scanJobId: string;
+  readonly repositoryFullName: string;
+  readonly primaryWindow: string;
+};
+
+type GitHubRepositoryTrendSnapshotKey = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly repositoryFullName: string;
+  readonly checkedAt: Date;
+};
+
+type GitHubRepositoryTrendData = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly topicId?: string;
+  readonly sourceBindingId?: string;
+  readonly scanJobId?: string;
+  readonly sourceItemId?: string;
+  readonly repositoryFullName: string;
+  readonly repositoryUrl?: string;
+  readonly description?: string | null;
+  readonly language?: string | null;
+  readonly topics?: readonly string[];
+  readonly license?: string | null;
+  readonly totalStars?: number;
+  readonly primaryWindow?: string;
+  readonly stars24h?: number;
+  readonly stars7d?: number;
+  readonly stars30d?: number;
+  readonly stars90d?: number;
+  readonly rank?: number;
+  readonly checkedAt?: Date;
+  readonly observedAt?: Date;
+  readonly source?: string;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+};
+
 export type PrismaIngestionClient = {
   readonly sourceItem: {
     findFirst(args: {
@@ -168,5 +209,32 @@ export type PrismaIngestionClient = {
         readonly scanJobId: string;
       };
     }): Promise<PrismaScanLeaseEntryRecord | null>;
+  };
+  readonly githubRepositoryTrendCandidate: {
+    upsert(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_scanJobId_repositoryFullName_primaryWindow: GitHubRepositoryTrendCandidateKey;
+      };
+      readonly update: GitHubRepositoryTrendData;
+      readonly create: GitHubRepositoryTrendData & { readonly id: string };
+    }): Promise<unknown>;
+  };
+  readonly githubRepositoryTrendSnapshot: {
+    upsert(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_repositoryFullName_checkedAt: GitHubRepositoryTrendSnapshotKey;
+      };
+      readonly update: GitHubRepositoryTrendData;
+      readonly create: GitHubRepositoryTrendData & { readonly id: string };
+    }): Promise<unknown>;
+  };
+  readonly githubRepositoryTrendResult: {
+    upsert(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_scanJobId_repositoryFullName_primaryWindow: GitHubRepositoryTrendCandidateKey;
+      };
+      readonly update: GitHubRepositoryTrendData;
+      readonly create: GitHubRepositoryTrendData & { readonly id: string };
+    }): Promise<unknown>;
   };
 };

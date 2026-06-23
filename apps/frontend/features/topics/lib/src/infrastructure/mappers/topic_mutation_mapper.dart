@@ -8,16 +8,19 @@ final class TopicMutationMapper {
 
   CreateTopicApiRequestDto createRequest(CreateTopicCommand command) {
     return CreateTopicApiRequestDto(
+      scope: command.scope,
       name: command.name.normalized,
-      keywords: command.rules.normalizedKeywords,
+      query: command.query.normalized,
+      idempotencyKey: command.idempotencyKey,
     );
   }
 
   UpdateTopicApiRequestDto updateRequest(UpdateTopicCommand command) {
     return UpdateTopicApiRequestDto(
+      scope: command.scope,
       id: command.topicId.value,
       name: command.name.normalized,
-      keywords: command.rules.normalizedKeywords,
+      query: command.query.normalized,
     );
   }
 

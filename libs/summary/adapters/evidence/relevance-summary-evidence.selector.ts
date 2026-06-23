@@ -32,6 +32,7 @@ export class RelevanceSummaryEvidenceSelector implements SummaryEvidenceSelector
       title: item.title,
       bodyPreview: item.bodyPreview,
       canonicalUrl: item.canonicalUrl,
+      providerMetadata: item.providerMetadata,
       observedAt: new Date(item.observedAt),
       relevance: {
         score: item.score,

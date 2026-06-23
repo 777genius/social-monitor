@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Headers, Inject, Post, Query } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiHeader, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
@@ -15,8 +15,8 @@ import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-mon
 
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
 import { ListTopicsUseCase } from '../../features/list-topics/list-topics.use-case';
-import { CreateTopicRequestDto, type CreateTopicResponseDto } from './create-topic.dto';
-import type { ListTopicsResponseDto } from './list-topics.dto';
+import { CreateTopicRequestDto, CreateTopicResponseDto } from './create-topic.dto';
+import { ListTopicsResponseDto } from './list-topics.dto';
 
 @ApiTags('topics')
 @Controller('topics')
@@ -40,6 +40,7 @@ export class TopicController {
     workspaceRoleDescription: 'Comma-separated workspace roles. Topic creation requires owner or admin.',
   })
   @ApiHeader({ name: 'idempotency-key', required: true })
+  @ApiCreatedResponse({ type: CreateTopicResponseDto })
   async create(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -87,6 +88,7 @@ export class TopicController {
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
+  @ApiOkResponse({ type: ListTopicsResponseDto })
   async list(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,

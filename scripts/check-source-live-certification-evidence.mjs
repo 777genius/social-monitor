@@ -49,7 +49,7 @@ const requiredRedditLifecycleOperations = new Set(['create', 'rotate', 'revoke',
 const requiredProviderSignals = new Map([
   ['hacker-news', new Set(['hn-live-http-smoke', 'hn-rate-limit-evidence'])],
   ['rss', new Set(['rss-allowlisted-live-feeds', 'rss-http-cache-evidence', 'rss-ssrf-proof'])],
-  ['github', new Set(['github-live-api-smoke', 'github-rate-limit-budget'])],
+  ['github-issues', new Set(['github-live-api-smoke', 'github-rate-limit-budget'])],
   [
     'reddit',
     new Set([
@@ -174,7 +174,7 @@ const forbiddenExternalBetaBindingProviders = new Set([
 const expectedLiveCommands = new Map([
   ['hacker-news', 'npm run check:live-open-connectors'],
   ['rss', 'npm run check:live-open-connectors'],
-  ['github', 'npm run check:live-open-connectors'],
+  ['github-issues', 'npm run check:live-open-connectors'],
   ['reddit', 'npm run capture:live-reddit-oauth'],
 ]);
 const forbiddenEvidenceFragments = [
@@ -310,7 +310,7 @@ function validateLiveSmokeScripts() {
   requireScriptSignals(liveOpenScriptPath, liveOpenScript, [
     ...requiredProviderSignals.get('hacker-news'),
     ...requiredProviderSignals.get('rss'),
-    ...requiredProviderSignals.get('github'),
+    ...requiredProviderSignals.get('github-issues'),
   ]);
   requireScriptSignals(redditLiveScriptPath, redditLiveScript, [...requiredProviderSignals.get('reddit')]);
 
@@ -852,7 +852,7 @@ function validateExampleArtifacts() {
 }
 
 function validateEnvironmentArtifacts() {
-  validateLiveEvidenceEnvArtifact('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', new Set(['hacker-news', 'rss', 'github']));
+  validateLiveEvidenceEnvArtifact('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', new Set(['hacker-news', 'rss', 'github-issues']));
   validateLiveEvidenceEnvArtifact('REDDIT_LIVE_EVIDENCE_PATH', new Set(['reddit']));
   validateRedditCredentialLifecycleEnvArtifact();
 }
@@ -1446,7 +1446,7 @@ function validateEnvArtifactValidation(validationRules) {
   }
 
   const expectedRules = new Map([
-    ['LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', new Set(['hacker-news', 'rss', 'github'])],
+    ['LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', new Set(['hacker-news', 'rss', 'github-issues'])],
     ['REDDIT_LIVE_EVIDENCE_PATH', new Set(['reddit'])],
   ]);
   const seenRules = new Set();

@@ -1,3 +1,5 @@
+import type { JsonObject } from '@social-monitor/shared-kernel';
+
 export type FeedItemListEntry = {
   readonly id: string;
   readonly topicId: string;
@@ -10,6 +12,7 @@ export type FeedItemListEntry = {
   readonly authorHandle?: string;
   readonly publishedAt: string;
   readonly observedAt: string;
+  readonly providerMetadata?: JsonObject;
 };
 
 export type ListFeedItemsUseCaseResult = {

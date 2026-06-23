@@ -1,3 +1,52 @@
-import type { GetSummaryJobStatusResult } from '../../features/get-summary-job-status/get-summary-job-status.result';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
-export type SummaryJobStatusResponseDto = GetSummaryJobStatusResult;
+const summaryJobStatuses = [
+  "requested",
+  "running",
+  "completed",
+  "no_signal",
+  "failed",
+] as const;
+
+export class SummaryJobTimelineEventDto {
+  @ApiProperty({ enum: summaryJobStatuses })
+  declare readonly status: (typeof summaryJobStatuses)[number];
+
+  @ApiProperty({ format: "date-time" })
+  declare readonly occurredAt: string;
+
+  @ApiProperty()
+  declare readonly message: string;
+}
+
+export class SummaryJobStatusResponseDto {
+  @ApiProperty()
+  declare readonly summaryJobId: string;
+
+  @ApiProperty()
+  declare readonly topicId: string;
+
+  @ApiProperty({ enum: summaryJobStatuses })
+  declare readonly status: (typeof summaryJobStatuses)[number];
+
+  @ApiProperty({ format: "date-time" })
+  declare readonly requestedAt: string;
+
+  @ApiPropertyOptional({ format: "date-time" })
+  declare readonly startedAt?: string;
+
+  @ApiPropertyOptional({ format: "date-time" })
+  declare readonly completedAt?: string;
+
+  @ApiPropertyOptional({ format: "date-time" })
+  declare readonly failedAt?: string;
+
+  @ApiPropertyOptional()
+  declare readonly summaryId?: string;
+
+  @ApiPropertyOptional()
+  declare readonly failureReason?: string;
+
+  @ApiProperty({ type: () => [SummaryJobTimelineEventDto] })
+  declare readonly timeline: readonly SummaryJobTimelineEventDto[];
+}

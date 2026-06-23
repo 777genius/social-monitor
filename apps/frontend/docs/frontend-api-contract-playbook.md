@@ -25,6 +25,112 @@ Feature packages may import them only inside:
 
 Everything leaving infrastructure is translated into feature language.
 
+## Selected Generator And Ownership
+
+Default frontend REST generation is:
+
+```text
+OpenAPI snapshot
+-> openapi_retrofit_generator
+-> Retrofit declarations
+-> Dio transport
+-> packages/generated_api public facade
+-> feature infrastructure anti-corruption adapters
+-> application/domain contracts
+```
+
+`Dio`, `Retrofit`, `retrofit_generator` and `openapi_retrofit_generator` are implementation details of `packages/generated_api`.
+Do not add them to `app`, `design_system`, `shared_kernel` or feature package pubspecs.
+Do not import them from features, stores, widgets, use cases or domain code.
+
+The app may configure generated API behavior only through package-owned facade objects, for example base URL, auth token provider, correlation id provider, timeout policy and redacted logging policy.
+The app must not create feature-local `Dio` instances for REST calls.
+
+`generated_api` is not a feature or business package.
+It is allowed to aggregate generated transport declarations because OpenAPI generation is contract-wide, but it must not own product decisions, feature use-case interfaces, endpoint-specific mapping policy, UI state, provider copy or domain invariants.
+Those belong to the bounded context that uses the endpoint.
+
+Production frontend runtime config is app-owned and fail-closed.
+The app may create `GeneratedApiRuntime` from compile-time Dart defines such as:
+
+```text
+SOCIAL_MONITOR_API_BASE_URL
+SOCIAL_MONITOR_TENANT_ID
+SOCIAL_MONITOR_WORKSPACE_ID
+SOCIAL_MONITOR_WORKSPACE_ROLE
+SOCIAL_MONITOR_API_BEARER_TOKEN
+```
+
+Features must not read these values directly.
+If the app config is incomplete, production routes stay in unavailable states instead of showing demo data.
+
+Generated files must live under a clearly generated path such as:
+
+```text
+packages/generated_api/lib/src/generated/
+```
+
+Regenerate the Flutter REST package only through the package-owned command:
+
+```sh
+npm run frontend:generate-api
+```
+
+The command reads `libs/contracts/rest/openapi.snapshot.json`, runs `openapi_retrofit_generator`, runs `build_runner`, then formats the package output.
+Do not run generator commands inside feature packages.
+
+Human-written code in `generated_api` owns only:
+
+- package facade and exports;
+- generated client factory/configuration;
+- Problem Details/error mapping;
+- typed transport exceptions;
+- contract freshness tests.
+
+Feature infrastructure owns endpoint-specific translation:
+
+```text
+application/contracts/TopicCatalog
+<- infrastructure/api_clients/GeneratedTopicsApiClient
+<- infrastructure/mappers/generated_topic_rest_mapper.dart
+<- packages/generated_api
+```
+
+This keeps generator replacement possible. If `openapi_retrofit_generator` becomes a bad fit, replace it inside `packages/generated_api` and keep feature repository/use-case contracts stable.
+Switching to another generator, including OpenAPI Generator `dart-dio` or `swagger_dart_code_generator`, requires an ADR, current package research, generated-api tests and architecture-test updates.
+
+Endpoint addition rule:
+
+1. Regenerate or extend `packages/generated_api` from the OpenAPI snapshot.
+2. Add a feature-local infrastructure client or repository implementation for the specific endpoint family.
+3. Map generated DTOs into feature DTOs, value objects or domain entities before returning to application code.
+4. Keep the feature use case pointed at a narrow application/domain contract.
+5. Add mapper/client tests in the feature and generated-api tests only for package-owned transport behavior.
+
+## SOLID Guardrails
+
+- SRP: generated API package owns transport/codegen; feature infrastructure owns mapping; application owns use-case orchestration; domain owns invariants.
+- OCP: adding a backend endpoint adds generated API surface plus a feature adapter. It must not edit unrelated feature use cases.
+- ISP: features depend on narrow repositories/gateways, not one app-wide API client interface.
+- DIP: use cases depend on feature-owned abstractions. `Dio`, Retrofit clients and generated DTOs are low-level details.
+- No God Package: `generated_api` can contain many generated endpoint declarations, but it cannot contain feature orchestration, shared business facades or generic service methods that mix bounded contexts.
+
+Forbidden:
+
+```text
+presentation/store -> generated_api -> Dio
+application/use_case -> generated_api
+domain/model -> generated DTO
+feature pubspec -> dio/retrofit/openapi_retrofit_generator
+```
+
+Allowed:
+
+```text
+presentation/store -> application/use_case -> domain/repository contract
+infrastructure/repository implementation -> generated_api facade -> Dio/Retrofit
+```
+
 ## Request Shape
 
 Use typed command/query objects in application.
@@ -123,8 +229,7 @@ Fixtures use fake values. No raw social posts, tokens, handles or provider paylo
 When API contract changes:
 
 1. Update backend contract and generation input.
-2. Regenerate `packages/generated_api`.
+2. Regenerate `packages/generated_api` through the documented generator command.
 3. Update infrastructure mappers.
 4. Update mapper/use-case tests.
 5. Run generated-api tests, affected feature tests and frontend architecture gate.
-

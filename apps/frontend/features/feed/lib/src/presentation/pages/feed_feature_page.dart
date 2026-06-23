@@ -4,16 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
-import '../../domain/entities/feed_mention.dart';
-import '../../domain/value_objects/mention_sentiment.dart';
-import '../../domain/value_objects/mention_triage_state.dart';
-import '../stores/feed_review_store.dart';
+import '../../domain/entities/feed_item.dart';
+import '../components/feed_item_card.dart';
+import '../components/feed_item_detail_panel.dart';
+import '../components/feed_snapshot_panel.dart';
+import '../stores/feed_items_store.dart';
+import '../view_models/feed_filter_facets.dart';
 
 class FeedFeaturePage extends StatefulWidget {
-  const FeedFeaturePage({super.key, required this.store, this.autoload = true});
+  const FeedFeaturePage({
+    super.key,
+    required this.store,
+    this.autoload = true,
+    this.topicTitle,
+  });
 
-  final FeedReviewStore store;
+  final FeedItemsStore store;
   final bool autoload;
+  final String? topicTitle;
 
   @override
   State<FeedFeaturePage> createState() => _FeedFeaturePageState();
@@ -34,14 +42,24 @@ class _FeedFeaturePageState extends State<FeedFeaturePage> {
       child: AnimatedBuilder(
         animation: widget.store,
         builder: (context, child) {
+          final topicId = widget.store.filter.topicId;
+          final topicLabel = _topicLabel(
+            topicId: topicId,
+            topicTitle: widget.topicTitle,
+          );
+          final items = _itemsFromState(widget.store.state);
+          final facets = buildFeedFilterFacets(
+            items: items,
+            filter: widget.store.filter,
+          );
           return CustomScrollView(
             slivers: [
               const SliverToBoxAdapter(
                 child: AppSectionHeader(
-                  eyebrow: 'Review',
-                  title: 'Mentions feed',
+                  eyebrow: 'Feed',
+                  title: 'Feed',
                   description:
-                      'Review mentions, preserve provenance and triage signals without storing raw provider payloads.',
+                      'Collected posts, source context and a current briefing.',
                 ),
               ),
               SliverToBoxAdapter(
@@ -49,49 +67,78 @@ class _FeedFeaturePageState extends State<FeedFeaturePage> {
                   padding: const EdgeInsets.only(top: AppSpacing.md),
                   child: AppFilterBar(
                     searchValue: widget.store.filter.search,
-                    placeholder: 'Search mentions',
+                    placeholder: 'Search posts',
                     onSearchChanged: (value) {
                       unawaited(widget.store.updateSearch(value));
                     },
                     filters: [
-                      AppFilterChipData(
-                        label: 'Needs triage',
-                        selected:
-                            widget.store.filter.triageState ==
-                            MentionTriageState.needsTriage,
-                        onSelected: (selected) {
-                          unawaited(
-                            widget.store.updateTriageFilter(
-                              selected ? MentionTriageState.needsTriage : null,
-                            ),
-                          );
-                        },
-                      ),
-                      AppFilterChipData(
-                        label: 'Reviewed',
-                        selected:
-                            widget.store.filter.triageState ==
-                            MentionTriageState.reviewed,
-                        onSelected: (selected) {
-                          unawaited(
-                            widget.store.updateTriageFilter(
-                              selected ? MentionTriageState.reviewed : null,
-                            ),
-                          );
-                        },
-                      ),
+                      if (topicId != null)
+                        AppFilterChipData(
+                          label: topicLabel ?? 'Topic $topicId',
+                          selected: true,
+                          onSelected: (_) {
+                            unawaited(widget.store.clearTopicFilter());
+                          },
+                        ),
+                      for (final option in facets.providerOptions)
+                        AppFilterChipData(
+                          label: option.label,
+                          selected: option.selected,
+                          onSelected: (_) {
+                            unawaited(
+                              widget.store.updateProviderFilter(
+                                option.selected ? null : option.value,
+                              ),
+                            );
+                          },
+                        ),
+                      for (final option in facets.trendWindowOptions)
+                        AppFilterChipData(
+                          label: option.label,
+                          selected: option.selected,
+                          onSelected: (_) {
+                            unawaited(
+                              widget.store.updateRepositoryTrendWindowFilter(
+                                option.selected ? null : option.value,
+                              ),
+                            );
+                          },
+                        ),
+                      for (final option in facets.languageOptions)
+                        AppFilterChipData(
+                          label: option.label,
+                          selected: option.selected,
+                          onSelected: (_) {
+                            unawaited(
+                              widget.store.updateRepositoryLanguageFilter(
+                                option.selected ? null : option.value,
+                              ),
+                            );
+                          },
+                        ),
+                      for (final option in facets.repositoryTopicOptions)
+                        AppFilterChipData(
+                          label: option.label,
+                          selected: option.selected,
+                          onSelected: (_) {
+                            unawaited(
+                              widget.store.updateRepositoryTopicFilter(
+                                option.selected ? null : option.value,
+                              ),
+                            );
+                          },
+                        ),
                     ],
-                    onClear: () {
-                      unawaited(widget.store.updateSearch(''));
-                      unawaited(widget.store.updateTriageFilter(null));
-                    },
+                    onClear: widget.store.filter.hasAnyFilter
+                        ? () => unawaited(widget.store.clearFilters())
+                        : null,
                   ),
                 ),
               ),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.only(top: AppSpacing.md),
-                  child: _FeedBody(store: widget.store),
+                  child: _FeedBody(store: widget.store, topicLabel: topicLabel),
                 ),
               ),
             ],
@@ -103,27 +150,32 @@ class _FeedFeaturePageState extends State<FeedFeaturePage> {
 }
 
 class _FeedBody extends StatelessWidget {
-  const _FeedBody({required this.store});
+  const _FeedBody({required this.store, required this.topicLabel});
 
-  final FeedReviewStore store;
+  final FeedItemsStore store;
+  final String? topicLabel;
 
   @override
   Widget build(BuildContext context) {
     final state = store.state;
     final items = switch (state) {
-      ReadyViewState<PageResult<FeedMention>>(:final value) => value.items,
-      LoadingViewState<PageResult<FeedMention>>(:final previousValue) =>
-        previousValue?.items ?? const <FeedMention>[],
-      _ => const <FeedMention>[],
+      ReadyViewState<PageResult<FeedItem>>(:final value) => value.items,
+      LoadingViewState<PageResult<FeedItem>>(:final previousValue) =>
+        previousValue?.items ?? const <FeedItem>[],
+      _ => const <FeedItem>[],
     };
     final isCompact = AppScreenClass.of(context).isCompact;
-    final selected = store.selectedMention ?? items.firstOrNull;
-    final detailMention = isCompact && !store.hasExplicitSelection
+    final selected = store.selectedListItem ?? items.firstOrNull;
+    final detailItem = isCompact && !store.hasExplicitSelection
         ? null
-        : selected;
+        : store.selectedDetailItem ?? selected;
+    final detailFailure = switch (store.detailState) {
+      FailureViewState<FeedItem>(:final failure) => failure,
+      _ => null,
+    };
 
     return switch (state) {
-      FailureViewState<PageResult<FeedMention>>(:final failure) =>
+      FailureViewState<PageResult<FeedItem>>(:final failure) =>
         AppInlineProblem(
           title: 'Feed unavailable',
           message: failure.message,
@@ -131,122 +183,86 @@ class _FeedBody extends StatelessWidget {
           actionLabel: 'Retry',
           onAction: () => unawaited(store.refresh()),
         ),
-      EmptyViewState<PageResult<FeedMention>>() => const AppInlineProblem(
-        title: 'No mentions',
-        message: 'Adjust filters or wait for the next collection run.',
+      EmptyViewState<PageResult<FeedItem>>() => const AppInlineProblem(
+        title: 'No feed items',
+        message: 'Adjust search or wait for the next collection run.',
         tone: AppProblemTone.neutral,
       ),
-      _ => AppResponsiveSplitView(
-        list: AppDataList<FeedMention>(
-          items: items,
-          stableId: (mention) => mention.id.value,
-          isLoading: state is LoadingViewState<PageResult<FeedMention>>,
-          isStale:
-              state is ReadyViewState<PageResult<FeedMention>> && state.isStale,
-          emptyTitle: 'No mentions',
-          emptyMessage: 'Adjust filters or wait for the next collection run.',
-          footer: AppPaginationControls(
-            hasMore: store.nextCursor != null,
-            isLoading: state is LoadingViewState<PageResult<FeedMention>>,
-            summary: '${items.length} mentions loaded',
-            onLoadMore: store.nextCursor == null
-                ? null
-                : () => unawaited(store.loadMore()),
+      _ => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FeedSnapshotPanel(
+            items: items,
+            nextCursor: store.nextCursor,
+            topicLabel: topicLabel,
           ),
-          itemBuilder: (context, mention, index) {
-            return ListTile(
-              selected: detailMention?.id == mention.id,
-              leading: const Icon(Icons.forum_outlined),
-              title: Text(mention.title),
-              subtitle: Text(mention.sourceName),
-              trailing: AppStatusBadge(
-                label: _sentimentLabel(mention.sentiment),
+          const SizedBox(height: AppSpacing.md),
+          AppResponsiveSplitView(
+            list: AppDataList<FeedItem>(
+              items: items,
+              stableId: (item) => item.id.value,
+              isLoading: state is LoadingViewState<PageResult<FeedItem>>,
+              isStale:
+                  state is ReadyViewState<PageResult<FeedItem>> &&
+                  state.isStale,
+              emptyTitle: 'No feed items',
+              emptyMessage:
+                  'Adjust search or wait for the next collection run.',
+              footer: AppPaginationControls(
+                hasMore: store.nextCursor != null,
+                isLoading: state is LoadingViewState<PageResult<FeedItem>>,
+                summary: '${items.length} posts shown',
+                onLoadMore: store.nextCursor == null
+                    ? null
+                    : () => unawaited(store.loadMore()),
               ),
-              onTap: () => store.selectMention(mention.id),
-            );
-          },
-        ),
-        detailTitle: detailMention?.title ?? 'Mention detail',
-        onCloseDetail: isCompact ? store.clearSelection : null,
-        detail: detailMention == null
-            ? isCompact
-                  ? null
-                  : const AppInlineProblem(
-                      title: 'Select a mention',
-                      message: 'Choose a mention to review safe evidence.',
-                      tone: AppProblemTone.neutral,
-                    )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AppEntityHeader(
-                    title: detailMention.title,
-                    subtitle:
-                        'Provider content is rendered as safe preview text.',
-                    status: AppStatusBadge(
-                      label: _triageLabel(detailMention.triageState),
-                      tone:
-                          detailMention.triageState ==
-                              MentionTriageState.needsTriage
-                          ? AppStatusTone.warning
-                          : AppStatusTone.success,
-                    ),
-                    metadata: [
-                      AppEntityMetadata(
-                        label: 'Source',
-                        value: detailMention.sourceName,
-                      ),
-                      AppEntityMetadata(
-                        label: 'Provenance',
-                        value: detailMention.provenanceLabel,
-                      ),
-                    ],
+              itemBuilder: (context, item, index) {
+                return FeedItemCard(
+                  key: ValueKey('feed-item-card-${item.id.value}'),
+                  item: item,
+                  selected: detailItem?.id == item.id,
+                  onTap: () => unawaited(store.selectItem(item.id)),
+                );
+              },
+            ),
+            detailTitle: detailItem?.title ?? 'Feed item detail',
+            onCloseDetail: isCompact ? store.clearSelection : null,
+            detail: detailItem == null
+                ? isCompact
+                      ? null
+                      : const AppInlineProblem(
+                          title: 'Select a feed item',
+                          message: 'Choose an item to inspect its provenance.',
+                          tone: AppProblemTone.neutral,
+                        )
+                : FeedItemDetailPanel(
+                    item: detailItem,
+                    isLoading: store.detailState is LoadingViewState<FeedItem>,
+                    failure: detailFailure,
                   ),
-                  const SizedBox(height: AppSpacing.md),
-                  AppInlineProblem(
-                    title: 'Safe evidence preview',
-                    message: detailMention.safeEvidencePreview,
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  AppCommandBar(
-                    actions: [
-                      AppCommandAction(
-                        label: 'Mark reviewed',
-                        icon: Icons.check_circle_outline,
-                        onPressed:
-                            store.triageIntentFor(detailMention).isEnabled
-                            ? () => unawaited(store.markReviewed(detailMention))
-                            : null,
-                      ),
-                      AppCommandAction(
-                        label: 'Create summary',
-                        icon: Icons.summarize_outlined,
-                        variant: AppButtonVariant.secondary,
-                        onPressed: () {},
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+          ),
+        ],
       ),
     };
   }
 }
 
-String _sentimentLabel(MentionSentiment sentiment) {
-  return switch (sentiment) {
-    MentionSentiment.watch => 'Watch',
-    MentionSentiment.positive => 'Positive',
-    MentionSentiment.opportunity => 'Opportunity',
-    MentionSentiment.unknown => 'Unknown',
-  };
+String? _topicLabel({required String? topicId, required String? topicTitle}) {
+  if (topicId == null) {
+    return null;
+  }
+  final normalizedTitle = topicTitle?.trim();
+  if (normalizedTitle != null && normalizedTitle.isNotEmpty) {
+    return normalizedTitle;
+  }
+  return 'Topic $topicId';
 }
 
-String _triageLabel(MentionTriageState state) {
+List<FeedItem> _itemsFromState(AsyncViewState<PageResult<FeedItem>> state) {
   return switch (state) {
-    MentionTriageState.needsTriage => 'Needs triage',
-    MentionTriageState.reviewed => 'Reviewed',
-    MentionTriageState.escalated => 'Escalated',
-    MentionTriageState.unknown => 'Unknown',
+    ReadyViewState<PageResult<FeedItem>>(:final value) => value.items,
+    LoadingViewState<PageResult<FeedItem>>(:final previousValue) =>
+      previousValue?.items ?? const <FeedItem>[],
+    _ => const <FeedItem>[],
   };
 }

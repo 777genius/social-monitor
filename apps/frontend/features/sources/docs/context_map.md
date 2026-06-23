@@ -2,11 +2,12 @@
 
 ## Owning Context
 
-- `sources` owns source catalog, binding and credential health language.
+- `sources` owns source catalog, source profile, binding and credential health
+  language.
 
 ## Upstream Contexts
 
-- Backend source APIs provide catalog, binding and credential health data.
+- Backend source APIs provide profile, catalog, binding and credential health data.
 
 ## Downstream Contexts
 
@@ -15,4 +16,6 @@
 ## Integration Rules
 
 - Keep provider-specific DTOs inside infrastructure anti-corruption code.
+- Source profile readiness and runtime readiness map unknown enum values to
+  unknown/degraded frontend states, never to healthy states.
 - Do not import topic or feed feature internals.

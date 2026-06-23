@@ -12,6 +12,7 @@ void main() {
 
     expect(topic.id.value, 'topic-market-risk');
     expect(topic.name.value, 'Market risk');
+    expect(topic.query.value, 'market risk OR volatility');
     expect(topic.status, TopicLifecycleStatus.active);
     expect(topic.weeklyMentionCount, 24);
   });
@@ -23,6 +24,7 @@ void main() {
       topicSummaryApiDto(
         id: '  ',
         name: null,
+        query: null,
         status: 'paused_by_provider',
         weeklyMentionCount: null,
       ),
@@ -30,6 +32,7 @@ void main() {
 
     expect(topic.id.value, 'topic-unknown');
     expect(topic.name.value, 'Untitled topic');
+    expect(topic.query.value, 'No query available');
     expect(topic.status, TopicLifecycleStatus.unknown);
     expect(topic.weeklyMentionCount, 0);
   });

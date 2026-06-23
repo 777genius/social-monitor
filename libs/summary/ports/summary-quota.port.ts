@@ -3,8 +3,9 @@ import type { DomainError, Result, TenantId, WorkspaceId } from '@social-monitor
 export type ReserveSummaryJobQuotaCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
-  readonly operation: 'summary.request' | 'summary.regenerate';
+  readonly topicId?: string;
+  readonly scopeKey?: string;
+  readonly operation: 'summary.request' | 'summary.regenerate' | 'briefing.request';
 };
 
 export type ReserveSummaryJobQuotaResult = {

@@ -417,10 +417,29 @@ const buildPromptPayload = (input: SummaryModelInput): string => JSON.stringify(
     canonicalUrl: item.canonicalUrl,
     observedAt: item.observedAt.toISOString(),
     extractedSummaries: item.extractedSummaries,
+    providerMetadata: item.providerMetadata,
+    repositoryTrend: repositoryTrendPromptBlock(item.providerMetadata),
     relevance: item.relevance,
     safety: item.safety,
   })),
 });
+
+const repositoryTrendPromptBlock = (metadata: unknown): Record<string, unknown> | undefined => {
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
+    return undefined;
+  }
+
+  const record = metadata as Readonly<Record<string, unknown>>;
+  if (record.kind !== 'github_repository_trend') {
+    return undefined;
+  }
+
+  return {
+    repository: record.repository,
+    trend: record.trend,
+    instruction: 'Use this as structured repository trend evidence. Cite the related evidence item.',
+  };
+};
 
 const buildLineage = (
   input: SummaryModelInput,

@@ -36,6 +36,7 @@ export class FeedSummaryEvidenceSelector implements SummaryEvidenceSelectorPort 
           title: safety.sanitizedTitle,
           bodyPreview: safety.sanitizedBodyPreview,
           canonicalUrl: safety.sanitizedCanonicalUrl ?? snapshot.canonicalUrl,
+          providerMetadata: snapshot.providerMetadata,
           observedAt: snapshot.observedAt,
           safety,
         };

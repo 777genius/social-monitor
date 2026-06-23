@@ -43,6 +43,37 @@ SummaryApiDto summaryApiDto({
   );
 }
 
+BriefingApiDto briefingApiDto({
+  String id = 'briefing-1',
+  String title = 'AI workspace briefing',
+  String executiveSummary =
+      'AI model launches and developer tooling changes are the strongest signals.',
+  List<BriefingStoryApiDto> topStories = const [
+    BriefingStoryApiDto(
+      title: 'New AI coding tools gain adoption',
+      summary: 'Developers discussed new agent workflows and IDE support.',
+      topicCount: 2,
+      providerCount: 3,
+      citationIds: ['bc-1'],
+    ),
+  ],
+  List<BriefingRepeatedSignalApiDto> repeatedSignals = const [],
+  List<SummaryCitationApiDto>? citations,
+  String freshnessLabel = 'Fresh',
+  bool isDegraded = false,
+}) {
+  return BriefingApiDto(
+    id: id,
+    title: title,
+    executiveSummary: executiveSummary,
+    topStories: topStories,
+    repeatedSignals: repeatedSignals,
+    citations: citations ?? [summaryCitationApiDto(id: 'bc-1')],
+    freshnessLabel: freshnessLabel,
+    isDegraded: isDegraded,
+  );
+}
+
 GeneratedSummary generatedSummary({
   String id = 's-1',
   String title = 'Weekly risk briefing',

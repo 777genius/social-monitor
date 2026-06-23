@@ -12,6 +12,10 @@ export type ListFeedItemsQuery = {
   readonly topicId?: string;
   readonly searchQuery?: string;
   readonly observedAfter?: Date;
+  readonly providerKey?: string;
+  readonly repositoryTrendWindow?: string;
+  readonly repositoryLanguage?: string;
+  readonly repositoryTopic?: string;
 };
 
 export type ListFeedItemsResult = {

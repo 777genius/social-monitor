@@ -9,12 +9,14 @@ class AppButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.icon,
+    this.controlKeyBase,
     this.variant = AppButtonVariant.primary,
   });
 
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
+  final String? controlKeyBase;
   final AppButtonVariant variant;
 
   @override
@@ -45,7 +47,9 @@ class AppButton extends StatelessWidget {
     return Theme(
       data: _withButtonStyle(Theme.of(context), style),
       child: RTextButton(
-        key: ValueKey('app-button-$label-${variant.name}-$enabled'),
+        key: ValueKey(
+          '${controlKeyBase ?? 'app-button-$label-${variant.name}'}-$enabled',
+        ),
         onPressed: onPressed,
         variant: _toHeadlessVariant(variant),
         size: RButtonSize.large,

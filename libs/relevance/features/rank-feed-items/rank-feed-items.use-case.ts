@@ -185,6 +185,7 @@ const presentRankedFeedItem = (item: ScoredFeedItem, rank: number): RankedFeedIt
   canonicalUrl: item.safety.sanitizedCanonicalUrl ?? item.snapshot.canonicalUrl,
   title: item.safety.sanitizedTitle,
   bodyPreview: item.safety.sanitizedBodyPreview,
+  providerMetadata: item.snapshot.providerMetadata,
   authorHandle: item.snapshot.authorHandle,
   publishedAt: item.snapshot.publishedAt.toISOString(),
   observedAt: item.snapshot.observedAt.toISOString(),

@@ -1,8 +1,8 @@
 import { Controller, Get } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { ListSourceProfilesUseCase } from '../../features/list-source-profiles/list-source-profiles.use-case';
-import type { ListSourceProfilesResponseDto } from './source-profile.dto';
+import { ListSourceProfilesResponseDto } from './source-profile.dto';
 
 @ApiTags('sources')
 @Controller('sources/profiles')
@@ -11,6 +11,7 @@ export class SourceProfileController {
 
   @Get()
   @ApiOperation({ summary: 'List source capability and readiness profiles.' })
+  @ApiOkResponse({ type: ListSourceProfilesResponseDto })
   async list(): Promise<ListSourceProfilesResponseDto> {
     const result = await this.listSourceProfiles.execute();
 

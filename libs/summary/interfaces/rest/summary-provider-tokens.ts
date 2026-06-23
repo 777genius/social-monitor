@@ -7,8 +7,18 @@ import {
   type RabbitMqQueuePublisherOptions,
 } from '@social-monitor/platform-queue/adapters/rabbitmq';
 
+import {
+  resolveOpenAiResponsesBriefingModelOptions,
+  type OpenAiResponsesBriefingModelAdapterOptions,
+} from '../../adapters/model/openai-responses-briefing-model.adapter';
 import type {
   AutoSummaryCandidateRepositoryPort,
+  BriefingArtifactRepositoryPort,
+  BriefingContextProviderPort,
+  BriefingEvidenceSelectorPort,
+  BriefingJobQueuePort,
+  BriefingJobRepositoryPort,
+  BriefingPolicyRepositoryPort,
   SummaryArtifactRepositoryPort,
   SummaryEventPublisherPort,
   SummaryEvidenceSelectorPort,
@@ -24,12 +34,15 @@ import type {
 export type SummaryPersistenceMode = 'in-memory' | 'prisma';
 export type SummaryJobQueueMode = 'in-memory' | 'rabbitmq';
 export type SummaryModelProviderMode = 'deterministic' | 'openai-responses';
+export type BriefingModelProviderMode = 'deterministic' | 'openai-responses';
 export type SummaryMemoryMode = 'disabled' | 'memo-stack';
 export type SummaryYoutubeVideoSummaryProviderMode = 'disabled' | 'deterministic' | 'google-gemini';
 
 export const SUMMARY_PERSISTENCE_MODE = Symbol('SUMMARY_PERSISTENCE_MODE');
 export const SUMMARY_JOB_QUEUE_MODE = Symbol('SUMMARY_JOB_QUEUE_MODE');
 export const SUMMARY_MODEL_PROVIDER_MODE = Symbol('SUMMARY_MODEL_PROVIDER_MODE');
+export const BRIEFING_MODEL_PROVIDER_MODE = Symbol('BRIEFING_MODEL_PROVIDER_MODE');
+export const BRIEFING_OPENAI_RESPONSES_MODEL_OPTIONS = Symbol('BRIEFING_OPENAI_RESPONSES_MODEL_OPTIONS');
 export const SUMMARY_MEMORY_MODE = Symbol('SUMMARY_MEMORY_MODE');
 export const SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE = Symbol('SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE');
 export const SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS = Symbol('SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS');
@@ -46,11 +59,19 @@ export const SUMMARY_EVENT_PUBLISHER = Symbol('SUMMARY_EVENT_PUBLISHER');
 export const SUMMARY_MEMORY = Symbol('SUMMARY_MEMORY');
 export const SUMMARY_USER_SUMMARY_PREFERENCE_READER = Symbol('SUMMARY_USER_SUMMARY_PREFERENCE_READER');
 export const SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY = Symbol('SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY');
+export const BRIEFING_JOB_REPOSITORY = Symbol('BRIEFING_JOB_REPOSITORY');
+export const BRIEFING_JOB_QUEUE = Symbol('BRIEFING_JOB_QUEUE');
+export const BRIEFING_EVIDENCE_SELECTOR = Symbol('BRIEFING_EVIDENCE_SELECTOR');
+export const BRIEFING_ARTIFACT_REPOSITORY = Symbol('BRIEFING_ARTIFACT_REPOSITORY');
+export const BRIEFING_POLICY_REPOSITORY = Symbol('BRIEFING_POLICY_REPOSITORY');
+export const BRIEFING_CONTEXT_PROVIDER = Symbol('BRIEFING_CONTEXT_PROVIDER');
 
 export type SummaryProviderTokenMap = {
   readonly [SUMMARY_PERSISTENCE_MODE]: SummaryPersistenceMode;
   readonly [SUMMARY_JOB_QUEUE_MODE]: SummaryJobQueueMode;
   readonly [SUMMARY_MODEL_PROVIDER_MODE]: SummaryModelProviderMode;
+  readonly [BRIEFING_MODEL_PROVIDER_MODE]: BriefingModelProviderMode;
+  readonly [BRIEFING_OPENAI_RESPONSES_MODEL_OPTIONS]: OpenAiResponsesBriefingModelAdapterOptions;
   readonly [SUMMARY_MEMORY_MODE]: SummaryMemoryMode;
   readonly [SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE]: SummaryYoutubeVideoSummaryProviderMode;
   readonly [SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS]: RabbitMqQueuePublisherOptions;
@@ -67,6 +88,12 @@ export type SummaryProviderTokenMap = {
   readonly [SUMMARY_MEMORY]: SummaryMemoryPort;
   readonly [SUMMARY_USER_SUMMARY_PREFERENCE_READER]: UserSummaryPreferenceReaderPort;
   readonly [SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY]: AutoSummaryCandidateRepositoryPort;
+  readonly [BRIEFING_JOB_REPOSITORY]: BriefingJobRepositoryPort;
+  readonly [BRIEFING_JOB_QUEUE]: BriefingJobQueuePort;
+  readonly [BRIEFING_EVIDENCE_SELECTOR]: BriefingEvidenceSelectorPort;
+  readonly [BRIEFING_ARTIFACT_REPOSITORY]: BriefingArtifactRepositoryPort;
+  readonly [BRIEFING_POLICY_REPOSITORY]: BriefingPolicyRepositoryPort;
+  readonly [BRIEFING_CONTEXT_PROVIDER]: BriefingContextProviderPort;
 };
 
 export const summaryPersistenceModeProvider: Provider<SummaryPersistenceMode> = {
@@ -82,6 +109,20 @@ export const summaryJobQueueModeProvider: Provider<SummaryJobQueueMode> = {
 export const summaryModelProviderModeProvider: Provider<SummaryModelProviderMode> = {
   provide: SUMMARY_MODEL_PROVIDER_MODE,
   useFactory: () => resolveSummaryModelProviderMode(process.env),
+};
+
+export const briefingModelProviderModeProvider: Provider<BriefingModelProviderMode> = {
+  provide: BRIEFING_MODEL_PROVIDER_MODE,
+  useFactory: () => resolveBriefingModelProviderMode(process.env),
+};
+
+export const briefingOpenAiResponsesModelOptionsProvider: Provider<OpenAiResponsesBriefingModelAdapterOptions> = {
+  provide: BRIEFING_OPENAI_RESPONSES_MODEL_OPTIONS,
+  useFactory: (mode: BriefingModelProviderMode) =>
+    resolveOpenAiResponsesBriefingModelOptions(process.env, {
+      requireApiKey: mode === 'openai-responses',
+    }),
+  inject: [BRIEFING_MODEL_PROVIDER_MODE],
 };
 
 export const summaryMemoryModeProvider: Provider<SummaryMemoryMode> = {
@@ -173,6 +214,16 @@ export const resolveSummaryModelProviderMode = (env: NodeJS.ProcessEnv): Summary
   throw new Error('SUMMARY_MODEL_PROVIDER must be "deterministic" or "openai-responses"');
 };
 
+export const resolveBriefingModelProviderMode = (env: NodeJS.ProcessEnv): BriefingModelProviderMode => {
+  const value = env.BRIEFING_MODEL_PROVIDER ?? 'deterministic';
+
+  if (value === 'deterministic' || value === 'openai-responses') {
+    return value;
+  }
+
+  throw new Error('BRIEFING_MODEL_PROVIDER must be "deterministic" or "openai-responses"');
+};
+
 export const resolveSummaryMemoryMode = (env: NodeJS.ProcessEnv): SummaryMemoryMode => {
   const value = env.SUMMARY_MEMORY_MODE ?? 'disabled';
 
@@ -217,6 +268,17 @@ export const resolveSummaryRabbitMqJobQueueOptions = (
     'summary.job.execute': {
       queue: nonEmptyOrFallback(env.RABBITMQ_SUMMARY_QUEUE, 'jobs.summary.execute'),
       routingKey: 'summary.job.execute',
+      durable: true,
+      deadLetterExchange: parseRabbitMqDeadLetterExchange(env.RABBITMQ_DEAD_LETTER_EXCHANGE, {
+        runtimeProfile: env.SOCIAL_MONITOR_RUNTIME_PROFILE,
+        settingName: 'SUMMARY_JOB_QUEUE_MODE=rabbitmq',
+      }),
+      queueType: parseRabbitMqQueueType(env.RABBITMQ_QUEUE_TYPE),
+      deliveryLimit: parseRabbitMqDeliveryLimit(env.RABBITMQ_QUEUE_DELIVERY_LIMIT),
+    },
+    'briefing.job.execute': {
+      queue: nonEmptyOrFallback(env.RABBITMQ_BRIEFING_QUEUE, 'jobs.briefing.execute'),
+      routingKey: 'briefing.job.execute',
       durable: true,
       deadLetterExchange: parseRabbitMqDeadLetterExchange(env.RABBITMQ_DEAD_LETTER_EXCHANGE, {
         runtimeProfile: env.SOCIAL_MONITOR_RUNTIME_PROFILE,

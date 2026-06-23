@@ -467,6 +467,18 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
       )) ?? null,
   };
 
+  readonly githubRepositoryTrendCandidate: PrismaIngestionClient['githubRepositoryTrendCandidate'] = {
+    upsert: async (args) => args.create,
+  };
+
+  readonly githubRepositoryTrendSnapshot: PrismaIngestionClient['githubRepositoryTrendSnapshot'] = {
+    upsert: async (args) => args.create,
+  };
+
+  readonly githubRepositoryTrendResult: PrismaIngestionClient['githubRepositoryTrendResult'] = {
+    upsert: async (args) => args.create,
+  };
+
   readonly feedItem: PrismaFeedClient['feedItem'] = {
     upsert: async (args) => {
       const key = [
@@ -490,6 +502,7 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
         authorHandle: args.update.authorHandle ?? null,
         publishedAt: args.update.publishedAt,
         observedAt: args.update.observedAt,
+        providerMetadata: args.update.providerMetadata ?? null,
         status: args.update.status,
         createdAt: existing?.createdAt ?? clock.now(),
       };

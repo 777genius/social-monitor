@@ -1,5 +1,5 @@
 import { Controller, Headers, Inject, Param, Post } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
   type WorkspaceAuthorizationPolicyPort,
@@ -16,7 +16,7 @@ import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features
 import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
 
 import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
-import type { RequestScanResponseDto } from './request-scan.dto';
+import { RequestScanResponseDto } from './request-scan.dto';
 
 @ApiTags('scan-requests')
 @Controller('source-bindings/:sourceBindingId/scan-requests')
@@ -40,6 +40,7 @@ export class ScanRequestController {
   })
   @ApiHeader({ name: 'x-correlation-id', required: false })
   @ApiHeader({ name: 'idempotency-key', required: true })
+  @ApiCreatedResponse({ type: RequestScanResponseDto })
   async create(
     @Param('sourceBindingId') sourceBindingId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,

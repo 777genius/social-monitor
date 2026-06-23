@@ -1,67 +1,77 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
-import 'package:social_monitor_feed/src/application/use_cases/list_feed_mentions_use_case.dart';
-import 'package:social_monitor_feed/src/application/use_cases/triage_mention_use_case.dart';
-import 'package:social_monitor_feed/src/domain/entities/feed_mention.dart';
-import 'package:social_monitor_feed/src/infrastructure/api/feed_mention_api_dto.dart';
-import 'package:social_monitor_feed/src/infrastructure/api_clients/in_memory_feed_api_client.dart';
-import 'package:social_monitor_feed/src/infrastructure/repositories/generated_feed_review_catalog.dart';
+import 'package:social_monitor_feed/src/application/use_cases/list_feed_items_use_case.dart';
+import 'package:social_monitor_feed/src/application/use_cases/load_feed_item_use_case.dart';
+import 'package:social_monitor_feed/src/domain/entities/feed_item.dart';
+import 'package:social_monitor_feed/src/infrastructure/api/feed_item_api_dto.dart';
+import 'package:social_monitor_feed/src/infrastructure/api_clients/in_memory_feed_items_api_client.dart';
+import 'package:social_monitor_feed/src/infrastructure/repositories/generated_feed_item_catalog.dart';
 import 'package:social_monitor_feed/src/presentation/pages/feed_feature_page.dart';
-import 'package:social_monitor_feed/src/presentation/stores/feed_review_store.dart';
+import 'package:social_monitor_feed/src/presentation/stores/feed_items_store.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../support/feed_test_fixtures.dart';
 
 void main() {
-  testWidgets('renders expanded feed list and safe detail preview', (
+  testWidgets('renders expanded feed list and backend-real detail', (
     tester,
   ) async {
-    final store = _store([feedMentionApiDto()]);
+    final store = _store([
+      feedItemApiDto(
+        providerKey: 'github-repo-radar',
+        title: 'openai/codex is trending on GitHub',
+        canonicalUrl: 'https://github.com/openai/codex',
+        authorHandle: 'openai',
+        providerMetadata: githubRepositoryTrendMetadataFixture(),
+      ),
+    ]);
 
     await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
     await tester.pumpAndSettle();
 
-    expect(find.text('Pricing concern on Reddit'), findsWidgets);
-    expect(find.text('Safe evidence preview'), findsOneWidget);
-    expect(find.text('Mark reviewed'), findsOneWidget);
+    expect(find.text('openai/codex is trending on GitHub'), findsWidgets);
+    expect(find.text('Repo Radar'), findsWidgets);
+    expect(find.text('54.0k stars'), findsOneWidget);
+    expect(find.text('Repository trend'), findsOneWidget);
+    expect(find.text('openai/codex'), findsWidgets);
+    expect(find.text('+1,200'), findsOneWidget);
+    expect(find.text('Body preview'), findsOneWidget);
+    expect(find.text('Canonical URL'), findsOneWidget);
+    expect(find.text('Copy URL'), findsOneWidget);
+    expect(find.text('Mark reviewed'), findsNothing);
   });
 
   testWidgets('compact feed opens detail only after explicit selection', (
     tester,
   ) async {
-    final store = _store([feedMentionApiDto()]);
+    final store = _store([feedItemApiDto()]);
 
     await _pumpSizedFeature(tester, store: store, size: const Size(390, 780));
     await tester.pumpAndSettle();
 
-    expect(find.text('Safe evidence preview'), findsNothing);
+    expect(find.text('Body preview'), findsNothing);
     await tester.scrollUntilVisible(
-      find.text('Pricing concern on Reddit'),
+      find.byKey(const ValueKey('feed-item-card-feed-1')),
       120,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('Pricing concern on Reddit'), findsOneWidget);
 
-    await tester.tap(find.text('Pricing concern on Reddit'));
+    await tester.tap(find.byKey(const ValueKey('feed-item-card-feed-1')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Safe evidence preview'), findsOneWidget);
+    expect(find.text('Body preview'), findsOneWidget);
     expect(find.byTooltip('Close detail'), findsOneWidget);
   });
 
   testWidgets('long feed list uses lazy repeated-row viewport', (tester) async {
     final store = _store([]);
-    final items = List<FeedMention>.generate(
+    final items = List<FeedItem>.generate(
       120,
-      (index) => feedMention(
-        id: 'm-$index',
-        title: 'Mention $index',
-        sourceName: 'Source $index',
-      ),
+      (index) => feedItem(id: 'feed-$index', title: 'Feed item $index'),
     );
-    store.state = ReadyViewState<PageResult<FeedMention>>(
-      PageResult<FeedMention>(items: items, request: const PageRequest()),
+    store.state = ReadyViewState<PageResult<FeedItem>>(
+      PageResult<FeedItem>(items: items, request: const PageRequest()),
     );
 
     await _pumpSizedFeature(
@@ -72,39 +82,93 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Mention 0'), findsWidgets);
-    expect(find.text('Mention 119'), findsNothing);
+    expect(find.text('Feed item 0'), findsWidgets);
+    expect(find.text('Feed item 119'), findsNothing);
 
     final feedListScrollable = find.descendant(
-      of: find.byType(AppDataList<FeedMention>),
+      of: find.byType(AppDataList<FeedItem>),
       matching: find.byType(Scrollable),
     );
     expect(feedListScrollable, findsOneWidget);
 
     await tester.scrollUntilVisible(
-      find.text('Mention 119'),
+      find.text('Feed item 119'),
       600,
       scrollable: feedListScrollable,
     );
 
-    expect(find.text('Mention 119'), findsOneWidget);
+    expect(find.text('Feed item 119'), findsOneWidget);
+  });
+
+  testWidgets('filters repo radar cards by provider and repository facets', (
+    tester,
+  ) async {
+    final store = _store([
+      feedItemApiDto(
+        id: 'feed-codex',
+        providerKey: 'github-repo-radar',
+        title: 'openai/codex is trending on GitHub',
+        canonicalUrl: 'https://github.com/openai/codex',
+        providerMetadata: githubRepositoryTrendMetadataFixture(),
+      ),
+      feedItemApiDto(
+        id: 'feed-rust',
+        providerKey: 'github-repo-radar',
+        title: 'astral-sh/uv is trending on GitHub',
+        canonicalUrl: 'https://github.com/astral-sh/uv',
+        providerMetadata: githubRepositoryTrendMetadataFixture(
+          fullName: 'astral-sh/uv',
+          url: 'https://github.com/astral-sh/uv',
+          language: 'Rust',
+          topics: const ['python', 'cli'],
+          primaryWindow: '7d',
+          rank: 2,
+        ),
+      ),
+      feedItemApiDto(
+        id: 'feed-reddit',
+        providerKey: 'reddit',
+        title: 'Reddit pricing discussion',
+      ),
+    ]);
+
+    await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reddit pricing discussion'), findsWidgets);
+    await tester.tap(
+      find.widgetWithText(FilterChip, 'Provider: Repo Radar').first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('openai/codex is trending on GitHub'), findsWidgets);
+    expect(find.text('astral-sh/uv is trending on GitHub'), findsWidgets);
+    expect(find.text('Reddit pricing discussion'), findsNothing);
+
+    await tester.tap(
+      find.widgetWithText(FilterChip, 'Language: TypeScript').first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('openai/codex is trending on GitHub'), findsWidgets);
+    expect(find.text('astral-sh/uv is trending on GitHub'), findsNothing);
   });
 }
 
-FeedReviewStore _store(List<FeedMentionApiDto> items) {
-  final catalog = GeneratedFeedReviewCatalog(
-    apiClient: InMemoryFeedApiClient(items: items),
+FeedItemsStore _store(List<FeedItemApiDto> items) {
+  final catalog = GeneratedFeedItemCatalog(
+    apiClient: InMemoryFeedItemsApiClient(items: items),
   );
-  return FeedReviewStore(
-    listMentions: ListFeedMentionsUseCase(catalog),
-    triageMention: TriageMentionUseCase(catalog),
+  return FeedItemsStore(
+    listFeedItems: ListFeedItemsUseCase(catalog),
+    loadFeedItem: LoadFeedItemUseCase(catalog),
     scope: feedWorkspaceScope,
   );
 }
 
 Future<void> _pumpSizedFeature(
   WidgetTester tester, {
-  required FeedReviewStore store,
+  required FeedItemsStore store,
   required Size size,
   bool autoload = true,
 }) async {
@@ -125,7 +189,7 @@ class _TestApp extends StatelessWidget {
     required this.autoload,
   });
 
-  final FeedReviewStore store;
+  final FeedItemsStore store;
   final Size size;
   final bool autoload;
 

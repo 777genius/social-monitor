@@ -1,0 +1,257 @@
+import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
+    as generated;
+import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
+
+import '../../domain/value_objects/summary_feedback_kind.dart';
+import '../api/summary_api_dto.dart';
+import '../mappers/generated_summary_rest_mapper.dart';
+import 'in_memory_summaries_api_client.dart';
+
+final class GeneratedSummariesApiClient implements SummariesApiClient {
+  GeneratedSummariesApiClient({
+    required generated.GeneratedApiRuntime runtime,
+    GeneratedSummaryRestMapper mapper = const GeneratedSummaryRestMapper(),
+  }) : _runtime = runtime,
+       _mapper = mapper;
+
+  factory GeneratedSummariesApiClient.fromRuntime({
+    required Object runtime,
+    GeneratedSummaryRestMapper mapper = const GeneratedSummaryRestMapper(),
+  }) {
+    if (runtime is! generated.GeneratedApiRuntime) {
+      throw ArgumentError.value(
+        runtime,
+        'runtime',
+        'Expected GeneratedApiRuntime from packages/generated_api',
+      );
+    }
+    return GeneratedSummariesApiClient(runtime: runtime, mapper: mapper);
+  }
+
+  final generated.GeneratedApiRuntime _runtime;
+  final GeneratedSummaryRestMapper _mapper;
+
+  @override
+  Future<Result<SummaryPageApiDto>> listSummaries(
+    ListSummariesApiRequest request,
+  ) async {
+    final result = await _runtime.client
+        .send<generated.ListSummariesResponseDto>(
+          generated.WorkspaceRequest(scope: request.scope),
+          () => _runtime.rest.summaries.summaryControllerList(
+            xWorkspaceId: request.scope.workspaceId,
+            xTenantId: request.scope.tenantId,
+            cursor: request.cursor,
+            limit: request.limit,
+          ),
+        );
+    return result.fold(
+      onSuccess: (dto) => Result.success(_mapper.list(dto)),
+      onFailure: Result<SummaryPageApiDto>.failure,
+    );
+  }
+
+  @override
+  Future<Result<SummaryApiDto>> loadSummaryDetail(
+    LoadSummaryDetailApiRequest request,
+  ) {
+    return _loadSummaryDetail(
+      scope: request.scope,
+      summaryId: request.summaryId,
+    );
+  }
+
+  @override
+  Future<Result<WorkspaceBriefingApiDto>> loadWorkspaceBriefing(
+    LoadWorkspaceBriefingApiRequest request,
+  ) async {
+    final result = await _runtime.client
+        .send<generated.ListBriefingsResponseDto>(
+          generated.WorkspaceRequest(scope: request.scope),
+          () => _runtime.rest.briefings.briefingControllerList(
+            xWorkspaceId: request.scope.workspaceId,
+            xTenantId: request.scope.tenantId,
+            scopeType: generated.ScopeType.workspace,
+            limit: 1,
+          ),
+        );
+    return result.fold(
+      onSuccess: (dto) => Result.success(
+        WorkspaceBriefingApiDto(
+          current: dto.items.isEmpty ? null : _mapper.briefing(dto.items.first),
+        ),
+      ),
+      onFailure: Result<WorkspaceBriefingApiDto>.failure,
+    );
+  }
+
+  @override
+  Future<Result<BriefingJobApiDto>> requestWorkspaceBriefing(
+    RequestWorkspaceBriefingApiRequest request,
+  ) async {
+    final result = await _runtime.client
+        .send<generated.RequestBriefingResponseDto>(
+          generated.WorkspaceRequest(scope: request.scope),
+          () => _runtime.rest.briefings.briefingRequestControllerCreate(
+            idempotencyKey: request.idempotencyKey,
+            xWorkspaceId: request.scope.workspaceId,
+            xTenantId: request.scope.tenantId,
+            body: const generated.RequestBriefingRequestDto(
+              scope: generated.BriefingScopeDto(
+                type: generated.BriefingScopeDtoTypeType.workspace,
+              ),
+            ),
+          ),
+        );
+    return result.fold(
+      onSuccess: (dto) => Result.success(_mapper.requestedBriefingJob(dto)),
+      onFailure: Result<BriefingJobApiDto>.failure,
+    );
+  }
+
+  @override
+  Future<Result<BriefingJobApiDto>> loadWorkspaceBriefingJobStatus(
+    LoadWorkspaceBriefingJobStatusApiRequest request,
+  ) async {
+    final result = await _runtime.client
+        .send<generated.BriefingJobStatusResponseDto>(
+          generated.WorkspaceRequest(scope: request.scope),
+          () => _runtime.rest.briefings.briefingJobControllerGetStatus(
+            briefingJobId: request.briefingJobId,
+            xWorkspaceId: request.scope.workspaceId,
+            xTenantId: request.scope.tenantId,
+          ),
+        );
+    return result.fold(
+      onSuccess: (dto) => Result.success(_mapper.briefingJobStatus(dto)),
+      onFailure: Result<BriefingJobApiDto>.failure,
+    );
+  }
+
+  @override
+  Future<Result<SummaryApiDto>> regenerateSummary(
+    RegenerateSummaryApiRequest request,
+  ) async {
+    final result = await _runtime.client
+        .send<generated.RegenerateSummaryResponseDto>(
+          generated.WorkspaceRequest(scope: request.scope),
+          () => _runtime.rest.summaries.summaryControllerRegenerate(
+            summaryId: request.summaryId,
+            idempotencyKey:
+                '${request.scope.workspaceId}:${request.summaryId}:regenerate',
+            xWorkspaceId: request.scope.workspaceId,
+            xTenantId: request.scope.tenantId,
+          ),
+        );
+    return result.fold(
+      onSuccess: (job) => _loadSummaryDetail(
+        scope: request.scope,
+        summaryId: request.summaryId,
+        status: _statusFromJob(job.status),
+      ),
+      onFailure: (failure) =>
+          Future.value(Result<SummaryApiDto>.failure(failure)),
+    );
+  }
+
+  @override
+  Future<Result<SummaryApiDto>> submitFeedback(
+    SubmitSummaryFeedbackApiRequest request,
+  ) async {
+    final result = await _runtime.client
+        .send<generated.RecordSummaryFeedbackResponseDto>(
+          generated.WorkspaceRequest(scope: request.scope),
+          () => _runtime.rest.summaries.summaryFeedbackControllerCreate(
+            summaryId: request.summaryId,
+            idempotencyKey:
+                '${request.scope.workspaceId}:${request.summaryId}:${request.kind.name}',
+            xWorkspaceId: request.scope.workspaceId,
+            xTenantId: request.scope.tenantId,
+            body: generated.RecordSummaryFeedbackRequestDto(
+              category: _feedbackCategory(request.kind),
+              rating: _feedbackRating(request.kind),
+              comment: _feedbackComment(request.kind),
+            ),
+          ),
+        );
+    return result.fold(
+      onSuccess: (_) => _loadSummaryDetail(
+        scope: request.scope,
+        summaryId: request.summaryId,
+        feedbackSubmitted: true,
+      ),
+      onFailure: (failure) =>
+          Future.value(Result<SummaryApiDto>.failure(failure)),
+    );
+  }
+
+  Future<Result<SummaryApiDto>> _loadSummaryDetail({
+    required WorkspaceScope scope,
+    required String summaryId,
+    String? status,
+    bool feedbackSubmitted = false,
+  }) async {
+    final result = await _runtime.client.send<generated.SummaryResponseDto>(
+      generated.WorkspaceRequest(scope: scope),
+      () => _runtime.rest.summaries.summaryControllerGet(
+        summaryId: summaryId,
+        xWorkspaceId: scope.workspaceId,
+        xTenantId: scope.tenantId,
+      ),
+    );
+    return result.fold(
+      onSuccess: (dto) => Result.success(
+        _mapper.detail(
+          dto,
+          status: status,
+          feedbackSubmitted: feedbackSubmitted,
+        ),
+      ),
+      onFailure: Result<SummaryApiDto>.failure,
+    );
+  }
+
+  String _statusFromJob(
+    generated.RegenerateSummaryResponseDtoStatusStatus status,
+  ) {
+    return switch (status) {
+      generated.RegenerateSummaryResponseDtoStatusStatus.requested ||
+      generated.RegenerateSummaryResponseDtoStatusStatus.running =>
+        'generating',
+      generated.RegenerateSummaryResponseDtoStatusStatus.failed => 'failed',
+      generated.RegenerateSummaryResponseDtoStatusStatus.completed ||
+      generated.RegenerateSummaryResponseDtoStatusStatus.noSignal => 'ready',
+      generated.RegenerateSummaryResponseDtoStatusStatus.$unknown => 'unknown',
+    };
+  }
+
+  generated.RecordSummaryFeedbackRequestDtoCategoryCategory _feedbackCategory(
+    SummaryFeedbackKind kind,
+  ) {
+    return switch (kind) {
+      SummaryFeedbackKind.helpful =>
+        generated.RecordSummaryFeedbackRequestDtoCategoryCategory.other,
+      SummaryFeedbackKind.needsWork =>
+        generated.RecordSummaryFeedbackRequestDtoCategoryCategory.lowRelevance,
+      SummaryFeedbackKind.unknown =>
+        generated.RecordSummaryFeedbackRequestDtoCategoryCategory.other,
+    };
+  }
+
+  int _feedbackRating(SummaryFeedbackKind kind) {
+    return switch (kind) {
+      SummaryFeedbackKind.helpful => 5,
+      SummaryFeedbackKind.needsWork => 2,
+      SummaryFeedbackKind.unknown => 3,
+    };
+  }
+
+  String _feedbackComment(SummaryFeedbackKind kind) {
+    return switch (kind) {
+      SummaryFeedbackKind.helpful => 'Marked helpful in frontend review',
+      SummaryFeedbackKind.needsWork =>
+        'Marked as needs work in frontend review',
+      SummaryFeedbackKind.unknown => 'Marked from frontend review',
+    };
+  }
+}

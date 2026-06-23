@@ -116,4 +116,41 @@ describe('ListFeedItemsUseCase', () => {
       }),
     ]);
   });
+
+  it('passes provider and repository trend filters to read repository', async () => {
+    const repository = new FakeFeedItemReadRepository({ items: [] });
+    const useCase = new ListFeedItemsUseCase(repository);
+
+    await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 20,
+      providerKey: 'github-repo-radar',
+      repositoryTrendWindow: '24h',
+      repositoryLanguage: 'TypeScript',
+      repositoryTopic: 'agents',
+    });
+
+    expect(repository.queries).toEqual([
+      expect.objectContaining({
+        providerKey: 'github-repo-radar',
+        repositoryTrendWindow: '24h',
+        repositoryLanguage: 'TypeScript',
+        repositoryTopic: 'agents',
+      }),
+    ]);
+  });
+
+  it('rejects invalid repository trend windows', async () => {
+    const useCase = new ListFeedItemsUseCase(new FakeFeedItemReadRepository({ items: [] }));
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 20,
+      repositoryTrendWindow: '1y',
+    });
+
+    expect(result.ok).toBe(false);
+  });
 });

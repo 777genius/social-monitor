@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsObject, IsOptional, IsString, MinLength } from 'class-validator';
 import type {
   SourceBindingConfig,
@@ -5,19 +6,24 @@ import type {
 } from '../../ports/source-binding-config-protector.port';
 
 export class BindSourceRequestDto {
+  @ApiProperty({ minLength: 2 })
   @IsString()
   @MinLength(2)
-  providerKey!: string;
+  declare readonly providerKey: string;
 
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
   @IsOptional()
   @IsObject()
-  config: Readonly<Record<string, unknown>> = {};
+  readonly config: Readonly<Record<string, unknown>> = {};
 }
 
-export type BindSourceResponseDto = {
-  readonly sourceBindingId: string;
-  readonly created: boolean;
-};
+export class BindSourceResponseDto {
+  @ApiProperty()
+  declare readonly sourceBindingId: string;
+
+  @ApiProperty()
+  declare readonly created: boolean;
+}
 
 export const normalizeSourceBindingConfig = (config: Readonly<Record<string, unknown>>): SourceBindingConfig =>
   Object.fromEntries(

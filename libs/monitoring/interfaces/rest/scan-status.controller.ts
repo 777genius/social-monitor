@@ -1,5 +1,5 @@
 import { Controller, Get, Headers, Inject, Param } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiHeader, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
   type WorkspaceAuthorizationPolicyPort,
@@ -13,7 +13,7 @@ import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/r
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
-import type { ScanStatusResponseDto } from './scan-status.dto';
+import { ScanStatusResponseDto } from './scan-status.dto';
 import { buildScanStatusView } from './scan-status-view';
 
 @ApiTags('scan-requests')
@@ -35,6 +35,7 @@ export class ScanStatusController {
     apiKeyScope: 'read:topics',
     workspaceRoleDescription: 'Comma-separated workspace roles. Scan job reads allow owner, admin, member or viewer.',
   })
+  @ApiOkResponse({ type: ScanStatusResponseDto })
   async get(
     @Param('scanJobId') scanJobId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
