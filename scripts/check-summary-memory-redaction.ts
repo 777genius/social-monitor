@@ -16,7 +16,7 @@ const rawSecretFragments = [
   'memory-query-leak',
   'title-leak',
   'feedback-leak',
-  'feedback-bearer-leak',
+  'token-value',
   'preference-leak',
   'preference-key-leak',
 ];
@@ -107,7 +107,7 @@ async function main(): Promise<void> {
     submittedBy: 'user-redaction',
     rating: 2,
     category: 'bad_citation',
-    comment: 'Citation leaked secret=feedback-leak and Bearer feedback-bearer-leak.',
+    comment: 'Citation leaked secret=feedback-leak and Bearer token-value placeholder.',
     citationId: 'citation-redaction',
     feedItemId: 'feed-redaction-github',
     sourceItemId: 'source-redaction-github',

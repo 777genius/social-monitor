@@ -2,8 +2,10 @@ import { redactSensitiveText } from '@social-monitor/shared-kernel';
 
 import type { RecordSummaryFeedbackMemoryCommand } from '../../ports';
 
+type MemoStackFactKind = 'note' | 'architecture_decision' | 'constraint' | 'user_preference';
+
 export type FeedbackMemoryMapping = {
-  readonly factKind: string;
+  readonly factKind: MemoStackFactKind;
   readonly factCategory: string;
   readonly guidance: string;
   readonly action: string;
@@ -124,7 +126,7 @@ export const feedbackMemoryMapping = (category: string): FeedbackMemoryMapping =
       };
     case 'bad_citation':
       return {
-        factKind: 'summary_quality_signal',
+        factKind: 'user_preference',
         factCategory: 'citation_quality',
         guidance: 'tighten citation selection and avoid attaching evidence to unsupported claims',
         action: 'improve_citation_precision',
@@ -133,7 +135,7 @@ export const feedbackMemoryMapping = (category: string): FeedbackMemoryMapping =
     case 'missing_source':
     case 'source_request':
       return {
-        factKind: 'source_preference',
+        factKind: 'user_preference',
         factCategory: 'source_coverage',
         guidance: 'prefer summaries that include the requested source family when relevant evidence exists',
         action: 'prefer_requested_source_coverage',
@@ -141,7 +143,7 @@ export const feedbackMemoryMapping = (category: string): FeedbackMemoryMapping =
       };
     case 'low_relevance':
       return {
-        factKind: 'relevance_preference',
+        factKind: 'user_preference',
         factCategory: 'relevance_quality',
         guidance: 'down-rank similar low-signal evidence and prioritize stronger relevance matches',
         action: 'improve_relevance_ranking',
@@ -149,7 +151,7 @@ export const feedbackMemoryMapping = (category: string): FeedbackMemoryMapping =
       };
     case 'wrong_fact':
       return {
-        factKind: 'negative_fact_signal',
+        factKind: 'user_preference',
         factCategory: 'factual_accuracy',
         guidance: 'treat the referenced claim as unsafe until supported by stronger evidence',
         action: 'block_or_review_wrong_fact',
@@ -157,7 +159,7 @@ export const feedbackMemoryMapping = (category: string): FeedbackMemoryMapping =
       };
     case 'ux_confusing':
       return {
-        factKind: 'summary_ux_signal',
+        factKind: 'user_preference',
         factCategory: 'summary_ux',
         guidance: 'make summary wording and grouping clearer for this topic/user',
         action: 'improve_summary_clarity',
@@ -165,7 +167,7 @@ export const feedbackMemoryMapping = (category: string): FeedbackMemoryMapping =
       };
     default:
       return {
-        factKind: 'summary_feedback',
+        factKind: 'user_preference',
         factCategory: 'summary_feedback',
         guidance: 'consider this as general summary feedback for future generation',
         action: 'record_general_feedback',

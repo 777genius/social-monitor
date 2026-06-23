@@ -1,4 +1,5 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { summaryFeedbackCategories } from '../../domain';
 
 import {
   memoStackWorkflowIdempotencyKey,
@@ -7,6 +8,7 @@ import {
   spaceSlug,
   topicFeedbackScope,
 } from './memo-stack-summary-memory.adapter';
+import { feedbackMemoryMapping } from './memo-stack-summary-feedback-memory';
 
 type RecordedRequest = {
   readonly url: string;
@@ -59,6 +61,19 @@ const evidence = {
 };
 
 describe('MemoStackSummaryMemoryAdapter', () => {
+  it('uses memo-stack canonical fact kinds for every summary feedback category', () => {
+    const supportedMemoStackKinds = new Set([
+      'note',
+      'architecture_decision',
+      'constraint',
+      'user_preference',
+    ]);
+
+    for (const category of summaryFeedbackCategories) {
+      expect(supportedMemoStackKinds.has(feedbackMemoryMapping(category).factKind)).toBe(true);
+    }
+  });
+
   it('keeps memo-stack workflow idempotency keys inside API limits', () => {
     const key = memoStackWorkflowIdempotencyKey(
       'social-monitor',
@@ -83,7 +98,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     const requests: RecordedRequest[] = [];
     const adapter = new MemoStackSummaryMemoryAdapter({
       baseUrl: 'https://memory.example.test/api/',
-      token: ' test-token ',
+      token: ' token-value ',
       fetchFn: makeFetch([
         { data: { id: 'capture-1' } },
         { data: { id: 'fact-1', indexing_status: 'queued' } },
@@ -126,7 +141,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     });
     expect(requests).toHaveLength(4);
     expect(requests[0]?.url).toBe('https://memory.example.test/api/v1/captures');
-    expect(headerValue(requests[0]?.init.headers, 'authorization')).toBe('Bearer test-token');
+    expect(headerValue(requests[0]?.init.headers, 'authorization')).toBe('Bearer token-value');
     expect(headerValue(requests[0]?.init.headers, 'content-type')).toBe('application/json');
     expect(headerValue(requests[0]?.init.headers, 'idempotency-key')).toBe(
       'social-monitor:summary-feedback:tenant-1:workspace-1:feedback-key-1',
@@ -186,7 +201,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
       },
     ]);
     expect(requests[1]?.url).toBe('https://memory.example.test/api/v1/facts');
-    expect(headerValue(requests[1]?.init.headers, 'authorization')).toBe('Bearer test-token');
+    expect(headerValue(requests[1]?.init.headers, 'authorization')).toBe('Bearer token-value');
     expect(headerValue(requests[1]?.init.headers, 'content-type')).toBe('application/json');
     expect(headerValue(requests[1]?.init.headers, 'idempotency-key')).toBe(
       'social-monitor:summary-feedback:tenant-1:workspace-1:feedback-key-1:fact',
@@ -194,7 +209,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     expect(requests[1]?.body).toMatchObject({
       space_slug: spaceSlug('tenant-1', 'workspace-1'),
       memory_scope_external_ref: topicFeedbackScope('topic-1'),
-      kind: 'summary_quality_signal',
+      kind: 'user_preference',
       classification: 'internal',
       category: 'citation_quality',
       ttl_policy: 'durable',
@@ -290,7 +305,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     const requests: RecordedRequest[] = [];
     const adapter = new MemoStackSummaryMemoryAdapter({
       baseUrl: 'https://memory.example.test',
-      token: 'test-token',
+      token: 'token-value',
       fetchFn: makeFetch([], requests),
     });
 
@@ -318,7 +333,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     const requests: RecordedRequest[] = [];
     const adapter = new MemoStackSummaryMemoryAdapter({
       baseUrl: 'https://memory.example.test',
-      token: 'test-token',
+      token: 'token-value',
       fetchFn: makeFetch([
         { data: { id: 'capture-1' } },
         { data: { id: 'fact-1' } },
@@ -370,7 +385,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     const requests: RecordedRequest[] = [];
     const adapter = new MemoStackSummaryMemoryAdapter({
       baseUrl: 'https://memory.example.test',
-      token: 'test-token',
+      token: 'token-value',
       fetchFn: makeFetch([
         {
           data: {
@@ -509,7 +524,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     const requests: RecordedRequest[] = [];
     const adapter = new MemoStackSummaryMemoryAdapter({
       baseUrl: 'https://memory.example.test',
-      token: 'test-token',
+      token: 'token-value',
       fetchFn: makeFetch([
         {
           data: {

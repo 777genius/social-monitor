@@ -43,7 +43,7 @@ describe('MemoStackUserSummaryPreferenceMemoryProjector', () => {
     const requests: RecordedRequest[] = [];
     const projector = new MemoStackUserSummaryPreferenceMemoryProjector({
       baseUrl: 'https://memory.example.test/api',
-      token: 'test-token',
+      token: 'token-value',
       fetchFn: makeFetch([
         { data: { id: 'capture-1' } },
         { data: { id: 'fact-1' } },
@@ -80,7 +80,7 @@ describe('MemoStackUserSummaryPreferenceMemoryProjector', () => {
     });
     expect(requests).toHaveLength(2);
     expect(requests[0]?.url).toBe('https://memory.example.test/api/v1/captures');
-    expect(headerValue(requests[0]?.init.headers, 'authorization')).toBe('Bearer test-token');
+    expect(headerValue(requests[0]?.init.headers, 'authorization')).toBe('Bearer token-value');
     expect(headerValue(requests[0]?.init.headers, 'idempotency-key')).toBe(
       'social-monitor:user-summary-preference:tenant-1:workspace-1:preference-1:2026-06-21T11:00:00.000Z',
     );
@@ -142,7 +142,7 @@ describe('MemoStackUserSummaryPreferenceMemoryProjector', () => {
     const requests: RecordedRequest[] = [];
     const projector = new MemoStackUserSummaryPreferenceMemoryProjector({
       baseUrl: 'https://memory.example.test',
-      token: 'test-token',
+      token: 'token-value',
       fetchFn: makeFetch([
         { data: { id: 'capture-1' } },
         { data: { id: 'fact-1' } },
@@ -174,7 +174,7 @@ describe('MemoStackUserSummaryPreferenceMemoryProjector', () => {
     const requests: RecordedRequest[] = [];
     const projector = new MemoStackUserSummaryPreferenceMemoryProjector({
       baseUrl: 'https://memory.example.test',
-      token: 'test-token',
+      token: 'token-value',
       fetchFn: makeFetch([], requests),
     });
 
