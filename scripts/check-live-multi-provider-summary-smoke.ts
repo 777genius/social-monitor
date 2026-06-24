@@ -17,6 +17,10 @@ import {
 } from '@social-monitor/shared-kernel';
 import { FeedSummaryEvidenceSelector } from '@social-monitor/summary/adapters/evidence/feed-summary-evidence.selector';
 import { DeterministicSummaryModelAdapter } from '@social-monitor/summary/adapters/model/deterministic-summary-model.adapter';
+import {
+  OpenAiResponsesSummaryModelAdapter,
+  resolveOpenAiResponsesSummaryModelOptions,
+} from '@social-monitor/summary/adapters/model/openai-responses-summary-model.adapter';
 import { InMemorySummaryEventPublisher } from '@social-monitor/summary/adapters/messaging/in-memory-summary-event-publisher';
 import { InMemorySummaryJobQueueAdapter } from '@social-monitor/summary/adapters/messaging/in-memory-summary-job-queue.adapter';
 import { NoopUserSummaryPreferenceReader } from '@social-monitor/summary/adapters/preferences/noop-user-summary-preference.reader';
@@ -28,6 +32,7 @@ import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execu
 import { RequestSummaryUseCase } from '@social-monitor/summary/features/request-summary/request-summary.use-case';
 import type {
   ReserveSummaryJobQuotaResult,
+  SummaryModelPort,
   SummaryQuotaPort,
 } from '@social-monitor/summary/ports';
 import { parse as parseDotenv } from 'dotenv';
@@ -86,8 +91,11 @@ type ScanMetrics = {
 const timeoutMs = readPositiveIntegerEnv('LIVE_MULTI_PROVIDER_TIMEOUT_MS', 12_000, 1_000, 60_000);
 const maxItemsPerProvider = readPositiveIntegerEnv('LIVE_MULTI_PROVIDER_MAX_ITEMS_PER_PROVIDER', 2, 1, 5);
 const maxEvidenceItems = readPositiveIntegerEnv('LIVE_MULTI_PROVIDER_SUMMARY_MAX_EVIDENCE_ITEMS', 12, 4, 50);
+const maxSummaryKeyPoints = readPositiveIntegerEnv('LIVE_MULTI_PROVIDER_SUMMARY_MAX_KEY_POINTS', 10, 1, 10);
+const allowEmptyTargets = readBooleanEnv('LIVE_MULTI_PROVIDER_ALLOW_EMPTY_TARGETS', false);
 const sampledAt = new Date('2026-06-21T00:00:00.000Z');
 const evidencePathEnv = 'LIVE_MULTI_PROVIDER_SUMMARY_EVIDENCE_PATH';
+const summaryModelMode = readSummaryModelMode();
 
 class StaticSourceConfigReader implements SourceConfigReaderPort {
   constructor(private readonly configsBySourceBinding: ReadonlyMap<string, SourceRuntimeConfig>) {}
@@ -222,9 +230,11 @@ const main = async (): Promise<void> => {
       `execute live ${target.providerKey} scan`,
     );
 
-    assert(result.fetched > 0, `${target.providerKey} live scan must fetch at least one item`);
-    assert(result.inserted > 0, `${target.providerKey} live scan must insert at least one source item`);
-    assert(result.projected > 0, `${target.providerKey} live scan must project at least one feed item`);
+    if (!allowEmptyTargets) {
+      assert(result.fetched > 0, `${target.providerKey} live scan must fetch at least one item`);
+      assert(result.inserted > 0, `${target.providerKey} live scan must insert at least one source item`);
+      assert(result.projected > 0, `${target.providerKey} live scan must project at least one feed item`);
+    }
     scanMetrics.push({
       providerKey: target.providerKey,
       fetched: result.fetched,
@@ -256,6 +266,7 @@ const main = async (): Promise<void> => {
   const summaryQueue = new InMemorySummaryJobQueueAdapter(new InMemoryQueuePublisher(), metrics);
   const summaryPolicies = new InMemorySummaryPolicyRepository();
   const summaryIds = new SequenceIdGenerator('live-multi-provider-summary');
+  const summaryModel = buildSummaryModel();
   await summaryPolicies.save(SummaryPolicy.create({
     id: 'summary-policy-live-multi-provider-smoke',
     tenantId: tenant,
@@ -264,7 +275,7 @@ const main = async (): Promise<void> => {
     language: 'auto',
     format: 'bullet_digest',
     tone: 'analytical',
-    maxKeyPoints: 10,
+    maxKeyPoints: maxSummaryKeyPoints,
     includeRisks: true,
     includeSourceHighlights: true,
     customInstructions: 'Compare signals across Reddit, GitHub, Hacker News and RSS for the selected monitoring topic.',
@@ -299,7 +310,7 @@ const main = async (): Promise<void> => {
     summaryPolicies,
     new NoopUserSummaryPreferenceReader(),
     new FeedSummaryEvidenceSelector(feedItems, clock),
-    new DeterministicSummaryModelAdapter(),
+    summaryModel,
     summaryEvents,
     summaryIds,
     clock,
@@ -338,13 +349,14 @@ const main = async (): Promise<void> => {
   }
 
   const citedProviders = new Set(artifactSnapshot.citationMap.map((citation) => citation.providerKey));
+  const requiredProviderKeys = new Set(targets.map((target) => target.providerKey));
   for (const target of targets) {
     assert(citedProviders.has(target.providerKey), `summary citation map must include ${target.providerKey}`);
   }
 
   assert(
-    artifactSnapshot.citationMap.length >= targets.length,
-    'live multi-provider summary must cite at least one item per provider',
+    artifactSnapshot.citationMap.length >= requiredProviderKeys.size,
+    'live multi-provider summary must cite at least one item per unique provider',
   );
   assert(
     summaryEvents.all().some((event) => event.eventType === 'summary.ready'),
@@ -360,6 +372,10 @@ const main = async (): Promise<void> => {
     citationCount: artifactSnapshot.citationMap.length,
     summaryStatus: summary.status,
     summaryReadyPublished: summaryEvents.all().some((event) => event.eventType === 'summary.ready'),
+    summaryModelProvider: artifactSnapshot.lineage.providerVersion,
+    summaryModelVersion: artifactSnapshot.lineage.modelVersion,
+    summaryEstimatedCostUsd: artifactSnapshot.usage.estimatedCostUsd,
+    summaryQualityFlags: artifactSnapshot.qualityFlags,
     targets,
   });
 
@@ -371,34 +387,50 @@ const main = async (): Promise<void> => {
     `Selected feed items: ${artifactSnapshot.sourceWindow.selectedFeedItemIds.length}`,
     `Selected providers: ${[...selectedProviders].sort().join(', ')}`,
     `Citations: ${artifactSnapshot.citationMap.length}`,
+    `Summary model: ${artifactSnapshot.lineage.providerVersion}/${artifactSnapshot.lineage.modelVersion}`,
     `Summary id: ${summary.summaryId}`,
     `Headline: ${artifactSnapshot.headline}`,
   ].join('\n'));
 };
 
+const buildSummaryModel = (): SummaryModelPort => {
+  if (summaryModelMode === 'deterministic') {
+    return new DeterministicSummaryModelAdapter();
+  }
+
+  return new OpenAiResponsesSummaryModelAdapter(
+    resolveOpenAiResponsesSummaryModelOptions(process.env, { requireApiKey: true }),
+  );
+};
+
 const buildScanTargets = (): readonly ScanTarget[] => {
   const userAgent = readOptionalEnv('LIVE_MULTI_PROVIDER_USER_AGENT')
     ?? 'social-monitor-mvp-live-multi-provider-summary/0.1';
-  const subreddit = readOptionalEnv('LIVE_MULTI_PROVIDER_REDDIT_SUBREDDIT') ?? 'programming';
+  const subreddits = readCsvEnv('LIVE_MULTI_PROVIDER_REDDIT_SUBREDDITS')
+    ?? [readOptionalEnv('LIVE_MULTI_PROVIDER_REDDIT_SUBREDDIT') ?? 'programming'];
   const redditListing = readRedditListing(readOptionalEnv('LIVE_MULTI_PROVIDER_REDDIT_LISTING') ?? 'hot');
+  const redditTopTime = readOptionalEnv('LIVE_MULTI_PROVIDER_REDDIT_TOP_TIME') ?? 'week';
+  const redditMinScore = readOptionalPositiveIntegerEnv('LIVE_MULTI_PROVIDER_REDDIT_MIN_SCORE');
   const githubQuery = readOptionalEnv('LIVE_MULTI_PROVIDER_GITHUB_QUERY') ?? 'repo:microsoft/TypeScript is:issue';
   const hackerNewsQuery = readOptionalEnv('LIVE_MULTI_PROVIDER_HN_QUERY') ?? 'monitoring';
   const rssFeedUrl = readOptionalEnv('LIVE_MULTI_PROVIDER_RSS_URL') ?? 'https://hnrss.org/frontpage';
   const githubAccessToken = readOptionalEnv('GITHUB_ACCESS_TOKEN');
 
   return [
-    {
+    ...subreddits.map((subreddit, index): ScanTarget => ({
       providerKey: 'reddit',
-      sourceBindingId: 'source-binding-live-multi-provider-reddit',
-      scanPolicyId: 'scan-policy-live-multi-provider-reddit',
+      sourceBindingId: `source-binding-live-multi-provider-reddit-${index + 1}-${safeIdPart(subreddit)}`,
+      scanPolicyId: `scan-policy-live-multi-provider-reddit-${index + 1}-${safeIdPart(subreddit)}`,
       sourceQuery: { mode: 'listing', query: `${subreddit}:${redditListing}` },
       config: {
         subreddit,
         listing: redditListing,
+        ...(redditListing === 'top' ? { topTime: redditTopTime } : {}),
+        ...(redditMinScore === undefined ? {} : { minScore: redditMinScore }),
         maxItems: maxItemsPerProvider,
         userAgent,
       },
-    },
+    })),
     {
       providerKey: GITHUB_ISSUES_PROVIDER_KEY,
       sourceBindingId: 'source-binding-live-multi-provider-github',
@@ -436,6 +468,10 @@ const writeOptionalEvidenceArtifact = (input: {
   readonly citationCount: number;
   readonly summaryStatus: string;
   readonly summaryReadyPublished: boolean;
+  readonly summaryModelProvider: string;
+  readonly summaryModelVersion: string;
+  readonly summaryEstimatedCostUsd: number;
+  readonly summaryQualityFlags: readonly string[];
   readonly targets: readonly ScanTarget[];
 }): void => {
   const evidencePath = readOptionalEnv(evidencePathEnv);
@@ -486,6 +522,10 @@ const writeOptionalEvidenceArtifact = (input: {
           citationCount: input.citationCount,
           summaryCompleted: input.summaryStatus === 'completed',
           summaryReadyPublished: input.summaryReadyPublished,
+          summaryModelProvider: input.summaryModelProvider,
+          summaryModelVersion: input.summaryModelVersion,
+          summaryEstimatedCostUsd: input.summaryEstimatedCostUsd,
+          summaryQualityFlags: input.summaryQualityFlags,
         },
       },
     ],
@@ -495,6 +535,9 @@ const writeOptionalEvidenceArtifact = (input: {
       selectedFeedItems: input.selectedFeedItemCount,
       citedProviders: input.citedProviders,
       citations: input.citationCount,
+      summaryModelProvider: input.summaryModelProvider,
+      summaryModelVersion: input.summaryModelVersion,
+      summaryEstimatedCostUsd: input.summaryEstimatedCostUsd,
     },
     redaction: {
       secretsIncluded: false,
@@ -539,6 +582,15 @@ const readRedditListing = (value: string): RedditPostListing => {
   return value as RedditPostListing;
 };
 
+function readSummaryModelMode(): 'deterministic' | 'openai-responses' {
+  const value = readOptionalEnv('LIVE_MULTI_PROVIDER_SUMMARY_MODEL') ?? 'deterministic';
+  if (value === 'deterministic' || value === 'openai-responses') {
+    return value;
+  }
+
+  throw new Error('LIVE_MULTI_PROVIDER_SUMMARY_MODEL must be "deterministic" or "openai-responses"');
+}
+
 const unwrap = <TValue, TError>(result: Result<TValue, TError>, label: string): TValue => {
   if (result.ok) {
     return result.value;
@@ -553,6 +605,20 @@ function readOptionalEnv(name: string): string | undefined {
   return value === undefined || value.length === 0 ? undefined : value;
 }
 
+function readCsvEnv(name: string): readonly string[] | undefined {
+  const value = readOptionalEnv(name);
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const items = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  return items.length === 0 ? undefined : items;
+}
+
 function readPositiveIntegerEnv(name: string, fallback: number, min: number, max: number): number {
   const value = readOptionalEnv(name);
   if (value === undefined) {
@@ -565,6 +631,40 @@ function readPositiveIntegerEnv(name: string, fallback: number, min: number, max
   }
 
   return parsed;
+}
+
+function readOptionalPositiveIntegerEnv(name: string): number | undefined {
+  const value = readOptionalEnv(name);
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+
+  return parsed;
+}
+
+function readBooleanEnv(name: string, fallback: boolean): boolean {
+  const value = readOptionalEnv(name);
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
+  }
+
+  throw new Error(`${name} must be true or false`);
+}
+
+function safeIdPart(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'target';
 }
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');

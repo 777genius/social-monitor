@@ -376,10 +376,10 @@
             "scanId": "scan-e2e-example",
             "providerFeedCounts": [
               {
-                "providerKey": "github",
+                "providerKey": "github-issues",
                 "sourceBindingId": "source-binding-github-example",
                 "feedItemCount": 2,
-                "feedProviderKeys": ["github"],
+                "feedProviderKeys": ["github-issues"],
                 "scanId": "scan-github-example"
               },
               {
@@ -410,7 +410,7 @@
             ],
             "summaryId": "summary-e2e-example",
             "summaryCitationProviderKeys": [
-              "github",
+              "github-issues",
               "hacker-news",
               "reddit",
               "rss"

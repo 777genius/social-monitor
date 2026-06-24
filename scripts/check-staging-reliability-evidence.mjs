@@ -1167,7 +1167,7 @@ function matchesEvidenceType(value, fieldType) {
     case 'non_empty_object_array':
       return Array.isArray(value) && value.length > 0 && value.every((item) => isRecord(item) && Object.keys(item).length > 0);
     case 'durable_provider_key':
-      return ['github', 'hacker-news', 'hn', 'reddit', 'rss'].includes(value);
+      return ['github-issues', 'hacker-news', 'hn', 'reddit', 'rss'].includes(value);
     case 'scheduled_idempotency_key':
       return typeof value === 'string' && value.startsWith('scheduled:') && value.trim().length > 'scheduled:'.length;
     case 'auto_summary_idempotency_key':
@@ -1189,7 +1189,7 @@ function validateDurableBackendProviderCoverage(artifactPath, evidenceValue) {
   const providerKeys = new Set(values
     .map((item) => isRecord(item) ? item.providerKey : undefined)
     .filter((value) => typeof value === 'string' && value.trim().length > 0));
-  for (const providerKey of ['github', 'hacker-news', 'reddit', 'rss']) {
+  for (const providerKey of ['github-issues', 'hacker-news', 'reddit', 'rss']) {
     if (!providerKeys.has(providerKey)) {
       violations.push(`${artifactPath}: signal result "backend-loop-topic-to-delivery-audit" must include ${providerKey} provider feed evidence`);
     }

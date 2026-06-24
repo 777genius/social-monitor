@@ -51,7 +51,7 @@ type SignalResult = {
   readonly evidence: JsonRecord;
 };
 
-type DurableScanProviderKey = 'hacker-news' | 'github' | 'reddit' | 'rss';
+type DurableScanProviderKey = 'hacker-news' | 'github-issues' | 'reddit' | 'rss';
 
 type DurableScanTarget = {
   readonly providerKey: DurableScanProviderKey;
@@ -399,7 +399,7 @@ async function executeBackendLoop(auth: AuthContext, runtimeIds: RuntimeIds): Pr
   const feedback = await requestJson<JsonRecord>('POST', `/summaries/${encodeURIComponent(summaryId)}/feedback`, {
     headers: {
       ...withIdempotency(headers, feedbackKey),
-      'x-actor-id': 'durable-backend-loop-operator',
+      'x-actor-id': runtimeIds.userId,
     },
     body: {
       category: 'bad_citation',
@@ -1227,7 +1227,7 @@ function durableScanTargets(): readonly DurableScanTarget[] {
       },
     },
     {
-      providerKey: 'github',
+      providerKey: 'github-issues',
       config: {
         query: 'repo:microsoft/TypeScript is:issue',
         maxItems: 2,
