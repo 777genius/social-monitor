@@ -1,4 +1,5 @@
 export type RedditPostListing = 'hot' | 'new' | 'top' | 'rising';
+export type RedditTopTime = 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
 
 export type RedditPost = {
   readonly id: string;
@@ -13,6 +14,9 @@ export type RedditPost = {
   readonly over18?: boolean;
   readonly stickied?: boolean;
   readonly removedByCategory?: string;
+  readonly score?: number;
+  readonly numComments?: number;
+  readonly upvoteRatio?: number;
 };
 
 export type RedditListingPage = {
@@ -25,6 +29,7 @@ export type RedditListSubredditPostsRequest = {
   readonly userAgent?: string;
   readonly subreddit: string;
   readonly listing: RedditPostListing;
+  readonly topTime?: RedditTopTime;
   readonly limit: number;
   readonly after?: string;
 };

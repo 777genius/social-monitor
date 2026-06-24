@@ -69,6 +69,68 @@ describe('RedditSourceProvider', () => {
     expect(client.listingRequests[0]?.accessToken).toBe('tenant-refresh-access-token');
   });
 
+  it('passes top listing time window and keeps engagement metadata', async () => {
+    const client = new CapturingRedditClient({
+      posts: [
+        {
+          id: 'post-1',
+          name: 't3_post_1',
+          subreddit: 'ClaudeAI',
+          title: 'Claude release discussion',
+          selftext: 'Users compare the release against coding workflows.',
+          permalink: '/r/ClaudeAI/comments/post_1/claude_release_discussion/',
+          url: 'https://example.test/claude-release-analysis',
+          author: 'example-user',
+          createdUtc: 1_782_230_000,
+          score: 420,
+          numComments: 58,
+          upvoteRatio: 0.94,
+        },
+        {
+          id: 'post-2',
+          name: 't3_post_2',
+          subreddit: 'ClaudeAI',
+          title: 'Low signal question',
+          selftext: 'No meaningful engagement yet.',
+          permalink: '/r/ClaudeAI/comments/post_2/low_signal_question/',
+          createdUtc: 1_782_230_100,
+          score: 2,
+          numComments: 0,
+          upvoteRatio: 0.5,
+        },
+      ],
+    });
+    const provider = new RedditSourceProvider(client, new StaticTokenProvider('reddit-app-only-token'));
+    const context = scanContext({
+      subreddit: 'ClaudeAI',
+      listing: 'top',
+      topTime: 'week',
+      minScore: 100,
+      maxItems: 10,
+    });
+    const plan = provider.planScan({ mode: 'listing', query: 'ClaudeAI:top' }, context);
+
+    const result = await provider.scan(plan, context);
+
+    expect(client.listingRequests[0]).toMatchObject({
+      subreddit: 'ClaudeAI',
+      listing: 'top',
+      topTime: 'week',
+      limit: 10,
+    });
+    expect(result.items[0]).toMatchObject({
+      title: 'Claude release discussion',
+      metadata: {
+        subreddit: 'ClaudeAI',
+        linkedUrl: 'https://example.test/claude-release-analysis',
+        score: 420,
+        numComments: 58,
+        upvoteRatio: 0.94,
+      },
+    });
+    expect(result.items).toHaveLength(1);
+  });
+
   it('fails closed when a refresh token is present without client credentials', async () => {
     const provider = new RedditSourceProvider(
       new CapturingRedditClient(),
@@ -128,9 +190,11 @@ class CapturingRedditClient implements RedditClientPort {
   readonly listingRequests: RedditListSubredditPostsRequest[] = [];
   readonly searchRequests: RedditSearchPostsRequest[] = [];
 
+  constructor(private readonly response: RedditListingPage = { posts: [] }) {}
+
   async listSubredditPosts(request: RedditListSubredditPostsRequest): Promise<RedditListingPage> {
     this.listingRequests.push(request);
-    return { posts: [] };
+    return this.response;
   }
 
   async searchPosts(request: RedditSearchPostsRequest): Promise<RedditListingPage> {

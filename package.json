@@ -196,6 +196,7 @@
   "dependencies": {
     "@google-cloud/bigquery": "^8.3.1",
     "@infinity-context/sdk": "file:vendor/infinity-context-sdk-0.1.0.tgz",
+    "@mozilla/readability": "^0.6.0",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",
     "@nestjs/platform-express": "^11.1.27",
@@ -209,6 +210,7 @@
     "class-validator": "^0.14.3",
     "dotenv": "^17.4.2",
     "fast-xml-parser": "^5.8.0",
+    "jsdom": "^26.1.0",
     "pg": "^8.21.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
@@ -219,6 +221,7 @@
     "@nestjs/testing": "^11.1.27",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
+    "@types/jsdom": "^21.1.7",
     "@types/node": "^24.10.1",
     "@types/pg": "^8.20.0",
     "@types/supertest": "^6.0.3",

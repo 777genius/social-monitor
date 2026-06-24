@@ -1,6 +1,7 @@
 import { emptyJsonObjectAsUndefined, normalizeJsonObject, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { FeedItem, type FeedItemProps } from '../../../domain';
+export { normalizeFeedCanonicalUrl } from '../feed-dedupe-key';
 
 export type PrismaFeedItemRecord = {
   readonly id: string;
@@ -39,30 +40,6 @@ export const feedItemFromPrisma = (record: PrismaFeedItemRecord): FeedItem =>
     observedAt: record.observedAt,
     providerMetadata: emptyJsonObjectAsUndefined(normalizeJsonObject(record.providerMetadata)),
   } satisfies FeedItemProps);
-
-export const normalizeFeedCanonicalUrl = (value: string): string => {
-  try {
-    const parsed = new URL(value);
-    parsed.hash = '';
-    parsed.hostname = parsed.hostname.toLocaleLowerCase('en-US');
-
-    for (const key of [...parsed.searchParams.keys()]) {
-      if (key.toLocaleLowerCase('en-US').startsWith('utm_') || key === 'fbclid' || key === 'gclid') {
-        parsed.searchParams.delete(key);
-      }
-    }
-
-    parsed.searchParams.sort();
-
-    if (parsed.pathname.length > 1) {
-      parsed.pathname = parsed.pathname.replace(/\/+$/u, '');
-    }
-
-    return parsed.toString();
-  } catch {
-    return value.trim().toLocaleLowerCase('en-US');
-  }
-};
 
 export const encodeFeedCursor = (offset: number): string =>
   Buffer.from(JSON.stringify({ offset })).toString('base64url');

@@ -68,6 +68,8 @@ import type {
   SourceItemRepositoryPort,
 } from '@social-monitor/ingestion/ports';
 import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-projection.adapter';
+import { articleContentEnrichmentProviders } from './article-content-enrichment.module';
+import { executeScanProviders } from './execute-scan.module';
 import {
   PrismaIngestionWorkerConnection,
   type PrismaIngestionWorkerClient,
@@ -285,6 +287,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
       ],
     },
     NoopScanExecutionReporterAdapter,
+    ...articleContentEnrichmentProviders,
     {
       provide: INGESTION_SCAN_EXECUTION_REPORTER,
       useFactory: (
@@ -386,44 +389,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         InMemoryMetricsRecorder,
       ],
     },
-    {
-      provide: ExecuteScanUseCase,
-      useFactory: (
-        sourceFetcher: CircuitBreakerSourceFetcherAdapter,
-        sourceItems: SourceItemRepositoryPort,
-        feedProjection: FeedProjectionPort,
-        scanAttempts: ScanAttemptRepositoryPort,
-        scanCursors: ScanCursorRepositoryPort,
-        scanExecutionReporter: ScanExecutionReporterPort,
-        scanFailures: ScanFailureQueuePort,
-        scanLeases: ScanLeasePort,
-        sourceItemMetadataProjection: SourceItemMetadataProjectionPort,
-      ) =>
-        new ExecuteScanUseCase(
-          sourceFetcher,
-          sourceItems,
-          feedProjection,
-          scanAttempts,
-          scanCursors,
-          scanExecutionReporter,
-          scanFailures,
-          scanLeases,
-          new CryptoIdGenerator(),
-          new SystemClock(),
-          sourceItemMetadataProjection,
-        ),
-      inject: [
-        CircuitBreakerSourceFetcherAdapter,
-        INGESTION_SOURCE_ITEM_REPOSITORY,
-        INGESTION_FEED_PROJECTION,
-        INGESTION_SCAN_ATTEMPT_REPOSITORY,
-        INGESTION_SCAN_CURSOR_REPOSITORY,
-        INGESTION_SCAN_EXECUTION_REPORTER,
-        INGESTION_SCAN_FAILURE_QUEUE,
-        INGESTION_SCAN_LEASE,
-        INGESTION_SOURCE_ITEM_METADATA_PROJECTION,
-      ],
-    },
+    ...executeScanProviders,
     {
       provide: ScheduleDueScansCommandHandler,
       useFactory: (

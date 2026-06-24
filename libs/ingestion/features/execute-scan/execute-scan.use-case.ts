@@ -10,6 +10,7 @@ import {
 import { ScanAttempt, SourceItem } from '../../domain';
 import {
   noopSourceItemMetadataProjection,
+  noopSourceItemEnrichment,
   SourceFetchError,
   type FeedProjectionPort,
   type ScanAttemptRepositoryPort,
@@ -18,6 +19,7 @@ import {
   type ScanFailureQueuePort,
   type ScanLeasePort,
   type SourceFetcherPort,
+  type SourceItemEnrichmentPort,
   type SourceItemMetadataProjectionPort,
   type SourceItemRepositoryPort,
 } from '../../ports';
@@ -39,6 +41,7 @@ export class ExecuteScanUseCase {
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
     private readonly sourceItemMetadataProjection: SourceItemMetadataProjectionPort = noopSourceItemMetadataProjection,
+    private readonly sourceItemEnrichment: SourceItemEnrichmentPort = noopSourceItemEnrichment,
   ) {}
 
   async execute(command: ExecuteScanCommand): Promise<Result<ExecuteScanResult, ExecuteScanFailure>> {
@@ -93,7 +96,16 @@ export class ExecuteScanUseCase {
       });
 
       const ingestedAt = this.clock.now();
-      const items = fetched.items.map((item) =>
+      const enriched = await this.sourceItemEnrichment.enrich({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        sourceBindingId: command.sourceBindingId,
+        scanJobId: command.scanJobId,
+        providerKey: command.providerKey,
+        correlationId: command.correlationId,
+        items: fetched.items,
+      });
+      const items = enriched.items.map((item) =>
         SourceItem.ingest({
           id: this.ids.generate(),
           tenantId: command.tenantId,

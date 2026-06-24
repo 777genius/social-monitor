@@ -124,6 +124,46 @@ describe('InMemoryFeedItemReadRepository', () => {
     });
   });
 
+  it('dedupes enriched articles by semantic fingerprint across different source URLs', async () => {
+    const repository = new InMemoryFeedItemReadRepository();
+    repository.upsert(makeItem({
+      id: 'reddit-feed',
+      sourceItemId: 'reddit-source',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://www.reddit.com/r/OpenAI/comments/demo',
+      providerMetadata: {
+        articleContent: {
+          status: 'enriched',
+          semanticFingerprint: 'feedfacecafebeef',
+          contentHash: 'content-hash-1',
+        },
+      },
+    }));
+    repository.upsert(makeItem({
+      id: 'rss-feed',
+      sourceItemId: 'rss-source',
+      providerKey: 'rss',
+      canonicalUrl: 'https://example.test/same-article?utm_source=rss',
+      providerMetadata: {
+        articleContent: {
+          status: 'enriched',
+          semanticFingerprint: 'feedfacecafebeef',
+          contentHash: 'content-hash-1',
+        },
+      },
+    }));
+
+    const result = await repository.list({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      limit: 10,
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.toSnapshot().id).toBe('reddit-feed');
+  });
+
   it('filters repository radar items by provider and trend metadata', async () => {
     const repository = new InMemoryFeedItemReadRepository();
     repository.upsert(makeItem({

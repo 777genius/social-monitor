@@ -25,6 +25,7 @@ export class HttpRedditClient implements RedditClientPort {
   async listSubredditPosts(request: RedditListSubredditPostsRequest): Promise<RedditListingPage> {
     const url = this.url(`/r/${encodeURIComponent(request.subreddit)}/${request.listing}`, {
       limit: String(request.limit),
+      ...(request.listing === 'top' && request.topTime !== undefined ? { t: request.topTime } : {}),
       ...(request.after === undefined ? {} : { after: request.after }),
     });
 
@@ -106,6 +107,9 @@ const normalizePost = (data: Readonly<Record<string, unknown>> | undefined): rea
       over18: readBoolean(data.over_18),
       stickied: readBoolean(data.stickied),
       removedByCategory: readString(data.removed_by_category),
+      score: readNumber(data.score),
+      numComments: readNumber(data.num_comments),
+      upvoteRatio: readNumber(data.upvote_ratio),
     },
   ];
 };
@@ -120,3 +124,4 @@ const readBoolean = (value: unknown): boolean | undefined =>
   typeof value === 'boolean' ? value : undefined;
 
 export const redditListings: readonly RedditPostListing[] = ['hot', 'new', 'top', 'rising'];
+export const redditTopTimes = ['hour', 'day', 'week', 'month', 'year', 'all'] as const;

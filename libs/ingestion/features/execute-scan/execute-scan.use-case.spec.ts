@@ -5,6 +5,8 @@ import type {
   FetchSourceItemsCommand,
   FetchSourceItemsResult,
   FeedProjectionPort,
+  EnrichSourceItemsCommand,
+  EnrichSourceItemsResult,
   ProjectFeedItemsCommand,
   ProjectFeedItemsResult,
   ScanAttemptRepositoryPort,
@@ -16,6 +18,7 @@ import type {
   SaveSourceItemsCommand,
   SaveSourceItemsResult,
   SourceFetcherPort,
+  SourceItemEnrichmentPort,
   SourceItemRepositoryPort,
 } from '../../ports';
 import { SourceFetchError } from '../../ports';
@@ -127,6 +130,32 @@ class FakeFeedProjection implements FeedProjectionPort {
   async project(command: ProjectFeedItemsCommand): Promise<ProjectFeedItemsResult> {
     this.commands.push(command);
     return { projected: command.sourceItems.length };
+  }
+}
+
+class EnrichingSourceItemEnrichment implements SourceItemEnrichmentPort {
+  readonly commands: EnrichSourceItemsCommand[] = [];
+
+  async enrich(command: EnrichSourceItemsCommand): Promise<EnrichSourceItemsResult> {
+    this.commands.push(command);
+
+    return {
+      items: command.items.map((item) => ({
+        ...item,
+        body: `${item.body}\n\nArticle text:\nFull external article body.`,
+        metadata: {
+          ...(item.metadata ?? {}),
+          articleContent: {
+            status: 'enriched',
+            semanticFingerprint: 'feedfacecafebeef',
+            contentHash: 'content-hash-1',
+          },
+        },
+      })),
+      enriched: command.items.length,
+      skipped: 0,
+      failed: 0,
+    };
   }
 }
 
@@ -327,6 +356,56 @@ describe('ExecuteScanUseCase', () => {
       },
     });
     expect(repository.all()).toHaveLength(2);
+  });
+
+  it('enriches fetched source items before persistence and feed projection', async () => {
+    const fetcher = new FixedSourceFetcher();
+    const repository = new FakeSourceItemRepository();
+    const projection = new FakeFeedProjection();
+    const enrichment = new EnrichingSourceItemEnrichment();
+    const useCase = new ExecuteScanUseCase(
+      fetcher,
+      repository,
+      projection,
+      new FakeScanAttemptRepository(),
+      new FakeScanCursorRepository(),
+      new FakeScanExecutionReporter(),
+      new FakeScanFailureQueue(),
+      new FakeScanLease(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+      undefined,
+      enrichment,
+    );
+
+    const result = await useCase.execute(makeExecuteScanCommand({
+      providerKey: 'rss',
+      scanJobId: 'scan-job-enriched',
+    }));
+
+    expect(result.ok).toBe(true);
+    expect(enrichment.commands).toEqual([
+      expect.objectContaining({
+        providerKey: 'rss',
+        sourceBindingId: 'source-binding-1',
+        items: expect.any(Array),
+      }),
+    ]);
+    expect(repository.all()[0]?.toSnapshot()).toMatchObject({
+      body: expect.stringContaining('Full external article body.'),
+      metadata: {
+        articleContent: {
+          status: 'enriched',
+          semanticFingerprint: 'feedfacecafebeef',
+          contentHash: 'content-hash-1',
+        },
+      },
+    });
+    expect(projection.commands[0]?.sourceItems[0]?.toSnapshot().metadata).toMatchObject({
+      articleContent: {
+        semanticFingerprint: 'feedfacecafebeef',
+      },
+    });
   });
 
   it('passes the last committed cursor to the source fetcher before saving the next cursor', async () => {

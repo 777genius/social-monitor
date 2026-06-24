@@ -1,5 +1,6 @@
 export * from './feed-projection.port';
 export * from './github-repository-trend-history-repository.port';
+export * from './article-content-extractor.port';
 export * from './scan-attempt-repository.port';
 export * from './scan-cursor-repository.port';
 export * from './scan-execution-reporter.port';
@@ -7,6 +8,7 @@ export * from './scan-failure-queue.port';
 export * from './scan-lease.port';
 export * from './source-config-reader.port';
 export * from './source-fetcher.port';
+export * from './source-item-enrichment.port';
 export * from './source-item-metadata-projection.port';
 export * from './source-provider.port';
 export * from './source-provider-registry.port';

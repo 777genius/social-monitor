@@ -8,8 +8,8 @@ import type {
   SourceProviderValidationResult,
   SourceQuery,
 } from '../../../ports';
-import { redditListings } from './http-reddit-client';
-import type { RedditClientPort, RedditPost, RedditPostListing } from './reddit-client.port';
+import { redditListings, redditTopTimes } from './http-reddit-client';
+import type { RedditClientPort, RedditPost, RedditPostListing, RedditTopTime } from './reddit-client.port';
 import type { RedditRefreshTokenProviderPort } from './refresh-token-reddit-token-provider';
 import type { RedditTokenProviderPort } from './reddit-token-provider.port';
 
@@ -83,11 +83,16 @@ export class RedditSourceProvider implements SourceProviderPort {
   ): Promise<SourceProviderScanResult> {
     const accessToken = await this.resolveAccessToken(context);
     const userAgent = readOptionalString(context.config?.userAgent);
-    const page = plan.query.mode === 'listing'
+    const minScore = readOptionalNonNegativeInteger(context.config?.minScore, 1_000_000);
+    const listingQuery = plan.query.mode === 'listing'
+      ? parseListingQuery(plan.query.query)
+      : undefined;
+    const page = listingQuery !== undefined
       ? await this.client.listSubredditPosts({
           accessToken,
           userAgent,
-          ...parseListingQuery(plan.query.query),
+          ...listingQuery,
+          ...(listingQuery.listing === 'top' ? { topTime: readTopTime(context.config?.topTime) } : {}),
           limit: plan.maxItems,
           after: plan.cursor,
         })
@@ -98,7 +103,7 @@ export class RedditSourceProvider implements SourceProviderPort {
           limit: plan.maxItems,
           after: plan.cursor,
         });
-    const normalized = page.posts.flatMap((post) => normalizePost(post));
+    const normalized = page.posts.flatMap((post) => normalizePost(post, minScore));
 
     return {
       items: normalized,
@@ -181,8 +186,12 @@ export class RedditSourceProvider implements SourceProviderPort {
   }
 }
 
-const normalizePost = (post: RedditPost) => {
+const normalizePost = (post: RedditPost, minScore: number | undefined) => {
   if (post.over18 || post.removedByCategory !== undefined) {
+    return [];
+  }
+
+  if (minScore !== undefined && post.score !== undefined && post.score < minScore) {
     return [];
   }
 
@@ -201,6 +210,7 @@ const normalizePost = (post: RedditPost) => {
       body,
       authorHandle: post.author,
       publishedAt: post.createdUtc === undefined ? new Date(0) : new Date(post.createdUtc * 1000),
+      metadata: redditPostMetadata(post),
     },
   ];
 };
@@ -234,6 +244,34 @@ const readListing = (value: unknown): RedditPostListing => {
   return listing as RedditPostListing;
 };
 
+const readTopTime = (value: unknown): RedditTopTime => {
+  const topTime = readOptionalString(value) ?? 'week';
+
+  if (!redditTopTimes.includes(topTime as RedditTopTime)) {
+    throw new Error(`Unsupported Reddit topTime: ${topTime}`);
+  }
+
+  return topTime as RedditTopTime;
+};
+
+const redditPostMetadata = (post: RedditPost) => ({
+  ...(post.subreddit === undefined ? {} : { subreddit: post.subreddit }),
+  ...(linkedUrl(post) === undefined ? {} : { linkedUrl: linkedUrl(post) }),
+  ...(post.score === undefined ? {} : { score: post.score }),
+  ...(post.numComments === undefined ? {} : { numComments: post.numComments }),
+  ...(post.upvoteRatio === undefined ? {} : { upvoteRatio: post.upvoteRatio }),
+});
+
+const linkedUrl = (post: RedditPost): string | undefined => {
+  if (post.url === undefined) {
+    return undefined;
+  }
+
+  const discussionUrl = canonicalUrl(post);
+
+  return post.url === discussionUrl ? undefined : post.url;
+};
+
 const readRequiredString = (value: unknown, field: string, fallback?: string): string => {
   const resolved = readOptionalString(value) ?? fallback?.trim();
 
@@ -262,6 +300,18 @@ const readPositiveInteger = (
 
   if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
     throw new Error(`Reddit source config integer must be between ${min} and ${max}`);
+  }
+
+  return value;
+};
+
+const readOptionalNonNegativeInteger = (value: unknown, max: number): number | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > max) {
+    throw new Error(`Reddit source config integer must be between 0 and ${max}`);
   }
 
   return value;

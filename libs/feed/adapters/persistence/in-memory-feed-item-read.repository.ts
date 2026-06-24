@@ -1,5 +1,6 @@
 import type { FeedItem } from '../../domain';
 import type { FeedItemReadRepositoryPort, ListFeedItemsQuery, ListFeedItemsResult } from '../../ports';
+import { feedDedupeKeyForItem } from './feed-dedupe-key';
 import { matchesFeedItemReadFilters } from './feed-item-query-filter';
 
 export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPort {
@@ -19,7 +20,10 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
       snapshot.tenantId,
       snapshot.workspaceId,
       snapshot.topicId,
-      normalizeCanonicalUrl(snapshot.canonicalUrl),
+      feedDedupeKeyForItem({
+        canonicalUrl: snapshot.canonicalUrl,
+        providerMetadata: snapshot.providerMetadata,
+      }),
     ].join(':');
     const existingCanonicalItem = this.itemsByCanonicalUrl.get(canonicalKey);
 
@@ -90,30 +94,6 @@ const compareFeedItems = (left: FeedItem, right: FeedItem): number => {
   }
 
   return rightSnapshot.id.localeCompare(leftSnapshot.id);
-};
-
-const normalizeCanonicalUrl = (value: string): string => {
-  try {
-    const parsed = new URL(value);
-    parsed.hash = '';
-    parsed.hostname = parsed.hostname.toLocaleLowerCase('en-US');
-
-    for (const key of [...parsed.searchParams.keys()]) {
-      if (key.toLocaleLowerCase('en-US').startsWith('utm_') || key === 'fbclid' || key === 'gclid') {
-        parsed.searchParams.delete(key);
-      }
-    }
-
-    parsed.searchParams.sort();
-
-    if (parsed.pathname.length > 1) {
-      parsed.pathname = parsed.pathname.replace(/\/+$/u, '');
-    }
-
-    return parsed.toString();
-  } catch {
-    return value.trim().toLocaleLowerCase('en-US');
-  }
 };
 
 const encodeCursor = (offset: number): string => Buffer.from(JSON.stringify({ offset })).toString('base64url');

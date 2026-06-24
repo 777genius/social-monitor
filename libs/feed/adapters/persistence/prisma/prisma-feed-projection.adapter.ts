@@ -7,7 +7,8 @@ import type {
 } from '@social-monitor/ingestion/ports';
 
 import type { PrismaFeedClient } from './prisma-feed-client';
-import { normalizeFeedCanonicalUrl } from './prisma-feed-records';
+import { feedDedupeKeyForItem } from '../feed-dedupe-key';
+import { feedBodyPreviewForProjection } from '../feed-projection-content';
 
 export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
   constructor(
@@ -20,7 +21,14 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
 
     for (const sourceItem of command.sourceItems) {
       const snapshot = sourceItem.toSnapshot();
-      const dedupeKey = normalizeFeedCanonicalUrl(snapshot.canonicalUrl);
+      const dedupeKey = feedDedupeKeyForItem({
+        canonicalUrl: snapshot.canonicalUrl,
+        providerMetadata: snapshot.metadata,
+      });
+      const bodyPreview = feedBodyPreviewForProjection({
+        body: snapshot.body,
+        providerMetadata: snapshot.metadata,
+      });
       const feedItemId = this.ids.generate();
 
       await withPrismaWriteRetry(() => this.prisma.feedItem.upsert({
@@ -37,7 +45,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
           providerKey: command.providerKey,
           canonicalUrl: snapshot.canonicalUrl,
           title: snapshot.title,
-          bodyPreview: snapshot.body.slice(0, 280),
+          bodyPreview,
           authorHandle: snapshot.authorHandle ?? null,
           publishedAt: snapshot.publishedAt,
           observedAt: snapshot.ingestedAt,
@@ -55,7 +63,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
           dedupeKey,
           canonicalUrl: snapshot.canonicalUrl,
           title: snapshot.title,
-          bodyPreview: snapshot.body.slice(0, 280),
+          bodyPreview,
           authorHandle: snapshot.authorHandle ?? null,
           publishedAt: snapshot.publishedAt,
           observedAt: snapshot.ingestedAt,

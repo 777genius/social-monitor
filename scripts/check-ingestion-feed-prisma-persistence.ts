@@ -1,4 +1,4 @@
-import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { FixedClock, type IdGenerator, type JsonObject, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 
 import { PrismaFeedItemReadRepository } from '../libs/feed/adapters/persistence/prisma/prisma-feed-item-read.repository';
@@ -83,6 +83,8 @@ async function main(): Promise<void> {
     '00000000-0000-7000-8000-000000000206',
     '00000000-0000-7000-8000-000000000207',
     '00000000-0000-7000-8000-000000000208',
+    '00000000-0000-7000-8000-000000000209',
+    '00000000-0000-7000-8000-000000000210',
   ]);
   const sourceItems = new PrismaSourceItemRepository(prisma);
   const cursors = new PrismaScanCursorRepository(prisma, ids);
@@ -155,6 +157,61 @@ async function main(): Promise<void> {
     feedItemId: feedItem.toSnapshot().id,
   });
   assert(found?.toSnapshot().canonicalUrl === 'https://example.test/story?a=1&b=2', 'feed item findById must rehydrate item');
+
+  const articleFromReddit = makeSourceItem({
+    id: '00000000-0000-7000-8000-000000000303',
+    externalId: 'reddit-article-1',
+    canonicalUrl: 'https://www.reddit.com/r/OpenAI/comments/article_1/demo/',
+    title: 'Article via Reddit',
+    metadata: {
+      articleContent: {
+        status: 'enriched',
+        semanticFingerprint: 'feedfacecafebeef',
+        contentHash: 'content-hash-1',
+      },
+    },
+  });
+  const articleFromRss = makeSourceItem({
+    id: '00000000-0000-7000-8000-000000000304',
+    externalId: 'rss-article-1',
+    canonicalUrl: 'https://example.test/same-article?utm_source=rss',
+    title: 'Article via RSS',
+    body: `Article intro. ${'Article evidence text should be retained for summary context. '.repeat(8)}semantic-tail-marker`,
+    metadata: {
+      articleContent: {
+        status: 'enriched',
+        semanticFingerprint: 'feedfacecafebeef',
+        contentHash: 'content-hash-1',
+      },
+    },
+  });
+  await sourceItems.saveBatch({
+    tenantId: tenant,
+    workspaceId: workspace,
+    providerKey: 'article-source',
+    items: [articleFromReddit, articleFromRss],
+  });
+  await feedProjection.project({
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId,
+    sourceBindingId,
+    providerKey: 'article-source',
+    sourceItems: [articleFromReddit, articleFromRss],
+  });
+  const articleList = await feedRead.list({
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId,
+    limit: 10,
+    searchQuery: 'article via',
+  });
+  assert(articleList.items.length === 1, 'feed projection must dedupe enriched articles by semantic fingerprint');
+  assert(articleList.items[0]?.toSnapshot().title === 'Article via RSS', 'article fingerprint upsert must refresh latest feed content');
+  assert(
+    articleList.items[0]?.toSnapshot().bodyPreview.includes('semantic-tail-marker') === true,
+    'feed projection must retain enriched article evidence text beyond short preview length',
+  );
 
   await failureQueue.enqueueRetry({
     tenantId: tenant,
@@ -275,6 +332,8 @@ const makeSourceItem = (params: {
   readonly externalId: string;
   readonly canonicalUrl: string;
   readonly title: string;
+  readonly body?: string;
+  readonly metadata?: JsonObject;
 }): SourceItem =>
   SourceItem.ingest({
     id: params.id,
@@ -284,10 +343,11 @@ const makeSourceItem = (params: {
     externalId: params.externalId,
     canonicalUrl: params.canonicalUrl,
     title: params.title,
-    body: `${params.title} body`,
+    body: params.body ?? `${params.title} body`,
     authorHandle: 'author',
     publishedAt: new Date('2026-06-07T00:00:00.000Z'),
     ingestedAt: clock.now(),
+    metadata: params.metadata,
   });
 
 class SequenceIdGenerator implements IdGenerator {

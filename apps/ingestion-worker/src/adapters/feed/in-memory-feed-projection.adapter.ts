@@ -5,6 +5,7 @@ import type {
   ProjectFeedItemsCommand,
   ProjectFeedItemsResult,
 } from '@social-monitor/ingestion/ports';
+import { feedBodyPreviewForProjection } from '@social-monitor/feed/adapters/persistence/feed-projection-content';
 
 export class InMemoryFeedProjectionAdapter implements FeedProjectionPort {
   constructor(private readonly feedItems: InMemoryFeedItemReadRepository) {}
@@ -14,6 +15,10 @@ export class InMemoryFeedProjectionAdapter implements FeedProjectionPort {
 
     for (const sourceItem of command.sourceItems) {
       const snapshot = sourceItem.toSnapshot();
+      const bodyPreview = feedBodyPreviewForProjection({
+        body: snapshot.body,
+        providerMetadata: snapshot.metadata,
+      });
 
       this.feedItems.upsert(
         FeedItem.publish({
@@ -26,7 +31,7 @@ export class InMemoryFeedProjectionAdapter implements FeedProjectionPort {
           providerKey: command.providerKey,
           canonicalUrl: snapshot.canonicalUrl,
           title: snapshot.title,
-          bodyPreview: snapshot.body.slice(0, 280),
+          bodyPreview,
           authorHandle: snapshot.authorHandle,
           publishedAt: snapshot.publishedAt,
           observedAt: snapshot.ingestedAt,
