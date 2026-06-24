@@ -95,7 +95,7 @@ import { ScheduleDueScansUseCase } from '../libs/monitoring/features/schedule-du
 import { SetScanPolicyUseCase } from '../libs/monitoring/features/set-scan-policy/set-scan-policy.use-case';
 import type { SourceBindingConfig, SourceBindingConfigProtectorPort } from '../libs/monitoring/ports';
 
-type ProviderKey = 'reddit' | 'github' | 'rss' | 'hacker-news';
+type ProviderKey = 'reddit' | 'github-issues' | 'rss' | 'hacker-news';
 
 type QueuedScanPayload = {
   readonly tenantId: TenantId;
@@ -130,7 +130,7 @@ const workspace = workspaceId('workspace-autonomous-monitoring-loop-smoke');
 const userId = 'user-autonomous-monitoring-loop-smoke';
 const correlationId = 'corr-autonomous-monitoring-loop-smoke';
 const evidencePath = 'ops/release/autonomous-monitoring-loop-evidence.json';
-const providerKeys: readonly ProviderKey[] = ['reddit', 'github', 'rss', 'hacker-news'];
+const providerKeys: readonly ProviderKey[] = ['reddit', 'github-issues', 'rss', 'hacker-news'];
 
 async function main(): Promise<void> {
   const ids = new SequenceIdGenerator('autonomous-loop');
@@ -199,7 +199,7 @@ async function main(): Promise<void> {
     userId,
     topicWeights: [{ key: topic.topicId, weight: 1 }],
     sourceWeights: [
-      { key: 'github', weight: 1 },
+      { key: 'github-issues', weight: 1 },
       { key: 'reddit', weight: 0.8 },
       { key: 'hacker-news', weight: 0.6 },
       { key: 'rss', weight: 0.4 },
@@ -292,7 +292,7 @@ async function main(): Promise<void> {
   );
   assert(ranked.profileApplied, 'ranking must apply the user relevance profile');
   assert(ranked.items.length >= providerKeys.length, 'ranking must keep one or more findings per provider');
-  assert(ranked.items[0]?.providerKey === 'github', 'GitHub agents reliability finding should rank first for this user profile');
+  assert(ranked.items[0]?.providerKey === 'github-issues', 'GitHub Issues agents reliability finding should rank first for this user profile');
   assert(ranked.items.some((item) => item.clusterSize > 1), 'ranking must cluster duplicate or near-duplicate findings');
   assert(!JSON.stringify(ranked.items).toLowerCase().includes('ignore previous instructions'), 'ranking must sandbox source prompt injection');
   assert(!JSON.stringify(ranked.items).includes('source-secret'), 'ranking must redact sensitive source text');
@@ -815,7 +815,7 @@ function providerTargets(): readonly { readonly providerKey: ProviderKey; readon
       },
     },
     {
-      providerKey: 'github',
+      providerKey: 'github-issues',
       config: {
         mode: 'search',
         query: 'repo:microsoft/TypeScript agents orchestration reliability',
@@ -855,7 +855,7 @@ function providerSamples(
   query: string,
 ): readonly FetchedSourceItem[] {
   const publishedAtByProvider: Record<ProviderKey, string> = {
-    github: '2026-06-22T11:55:00.000Z',
+    'github-issues': '2026-06-22T11:55:00.000Z',
     reddit: '2026-06-22T11:50:00.000Z',
     'hacker-news': '2026-06-22T11:45:00.000Z',
     rss: '2026-06-22T11:40:00.000Z',
@@ -865,7 +865,7 @@ function providerSamples(
     publishedAt: new Date(publishedAtByProvider[providerKey]),
   };
 
-  if (providerKey === 'github') {
+  if (providerKey === 'github-issues') {
     return [
       {
         ...base,

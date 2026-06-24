@@ -75,6 +75,7 @@ describe('Set scan policy flow (e2e)', () => {
     expect(first.body).toEqual({
       scanPolicyId: expect.any(String),
       created: true,
+      updated: false,
     });
 
     const second = await request(app.getHttpServer())
@@ -94,6 +95,7 @@ describe('Set scan policy flow (e2e)', () => {
     expect(second.body).toEqual({
       scanPolicyId: first.body.scanPolicyId,
       created: false,
+      updated: false,
     });
 
     const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
@@ -116,6 +118,7 @@ describe('Set scan policy flow (e2e)', () => {
           freshnessSeconds: 900,
           retryBudget: 3,
           created: true,
+          updated: false,
         },
       }),
     ]);

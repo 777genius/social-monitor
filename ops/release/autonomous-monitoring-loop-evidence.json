@@ -13,7 +13,7 @@
   },
   "providerKeys": [
     "reddit",
-    "github",
+    "github-issues",
     "rss",
     "hacker-news"
   ],
@@ -31,7 +31,7 @@
             "scanPolicyId": "autonomous-loop-6"
           },
           {
-            "providerKey": "github",
+            "providerKey": "github-issues",
             "sourceBindingId": "autonomous-loop-8",
             "scanPolicyId": "autonomous-loop-10"
           },
@@ -56,7 +56,7 @@
         "feedItemCountAfterReplay": 8,
         "replaySkippedDuplicates": 8,
         "rankedCount": 6,
-        "topProviderKey": "github",
+        "topProviderKey": "github-issues",
         "clusteredFeedItemIds": [
           "feed:autonomous-loop-8:github-agents-release",
           "feed:autonomous-loop-16:hn-summary-quality"
@@ -70,7 +70,7 @@
         "summaryJobId": "autonomous-loop-47",
         "summaryId": "autonomous-loop-48",
         "citedProviders": [
-          "github",
+          "github-issues",
           "hacker-news",
           "reddit",
           "rss"
@@ -101,7 +101,7 @@
   "metrics": {
     "initialScanMetrics": [
       {
-        "providerKey": "github",
+        "providerKey": "github-issues",
         "fetched": 2,
         "inserted": 2,
         "skippedDuplicates": 0,
@@ -131,7 +131,7 @@
     ],
     "replayScanMetrics": [
       {
-        "providerKey": "github",
+        "providerKey": "github-issues",
         "fetched": 2,
         "inserted": 0,
         "skippedDuplicates": 2,

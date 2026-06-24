@@ -118,6 +118,7 @@ describe('Scan policy workspace authorization (e2e)', () => {
     expect(owner.body).toEqual({
       scanPolicyId: expect.any(String),
       created: true,
+      updated: false,
     });
   });
 });
