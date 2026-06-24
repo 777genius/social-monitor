@@ -18,6 +18,8 @@ enum BriefingArtifactResponseDtoQualityFlagsQualityFlags {
   partialEvidence('partial_evidence'),
   @JsonValue('context_unavailable')
   contextUnavailable('context_unavailable'),
+  @JsonValue('provider_failed')
+  providerFailed('provider_failed'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);

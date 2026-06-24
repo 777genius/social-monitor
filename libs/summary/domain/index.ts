@@ -8,6 +8,7 @@ export * from './entities/summary-job';
 export * from './entities/summary-policy';
 export * from './events/briefing-ready.event';
 export * from './events/summary-ready.event';
+export * from './services/briefing-reader-brief.factory';
 export * from './services/story-clustering.service';
 export * from './value-objects/briefing-evidence-item';
 export * from './value-objects/briefing-scope';

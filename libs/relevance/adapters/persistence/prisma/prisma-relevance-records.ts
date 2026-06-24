@@ -2,6 +2,9 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import {
   RelevanceFeedbackSignal,
+  RelevanceMemoryProjection,
+  type RelevanceMemoryProjectionProps,
+  type RelevanceMemoryProjectionStatus,
   type RelevanceFeedbackAction,
   type RelevanceFeedbackSignalProps,
   type RelevanceFeedbackTarget,
@@ -37,6 +40,26 @@ export type PrismaRelevanceFeedbackSignalRecord = {
   readonly createdAt: Date;
 };
 
+export type PrismaRelevanceMemoryProjectionRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly feedbackId: string;
+  readonly userId: string;
+  readonly idempotencyKey: string;
+  readonly action: string;
+  readonly rating: number | null;
+  readonly target: unknown;
+  readonly learningDirection: string;
+  readonly status: string;
+  readonly retryCount: number;
+  readonly nextAttemptAt: Date;
+  readonly projectedAt: Date | null;
+  readonly lastError: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+};
+
 export const userRelevanceProfileFromPrisma = (
   record: PrismaUserRelevanceProfileRecord,
 ): UserRelevanceProfile =>
@@ -70,6 +93,29 @@ export const relevanceFeedbackSignalFromPrisma = (
     createdAt: record.createdAt,
   } satisfies RelevanceFeedbackSignalProps);
 
+export const relevanceMemoryProjectionFromPrisma = (
+  record: PrismaRelevanceMemoryProjectionRecord,
+): RelevanceMemoryProjection =>
+  RelevanceMemoryProjection.rehydrate({
+    id: record.id,
+    tenantId: tenantId(record.tenantId),
+    workspaceId: workspaceId(record.workspaceId),
+    feedbackId: record.feedbackId,
+    userId: record.userId,
+    idempotencyKey: record.idempotencyKey,
+    action: normalizeAction(record.action),
+    rating: record.rating ?? undefined,
+    target: normalizeTarget(record.target),
+    learningDirection: normalizeLearningDirection(record.learningDirection),
+    status: normalizeProjectionStatus(record.status),
+    retryCount: record.retryCount,
+    nextAttemptAt: record.nextAttemptAt,
+    projectedAt: record.projectedAt ?? undefined,
+    lastError: record.lastError ?? undefined,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  } satisfies RelevanceMemoryProjectionProps);
+
 const normalizeWeights = (value: unknown): readonly RelevanceWeight[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -102,6 +148,22 @@ const normalizeAction = (value: string): RelevanceFeedbackAction => {
   }
 
   throw new Error(`Unsupported relevance feedback action "${value}"`);
+};
+
+const normalizeProjectionStatus = (value: string): RelevanceMemoryProjectionStatus => {
+  if (value === 'pending' || value === 'projected' || value === 'failed') {
+    return value;
+  }
+
+  throw new Error(`Unsupported relevance memory projection status "${value}"`);
+};
+
+const normalizeLearningDirection = (value: string): RelevanceMemoryProjectionProps['learningDirection'] => {
+  if (value === 'positive' || value === 'negative' || value === 'block_provider') {
+    return value;
+  }
+
+  throw new Error(`Unsupported relevance memory learning direction "${value}"`);
 };
 
 const normalizeTarget = (value: unknown): RelevanceFeedbackTarget => {

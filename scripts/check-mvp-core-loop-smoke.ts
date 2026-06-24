@@ -295,7 +295,7 @@ async function main(): Promise<void> {
   );
 
   const feedPage = unwrap(
-    await new ListFeedItemsUseCase(feedItems).execute({
+    await new ListFeedItemsUseCase(feedItems, feedItems, clock).execute({
       tenantId: tenant,
       workspaceId: workspace,
       topicId: topic.topicId,

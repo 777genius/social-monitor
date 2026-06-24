@@ -57,6 +57,11 @@ import { ScanRequestController } from '@social-monitor/monitoring/interfaces/res
 import { ScanStatusController } from '@social-monitor/monitoring/interfaces/rest/scan-status.controller';
 import { SourceBindingController } from '@social-monitor/monitoring/interfaces/rest/source-binding.controller';
 import { TopicController } from '@social-monitor/monitoring/interfaces/rest/topic.controller';
+import { BuildPersonalizedDigestUseCase } from '@social-monitor/relevance/features/build-personalized-digest/build-personalized-digest.use-case';
+import { RankFeedItemsUseCase } from '@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case';
+import { RecordRelevanceFeedbackUseCase } from '@social-monitor/relevance/features/record-relevance-feedback/record-relevance-feedback.use-case';
+import { UpsertUserRelevanceProfileUseCase } from '@social-monitor/relevance/features/upsert-user-relevance-profile/upsert-user-relevance-profile.use-case';
+import { RelevanceController } from '@social-monitor/relevance/interfaces/rest/relevance.controller';
 import { GetSummaryJobStatusUseCase } from '@social-monitor/summary/features/get-summary-job-status/get-summary-job-status.use-case';
 import { GetSummaryPolicyUseCase } from '@social-monitor/summary/features/get-summary-policy/get-summary-policy.use-case';
 import { GetSummaryUseCase } from '@social-monitor/summary/features/get-summary/get-summary.use-case';
@@ -185,6 +190,9 @@ const useCaseProviders = [
   ListBriefingsUseCase,
   ListTopicsUseCase,
   ListWebhookEndpointsUseCase,
+  BuildPersonalizedDigestUseCase,
+  RankFeedItemsUseCase,
+  RecordRelevanceFeedbackUseCase,
   RecordPublicApiAuditEventUseCase,
   RecordSummaryFeedbackUseCase,
   RegenerateSummaryUseCase,
@@ -195,6 +203,7 @@ const useCaseProviders = [
   RevokeApiKeyUseCase,
   SetNotificationPreferenceUseCase,
   SetScanPolicyUseCase,
+  UpsertUserRelevanceProfileUseCase,
   UpsertSummaryPolicyUseCase,
 ].map((provider) => ({
   provide: provider,
@@ -213,6 +222,7 @@ const useCaseProviders = [
     SourceProfileController,
     ScanDeadLetterController,
     BetaLaunchSupportController,
+    RelevanceController,
     SummaryController,
     BriefingController,
     BriefingJobController,

@@ -1,11 +1,14 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
-export type RelevanceFeedbackAction =
-  | 'more_like_this'
-  | 'less_like_this'
-  | 'hide_source'
-  | 'dismiss'
-  | 'save';
+export const relevanceFeedbackActions = [
+  'more_like_this',
+  'less_like_this',
+  'hide_source',
+  'dismiss',
+  'save',
+] as const;
+
+export type RelevanceFeedbackAction = (typeof relevanceFeedbackActions)[number];
 
 export type RelevanceFeedbackTarget = {
   readonly feedItemId?: string;
@@ -28,13 +31,7 @@ export type RelevanceFeedbackSignalProps = {
   readonly createdAt: Date;
 };
 
-const supportedActions = new Set<RelevanceFeedbackAction>([
-  'more_like_this',
-  'less_like_this',
-  'hide_source',
-  'dismiss',
-  'save',
-]);
+const supportedActions = new Set<RelevanceFeedbackAction>(relevanceFeedbackActions);
 
 export class RelevanceFeedbackSignal {
   private constructor(private readonly props: RelevanceFeedbackSignalProps) {}

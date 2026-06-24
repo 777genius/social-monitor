@@ -15,5 +15,6 @@ openapi_generator:
     - scan-policies
     - scan-requests
     - feed
+    - relevance
     - summaries
     - briefings

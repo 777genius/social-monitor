@@ -1,22 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
-const briefingQualityFlags = [
-  "no_signal",
-  "low_confidence",
-  "conflicting_evidence",
-  "limited_sources",
-  "partial_evidence",
-  "context_unavailable",
-] as const;
-
-const briefingCitationFields = ["title", "bodyPreview", "canonicalUrl"] as const;
-const briefingConfidenceLevels = ["none", "low", "medium", "high"] as const;
-const briefingRiskReasons = [
-  "insufficient_evidence",
-  "conflicting_evidence",
-  "source_limit",
-  "provider_outage",
-] as const;
+import {
+  briefingCitationFields,
+  briefingConfidenceLevels,
+  briefingQualityFlags,
+  briefingRiskReasons,
+} from "./briefing-contract.constants";
+import { BriefingReaderBriefDto } from "./briefing-reader.dto";
 
 export class BriefingScopeDto {
   @ApiProperty({ enum: ["workspace", "topic"] })
@@ -98,6 +88,9 @@ export class BriefingCitationViewDto {
 
   @ApiProperty({ enum: briefingCitationFields })
   declare readonly field: (typeof briefingCitationFields)[number];
+
+  @ApiPropertyOptional()
+  declare readonly canonicalUrl?: string;
 }
 
 export class BriefingTopStoryDto {
@@ -285,6 +278,9 @@ export class BriefingArtifactResponseDto {
 
   @ApiProperty()
   declare readonly executiveSummary: string;
+
+  @ApiProperty({ type: () => BriefingReaderBriefDto })
+  declare readonly readerBrief: BriefingReaderBriefDto;
 
   @ApiProperty({ type: () => [BriefingTopStoryDto] })
   declare readonly topStories: readonly BriefingTopStoryDto[];

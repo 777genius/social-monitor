@@ -36,6 +36,7 @@ export class GitHubRepositoryTrendMetadataProjectionAdapter implements SourceIte
         license: metadata.repository.license,
         totalStars: metadata.trend.totalStars,
         stars24h: metadata.trend.stars24h,
+        stars48h: metadata.trend.stars48h,
         stars7d: metadata.trend.stars7d,
         stars30d: metadata.trend.stars30d,
         stars90d: metadata.trend.stars90d,

@@ -1,0 +1,467 @@
+import { randomUUID } from 'node:crypto';
+
+import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import { CryptoIdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { Pool } from 'pg';
+
+import { PrismaIngestionWorkerConnection } from '../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection';
+import { PrismaFeedItemReadRepository } from '../libs/feed/adapters/persistence/prisma/prisma-feed-item-read.repository';
+import { PrismaFeedProjectionAdapter } from '../libs/feed/adapters/persistence/prisma/prisma-feed-projection.adapter';
+import { PrismaGitHubRepositoryTrendHistoryRepository } from '../libs/ingestion/adapters/persistence/prisma/prisma-github-repository-trend-history.repository';
+import { PrismaScanAttemptRepository } from '../libs/ingestion/adapters/persistence/prisma/prisma-scan-attempt.repository';
+import { PrismaScanCursorRepository } from '../libs/ingestion/adapters/persistence/prisma/prisma-scan-cursor.repository';
+import { PrismaScanFailureQueueAdapter } from '../libs/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter';
+import { PrismaScanLeaseAdapter } from '../libs/ingestion/adapters/persistence/prisma/prisma-scan-lease.adapter';
+import { PrismaSourceItemRepository } from '../libs/ingestion/adapters/persistence/prisma/prisma-source-item.repository';
+import { CircuitBreakerSourceFetcherAdapter } from '../libs/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
+import { BigQueryGitHubRepoRadarClient } from '../libs/ingestion/adapters/source/github-repo-radar/bigquery-github-repo-radar-client';
+import { GitHubRepositoryTrendMetadataProjectionAdapter } from '../libs/ingestion/adapters/source/github-repo-radar/github-repository-trend-metadata-projection.adapter';
+import { GitHubRepositoryLiveVerifierAdapter } from '../libs/ingestion/adapters/source/github-repo-radar/github-repository-live-verifier.adapter';
+import { GitHubRepoRadarSourceProvider } from '../libs/ingestion/adapters/source/github-repo-radar/github-repo-radar-source.provider';
+import { HttpGitHubClient } from '../libs/ingestion/adapters/source/github/http-github-client';
+import { InMemorySourceProviderRegistry } from '../libs/ingestion/adapters/source/in-memory-source-provider.registry';
+import { RegistrySourceFetcherAdapter } from '../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
+import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
+import { GITHUB_REPO_RADAR_PROVIDER_KEY, parseGitHubRepositoryTrendMetadata } from '../libs/ingestion/domain';
+import { ExecuteScanUseCase } from '../libs/ingestion/features/execute-scan/execute-scan.use-case';
+import type {
+  ReportScanFailedCommand,
+  ReportScanSucceededCommand,
+  ScanExecutionReporterPort,
+  SourceConfigReaderPort,
+  SourceRuntimeConfig,
+} from '../libs/ingestion/ports';
+import { FeedSummaryEvidenceSelector } from '../libs/summary/adapters/evidence/feed-summary-evidence.selector';
+import { DeterministicSummaryModelAdapter } from '../libs/summary/adapters/model/deterministic-summary-model.adapter';
+import type { SummaryModelBudget, SummaryModelInput, SummaryModelPolicy } from '../libs/summary/ports';
+
+const enabledEnv = 'GITHUB_REPO_RADAR_PRISMA_LIVE_E2E';
+const defaultDatabaseUrl = 'postgresql://social_monitor:social_monitor_local_password@127.0.0.1:5432/social_monitor';
+
+const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
+  if (!condition) {
+    throw new Error(message);
+  }
+};
+
+class LivePrismaScanExecutionReporter implements ScanExecutionReporterPort {
+  readonly succeeded: ReportScanSucceededCommand[] = [];
+  readonly failed: ReportScanFailedCommand[] = [];
+
+  async reportSucceeded(command: ReportScanSucceededCommand): Promise<void> {
+    this.succeeded.push(command);
+  }
+
+  async reportFailed(command: ReportScanFailedCommand): Promise<void> {
+    this.failed.push(command);
+  }
+}
+
+class StaticSourceConfigReader implements SourceConfigReaderPort {
+  constructor(private readonly config: SourceRuntimeConfig) {}
+
+  async readConfig(): Promise<SourceRuntimeConfig> {
+    return this.config;
+  }
+}
+
+const main = async (): Promise<void> => {
+  if (process.env[enabledEnv] !== '1') {
+    console.log(`GitHub repo radar Prisma live e2e skipped: set ${enabledEnv}=1 to enable BigQuery + GitHub REST + Postgres proof.`);
+    return;
+  }
+
+  const databaseUrl = readOptionalEnv('DATABASE_URL') ?? defaultDatabaseUrl;
+  const connection = new PrismaIngestionWorkerConnection(databaseUrl);
+  const pool = new Pool({ connectionString: databaseUrl });
+
+  try {
+    const ids = new CryptoIdGenerator();
+    const scanRuns = readPositiveIntegerEnv('GITHUB_REPO_RADAR_SCAN_RUNS', 2, 1, 3);
+    const baseCheckedAt = new Date(Date.now() - (scanRuns - 1) * 60_000);
+    let currentClockNow = baseCheckedAt;
+    const clock = { now: () => new Date(currentClockNow.getTime()) };
+    const tenant = tenantId(randomUUID());
+    const workspace = workspaceId(randomUUID());
+    const topicId = randomUUID();
+    const sourceBindingId = randomUUID();
+    const scanPolicyId = randomUUID();
+    const provider = new GitHubRepoRadarSourceProvider(
+      new BigQueryGitHubRepoRadarClient({
+        projectId: firstEnv('GITHUB_REPO_RADAR_BIGQUERY_PROJECT_ID', 'GOOGLE_CLOUD_PROJECT', 'GCLOUD_PROJECT'),
+        location: readOptionalEnv('GITHUB_REPO_RADAR_BIGQUERY_LOCATION') ?? 'US',
+        maximumBytesBilled: readOptionalEnv('GITHUB_REPO_RADAR_BIGQUERY_MAX_BYTES') ?? '5000000000',
+        timeoutMs: readPositiveIntegerEnv('GITHUB_REPO_RADAR_BIGQUERY_TIMEOUT_MS', 30_000, 1_000, 120_000),
+        jobTimeoutMs: readPositiveIntegerEnv('GITHUB_REPO_RADAR_BIGQUERY_JOB_TIMEOUT_MS', 60_000, 1_000, 180_000),
+      }),
+      new GitHubRepositoryLiveVerifierAdapter(
+        new HttpGitHubClient(readPositiveIntegerEnv('GITHUB_REPO_RADAR_GITHUB_TIMEOUT_MS', 10_000, 1_000, 60_000)),
+      ),
+      clock,
+    );
+    const query = readOptionalEnv('GITHUB_REPO_RADAR_QUERY') ?? 'agents';
+    const maxItems = readPositiveIntegerEnv('GITHUB_REPO_RADAR_MAX_ITEMS', 1, 1, 5);
+    const config: Record<string, string | number | readonly string[]> = {
+      topics: readCsvEnv('GITHUB_REPO_RADAR_TOPICS', ['ai', 'agents']),
+      languages: readCsvEnv('GITHUB_REPO_RADAR_LANGUAGES', ['TypeScript']),
+      windows: readCsvEnv('GITHUB_REPO_RADAR_WINDOWS', ['24h', '48h']),
+      minStars: readPositiveIntegerEnv('GITHUB_REPO_RADAR_MIN_STARS', 100, 0, 1_000_000),
+      maxItems,
+      maxCandidates: readPositiveIntegerEnv('GITHUB_REPO_RADAR_MAX_CANDIDATES', 25, maxItems, 100),
+      userAgent: readOptionalEnv('GITHUB_REPO_RADAR_USER_AGENT') ?? 'social-monitor-mvp-repo-radar-prisma-live-e2e/0.1',
+    };
+    const accessToken = readOptionalEnv('GITHUB_ACCESS_TOKEN');
+
+    if (accessToken !== undefined) {
+      config.accessToken = accessToken;
+    }
+
+    const sourceConfig = config satisfies SourceRuntimeConfig;
+    const registry = new InMemorySourceProviderRegistry([provider], sourceReadinessProfiles);
+    const sourceItems = new PrismaSourceItemRepository(connection);
+    const feedRead = new PrismaFeedItemReadRepository(connection);
+    const reporter = new LivePrismaScanExecutionReporter();
+    const executeScan = new ExecuteScanUseCase(
+      new CircuitBreakerSourceFetcherAdapter(
+        new RegistrySourceFetcherAdapter(registry, new StaticSourceConfigReader(sourceConfig)),
+        clock,
+        { failureThreshold: 3, cooldownSeconds: 60 },
+      ),
+      sourceItems,
+      new PrismaFeedProjectionAdapter(connection, ids),
+      new PrismaScanAttemptRepository(connection),
+      new PrismaScanCursorRepository(connection, ids),
+      reporter,
+      new PrismaScanFailureQueueAdapter(connection, new InMemoryMetricsRecorder(), ids),
+      new PrismaScanLeaseAdapter(connection, ids),
+      ids,
+      clock,
+      new GitHubRepositoryTrendMetadataProjectionAdapter(
+        new PrismaGitHubRepositoryTrendHistoryRepository(connection, ids),
+      ),
+    );
+
+    const scanResults: Array<{
+      readonly scanJobId: string;
+      readonly fetched: number;
+      readonly inserted: number;
+      readonly projected: number;
+    }> = [];
+    const scanJobIds: string[] = [];
+
+    for (let runIndex = 0; runIndex < scanRuns; runIndex += 1) {
+      currentClockNow = new Date(baseCheckedAt.getTime() + runIndex * 60_000);
+      const scanJobId = randomUUID();
+      const result = await executeScan.execute({
+        tenantId: tenant,
+        workspaceId: workspace,
+        scanJobId,
+        topicId,
+        sourceBindingId,
+        scanPolicyId,
+        providerKey: GITHUB_REPO_RADAR_PROVIDER_KEY,
+        sourceQuery: { mode: 'search', query },
+        correlationId: `corr-github-repo-radar-prisma-live-e2e-${scanJobId}`,
+        causationId: `cause-github-repo-radar-prisma-live-e2e-${scanJobId}`,
+      });
+
+      if (!result.ok) {
+        throw result.error;
+      }
+
+      assert(result.value.fetched > 0, 'Prisma live e2e must fetch at least one verified GitHub repository');
+      assert(result.value.inserted > 0, 'Prisma live e2e must insert source items into Postgres');
+      assert(result.value.projected > 0, 'Prisma live e2e must project feed items into Postgres');
+
+      scanResults.push({
+        scanJobId,
+        fetched: result.value.fetched,
+        inserted: result.value.inserted,
+        projected: result.value.projected,
+      });
+      scanJobIds.push(scanJobId);
+    }
+
+    assert(reporter.succeeded.length === scanRuns, `expected ${scanRuns} scan successes, got ${reporter.succeeded.length}`);
+    assert(reporter.failed.length === 0, `Prisma live e2e must not report scan failures: ${JSON.stringify(reporter.failed)}`);
+
+    const feed = await feedRead.list({ tenantId: tenant, workspaceId: workspace, topicId, limit: 10 });
+    assert(feed.items.length > 0, 'Prisma live e2e must read persisted feed items from Postgres');
+
+    const feedSnapshot = feed.items[0]?.toSnapshot();
+    const metadata = parseGitHubRepositoryTrendMetadata(feedSnapshot?.providerMetadata);
+    assert(feedSnapshot !== undefined, 'Prisma live e2e feed snapshot is required');
+    assert(metadata !== null, 'Prisma live e2e feed metadata must be typed repository trend metadata');
+    assert(metadata.trend.source === 'gh_archive_bigquery_plus_github_live', 'Prisma live e2e must not use fixture trend data');
+    assert(metadata.trend.stars48h > 0, 'Prisma live e2e must persist a non-zero 48h GitHub star delta');
+
+    const sqlEvidence = await readSqlEvidence(pool, {
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      sourceBindingId,
+      scanJobIds,
+    });
+
+    assert(sqlEvidence.sourceItemCount >= scanRuns, `expected at least ${scanRuns} source_items rows, got ${sqlEvidence.sourceItemCount}`);
+    assert(sqlEvidence.feedItemCount >= 1, `expected at least one feed_items row, got ${sqlEvidence.feedItemCount}`);
+    assert(sqlEvidence.trendCandidateCount >= scanRuns, `expected at least ${scanRuns} trend candidate rows, got ${sqlEvidence.trendCandidateCount}`);
+    assert(sqlEvidence.trendSnapshotCount >= scanRuns, `expected at least ${scanRuns} trend snapshot rows, got ${sqlEvidence.trendSnapshotCount}`);
+    assert(sqlEvidence.trendResultCount >= scanRuns, `expected at least ${scanRuns} trend result rows, got ${sqlEvidence.trendResultCount}`);
+    assert(sqlEvidence.cursorCount === 1, `expected one cursor checkpoint row, got ${sqlEvidence.cursorCount}`);
+    assert(sqlEvidence.scanAttemptCount === scanRuns, `expected ${scanRuns} scan attempts, got ${sqlEvidence.scanAttemptCount}`);
+    assert(
+      sqlEvidence.scanAttemptStatuses.every((status) => status === 'SUCCEEDED'),
+      `expected all scan attempts to succeed, got ${sqlEvidence.scanAttemptStatuses.join(', ')}`,
+    );
+    assert(
+      sqlEvidence.sourceProviderItemIds.some((providerItemId) =>
+        providerItemId.startsWith(`github-repo-radar:${metadata.repository.fullName}:`),
+      ),
+      'source_items provider_item_id must include repository full name',
+    );
+    assert(sqlEvidence.feedProviderMetadata?.kind === 'github_repository_trend', 'feed_items provider_metadata must keep repository trend kind');
+    assert(sqlEvidence.feedProviderMetadata?.trend?.stars48h === metadata.trend.stars48h, 'feed_items provider_metadata must keep 48h star delta');
+    assert(sqlEvidence.trendCandidateStars48hValues.includes(metadata.trend.stars48h), 'trend candidate must keep 48h star delta');
+    assert(sqlEvidence.trendSnapshotStars48hValues.includes(metadata.trend.stars48h), 'trend snapshot must keep 48h star delta');
+    assert(
+      sqlEvidence.trendResultMetadataList.some((resultMetadata) => resultMetadata.trend?.stars48h === metadata.trend.stars48h),
+      'trend result metadata must keep 48h star delta',
+    );
+
+    const evidence = await new FeedSummaryEvidenceSelector(feedRead, clock).select({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      maxItems: 5,
+    });
+    const summaryModel = new DeterministicSummaryModelAdapter();
+    const modelPolicy: SummaryModelPolicy = {
+      preferredProvider: 'deterministic-local',
+      maxInputTokens: 10_000,
+      maxOutputTokens: 2_000,
+      maxEstimatedCostUsd: 1,
+    };
+    const budget: SummaryModelBudget = {
+      remainingTokens: 10_000,
+      remainingCostUsd: 1,
+    };
+    const summaryInput: SummaryModelInput = {
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      evidence,
+      policy: {
+        format: 'executive_brief',
+        tone: 'neutral',
+        language: 'en',
+        maxKeyPoints: 3,
+        includeRisks: true,
+        includeSourceHighlights: true,
+        rulesVersion: 'summary.rules.github-repo-radar.prisma-live-e2e.v1',
+      },
+      requestedAt: clock.now(),
+    };
+    const route = summaryModel.route(summaryInput, modelPolicy, budget);
+    const attempt = await summaryModel.summarize(summaryInput, route);
+    const expectedHighlight = `${metadata.repository.fullName}: ${metadata.trend.totalStars} stars, +${metadata.trend.stars48h} in 48h`;
+
+    assert(
+      attempt.draft.sourceHighlights.some((highlight) => highlight.includes(expectedHighlight)),
+      `summary source highlights must include persisted repo trend evidence: ${JSON.stringify(attempt.draft.sourceHighlights)}`,
+    );
+
+    console.log(JSON.stringify({
+      status: 'passed',
+      providerKey: GITHUB_REPO_RADAR_PROVIDER_KEY,
+      e2e: 'live_bigquery_github_to_prisma_postgres_to_feed_to_summary_repeated_scans',
+      database: databaseKind(databaseUrl),
+      scanRuns,
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      sourceBindingId,
+      scanJobIds,
+      repository: metadata.repository.fullName,
+      totalStars: metadata.trend.totalStars,
+      stars24h: metadata.trend.stars24h,
+      stars48h: metadata.trend.stars48h,
+      primaryWindow: metadata.trend.primaryWindow,
+      fetched: sumScanResults(scanResults, 'fetched'),
+      inserted: sumScanResults(scanResults, 'inserted'),
+      projected: sumScanResults(scanResults, 'projected'),
+      sourceItems: sqlEvidence.sourceItemCount,
+      feedItems: sqlEvidence.feedItemCount,
+      trendCandidates: sqlEvidence.trendCandidateCount,
+      trendSnapshots: sqlEvidence.trendSnapshotCount,
+      trendResults: sqlEvidence.trendResultCount,
+      scanAttempts: sqlEvidence.scanAttemptCount,
+      summaryHighlights: attempt.draft.sourceHighlights.length,
+    }));
+  } finally {
+    await connection.close();
+    await pool.end();
+  }
+};
+
+type SqlEvidenceScope = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly topicId: string;
+  readonly sourceBindingId: string;
+  readonly scanJobIds: readonly string[];
+};
+
+type SqlEvidence = {
+  readonly sourceItemCount: number;
+  readonly sourceProviderItemIds: readonly string[];
+  readonly feedItemCount: number;
+  readonly feedProviderMetadata: Record<string, any> | undefined;
+  readonly trendCandidateCount: number;
+  readonly trendCandidateStars48hValues: readonly number[];
+  readonly trendSnapshotCount: number;
+  readonly trendSnapshotStars48hValues: readonly number[];
+  readonly trendResultCount: number;
+  readonly trendResultMetadataList: readonly Record<string, any>[];
+  readonly cursorCount: number;
+  readonly scanAttemptCount: number;
+  readonly scanAttemptStatuses: readonly string[];
+};
+
+const readSqlEvidence = async (pool: Pool, scope: SqlEvidenceScope): Promise<SqlEvidence> => {
+  const sourceItems = await pool.query<{
+    readonly provider_item_id: string;
+    readonly metadata: Record<string, any>;
+  }>(
+    `SELECT provider_item_id, metadata
+     FROM source_items
+     WHERE tenant_id = $1 AND workspace_id = $2 AND source_binding_id = $3 AND provider_key = $4
+     ORDER BY created_at DESC`,
+    [scope.tenantId, scope.workspaceId, scope.sourceBindingId, GITHUB_REPO_RADAR_PROVIDER_KEY],
+  );
+  const feedItems = await pool.query<{
+    readonly provider_metadata: Record<string, any>;
+  }>(
+    `SELECT provider_metadata
+     FROM feed_items
+     WHERE tenant_id = $1 AND workspace_id = $2 AND topic_id = $3 AND provider_key = $4
+     ORDER BY created_at DESC`,
+    [scope.tenantId, scope.workspaceId, scope.topicId, GITHUB_REPO_RADAR_PROVIDER_KEY],
+  );
+  const candidates = await pool.query<{ readonly stars_48h: number }>(
+    `SELECT stars_48h
+     FROM github_repository_trend_candidates
+     WHERE tenant_id = $1 AND workspace_id = $2 AND source_binding_id = $3
+     ORDER BY observed_at DESC`,
+    [scope.tenantId, scope.workspaceId, scope.sourceBindingId],
+  );
+  const snapshots = await pool.query<{ readonly stars_48h: number }>(
+    `SELECT stars_48h
+     FROM github_repository_trend_snapshots
+     WHERE tenant_id = $1 AND workspace_id = $2
+     ORDER BY checked_at DESC`,
+    [scope.tenantId, scope.workspaceId],
+  );
+  const results = await pool.query<{ readonly metadata: Record<string, any> }>(
+    `SELECT metadata
+     FROM github_repository_trend_results
+     WHERE tenant_id = $1 AND workspace_id = $2 AND source_binding_id = $3
+     ORDER BY checked_at DESC`,
+    [scope.tenantId, scope.workspaceId, scope.sourceBindingId],
+  );
+  const cursors = await pool.query(
+    `SELECT id
+     FROM cursor_checkpoints
+     WHERE tenant_id = $1 AND workspace_id = $2 AND source_binding_id = $3`,
+    [scope.tenantId, scope.workspaceId, scope.sourceBindingId],
+  );
+  const attempts = await pool.query<{ readonly status: string }>(
+    `SELECT status
+     FROM scan_attempts
+     WHERE tenant_id = $1 AND workspace_id = $2 AND scan_job_id = ANY($3::uuid[])
+     ORDER BY started_at ASC`,
+    [scope.tenantId, scope.workspaceId, scope.scanJobIds],
+  );
+
+  return {
+    sourceItemCount: sourceItems.rowCount ?? 0,
+    sourceProviderItemIds: sourceItems.rows.map((row) => row.provider_item_id),
+    feedItemCount: feedItems.rowCount ?? 0,
+    feedProviderMetadata: feedItems.rows[0]?.provider_metadata,
+    trendCandidateCount: candidates.rowCount ?? 0,
+    trendCandidateStars48hValues: candidates.rows.map((row) => row.stars_48h),
+    trendSnapshotCount: snapshots.rowCount ?? 0,
+    trendSnapshotStars48hValues: snapshots.rows.map((row) => row.stars_48h),
+    trendResultCount: results.rowCount ?? 0,
+    trendResultMetadataList: results.rows.map((row) => row.metadata),
+    cursorCount: cursors.rowCount ?? 0,
+    scanAttemptCount: attempts.rowCount ?? 0,
+    scanAttemptStatuses: attempts.rows.map((row) => row.status),
+  };
+};
+
+const sumScanResults = (
+  results: ReadonlyArray<{ readonly fetched: number; readonly inserted: number; readonly projected: number }>,
+  field: 'fetched' | 'inserted' | 'projected',
+): number => results.reduce((total, result) => total + result[field], 0);
+
+const databaseKind = (databaseUrl: string): string => {
+  try {
+    const url = new URL(databaseUrl);
+    return `${url.protocol.replace(':', '')}:${url.hostname}:${url.port || 'default'}/${url.pathname.replace(/^\//, '')}`;
+  } catch {
+    return 'postgresql:unparseable';
+  }
+};
+
+const readOptionalEnv = (key: string): string | undefined => {
+  const value = process.env[key]?.trim();
+
+  return value === undefined || value.length === 0 ? undefined : value;
+};
+
+const firstEnv = (...keys: readonly string[]): string | undefined => {
+  for (const key of keys) {
+    const value = readOptionalEnv(key);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+
+  return undefined;
+};
+
+const readCsvEnv = (key: string, fallback: readonly string[]): readonly string[] => {
+  const raw = readOptionalEnv(key);
+  if (raw === undefined) {
+    return fallback;
+  }
+
+  const values = raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  return values.length === 0 ? fallback : values;
+};
+
+const readPositiveIntegerEnv = (
+  key: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number => {
+  const raw = readOptionalEnv(key);
+  const parsed = raw === undefined ? Number.NaN : Number.parseInt(raw, 10);
+
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    return fallback;
+  }
+
+  return parsed;
+};
+
+void main().catch((error) => {
+  console.error(error instanceof Error ? error.stack ?? error.message : error);
+  process.exit(1);
+});

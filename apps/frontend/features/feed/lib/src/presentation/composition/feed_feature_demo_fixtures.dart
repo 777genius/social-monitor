@@ -7,7 +7,7 @@ List<FeedItemApiDto> feedFeatureDemoItems() {
       providerKey: 'github-repo-radar',
       title: 'openai/codex is trending across agent tooling',
       bodyPreview:
-          'AI coding agent CLI gained +210 stars in 24h and +1200 in 7d.',
+          'AI coding agent CLI gained +210 stars in 24h and +360 in 48h.',
       authorHandle: 'openai',
       canonicalUrl: 'https://github.com/openai/codex',
       providerMetadata: _githubRepositoryTrendMetadata(),
@@ -235,6 +235,7 @@ FeedItemApiDto _demoItem({
   Object? providerMetadata,
 }) {
   final observedMinute = 60 - (order * 2);
+  final metrics = _providerMetrics(providerKey, order);
   return FeedItemApiDto(
     id: 'feed-$order',
     topicId: order.isEven ? 'topic-demo' : 'topic-market-risk',
@@ -245,10 +246,87 @@ FeedItemApiDto _demoItem({
     title: title,
     bodyPreview: bodyPreview,
     authorHandle: authorHandle,
+    normalizedSignal: metrics == null ? null : _signal(providerKey, order),
     providerMetadata: providerMetadata,
+    providerMetrics: metrics,
     publishedAt: DateTime.utc(2026, 6, 23, 10, observedMinute.clamp(0, 59)),
     observedAt: DateTime.utc(2026, 6, 23, 12, observedMinute.clamp(0, 59)),
   );
+}
+
+FeedSignalApiDto _signal(String providerKey, int order) {
+  final provider = providerKey == 'github-repo-radar'
+      ? ('repo-trending:24h', 'repository')
+      : providerKey == 'hacker-news'
+      ? ('hn:search', 'story')
+      : ('r/startups', 'post');
+  final score = switch (providerKey) {
+    'github-repo-radar' => 91,
+    'hacker-news' => 76 + (order % 3),
+    _ => 68 + (order % 5),
+  };
+
+  return FeedSignalApiDto(
+    score: score,
+    band: score >= 85
+        ? 'breakout'
+        : score >= 55
+        ? 'high'
+        : 'normal',
+    confidence: providerKey == 'reddit' ? 0.68 : 0.82,
+    basis: 'cohort_baseline_v1',
+    computedAt: DateTime.utc(2026, 6, 23, 12),
+    cohort: FeedSignalCohortApiDto(
+      providerKey: providerKey,
+      sourceKey: provider.$1,
+      contentType: provider.$2,
+      ageBucket: '1-3h',
+      baselineWindow: '24h',
+      sampleSize: providerKey == 'reddit' ? 18 : 34,
+      percentile: score / 100,
+      zScore: 1.1,
+      fallback: 'exact',
+    ),
+  );
+}
+
+Map<String, Object?>? _providerMetrics(String providerKey, int order) {
+  return switch (providerKey) {
+    'reddit' => {
+      'kind': 'reddit_post',
+      'providerKey': 'reddit',
+      'sourceKey': 'r/startups',
+      'contentType': 'post',
+      'score': 40 + order * 2,
+      'comments': 8 + order,
+      'upvoteRatio': 0.9,
+    },
+    'github-repo-radar' => {
+      'kind': 'github_repository',
+      'providerKey': 'github-repo-radar',
+      'sourceKey': 'repo-trending:24h',
+      'contentType': 'repository',
+      'stars': 54000,
+      'forks': 6100,
+      'trendingDelta': {'window': '24h', 'value': 210},
+      'trendDeltas': [
+        {'window': '24h', 'value': 210},
+        {'window': '48h', 'value': 360},
+        {'window': '7d', 'value': 1200},
+        {'window': '30d', 'value': 4800},
+        {'window': '90d', 'value': 11000},
+      ],
+    },
+    'hacker-news' => {
+      'kind': 'hacker_news_story',
+      'providerKey': 'hacker-news',
+      'sourceKey': 'hn:search',
+      'contentType': 'story',
+      'points': 80 + order * 3,
+      'comments': 12 + order,
+    },
+    _ => null,
+  };
 }
 
 Map<String, Object?> _githubRepositoryTrendMetadata() {
@@ -261,10 +339,12 @@ Map<String, Object?> _githubRepositoryTrendMetadata() {
       'language': 'TypeScript',
       'topics': ['ai', 'agents', 'developer-tools'],
       'license': 'Apache-2.0',
+      'forksCount': 6100,
     },
     'trend': {
       'totalStars': 54000,
       'stars24h': 210,
+      'stars48h': 360,
       'stars7d': 1200,
       'stars30d': 4800,
       'stars90d': 11000,

@@ -229,14 +229,14 @@ model Topic {
 }
 
 model SourceCatalogEntry {
-  id                 String          @id @db.Uuid
-  providerKey        String          @unique @map("provider_key")
-  displayName        String          @map("display_name")
-  acquisitionMode    String          @map("acquisition_mode")
+  id                 String              @id @db.Uuid
+  providerKey        String              @unique @map("provider_key")
+  displayName        String              @map("display_name")
+  acquisitionMode    String              @map("acquisition_mode")
   readiness          String
   capabilityProfiles CapabilityProfile[]
-  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("source_catalog_entries")
 }
@@ -255,18 +255,18 @@ model CapabilityProfile {
 }
 
 model SourceBinding {
-  id                          String              @id @db.Uuid
-  tenantId                    String              @map("tenant_id") @db.Uuid
-  workspaceId                 String              @map("workspace_id") @db.Uuid
-  topicId                     String              @map("topic_id") @db.Uuid
-  sourceCatalogEntryId        String              @map("source_catalog_entry_id") @db.Uuid
-  capabilityProfileVersion    Int                 @map("capability_profile_version")
-  status                      SourceBindingStatus @default(DRAFT)
-  config                      Json
-  cursorResetRequestedAt      DateTime?           @map("cursor_reset_requested_at") @db.Timestamptz(6)
-  createdAt                   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                   DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt                   DateTime?           @map("deleted_at") @db.Timestamptz(6)
+  id                       String              @id @db.Uuid
+  tenantId                 String              @map("tenant_id") @db.Uuid
+  workspaceId              String              @map("workspace_id") @db.Uuid
+  topicId                  String              @map("topic_id") @db.Uuid
+  sourceCatalogEntryId     String              @map("source_catalog_entry_id") @db.Uuid
+  capabilityProfileVersion Int                 @map("capability_profile_version")
+  status                   SourceBindingStatus @default(DRAFT)
+  config                   Json
+  cursorResetRequestedAt   DateTime?           @map("cursor_reset_requested_at") @db.Timestamptz(6)
+  createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                DateTime?           @map("deleted_at") @db.Timestamptz(6)
 
   @@index([tenantId, workspaceId, topicId, status])
   @@map("source_bindings")
@@ -306,16 +306,16 @@ model SourceCredentialSecret {
 }
 
 model ScanPolicy {
-  id              String   @id @db.Uuid
-  tenantId        String   @map("tenant_id") @db.Uuid
-  workspaceId     String   @map("workspace_id") @db.Uuid
-  sourceBindingId String   @map("source_binding_id") @db.Uuid
-  intervalSeconds Int      @map("interval_seconds")
-  freshnessSeconds Int     @map("freshness_seconds")
-  retryBudget     Int      @map("retry_budget")
-  nextRunAt       DateTime @map("next_run_at") @db.Timestamptz(6)
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id               String   @id @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  sourceBindingId  String   @map("source_binding_id") @db.Uuid
+  intervalSeconds  Int      @map("interval_seconds")
+  freshnessSeconds Int      @map("freshness_seconds")
+  retryBudget      Int      @map("retry_budget")
+  nextRunAt        DateTime @map("next_run_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, sourceBindingId])
   @@index([tenantId, workspaceId])
@@ -445,29 +445,50 @@ model ScanLeaseEntry {
 }
 
 model FeedItem {
-  id            String         @id @db.Uuid
-  tenantId      String         @map("tenant_id") @db.Uuid
-  workspaceId   String         @map("workspace_id") @db.Uuid
-  topicId       String         @map("topic_id") @db.Uuid
-  sourceItemId  String         @map("source_item_id") @db.Uuid
-  sourceBindingId String       @map("source_binding_id") @db.Uuid
-  providerKey   String         @map("provider_key")
-  dedupeKey     String         @map("dedupe_key")
-  canonicalUrl  String         @map("canonical_url")
-  title         String
-  bodyPreview   String         @map("body_preview")
-  authorHandle  String?        @map("author_handle")
-  publishedAt   DateTime       @map("published_at") @db.Timestamptz(6)
-  observedAt    DateTime       @map("observed_at") @db.Timestamptz(6)
-  providerMetadata Json?        @map("provider_metadata")
-  status        FeedItemStatus @default(VISIBLE)
-  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id               String         @id @db.Uuid
+  tenantId         String         @map("tenant_id") @db.Uuid
+  workspaceId      String         @map("workspace_id") @db.Uuid
+  topicId          String         @map("topic_id") @db.Uuid
+  sourceItemId     String         @map("source_item_id") @db.Uuid
+  sourceBindingId  String         @map("source_binding_id") @db.Uuid
+  providerKey      String         @map("provider_key")
+  dedupeKey        String         @map("dedupe_key")
+  canonicalUrl     String         @map("canonical_url")
+  title            String
+  bodyPreview      String         @map("body_preview")
+  authorHandle     String?        @map("author_handle")
+  publishedAt      DateTime       @map("published_at") @db.Timestamptz(6)
+  observedAt       DateTime       @map("observed_at") @db.Timestamptz(6)
+  providerMetadata Json?          @map("provider_metadata")
+  status           FeedItemStatus @default(VISIBLE)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, topicId, dedupeKey])
   @@index([tenantId, workspaceId, status, createdAt])
   @@index([tenantId, workspaceId, providerKey, observedAt])
   @@map("feed_items")
+}
+
+model FeedSignalBaselineSample {
+  id          String   @id @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  topicId     String   @map("topic_id") @db.Uuid
+  feedItemId  String   @map("feed_item_id") @db.Uuid
+  providerKey String   @map("provider_key")
+  sourceKey   String   @map("source_key")
+  contentType String   @map("content_type")
+  strength    Float
+  publishedAt DateTime @map("published_at") @db.Timestamptz(6)
+  observedAt  DateTime @map("observed_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, feedItemId])
+  @@index([tenantId, workspaceId, topicId, observedAt])
+  @@index([tenantId, workspaceId, providerKey, contentType, observedAt])
+  @@map("feed_signal_baseline_samples")
 }
 
 model GitHubRepositoryTrendCandidate {
@@ -480,6 +501,7 @@ model GitHubRepositoryTrendCandidate {
   repositoryFullName String   @map("repository_full_name")
   primaryWindow      String   @map("primary_window")
   stars24h           Int      @map("stars_24h")
+  stars48h           Int      @default(0) @map("stars_48h")
   stars7d            Int      @map("stars_7d")
   stars30d           Int      @map("stars_30d")
   stars90d           Int      @map("stars_90d")
@@ -506,6 +528,7 @@ model GitHubRepositoryTrendSnapshot {
   license            String?
   totalStars         Int      @map("total_stars")
   stars24h           Int      @map("stars_24h")
+  stars48h           Int      @default(0) @map("stars_48h")
   stars7d            Int      @map("stars_7d")
   stars30d           Int      @map("stars_30d")
   stars90d           Int      @map("stars_90d")
@@ -543,23 +566,23 @@ model GitHubRepositoryTrendResult {
 }
 
 model SummaryArtifact {
-  id             String        @id @db.Uuid
-  tenantId       String        @map("tenant_id") @db.Uuid
-  workspaceId    String        @map("workspace_id") @db.Uuid
-  topicId        String        @map("topic_id") @db.Uuid
-  userId         String?       @map("user_id")
-  subscriptionId String?       @map("subscription_id") @db.Uuid
-  status         SummaryStatus @default(COMPLETED)
-  schemaVersion  Int           @default(1) @map("schema_version")
-  modelVersion   String        @map("model_version")
-  promptVersion  String        @map("prompt_version")
-  headline       String
-  summaryText    String?       @map("summary_text")
-  artifactPayload Json         @map("artifact_payload")
-  citations      Json
-  qualitySignals Json          @map("quality_signals")
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String        @id @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  workspaceId     String        @map("workspace_id") @db.Uuid
+  topicId         String        @map("topic_id") @db.Uuid
+  userId          String?       @map("user_id")
+  subscriptionId  String?       @map("subscription_id") @db.Uuid
+  status          SummaryStatus @default(COMPLETED)
+  schemaVersion   Int           @default(1) @map("schema_version")
+  modelVersion    String        @map("model_version")
+  promptVersion   String        @map("prompt_version")
+  headline        String
+  summaryText     String?       @map("summary_text")
+  artifactPayload Json          @map("artifact_payload")
+  citations       Json
+  qualitySignals  Json          @map("quality_signals")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([tenantId, workspaceId, topicId, status, createdAt])
   @@index([tenantId, workspaceId, userId, topicId, createdAt])
@@ -685,24 +708,24 @@ model BriefingJob {
 }
 
 model BriefingPolicy {
-  id                       String   @id @db.Uuid
-  tenantId                 String   @map("tenant_id") @db.Uuid
-  workspaceId              String   @map("workspace_id") @db.Uuid
-  scopeType                String   @map("scope_type")
-  scopeKey                 String   @map("scope_key")
-  topicId                  String?  @map("topic_id") @db.Uuid
-  language                 String
-  format                   String
-  tone                     String
-  maxStories               Int      @map("max_stories")
-  includeRisks             Boolean  @map("include_risks")
-  includeTopicHighlights   Boolean  @map("include_topic_highlights")
-  includeRepeatedSignals   Boolean  @map("include_repeated_signals")
-  dedupeStrategy           String   @map("dedupe_strategy")
-  customInstructions       String?  @map("custom_instructions")
-  rulesVersion             String   @map("rules_version")
-  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                     String   @id @db.Uuid
+  tenantId               String   @map("tenant_id") @db.Uuid
+  workspaceId            String   @map("workspace_id") @db.Uuid
+  scopeType              String   @map("scope_type")
+  scopeKey               String   @map("scope_key")
+  topicId                String?  @map("topic_id") @db.Uuid
+  language               String
+  format                 String
+  tone                   String
+  maxStories             Int      @map("max_stories")
+  includeRisks           Boolean  @map("include_risks")
+  includeTopicHighlights Boolean  @map("include_topic_highlights")
+  includeRepeatedSignals Boolean  @map("include_repeated_signals")
+  dedupeStrategy         String   @map("dedupe_strategy")
+  customInstructions     String?  @map("custom_instructions")
+  rulesVersion           String   @map("rules_version")
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, workspaceId, scopeKey])
   @@index([tenantId, workspaceId, updatedAt])
@@ -763,34 +786,34 @@ model Digest {
 }
 
 model DigestSchedule {
-  id               String               @id @db.Uuid
-  tenantId         String               @map("tenant_id") @db.Uuid
-  workspaceId      String               @map("workspace_id") @db.Uuid
-  recipientKey     String               @map("recipient_key")
-  channel          String
-  topicIds         String[]             @map("topic_ids")
-  intervalSeconds  Int                  @map("interval_seconds")
-  includeNoSignal  Boolean              @map("include_no_signal")
-  nextRunAt        DateTime             @map("next_run_at") @db.Timestamptz(6)
-  createdAt        DateTime             @map("created_at") @db.Timestamptz(6)
-  status           DigestScheduleStatus @default(ENABLED)
-  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String               @id @db.Uuid
+  tenantId        String               @map("tenant_id") @db.Uuid
+  workspaceId     String               @map("workspace_id") @db.Uuid
+  recipientKey    String               @map("recipient_key")
+  channel         String
+  topicIds        String[]             @map("topic_ids")
+  intervalSeconds Int                  @map("interval_seconds")
+  includeNoSignal Boolean              @map("include_no_signal")
+  nextRunAt       DateTime             @map("next_run_at") @db.Timestamptz(6)
+  createdAt       DateTime             @map("created_at") @db.Timestamptz(6)
+  status          DigestScheduleStatus @default(ENABLED)
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([tenantId, workspaceId, status, nextRunAt])
   @@map("digest_schedules")
 }
 
 model SourceTarget {
-  id            String   @id @db.Uuid
-  tenantId      String   @map("tenant_id") @db.Uuid
-  workspaceId   String   @map("workspace_id") @db.Uuid
-  providerKey   String   @map("provider_key")
-  targetKind    String   @map("target_kind")
-  targetValue   String   @map("target_value")
-  normalizedKey String   @map("normalized_key")
+  id            String             @id @db.Uuid
+  tenantId      String             @map("tenant_id") @db.Uuid
+  workspaceId   String             @map("workspace_id") @db.Uuid
+  providerKey   String             @map("provider_key")
+  targetKind    String             @map("target_kind")
+  targetValue   String             @map("target_value")
+  normalizedKey String             @map("normalized_key")
   config        Json
-  createdAt     DateTime @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt     DateTime           @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
   subscriptions UserSubscription[]
 
   @@unique([tenantId, workspaceId, providerKey, normalizedKey])
@@ -799,15 +822,15 @@ model SourceTarget {
 }
 
 model UserSubscription {
-  id             String                 @id @db.Uuid
-  tenantId       String                 @map("tenant_id") @db.Uuid
-  workspaceId    String                 @map("workspace_id") @db.Uuid
-  userId         String                 @map("user_id")
-  sourceTargetId String                 @map("source_target_id") @db.Uuid
-  status         UserSubscriptionStatus @default(ENABLED)
-  createdAt      DateTime               @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sourceTarget   SourceTarget           @relation(fields: [sourceTargetId], references: [id], onDelete: Restrict)
+  id             String                    @id @db.Uuid
+  tenantId       String                    @map("tenant_id") @db.Uuid
+  workspaceId    String                    @map("workspace_id") @db.Uuid
+  userId         String                    @map("user_id")
+  sourceTargetId String                    @map("source_target_id") @db.Uuid
+  status         UserSubscriptionStatus    @default(ENABLED)
+  createdAt      DateTime                  @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sourceTarget   SourceTarget              @relation(fields: [sourceTargetId], references: [id], onDelete: Restrict)
   schedule       UserSubscriptionSchedule?
   preferences    UserSummaryPreference[]
 
@@ -837,22 +860,22 @@ model UserSubscriptionSchedule {
 }
 
 model UserSummaryPreference {
-  id                      String   @id @db.Uuid
-  tenantId                String   @map("tenant_id") @db.Uuid
-  workspaceId             String   @map("workspace_id") @db.Uuid
-  userId                  String   @map("user_id")
-  subscriptionId          String?  @map("subscription_id") @db.Uuid
-  topicId                 String?  @map("topic_id") @db.Uuid
+  id                      String            @id @db.Uuid
+  tenantId                String            @map("tenant_id") @db.Uuid
+  workspaceId             String            @map("workspace_id") @db.Uuid
+  userId                  String            @map("user_id")
+  subscriptionId          String?           @map("subscription_id") @db.Uuid
+  topicId                 String?           @map("topic_id") @db.Uuid
   language                String?
   format                  String?
   tone                    String?
-  maxKeyPoints            Int?     @map("max_key_points")
-  includeRisks            Boolean? @map("include_risks")
-  includeSourceHighlights Boolean? @map("include_source_highlights")
-  customInstructions      String?  @map("custom_instructions")
-  rulesVersion            String   @map("rules_version")
-  createdAt               DateTime @map("created_at") @db.Timestamptz(6)
-  updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  maxKeyPoints            Int?              @map("max_key_points")
+  includeRisks            Boolean?          @map("include_risks")
+  includeSourceHighlights Boolean?          @map("include_source_highlights")
+  customInstructions      String?           @map("custom_instructions")
+  rulesVersion            String            @map("rules_version")
+  createdAt               DateTime          @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   subscription            UserSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
 
   @@unique([tenantId, workspaceId, userId, subscriptionId])
@@ -893,6 +916,31 @@ model RelevanceFeedbackSignal {
   @@unique([tenantId, workspaceId, idempotencyKey])
   @@index([tenantId, workspaceId, userId, createdAt])
   @@map("relevance_feedback_signals")
+}
+
+model RelevanceMemoryProjection {
+  id                String    @id @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  workspaceId       String    @map("workspace_id") @db.Uuid
+  feedbackId        String    @map("feedback_id") @db.Uuid
+  userId            String    @map("user_id")
+  idempotencyKey    String    @map("idempotency_key")
+  action            String
+  rating            Int?
+  target            Json
+  learningDirection String    @map("learning_direction")
+  status            String
+  retryCount        Int       @default(0) @map("retry_count")
+  nextAttemptAt     DateTime  @map("next_attempt_at") @db.Timestamptz(6)
+  projectedAt       DateTime? @map("projected_at") @db.Timestamptz(6)
+  lastError         String?   @map("last_error")
+  createdAt         DateTime  @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, feedbackId])
+  @@index([status, nextAttemptAt, createdAt])
+  @@index([tenantId, workspaceId, userId, status])
+  @@map("relevance_memory_projections")
 }
 
 model RealtimeEvent {
@@ -1020,15 +1068,15 @@ model RateLimitBucket {
 
 model UsageQuotaBucket {
   bucketKey       String   @id @map("bucket_key")
-  tenantId         String   @map("tenant_id") @db.Uuid
-  workspaceId      String   @map("workspace_id") @db.Uuid
-  subjectKey       String   @map("subject_key")
-  operation        String
-  windowStartedAt  DateTime @map("window_started_at") @db.Timestamptz(6)
-  windowEndsAt     DateTime @map("window_ends_at") @db.Timestamptz(6)
-  consumed         Int
-  limit            Int
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenantId        String   @map("tenant_id") @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  subjectKey      String   @map("subject_key")
+  operation       String
+  windowStartedAt DateTime @map("window_started_at") @db.Timestamptz(6)
+  windowEndsAt    DateTime @map("window_ends_at") @db.Timestamptz(6)
+  consumed        Int
+  limit           Int
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([tenantId, workspaceId, subjectKey, operation, windowStartedAt])
   @@index([windowEndsAt])
@@ -1066,16 +1114,16 @@ model InboxRecord {
 }
 
 model IdempotencyKey {
-  id             String   @id @db.Uuid
-  tenantId       String?  @map("tenant_id") @db.Uuid
-  workspaceId    String?  @map("workspace_id") @db.Uuid
-  scope          String
-  key            String
-  requestHash    String?  @map("request_hash")
-  responseStatus Int?     @map("response_status")
-  responsePayload Json?   @map("response_payload")
-  expiresAt      DateTime? @map("expires_at") @db.Timestamptz(6)
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id              String    @id @db.Uuid
+  tenantId        String?   @map("tenant_id") @db.Uuid
+  workspaceId     String?   @map("workspace_id") @db.Uuid
+  scope           String
+  key             String
+  requestHash     String?   @map("request_hash")
+  responseStatus  Int?      @map("response_status")
+  responsePayload Json?     @map("response_payload")
+  expiresAt       DateTime? @map("expires_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@unique([tenantId, workspaceId, scope, key])
   @@index([expiresAt])

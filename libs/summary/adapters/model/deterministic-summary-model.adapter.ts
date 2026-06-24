@@ -99,6 +99,7 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
       sourceItemId: item.sourceItemId,
       providerKey: item.providerKey,
       field: 'title' as const,
+      canonicalUrl: item.canonicalUrl,
     }));
     const keyPoints = selectedItems.map((item, index) => ({
       claim: item.title,
@@ -214,13 +215,16 @@ const formatRepositoryTrendHighlight = (metadata: unknown): string | undefined =
   const trend = readRecord(record.trend);
   const fullName = readString(repository?.fullName);
   const totalStars = readNumber(trend?.totalStars);
+  const stars48h = readNumber(trend?.stars48h);
   const stars7d = readNumber(trend?.stars7d);
+  const growthWindow = stars48h === undefined ? '7d' : '48h';
+  const growth = stars48h ?? stars7d;
 
-  if (fullName === undefined || totalStars === undefined || stars7d === undefined) {
+  if (fullName === undefined || totalStars === undefined || growth === undefined) {
     return undefined;
   }
 
-  return `${fullName}: ${totalStars} stars, +${stars7d} in 7d`;
+  return `${fullName}: ${totalStars} stars, +${growth} in ${growthWindow}`;
 };
 
 const readRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>

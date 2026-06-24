@@ -8,12 +8,16 @@ import type {
   BriefingTopicHighlight,
   GeneratedBriefingDraft,
 } from '../../domain';
+import { buildBriefingReaderBrief } from '../../domain';
 import type {
   BriefingModelEstimate,
   BriefingModelFailure,
   BriefingModelInput,
   BriefingModelRoute,
 } from '../../ports';
+import {
+  openAiBriefingReaderJsonSchemaDefs,
+} from './openai-responses-briefing-reader-support';
 
 const qualityFlags = new Set<BriefingQualityFlag>([
   'no_signal',
@@ -22,6 +26,7 @@ const qualityFlags = new Set<BriefingQualityFlag>([
   'limited_sources',
   'partial_evidence',
   'context_unavailable',
+  'provider_failed',
 ]);
 const confidenceLevels = new Set<BriefingConfidence['level']>(['none', 'low', 'medium', 'high']);
 const citationFields = new Set<BriefingCitation['field']>(['title', 'bodyPreview', 'canonicalUrl']);
@@ -39,25 +44,52 @@ export const normalizeOpenAiBriefingDraft = (
   usage: GeneratedBriefingDraft['usage'],
   evalDatasetVersion: string,
 ): GeneratedBriefingDraft => {
+  const citationMap = withEvidenceCanonicalUrls(
+    requiredArray<Record<string, unknown>>(raw.citationMap, 'briefing citation map')
+      .map(normalizeCitation),
+    input.evidence.selectedEvidence,
+  );
+  const headline = requiredString(raw.headline, 'briefing headline');
+  const executiveSummary = requiredString(raw.executiveSummary, 'briefing executive summary');
+  const topStories = requiredArray<Record<string, unknown>>(raw.topStories, 'briefing top stories').map(normalizeTopStory);
+  const topicHighlights = input.policy.includeTopicHighlights
+    ? requiredArray<Record<string, unknown>>(raw.topicHighlights, 'briefing topic highlights').map(normalizeTopicHighlight)
+    : [];
+  const repeatedSignals = input.policy.includeRepeatedSignals
+    ? requiredArray<Record<string, unknown>>(raw.repeatedSignals, 'briefing repeated signals').map(normalizeRepeatedSignal)
+    : [];
+  const risksAndUnknowns = input.policy.includeRisks
+    ? requiredArray<Record<string, unknown>>(raw.risksAndUnknowns, 'briefing risks').map(normalizeRisk)
+    : [];
+  const qualityFlags = normalizeQualityFlags(raw.qualityFlags);
+  const noSignalReason = optionalString(raw.noSignalReason);
+  const readerBrief = buildBriefingReaderBrief({
+    headline,
+    executiveSummary,
+    topStories,
+    topicHighlights,
+    repeatedSignals,
+    risksAndUnknowns,
+    citationMap,
+    storyClusters: input.evidence.clusters,
+    selectedEvidence: input.evidence.selectedEvidence,
+    qualityFlags,
+    noSignalReason,
+  });
   const draft: GeneratedBriefingDraft = {
-    headline: requiredString(raw.headline, 'briefing headline'),
-    executiveSummary: requiredString(raw.executiveSummary, 'briefing executive summary'),
-    topStories: requiredArray<Record<string, unknown>>(raw.topStories, 'briefing top stories').map(normalizeTopStory),
-    topicHighlights: input.policy.includeTopicHighlights
-      ? requiredArray<Record<string, unknown>>(raw.topicHighlights, 'briefing topic highlights').map(normalizeTopicHighlight)
-      : [],
-    repeatedSignals: input.policy.includeRepeatedSignals
-      ? requiredArray<Record<string, unknown>>(raw.repeatedSignals, 'briefing repeated signals').map(normalizeRepeatedSignal)
-      : [],
-    risksAndUnknowns: input.policy.includeRisks
-      ? requiredArray<Record<string, unknown>>(raw.risksAndUnknowns, 'briefing risks').map(normalizeRisk)
-      : [],
-    citationMap: requiredArray<Record<string, unknown>>(raw.citationMap, 'briefing citation map').map(normalizeCitation),
-    qualityFlags: normalizeQualityFlags(raw.qualityFlags),
+    headline,
+    executiveSummary,
+    readerBrief,
+    topStories,
+    topicHighlights,
+    repeatedSignals,
+    risksAndUnknowns,
+    citationMap,
+    qualityFlags,
     confidence: normalizeConfidence(requiredRecord(raw.confidence, 'briefing confidence')),
     lineage: buildLineage(input, route, evalDatasetVersion),
     usage,
-    noSignalReason: optionalString(raw.noSignalReason),
+    noSignalReason,
   };
   assertOpenAiBriefingDraftShape(draft);
 
@@ -95,6 +127,7 @@ export const openAiBriefingJsonSchema = {
   required: [
     'headline',
     'executiveSummary',
+    'readerBrief',
     'topStories',
     'topicHighlights',
     'repeatedSignals',
@@ -107,6 +140,7 @@ export const openAiBriefingJsonSchema = {
   properties: {
     headline: { type: 'string' },
     executiveSummary: { type: 'string' },
+    readerBrief: { $ref: '#/$defs/readerBrief' },
     topStories: { type: 'array', items: { $ref: '#/$defs/topStory' } },
     topicHighlights: { type: 'array', items: { $ref: '#/$defs/topicHighlight' } },
     repeatedSignals: { type: 'array', items: { $ref: '#/$defs/repeatedSignal' } },
@@ -126,6 +160,7 @@ export const openAiBriefingJsonSchema = {
     noSignalReason: { type: ['string', 'null'] },
   },
   $defs: {
+    ...openAiBriefingReaderJsonSchemaDefs,
     topStory: objectSchema(['storyClusterId', 'title', 'summary', 'topicIds', 'providerKeys', 'citationIds'], {
       storyClusterId: { type: 'string' },
       title: { type: 'string' },
@@ -273,6 +308,20 @@ const normalizeCitation = (value: Record<string, unknown>): BriefingCitation => 
   providerKey: requiredString(value.providerKey, 'citation provider key'),
   field: normalizeSetValue(value.field, citationFields, 'citation field') ?? 'title',
 });
+
+const withEvidenceCanonicalUrls = (
+  citations: readonly BriefingCitation[],
+  evidenceItems: BriefingModelInput['evidence']['selectedEvidence'],
+): readonly BriefingCitation[] => {
+  const canonicalUrlByFeedItemId = new Map(
+    evidenceItems.map((item) => [item.feedItemId, item.canonicalUrl] as const),
+  );
+
+  return citations.map((citation) => ({
+    ...citation,
+    canonicalUrl: canonicalUrlByFeedItemId.get(citation.feedItemId),
+  }));
+};
 
 const normalizeConfidence = (value: Record<string, unknown>): BriefingConfidence => ({
   level: normalizeSetValue(value.level, confidenceLevels, 'confidence level') ?? 'low',

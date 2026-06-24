@@ -1,3 +1,7 @@
+import type {
+  FeedNormalizedSignal,
+  FeedProviderMetrics,
+} from '../../domain';
 import type { JsonObject } from '@social-monitor/shared-kernel';
 
 export type FeedItemListEntry = {
@@ -13,6 +17,8 @@ export type FeedItemListEntry = {
   readonly publishedAt: string;
   readonly observedAt: string;
   readonly providerMetadata?: JsonObject;
+  readonly providerMetrics?: FeedProviderMetrics;
+  readonly normalizedSignal?: FeedNormalizedSignal;
 };
 
 export type ListFeedItemsUseCaseResult = {

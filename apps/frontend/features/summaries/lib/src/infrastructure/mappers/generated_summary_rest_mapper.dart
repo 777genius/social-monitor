@@ -2,9 +2,12 @@ import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
     as generated;
 
 import '../api/summary_api_dto.dart';
+import 'briefing_reader_brief_rest_mapper.dart';
 
 final class GeneratedSummaryRestMapper {
   const GeneratedSummaryRestMapper();
+
+  static const _readerBriefMapper = BriefingReaderBriefRestMapper();
 
   SummaryPageApiDto list(generated.ListSummariesResponseDto dto) {
     return SummaryPageApiDto(
@@ -21,6 +24,8 @@ final class GeneratedSummaryRestMapper {
         executiveSummary: dto.executiveSummary,
         noSignalReason: dto.noSignalReason,
       ),
+      userId: dto.userId,
+      readerBrief: _readerBriefMapper.map(dto.readerBrief),
       topStories: dto.topStories
           .map(
             (story) => BriefingStoryApiDto(
@@ -118,8 +123,13 @@ final class GeneratedSummaryRestMapper {
     final field = dto.field.json ?? 'evidence';
     return SummaryCitationApiDto(
       id: dto.citationId,
-      sourceLabel: '${dto.providerKey} ${dto.label}',
-      rawSnippet: 'Evidence field $field from source item ${dto.sourceItemId}',
+      sourceLabel: '${_providerLabel(dto.providerKey)} ${dto.label}',
+      rawSnippet: _citationSnippet(
+        providerKey: dto.providerKey,
+        field: field,
+        sourceItemId: dto.sourceItemId,
+      ),
+      canonicalUrl: dto.canonicalUrl,
     );
   }
 
@@ -129,9 +139,34 @@ final class GeneratedSummaryRestMapper {
     final field = dto.field.json ?? 'evidence';
     return SummaryCitationApiDto(
       id: dto.citationId,
-      sourceLabel: '${dto.providerKey} ${dto.label}',
-      rawSnippet: 'Evidence field $field from source item ${dto.sourceItemId}',
+      sourceLabel: '${_providerLabel(dto.providerKey)} ${dto.label}',
+      rawSnippet: _citationSnippet(
+        providerKey: dto.providerKey,
+        field: field,
+        sourceItemId: dto.sourceItemId,
+      ),
+      canonicalUrl: dto.canonicalUrl,
     );
+  }
+
+  String _citationSnippet({
+    required String providerKey,
+    required String field,
+    required String sourceItemId,
+  }) {
+    final provider = _providerLabel(providerKey);
+    return '$provider citation references $field evidence from source item $sourceItemId.';
+  }
+
+  String _providerLabel(String providerKey) {
+    return switch (providerKey.toLowerCase()) {
+      'github-repo-radar' => 'Repo Radar',
+      'github-issues' || 'github' => 'GitHub',
+      'hacker-news' || 'hn' => 'Hacker News',
+      'reddit' => 'Reddit',
+      'rss' => 'RSS',
+      _ => providerKey,
+    };
   }
 
   String _artifactStatus(
@@ -206,6 +241,10 @@ final class GeneratedSummaryRestMapper {
       generated
           .BriefingArtifactResponseDtoQualityFlagsQualityFlags
           .contextUnavailable => true,
+      generated
+          .BriefingArtifactResponseDtoQualityFlagsQualityFlags
+          .providerFailed =>
+        true,
       generated.BriefingArtifactResponseDtoQualityFlagsQualityFlags.$unknown =>
         false,
     };

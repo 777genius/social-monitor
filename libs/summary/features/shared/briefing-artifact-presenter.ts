@@ -2,8 +2,10 @@ import type {
   BriefingArtifact,
   BriefingArtifactProps,
   BriefingContextArtifact,
+  BriefingReaderBrief,
   StoryCluster,
 } from '../../domain';
+import { buildBriefingReaderBrief } from '../../domain';
 import type { BriefingFreshness } from '../../ports';
 
 export type BriefingCitationView = {
@@ -13,6 +15,7 @@ export type BriefingCitationView = {
   readonly sourceItemId: string;
   readonly providerKey: string;
   readonly field: 'title' | 'bodyPreview' | 'canonicalUrl';
+  readonly canonicalUrl?: string;
 };
 
 export type BriefingStoryClusterView = Omit<StoryCluster, 'observedAtRange'> & {
@@ -28,8 +31,9 @@ export type BriefingContextArtifactView = Omit<BriefingContextArtifact, 'generat
 
 export type BriefingArtifactView = Omit<
   BriefingArtifactProps,
-  'sourceWindow' | 'storyClusters' | 'contextArtifacts'
+  'sourceWindow' | 'storyClusters' | 'contextArtifacts' | 'readerBrief'
 > & {
+  readonly readerBrief: BriefingReaderBrief;
   readonly sourceWindow: Omit<BriefingArtifactProps['sourceWindow'], 'startedAt' | 'endedAt'> & {
     readonly startedAt: string;
     readonly endedAt: string;
@@ -66,6 +70,18 @@ export const presentBriefingArtifact = (
 
   return {
     ...snapshot,
+    readerBrief: snapshot.readerBrief ?? buildBriefingReaderBrief({
+      headline: snapshot.headline,
+      executiveSummary: snapshot.executiveSummary,
+      topStories: snapshot.topStories,
+      topicHighlights: snapshot.topicHighlights,
+      repeatedSignals: snapshot.repeatedSignals,
+      risksAndUnknowns: snapshot.risksAndUnknowns,
+      citationMap: snapshot.citationMap,
+      storyClusters: snapshot.storyClusters,
+      qualityFlags: snapshot.qualityFlags,
+      noSignalReason: snapshot.noSignalReason,
+    }),
     sourceWindow: {
       ...snapshot.sourceWindow,
       startedAt: snapshot.sourceWindow.startedAt.toISOString(),
@@ -89,6 +105,7 @@ export const presentBriefingArtifact = (
       sourceItemId: citation.sourceItemId,
       providerKey: citation.providerKey,
       field: citation.field,
+      canonicalUrl: citation.canonicalUrl,
     })),
     freshness: presentFreshness(freshness),
   };

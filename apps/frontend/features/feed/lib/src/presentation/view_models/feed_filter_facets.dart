@@ -114,7 +114,7 @@ List<String> _orderedUnique(Iterable<String> values) {
 }
 
 List<String> _orderedTrendWindows(Iterable<String> values) {
-  const order = ['24h', '7d', '30d', '90d'];
+  const order = ['24h', '48h'];
   final present = values.map((value) => value.toLowerCase()).toSet();
   return order.where(present.contains).toList(growable: false);
 }

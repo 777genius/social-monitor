@@ -12,9 +12,11 @@ class SummariesFeatureRoute extends StatelessWidget {
     super.key,
     required Object generatedApiRuntime,
     required WorkspaceScope scope,
+    required String userId,
   }) : _module = SummariesFeatureModule.generatedApi(
          generatedApiRuntime: generatedApiRuntime,
          scope: scope,
+         userId: userId,
        );
 
   final SummariesFeatureModule _module;

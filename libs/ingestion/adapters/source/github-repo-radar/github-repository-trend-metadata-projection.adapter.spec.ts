@@ -40,6 +40,7 @@ describe('GitHubRepositoryTrendMetadataProjectionAdapter', () => {
             trend: {
               totalStars: 54000,
               stars24h: 210,
+              stars48h: 360,
               stars7d: 1200,
               stars30d: 4800,
               stars90d: 11000,
@@ -71,6 +72,7 @@ describe('GitHubRepositoryTrendMetadataProjectionAdapter', () => {
         repositoryFullName: 'openai/codex',
         totalStars: 54000,
         stars24h: 210,
+        stars48h: 360,
         primaryWindow: '24h',
         source: 'fixture_gh_archive_plus_github_live',
       }),

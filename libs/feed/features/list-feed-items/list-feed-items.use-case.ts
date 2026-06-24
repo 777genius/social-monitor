@@ -1,18 +1,33 @@
-import { DomainError, err, ok, type Result } from '@social-monitor/shared-kernel';
+import {
+  type Clock,
+  DomainError,
+  err,
+  ok,
+  type Result,
+} from '@social-monitor/shared-kernel';
 
-import type { FeedItemReadRepositoryPort } from '../../ports';
+import { CohortBaselineFeedSignalNormalizer } from '../../domain';
+import type { FeedItemReadRepositoryPort, FeedSignalBaselineRepositoryPort } from '../../ports';
+import { presentFeedItem } from '../shared/feed-item-presenter';
 import type { ListFeedItemsUseCaseQuery } from './list-feed-items.query';
 import type { ListFeedItemsUseCaseResult } from './list-feed-items.result';
 
 type ListFeedItemsFailure = DomainError | Error;
 
 const MAX_LIMIT = 100;
+const MAX_HISTORICAL_BASELINE_ITEMS = 2000;
+const HISTORICAL_BASELINE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_SEARCH_QUERY_LENGTH = 200;
 const MAX_FILTER_VALUE_LENGTH = 80;
-const REPOSITORY_TREND_WINDOWS = new Set(['24h', '7d', '30d', '90d']);
+const REPOSITORY_TREND_WINDOWS = new Set(['24h', '48h']);
 
 export class ListFeedItemsUseCase {
-  constructor(private readonly feedItems: FeedItemReadRepositoryPort) {}
+  constructor(
+    private readonly feedItems: FeedItemReadRepositoryPort,
+    private readonly signalBaseline: FeedSignalBaselineRepositoryPort,
+    private readonly clock: Clock,
+    private readonly signalNormalizer = new CohortBaselineFeedSignalNormalizer(),
+  ) {}
 
   async execute(
     query: ListFeedItemsUseCaseQuery,
@@ -35,27 +50,23 @@ export class ListFeedItemsUseCase {
       return err(invalidFilter);
     }
 
+    const now = this.clock.now();
     const result = await this.feedItems.list(query);
+    const baselineSamples = await this.signalBaseline.listSamples({
+      tenantId: query.tenantId,
+      workspaceId: query.workspaceId,
+      topicId: query.topicId,
+      observedAfter: new Date(now.getTime() - HISTORICAL_BASELINE_WINDOW_MS),
+      limit: MAX_HISTORICAL_BASELINE_ITEMS,
+    });
+    const signalById = this.signalNormalizer.normalize({
+      items: result.items,
+      baselineSamples,
+      now,
+    });
 
     return ok({
-      items: result.items.map((item) => {
-        const snapshot = item.toSnapshot();
-
-        return {
-          id: snapshot.id,
-          topicId: snapshot.topicId,
-          sourceItemId: snapshot.sourceItemId,
-          sourceBindingId: snapshot.sourceBindingId,
-          providerKey: snapshot.providerKey,
-          canonicalUrl: snapshot.canonicalUrl,
-          title: snapshot.title,
-          bodyPreview: snapshot.bodyPreview,
-          authorHandle: snapshot.authorHandle,
-          publishedAt: snapshot.publishedAt.toISOString(),
-          observedAt: snapshot.observedAt.toISOString(),
-          providerMetadata: snapshot.providerMetadata,
-        };
-      }),
+      items: result.items.map((item) => presentFeedItem(item, signalById.get(item.toSnapshot().id))),
       nextCursor: result.nextCursor,
     });
   }

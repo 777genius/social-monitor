@@ -3,8 +3,10 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../domain/entities/briefing_job_snapshot.dart';
 import '../../domain/entities/generated_briefing.dart';
 import '../../domain/entities/generated_summary.dart';
+import '../../domain/value_objects/briefing_reader_action_target.dart';
 import '../commands/regenerate_summary_command.dart';
 import '../commands/request_workspace_briefing_command.dart';
+import '../commands/submit_briefing_reader_action_command.dart';
 import '../commands/submit_summary_feedback_command.dart';
 import '../queries/list_summaries_query.dart';
 import '../queries/load_summary_detail_query.dart';
@@ -26,6 +28,10 @@ abstract interface class SummaryReviewCatalog {
 
   Future<Result<GeneratedSummary>> submitFeedback(
     SubmitSummaryFeedbackCommand command,
+  );
+
+  Future<Result<BriefingReaderActionResult>> submitBriefingReaderAction(
+    SubmitBriefingReaderActionCommand command,
   );
 
   Future<Result<WorkspaceBriefingSnapshot>> loadWorkspaceBriefing(

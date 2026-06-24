@@ -27,10 +27,11 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
   readonly scanFailureQueueEntry: PrismaIngestionClient['scanFailureQueueEntry'];
   readonly scanAttempt: PrismaIngestionClient['scanAttempt'];
   readonly scanLeaseEntry: PrismaIngestionClient['scanLeaseEntry'];
-  readonly githubRepositoryTrendCandidate: PrismaIngestionClient['githubRepositoryTrendCandidate'];
-  readonly githubRepositoryTrendSnapshot: PrismaIngestionClient['githubRepositoryTrendSnapshot'];
-  readonly githubRepositoryTrendResult: PrismaIngestionClient['githubRepositoryTrendResult'];
+  readonly gitHubRepositoryTrendCandidate: PrismaIngestionClient['gitHubRepositoryTrendCandidate'];
+  readonly gitHubRepositoryTrendSnapshot: PrismaIngestionClient['gitHubRepositoryTrendSnapshot'];
+  readonly gitHubRepositoryTrendResult: PrismaIngestionClient['gitHubRepositoryTrendResult'];
   readonly feedItem: PrismaFeedClient['feedItem'];
+  readonly feedSignalBaselineSample: PrismaFeedClient['feedSignalBaselineSample'];
 
   private readonly pool: Pool;
   private readonly client: PrismaIngestionWorkerRuntimeClient;
@@ -49,10 +50,11 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
     this.scanFailureQueueEntry = this.client.scanFailureQueueEntry;
     this.scanAttempt = this.client.scanAttempt;
     this.scanLeaseEntry = this.client.scanLeaseEntry;
-    this.githubRepositoryTrendCandidate = this.client.githubRepositoryTrendCandidate;
-    this.githubRepositoryTrendSnapshot = this.client.githubRepositoryTrendSnapshot;
-    this.githubRepositoryTrendResult = this.client.githubRepositoryTrendResult;
+    this.gitHubRepositoryTrendCandidate = this.client.gitHubRepositoryTrendCandidate;
+    this.gitHubRepositoryTrendSnapshot = this.client.gitHubRepositoryTrendSnapshot;
+    this.gitHubRepositoryTrendResult = this.client.gitHubRepositoryTrendResult;
     this.feedItem = this.client.feedItem;
+    this.feedSignalBaselineSample = this.client.feedSignalBaselineSample;
   }
 
   async close(): Promise<void> {

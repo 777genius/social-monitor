@@ -9,13 +9,15 @@ import {
 
 import {
   createDefaultUserRelevanceProfile,
+  createRelevanceMemoryProjection,
   extractSignalKeywords,
   relevanceFeedbackDirection,
   RelevanceFeedbackSignal,
+  type RelevanceFeedbackTarget,
 } from '../../domain';
 import type {
-  RelevanceFeedbackRepositoryPort,
-  UserRelevanceProfileRepositoryPort,
+  RelevanceFeedbackLearningStorePort,
+  RelevanceFeedbackLearningUnitOfWorkPort,
 } from '../../ports';
 import {
   presentRelevanceFeedbackSignal,
@@ -28,8 +30,7 @@ type RecordRelevanceFeedbackFailure = DomainError | Error;
 
 export class RecordRelevanceFeedbackUseCase {
   constructor(
-    private readonly profiles: UserRelevanceProfileRepositoryPort,
-    private readonly feedback: RelevanceFeedbackRepositoryPort,
+    private readonly learning: RelevanceFeedbackLearningStorePort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
   ) {}
@@ -48,16 +49,42 @@ export class RecordRelevanceFeedbackUseCase {
       return err(new DomainError('validation.failed', 'Relevance feedback idempotencyKey must be non-empty'));
     }
 
-    try {
-      const cached = await this.feedback.findByIdempotencyKey({
+    return this.learning.runLearningTransaction(async (learning) => {
+      const cached = await learning.findFeedbackByIdempotencyKey({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         idempotencyKey,
       });
 
       if (cached !== null) {
-        const profile = await this.requireProfile(command, userId);
-        const direction = relevanceFeedbackDirection(cached.toSnapshot().action, cached.toSnapshot().rating);
+        const snapshot = cached.toSnapshot();
+
+        if (snapshot.userId !== userId) {
+          return err(new DomainError('validation.failed', 'Relevance feedback idempotencyKey belongs to a different user'));
+        }
+
+        const direction = relevanceFeedbackDirection(snapshot.action, snapshot.rating);
+        const profile = await this.profileForCachedFeedback({
+          learning,
+          tenantId: command.tenantId,
+          workspaceId: command.workspaceId,
+          userId,
+          target: snapshot.target,
+          direction,
+        });
+        await learning.saveMemoryProjection(createRelevanceMemoryProjection({
+          id: this.ids.generate(),
+          tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId,
+          feedbackId: snapshot.id,
+          userId,
+          idempotencyKey: snapshot.idempotencyKey,
+          action: snapshot.action,
+          rating: snapshot.rating,
+          target: snapshot.target,
+          learningDirection: direction,
+          createdAt: this.clock.now(),
+        }));
 
         return ok({
           feedback: presentRelevanceFeedbackSignal(cached),
@@ -79,7 +106,7 @@ export class RecordRelevanceFeedbackUseCase {
         target: command.target,
         createdAt: now,
       });
-      const profile = await this.requireProfile(command, userId);
+      const profile = await this.profileForUser(learning, command, userId, now);
       const target = signal.toSnapshot().target;
       const direction = relevanceFeedbackDirection(command.action, command.rating);
       const updatedProfile = profile.applyFeedback({
@@ -90,8 +117,21 @@ export class RecordRelevanceFeedbackUseCase {
         adjustedAt: now,
       });
 
-      await this.feedback.save(signal);
-      await this.profiles.save(updatedProfile);
+      await learning.saveFeedback(signal);
+      await learning.saveProfile(updatedProfile);
+      await learning.saveMemoryProjection(createRelevanceMemoryProjection({
+        id: this.ids.generate(),
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        feedbackId: signal.toSnapshot().id,
+        userId,
+        idempotencyKey,
+        action: command.action,
+        rating: command.rating,
+        target,
+        learningDirection: direction,
+        createdAt: now,
+      }));
 
       return ok({
         feedback: presentRelevanceFeedbackSignal(signal),
@@ -99,16 +139,57 @@ export class RecordRelevanceFeedbackUseCase {
         created: true,
         learningDirection: direction,
       });
-    } catch (error) {
-      return err(error instanceof Error ? new DomainError('validation.failed', error.message) : new Error('Relevance feedback failed'));
-    }
+    }).catch((error: unknown) => err(toRecordRelevanceFeedbackFailure(error)));
   }
 
-  private async requireProfile(
+  private async profileForCachedFeedback(params: {
+    readonly learning: RelevanceFeedbackLearningUnitOfWorkPort;
+    readonly tenantId: RecordRelevanceFeedbackCommand['tenantId'];
+    readonly workspaceId: RecordRelevanceFeedbackCommand['workspaceId'];
+    readonly userId: string;
+    readonly target: RelevanceFeedbackTarget;
+    readonly direction: ReturnType<typeof relevanceFeedbackDirection>;
+  }) {
+    const now = this.clock.now();
+    const profile = await this.profileForUser(
+      params.learning,
+      {
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+      },
+      params.userId,
+      now,
+    );
+    const snapshot = profile.toSnapshot();
+    const mayNeedRepair =
+      snapshot.topicWeights.length === 0 &&
+      snapshot.sourceWeights.length === 0 &&
+      snapshot.keywordWeights.length === 0 &&
+      snapshot.blockedProviderKeys.length === 0;
+
+    if (!mayNeedRepair) {
+      return profile;
+    }
+
+    const repaired = profile.applyFeedback({
+      topicId: params.target.topicId,
+      providerKey: params.target.providerKey,
+      keywords: extractSignalKeywords(`${params.target.title} ${params.target.bodyPreview ?? ''}`),
+      direction: params.direction,
+      adjustedAt: now,
+    });
+    await params.learning.saveProfile(repaired);
+
+    return repaired;
+  }
+
+  private async profileForUser(
+    learning: RelevanceFeedbackLearningUnitOfWorkPort,
     command: Pick<RecordRelevanceFeedbackCommand, 'tenantId' | 'workspaceId'>,
     userId: string,
+    now: Date,
   ) {
-    const existing = await this.profiles.findByUser({
+    const existing = await learning.findProfileByUser({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       userId,
@@ -118,16 +199,24 @@ export class RecordRelevanceFeedbackUseCase {
       return existing;
     }
 
-    const now = this.clock.now();
-    const profile = createDefaultUserRelevanceProfile({
+    return createDefaultUserRelevanceProfile({
       id: this.ids.generate(),
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       userId,
       createdAt: now,
     });
-    await this.profiles.save(profile);
-
-    return profile;
   }
 }
+
+const toRecordRelevanceFeedbackFailure = (error: unknown): RecordRelevanceFeedbackFailure => {
+  if (error instanceof DomainError) {
+    return error;
+  }
+
+  if (error instanceof Error) {
+    return new DomainError('validation.failed', error.message);
+  }
+
+  return new Error('Relevance feedback failed');
+};

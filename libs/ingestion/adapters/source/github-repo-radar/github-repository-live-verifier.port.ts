@@ -12,6 +12,7 @@ export type GitHubRepositoryLiveRecord = {
   readonly topics: readonly string[];
   readonly license?: string;
   readonly totalStars: number;
+  readonly forksCount: number;
   readonly fork: boolean;
   readonly archived: boolean;
   readonly pushedAt?: Date;

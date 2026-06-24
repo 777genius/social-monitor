@@ -1,35 +1,308 @@
-import type { RelevanceFeedbackAction, RelevanceWeight } from '../../domain';
-import type { BuildPersonalizedDigestResult } from '../../features/build-personalized-digest/build-personalized-digest.result';
-import type { RankFeedItemsResult } from '../../features/rank-feed-items/rank-feed-items.result';
-import type { RecordRelevanceFeedbackResult } from '../../features/record-relevance-feedback/record-relevance-feedback.result';
-import type { UpsertUserRelevanceProfileResult } from '../../features/upsert-user-relevance-profile/upsert-user-relevance-profile.result';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+
+import {
+  type RelevanceFeedbackAction,
+  relevanceFeedbackActions,
+  type RelevanceWeight,
+} from '../../domain';
+
+const sourceContentSafetyStatuses = ['allowed', 'sanitized', 'blocked'] as const;
+const sourceContentSafetyCategories = [
+  'prompt_injection',
+  'sensitive_data',
+  'untrusted_instruction',
+  'raw_payload_retention_disabled',
+] as const;
+const sourceContentSafetyRetentionPolicies = ['normalized_preview_only'] as const;
+const relevanceLearningDirections = ['positive', 'negative', 'block_provider'] as const;
+const personalizedDigestStatuses = ['assembled', 'empty'] as const;
 
 export class RelevanceWeightDto implements RelevanceWeight {
+  @ApiProperty()
+  @IsString()
   declare readonly key: string;
+
+  @ApiProperty({ minimum: -3, maximum: 3 })
+  @IsNumber()
+  @Min(-3)
+  @Max(3)
   declare readonly weight: number;
 }
 
 export class UpsertUserRelevanceProfileRequestDto {
+  @ApiPropertyOptional({ type: () => [RelevanceWeightDto] })
+  @IsOptional()
+  @ValidateNested({ each: true })
   declare readonly topicWeights?: readonly RelevanceWeightDto[];
+
+  @ApiPropertyOptional({ type: () => [RelevanceWeightDto] })
+  @IsOptional()
+  @ValidateNested({ each: true })
   declare readonly sourceWeights?: readonly RelevanceWeightDto[];
+
+  @ApiPropertyOptional({ type: () => [RelevanceWeightDto] })
+  @IsOptional()
+  @ValidateNested({ each: true })
   declare readonly keywordWeights?: readonly RelevanceWeightDto[];
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsString({ each: true })
   declare readonly mutedKeywords?: readonly string[];
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsString({ each: true })
   declare readonly blockedProviderKeys?: readonly string[];
 }
 
 export class RecordRelevanceFeedbackRequestDto {
+  @ApiProperty()
+  @IsString()
   declare readonly idempotencyKey: string;
+
+  @ApiProperty({ enum: relevanceFeedbackActions })
+  @IsIn(relevanceFeedbackActions)
   declare readonly action: RelevanceFeedbackAction;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 5 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(5)
   declare readonly rating?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   declare readonly feedItemId?: string;
+
+  @ApiProperty()
+  @IsString()
   declare readonly topicId: string;
+
+  @ApiProperty()
+  @IsString()
   declare readonly providerKey: string;
+
+  @ApiProperty()
+  @IsString()
   declare readonly title: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   declare readonly bodyPreview?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   declare readonly canonicalUrl?: string;
 }
 
-export type UpsertUserRelevanceProfileResponseDto = UpsertUserRelevanceProfileResult;
-export type RankFeedItemsResponseDto = RankFeedItemsResult;
-export type BuildPersonalizedDigestResponseDto = BuildPersonalizedDigestResult;
-export type RecordRelevanceFeedbackResponseDto = RecordRelevanceFeedbackResult;
+export class UserRelevanceProfileDto {
+  @ApiProperty()
+  declare readonly id: string;
+
+  @ApiProperty()
+  declare readonly userId: string;
+
+  @ApiProperty({ type: () => [RelevanceWeightDto] })
+  declare readonly topicWeights: readonly RelevanceWeightDto[];
+
+  @ApiProperty({ type: () => [RelevanceWeightDto] })
+  declare readonly sourceWeights: readonly RelevanceWeightDto[];
+
+  @ApiProperty({ type: () => [RelevanceWeightDto] })
+  declare readonly keywordWeights: readonly RelevanceWeightDto[];
+
+  @ApiProperty({ type: [String] })
+  declare readonly mutedKeywords: readonly string[];
+
+  @ApiProperty({ type: [String] })
+  declare readonly blockedProviderKeys: readonly string[];
+
+  @ApiProperty()
+  declare readonly rulesVersion: string;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly updatedAt: string;
+}
+
+export class UpsertUserRelevanceProfileResponseDto {
+  @ApiProperty({ type: () => UserRelevanceProfileDto })
+  declare readonly profile: UserRelevanceProfileDto;
+
+  @ApiProperty()
+  declare readonly created: boolean;
+}
+
+export class SourceContentSafetyDto {
+  @ApiProperty({ enum: sourceContentSafetyStatuses })
+  declare readonly status: string;
+
+  @ApiProperty({ enum: sourceContentSafetyCategories, isArray: true })
+  declare readonly categories: readonly string[];
+
+  @ApiProperty()
+  declare readonly rawPayloadRetained: false;
+
+  @ApiProperty({ enum: sourceContentSafetyRetentionPolicies })
+  declare readonly retentionPolicy: string;
+}
+
+export class RankedFeedItemDto {
+  @ApiProperty()
+  declare readonly feedItemId: string;
+
+  @ApiProperty()
+  declare readonly sourceItemId: string;
+
+  @ApiProperty()
+  declare readonly sourceBindingId: string;
+
+  @ApiProperty()
+  declare readonly topicId: string;
+
+  @ApiProperty()
+  declare readonly providerKey: string;
+
+  @ApiProperty()
+  declare readonly canonicalUrl: string;
+
+  @ApiProperty()
+  declare readonly title: string;
+
+  @ApiPropertyOptional()
+  declare readonly bodyPreview?: string;
+
+  @ApiPropertyOptional({ type: Object })
+  declare readonly providerMetadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional()
+  declare readonly authorHandle?: string;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly publishedAt: string;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly observedAt: string;
+
+  @ApiProperty()
+  declare readonly score: number;
+
+  @ApiProperty()
+  declare readonly rank: number;
+
+  @ApiProperty()
+  declare readonly clusterId: string;
+
+  @ApiProperty()
+  declare readonly clusterSize: number;
+
+  @ApiProperty({ type: [String] })
+  declare readonly duplicateFeedItemIds: readonly string[];
+
+  @ApiProperty({ type: [String] })
+  declare readonly whyImportant: readonly string[];
+
+  @ApiProperty({ type: () => SourceContentSafetyDto })
+  declare readonly safety: SourceContentSafetyDto;
+}
+
+export class RankFeedItemsResponseDto {
+  @ApiProperty({ format: 'date-time' })
+  declare readonly generatedAt: string;
+
+  @ApiProperty()
+  declare readonly profileApplied: boolean;
+
+  @ApiPropertyOptional({ type: () => UserRelevanceProfileDto })
+  declare readonly profile?: UserRelevanceProfileDto;
+
+  @ApiProperty({ type: () => [RankedFeedItemDto] })
+  declare readonly items: readonly RankedFeedItemDto[];
+}
+
+export class PersonalizedDigestWindowDto {
+  @ApiProperty({ format: 'date-time' })
+  declare readonly startedAt: string;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly endedAt: string;
+}
+
+export class BuildPersonalizedDigestResponseDto {
+  @ApiProperty()
+  declare readonly userId: string;
+
+  @ApiProperty({ enum: personalizedDigestStatuses })
+  declare readonly status: (typeof personalizedDigestStatuses)[number];
+
+  @ApiProperty({ type: () => PersonalizedDigestWindowDto })
+  declare readonly window: PersonalizedDigestWindowDto;
+
+  @ApiProperty({ type: [String] })
+  declare readonly topicIds: readonly string[];
+
+  @ApiProperty({ type: () => [RankedFeedItemDto] })
+  declare readonly items: readonly RankedFeedItemDto[];
+
+  @ApiProperty({ type: [String] })
+  declare readonly highSignalFeedItemIds: readonly string[];
+}
+
+export class RelevanceFeedbackTargetDto {
+  @ApiPropertyOptional()
+  declare readonly feedItemId?: string;
+
+  @ApiProperty()
+  declare readonly topicId: string;
+
+  @ApiProperty()
+  declare readonly providerKey: string;
+}
+
+export class RelevanceFeedbackSignalDto {
+  @ApiProperty()
+  declare readonly feedbackId: string;
+
+  @ApiProperty()
+  declare readonly userId: string;
+
+  @ApiProperty({ enum: relevanceFeedbackActions })
+  declare readonly action: string;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 5 })
+  declare readonly rating?: number;
+
+  @ApiProperty({ type: () => RelevanceFeedbackTargetDto })
+  declare readonly target: RelevanceFeedbackTargetDto;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly createdAt: string;
+}
+
+export class RecordRelevanceFeedbackResponseDto {
+  @ApiProperty({ type: () => RelevanceFeedbackSignalDto })
+  declare readonly feedback: RelevanceFeedbackSignalDto;
+
+  @ApiProperty({ type: () => UserRelevanceProfileDto })
+  declare readonly profile: UserRelevanceProfileDto;
+
+  @ApiProperty()
+  declare readonly created: boolean;
+
+  @ApiProperty({ enum: relevanceLearningDirections })
+  declare readonly learningDirection: string;
+}

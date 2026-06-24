@@ -8,6 +8,7 @@ final class GitHubRepositoryTrendMetadata extends FeedProviderMetadata {
     required this.repositoryUrl,
     required this.totalStars,
     required this.stars24h,
+    required this.stars48h,
     required this.stars7d,
     required this.stars30d,
     required this.stars90d,
@@ -29,6 +30,7 @@ final class GitHubRepositoryTrendMetadata extends FeedProviderMetadata {
   final String? license;
   final int totalStars;
   final int stars24h;
+  final int stars48h;
   final int stars7d;
   final int stars30d;
   final int stars90d;
@@ -40,10 +42,11 @@ final class GitHubRepositoryTrendMetadata extends FeedProviderMetadata {
   int get primaryWindowStars {
     return switch (primaryWindow) {
       '24h' => stars24h,
+      '48h' => stars48h,
       '7d' => stars7d,
       '30d' => stars30d,
       '90d' => stars90d,
-      _ => stars7d,
+      _ => stars48h,
     };
   }
 
@@ -77,6 +80,7 @@ FeedProviderMetadata? feedProviderMetadataFromApi(Object? raw) {
     license: _readString(repository['license']),
     totalStars: _readNonNegativeInt(trend['totalStars']),
     stars24h: _readNonNegativeInt(trend['stars24h']),
+    stars48h: _readNonNegativeInt(trend['stars48h']),
     stars7d: _readNonNegativeInt(trend['stars7d']),
     stars30d: _readNonNegativeInt(trend['stars30d']),
     stars90d: _readNonNegativeInt(trend['stars90d']),
@@ -142,8 +146,8 @@ int _readPositiveInt(Object? value) {
 
 String _readTrendWindow(Object? value) {
   return switch (value) {
-    '24h' || '7d' || '30d' || '90d' => value as String,
-    _ => '7d',
+    '24h' || '48h' || '7d' || '30d' || '90d' => value as String,
+    _ => '48h',
   };
 }
 

@@ -66,6 +66,9 @@ export class SummaryCitationViewDto {
 
   @ApiProperty({ enum: summaryCitationFields })
   declare readonly field: (typeof summaryCitationFields)[number];
+
+  @ApiPropertyOptional()
+  declare readonly canonicalUrl?: string;
 }
 
 export class SummaryConfidenceDto {

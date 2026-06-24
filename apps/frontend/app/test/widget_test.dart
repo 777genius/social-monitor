@@ -76,7 +76,7 @@ void main() {
 
     composition.router.go('/summaries');
     await tester.pumpAndSettle();
-    expect(find.text('Weekly risk briefing'), findsWidgets);
+    expect(find.text('GitHub repo radar summary'), findsWidgets);
 
     composition.router.go('/settings');
     await tester.pumpAndSettle();

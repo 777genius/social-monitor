@@ -1,43 +1,36 @@
 import 'package:flutter/foundation.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
+import '../../application/commands/open_briefing_reader_source_command.dart';
 import '../../application/commands/regenerate_summary_command.dart';
 import '../../application/commands/request_workspace_briefing_command.dart';
+import '../../application/commands/submit_briefing_reader_action_command.dart';
 import '../../application/commands/submit_summary_feedback_command.dart';
 import '../../application/queries/list_summaries_query.dart';
 import '../../application/queries/load_summary_detail_query.dart';
 import '../../application/queries/load_workspace_briefing_job_status_query.dart';
 import '../../application/queries/load_workspace_briefing_query.dart';
-import '../../application/use_cases/list_summaries_use_case.dart';
-import '../../application/use_cases/load_summary_detail_use_case.dart';
-import '../../application/use_cases/load_workspace_briefing_job_status_use_case.dart';
-import '../../application/use_cases/load_workspace_briefing_use_case.dart';
-import '../../application/use_cases/regenerate_summary_use_case.dart';
-import '../../application/use_cases/request_workspace_briefing_use_case.dart';
-import '../../application/use_cases/submit_summary_feedback_use_case.dart';
 import '../../domain/entities/briefing_job_snapshot.dart';
 import '../../domain/entities/generated_briefing.dart';
 import '../../domain/entities/generated_summary.dart';
+import '../../domain/value_objects/briefing_reader_action_target.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
 import '../../domain/value_objects/summary_generation_status.dart';
 import '../../domain/value_objects/summary_id.dart';
+import '../workflows/summaries_review_store_dependencies.dart';
 
 part 'summaries_review_store_briefing_workflow.dart';
+part 'summaries_review_store_reader_action_workflow.dart';
+part 'summaries_review_store_summary_workflow.dart';
 
 typedef BriefingRequestIdempotencyKeyFactory =
     String Function(WorkspaceScope scope);
 
 final class SummariesReviewStore extends ChangeNotifier {
   SummariesReviewStore({
-    required ListSummariesUseCase listSummaries,
-    required LoadWorkspaceBriefingUseCase loadWorkspaceBriefing,
-    required RequestWorkspaceBriefingUseCase requestWorkspaceBriefing,
-    required LoadWorkspaceBriefingJobStatusUseCase
-    loadWorkspaceBriefingJobStatus,
-    required LoadSummaryDetailUseCase loadSummaryDetail,
-    required RegenerateSummaryUseCase regenerateSummary,
-    required SubmitSummaryFeedbackUseCase submitFeedback,
+    required SummariesReviewStoreDependencies dependencies,
     required WorkspaceScope scope,
+    required String userId,
     BriefingRequestIdempotencyKeyFactory? briefingRequestIdempotencyKeyFactory,
     Duration briefingPollInterval = const Duration(seconds: 2),
     int briefingPollAttempts = 12,
@@ -45,14 +38,12 @@ final class SummariesReviewStore extends ChangeNotifier {
     OperationGenerationGuard? briefingGenerationGuard,
     OperationGenerationGuard? detailGenerationGuard,
     OperationGenerationGuard? mutationGenerationGuard,
-  }) : _listSummaries = listSummaries,
-       _loadWorkspaceBriefing = loadWorkspaceBriefing,
-       _requestWorkspaceBriefing = requestWorkspaceBriefing,
-       _loadWorkspaceBriefingJobStatus = loadWorkspaceBriefingJobStatus,
-       _loadSummaryDetail = loadSummaryDetail,
-       _regenerateSummary = regenerateSummary,
-       _submitFeedback = submitFeedback,
+    OperationGenerationGuard? readerActionGenerationGuard,
+    BriefingReaderActionTargetResolver readerActionTargetResolver =
+        const BriefingReaderActionTargetResolver(),
+  }) : _dependencies = dependencies,
        _scope = scope,
+       _userId = userId,
        _briefingRequestIdempotencyKeyFactory =
            briefingRequestIdempotencyKeyFactory ??
            _defaultBriefingRequestIdempotencyKey,
@@ -64,26 +55,28 @@ final class SummariesReviewStore extends ChangeNotifier {
        _detailGenerationGuard =
            detailGenerationGuard ?? OperationGenerationGuard(),
        _mutationGenerationGuard =
-           mutationGenerationGuard ?? OperationGenerationGuard();
+           mutationGenerationGuard ?? OperationGenerationGuard(),
+       _readerActionGenerationGuard =
+           readerActionGenerationGuard ?? OperationGenerationGuard(),
+       _readerActionTargetResolver = readerActionTargetResolver;
 
-  final ListSummariesUseCase _listSummaries;
-  final LoadWorkspaceBriefingUseCase _loadWorkspaceBriefing;
-  final RequestWorkspaceBriefingUseCase _requestWorkspaceBriefing;
-  final LoadWorkspaceBriefingJobStatusUseCase _loadWorkspaceBriefingJobStatus;
-  final LoadSummaryDetailUseCase _loadSummaryDetail;
-  final RegenerateSummaryUseCase _regenerateSummary;
-  final SubmitSummaryFeedbackUseCase _submitFeedback;
+  final SummariesReviewStoreDependencies _dependencies;
   final BriefingRequestIdempotencyKeyFactory
   _briefingRequestIdempotencyKeyFactory;
+  final BriefingReaderActionTargetResolver _readerActionTargetResolver;
   final Duration _briefingPollInterval;
   final int _briefingPollAttempts;
   final OperationGenerationGuard _listGenerationGuard;
   final OperationGenerationGuard _briefingGenerationGuard;
   final OperationGenerationGuard _detailGenerationGuard;
   final OperationGenerationGuard _mutationGenerationGuard;
+  final OperationGenerationGuard _readerActionGenerationGuard;
 
   WorkspaceScope _scope;
+  final String _userId;
   SummaryId? _selectedSummaryId;
+  String? _activeReaderActionIdempotencyKey;
+  String? _lastReaderActionIdempotencyKey;
 
   AsyncViewState<PageResult<GeneratedSummary>> listState =
       const InitialViewState<PageResult<GeneratedSummary>>();
@@ -97,8 +90,15 @@ final class SummariesReviewStore extends ChangeNotifier {
       const InitialViewState<GeneratedSummary>();
   AsyncViewState<GeneratedSummary> feedbackState =
       const InitialViewState<GeneratedSummary>();
+  AsyncViewState<BriefingReaderActionResult> readerActionState =
+      const InitialViewState<BriefingReaderActionResult>();
 
   WorkspaceScope get scope => _scope;
+
+  String? get activeReaderActionIdempotencyKey =>
+      _activeReaderActionIdempotencyKey;
+
+  String? get lastReaderActionIdempotencyKey => _lastReaderActionIdempotencyKey;
 
   bool get hasExplicitSelection => _selectedSummaryId != null;
 
@@ -122,32 +122,6 @@ final class SummariesReviewStore extends ChangeNotifier {
     return list.value.items.firstOrNull;
   }
 
-  UserActionIntent regenerationIntentFor(GeneratedSummary summary) {
-    final disabledReasonCode = switch (summary.status) {
-      SummaryGenerationStatus.generating => 'summaries.generation_in_progress',
-      SummaryGenerationStatus.unknown => 'summaries.status_unknown',
-      _ => null,
-    };
-    return UserActionIntent(
-      id: 'summaries.regenerate',
-      disabledReasonCode: disabledReasonCode,
-      idempotencyKey: '${_scope.workspaceId}:${summary.id.value}:regenerate',
-    );
-  }
-
-  UserActionIntent feedbackIntentFor(
-    GeneratedSummary summary,
-    SummaryFeedbackKind kind,
-  ) {
-    return UserActionIntent(
-      id: 'summaries.feedback.${kind.name}',
-      disabledReasonCode: summary.feedbackSubmitted
-          ? 'summaries.feedback_submitted'
-          : null,
-      idempotencyKey: '${_scope.workspaceId}:${summary.id.value}:${kind.name}',
-    );
-  }
-
   void _notifyStateChanged() {
     notifyListeners();
   }
@@ -161,6 +135,7 @@ final class SummariesReviewStore extends ChangeNotifier {
     _briefingGenerationGuard.invalidate();
     _detailGenerationGuard.invalidate();
     _mutationGenerationGuard.invalidate();
+    _readerActionGenerationGuard.invalidate();
     _selectedSummaryId = null;
     listState = const InitialViewState<PageResult<GeneratedSummary>>();
     briefingState = const InitialViewState<WorkspaceBriefingSnapshot>();
@@ -168,15 +143,9 @@ final class SummariesReviewStore extends ChangeNotifier {
     detailState = const InitialViewState<GeneratedSummary>();
     regenerationState = const InitialViewState<GeneratedSummary>();
     feedbackState = const InitialViewState<GeneratedSummary>();
-    notifyListeners();
-  }
-
-  void clearSelection() {
-    if (_selectedSummaryId == null) {
-      return;
-    }
-    _selectedSummaryId = null;
-    detailState = const InitialViewState<GeneratedSummary>();
+    readerActionState = const InitialViewState<BriefingReaderActionResult>();
+    _activeReaderActionIdempotencyKey = null;
+    _lastReaderActionIdempotencyKey = null;
     notifyListeners();
   }
 
@@ -195,7 +164,9 @@ final class SummariesReviewStore extends ChangeNotifier {
     );
     notifyListeners();
 
-    final result = await _listSummaries(ListSummariesQuery(scope: _scope));
+    final result = await _dependencies.listSummaries(
+      ListSummariesQuery(scope: _scope),
+    );
     if (!_listGenerationGuard.isCurrent(generation)) {
       return;
     }
@@ -228,153 +199,6 @@ final class SummariesReviewStore extends ChangeNotifier {
   Future<void> loadWorkspaceBriefing() async {
     final generation = _briefingGenerationGuard.markOperationStarted();
     await _loadWorkspaceBriefingForStore(this, generation);
-  }
-
-  bool selectSummaryById(SummaryId summaryId) {
-    final list = listState;
-    if (list is! ReadyViewState<PageResult<GeneratedSummary>>) {
-      return false;
-    }
-    final exists = list.value.items.any((summary) => summary.id == summaryId);
-    if (!exists) {
-      return false;
-    }
-    selectSummary(summaryId);
-    return true;
-  }
-
-  Future<void> selectSummary(SummaryId summaryId) async {
-    _selectedSummaryId = summaryId;
-    notifyListeners();
-    await loadDetail(summaryId);
-  }
-
-  Future<void> loadDetail(SummaryId summaryId) async {
-    final generation = _detailGenerationGuard.markOperationStarted();
-    final previous = switch (detailState) {
-      ReadyViewState<GeneratedSummary>(:final value) => value,
-      LoadingViewState<GeneratedSummary>(:final previousValue) => previousValue,
-      _ => null,
-    };
-    detailState = LoadingViewState<GeneratedSummary>(previousValue: previous);
-    notifyListeners();
-
-    final result = await _loadSummaryDetail(
-      LoadSummaryDetailQuery(scope: _scope, summaryId: summaryId),
-    );
-    if (!_detailGenerationGuard.isCurrent(generation)) {
-      return;
-    }
-
-    detailState = result.fold(
-      onSuccess: (summary) {
-        _upsertSummary(summary);
-        return ReadyViewState<GeneratedSummary>(summary);
-      },
-      onFailure: (failure) =>
-          FailureViewState<GeneratedSummary>(failure: failure),
-    );
-    notifyListeners();
-  }
-
-  Future<void> regenerate(GeneratedSummary summary) async {
-    final intent = regenerationIntentFor(summary);
-    if (!intent.isEnabled) {
-      return;
-    }
-    await _mutate(
-      loading: (previous) {
-        regenerationState = LoadingViewState<GeneratedSummary>(
-          previousValue: previous,
-        );
-      },
-      run: () => _regenerateSummary(
-        RegenerateSummaryCommand(scope: _scope, summaryId: summary.id),
-      ),
-      apply: (result) {
-        regenerationState = result.fold(
-          onSuccess: (updated) {
-            _upsertSummary(updated);
-            return ReadyViewState<GeneratedSummary>(updated);
-          },
-          onFailure: (failure) =>
-              FailureViewState<GeneratedSummary>(failure: failure),
-        );
-      },
-    );
-  }
-
-  Future<void> submitFeedback(
-    GeneratedSummary summary,
-    SummaryFeedbackKind kind,
-  ) async {
-    final intent = feedbackIntentFor(summary, kind);
-    if (!intent.isEnabled) {
-      return;
-    }
-    await _mutate(
-      loading: (previous) {
-        feedbackState = LoadingViewState<GeneratedSummary>(
-          previousValue: previous,
-        );
-      },
-      run: () => _submitFeedback(
-        SubmitSummaryFeedbackCommand(
-          scope: _scope,
-          summaryId: summary.id,
-          kind: kind,
-        ),
-      ),
-      apply: (result) {
-        feedbackState = result.fold(
-          onSuccess: (updated) {
-            _upsertSummary(updated);
-            return ReadyViewState<GeneratedSummary>(updated);
-          },
-          onFailure: (failure) =>
-              FailureViewState<GeneratedSummary>(failure: failure),
-        );
-      },
-    );
-  }
-
-  Future<void> _mutate({
-    required void Function(GeneratedSummary? previous) loading,
-    required Future<Result<GeneratedSummary>> Function() run,
-    required void Function(Result<GeneratedSummary> result) apply,
-  }) async {
-    final generation = _mutationGenerationGuard.markOperationStarted();
-    loading(selectedSummary);
-    notifyListeners();
-
-    final result = await run();
-    if (!_mutationGenerationGuard.isCurrent(generation)) {
-      return;
-    }
-
-    apply(result);
-    notifyListeners();
-  }
-
-  void _upsertSummary(GeneratedSummary updated) {
-    final list = listState;
-    if (list is ReadyViewState<PageResult<GeneratedSummary>>) {
-      listState = ReadyViewState<PageResult<GeneratedSummary>>(
-        PageResult<GeneratedSummary>(
-          items: [
-            for (final summary in list.value.items)
-              summary.id == updated.id ? updated : summary,
-          ],
-          request: list.value.request,
-          nextCursor: list.value.nextCursor,
-          isPartial: list.value.isPartial,
-        ),
-      );
-    }
-    if (_selectedSummaryId == updated.id ||
-        (_selectedSummaryId == null && selectedSummary?.id == updated.id)) {
-      detailState = ReadyViewState<GeneratedSummary>(updated);
-    }
   }
 
   void _clearSelectionIfMissing(List<GeneratedSummary> items) {

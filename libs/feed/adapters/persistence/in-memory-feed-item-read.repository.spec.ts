@@ -221,4 +221,60 @@ describe('InMemoryFeedItemReadRepository', () => {
 
     expect(result.items.map((item) => item.toSnapshot().id)).toEqual(['feed-codex']);
   });
+
+  it('lists lightweight signal baseline samples scoped by topic and observed window', async () => {
+    const repository = new InMemoryFeedItemReadRepository();
+    repository.upsert(makeItem({
+      id: 'feed-reddit',
+      sourceItemId: 'source-reddit',
+      topicId: 'topic-1',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://reddit.com/r/startups/comments/demo',
+      providerMetadata: {
+        subreddit: 'startups',
+        score: 55,
+        numComments: 18,
+        upvoteRatio: 0.91,
+      },
+    }));
+    repository.upsert(makeItem({
+      id: 'feed-other-topic',
+      sourceItemId: 'source-other-topic',
+      topicId: 'topic-2',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://reddit.com/r/startups/comments/other',
+      providerMetadata: {
+        subreddit: 'startups',
+        score: 10,
+        numComments: 1,
+      },
+    }));
+    repository.upsert(makeItem({
+      id: 'feed-rss',
+      sourceItemId: 'source-rss',
+      topicId: 'topic-1',
+      providerKey: 'rss',
+      canonicalUrl: 'https://example.test/rss',
+    }));
+
+    const samples = await repository.listSamples({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      observedAfter: new Date('2026-06-04T00:00:00.000Z'),
+      limit: 10,
+    });
+
+    expect(samples).toEqual([
+      {
+        feedItemId: 'feed-reddit',
+        providerKey: 'reddit',
+        sourceKey: 'r/startups',
+        contentType: 'post',
+        strength: expect.any(Number),
+        publishedAt: new Date('2026-06-05T00:00:00.000Z'),
+        observedAt: new Date('2026-06-05T00:01:00.000Z'),
+      },
+    ]);
+  });
 });

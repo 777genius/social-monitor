@@ -22,6 +22,17 @@ final class RequestWorkspaceBriefingUseCase {
         ),
       );
     }
+    if (command.userId.trim().isEmpty) {
+      return Future.value(
+        const Result.failure(
+          ValidationFailure(
+            message: 'Briefing request requires a user id',
+            code: 'summaries.user_scope_required',
+            field: 'userId',
+          ),
+        ),
+      );
+    }
     if (command.idempotencyKey.trim().isEmpty) {
       return Future.value(
         const Result.failure(

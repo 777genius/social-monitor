@@ -8,6 +8,7 @@ import '../../domain/entities/generated_summary.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
 import '../../domain/value_objects/summary_generation_status.dart';
+import '../components/github_mark.dart';
 import '../components/workspace_briefing_panel.dart';
 import '../stores/summaries_review_store.dart';
 
@@ -45,9 +46,9 @@ class _SummariesFeaturePageState extends State<SummariesFeaturePage> {
               SliverToBoxAdapter(
                 child: const AppSectionHeader(
                   eyebrow: 'Intelligence',
-                  title: 'Summaries and briefings',
+                  title: 'Summaries',
                   description:
-                      'Review generated briefings, citations and feedback loops with safe evidence boundaries.',
+                      'Review generated summaries, citations and feedback signals with safe evidence boundaries.',
                 ),
               ),
               SliverToBoxAdapter(
@@ -95,7 +96,7 @@ class _SummariesBody extends StatelessWidget {
         ),
       EmptyViewState<PageResult<GeneratedSummary>>() => const AppInlineProblem(
         title: 'No summaries',
-        message: 'Generate a briefing from reviewed mentions.',
+        message: 'Generate a workspace summary from reviewed mentions.',
         tone: AppProblemTone.neutral,
       ),
       _ => AppResponsiveSplitView(
@@ -104,7 +105,7 @@ class _SummariesBody extends StatelessWidget {
           stableId: (summary) => summary.id.value,
           isLoading: state is LoadingViewState<PageResult<GeneratedSummary>>,
           emptyTitle: 'No summaries',
-          emptyMessage: 'Generate a briefing from reviewed mentions.',
+          emptyMessage: 'Generate a workspace summary from reviewed mentions.',
           itemBuilder: (context, summary, index) {
             return ListTile(
               selected: detailSummary?.id == summary.id,
@@ -126,7 +127,7 @@ class _SummariesBody extends StatelessWidget {
                   ? null
                   : const AppInlineProblem(
                       title: 'Select a summary',
-                      message: 'Choose a briefing to review citations.',
+                      message: 'Choose a summary to review citations.',
                       tone: AppProblemTone.neutral,
                     )
             : _SummaryDetail(store: store, summary: detailSummary),
@@ -139,8 +140,15 @@ class _SummariesBody extends StatelessWidget {
         WorkspaceBriefingPanel(
           state: store.briefingState,
           jobState: store.briefingJobState,
+          readerActionState: store.readerActionState,
+          activeReaderActionIdempotencyKey:
+              store.activeReaderActionIdempotencyKey,
+          lastReaderActionIdempotencyKey: store.lastReaderActionIdempotencyKey,
           onRetry: () => unawaited(store.loadWorkspaceBriefing()),
           onGenerate: () => unawaited(store.requestWorkspaceBriefing()),
+          intentForAction: store.readerActionIntentFor,
+          onAction: (briefing, action) =>
+              unawaited(store.submitReaderAction(briefing, action)),
         ),
         const SizedBox(height: AppSpacing.md),
         content,
@@ -209,11 +217,7 @@ class _SummaryDetail extends StatelessWidget {
           emptyTitle: 'No citations',
           emptyMessage: 'This summary does not expose supporting evidence yet.',
           itemBuilder: (context, citation, index) {
-            return ListTile(
-              leading: const Icon(Icons.link_outlined),
-              title: Text(citation.sourceLabel),
-              subtitle: Text(citation.safeSnippet),
-            );
+            return _CitationTile(citation: citation);
           },
         ),
         const SizedBox(height: AppSpacing.md),
@@ -263,6 +267,91 @@ class _SummaryDetail extends StatelessWidget {
       ],
     );
   }
+}
+
+class _CitationTile extends StatelessWidget {
+  const _CitationTile({required this.citation});
+
+  final SummaryCitation citation;
+
+  @override
+  Widget build(BuildContext context) {
+    final isGitHub = _isGitHubCitation(citation);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: dark ? AppColors.darkSurfaceMuted : AppColors.surfaceMuted,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.sm),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: isGitHub
+                    ? const GitHubMark(size: 18)
+                    : const Icon(Icons.link_outlined, size: 18),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      citation.sourceLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      citation.safeSnippet,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: dark
+                            ? AppColors.darkTextMuted
+                            : AppColors.textMuted,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    if (citation.canonicalUrl != null) ...[
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        citation.canonicalUrl!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+bool _isGitHubCitation(SummaryCitation citation) {
+  final label = citation.sourceLabel.toLowerCase();
+  final url = citation.canonicalUrl?.toLowerCase();
+  return label.contains('github') ||
+      label.contains('repo radar') ||
+      url?.contains('github.com') == true;
 }
 
 String _statusLabel(SummaryGenerationStatus status) {

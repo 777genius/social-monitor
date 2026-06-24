@@ -67,7 +67,7 @@ const requiredProviders = new Map([
     GITHUB_REPO_RADAR_PROVIDER_KEY,
     {
       credentialMode: 'bigquery_service_account_and_optional_read_only_token',
-      signals: ['github-repo-radar-gh-archive-query', 'github-repo-radar-live-verification', 'github-repo-radar-live-smoke'],
+      signals: ['github-repo-radar-gh-archive-query', 'github-repo-radar-live-verification', 'github-repo-radar-live-smoke', 'github-repo-radar-prisma-live-e2e'],
     },
   ],
   [
@@ -333,7 +333,7 @@ async function verifyGitHubRepoRadarRuntimeModes(): Promise<void> {
       assert(options.jobTimeoutMs === 456, 'GitHub repo radar must pass a BigQuery job timeout');
       assert(options.params?.query === '', 'topic/language searches must not be incorrectly filtered by repository name');
       assert(options.params?.limit === 3, 'GitHub repo radar must bound BigQuery candidate count');
-      assert(options.params?.startTableSuffix === '260325', 'GitHub repo radar must query the 90d start table suffix');
+      assert(options.params?.startTableSuffix === '260621', 'GitHub repo radar must query at most the 2d start table suffix');
       assert(options.params?.endTableSuffix === '260623', 'GitHub repo radar must query the checked-at table suffix');
       return [{
         async getQueryResults(getOptions: { readonly timeoutMs?: unknown } = {}) {
@@ -341,9 +341,10 @@ async function verifyGitHubRepoRadarRuntimeModes(): Promise<void> {
           return [[{
             full_name: 'openai/codex',
             stars_24h: '210',
-            stars_7d: '1200',
-            stars_30d: '4800',
-            stars_90d: '11000',
+            stars_48h: '360',
+            stars_7d: '0',
+            stars_30d: '0',
+            stars_90d: '0',
           }]];
         },
       }];
@@ -398,7 +399,7 @@ async function verifyGitHubRepoRadarRuntimeModes(): Promise<void> {
     assert(result.items.length === 1, 'GitHub repo radar runtime must emit a verified repository trend item');
     assert(metadata !== null, 'GitHub repo radar runtime must emit repository trend metadata');
     assert(metadata.repository.fullName === 'openai/codex', 'GitHub repo radar metadata must keep repository full name');
-    assert(metadata.trend.stars7d === 1200, 'GitHub repo radar metadata must keep 7d star delta');
+    assert(metadata.trend.stars48h === 360, 'GitHub repo radar metadata must keep 48h star delta');
     assert(metadata.trend.source === 'gh_archive_bigquery_plus_github_live', 'GitHub repo radar metadata must identify runtime source');
   });
 

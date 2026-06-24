@@ -266,6 +266,33 @@ const withContextUnavailableFlag = (
 ): ProviderBriefingAttempt['draft'] => ({
   ...draft,
   qualityFlags: unique([...draft.qualityFlags, 'context_unavailable']),
+  readerBrief: draft.readerBrief === undefined
+    ? undefined
+    : {
+      ...draft.readerBrief,
+      qualityState: {
+        ...draft.readerBrief.qualityState,
+        status: draft.readerBrief.qualityState.status === 'ready'
+          ? 'partial'
+          : draft.readerBrief.qualityState.status,
+        flags: unique([
+          ...draft.readerBrief.qualityState.flags,
+          'context_unavailable',
+        ]),
+        warnings: unique([
+          ...draft.readerBrief.qualityState.warnings,
+          'Additional briefing context was unavailable during generation.',
+        ]),
+      },
+      openQuestions: unique([
+        ...draft.readerBrief.openQuestions,
+        'Did missing context change the interpretation of this briefing?',
+      ]),
+      risks: unique([
+        ...draft.readerBrief.risks,
+        'Additional briefing context was unavailable during generation.',
+      ]),
+    },
   risksAndUnknowns: [
     ...draft.risksAndUnknowns,
     {

@@ -12,6 +12,7 @@ export type SummaryCitation = {
   readonly sourceItemId: string;
   readonly providerKey: string;
   readonly field: 'title' | 'bodyPreview' | 'canonicalUrl';
+  readonly canonicalUrl?: string;
 };
 
 export type SummaryKeyPoint = {

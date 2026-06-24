@@ -7,6 +7,8 @@ const fixtureStories: readonly HackerNewsStory[] = [
     url: 'https://example.test/hn/social-monitoring',
     by: 'alice',
     time: 1_780_000_000,
+    score: 42,
+    comments: 9,
   },
   {
     id: 1002,
@@ -14,6 +16,8 @@ const fixtureStories: readonly HackerNewsStory[] = [
     by: 'bob',
     time: 1_780_000_060,
     text: 'How do you build reliable social/news ingestion?',
+    score: 75,
+    comments: 18,
   },
   {
     id: 1003,

@@ -5,6 +5,8 @@ export type HackerNewsStory = {
   readonly by?: string;
   readonly time?: number;
   readonly text?: string;
+  readonly score?: number;
+  readonly comments?: number;
   readonly deleted?: boolean;
   readonly dead?: boolean;
 };

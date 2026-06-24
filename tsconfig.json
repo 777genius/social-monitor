@@ -38,6 +38,7 @@
       "@social-monitor/monitoring/*": ["libs/monitoring/*"],
       "@social-monitor/ingestion/*": ["libs/ingestion/*"],
       "@social-monitor/privacy/*": ["libs/privacy/*"],
+      "@social-monitor/feed": ["libs/feed/index.ts"],
       "@social-monitor/feed/*": ["libs/feed/*"],
       "@social-monitor/relevance/*": ["libs/relevance/*"],
       "@social-monitor/summary/*": ["libs/summary/*"],

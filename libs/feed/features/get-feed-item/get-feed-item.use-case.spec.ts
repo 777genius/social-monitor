@@ -1,18 +1,39 @@
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { FeedItem } from '../../domain';
-import type { FeedItemReadRepositoryPort, ListFeedItemsResult } from '../../ports';
+import type {
+  FeedItemReadRepositoryPort,
+  FeedSignalBaselineRepositoryPort,
+  ListFeedItemsQuery,
+  ListFeedItemsResult,
+  ListFeedSignalBaselineSamplesQuery,
+} from '../../ports';
 import { GetFeedItemUseCase } from './get-feed-item.use-case';
+
+const fixedClock = new FixedClock(new Date('2026-06-05T01:00:00.000Z'));
 
 class FakeFeedItemReadRepository implements FeedItemReadRepositoryPort {
   constructor(private readonly item: FeedItem | null) {}
 
-  async list(): Promise<ListFeedItemsResult> {
+  readonly queries: ListFeedItemsQuery[] = [];
+
+  async list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
+    this.queries.push(query);
     return { items: [] };
   }
 
   async findById(): Promise<FeedItem | null> {
     return this.item;
+  }
+}
+
+class FakeFeedSignalBaselineRepository implements FeedSignalBaselineRepositoryPort {
+  readonly queries: ListFeedSignalBaselineSamplesQuery[] = [];
+
+  async listSamples(query: ListFeedSignalBaselineSamplesQuery) {
+    this.queries.push(query);
+
+    return [];
   }
 }
 
@@ -35,7 +56,13 @@ const makeItem = () =>
 
 describe('GetFeedItemUseCase', () => {
   it('returns one feed item DTO', async () => {
-    const useCase = new GetFeedItemUseCase(new FakeFeedItemReadRepository(makeItem()));
+    const repository = new FakeFeedItemReadRepository(makeItem());
+    const baseline = new FakeFeedSignalBaselineRepository();
+    const useCase = new GetFeedItemUseCase(
+      repository,
+      baseline,
+      fixedClock,
+    );
 
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
@@ -59,10 +86,24 @@ describe('GetFeedItemUseCase', () => {
         observedAt: '2026-06-05T00:01:00.000Z',
       },
     });
+    expect(repository.queries).toEqual([]);
+    expect(baseline.queries).toEqual([
+      {
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        topicId: 'topic-1',
+        observedAfter: new Date('2026-05-06T01:00:00.000Z'),
+        limit: 2000,
+      },
+    ]);
   });
 
   it('returns not found for missing feed item', async () => {
-    const useCase = new GetFeedItemUseCase(new FakeFeedItemReadRepository(null));
+    const useCase = new GetFeedItemUseCase(
+      new FakeFeedItemReadRepository(null),
+      new FakeFeedSignalBaselineRepository(),
+      fixedClock,
+    );
 
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),

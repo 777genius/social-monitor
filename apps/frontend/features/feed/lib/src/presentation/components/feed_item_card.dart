@@ -5,6 +5,7 @@ import '../../domain/entities/feed_item.dart';
 import '../../domain/value_objects/feed_provider_metadata.dart';
 import '../formatters/feed_time_formatters.dart';
 import '../view_models/feed_provider_visuals.dart';
+import 'feed_signal_metric_strip.dart';
 
 class FeedItemCard extends StatelessWidget {
   const FeedItemCard({
@@ -75,6 +76,15 @@ class FeedItemCard extends StatelessWidget {
                       letterSpacing: 0,
                     ),
                   ),
+                  if (item.normalizedSignal != null ||
+                      item.providerMetrics != null) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    FeedSignalMetricStrip(
+                      signal: item.normalizedSignal,
+                      metrics: item.providerMetrics,
+                      dense: true,
+                    ),
+                  ],
                   if (item.providerMetadata
                       case final GitHubRepositoryTrendMetadata trend) ...[
                     const SizedBox(height: AppSpacing.md),
@@ -121,15 +131,6 @@ class _RepositoryTrendStrip extends StatelessWidget {
       runSpacing: AppSpacing.xs,
       children: [
         _MetaChip(icon: Icons.tag_outlined, label: '#${trend.rank}'),
-        _MetaChip(
-          icon: Icons.star_outline,
-          label: '${_compactNumber(trend.totalStars)} stars',
-        ),
-        _MetaChip(icon: Icons.trending_up, label: trend.primaryWindowLabel),
-        _MetaChip(
-          icon: Icons.calendar_today_outlined,
-          label: '+${trend.stars7d} / 7d',
-        ),
         if (trend.language != null)
           _MetaChip(icon: Icons.code, label: trend.language!),
       ],
@@ -167,16 +168,6 @@ class _CardTopLine extends StatelessWidget {
       ],
     );
   }
-}
-
-String _compactNumber(int value) {
-  if (value >= 1000000) {
-    return '${(value / 1000000).toStringAsFixed(1)}M';
-  }
-  if (value >= 1000) {
-    return '${(value / 1000).toStringAsFixed(1)}k';
-  }
-  return value.toString();
 }
 
 class _ProviderMark extends StatelessWidget {

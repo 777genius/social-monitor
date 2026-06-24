@@ -51,7 +51,8 @@
       "liveEvidenceSignals": [
         "github-repo-radar-gh-archive-query",
         "github-repo-radar-live-verification",
-        "github-repo-radar-live-smoke"
+        "github-repo-radar-live-smoke",
+        "github-repo-radar-prisma-live-e2e"
       ]
     },
     {

@@ -15,6 +15,7 @@ export type GitHubRepositoryTrendHistoryRecord = {
   readonly license?: string;
   readonly totalStars: number;
   readonly stars24h: number;
+  readonly stars48h: number;
   readonly stars7d: number;
   readonly stars30d: number;
   readonly stars90d: number;

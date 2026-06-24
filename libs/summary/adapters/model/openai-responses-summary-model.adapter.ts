@@ -467,7 +467,10 @@ const normalizeOpenAiDraft = (
     keyPoints: normalizeKeyPoints(raw.keyPoints),
     risksAndUnknowns: normalizeRisks(raw.risksAndUnknowns),
     sourceHighlights: normalizeStringArray(raw.sourceHighlights, 'sourceHighlights'),
-    citationMap: normalizeCitationMap(raw.citationMap),
+    citationMap: withEvidenceCanonicalUrls(
+      normalizeCitationMap(raw.citationMap),
+      input.evidence.items,
+    ),
     qualityFlags: normalizeQualityFlags(raw.qualityFlags),
     confidence: normalizeConfidence(raw.confidence),
     lineage: buildLineage(input, selectedRoute, evalDatasetVersion),
@@ -531,6 +534,22 @@ const normalizeCitationMap = (value: unknown): readonly SummaryCitation[] => {
       field: field as SummaryCitation['field'],
     };
   });
+};
+
+const withEvidenceCanonicalUrls = (
+  citations: readonly SummaryCitation[],
+  evidenceItems: SummaryModelInput['evidence']['items'],
+): readonly SummaryCitation[] => {
+  const canonicalUrlByFeedItemId = new Map(
+    evidenceItems
+      .filter((item) => item.canonicalUrl !== undefined)
+      .map((item) => [item.feedItemId, item.canonicalUrl] as const),
+  );
+
+  return citations.map((citation) => ({
+    ...citation,
+    canonicalUrl: canonicalUrlByFeedItemId.get(citation.feedItemId),
+  }));
 };
 
 const normalizeQualityFlags = (value: unknown): readonly SummaryQualityFlag[] => {

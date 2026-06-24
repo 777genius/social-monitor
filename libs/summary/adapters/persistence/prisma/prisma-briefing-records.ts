@@ -17,6 +17,7 @@ import {
   type BriefingPolicyProps,
   type BriefingPolicyTone,
   type BriefingQualityFlag,
+  type BriefingReaderBrief,
   type BriefingRepeatedSignal,
   type BriefingRisk,
   type BriefingScope,
@@ -291,6 +292,7 @@ const normalizeBriefingArtifactPayload = (
     ).map(normalizeBriefingContextArtifact),
     headline: requireString(value.headline ?? fallback.headline, 'Briefing headline'),
     executiveSummary: requireString(value.executiveSummary ?? fallback.summaryText ?? '', 'Briefing text'),
+    readerBrief: normalizeBriefingReaderBrief(value.readerBrief),
     topStories: requireArray<BriefingTopStory>(value.topStories, 'Briefing top stories'),
     topicHighlights: requireArray<BriefingTopicHighlight>(value.topicHighlights, 'Briefing topic highlights'),
     repeatedSignals: requireArray<BriefingRepeatedSignal>(value.repeatedSignals, 'Briefing repeated signals'),
@@ -351,6 +353,26 @@ const normalizeBriefingContextArtifact = (
   generatedAt: requireDate(value.generatedAt, 'Briefing context artifact generated date'),
 });
 
+const normalizeBriefingReaderBrief = (value: unknown): BriefingReaderBrief | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  const readerBrief = requireObject<BriefingReaderBrief>(value, 'Briefing reader brief');
+  if (
+    readerBrief.qualityState === undefined ||
+    readerBrief.topReads.some((item) =>
+      item.whyNow === undefined ||
+      item.matchedTopicIds === undefined ||
+      item.matchedRules === undefined ||
+      item.providerMetrics === undefined ||
+      item.whyImportant === undefined)
+  ) {
+    return undefined;
+  }
+
+  return readerBrief;
+};
+
 const normalizeOptionalString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value : undefined;
 
@@ -382,6 +404,7 @@ type SerializedBriefingArtifactPayload = {
   readonly contextArtifacts?: unknown;
   readonly headline?: unknown;
   readonly executiveSummary?: unknown;
+  readonly readerBrief?: unknown;
   readonly topStories?: unknown;
   readonly topicHighlights?: unknown;
   readonly repeatedSignals?: unknown;

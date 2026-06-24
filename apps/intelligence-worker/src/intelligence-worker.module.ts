@@ -7,6 +7,7 @@ import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execu
 import { ExecuteBriefingJobCommandHandler } from '@social-monitor/summary/interfaces/queue/execute-briefing-job-command.handler';
 import { ExecuteSummaryJobCommandHandler } from '@social-monitor/summary/interfaces/queue/execute-summary-job-command.handler';
 import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summary-rest.module';
+import { RelevanceRestModule } from '@social-monitor/relevance/interfaces/rest/relevance-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { WorkerRuntime, WorkerRuntimeModule } from '@social-monitor/platform-worker';
 import { SystemClock } from '@social-monitor/shared-kernel';
@@ -19,6 +20,7 @@ import {
   INTELLIGENCE_RABBITMQ_BRIEFING_QUEUE_READER_OPTIONS,
   INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
   INTELLIGENCE_BRIEFING_QUEUE_DRAIN_LOOP_OPTIONS,
+  INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LOOP_OPTIONS,
   INTELLIGENCE_SUMMARY_QUEUE_READER_MODE,
   type IntelligenceSummaryQueueReaderMode,
   resolveIntelligenceAutoSummarySchedulerOptions,
@@ -26,6 +28,7 @@ import {
   resolveIntelligenceBriefingQueueDrainLoopOptions,
   resolveIntelligenceRabbitMqBriefingQueueReaderOptions,
   resolveIntelligenceRabbitMqSummaryQueueReaderOptions,
+  resolveIntelligenceRelevanceMemoryProjectionLoopOptions,
   resolveIntelligenceSummaryJobLoopOptions,
   resolveIntelligenceSummaryQueueDrainLoopOptions,
   resolveIntelligenceSummaryQueueReaderMode,
@@ -43,11 +46,12 @@ import { BriefingJobPollingLoop } from './briefing-job-polling-loop';
 import { SummaryJobQueueDrainLoop } from './summary-job-queue-drain-loop';
 import { SummaryJobPollingLoop } from './summary-job-polling-loop';
 import { AutoSummarySchedulerLoop } from './auto-summary-scheduler-loop';
+import { RelevanceMemoryProjectionLoop } from './relevance-memory-projection-loop';
 
 const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol('INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL');
 
 @Module({
-  imports: [WorkerRuntimeModule.register({ serviceName: 'intelligence-worker' }), SummaryRestModule],
+  imports: [WorkerRuntimeModule.register({ serviceName: 'intelligence-worker' }), SummaryRestModule, RelevanceRestModule],
   providers: [
     {
       provide: INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS,
@@ -60,6 +64,10 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol('INTELLIGENCE_RABBITM
     {
       provide: INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS,
       useFactory: () => resolveIntelligenceAutoSummarySchedulerOptions(process.env),
+    },
+    {
+      provide: INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LOOP_OPTIONS,
+      useFactory: () => resolveIntelligenceRelevanceMemoryProjectionLoopOptions(process.env),
     },
     {
       provide: INTELLIGENCE_SUMMARY_QUEUE_READER_MODE,
@@ -146,6 +154,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol('INTELLIGENCE_RABBITM
     SummaryJobPollingLoop,
     BriefingJobPollingLoop,
     AutoSummarySchedulerLoop,
+    RelevanceMemoryProjectionLoop,
     {
       provide: SummaryJobQueueDrainLoop,
       useFactory: (
@@ -185,6 +194,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol('INTELLIGENCE_RABBITM
     SummaryJobQueueDrainLoop,
     BriefingJobQueueDrainLoop,
     AutoSummarySchedulerLoop,
+    RelevanceMemoryProjectionLoop,
   ],
 })
 export class IntelligenceWorkerModule {}

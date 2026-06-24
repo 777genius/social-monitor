@@ -385,6 +385,7 @@ CREATE TABLE "github_repository_trend_candidates" (
     "repository_full_name" TEXT NOT NULL,
     "primary_window" TEXT NOT NULL,
     "stars_24h" INTEGER NOT NULL,
+    "stars_48h" INTEGER NOT NULL DEFAULT 0,
     "stars_7d" INTEGER NOT NULL,
     "stars_30d" INTEGER NOT NULL,
     "stars_90d" INTEGER NOT NULL,
@@ -410,6 +411,7 @@ CREATE TABLE "github_repository_trend_snapshots" (
     "license" TEXT,
     "total_stars" INTEGER NOT NULL,
     "stars_24h" INTEGER NOT NULL,
+    "stars_48h" INTEGER NOT NULL DEFAULT 0,
     "stars_7d" INTEGER NOT NULL,
     "stars_30d" INTEGER NOT NULL,
     "stars_90d" INTEGER NOT NULL,
@@ -771,6 +773,29 @@ CREATE TABLE "relevance_feedback_signals" (
     "created_at" TIMESTAMPTZ(6) NOT NULL,
 
     CONSTRAINT "relevance_feedback_signals_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "relevance_memory_projections" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "feedback_id" UUID NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "idempotency_key" TEXT NOT NULL,
+    "action" TEXT NOT NULL,
+    "rating" INTEGER,
+    "target" JSONB NOT NULL,
+    "learning_direction" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "retry_count" INTEGER NOT NULL DEFAULT 0,
+    "next_attempt_at" TIMESTAMPTZ(6) NOT NULL,
+    "projected_at" TIMESTAMPTZ(6),
+    "last_error" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "relevance_memory_projections_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1174,6 +1199,15 @@ CREATE INDEX "relevance_feedback_signals_tenant_id_workspace_id_user_id_c_idx" O
 
 -- CreateIndex
 CREATE UNIQUE INDEX "relevance_feedback_signals_tenant_id_workspace_id_idempoten_key" ON "relevance_feedback_signals"("tenant_id", "workspace_id", "idempotency_key");
+
+-- CreateIndex
+CREATE INDEX "relevance_memory_projections_status_next_attempt_at_created_idx" ON "relevance_memory_projections"("status", "next_attempt_at", "created_at");
+
+-- CreateIndex
+CREATE INDEX "relevance_memory_projections_tenant_id_workspace_id_user_id_idx" ON "relevance_memory_projections"("tenant_id", "workspace_id", "user_id", "status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "relevance_memory_projections_tenant_id_workspace_id_feedbac_key" ON "relevance_memory_projections"("tenant_id", "workspace_id", "feedback_id");
 
 -- CreateIndex
 CREATE INDEX "realtime_events_tenant_id_workspace_id_channel_sequence_idx" ON "realtime_events"("tenant_id", "workspace_id", "channel", "sequence");

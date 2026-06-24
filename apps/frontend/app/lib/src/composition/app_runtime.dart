@@ -23,6 +23,7 @@ final class AppShellRuntime {
     AppSessionSnapshot session = const AppSessionSnapshot(
       isSignedIn: true,
       isRestoring: false,
+      userId: 'frontend-runtime-user',
       userLabel: 'MVP Operator',
     ),
     FeatureFlagSet capabilities = const FeatureFlagSet({
@@ -47,6 +48,7 @@ final class AppShellRuntime {
       session: AppSessionSnapshot(
         isSignedIn: true,
         isRestoring: false,
+        userId: '',
         userLabel: 'Runtime not configured',
       ),
       workspace: AppWorkspaceSnapshot.missing(),
@@ -87,6 +89,7 @@ final class AppShellRuntime {
       session: AppSessionSnapshot(
         isSignedIn: true,
         isRestoring: false,
+        userId: 'user-demo',
         userLabel: 'MVP Operator',
       ),
       workspace: AppWorkspaceSnapshot(
@@ -112,6 +115,7 @@ final class AppShellRuntime {
       session: AppSessionSnapshot(
         isSignedIn: false,
         isRestoring: false,
+        userId: '',
         userLabel: 'Signed out',
       ),
       workspace: AppWorkspaceSnapshot.missing(),
@@ -133,11 +137,13 @@ final class AppSessionSnapshot {
   const AppSessionSnapshot({
     required this.isSignedIn,
     required this.isRestoring,
+    required this.userId,
     required this.userLabel,
   });
 
   final bool isSignedIn;
   final bool isRestoring;
+  final String userId;
   final String userLabel;
 }
 

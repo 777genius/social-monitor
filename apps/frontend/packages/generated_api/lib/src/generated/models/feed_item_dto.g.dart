@@ -18,7 +18,17 @@ FeedItemDto _$FeedItemDtoFromJson(Map<String, dynamic> json) => FeedItemDto(
   title: json['title'] as String,
   topicId: json['topicId'] as String,
   authorHandle: json['authorHandle'] as String?,
+  normalizedSignal: json['normalizedSignal'] == null
+      ? null
+      : FeedNormalizedSignalDto.fromJson(
+          json['normalizedSignal'] as Map<String, dynamic>,
+        ),
   providerMetadata: json['providerMetadata'],
+  providerMetrics: json['providerMetrics'] == null
+      ? null
+      : FeedItemDtoProviderMetricsProviderMetrics.fromJson(
+          json['providerMetrics'] as Map<String, dynamic>,
+        ),
 );
 
 Map<String, dynamic> _$FeedItemDtoToJson(FeedItemDto instance) =>
@@ -27,9 +37,11 @@ Map<String, dynamic> _$FeedItemDtoToJson(FeedItemDto instance) =>
       'bodyPreview': instance.bodyPreview,
       'canonicalUrl': instance.canonicalUrl,
       'id': instance.id,
+      'normalizedSignal': instance.normalizedSignal,
       'observedAt': instance.observedAt.toIso8601String(),
       'providerKey': instance.providerKey,
       'providerMetadata': instance.providerMetadata,
+      'providerMetrics': instance.providerMetrics,
       'publishedAt': instance.publishedAt.toIso8601String(),
       'sourceBindingId': instance.sourceBindingId,
       'sourceItemId': instance.sourceItemId,

@@ -89,4 +89,31 @@ describe('sourceBindingScanQuery', () => {
       config: { query: 'legacy github issue query' },
     }))).toEqual({ mode: 'search', query: 'legacy github issue query' });
   });
+
+  it('maps GitHub repo radar bindings from query or discovery facets without exposing credentials', () => {
+    expect(sourceBindingScanQuery(makeBinding({
+      providerKey: 'github-repo-radar',
+      config: {
+        topics: [' ai ', 'agents'],
+        languages: ['TypeScript'],
+        accessToken: {
+          encrypted: true,
+          algorithm: 'aes-256-gcm',
+          keyId: 'local',
+          iv: 'iv',
+          ciphertext: 'ciphertext',
+          authTag: 'tag',
+        },
+      },
+    }))).toEqual({ mode: 'search', query: 'ai' });
+
+    expect(sourceBindingScanQuery(makeBinding({
+      providerKey: 'github-repo-radar',
+      config: {
+        query: 'agent tooling',
+        topics: ['ai'],
+        languages: ['TypeScript'],
+      },
+    }))).toEqual({ mode: 'search', query: 'agent tooling' });
+  });
 });

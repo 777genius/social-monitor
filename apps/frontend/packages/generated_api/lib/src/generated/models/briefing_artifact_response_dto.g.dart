@@ -34,6 +34,9 @@ BriefingArtifactResponseDto _$BriefingArtifactResponseDtoFromJson(
         ),
       )
       .toList(),
+  readerBrief: BriefingReaderBriefDto.fromJson(
+    json['readerBrief'] as Map<String, dynamic>,
+  ),
   repeatedSignals: (json['repeatedSignals'] as List<dynamic>)
       .map((e) => BriefingRepeatedSignalDto.fromJson(e as Map<String, dynamic>))
       .toList(),
@@ -75,6 +78,7 @@ Map<String, dynamic> _$BriefingArtifactResponseDtoToJson(
   'lineage': instance.lineage,
   'noSignalReason': instance.noSignalReason,
   'qualityFlags': instance.qualityFlags,
+  'readerBrief': instance.readerBrief,
   'repeatedSignals': instance.repeatedSignals,
   'risksAndUnknowns': instance.risksAndUnknowns,
   'schemaVersion': instance.schemaVersion,

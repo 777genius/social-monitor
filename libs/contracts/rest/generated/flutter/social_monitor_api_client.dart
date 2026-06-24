@@ -880,6 +880,135 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'successResponseSchemaRefs': [],
   },
   {
+    'operationId': 'RelevanceController_digest',
+    'clientName': 'RelevanceController_digest',
+    'method': 'GET',
+    'path': '/relevance/users/{userId}/digest',
+    'tags': [
+      'relevance',
+    ],
+    'summary': 'Build a personalized digest candidate set for one user and time window.',
+    'pathParameters': [
+      'userId',
+    ],
+    'queryParameters': [
+      'limit',
+      'topicIds',
+      'windowEndedAt',
+      'windowStartedAt',
+    ],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': null,
+    'successResponseSchemaRefs': [
+      '#/components/schemas/BuildPersonalizedDigestResponseDto',
+    ],
+  },
+  {
+    'operationId': 'RelevanceController_feed',
+    'clientName': 'RelevanceController_feed',
+    'method': 'GET',
+    'path': '/relevance/users/{userId}/feed',
+    'tags': [
+      'relevance',
+    ],
+    'summary': 'Rank feed items for one user with dedupe, clustering and source safety metadata.',
+    'pathParameters': [
+      'userId',
+    ],
+    'queryParameters': [
+      'limit',
+      'observedAfter',
+      'topicId',
+    ],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': null,
+    'successResponseSchemaRefs': [
+      '#/components/schemas/RankFeedItemsResponseDto',
+    ],
+  },
+  {
+    'operationId': 'RelevanceController_feedback',
+    'clientName': 'RelevanceController_feedback',
+    'method': 'POST',
+    'path': '/relevance/users/{userId}/feedback',
+    'tags': [
+      'relevance',
+    ],
+    'summary': 'Record relevance feedback and update the user learning profile.',
+    'pathParameters': [
+      'userId',
+    ],
+    'queryParameters': [],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': '#/components/schemas/RecordRelevanceFeedbackRequestDto',
+    'successResponseSchemaRefs': [
+      '#/components/schemas/RecordRelevanceFeedbackResponseDto',
+    ],
+  },
+  {
+    'operationId': 'RelevanceController_upsertProfile',
+    'clientName': 'RelevanceController_upsertProfile',
+    'method': 'PUT',
+    'path': '/relevance/users/{userId}/profile',
+    'tags': [
+      'relevance',
+    ],
+    'summary': 'Create or update personalized relevance weights for one user.',
+    'pathParameters': [
+      'userId',
+    ],
+    'queryParameters': [],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': '#/components/schemas/UpsertUserRelevanceProfileRequestDto',
+    'successResponseSchemaRefs': [
+      '#/components/schemas/UpsertUserRelevanceProfileResponseDto',
+    ],
+  },
+  {
     'operationId': 'ScanStatusController_get',
     'clientName': 'ScanStatusController_get',
     'method': 'GET',

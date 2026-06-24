@@ -8,6 +8,7 @@ export type SummaryCitationView = {
   readonly sourceItemId: string;
   readonly providerKey: string;
   readonly field: 'title' | 'bodyPreview' | 'canonicalUrl';
+  readonly canonicalUrl?: string;
 };
 
 export type SummaryArtifactView = Omit<SummaryArtifactProps, 'sourceWindow'> & {
@@ -53,6 +54,7 @@ export const presentSummaryArtifact = (
       sourceItemId: citation.sourceItemId,
       providerKey: citation.providerKey,
       field: citation.field,
+      canonicalUrl: citation.canonicalUrl,
     })),
     freshness: presentFreshness(freshness),
   };

@@ -20,6 +20,7 @@ const config: Config = {
     '^@social-monitor/platform-request-context$': '<rootDir>/libs/platform/request-context/src/index.ts',
     '^@social-monitor/platform-worker$': '<rootDir>/libs/platform/worker/src/index.ts',
     '^@social-monitor/contracts/(.*)$': '<rootDir>/libs/contracts/$1',
+    '^@social-monitor/feed$': '<rootDir>/libs/feed/index.ts',
     '^@social-monitor/([^/]+)/(.*)$': '<rootDir>/libs/$1/$2',
   },
   collectCoverageFrom: ['apps/**/*.ts', 'libs/**/*.ts', '!**/*.spec.ts'],

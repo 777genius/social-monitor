@@ -9,6 +9,7 @@ import 'briefing_confidence_dto.dart';
 import 'briefing_context_artifact_dto.dart';
 import 'briefing_freshness_dto.dart';
 import 'briefing_lineage_dto.dart';
+import 'briefing_reader_brief_dto.dart';
 import 'briefing_repeated_signal_dto.dart';
 import 'briefing_response_dto_quality_flags_quality_flags.dart';
 import 'briefing_risk_dto.dart';
@@ -33,6 +34,7 @@ class BriefingResponseDto {
     required this.headline,
     required this.lineage,
     required this.qualityFlags,
+    required this.readerBrief,
     required this.repeatedSignals,
     required this.risksAndUnknowns,
     required this.schemaVersion,
@@ -62,6 +64,7 @@ class BriefingResponseDto {
   final BriefingLineageDto lineage;
   final String? noSignalReason;
   final List<BriefingResponseDtoQualityFlagsQualityFlags> qualityFlags;
+  final BriefingReaderBriefDto readerBrief;
   final List<BriefingRepeatedSignalDto> repeatedSignals;
   final List<BriefingRiskDto> risksAndUnknowns;
   final String schemaVersion;

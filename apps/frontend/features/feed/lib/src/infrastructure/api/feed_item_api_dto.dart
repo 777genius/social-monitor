@@ -35,7 +35,9 @@ final class FeedItemApiDto {
     required this.publishedAt,
     required this.observedAt,
     this.authorHandle,
+    this.normalizedSignal,
     this.providerMetadata,
+    this.providerMetrics,
   });
 
   final String id;
@@ -47,9 +49,53 @@ final class FeedItemApiDto {
   final String title;
   final String bodyPreview;
   final String? authorHandle;
+  final FeedSignalApiDto? normalizedSignal;
   final Object? providerMetadata;
+  final Object? providerMetrics;
   final DateTime publishedAt;
   final DateTime observedAt;
+}
+
+final class FeedSignalApiDto {
+  const FeedSignalApiDto({
+    required this.score,
+    required this.band,
+    required this.confidence,
+    required this.basis,
+    required this.computedAt,
+    required this.cohort,
+  });
+
+  final num score;
+  final String band;
+  final num confidence;
+  final String basis;
+  final DateTime computedAt;
+  final FeedSignalCohortApiDto cohort;
+}
+
+final class FeedSignalCohortApiDto {
+  const FeedSignalCohortApiDto({
+    required this.providerKey,
+    required this.sourceKey,
+    required this.contentType,
+    required this.ageBucket,
+    required this.baselineWindow,
+    required this.sampleSize,
+    required this.percentile,
+    required this.zScore,
+    required this.fallback,
+  });
+
+  final String providerKey;
+  final String sourceKey;
+  final String contentType;
+  final String ageBucket;
+  final String baselineWindow;
+  final num sampleSize;
+  final num percentile;
+  final num zScore;
+  final String fallback;
 }
 
 final class ListFeedItemsApiResponseDto {

@@ -14,7 +14,8 @@ export type BriefingQualityFlag =
   | 'conflicting_evidence'
   | 'limited_sources'
   | 'partial_evidence'
-  | 'context_unavailable';
+  | 'context_unavailable'
+  | 'provider_failed';
 
 export type BriefingCitation = {
   readonly citationId: string;
@@ -22,6 +23,7 @@ export type BriefingCitation = {
   readonly sourceItemId: string;
   readonly providerKey: string;
   readonly field: 'title' | 'bodyPreview' | 'canonicalUrl';
+  readonly canonicalUrl?: string;
 };
 
 export type BriefingTopStory = {
@@ -51,6 +53,88 @@ export type BriefingRisk = {
   readonly description: string;
   readonly citationIds?: readonly string[];
   readonly reason?: 'insufficient_evidence' | 'conflicting_evidence' | 'source_limit' | 'provider_outage';
+};
+
+export type BriefingProviderMetric = {
+  readonly label: string;
+  readonly value: string;
+};
+
+export type BriefingReaderItem = {
+  readonly title: string;
+  readonly providerKey: string;
+  readonly reason: string;
+  readonly matchedTopicIds: readonly string[];
+  readonly matchedRules: readonly string[];
+  readonly signalScore: number;
+  readonly providerMetrics: readonly BriefingProviderMetric[];
+  readonly whyImportant: readonly string[];
+  readonly whyNow: string;
+  readonly canonicalUrl?: string;
+  readonly citationIds: readonly string[];
+};
+
+export type BriefingReaderTopicSection = {
+  readonly topicId?: string;
+  readonly title: string;
+  readonly insight: string;
+  readonly items: readonly BriefingReaderItem[];
+  readonly citationIds: readonly string[];
+};
+
+export type BriefingSourceMixEntry = {
+  readonly providerKey: string;
+  readonly itemCount: number;
+  readonly citationCount: number;
+  readonly storyClusterCount: number;
+  readonly crossSourceClusterCount: number;
+  readonly singleSourceOnly: boolean;
+  readonly topicIds: readonly string[];
+};
+
+export type BriefingTrendDelta = {
+  readonly newSignals: readonly string[];
+  readonly growingSignals: readonly string[];
+  readonly repeatedSignals: readonly string[];
+  readonly fadingSignals: readonly string[];
+};
+
+export type BriefingNextAction = {
+  readonly kind:
+    | 'read_source'
+    | 'watch_repository'
+    | 'monitor_topic'
+    | 'compare_sources'
+    | 'ignore_low_confidence'
+    | 'add_topic_rule'
+    | 'request_deeper_scan'
+    | 'mark_relevant'
+    | 'mark_not_relevant';
+  readonly label: string;
+  readonly reason: string;
+  readonly citationIds: readonly string[];
+  readonly canonicalUrl?: string;
+};
+
+export type BriefingReaderQualityState = {
+  readonly status: 'ready' | 'partial' | 'limited_sources' | 'low_confidence' | 'no_signal' | 'failed_provider';
+  readonly flags: readonly BriefingQualityFlag[];
+  readonly warnings: readonly string[];
+  readonly isSingleSource: boolean;
+};
+
+export type BriefingReaderBrief = {
+  readonly headline: string;
+  readonly oneLineTakeaway: string;
+  readonly bullets: readonly string[];
+  readonly qualityState: BriefingReaderQualityState;
+  readonly topicSections: readonly BriefingReaderTopicSection[];
+  readonly sourceMix: readonly BriefingSourceMixEntry[];
+  readonly topReads: readonly BriefingReaderItem[];
+  readonly trendDelta: BriefingTrendDelta;
+  readonly openQuestions: readonly string[];
+  readonly risks: readonly string[];
+  readonly nextActions: readonly BriefingNextAction[];
 };
 
 export type BriefingContextArtifact = {
@@ -95,6 +179,7 @@ export type BriefingArtifactProps = {
   readonly contextArtifacts: readonly BriefingContextArtifact[];
   readonly headline: string;
   readonly executiveSummary: string;
+  readonly readerBrief?: BriefingReaderBrief;
   readonly topStories: readonly BriefingTopStory[];
   readonly topicHighlights: readonly BriefingTopicHighlight[];
   readonly repeatedSignals: readonly BriefingRepeatedSignal[];
@@ -207,6 +292,10 @@ export class BriefingArtifact {
       }
     }
 
+    if (props.readerBrief !== undefined) {
+      assertReaderBrief(props.readerBrief, citationIds);
+    }
+
     for (const contextArtifact of props.contextArtifacts) {
       if (contextArtifact.artifactId.trim().length === 0 || contextArtifact.summaryText.trim().length === 0) {
         throw new Error('Briefing context artifact must include id and summary text');
@@ -254,6 +343,94 @@ export const assertBriefingCitationsAgainstEvidence = (
   for (const citation of draft.citationMap) {
     if (!selectedFeedItemIds.has(citation.feedItemId)) {
       throw new Error(`Briefing citation ${citation.citationId} references evidence outside selection`);
+    }
+  }
+};
+
+const assertReaderBrief = (
+  readerBrief: BriefingReaderBrief,
+  knownCitationIds: ReadonlySet<string>,
+): void => {
+  if (
+    readerBrief.headline.trim().length === 0 ||
+    readerBrief.oneLineTakeaway.trim().length === 0 ||
+    readerBrief.bullets.some((bullet) => bullet.trim().length === 0)
+  ) {
+    throw new Error('Briefing reader brief must include headline, takeaway and non-empty bullets');
+  }
+
+  for (const source of readerBrief.sourceMix) {
+    if (
+      source.providerKey.trim().length === 0 ||
+      source.itemCount < 0 ||
+      source.citationCount < 0 ||
+      source.storyClusterCount < 0 ||
+      source.crossSourceClusterCount < 0
+    ) {
+      throw new Error('Briefing reader source mix entries must include provider and non-negative counts');
+    }
+  }
+
+  if (readerBrief.qualityState.warnings.some((warning) => warning.trim().length === 0)) {
+    throw new Error('Briefing reader quality state warnings must be non-empty');
+  }
+
+  for (const section of readerBrief.topicSections) {
+    if (section.title.trim().length === 0 || section.insight.trim().length === 0) {
+      throw new Error('Briefing reader topic sections must include title and insight');
+    }
+    assertCitationIds(section.citationIds, knownCitationIds, 'Briefing reader topic section');
+    for (const item of section.items) {
+      assertReaderItem(item, knownCitationIds, 'Briefing reader topic item');
+    }
+  }
+
+  for (const item of readerBrief.topReads) {
+    assertReaderItem(item, knownCitationIds, 'Briefing reader top read');
+  }
+
+  for (const action of readerBrief.nextActions) {
+    if (action.label.trim().length === 0 || action.reason.trim().length === 0) {
+      throw new Error('Briefing reader next actions must include label and reason');
+    }
+    assertCitationIds(action.citationIds, knownCitationIds, 'Briefing reader next action');
+  }
+};
+
+const assertReaderItem = (
+  item: BriefingReaderItem,
+  knownCitationIds: ReadonlySet<string>,
+  label: string,
+): void => {
+  if (
+    item.title.trim().length === 0 ||
+    item.providerKey.trim().length === 0 ||
+    item.reason.trim().length === 0 ||
+    item.whyNow.trim().length === 0 ||
+    item.whyImportant.length === 0 ||
+    item.matchedTopicIds.length === 0 ||
+    item.matchedRules.length === 0 ||
+    !Number.isFinite(item.signalScore) ||
+    item.signalScore < 0
+  ) {
+    throw new Error(`${label} must include title, provider and reason`);
+  }
+  for (const metric of item.providerMetrics) {
+    if (metric.label.trim().length === 0 || metric.value.trim().length === 0) {
+      throw new Error(`${label} provider metrics must include label and value`);
+    }
+  }
+  assertCitationIds(item.citationIds, knownCitationIds, label);
+};
+
+const assertCitationIds = (
+  citationIds: readonly string[],
+  knownCitationIds: ReadonlySet<string>,
+  label: string,
+): void => {
+  for (const citationId of citationIds) {
+    if (!knownCitationIds.has(citationId)) {
+      throw new Error(`${label} cites evidence outside citation map`);
     }
   }
 };

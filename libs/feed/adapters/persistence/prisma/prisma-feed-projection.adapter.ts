@@ -7,6 +7,8 @@ import type {
 } from '@social-monitor/ingestion/ports';
 
 import type { PrismaFeedClient } from './prisma-feed-client';
+import { feedItemFromPrisma } from './prisma-feed-records';
+import { feedSignalBaselineSampleFromItem } from '../../../domain';
 import { feedDedupeKeyForItem } from '../feed-dedupe-key';
 import { feedBodyPreviewForProjection } from '../feed-projection-content';
 
@@ -31,46 +33,91 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
       });
       const feedItemId = this.ids.generate();
 
-      await withPrismaWriteRetry(() => this.prisma.feedItem.upsert({
-        where: {
-          tenantId_topicId_dedupeKey: {
-            tenantId: command.tenantId,
-            topicId: command.topicId,
-            dedupeKey,
+      await withPrismaWriteRetry(async () => {
+        const feedItem = await this.prisma.feedItem.upsert({
+          where: {
+            tenantId_topicId_dedupeKey: {
+              tenantId: command.tenantId,
+              topicId: command.topicId,
+              dedupeKey,
+            },
           },
-        },
-        update: {
-          sourceItemId: snapshot.id,
-          sourceBindingId: command.sourceBindingId,
-          providerKey: command.providerKey,
-          canonicalUrl: snapshot.canonicalUrl,
-          title: snapshot.title,
-          bodyPreview,
-          authorHandle: snapshot.authorHandle ?? null,
-          publishedAt: snapshot.publishedAt,
-          observedAt: snapshot.ingestedAt,
-          providerMetadata: snapshot.metadata ?? undefined,
-          status: 'VISIBLE',
-        },
-        create: {
-          id: feedItemId,
-          tenantId: command.tenantId,
-          workspaceId: command.workspaceId,
-          topicId: command.topicId,
-          sourceItemId: snapshot.id,
-          sourceBindingId: command.sourceBindingId,
-          providerKey: command.providerKey,
-          dedupeKey,
-          canonicalUrl: snapshot.canonicalUrl,
-          title: snapshot.title,
-          bodyPreview,
-          authorHandle: snapshot.authorHandle ?? null,
-          publishedAt: snapshot.publishedAt,
-          observedAt: snapshot.ingestedAt,
-          providerMetadata: snapshot.metadata ?? undefined,
-          status: 'VISIBLE',
-        },
-      }));
+          update: {
+            sourceItemId: snapshot.id,
+            sourceBindingId: command.sourceBindingId,
+            providerKey: command.providerKey,
+            canonicalUrl: snapshot.canonicalUrl,
+            title: snapshot.title,
+            bodyPreview,
+            authorHandle: snapshot.authorHandle ?? null,
+            publishedAt: snapshot.publishedAt,
+            observedAt: snapshot.ingestedAt,
+            providerMetadata: snapshot.metadata ?? undefined,
+            status: 'VISIBLE',
+          },
+          create: {
+            id: feedItemId,
+            tenantId: command.tenantId,
+            workspaceId: command.workspaceId,
+            topicId: command.topicId,
+            sourceItemId: snapshot.id,
+            sourceBindingId: command.sourceBindingId,
+            providerKey: command.providerKey,
+            dedupeKey,
+            canonicalUrl: snapshot.canonicalUrl,
+            title: snapshot.title,
+            bodyPreview,
+            authorHandle: snapshot.authorHandle ?? null,
+            publishedAt: snapshot.publishedAt,
+            observedAt: snapshot.ingestedAt,
+            providerMetadata: snapshot.metadata ?? undefined,
+            status: 'VISIBLE',
+          },
+        });
+        const signalSample = feedSignalBaselineSampleFromItem(feedItemFromPrisma(feedItem));
+
+        if (signalSample === undefined) {
+          await this.prisma.feedSignalBaselineSample.deleteMany({
+            where: {
+              tenantId: command.tenantId,
+              workspaceId: command.workspaceId,
+              feedItemId: feedItem.id,
+            },
+          });
+        } else {
+          await this.prisma.feedSignalBaselineSample.upsert({
+            where: {
+              tenantId_workspaceId_feedItemId: {
+                tenantId: command.tenantId,
+                workspaceId: command.workspaceId,
+                feedItemId: feedItem.id,
+              },
+            },
+            update: {
+              topicId: command.topicId,
+              providerKey: signalSample.providerKey,
+              sourceKey: signalSample.sourceKey,
+              contentType: signalSample.contentType,
+              strength: signalSample.strength,
+              publishedAt: signalSample.publishedAt,
+              observedAt: signalSample.observedAt,
+            },
+            create: {
+              id: this.ids.generate(),
+              tenantId: command.tenantId,
+              workspaceId: command.workspaceId,
+              topicId: command.topicId,
+              feedItemId: feedItem.id,
+              providerKey: signalSample.providerKey,
+              sourceKey: signalSample.sourceKey,
+              contentType: signalSample.contentType,
+              strength: signalSample.strength,
+              publishedAt: signalSample.publishedAt,
+              observedAt: signalSample.observedAt,
+            },
+          });
+        }
+      });
       projected += 1;
     }
 

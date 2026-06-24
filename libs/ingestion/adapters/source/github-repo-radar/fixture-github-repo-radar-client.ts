@@ -8,6 +8,7 @@ const fixtureCandidates: readonly GitHubRepoRadarCandidate[] = [
   {
     fullName: 'openai/codex',
     stars24h: 210,
+    stars48h: 360,
     stars7d: 1200,
     stars30d: 4800,
     stars90d: 11000,
@@ -17,20 +18,22 @@ const fixtureCandidates: readonly GitHubRepoRadarCandidate[] = [
   {
     fullName: 'astral-sh/uv',
     stars24h: 430,
+    stars48h: 700,
     stars7d: 2800,
     stars30d: 9400,
     stars90d: 21000,
     rank: 2,
-    primaryWindow: '7d',
+    primaryWindow: '48h',
   },
   {
     fullName: 'flutter/flutter',
     stars24h: 40,
+    stars48h: 70,
     stars7d: 300,
     stars30d: 1100,
     stars90d: 2600,
     rank: 3,
-    primaryWindow: '30d',
+    primaryWindow: '48h',
   },
 ];
 

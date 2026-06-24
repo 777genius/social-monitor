@@ -17,11 +17,13 @@ class SummaryCitationViewDto {
     required this.label,
     required this.providerKey,
     required this.sourceItemId,
+    this.canonicalUrl,
   });
 
   factory SummaryCitationViewDto.fromJson(Map<String, Object?> json) =>
       _$SummaryCitationViewDtoFromJson(json);
 
+  final String? canonicalUrl;
   final String citationId;
   final String feedItemId;
   final SummaryCitationViewDtoFieldField field;

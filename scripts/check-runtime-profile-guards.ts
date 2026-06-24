@@ -31,7 +31,10 @@ import {
   resolveMonitoringPersistenceMode,
   resolveMonitoringScanQueueMode,
 } from '../libs/monitoring/interfaces/rest/monitoring-provider-tokens';
-import { resolveRelevancePersistenceMode } from '../libs/relevance/interfaces/rest/relevance-provider-tokens';
+import {
+  resolveRelevanceMemoryProjectionMode,
+  resolveRelevancePersistenceMode,
+} from '../libs/relevance/interfaces/rest/relevance-provider-tokens';
 import {
   resolveSummaryJobQueueMode,
   resolveSummaryMemoryMode,
@@ -84,6 +87,20 @@ assertThrows(
 assert(
   resolveRelevancePersistenceMode({ ...databaseEnv, RELEVANCE_PERSISTENCE: 'prisma' }) === 'prisma',
   'relevance beta persistence',
+);
+assert(resolveRelevanceMemoryProjectionMode(betaEnv) === 'disabled', 'relevance memory projection defaults disabled');
+assertThrows(
+  () => resolveRelevanceMemoryProjectionMode({ ...betaEnv, RELEVANCE_MEMORY_PROJECTION_MODE: 'memo-stack' }),
+  'RELEVANCE_MEMORY_PROJECTION_MODE=memo-stack must require memo-stack URL and token',
+);
+assert(
+  resolveRelevanceMemoryProjectionMode({
+    ...betaEnv,
+    RELEVANCE_MEMORY_PROJECTION_MODE: 'memo-stack',
+    INFINITY_CONTEXT_URL: 'https://memory.example.test',
+    INFINITY_CONTEXT_TOKEN: 'test-token',
+  }) === 'memo-stack',
+  'relevance memory projection accepts explicit memo-stack mode',
 );
 
 assertThrows(

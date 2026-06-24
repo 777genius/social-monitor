@@ -21,6 +21,7 @@ const runtimeRequire = createRequire(`${process.cwd()}/package.json`);
 
 export class PrismaFeedConnection implements PrismaFeedClient {
   readonly feedItem: PrismaFeedClient['feedItem'];
+  readonly feedSignalBaselineSample: PrismaFeedClient['feedSignalBaselineSample'];
 
   private readonly pool: Pool;
   private readonly client: PrismaFeedRuntimeClient;
@@ -34,6 +35,7 @@ export class PrismaFeedConnection implements PrismaFeedClient {
     const { PrismaClient } = runtimeRequire('./prisma/generated/client/client') as PrismaFeedRuntimeModule;
     this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
     this.feedItem = this.client.feedItem;
+    this.feedSignalBaselineSample = this.client.feedSignalBaselineSample;
   }
 
   async close(): Promise<void> {

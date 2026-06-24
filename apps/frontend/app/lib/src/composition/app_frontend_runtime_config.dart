@@ -11,6 +11,7 @@ final class AppFrontendRuntimeConfig {
     required this.tenantName,
     required this.workspaceName,
     required this.workspaceRole,
+    required this.userId,
     required this.userLabel,
     required this.correlationId,
     this.bearerToken,
@@ -33,6 +34,7 @@ final class AppFrontendRuntimeConfig {
         'SOCIAL_MONITOR_WORKSPACE_ROLE',
         defaultValue: 'admin',
       ),
+      userId: String.fromEnvironment('SOCIAL_MONITOR_USER_ID'),
       userLabel: String.fromEnvironment(
         'SOCIAL_MONITOR_USER_LABEL',
         defaultValue: 'MVP Operator',
@@ -51,6 +53,7 @@ final class AppFrontendRuntimeConfig {
   final String tenantName;
   final String workspaceName;
   final String workspaceRole;
+  final String userId;
   final String userLabel;
   final String correlationId;
   final String? bearerToken;
@@ -59,7 +62,8 @@ final class AppFrontendRuntimeConfig {
     return apiBaseUrl.trim().isNotEmpty &&
         tenantId.trim().isNotEmpty &&
         workspaceId.trim().isNotEmpty &&
-        workspaceRole.trim().isNotEmpty;
+        workspaceRole.trim().isNotEmpty &&
+        userId.trim().isNotEmpty;
   }
 
   AppShellRuntime? createRuntimeOrNull() {
@@ -90,6 +94,7 @@ final class AppFrontendRuntimeConfig {
       session: AppSessionSnapshot(
         isSignedIn: true,
         isRestoring: false,
+        userId: userId.trim(),
         userLabel: userLabel.trim(),
       ),
       capabilities: const FeatureFlagSet({

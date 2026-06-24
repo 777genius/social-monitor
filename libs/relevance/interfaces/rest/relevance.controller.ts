@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Headers, Inject, Param, Post, Put, Query } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiHeader, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
   WorkspaceRoleHeaderParser,
 } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
@@ -20,12 +20,12 @@ import { RankFeedItemsUseCase } from '../../features/rank-feed-items/rank-feed-i
 import { RecordRelevanceFeedbackUseCase } from '../../features/record-relevance-feedback/record-relevance-feedback.use-case';
 import { UpsertUserRelevanceProfileUseCase } from '../../features/upsert-user-relevance-profile/upsert-user-relevance-profile.use-case';
 import {
-  type BuildPersonalizedDigestResponseDto,
-  type RankFeedItemsResponseDto,
+  BuildPersonalizedDigestResponseDto,
+  RankFeedItemsResponseDto,
   RecordRelevanceFeedbackRequestDto,
-  type RecordRelevanceFeedbackResponseDto,
+  RecordRelevanceFeedbackResponseDto,
   UpsertUserRelevanceProfileRequestDto,
-  type UpsertUserRelevanceProfileResponseDto,
+  UpsertUserRelevanceProfileResponseDto,
 } from './relevance.dto';
 
 @ApiTags('relevance')
@@ -50,6 +50,7 @@ export class RelevanceController {
     apiKeyScope: 'write:summaries',
     workspaceRoleDescription: 'Comma-separated workspace roles. Relevance profile writes allow owner, admin or member.',
   })
+  @ApiOkResponse({ type: UpsertUserRelevanceProfileResponseDto })
   async upsertProfile(
     @Param('userId') userId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -90,6 +91,7 @@ export class RelevanceController {
   @ApiQuery({ name: 'windowStartedAt', required: true, type: String })
   @ApiQuery({ name: 'windowEndedAt', required: true, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiOkResponse({ type: BuildPersonalizedDigestResponseDto })
   async digest(
     @Param('userId') userId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -134,6 +136,7 @@ export class RelevanceController {
   @ApiQuery({ name: 'topicId', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'observedAfter', required: false, type: String })
+  @ApiOkResponse({ type: RankFeedItemsResponseDto })
   async feed(
     @Param('userId') userId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -173,6 +176,7 @@ export class RelevanceController {
     apiKeyScope: 'write:summaries',
     workspaceRoleDescription: 'Comma-separated workspace roles. Relevance feedback writes allow owner, admin or member.',
   })
+  @ApiCreatedResponse({ type: RecordRelevanceFeedbackResponseDto })
   async feedback(
     @Param('userId') userId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,

@@ -130,7 +130,7 @@ const run = async (): Promise<void> => {
   }
 
   assert(metadata.repository.fullName === 'openai/codex', `unexpected repo radar result ${metadata.repository.fullName}`);
-  assert(metadata.trend.stars7d === 1200, `unexpected 7d stars delta ${metadata.trend.stars7d}`);
+  assert(metadata.trend.stars48h === 360, `unexpected 48h stars delta ${metadata.trend.stars48h}`);
 
   const history = trendHistory.all();
   assert(history.length === 1, `expected one trend history record, got ${history.length}`);
@@ -173,7 +173,7 @@ const run = async (): Promise<void> => {
   const attempt = await summaryModel.summarize(summaryInput, route);
 
   assert(
-    attempt.draft.sourceHighlights.some((highlight) => highlight.includes('openai/codex: 54000 stars, +1200 in 7d')),
+    attempt.draft.sourceHighlights.some((highlight) => highlight.includes('openai/codex: 54000 stars, +360 in 48h')),
     `summary source highlights must include repo trend evidence: ${JSON.stringify(attempt.draft.sourceHighlights)}`,
   );
 

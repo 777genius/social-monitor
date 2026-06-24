@@ -17,12 +17,41 @@ void main() {
     expect(page.items.single.status, 'ready');
     expect(page.items.single.bodyText, contains('20 selected item'));
     expect(page.items.single.bodyText, contains('LangGraph release velocity'));
-    expect(page.items.single.citations.single.sourceLabel, 'github [1]');
+    expect(page.items.single.citations.single.sourceLabel, 'GitHub [1]');
+    expect(
+      page.items.single.citations.single.canonicalUrl,
+      'https://github.com/openai/codex',
+    );
     expect(
       page.items.single.citations.single.rawSnippet,
-      'Evidence field title from source item source-item-1',
+      'GitHub citation references title evidence from source item source-item-1.',
     );
     expect(page.items.single.freshnessLabel, 'Fresh');
+  });
+
+  test('maps generated briefing reader brief into feature DTO', () {
+    const mapper = GeneratedSummaryRestMapper();
+
+    final briefing = mapper.briefing(_briefingArtifact());
+
+    expect(briefing.readerBrief.headline, 'AI repo radar');
+    expect(briefing.readerBrief.oneLineTakeaway, contains('openai/codex'));
+    expect(briefing.readerBrief.qualityState.status, 'limited_sources');
+    expect(
+      briefing.readerBrief.topReads.single.canonicalUrl,
+      contains('github.com/openai/codex'),
+    );
+    expect(briefing.readerBrief.topReads.single.matchedTopicIds, ['ai-tools']);
+    expect(
+      briefing.readerBrief.topReads.single.providerMetrics.single.value,
+      '54,000',
+    );
+    expect(
+      briefing.readerBrief.sourceMix.single.providerKey,
+      'github-repo-radar',
+    );
+    expect(briefing.readerBrief.sourceMix.single.storyClusterCount, 1);
+    expect(briefing.readerBrief.nextActions.single.kind, 'watch_repository');
   });
 
   test('maps generated briefing job request and status DTOs', () {
@@ -60,11 +89,188 @@ void main() {
   });
 }
 
+generated.BriefingArtifactResponseDto _briefingArtifact() {
+  final now = DateTime.utc(2026, 6, 23, 10, 30);
+  return generated.BriefingArtifactResponseDto(
+    briefingId: 'briefing-1',
+    citations: const [
+      generated.BriefingCitationViewDto(
+        canonicalUrl: 'https://github.com/openai/codex',
+        citationId: 'bc-1',
+        feedItemId: 'feed-1',
+        field: generated.BriefingCitationViewDtoFieldField.title,
+        label: '[1]',
+        providerKey: 'github-repo-radar',
+        sourceItemId: 'source-1',
+      ),
+    ],
+    confidence: const generated.BriefingConfidenceDto(
+      level: generated.BriefingConfidenceDtoLevelLevel.medium,
+      rationale: 'Enough evidence for a briefing.',
+      score: 0.7,
+    ),
+    contextArtifacts: const [],
+    executiveSummary:
+        'Repo Radar found concrete AI developer-tool repositories.',
+    freshness: generated.BriefingFreshnessDto(
+      checkedAt: now,
+      status: generated.BriefingFreshnessDtoStatusStatus.fresh,
+    ),
+    headline: 'AI signal briefing',
+    lineage: const generated.BriefingLineageDto(
+      evalDatasetVersion: 'briefing.eval.mvp.v1',
+      modelVersion: 'deterministic-local',
+      promptVersion: 'briefing.prompt.v1',
+      providerVersion: 'deterministic-local',
+      rulesVersion: 'briefing.rules.policy.v1',
+      schemaVersion: 'briefing.artifact.v1',
+    ),
+    qualityFlags: const [],
+    readerBrief: const generated.BriefingReaderBriefDto(
+      headline: 'AI repo radar',
+      oneLineTakeaway: 'openai/codex is the clearest repository signal.',
+      bullets: ['openai/codex is worth reading first.'],
+      qualityState: generated.BriefingReaderQualityStateDto(
+        status:
+            generated.BriefingReaderQualityStateDtoStatusStatus.limitedSources,
+        flags: [
+          generated.BriefingReaderQualityStateDtoFlagsFlags.limitedSources,
+        ],
+        warnings: ['Source coverage is limited or single-source.'],
+        isSingleSource: true,
+      ),
+      topicSections: [
+        generated.BriefingReaderTopicSectionDto(
+          title: 'AI developer tools',
+          insight: 'Agent tooling repositories are gaining attention.',
+          items: [
+            generated.BriefingReaderItemDto(
+              title: 'openai/codex',
+              providerKey: 'github-repo-radar',
+              reason: 'Fast star growth.',
+              matchedTopicIds: ['ai-tools'],
+              matchedRules: ['topic:ai-tools', 'provider:github-repo-radar'],
+              signalScore: 1,
+              providerMetrics: [
+                generated.BriefingProviderMetricDto(
+                  label: 'Stars',
+                  value: '54,000',
+                ),
+              ],
+              whyImportant: ['Fast star growth.'],
+              whyNow: 'Current briefing window has Repo Radar coverage.',
+              canonicalUrl: 'https://github.com/openai/codex',
+              citationIds: ['bc-1'],
+            ),
+          ],
+          citationIds: ['bc-1'],
+        ),
+      ],
+      sourceMix: [
+        generated.BriefingSourceMixEntryDto(
+          providerKey: 'github-repo-radar',
+          itemCount: 1,
+          citationCount: 1,
+          storyClusterCount: 1,
+          crossSourceClusterCount: 0,
+          singleSourceOnly: true,
+          topicIds: ['ai-tools'],
+        ),
+      ],
+      topReads: [
+        generated.BriefingReaderItemDto(
+          title: 'openai/codex',
+          providerKey: 'github-repo-radar',
+          reason: 'Fast star growth.',
+          matchedTopicIds: ['ai-tools'],
+          matchedRules: ['topic:ai-tools', 'provider:github-repo-radar'],
+          signalScore: 1,
+          providerMetrics: [
+            generated.BriefingProviderMetricDto(
+              label: 'Stars',
+              value: '54,000',
+            ),
+          ],
+          whyImportant: ['Fast star growth.'],
+          whyNow: 'Current briefing window has Repo Radar coverage.',
+          canonicalUrl: 'https://github.com/openai/codex',
+          citationIds: ['bc-1'],
+        ),
+      ],
+      trendDelta: generated.BriefingTrendDeltaDto(
+        newSignals: ['openai/codex'],
+        growingSignals: [],
+        repeatedSignals: [],
+        fadingSignals: [],
+      ),
+      openQuestions: [],
+      risks: [],
+      nextActions: [
+        generated.BriefingNextActionDto(
+          kind: generated.BriefingNextActionDtoKindKind.watchRepository,
+          label: 'Watch openai/codex',
+          reason: 'Track whether growth continues.',
+          canonicalUrl: 'https://github.com/openai/codex',
+          citationIds: ['bc-1'],
+        ),
+      ],
+    ),
+    repeatedSignals: const [],
+    risksAndUnknowns: const [],
+    schemaVersion: 'briefing.artifact.v1',
+    scope: const generated.BriefingScopeDto(
+      type: generated.BriefingScopeDtoTypeType.workspace,
+    ),
+    sourceWindow: generated.BriefingSourceWindowDto(
+      endedAt: now,
+      selectedFeedItemIds: const ['feed-1'],
+      startedAt: now.subtract(const Duration(minutes: 30)),
+      storyClusterIds: const ['story-1'],
+      windowId: 'window-1',
+    ),
+    storyClusters: [
+      generated.BriefingStoryClusterDto(
+        duplicateFeedItemIds: const [],
+        id: 'story-1',
+        observedAtRange: generated.BriefingObservedAtRangeDto(
+          endedAt: now,
+          startedAt: now.subtract(const Duration(minutes: 30)),
+        ),
+        providerKeys: const ['github-repo-radar'],
+        representativeFeedItemId: 'feed-1',
+        score: 1,
+        storyKey: 'url:github.com/openai/codex',
+        topicIds: const ['ai-tools'],
+        whyImportant: const ['Fast star growth.'],
+      ),
+    ],
+    tenantId: 'tenant-1',
+    topicHighlights: const [],
+    topStories: const [
+      generated.BriefingTopStoryDto(
+        citationIds: ['bc-1'],
+        providerKeys: ['github-repo-radar'],
+        storyClusterId: 'story-1',
+        summary: 'openai/codex is gaining attention.',
+        title: 'openai/codex',
+        topicIds: ['ai-tools'],
+      ),
+    ],
+    usage: const generated.BriefingUsageDto(
+      estimatedCostUsd: 0,
+      inputTokens: 100,
+      outputTokens: 40,
+    ),
+    workspaceId: 'workspace-1',
+  );
+}
+
 generated.SummaryArtifactResponseDto _summaryArtifact() {
   final now = DateTime.utc(2026, 6, 23, 9, 50);
   return generated.SummaryArtifactResponseDto(
     citations: const [
       generated.SummaryCitationViewDto(
+        canonicalUrl: 'https://github.com/openai/codex',
         citationId: 'c1',
         feedItemId: 'feed-item-1',
         field: generated.SummaryCitationViewDtoFieldField.title,

@@ -6,6 +6,7 @@ import 'package:dio/dio.dart' hide Headers;
 
 import 'clients/briefings_client.dart';
 import 'clients/feed_client.dart';
+import 'clients/relevance_client.dart';
 import 'clients/scan_requests_client.dart';
 import 'clients/scan_policies_client.dart';
 import 'clients/sources_client.dart';
@@ -28,6 +29,7 @@ class SocialMonitorRestClient {
 
   BriefingsClient? _briefings;
   FeedClient? _feed;
+  RelevanceClient? _relevance;
   ScanRequestsClient? _scanRequests;
   ScanPoliciesClient? _scanPolicies;
   SourcesClient? _sources;
@@ -39,6 +41,9 @@ class SocialMonitorRestClient {
       _briefings ??= BriefingsClient(_dio, baseUrl: _baseUrl);
 
   FeedClient get feed => _feed ??= FeedClient(_dio, baseUrl: _baseUrl);
+
+  RelevanceClient get relevance =>
+      _relevance ??= RelevanceClient(_dio, baseUrl: _baseUrl);
 
   ScanRequestsClient get scanRequests =>
       _scanRequests ??= ScanRequestsClient(_dio, baseUrl: _baseUrl);

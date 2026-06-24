@@ -4,29 +4,48 @@ import { FEED_ITEM_READ_REPOSITORY, type FeedItemReadRepositoryPort } from '@soc
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
+import {
+  MemoStackRelevanceMemoryProjector,
+  resolveMemoStackRelevanceMemoryProjectorOptions,
+} from '../../adapters/memory/memo-stack-relevance-memory.projector';
+import { InMemoryRelevanceFeedbackLearningStore } from '../../adapters/persistence/in-memory-relevance-feedback-learning.store';
 import { InMemoryRelevanceFeedbackRepository } from '../../adapters/persistence/in-memory-relevance-feedback.repository';
+import { InMemoryRelevanceMemoryProjectionRepository } from '../../adapters/persistence/in-memory-relevance-memory-projection.repository';
 import { InMemoryUserRelevanceProfileRepository } from '../../adapters/persistence/in-memory-user-relevance-profile.repository';
 import type { PrismaRelevanceClient } from '../../adapters/persistence/prisma/prisma-relevance-client';
 import { PrismaRelevanceConnection } from '../../adapters/persistence/prisma/prisma-relevance-connection';
+import { PrismaRelevanceFeedbackLearningStore } from '../../adapters/persistence/prisma/prisma-relevance-feedback-learning.store';
 import { PrismaRelevanceFeedbackRepository } from '../../adapters/persistence/prisma/prisma-relevance-feedback.repository';
+import { PrismaRelevanceMemoryProjectionRepository } from '../../adapters/persistence/prisma/prisma-relevance-memory-projection.repository';
 import { PrismaUserRelevanceProfileRepository } from '../../adapters/persistence/prisma/prisma-user-relevance-profile.repository';
 import { BuildPersonalizedDigestUseCase } from '../../features/build-personalized-digest/build-personalized-digest.use-case';
+import { ProjectRelevanceMemoryBatchUseCase } from '../../features/project-relevance-memory/project-relevance-memory-batch.use-case';
 import { RankFeedItemsUseCase } from '../../features/rank-feed-items/rank-feed-items.use-case';
 import { RecordRelevanceFeedbackUseCase } from '../../features/record-relevance-feedback/record-relevance-feedback.use-case';
 import { UpsertUserRelevanceProfileUseCase } from '../../features/upsert-user-relevance-profile/upsert-user-relevance-profile.use-case';
 import type {
+  RelevanceFeedbackLearningStorePort,
   RelevanceFeedbackRepositoryPort,
+  RelevanceMemoryProjectionRepositoryPort,
+  RelevanceMemoryProjectorPort,
   UserRelevanceProfileRepositoryPort,
 } from '../../ports';
 import {
+  NOOP_RELEVANCE_MEMORY_PROJECTOR,
+  RELEVANCE_FEEDBACK_LEARNING_STORE,
   RELEVANCE_FEEDBACK_REPOSITORY,
+  RELEVANCE_MEMORY_PROJECTION_REPOSITORY,
+  RELEVANCE_MEMORY_PROJECTOR,
   USER_RELEVANCE_PROFILE_REPOSITORY,
 } from '../../ports';
 import { RelevanceController } from './relevance.controller';
 import {
   RELEVANCE_PERSISTENCE_MODE,
+  RELEVANCE_MEMORY_PROJECTION_MODE,
   RELEVANCE_PRISMA_CLIENT,
+  relevanceMemoryProjectionModeProvider,
   relevancePersistenceModeProvider,
+  type RelevanceMemoryProjectionMode,
   type RelevancePersistenceMode,
 } from './relevance-provider-tokens';
 
@@ -35,6 +54,7 @@ import {
   controllers: [RelevanceController],
   providers: [
     relevancePersistenceModeProvider,
+    relevanceMemoryProjectionModeProvider,
     {
       provide: RELEVANCE_PRISMA_CLIENT,
       useFactory: (mode: RelevancePersistenceMode): PrismaRelevanceClient | null =>
@@ -43,6 +63,47 @@ import {
     },
     InMemoryUserRelevanceProfileRepository,
     InMemoryRelevanceFeedbackRepository,
+    InMemoryRelevanceMemoryProjectionRepository,
+    {
+      provide: RELEVANCE_FEEDBACK_LEARNING_STORE,
+      useFactory: (
+        mode: RelevancePersistenceMode,
+        prisma: PrismaRelevanceClient | null,
+        inMemoryProfiles: InMemoryUserRelevanceProfileRepository,
+        inMemoryFeedback: InMemoryRelevanceFeedbackRepository,
+        inMemoryProjections: InMemoryRelevanceMemoryProjectionRepository,
+      ): RelevanceFeedbackLearningStorePort =>
+        mode === 'prisma'
+          ? new PrismaRelevanceFeedbackLearningStore(requirePrismaRelevanceClient(prisma))
+          : new InMemoryRelevanceFeedbackLearningStore(inMemoryProfiles, inMemoryFeedback, inMemoryProjections),
+      inject: [
+        RELEVANCE_PERSISTENCE_MODE,
+        RELEVANCE_PRISMA_CLIENT,
+        InMemoryUserRelevanceProfileRepository,
+        InMemoryRelevanceFeedbackRepository,
+        InMemoryRelevanceMemoryProjectionRepository,
+      ],
+    },
+    {
+      provide: RELEVANCE_MEMORY_PROJECTION_REPOSITORY,
+      useFactory: (
+        mode: RelevancePersistenceMode,
+        prisma: PrismaRelevanceClient | null,
+        inMemoryProjections: InMemoryRelevanceMemoryProjectionRepository,
+      ): RelevanceMemoryProjectionRepositoryPort =>
+        mode === 'prisma'
+          ? new PrismaRelevanceMemoryProjectionRepository(requirePrismaRelevanceClient(prisma))
+          : inMemoryProjections,
+      inject: [RELEVANCE_PERSISTENCE_MODE, RELEVANCE_PRISMA_CLIENT, InMemoryRelevanceMemoryProjectionRepository],
+    },
+    {
+      provide: RELEVANCE_MEMORY_PROJECTOR,
+      useFactory: (mode: RelevanceMemoryProjectionMode): RelevanceMemoryProjectorPort =>
+        mode === 'memo-stack'
+          ? new MemoStackRelevanceMemoryProjector(resolveMemoStackRelevanceMemoryProjectorOptions(process.env))
+          : NOOP_RELEVANCE_MEMORY_PROJECTOR,
+      inject: [RELEVANCE_MEMORY_PROJECTION_MODE],
+    },
     {
       provide: USER_RELEVANCE_PROFILE_REPOSITORY,
       useFactory: (
@@ -83,11 +144,17 @@ import {
     },
     {
       provide: RecordRelevanceFeedbackUseCase,
+      useFactory: (learning: RelevanceFeedbackLearningStorePort) =>
+        new RecordRelevanceFeedbackUseCase(learning, new CryptoIdGenerator(), new SystemClock()),
+      inject: [RELEVANCE_FEEDBACK_LEARNING_STORE],
+    },
+    {
+      provide: ProjectRelevanceMemoryBatchUseCase,
       useFactory: (
-        profiles: UserRelevanceProfileRepositoryPort,
-        feedback: RelevanceFeedbackRepositoryPort,
-      ) => new RecordRelevanceFeedbackUseCase(profiles, feedback, new CryptoIdGenerator(), new SystemClock()),
-      inject: [USER_RELEVANCE_PROFILE_REPOSITORY, RELEVANCE_FEEDBACK_REPOSITORY],
+        projections: RelevanceMemoryProjectionRepositoryPort,
+        memory: RelevanceMemoryProjectorPort,
+      ) => new ProjectRelevanceMemoryBatchUseCase(projections, memory, new SystemClock()),
+      inject: [RELEVANCE_MEMORY_PROJECTION_REPOSITORY, RELEVANCE_MEMORY_PROJECTOR],
     },
     {
       provide: BuildPersonalizedDigestUseCase,
@@ -97,13 +164,18 @@ import {
   ],
   exports: [
     BuildPersonalizedDigestUseCase,
+    ProjectRelevanceMemoryBatchUseCase,
     RankFeedItemsUseCase,
     RecordRelevanceFeedbackUseCase,
     UpsertUserRelevanceProfileUseCase,
     USER_RELEVANCE_PROFILE_REPOSITORY,
     RELEVANCE_FEEDBACK_REPOSITORY,
+    RELEVANCE_FEEDBACK_LEARNING_STORE,
+    RELEVANCE_MEMORY_PROJECTION_REPOSITORY,
+    RELEVANCE_MEMORY_PROJECTOR,
     InMemoryUserRelevanceProfileRepository,
     InMemoryRelevanceFeedbackRepository,
+    InMemoryRelevanceMemoryProjectionRepository,
   ],
 })
 export class RelevanceRestModule {}

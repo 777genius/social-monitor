@@ -71,8 +71,9 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
       ? await this.client.listStories(plan.query.query as HackerNewsListing, plan.maxItems)
       : await this.client.searchStories(plan.query.query, plan.maxItems);
     const cursorTime = decodeTimeCursor(plan.cursor);
+    const sourceKey = plan.query.mode === 'listing' ? plan.query.query : 'search';
     const items = stories
-      .flatMap((story) => normalizeStory(story))
+      .flatMap((story) => normalizeStory(story, sourceKey))
       .filter((item) => cursorTime === undefined || item.publishedAt.getTime() > cursorTime);
 
     return {
@@ -129,7 +130,7 @@ const encodeTimeCursor = (
   return new Date(maxPublishedAt).toISOString();
 };
 
-const normalizeStory = (story: HackerNewsStory) => {
+const normalizeStory = (story: HackerNewsStory, sourceKey: string) => {
   if (story.deleted || story.dead || story.title === undefined) {
     return [];
   }
@@ -147,9 +148,17 @@ const normalizeStory = (story: HackerNewsStory) => {
       body: story.text ?? '',
       authorHandle: story.by,
       publishedAt,
+      metadata: hackerNewsStoryMetadata(story, sourceKey),
     },
   ];
 };
+
+const hackerNewsStoryMetadata = (story: HackerNewsStory, sourceKey: string) => ({
+  kind: 'hacker_news_story',
+  source: sourceKey,
+  ...(story.score === undefined ? {} : { points: story.score }),
+  ...(story.comments === undefined ? {} : { comments: story.comments }),
+});
 
 const readPositiveInteger = (
   value: unknown,

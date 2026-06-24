@@ -118,7 +118,7 @@ const cases: readonly ProviderCase[] = [
     contextConfig: {
       topics: ['ai', 'agents', 'developer-tools'],
       languages: ['TypeScript', 'Rust'],
-      windows: ['24h', '7d', '30d', '90d'],
+      windows: ['24h', '48h'],
       minStars: 100,
       maxItems: 2,
       fixtureMode: true,

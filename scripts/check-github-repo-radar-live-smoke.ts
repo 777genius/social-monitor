@@ -1,10 +1,35 @@
+import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
+import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import { CryptoIdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+
+import { InMemoryFeedProjectionAdapter } from '../apps/ingestion-worker/src/adapters/feed/in-memory-feed-projection.adapter';
+import { InMemoryScanLeaseAdapter } from '../libs/ingestion/adapters/lease/in-memory-scan-lease.adapter';
+import { InMemoryGitHubRepositoryTrendHistoryRepository } from '../libs/ingestion/adapters/persistence/in-memory-github-repository-trend-history.repository';
+import { InMemoryScanAttemptRepository } from '../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
+import { InMemoryScanCursorRepository } from '../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
+import { InMemorySourceItemRepository } from '../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
+import { InMemoryScanFailureQueueAdapter } from '../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
+import { CircuitBreakerSourceFetcherAdapter } from '../libs/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
 import { BigQueryGitHubRepoRadarClient } from '../libs/ingestion/adapters/source/github-repo-radar/bigquery-github-repo-radar-client';
+import { GitHubRepositoryTrendMetadataProjectionAdapter } from '../libs/ingestion/adapters/source/github-repo-radar/github-repository-trend-metadata-projection.adapter';
 import { GitHubRepositoryLiveVerifierAdapter } from '../libs/ingestion/adapters/source/github-repo-radar/github-repository-live-verifier.adapter';
 import { GitHubRepoRadarSourceProvider } from '../libs/ingestion/adapters/source/github-repo-radar/github-repo-radar-source.provider';
 import { HttpGitHubClient } from '../libs/ingestion/adapters/source/github/http-github-client';
+import { InMemorySourceProviderRegistry } from '../libs/ingestion/adapters/source/in-memory-source-provider.registry';
+import { RegistrySourceFetcherAdapter } from '../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
+import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
 import { GITHUB_REPO_RADAR_PROVIDER_KEY, parseGitHubRepositoryTrendMetadata } from '../libs/ingestion/domain';
-import type { SourceRuntimeConfig } from '../libs/ingestion/ports';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { ExecuteScanUseCase } from '../libs/ingestion/features/execute-scan/execute-scan.use-case';
+import type {
+  ReportScanFailedCommand,
+  ReportScanSucceededCommand,
+  ScanExecutionReporterPort,
+  SourceConfigReaderPort,
+  SourceRuntimeConfig,
+} from '../libs/ingestion/ports';
+import { FeedSummaryEvidenceSelector } from '../libs/summary/adapters/evidence/feed-summary-evidence.selector';
+import { DeterministicSummaryModelAdapter } from '../libs/summary/adapters/model/deterministic-summary-model.adapter';
+import type { SummaryModelBudget, SummaryModelInput, SummaryModelPolicy } from '../libs/summary/ports';
 
 const enabledEnv = 'GITHUB_REPO_RADAR_LIVE_SMOKE';
 
@@ -14,12 +39,39 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
   }
 };
 
+class LiveSmokeScanExecutionReporter implements ScanExecutionReporterPort {
+  succeeded: ReportScanSucceededCommand | undefined;
+  failed: ReportScanFailedCommand | undefined;
+
+  async reportSucceeded(command: ReportScanSucceededCommand): Promise<void> {
+    this.succeeded = command;
+  }
+
+  async reportFailed(command: ReportScanFailedCommand): Promise<void> {
+    this.failed = command;
+  }
+}
+
+class StaticSourceConfigReader implements SourceConfigReaderPort {
+  constructor(private readonly config: SourceRuntimeConfig) {}
+
+  async readConfig(): Promise<SourceRuntimeConfig> {
+    return this.config;
+  }
+}
+
 const main = async (): Promise<void> => {
   if (process.env[enabledEnv] !== '1') {
     console.log(`GitHub repo radar live smoke skipped: set ${enabledEnv}=1 to enable BigQuery + GitHub REST proof.`);
     return;
   }
 
+  const clock = { now: () => new Date() };
+  const tenant = tenantId('tenant-github-repo-radar-live-smoke');
+  const workspace = workspaceId('workspace-github-repo-radar-live-smoke');
+  const topicId = 'topic-github-repo-radar-live-smoke';
+  const sourceBindingId = 'binding-github-repo-radar-live-smoke';
+  const scanJobId = 'scan-github-repo-radar-live-smoke';
   const provider = new GitHubRepoRadarSourceProvider(
     new BigQueryGitHubRepoRadarClient({
       projectId: firstEnv('GITHUB_REPO_RADAR_BIGQUERY_PROJECT_ID', 'GOOGLE_CLOUD_PROJECT', 'GCLOUD_PROJECT'),
@@ -31,14 +83,14 @@ const main = async (): Promise<void> => {
     new GitHubRepositoryLiveVerifierAdapter(
       new HttpGitHubClient(readPositiveIntegerEnv('GITHUB_REPO_RADAR_GITHUB_TIMEOUT_MS', 10_000, 1_000, 60_000)),
     ),
-    { now: () => new Date() },
+    clock,
   );
   const query = readOptionalEnv('GITHUB_REPO_RADAR_QUERY') ?? 'agents';
   const maxItems = readPositiveIntegerEnv('GITHUB_REPO_RADAR_MAX_ITEMS', 1, 1, 5);
   const config: Record<string, string | number | readonly string[]> = {
     topics: readCsvEnv('GITHUB_REPO_RADAR_TOPICS', ['ai', 'agents']),
     languages: readCsvEnv('GITHUB_REPO_RADAR_LANGUAGES', ['TypeScript']),
-    windows: readCsvEnv('GITHUB_REPO_RADAR_WINDOWS', ['24h', '7d', '30d']),
+    windows: readCsvEnv('GITHUB_REPO_RADAR_WINDOWS', ['24h', '48h']),
     minStars: readPositiveIntegerEnv('GITHUB_REPO_RADAR_MIN_STARS', 100, 0, 1_000_000),
     maxItems,
     maxCandidates: readPositiveIntegerEnv('GITHUB_REPO_RADAR_MAX_CANDIDATES', 25, maxItems, 100),
@@ -50,40 +102,133 @@ const main = async (): Promise<void> => {
     config.accessToken = accessToken;
   }
 
-  const context = {
-    tenantId: tenantId('tenant-github-repo-radar-live-smoke'),
-    workspaceId: workspaceId('workspace-github-repo-radar-live-smoke'),
-    sourceBindingId: 'binding-github-repo-radar-live-smoke',
-    scanJobId: 'scan-github-repo-radar-live-smoke',
+  const sourceConfig = config satisfies SourceRuntimeConfig;
+  const registry = new InMemorySourceProviderRegistry([provider], sourceReadinessProfiles);
+  const feedItems = new InMemoryFeedItemReadRepository();
+  const sourceItems = new InMemorySourceItemRepository();
+  const scanAttempts = new InMemoryScanAttemptRepository();
+  const scanCursors = new InMemoryScanCursorRepository();
+  const scanExecutionReporter = new LiveSmokeScanExecutionReporter();
+  const scanFailures = new InMemoryScanFailureQueueAdapter(new InMemoryMetricsRecorder());
+  const scanLeases = new InMemoryScanLeaseAdapter();
+  const trendHistory = new InMemoryGitHubRepositoryTrendHistoryRepository();
+  const executeScan = new ExecuteScanUseCase(
+    new CircuitBreakerSourceFetcherAdapter(
+      new RegistrySourceFetcherAdapter(registry, new StaticSourceConfigReader(sourceConfig)),
+      clock,
+      { failureThreshold: 3, cooldownSeconds: 60 },
+    ),
+    sourceItems,
+    new InMemoryFeedProjectionAdapter(feedItems),
+    scanAttempts,
+    scanCursors,
+    scanExecutionReporter,
+    scanFailures,
+    scanLeases,
+    new CryptoIdGenerator(),
+    clock,
+    new GitHubRepositoryTrendMetadataProjectionAdapter(trendHistory),
+  );
+  const result = await executeScan.execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scanJobId,
+    topicId,
+    sourceBindingId,
+    scanPolicyId: 'policy-github-repo-radar-live-smoke',
+    providerKey: GITHUB_REPO_RADAR_PROVIDER_KEY,
+    sourceQuery: { mode: 'search', query },
     correlationId: 'corr-github-repo-radar-live-smoke',
-    config: config satisfies SourceRuntimeConfig,
-  };
+    causationId: 'cause-github-repo-radar-live-smoke',
+  });
 
-  const plan = provider.planScan({ mode: 'search', query }, context);
-  const result = await provider.scan(plan, context);
+  if (!result.ok) {
+    throw result.error;
+  }
 
-  assert(result.items.length > 0, 'GitHub repo radar live smoke must return at least one verified repository');
+  assert(result.value.fetched > 0, 'GitHub repo radar live e2e must fetch at least one verified repository');
+  assert(result.value.inserted > 0, 'GitHub repo radar live e2e must persist at least one source item');
+  assert(result.value.projected > 0, 'GitHub repo radar live e2e must project at least one feed item');
+  assert(scanExecutionReporter.succeeded !== undefined, 'GitHub repo radar live e2e must report scan success');
+  assert(scanExecutionReporter.failed === undefined, 'GitHub repo radar live e2e must not report scan failure');
 
-  const first = result.items[0];
-  const metadata = parseGitHubRepositoryTrendMetadata(first?.metadata);
+  const feed = await feedItems.list({ tenantId: tenant, workspaceId: workspace, topicId, limit: 10 });
+  assert(feed.items.length > 0, 'GitHub repo radar live e2e must expose feed items');
 
-  assert(first !== undefined, 'GitHub repo radar live smoke item is required');
+  const first = feed.items[0]?.toSnapshot();
+  const metadata = parseGitHubRepositoryTrendMetadata(first?.providerMetadata);
+
+  assert(first !== undefined, 'GitHub repo radar live e2e feed item is required');
   assert(metadata !== null, 'GitHub repo radar live smoke item must include typed repository trend metadata');
-  assert(first.externalId === metadata.repository.fullName, 'external id must be the repository full name');
+  assert(
+    first.sourceItemId.startsWith(`${sourceBindingId}:github-repo-radar:${metadata.repository.fullName}:`),
+    'source item id must include the repository full name and checked-at cursor',
+  );
   assert(first.canonicalUrl === metadata.repository.url, 'canonical URL must match verified GitHub repository URL');
   assert(metadata.trend.source === 'gh_archive_bigquery_plus_github_live', 'live smoke must not use fixture source');
+
+  const history = trendHistory.all();
+  assert(history.length > 0, 'GitHub repo radar live e2e must persist trend history');
+  assert(history[0]?.stars48h === metadata.trend.stars48h, 'trend history must keep the live 48h star delta');
+
+  const evidence = await new FeedSummaryEvidenceSelector(feedItems, clock).select({
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId,
+    maxItems: 5,
+  });
+  const summaryModel = new DeterministicSummaryModelAdapter();
+  const modelPolicy: SummaryModelPolicy = {
+    preferredProvider: 'deterministic-local',
+    maxInputTokens: 10_000,
+    maxOutputTokens: 2_000,
+    maxEstimatedCostUsd: 1,
+  };
+  const budget: SummaryModelBudget = {
+    remainingTokens: 10_000,
+    remainingCostUsd: 1,
+  };
+  const summaryInput: SummaryModelInput = {
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId,
+    evidence,
+    policy: {
+      format: 'executive_brief',
+      tone: 'neutral',
+      language: 'en',
+      maxKeyPoints: 3,
+      includeRisks: true,
+      includeSourceHighlights: true,
+      rulesVersion: 'summary.rules.github-repo-radar.live-smoke.v1',
+    },
+    requestedAt: clock.now(),
+  };
+  const route = summaryModel.route(summaryInput, modelPolicy, budget);
+  const attempt = await summaryModel.summarize(summaryInput, route);
+  const expectedHighlight = `${metadata.repository.fullName}: ${metadata.trend.totalStars} stars, +${metadata.trend.stars48h} in 48h`;
+
+  assert(
+    attempt.draft.sourceHighlights.some((highlight) => highlight.includes(expectedHighlight)),
+    `summary source highlights must include live repo trend evidence: ${JSON.stringify(attempt.draft.sourceHighlights)}`,
+  );
 
   console.log(
     JSON.stringify({
       status: 'passed',
       providerKey: GITHUB_REPO_RADAR_PROVIDER_KEY,
+      e2e: 'scan_to_feed_to_history_to_summary',
       repository: metadata.repository.fullName,
       totalStars: metadata.trend.totalStars,
       stars24h: metadata.trend.stars24h,
+      stars48h: metadata.trend.stars48h,
       stars7d: metadata.trend.stars7d,
       primaryWindow: metadata.trend.primaryWindow,
-      warnings: result.warnings.length,
-      nextCursor: result.nextCursor,
+      fetched: result.value.fetched,
+      inserted: result.value.inserted,
+      projected: result.value.projected,
+      historyRecords: history.length,
+      summaryHighlights: attempt.draft.sourceHighlights.length,
     }),
   );
 };

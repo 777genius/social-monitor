@@ -9,6 +9,7 @@ import type {
   BriefingModelValidationResult,
   ProviderBriefingAttempt,
 } from '../../ports';
+import { buildBriefingReaderBrief } from '../../domain';
 
 const route: BriefingModelRoute = {
   provider: 'deterministic-local',
@@ -68,30 +69,39 @@ export class DeterministicBriefingModelAdapter implements BriefingModelPort {
     const firstItem = input.evidence.selectedEvidence[0];
 
     if (firstItem === undefined) {
+      const noSignalDraft = {
+        headline: 'No reliable workspace signal yet',
+        executiveSummary: 'No eligible feed items were available for this briefing window.',
+        topStories: [],
+        topicHighlights: [],
+        repeatedSignals: [],
+        risksAndUnknowns: [
+          {
+            description: 'The briefing window did not contain enough primary evidence to produce claims.',
+            reason: 'insufficient_evidence' as const,
+          },
+        ],
+        citationMap: [],
+        qualityFlags: ['no_signal', 'limited_sources'] as const,
+        confidence: {
+          level: 'none' as const,
+          score: 0,
+          rationale: 'No primary evidence was selected for the briefing window.',
+        },
+        lineage,
+        usage,
+        noSignalReason: 'No eligible evidence items selected for this briefing scope.',
+      };
+
       return {
         route: selectedRoute,
         draft: {
-          headline: 'No reliable workspace signal yet',
-          executiveSummary: 'No eligible feed items were available for this briefing window.',
-          topStories: [],
-          topicHighlights: [],
-          repeatedSignals: [],
-          risksAndUnknowns: [
-            {
-              description: 'The briefing window did not contain enough primary evidence to produce claims.',
-              reason: 'insufficient_evidence',
-            },
-          ],
-          citationMap: [],
-          qualityFlags: ['no_signal', 'limited_sources'],
-          confidence: {
-            level: 'none',
-            score: 0,
-            rationale: 'No primary evidence was selected for the briefing window.',
-          },
-          lineage,
-          usage,
-          noSignalReason: 'No eligible evidence items selected for this briefing scope.',
+          ...noSignalDraft,
+          readerBrief: buildBriefingReaderBrief({
+            ...noSignalDraft,
+            storyClusters: input.evidence.clusters,
+            selectedEvidence: input.evidence.selectedEvidence,
+          }),
         },
       };
     }
@@ -103,6 +113,7 @@ export class DeterministicBriefingModelAdapter implements BriefingModelPort {
       sourceItemId: item.sourceItemId,
       providerKey: item.providerKey,
       field: 'title' as const,
+      canonicalUrl: item.canonicalUrl,
     }));
     const topStories = input.evidence.clusters
       .slice(0, input.policy.maxStories)
@@ -146,32 +157,41 @@ export class DeterministicBriefingModelAdapter implements BriefingModelPort {
         })
       : [];
 
+    const draft = {
+      headline: firstItem.title,
+      executiveSummary: buildExecutiveSummary(input),
+      topStories,
+      topicHighlights,
+      repeatedSignals,
+      risksAndUnknowns: input.policy.includeRisks
+        ? [
+            {
+              description: 'This deterministic briefing only uses selected primary evidence titles.',
+              citationIds: ['c1'],
+              reason: 'source_limit' as const,
+            },
+          ]
+        : [],
+      citationMap,
+      qualityFlags: selectedEvidence.length < 3 ? ['limited_sources' as const] : [],
+      confidence: {
+        level: selectedEvidence.length < 3 ? 'low' as const : 'medium' as const,
+        score: selectedEvidence.length < 3 ? 0.35 : 0.65,
+        rationale: 'Confidence is derived from selected primary evidence count in this deterministic adapter.',
+      },
+      lineage,
+      usage,
+    };
+
     return {
       route: selectedRoute,
       draft: {
-        headline: firstItem.title,
-        executiveSummary: buildExecutiveSummary(input),
-        topStories,
-        topicHighlights,
-        repeatedSignals,
-        risksAndUnknowns: input.policy.includeRisks
-          ? [
-              {
-                description: 'This deterministic briefing only uses selected primary evidence titles.',
-                citationIds: ['c1'],
-                reason: 'source_limit',
-              },
-            ]
-          : [],
-        citationMap,
-        qualityFlags: selectedEvidence.length < 3 ? ['limited_sources'] : [],
-        confidence: {
-          level: selectedEvidence.length < 3 ? 'low' : 'medium',
-          score: selectedEvidence.length < 3 ? 0.35 : 0.65,
-          rationale: 'Confidence is derived from selected primary evidence count in this deterministic adapter.',
-        },
-        lineage,
-        usage,
+        ...draft,
+        readerBrief: buildBriefingReaderBrief({
+          ...draft,
+          storyClusters: input.evidence.clusters,
+          selectedEvidence,
+        }),
       },
     };
   }

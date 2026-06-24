@@ -3,7 +3,11 @@ import { createRequire } from 'node:module';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 
-import type { PrismaRelevanceClient } from './prisma-relevance-client';
+import type {
+  PrismaRelevanceClient,
+  PrismaRelevanceTransactionClient,
+  PrismaRelevanceTransactionOptions,
+} from './prisma-relevance-client';
 
 type PrismaRelevanceRuntimeClient = PrismaRelevanceClient & {
   $disconnect(): Promise<void>;
@@ -22,6 +26,7 @@ const runtimeRequire = createRequire(`${process.cwd()}/package.json`);
 export class PrismaRelevanceConnection implements PrismaRelevanceClient {
   readonly userRelevanceProfile: PrismaRelevanceClient['userRelevanceProfile'];
   readonly relevanceFeedbackSignal: PrismaRelevanceClient['relevanceFeedbackSignal'];
+  readonly relevanceMemoryProjection: PrismaRelevanceClient['relevanceMemoryProjection'];
 
   private readonly pool: Pool;
   private readonly client: PrismaRelevanceRuntimeClient;
@@ -36,6 +41,17 @@ export class PrismaRelevanceConnection implements PrismaRelevanceClient {
     this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
     this.userRelevanceProfile = this.client.userRelevanceProfile;
     this.relevanceFeedbackSignal = this.client.relevanceFeedbackSignal;
+    this.relevanceMemoryProjection = this.client.relevanceMemoryProjection;
+  }
+
+  async $transaction<TValue>(
+    operation: (client: PrismaRelevanceTransactionClient) => Promise<TValue>,
+    options?: PrismaRelevanceTransactionOptions,
+  ): Promise<TValue> {
+    return this.client.$transaction(
+      (client) => operation(client as PrismaRelevanceTransactionClient),
+      options,
+    );
   }
 
   async close(): Promise<void> {

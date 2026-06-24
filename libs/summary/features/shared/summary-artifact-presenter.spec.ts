@@ -29,6 +29,7 @@ describe('presentSummaryArtifact', () => {
           sourceItemId: 'source-1',
           providerKey: 'rss',
           field: 'title',
+          canonicalUrl: 'https://example.test/source-1',
         },
       ],
       qualityFlags: ['limited_sources'],
@@ -80,6 +81,7 @@ describe('presentSummaryArtifact', () => {
           sourceItemId: 'source-1',
           providerKey: 'rss',
           field: 'title',
+          canonicalUrl: 'https://example.test/source-1',
         },
       ],
     });

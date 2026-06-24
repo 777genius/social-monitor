@@ -34,6 +34,12 @@ describe('HackerNewsSourceProvider', () => {
         body: '',
         authorHandle: 'alice',
         publishedAt: new Date(1_780_000_000 * 1000),
+        metadata: {
+          kind: 'hacker_news_story',
+          source: 'search',
+          points: 42,
+          comments: 9,
+        },
       },
       {
         externalId: 'hn:1002',
@@ -42,6 +48,12 @@ describe('HackerNewsSourceProvider', () => {
         body: 'How do you build reliable social/news ingestion?',
         authorHandle: 'bob',
         publishedAt: new Date(1_780_000_060 * 1000),
+        metadata: {
+          kind: 'hacker_news_story',
+          source: 'search',
+          points: 75,
+          comments: 18,
+        },
       },
     ]);
     expect(result.warnings).toEqual(['Some Hacker News stories were deleted/dead and skipped.']);

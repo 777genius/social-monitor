@@ -57,6 +57,7 @@ describe('GitHubRepoRadarSourceProvider', () => {
       },
       trend: {
         stars24h: 210,
+        stars48h: 360,
         stars7d: 1200,
         source: 'fixture_gh_archive_plus_github_live',
       },
@@ -115,6 +116,7 @@ const context = (config: SourceRuntimeConfig = {}): SourceProviderScanContext =>
 const candidate = (fullName: string, rank: number): GitHubRepoRadarCandidate => ({
   fullName,
   stars24h: 100,
+  stars48h: 150,
   stars7d: 200,
   stars30d: 300,
   stars90d: 400,
@@ -151,6 +153,7 @@ const liveRepo = (
   topics: ['ai', 'agents'],
   license: 'MIT',
   totalStars: 1000,
+  forksCount: 100,
   fork: false,
   archived: false,
   ...overrides,

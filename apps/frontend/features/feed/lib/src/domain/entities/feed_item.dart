@@ -1,5 +1,7 @@
 import '../value_objects/feed_item_id.dart';
 import '../value_objects/feed_provider_metadata.dart';
+import '../value_objects/feed_provider_metrics.dart';
+import '../value_objects/feed_signal_snapshot.dart';
 
 final class FeedItem {
   const FeedItem({
@@ -15,6 +17,8 @@ final class FeedItem {
     required this.observedAt,
     this.authorHandle,
     this.providerMetadata,
+    this.providerMetrics,
+    this.normalizedSignal,
   });
 
   final FeedItemId id;
@@ -27,6 +31,8 @@ final class FeedItem {
   final String bodyPreview;
   final String? authorHandle;
   final FeedProviderMetadata? providerMetadata;
+  final FeedProviderMetrics? providerMetrics;
+  final FeedSignalSnapshot? normalizedSignal;
   final DateTime publishedAt;
   final DateTime observedAt;
 }

@@ -37,6 +37,7 @@ type GitHubRepositoryTrendData = {
   readonly totalStars?: number;
   readonly primaryWindow?: string;
   readonly stars24h?: number;
+  readonly stars48h?: number;
   readonly stars7d?: number;
   readonly stars30d?: number;
   readonly stars90d?: number;
@@ -210,7 +211,7 @@ export type PrismaIngestionClient = {
       };
     }): Promise<PrismaScanLeaseEntryRecord | null>;
   };
-  readonly githubRepositoryTrendCandidate: {
+  readonly gitHubRepositoryTrendCandidate: {
     upsert(args: {
       readonly where: {
         readonly tenantId_workspaceId_scanJobId_repositoryFullName_primaryWindow: GitHubRepositoryTrendCandidateKey;
@@ -219,7 +220,7 @@ export type PrismaIngestionClient = {
       readonly create: GitHubRepositoryTrendData & { readonly id: string };
     }): Promise<unknown>;
   };
-  readonly githubRepositoryTrendSnapshot: {
+  readonly gitHubRepositoryTrendSnapshot: {
     upsert(args: {
       readonly where: {
         readonly tenantId_workspaceId_repositoryFullName_checkedAt: GitHubRepositoryTrendSnapshotKey;
@@ -228,7 +229,7 @@ export type PrismaIngestionClient = {
       readonly create: GitHubRepositoryTrendData & { readonly id: string };
     }): Promise<unknown>;
   };
-  readonly githubRepositoryTrendResult: {
+  readonly gitHubRepositoryTrendResult: {
     upsert(args: {
       readonly where: {
         readonly tenantId_workspaceId_scanJobId_repositoryFullName_primaryWindow: GitHubRepositoryTrendCandidateKey;

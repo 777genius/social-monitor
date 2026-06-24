@@ -81,9 +81,7 @@ final class GeneratedFeedItemsApiClient implements FeedItemsApiClient {
 generated.RepositoryTrendWindow? _repositoryTrendWindow(String? value) {
   return switch (value) {
     '24h' => generated.RepositoryTrendWindow.value24h,
-    '7d' => generated.RepositoryTrendWindow.value7d,
-    '30d' => generated.RepositoryTrendWindow.value30d,
-    '90d' => generated.RepositoryTrendWindow.value90d,
+    '48h' => generated.RepositoryTrendWindow.value48h,
     _ => null,
   };
 }

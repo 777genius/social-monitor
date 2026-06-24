@@ -4,6 +4,9 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'feed_normalized_signal_dto.dart';
+import 'get_feed_item_response_dto_provider_metrics_provider_metrics.dart';
+
 part 'get_feed_item_response_dto.g.dart';
 
 @JsonSerializable()
@@ -20,7 +23,9 @@ class GetFeedItemResponseDto {
     required this.title,
     required this.topicId,
     this.authorHandle,
+    this.normalizedSignal,
     this.providerMetadata,
+    this.providerMetrics,
   });
 
   factory GetFeedItemResponseDto.fromJson(Map<String, Object?> json) =>
@@ -30,9 +35,11 @@ class GetFeedItemResponseDto {
   final String bodyPreview;
   final String canonicalUrl;
   final String id;
+  final FeedNormalizedSignalDto? normalizedSignal;
   final DateTime observedAt;
   final String providerKey;
   final dynamic providerMetadata;
+  final GetFeedItemResponseDtoProviderMetricsProviderMetrics? providerMetrics;
   final DateTime publishedAt;
   final String sourceBindingId;
   final String sourceItemId;

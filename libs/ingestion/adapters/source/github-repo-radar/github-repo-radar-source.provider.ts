@@ -1,5 +1,6 @@
 import {
   GITHUB_REPO_RADAR_PROVIDER_KEY,
+  githubRepositoryLiveTrendWindows,
   githubRepositoryTrendMetadata,
   githubRepositoryTrendWindows,
   type GitHubRepositoryTrendWindow,
@@ -203,10 +204,12 @@ const normalizeRepositoryTrend = (
       language: live.language,
       topics: live.topics,
       license: live.license,
+      forksCount: live.forksCount,
     },
     trend: {
       totalStars: live.totalStars,
       stars24h: candidate.stars24h,
+      stars48h: candidate.stars48h,
       stars7d: candidate.stars7d,
       stars30d: candidate.stars30d,
       stars90d: candidate.stars90d,
@@ -219,9 +222,7 @@ const normalizeRepositoryTrend = (
   const description = live.description ?? 'No GitHub description available.';
   const growth = [
     `+${candidate.stars24h} stars in 24h`,
-    `+${candidate.stars7d} in 7d`,
-    `+${candidate.stars30d} in 30d`,
-    `+${candidate.stars90d} in 90d`,
+    `+${candidate.stars48h} in 48h`,
   ].join(', ');
 
   return {
@@ -289,7 +290,9 @@ const readWindows = (value: unknown): readonly GitHubRepositoryTrendWindow[] => 
       githubRepositoryTrendWindows.includes(item as GitHubRepositoryTrendWindow),
     );
 
-  return windows.length === 0 ? githubRepositoryTrendWindows : windows;
+  const liveWindows = windows.filter((window) => githubRepositoryLiveTrendWindows.includes(window as never));
+
+  return liveWindows.length === 0 ? githubRepositoryLiveTrendWindows : liveWindows;
 };
 
 const readBoolean = (value: unknown, fallback: boolean): boolean =>

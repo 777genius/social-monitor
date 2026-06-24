@@ -2,10 +2,11 @@ import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
     as generated;
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
+import '../../domain/value_objects/briefing_reader_action_target.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
 import '../api/summary_api_dto.dart';
 import '../mappers/generated_summary_rest_mapper.dart';
-import 'in_memory_summaries_api_client.dart';
+import 'summaries_api_client.dart';
 
 final class GeneratedSummariesApiClient implements SummariesApiClient {
   GeneratedSummariesApiClient({
@@ -96,8 +97,9 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
             idempotencyKey: request.idempotencyKey,
             xWorkspaceId: request.scope.workspaceId,
             xTenantId: request.scope.tenantId,
-            body: const generated.RequestBriefingRequestDto(
-              scope: generated.BriefingScopeDto(
+            body: generated.RequestBriefingRequestDto(
+              userId: request.userId,
+              scope: const generated.BriefingScopeDto(
                 type: generated.BriefingScopeDtoTypeType.workspace,
               ),
             ),
@@ -185,6 +187,55 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
     );
   }
 
+  @override
+  Future<Result<BriefingReaderActionResult>> submitBriefingReaderAction(
+    SubmitBriefingReaderActionApiRequest request,
+  ) async {
+    final relevanceAction = _readerActionToRelevanceAction(request.kind);
+    if (relevanceAction == null) {
+      return Result.failure(
+        ValidationFailure(
+          message: 'Reader action ${request.kind} is not supported yet',
+          code: 'summaries.reader_action_not_supported',
+          field: 'kind',
+        ),
+      );
+    }
+
+    final result = await _runtime.client
+        .send<generated.RecordRelevanceFeedbackResponseDto>(
+          generated.WorkspaceRequest(scope: request.scope),
+          () => _runtime.rest.relevance.relevanceControllerFeedback(
+            userId: request.userId,
+            xWorkspaceId: request.scope.workspaceId,
+            xTenantId: request.scope.tenantId,
+            body: generated.RecordRelevanceFeedbackRequestDto(
+              idempotencyKey: request.idempotencyKey,
+              action: relevanceAction,
+              rating: request.kind == 'mark_relevant' ? 5 : 2,
+              feedItemId: null,
+              topicId: request.target.topicId,
+              providerKey: request.target.providerKey,
+              title: request.target.title,
+              bodyPreview: request.target.bodyPreview,
+              canonicalUrl: request.target.canonicalUrl,
+            ),
+          ),
+        );
+    return result.fold(
+      onSuccess: (dto) => Result.success(
+        BriefingReaderActionResult(
+          actionId: dto.feedback.feedbackId,
+          idempotencyKey: request.idempotencyKey,
+          kind: request.kind,
+          created: dto.created,
+          learningDirection: dto.learningDirection.json ?? 'unknown',
+        ),
+      ),
+      onFailure: Result<BriefingReaderActionResult>.failure,
+    );
+  }
+
   Future<Result<SummaryApiDto>> _loadSummaryDetail({
     required WorkspaceScope scope,
     required String summaryId,
@@ -252,6 +303,17 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
       SummaryFeedbackKind.needsWork =>
         'Marked as needs work in frontend review',
       SummaryFeedbackKind.unknown => 'Marked from frontend review',
+    };
+  }
+
+  generated.RecordRelevanceFeedbackRequestDtoActionAction?
+  _readerActionToRelevanceAction(String kind) {
+    return switch (kind) {
+      'mark_relevant' =>
+        generated.RecordRelevanceFeedbackRequestDtoActionAction.moreLikeThis,
+      'mark_not_relevant' =>
+        generated.RecordRelevanceFeedbackRequestDtoActionAction.lessLikeThis,
+      _ => null,
     };
   }
 }

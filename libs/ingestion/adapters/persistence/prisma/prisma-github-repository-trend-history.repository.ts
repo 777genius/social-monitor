@@ -19,7 +19,7 @@ export class PrismaGitHubRepositoryTrendHistoryRepository implements GitHubRepos
   ): Promise<SaveGitHubRepositoryTrendHistoryResult> {
     for (const record of command.records) {
       await withPrismaWriteRetry(async () => {
-        await this.prisma.githubRepositoryTrendCandidate.upsert({
+        await this.prisma.gitHubRepositoryTrendCandidate.upsert({
           where: {
             tenantId_workspaceId_scanJobId_repositoryFullName_primaryWindow: {
               tenantId: record.tenantId,
@@ -35,7 +35,7 @@ export class PrismaGitHubRepositoryTrendHistoryRepository implements GitHubRepos
             ...candidateData(record),
           },
         });
-        await this.prisma.githubRepositoryTrendSnapshot.upsert({
+        await this.prisma.gitHubRepositoryTrendSnapshot.upsert({
           where: {
             tenantId_workspaceId_repositoryFullName_checkedAt: {
               tenantId: record.tenantId,
@@ -50,7 +50,7 @@ export class PrismaGitHubRepositoryTrendHistoryRepository implements GitHubRepos
             ...snapshotData(record),
           },
         });
-        await this.prisma.githubRepositoryTrendResult.upsert({
+        await this.prisma.gitHubRepositoryTrendResult.upsert({
           where: {
             tenantId_workspaceId_scanJobId_repositoryFullName_primaryWindow: {
               tenantId: record.tenantId,
@@ -84,6 +84,7 @@ const candidateData = (record: TrendRecord) => ({
   repositoryFullName: record.repositoryFullName,
   primaryWindow: record.primaryWindow,
   stars24h: record.stars24h,
+  stars48h: record.stars48h,
   stars7d: record.stars7d,
   stars30d: record.stars30d,
   stars90d: record.stars90d,
@@ -104,6 +105,7 @@ const snapshotData = (record: TrendRecord) => ({
   license: record.license ?? null,
   totalStars: record.totalStars,
   stars24h: record.stars24h,
+  stars48h: record.stars48h,
   stars7d: record.stars7d,
   stars30d: record.stars30d,
   stars90d: record.stars90d,

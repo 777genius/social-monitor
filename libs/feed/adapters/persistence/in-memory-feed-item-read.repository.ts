@@ -1,9 +1,13 @@
-import type { FeedItem } from '../../domain';
+import { feedSignalBaselineSampleFromItem, type FeedItem } from '../../domain';
 import type { FeedItemReadRepositoryPort, ListFeedItemsQuery, ListFeedItemsResult } from '../../ports';
+import type {
+  FeedSignalBaselineRepositoryPort,
+  ListFeedSignalBaselineSamplesQuery,
+} from '../../ports/feed-signal-baseline-repository.port';
 import { feedDedupeKeyForItem } from './feed-dedupe-key';
 import { matchesFeedItemReadFilters } from './feed-item-query-filter';
 
-export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPort {
+export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPort, FeedSignalBaselineRepositoryPort {
   private readonly itemsByKey = new Map<string, FeedItem>();
   private readonly itemsById = new Map<string, FeedItem>();
   private readonly itemsByCanonicalUrl = new Map<string, FeedItem>();
@@ -77,6 +81,27 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
     ].join(':'));
 
     return item ?? null;
+  }
+
+  async listSamples(query: ListFeedSignalBaselineSamplesQuery) {
+    return [...this.itemsById.values()]
+      .filter((item) => {
+        const snapshot = item.toSnapshot();
+
+        return (
+          snapshot.tenantId === query.tenantId &&
+          snapshot.workspaceId === query.workspaceId &&
+          (query.topicId === undefined || snapshot.topicId === query.topicId) &&
+          snapshot.observedAt.getTime() > query.observedAfter.getTime()
+        );
+      })
+      .sort(compareFeedItems)
+      .slice(0, query.limit)
+      .flatMap((item) => {
+        const sample = feedSignalBaselineSampleFromItem(item);
+
+        return sample === undefined ? [] : [sample];
+      });
   }
 
   all(): readonly FeedItem[] {

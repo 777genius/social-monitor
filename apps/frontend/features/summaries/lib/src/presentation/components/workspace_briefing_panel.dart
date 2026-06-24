@@ -4,20 +4,37 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../domain/entities/briefing_job_snapshot.dart';
 import '../../domain/entities/generated_briefing.dart';
+import '../../domain/value_objects/briefing_reader_action_target.dart';
+import 'reader_briefing_view.dart';
 
 class WorkspaceBriefingPanel extends StatelessWidget {
   const WorkspaceBriefingPanel({
     super.key,
     required this.state,
     required this.jobState,
+    required this.readerActionState,
+    required this.activeReaderActionIdempotencyKey,
+    required this.lastReaderActionIdempotencyKey,
     required this.onRetry,
     required this.onGenerate,
+    required this.intentForAction,
+    required this.onAction,
   });
 
   final AsyncViewState<WorkspaceBriefingSnapshot> state;
   final AsyncViewState<BriefingJobSnapshot> jobState;
+  final AsyncViewState<BriefingReaderActionResult> readerActionState;
+  final String? activeReaderActionIdempotencyKey;
+  final String? lastReaderActionIdempotencyKey;
   final VoidCallback onRetry;
   final VoidCallback onGenerate;
+  final UserActionIntent Function(
+    GeneratedBriefing briefing,
+    BriefingNextAction action,
+  )
+  intentForAction;
+  final void Function(GeneratedBriefing briefing, BriefingNextAction action)
+  onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +44,12 @@ class WorkspaceBriefingPanel extends StatelessWidget {
         return _ReadyBriefing(
           briefing: current,
           isRefreshing: true,
+          readerActionState: readerActionState,
+          activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
+          lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
           onGenerate: onGenerate,
+          intentForAction: intentForAction,
+          onAction: onAction,
         );
       }
       return const _GeneratingBriefing();
@@ -35,8 +57,8 @@ class WorkspaceBriefingPanel extends StatelessWidget {
     final failedJob = _failedJob(jobState);
     if (failedJob != null) {
       return AppInlineProblem(
-        title: 'Briefing generation failed',
-        message: failedJob.failureReason ?? 'The briefing job failed.',
+        title: 'Summary generation failed',
+        message: failedJob.failureReason ?? 'The summary job failed.',
         tone: AppProblemTone.warning,
         actionLabel: 'Generate',
         onAction: onGenerate,
@@ -49,14 +71,19 @@ class WorkspaceBriefingPanel extends StatelessWidget {
         return _ReadyBriefing(
           briefing: current,
           isRefreshing: true,
+          readerActionState: readerActionState,
+          activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
+          lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
           onGenerate: onGenerate,
+          intentForAction: intentForAction,
+          onAction: onAction,
         );
       }
       return _GeneratingBriefing(job: activeJob);
     }
     if (jobState case FailureViewState<BriefingJobSnapshot>(:final failure)) {
       return AppInlineProblem(
-        title: 'Briefing request failed',
+        title: 'Summary request failed',
         message: failure.message,
         tone: AppProblemTone.warning,
         actionLabel: 'Generate',
@@ -68,18 +95,33 @@ class WorkspaceBriefingPanel extends StatelessWidget {
       ReadyViewState<WorkspaceBriefingSnapshot>(:final value) =>
         value.current == null
             ? _EmptyBriefing(onGenerate: onGenerate)
-            : _ReadyBriefing(briefing: value.current!, onGenerate: onGenerate),
+            : _ReadyBriefing(
+                briefing: value.current!,
+                readerActionState: readerActionState,
+                activeReaderActionIdempotencyKey:
+                    activeReaderActionIdempotencyKey,
+                lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
+                onGenerate: onGenerate,
+                intentForAction: intentForAction,
+                onAction: onAction,
+              ),
       LoadingViewState<WorkspaceBriefingSnapshot>(:final previousValue) =>
         previousValue?.current == null
             ? const _BriefingSkeleton()
             : _ReadyBriefing(
                 briefing: previousValue!.current!,
                 isRefreshing: true,
+                readerActionState: readerActionState,
+                activeReaderActionIdempotencyKey:
+                    activeReaderActionIdempotencyKey,
+                lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
                 onGenerate: onGenerate,
+                intentForAction: intentForAction,
+                onAction: onAction,
               ),
       FailureViewState<WorkspaceBriefingSnapshot>(:final failure) =>
         AppInlineProblem(
-          title: 'Briefing unavailable',
+          title: 'Summary unavailable',
           message: failure.message,
           tone: AppProblemTone.warning,
           actionLabel: 'Retry',
@@ -127,12 +169,27 @@ class WorkspaceBriefingPanel extends StatelessWidget {
 class _ReadyBriefing extends StatelessWidget {
   const _ReadyBriefing({
     required this.briefing,
+    required this.readerActionState,
+    required this.activeReaderActionIdempotencyKey,
+    required this.lastReaderActionIdempotencyKey,
     required this.onGenerate,
+    required this.intentForAction,
+    required this.onAction,
     this.isRefreshing = false,
   });
 
   final GeneratedBriefing briefing;
+  final AsyncViewState<BriefingReaderActionResult> readerActionState;
+  final String? activeReaderActionIdempotencyKey;
+  final String? lastReaderActionIdempotencyKey;
   final VoidCallback onGenerate;
+  final UserActionIntent Function(
+    GeneratedBriefing briefing,
+    BriefingNextAction action,
+  )
+  intentForAction;
+  final void Function(GeneratedBriefing briefing, BriefingNextAction action)
+  onAction;
   final bool isRefreshing;
 
   @override
@@ -147,136 +204,17 @@ class _ReadyBriefing extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.auto_awesome_outlined),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    briefing.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ),
-                AppStatusBadge(
-                  label: isRefreshing ? 'Refreshing' : briefing.freshnessLabel,
-                  tone: briefing.isDegraded
-                      ? AppStatusTone.warning
-                      : AppStatusTone.success,
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              briefing.executiveSummary,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(height: 1.45, letterSpacing: 0),
-            ),
-            if (briefing.topStories.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.md),
-              Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: AppSpacing.sm,
-                children: briefing.topStories
-                    .take(3)
-                    .map((story) => _StoryChip(story: story))
-                    .toList(growable: false),
-              ),
-            ],
-            if (briefing.repeatedSignals.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.md),
-              _RepeatedSignal(signal: briefing.repeatedSignals.first),
-            ],
-            const SizedBox(height: AppSpacing.md),
-            AppCommandBar(
-              actions: [
-                AppCommandAction(
-                  label: isRefreshing ? 'Generating' : 'Regenerate',
-                  icon: Icons.auto_awesome_outlined,
-                  controlKeyBase: 'workspace-briefing-generate',
-                  enabled: !isRefreshing,
-                  reason: isRefreshing
-                      ? 'Workspace briefing generation is already running'
-                      : null,
-                  onPressed: onGenerate,
-                ),
-              ],
-            ),
-          ],
+        child: ReaderBriefingView(
+          briefing: briefing,
+          isRefreshing: isRefreshing,
+          readerActionState: readerActionState,
+          activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
+          lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
+          onGenerate: onGenerate,
+          intentForAction: (action) => intentForAction(briefing, action),
+          onAction: (action) => onAction(briefing, action),
         ),
       ),
-    );
-  }
-}
-
-class _StoryChip extends StatelessWidget {
-  const _StoryChip({required this.story});
-
-  final BriefingStory story;
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 180, maxWidth: 280),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.sm),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                story.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                '${story.topicCount} topics - ${story.providerCount} providers',
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RepeatedSignal extends StatelessWidget {
-  const _RepeatedSignal({required this.signal});
-
-  final BriefingRepeatedSignal signal;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Icon(Icons.hub_outlined, size: 18),
-        const SizedBox(width: AppSpacing.xs),
-        Expanded(
-          child: Text(
-            '${signal.title} (${signal.topicIds.length} topics)',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -289,8 +227,8 @@ class _EmptyBriefing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppInlineProblem(
-      title: 'No workspace briefing',
-      message: 'Run a workspace briefing after feed items are collected.',
+      title: 'No workspace summary',
+      message: 'Run a workspace summary after feed items are collected.',
       tone: AppProblemTone.neutral,
       actionLabel: 'Generate',
       onAction: onGenerate,
@@ -315,7 +253,7 @@ class _GeneratingBriefing extends StatelessWidget {
       null => 'Starting',
     };
     return AppInlineProblem(
-      title: 'Generating briefing',
+      title: 'Generating summary',
       message: '$status - collecting the latest workspace signal.',
       tone: AppProblemTone.neutral,
     );
@@ -328,8 +266,8 @@ class _BriefingSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const AppInlineProblem(
-      title: 'Loading briefing',
-      message: 'Fetching the latest workspace briefing.',
+      title: 'Loading summary',
+      message: 'Fetching the latest workspace summary.',
       tone: AppProblemTone.neutral,
     );
   }

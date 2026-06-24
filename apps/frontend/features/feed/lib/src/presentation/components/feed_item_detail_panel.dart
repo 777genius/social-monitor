@@ -9,6 +9,7 @@ import '../../domain/entities/feed_item.dart';
 import '../../domain/value_objects/feed_provider_metadata.dart';
 import '../formatters/feed_time_formatters.dart';
 import '../view_models/feed_provider_visuals.dart';
+import 'feed_signal_metric_strip.dart';
 
 class FeedItemDetailPanel extends StatelessWidget {
   const FeedItemDetailPanel({
@@ -53,6 +54,16 @@ class FeedItemDetailPanel extends StatelessWidget {
             '${feedDateTimeLabel(item.observedAt)}. ${item.bodyPreview}',
           ),
         ),
+        if (item.normalizedSignal != null || item.providerMetrics != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          _DetailSection(
+            title: 'Signal',
+            child: FeedSignalMetricStrip(
+              signal: item.normalizedSignal,
+              metrics: item.providerMetrics,
+            ),
+          ),
+        ],
         if (item.providerMetadata
             case final GitHubRepositoryTrendMetadata trend) ...[
           const SizedBox(height: AppSpacing.md),
@@ -116,11 +127,6 @@ class _RepositoryTrendDetail extends StatelessWidget {
           _DetailRows(
             rows: [
               ('Repository', trend.repositoryFullName),
-              ('Total stars', _formatInt(trend.totalStars)),
-              ('24h stars', '+${_formatInt(trend.stars24h)}'),
-              ('7d stars', '+${_formatInt(trend.stars7d)}'),
-              ('30d stars', '+${_formatInt(trend.stars30d)}'),
-              ('90d stars', '+${_formatInt(trend.stars90d)}'),
               ('Rank', '#${trend.rank}'),
               ('Primary window', trend.primaryWindow),
               if (trend.language != null) ('Language', trend.language!),
@@ -318,17 +324,4 @@ bool _canCopyUrl(String value) {
   return uri != null &&
       (uri.scheme == 'http' || uri.scheme == 'https') &&
       uri.host.isNotEmpty;
-}
-
-String _formatInt(int value) {
-  final raw = value.toString();
-  final buffer = StringBuffer();
-  for (var index = 0; index < raw.length; index += 1) {
-    final remaining = raw.length - index;
-    buffer.write(raw[index]);
-    if (remaining > 1 && remaining % 3 == 1) {
-      buffer.write(',');
-    }
-  }
-  return buffer.toString();
 }

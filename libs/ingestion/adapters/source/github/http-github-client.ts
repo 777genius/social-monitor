@@ -37,6 +37,7 @@ type GitHubRepositoryDto = {
     readonly spdx_id?: string | null;
   } | null;
   readonly stargazers_count?: number;
+  readonly forks_count?: number;
   readonly fork?: boolean;
   readonly archived?: boolean;
   readonly pushed_at?: string | null;
@@ -145,6 +146,7 @@ const normalizeRepository = (repository: GitHubRepositoryDto): GitHubRepositoryD
   topics: repository.topics ?? [],
   licenseSpdxId: repository.license?.spdx_id ?? undefined,
   stargazersCount: typeof repository.stargazers_count === 'number' ? repository.stargazers_count : 0,
+  forksCount: typeof repository.forks_count === 'number' ? repository.forks_count : 0,
   fork: repository.fork === true,
   archived: repository.archived === true,
   pushedAt: repository.pushed_at ?? undefined,

@@ -135,6 +135,7 @@ AppRouteWidgetBuilder summariesFeatureBuilder({
     return (context, uri) => SummariesFeatureRoute.generatedApi(
       generatedApiRuntime: generatedApiRuntime,
       scope: scope,
+      userId: runtime.session.userId,
     );
   }
 

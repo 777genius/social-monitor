@@ -264,7 +264,7 @@ async function main(): Promise<void> {
     insertedTotal: initialScanMetrics.reduce((total, metric) => total + metric.inserted, 0),
   });
 
-  const feedAfterInitialScans = await listFeed(feedItems, topic.topicId);
+  const feedAfterInitialScans = await listFeed(feedItems, topic.topicId, clock);
   assert(feedAfterInitialScans.items.length === 8, `expected 8 feed findings, got ${feedAfterInitialScans.items.length}`);
   const replayMetrics = await executeReplayScans({
     executeScan,
@@ -277,7 +277,7 @@ async function main(): Promise<void> {
     replayMetrics.every((metric) => metric.inserted === 0 && metric.skippedDuplicates === 2),
     'replayed provider scans must deduplicate source items',
   );
-  const feedAfterReplay = await listFeed(feedItems, topic.topicId);
+  const feedAfterReplay = await listFeed(feedItems, topic.topicId, clock);
   assert(feedAfterReplay.items.length === feedAfterInitialScans.items.length, 'feed projection must stay stable after duplicate replay scans');
 
   const ranked = unwrap(
@@ -769,9 +769,13 @@ function drainScanCommands(
   );
 }
 
-async function listFeed(feedItems: InMemoryFeedItemReadRepository, topicId: string) {
+async function listFeed(
+  feedItems: InMemoryFeedItemReadRepository,
+  topicId: string,
+  clock: FixedClock,
+) {
   return unwrap(
-    await new ListFeedItemsUseCase(feedItems).execute({
+    await new ListFeedItemsUseCase(feedItems, feedItems, clock).execute({
       tenantId: tenant,
       workspaceId: workspace,
       topicId,

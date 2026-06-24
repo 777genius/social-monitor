@@ -108,6 +108,11 @@ const buildSourceWindow = (
 };
 
 const storyKey = (item: BriefingEvidenceItem): string => {
+  const githubRepositoryKey = githubRepositoryStoryKey(item);
+  if (githubRepositoryKey !== null) {
+    return githubRepositoryKey;
+  }
+
   const storyKeyHint = item.storyKeyHint?.trim();
   if (storyKeyHint !== undefined && storyKeyHint.length > 0) {
     return storyKeyHint;
@@ -123,6 +128,39 @@ const storyKey = (item: BriefingEvidenceItem): string => {
   }
 
   return `title:${titleFingerprint(item.title)}`;
+};
+
+const githubRepositoryStoryKey = (item: BriefingEvidenceItem): string | null =>
+  githubRepositoryUrlKey(item.canonicalUrl) ?? githubRepositoryTitleKey(item.title);
+
+const githubRepositoryUrlKey = (value: string): string | null => {
+  try {
+    const parsed = new URL(value);
+    const host = parsed.hostname.toLocaleLowerCase('en-US').replace(/^www\./u, '');
+    if (host !== 'github.com') {
+      return null;
+    }
+
+    const [owner, repo] = parsed.pathname
+      .split('/')
+      .filter((part) => part.trim().length > 0);
+    if (owner === undefined || repo === undefined) {
+      return null;
+    }
+
+    return `github-repo:${owner.toLocaleLowerCase('en-US')}/${repo.toLocaleLowerCase('en-US')}`;
+  } catch {
+    return null;
+  }
+};
+
+const githubRepositoryTitleKey = (value: string): string | null => {
+  const match = /(?:^|\s)([a-z0-9_.-]+)\/([a-z0-9_.-]+)(?:\s|$)/iu.exec(value);
+  if (match?.[1] === undefined || match[2] === undefined) {
+    return null;
+  }
+
+  return `github-repo:${match[1].toLocaleLowerCase('en-US')}/${match[2].toLocaleLowerCase('en-US')}`;
 };
 
 const canonicalUrlStoryKey = (value: string): string | null => {

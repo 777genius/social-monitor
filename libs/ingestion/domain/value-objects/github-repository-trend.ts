@@ -3,7 +3,8 @@ import { normalizeJsonObject, type JsonObject } from '@social-monitor/shared-ker
 export const GITHUB_REPO_RADAR_PROVIDER_KEY = 'github-repo-radar';
 export const GITHUB_REPOSITORY_TREND_METADATA_KIND = 'github_repository_trend';
 
-export const githubRepositoryTrendWindows = ['24h', '7d', '30d', '90d'] as const;
+export const githubRepositoryTrendWindows = ['24h', '48h', '7d', '30d', '90d'] as const;
+export const githubRepositoryLiveTrendWindows = ['24h', '48h'] as const;
 
 export type GitHubRepositoryTrendWindow = (typeof githubRepositoryTrendWindows)[number];
 
@@ -15,10 +16,12 @@ export type GitHubRepositoryTrendMetadataInput = {
     readonly language?: string;
     readonly topics: readonly string[];
     readonly license?: string;
+    readonly forksCount?: number;
   };
   readonly trend: {
     readonly totalStars: number;
     readonly stars24h: number;
+    readonly stars48h?: number;
     readonly stars7d: number;
     readonly stars30d: number;
     readonly stars90d: number;
@@ -38,10 +41,12 @@ export type GitHubRepositoryTrendMetadata = {
     readonly language?: string;
     readonly topics: readonly string[];
     readonly license?: string;
+    readonly forksCount: number;
   };
   readonly trend: {
     readonly totalStars: number;
     readonly stars24h: number;
+    readonly stars48h: number;
     readonly stars7d: number;
     readonly stars30d: number;
     readonly stars90d: number;
@@ -63,10 +68,12 @@ export const githubRepositoryTrendMetadata = (
     language: input.repository.language,
     topics: [...input.repository.topics],
     license: input.repository.license,
+    forksCount: input.repository.forksCount ?? 0,
   },
   trend: {
     totalStars: input.trend.totalStars,
     stars24h: input.trend.stars24h,
+    stars48h: input.trend.stars48h ?? 0,
     stars7d: input.trend.stars7d,
     stars30d: input.trend.stars30d,
     stars90d: input.trend.stars90d,
@@ -109,10 +116,12 @@ export const parseGitHubRepositoryTrendMetadata = (
       language: readString(repository.language),
       topics: readStringArray(repository.topics),
       license: readString(repository.license),
+      forksCount: readNonNegativeInteger(repository.forksCount),
     },
     trend: {
       totalStars: readNonNegativeInteger(trend.totalStars),
       stars24h: readNonNegativeInteger(trend.stars24h),
+      stars48h: readNonNegativeInteger(trend.stars48h),
       stars7d: readNonNegativeInteger(trend.stars7d),
       stars30d: readNonNegativeInteger(trend.stars30d),
       stars90d: readNonNegativeInteger(trend.stars90d),

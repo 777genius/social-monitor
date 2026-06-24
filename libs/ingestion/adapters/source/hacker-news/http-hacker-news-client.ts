@@ -8,6 +8,8 @@ type AlgoliaHit = {
   readonly created_at_i?: number;
   readonly story_text?: string;
   readonly comment_text?: string;
+  readonly points?: number;
+  readonly num_comments?: number;
 };
 
 type AlgoliaSearchResponse = {
@@ -103,6 +105,8 @@ const normalizeAlgoliaHit = (hit: AlgoliaHit): readonly HackerNewsStory[] => {
     by: hit.author,
     time: hit.created_at_i,
     text: hit.story_text ?? hit.comment_text,
+    score: readOptionalInteger(hit.points),
+    comments: readOptionalInteger(hit.num_comments),
   }];
 };
 
@@ -119,6 +123,8 @@ const normalizeFirebaseStory = (story: Readonly<Record<string, unknown>>): Hacke
     by: readOptionalString(story.by),
     time: readOptionalInteger(story.time),
     text: readOptionalString(story.text),
+    score: readOptionalInteger(story.score),
+    comments: readOptionalInteger(story.descendants),
     deleted: story.deleted === true,
     dead: story.dead === true,
   };

@@ -11,6 +11,8 @@ import { InMemoryFeedItemReadRepository } from '../../libs/feed/adapters/persist
 import { InMemorySourceItemRepository } from '../../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
 import { NoopScanExecutionReporterAdapter } from '../../libs/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter';
 import { RegistrySourceFetcherAdapter } from '../../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
+import { FixtureHackerNewsClient } from '../../libs/ingestion/adapters/source/hacker-news/fixture-hacker-news-client';
+import { HackerNewsSourceProvider } from '../../libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
 import { FixtureRssClient } from '../../libs/ingestion/adapters/source/rss/fixture-rss-client';
 import { RssSourceProvider } from '../../libs/ingestion/adapters/source/rss/rss-source.provider';
 import { ExecuteScanCommandHandler } from '../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
@@ -60,6 +62,35 @@ class MonitoringScanExecutionReporter implements ScanExecutionReporterPort {
 class FailingSourceFetcher implements SourceFetcherPort {
   async fetch(): Promise<FetchSourceItemsResult> {
     throw new Error('Provider unavailable');
+  }
+}
+
+class HackerNewsFixtureSourceFetcher implements SourceFetcherPort {
+  private readonly provider = new HackerNewsSourceProvider(new FixtureHackerNewsClient());
+
+  async fetch(command: Parameters<SourceFetcherPort['fetch']>[0]): Promise<FetchSourceItemsResult> {
+    const validation = this.provider.validateBinding(command.sourceQuery);
+
+    if (!validation.ok) {
+      throw new Error(validation.reason);
+    }
+
+    const context = {
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      sourceBindingId: command.sourceBindingId,
+      scanJobId: command.scanJobId,
+      correlationId: command.correlationId,
+    };
+    const result = await this.provider.scan({
+      ...this.provider.planScan(command.sourceQuery, context),
+      cursor: command.cursor,
+    }, context);
+
+    return {
+      items: result.items,
+      nextCursor: result.nextCursor,
+    };
   }
 }
 
@@ -373,6 +404,170 @@ describe('API to ingestion worker queue contract (e2e)', () => {
           completedAt: expect.any(String),
         });
       });
+
+    await workerModuleRef.close();
+  });
+
+  it('publishes and executes a Hacker News scan with provider metrics exposed through feed API', async () => {
+    const tenant = 'tenant-hn-contract-e2e';
+    const workspace = 'workspace-hn-contract-e2e';
+    const queue = api.select(MonitoringRestModule).get(InMemoryQueuePublisher, { strict: true });
+    const initialQueueLength = queue.all().length;
+
+    const topic = await request(api.getHttpServer())
+      .post('/topics')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'hn-contract-topic')
+      .set('idempotency-key', 'hn-contract-topic')
+      .send({
+        name: 'HN Contract Monitoring',
+        query: 'hn contract monitoring',
+      })
+      .expect(201);
+
+    const binding = await request(api.getHttpServer())
+      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'hn-contract-binding')
+      .set('idempotency-key', 'hn-contract-binding')
+      .send({
+        providerKey: 'hacker-news',
+        config: { mode: 'listing', listing: 'top' },
+      })
+      .expect(201);
+
+    await request(api.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'hn-contract-policy')
+      .set('idempotency-key', 'hn-contract-policy')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(201);
+
+    const scan = await request(api.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
+      .set('x-request-id', 'hn-contract-scan')
+      .set('idempotency-key', 'hn-contract-scan')
+      .expect(201);
+    const command = queue.all()[initialQueueLength];
+
+    expect(command?.payload).toEqual(expect.objectContaining({
+      providerKey: 'hacker-news',
+      sourceQuery: { mode: 'listing', query: 'top' },
+    }));
+
+    if (command === undefined) {
+      throw new Error('Expected API gateway to publish Hacker News ingestion scan command');
+    }
+
+    const workerModuleRef = await Test.createTestingModule({
+      imports: [IngestionWorkerModule],
+    })
+      .overrideProvider(NoopScanExecutionReporterAdapter)
+      .useValue(new MonitoringScanExecutionReporter(api.get(RecordScanExecutionUseCase)))
+      .overrideProvider(InMemoryFeedItemReadRepository)
+      .useValue(api.get(InMemoryFeedItemReadRepository))
+      .overrideProvider(RegistrySourceFetcherAdapter)
+      .useValue(new HackerNewsFixtureSourceFetcher())
+      .compile();
+    await workerModuleRef.init();
+
+    const handler = workerModuleRef.get(ExecuteScanCommandHandler);
+    const result = await handler.handle(command);
+
+    expect(result).toEqual({
+      scanJobId: scan.body.scanJobId,
+      fetched: 2,
+      inserted: 2,
+      skippedDuplicates: 0,
+      projected: 2,
+    });
+
+    const feed = await request(api.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 10, topicId: topic.body.topicId })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(feed.body.items).toEqual([
+      expect.objectContaining({
+        sourceBindingId: binding.body.sourceBindingId,
+        title: 'Ask HN: Reliable RSS and API ingestion',
+        providerMetadata: expect.objectContaining({
+          kind: 'hacker_news_story',
+          source: 'top',
+          points: 75,
+          comments: 18,
+        }),
+        providerMetrics: {
+          kind: 'hacker_news_story',
+          providerKey: 'hacker-news',
+          sourceKey: 'hn:top',
+          contentType: 'story',
+          points: 75,
+          comments: 18,
+        },
+        normalizedSignal: expect.objectContaining({
+          basis: 'cohort_baseline_v1',
+          cohort: expect.objectContaining({
+            providerKey: 'hacker-news',
+            sourceKey: 'hn:top',
+            contentType: 'story',
+            sampleSize: 2,
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        sourceBindingId: binding.body.sourceBindingId,
+        title: 'Show HN: Social monitoring architecture',
+        providerMetrics: expect.objectContaining({
+          kind: 'hacker_news_story',
+          points: 42,
+          comments: 9,
+        }),
+      }),
+    ]);
+
+    const detail = await request(api.getHttpServer())
+      .get(`/feed/items/${feed.body.items[0].id}`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(detail.body).toMatchObject({
+      id: feed.body.items[0].id,
+      providerMetrics: {
+        kind: 'hacker_news_story',
+        providerKey: 'hacker-news',
+        sourceKey: 'hn:top',
+        contentType: 'story',
+        points: 75,
+        comments: 18,
+      },
+      normalizedSignal: {
+        basis: 'cohort_baseline_v1',
+        cohort: {
+          baselineWindow: '24h',
+          sampleSize: 2,
+        },
+      },
+    });
 
     await workerModuleRef.close();
   });

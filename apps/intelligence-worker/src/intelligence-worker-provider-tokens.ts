@@ -39,6 +39,14 @@ export type IntelligenceAutoSummarySchedulerOptions = {
   readonly tenantId?: string;
   readonly workspaceId?: string;
 };
+export type IntelligenceRelevanceMemoryProjectionLoopOptions = {
+  readonly enabled: boolean;
+  readonly intervalMs: number;
+  readonly limit: number;
+  readonly runOnStart: boolean;
+  readonly tenantId?: string;
+  readonly workspaceId?: string;
+};
 
 export const INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS = Symbol('INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS');
 export const INTELLIGENCE_BRIEFING_JOB_LOOP_OPTIONS = Symbol('INTELLIGENCE_BRIEFING_JOB_LOOP_OPTIONS');
@@ -53,6 +61,8 @@ export const INTELLIGENCE_BRIEFING_QUEUE_DRAIN_LOOP_OPTIONS =
   Symbol('INTELLIGENCE_BRIEFING_QUEUE_DRAIN_LOOP_OPTIONS');
 export const INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS =
   Symbol('INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS');
+export const INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LOOP_OPTIONS =
+  Symbol('INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LOOP_OPTIONS');
 
 export const resolveIntelligenceSummaryJobLoopOptions = (
   env: NodeJS.ProcessEnv,
@@ -234,6 +244,41 @@ export const resolveIntelligenceAutoSummarySchedulerOptions = (
     minFeedAgeMs: parseBoundedInteger(env.INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_MIN_FEED_AGE_MS, 30_000, 0, 3_600_000),
     limit: parseBoundedInteger(env.INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_LIMIT, 20, 1, 100),
     runOnStart: parseBoolean(env.INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_RUN_ON_START, true),
+    tenantId: tenant,
+    workspaceId: workspace,
+  };
+};
+
+export const resolveIntelligenceRelevanceMemoryProjectionLoopOptions = (
+  env: NodeJS.ProcessEnv,
+): IntelligenceRelevanceMemoryProjectionLoopOptions => {
+  const defaultMode = env.RELEVANCE_MEMORY_PROJECTION_MODE === 'memo-stack' ? 'enabled' : 'disabled';
+  const loopMode = env.INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LOOP ??
+    (env.NODE_ENV === 'test' ? 'disabled' : defaultMode);
+
+  if (loopMode !== 'enabled' && loopMode !== 'disabled') {
+    throw new Error('INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LOOP must be "enabled" or "disabled"');
+  }
+
+  const tenant = emptyToUndefined(env.INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_TENANT_ID);
+  const workspace = emptyToUndefined(env.INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_WORKSPACE_ID);
+
+  if ((tenant === undefined) !== (workspace === undefined)) {
+    throw new Error(
+      'INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_TENANT_ID and INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_WORKSPACE_ID must be set together',
+    );
+  }
+
+  return {
+    enabled: loopMode === 'enabled',
+    intervalMs: parseBoundedInteger(
+      env.INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_INTERVAL_MS,
+      30_000,
+      1_000,
+      3_600_000,
+    ),
+    limit: parseBoundedInteger(env.INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LIMIT, 20, 1, 100),
+    runOnStart: parseBoolean(env.INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_RUN_ON_START, true),
     tenantId: tenant,
     workspaceId: workspace,
   };

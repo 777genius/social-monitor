@@ -61,4 +61,51 @@ describe('HttpGitHubClient', () => {
       accessToken: '   ',
     });
   });
+
+  it('maps repository stars and forks from GitHub REST repository JSON', async () => {
+    const fetchMock = jest.fn(async (url: string | URL, init?: RequestInit) => {
+      expect(String(url)).toBe('https://api.github.com/repos/openai/codex');
+      expect(init?.headers).toEqual(expect.objectContaining({
+        accept: 'application/vnd.github+json',
+        'x-github-api-version': '2022-11-28',
+      }));
+
+      return new Response(JSON.stringify({
+        full_name: 'openai/codex',
+        html_url: 'https://github.com/openai/codex',
+        description: 'Lightweight coding agent',
+        language: 'Rust',
+        topics: ['agents', 'developer-tools'],
+        license: {
+          spdx_id: 'Apache-2.0',
+        },
+        stargazers_count: 93_263,
+        forks_count: 13_787,
+        fork: false,
+        archived: false,
+        pushed_at: '2026-06-24T08:00:00Z',
+        updated_at: '2026-06-24T09:00:00Z',
+      }), {
+        status: 200,
+      });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(new HttpGitHubClient().getRepository({
+      fullName: 'openai/codex',
+    })).resolves.toEqual({
+      fullName: 'openai/codex',
+      htmlUrl: 'https://github.com/openai/codex',
+      description: 'Lightweight coding agent',
+      language: 'Rust',
+      topics: ['agents', 'developer-tools'],
+      licenseSpdxId: 'Apache-2.0',
+      stargazersCount: 93_263,
+      forksCount: 13_787,
+      fork: false,
+      archived: false,
+      pushedAt: '2026-06-24T08:00:00Z',
+      updatedAt: '2026-06-24T09:00:00Z',
+    });
+  });
 });

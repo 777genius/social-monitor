@@ -1,0 +1,304 @@
+import type {
+  BriefingCitation,
+  BriefingNextAction,
+  BriefingProviderMetric,
+  BriefingQualityFlag,
+  BriefingReaderBrief,
+  BriefingReaderItem,
+  BriefingReaderTopicSection,
+  BriefingSourceMixEntry,
+  BriefingTrendDelta,
+} from '../../domain';
+
+const nextActionKinds = new Set<BriefingNextAction['kind']>([
+  'read_source',
+  'watch_repository',
+  'monitor_topic',
+  'compare_sources',
+  'ignore_low_confidence',
+  'add_topic_rule',
+  'request_deeper_scan',
+  'mark_relevant',
+  'mark_not_relevant',
+]);
+
+const qualityFlags = new Set<BriefingQualityFlag>([
+  'no_signal',
+  'low_confidence',
+  'conflicting_evidence',
+  'limited_sources',
+  'partial_evidence',
+  'context_unavailable',
+  'provider_failed',
+]);
+
+const qualityStatuses = new Set<BriefingReaderBrief['qualityState']['status']>([
+  'ready',
+  'partial',
+  'limited_sources',
+  'low_confidence',
+  'no_signal',
+  'failed_provider',
+]);
+
+export const openAiBriefingReaderJsonSchemaDefs = {
+  readerBrief: readerObjectSchema([
+    'headline',
+    'oneLineTakeaway',
+    'bullets',
+    'topicSections',
+    'sourceMix',
+    'topReads',
+    'trendDelta',
+    'openQuestions',
+    'risks',
+    'nextActions',
+  ], {
+    headline: { type: 'string' },
+    oneLineTakeaway: { type: 'string' },
+    bullets: readerStringArraySchema(),
+    topicSections: { type: 'array', items: { $ref: '#/$defs/readerTopicSection' } },
+    sourceMix: { type: 'array', items: { $ref: '#/$defs/sourceMixEntry' } },
+    topReads: { type: 'array', items: { $ref: '#/$defs/readerItem' } },
+    trendDelta: { $ref: '#/$defs/trendDelta' },
+    openQuestions: readerStringArraySchema(),
+    risks: readerStringArraySchema(),
+    nextActions: { type: 'array', items: { $ref: '#/$defs/nextAction' } },
+  }),
+  readerTopicSection: readerObjectSchema(['title', 'insight', 'items', 'citationIds', 'topicId'], {
+    topicId: { type: ['string', 'null'] },
+    title: { type: 'string' },
+    insight: { type: 'string' },
+    items: { type: 'array', items: { $ref: '#/$defs/readerItem' } },
+    citationIds: readerStringArraySchema(),
+  }),
+  readerItem: readerObjectSchema(['title', 'providerKey', 'reason', 'canonicalUrl', 'citationIds'], {
+    title: { type: 'string' },
+    providerKey: { type: 'string' },
+    reason: { type: 'string' },
+    canonicalUrl: { type: ['string', 'null'] },
+    citationIds: readerStringArraySchema(),
+  }),
+  sourceMixEntry: readerObjectSchema(['providerKey', 'itemCount', 'citationCount'], {
+    providerKey: { type: 'string' },
+    itemCount: { type: 'number', minimum: 0 },
+    citationCount: { type: 'number', minimum: 0 },
+  }),
+  trendDelta: readerObjectSchema(['newSignals', 'growingSignals', 'repeatedSignals', 'fadingSignals'], {
+    newSignals: readerStringArraySchema(),
+    growingSignals: readerStringArraySchema(),
+    repeatedSignals: readerStringArraySchema(),
+    fadingSignals: readerStringArraySchema(),
+  }),
+  nextAction: readerObjectSchema(['kind', 'label', 'reason', 'citationIds', 'canonicalUrl'], {
+    kind: { enum: [...nextActionKinds] },
+    label: { type: 'string' },
+    reason: { type: 'string' },
+    citationIds: readerStringArraySchema(),
+    canonicalUrl: { type: ['string', 'null'] },
+  }),
+} as const;
+
+export const normalizeOpenAiReaderBrief = (
+  value: Record<string, unknown>,
+  citationMap: readonly BriefingCitation[],
+): BriefingReaderBrief => {
+  const citationById = new Map(citationMap.map((citation) => [citation.citationId, citation] as const));
+  const sourceMix = requiredArray<Record<string, unknown>>(value.sourceMix, 'reader brief source mix')
+    .map(normalizeSourceMixEntry);
+
+  return {
+    headline: requiredString(value.headline, 'reader brief headline'),
+    oneLineTakeaway: requiredString(value.oneLineTakeaway, 'reader brief takeaway'),
+    bullets: requiredStringArray(value.bullets, 'reader brief bullets'),
+    qualityState: normalizeQualityState(value.qualityState, sourceMix),
+    topicSections: requiredArray<Record<string, unknown>>(value.topicSections, 'reader brief topic sections')
+      .map((section) => normalizeReaderTopicSection(section, citationById)),
+    sourceMix,
+    topReads: requiredArray<Record<string, unknown>>(value.topReads, 'reader brief top reads')
+      .map((item) => normalizeReaderItem(item, citationById)),
+    trendDelta: normalizeTrendDelta(requiredRecord(value.trendDelta, 'reader brief trend delta')),
+    openQuestions: requiredStringArray(value.openQuestions, 'reader brief open questions'),
+    risks: requiredStringArray(value.risks, 'reader brief risks'),
+    nextActions: requiredArray<Record<string, unknown>>(value.nextActions, 'reader brief next actions')
+      .map((action) => normalizeNextAction(action, citationById)),
+  };
+};
+
+const normalizeReaderTopicSection = (
+  value: Record<string, unknown>,
+  citationById: ReadonlyMap<string, BriefingCitation>,
+): BriefingReaderTopicSection => ({
+  topicId: optionalString(value.topicId),
+  title: requiredString(value.title, 'reader topic title'),
+  insight: requiredString(value.insight, 'reader topic insight'),
+  items: requiredArray<Record<string, unknown>>(value.items, 'reader topic items')
+    .map((item) => normalizeReaderItem(item, citationById)),
+  citationIds: requiredStringArray(value.citationIds, 'reader topic citations'),
+});
+
+const normalizeReaderItem = (
+  value: Record<string, unknown>,
+  citationById: ReadonlyMap<string, BriefingCitation>,
+): BriefingReaderItem => {
+  const citationIds = requiredStringArray(value.citationIds, 'reader item citations');
+  const trustedCitation = citationIds.map((citationId) => citationById.get(citationId)).find(Boolean);
+  const providerKey = trustedCitation?.providerKey ?? requiredString(value.providerKey, 'reader item provider');
+  const reason = requiredString(value.reason, 'reader item reason');
+
+  return {
+    title: requiredString(value.title, 'reader item title'),
+    providerKey,
+    reason,
+    matchedTopicIds: optionalStringArray(value.matchedTopicIds).length > 0
+      ? optionalStringArray(value.matchedTopicIds)
+      : ['unknown-topic'],
+    matchedRules: optionalStringArray(value.matchedRules).length > 0
+      ? optionalStringArray(value.matchedRules)
+      : [`provider:${providerKey}`],
+    signalScore: nonNegativeNumberOrFallback(value.signalScore, 0),
+    providerMetrics: optionalArray<Record<string, unknown>>(value.providerMetrics)
+      .map(normalizeProviderMetric),
+    whyImportant: optionalStringArray(value.whyImportant).length > 0
+      ? optionalStringArray(value.whyImportant)
+      : [reason],
+    whyNow: optionalString(value.whyNow) ?? 'Selected in the current briefing window.',
+    canonicalUrl: trustedCitation?.canonicalUrl,
+    citationIds,
+  };
+};
+
+const normalizeSourceMixEntry = (value: Record<string, unknown>): BriefingSourceMixEntry => ({
+  providerKey: requiredString(value.providerKey, 'source mix provider'),
+  itemCount: requiredNumber(value.itemCount, 'source mix item count'),
+  citationCount: requiredNumber(value.citationCount, 'source mix citation count'),
+  storyClusterCount: nonNegativeNumberOrFallback(value.storyClusterCount, 0),
+  crossSourceClusterCount: nonNegativeNumberOrFallback(value.crossSourceClusterCount, 0),
+  singleSourceOnly: typeof value.singleSourceOnly === 'boolean' ? value.singleSourceOnly : true,
+  topicIds: optionalStringArray(value.topicIds),
+});
+
+const normalizeTrendDelta = (value: Record<string, unknown>): BriefingTrendDelta => ({
+  newSignals: requiredStringArray(value.newSignals, 'trend delta new signals'),
+  growingSignals: requiredStringArray(value.growingSignals, 'trend delta growing signals'),
+  repeatedSignals: requiredStringArray(value.repeatedSignals, 'trend delta repeated signals'),
+  fadingSignals: requiredStringArray(value.fadingSignals, 'trend delta fading signals'),
+});
+
+const normalizeNextAction = (
+  value: Record<string, unknown>,
+  citationById: ReadonlyMap<string, BriefingCitation>,
+): BriefingNextAction => {
+  const citationIds = requiredStringArray(value.citationIds, 'next action citations');
+  const trustedCitation = citationIds.map((citationId) => citationById.get(citationId)).find(Boolean);
+
+  return {
+    kind: normalizeSetValue(value.kind, nextActionKinds, 'next action kind') ?? 'read_source',
+    label: requiredString(value.label, 'next action label'),
+    reason: requiredString(value.reason, 'next action reason'),
+    citationIds,
+    canonicalUrl: trustedCitation?.canonicalUrl,
+  };
+};
+
+const normalizeQualityState = (
+  value: unknown,
+  sourceMix: readonly BriefingSourceMixEntry[],
+): BriefingReaderBrief['qualityState'] => {
+  const record = value === undefined ? undefined : requiredRecord(value, 'reader brief quality state');
+  const flags = optionalStringArray(record?.flags)
+    .map((flag) => normalizeSetValue(flag, qualityFlags, 'reader quality flag'))
+    .filter((flag): flag is BriefingQualityFlag => flag !== undefined);
+  const isSingleSource = typeof record?.isSingleSource === 'boolean'
+    ? record.isSingleSource
+    : sourceMix.length === 1 || sourceMix.every((source) => source.singleSourceOnly);
+
+  return {
+    status: normalizeSetValue(record?.status, qualityStatuses, 'reader quality status') ??
+      (isSingleSource ? 'limited_sources' : 'ready'),
+    flags,
+    warnings: optionalStringArray(record?.warnings),
+    isSingleSource,
+  };
+};
+
+const normalizeProviderMetric = (value: Record<string, unknown>): BriefingProviderMetric => ({
+  label: requiredString(value.label, 'provider metric label'),
+  value: requiredString(value.value, 'provider metric value'),
+});
+
+function readerObjectSchema(required: readonly string[], properties: Record<string, unknown>) {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required,
+    properties,
+  };
+}
+
+function readerStringArraySchema() {
+  return { type: 'array', items: { type: 'string' } };
+}
+
+const requiredString = (value: unknown, label: string): string => {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+
+  return value.trim();
+};
+
+const optionalString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+
+const requiredNumber = (value: unknown, label: string): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${label} must be a finite number`);
+  }
+
+  return value;
+};
+
+const requiredArray = <T>(value: unknown, label: string): readonly T[] => {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array`);
+  }
+
+  return value as T[];
+};
+
+const optionalArray = <T>(value: unknown): readonly T[] => Array.isArray(value) ? value as T[] : [];
+
+const requiredStringArray = (value: unknown, label: string): readonly string[] =>
+  requiredArray<unknown>(value, label).map((item) => requiredString(item, label));
+
+const optionalStringArray = (value: unknown): readonly string[] =>
+  optionalArray<unknown>(value)
+    .map((item) => typeof item === 'string' ? item.trim() : '')
+    .filter((item) => item.length > 0);
+
+const requiredRecord = (value: unknown, label: string): Record<string, unknown> => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+
+  return value as Record<string, unknown>;
+};
+
+const normalizeSetValue = <T extends string>(
+  value: unknown,
+  allowed: ReadonlySet<T>,
+  label: string,
+): T | undefined => {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  if (typeof value !== 'string' || !allowed.has(value as T)) {
+    throw new Error(`Unsupported ${label}`);
+  }
+
+  return value as T;
+};
+
+const nonNegativeNumberOrFallback = (value: unknown, fallback: number): number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;

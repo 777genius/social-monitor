@@ -247,6 +247,79 @@ describe('ScheduleDueScansUseCase', () => {
     });
   });
 
+  it('enqueues daily GitHub repo radar scans with configured discovery query', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(SourceBinding.create({
+      id: 'repo-radar-binding-1',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-repo-radar',
+      providerKey: 'github-repo-radar',
+      capabilityProfileVersion: 1,
+      config: {
+        query: 'agent tooling',
+        topics: ['ai', 'agents'],
+        languages: ['TypeScript'],
+      },
+      createdAt: new Date('2026-06-05T00:00:00.000Z'),
+    }));
+    const policies = new FakeScanPolicies();
+    policies.add(ScanPolicy.create({
+      id: 'repo-radar-daily-policy',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'repo-radar-binding-1',
+      intervalSeconds: 86_400,
+      freshnessSeconds: 86_400,
+      retryBudget: 3,
+      nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
+      createdAt: new Date('2026-06-05T00:00:00.000Z'),
+    }));
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      new FakeScanJobs(),
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-repo-radar-daily',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 1,
+        skipped: 0,
+      },
+    });
+    expect(queue.commands).toEqual([
+      expect.objectContaining({
+        topicId: 'topic-repo-radar',
+        sourceBindingId: 'repo-radar-binding-1',
+        scanPolicyId: 'repo-radar-daily-policy',
+        providerKey: 'github-repo-radar',
+        sourceQuery: { mode: 'search', query: 'agent tooling' },
+        causationId: 'scheduled:repo-radar-daily-policy:2026-06-05T12:00:00.000Z',
+      }),
+    ]);
+    expect((await policies.findBySourceBinding({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'repo-radar-binding-1',
+    }))?.toSnapshot()).toMatchObject({
+      nextRunAt: new Date('2026-06-06T12:00:00.000Z'),
+    });
+  });
+
   it('does not enqueue a policy before next run is due', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding());

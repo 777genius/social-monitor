@@ -32,6 +32,7 @@ export type GitHubRepositoryDetails = {
   readonly topics: readonly string[];
   readonly licenseSpdxId?: string;
   readonly stargazersCount: number;
+  readonly forksCount: number;
   readonly fork: boolean;
   readonly archived: boolean;
   readonly pushedAt?: string;

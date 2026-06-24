@@ -75,11 +75,15 @@
                 "conflicting_evidence",
                 "limited_sources",
                 "partial_evidence",
-                "context_unavailable"
+                "context_unavailable",
+                "provider_failed"
               ],
               "type": "string"
             },
             "type": "array"
+          },
+          "readerBrief": {
+            "$ref": "#/components/schemas/BriefingReaderBriefDto"
           },
           "repeatedSignals": {
             "items": {
@@ -147,6 +151,7 @@
           "contextArtifacts",
           "headline",
           "executiveSummary",
+          "readerBrief",
           "topStories",
           "topicHighlights",
           "repeatedSignals",
@@ -162,6 +167,9 @@
       },
       "BriefingCitationViewDto": {
         "properties": {
+          "canonicalUrl": {
+            "type": "string"
+          },
           "citationId": {
             "type": "string"
           },
@@ -408,6 +416,46 @@
         ],
         "type": "object"
       },
+      "BriefingNextActionDto": {
+        "properties": {
+          "canonicalUrl": {
+            "type": "string"
+          },
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "read_source",
+              "watch_repository",
+              "monitor_topic",
+              "compare_sources",
+              "ignore_low_confidence",
+              "add_topic_rule",
+              "request_deeper_scan",
+              "mark_relevant",
+              "mark_not_relevant"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "reason",
+          "citationIds"
+        ],
+        "type": "object"
+      },
       "BriefingObservedAtRangeDto": {
         "properties": {
           "endedAt": {
@@ -422,6 +470,236 @@
         "required": [
           "startedAt",
           "endedAt"
+        ],
+        "type": "object"
+      },
+      "BriefingProviderMetricDto": {
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "type": "object"
+      },
+      "BriefingReaderBriefDto": {
+        "properties": {
+          "bullets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "headline": {
+            "type": "string"
+          },
+          "nextActions": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingNextActionDto"
+            },
+            "type": "array"
+          },
+          "oneLineTakeaway": {
+            "type": "string"
+          },
+          "openQuestions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "qualityState": {
+            "$ref": "#/components/schemas/BriefingReaderQualityStateDto"
+          },
+          "risks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sourceMix": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingSourceMixEntryDto"
+            },
+            "type": "array"
+          },
+          "topicSections": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingReaderTopicSectionDto"
+            },
+            "type": "array"
+          },
+          "topReads": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingReaderItemDto"
+            },
+            "type": "array"
+          },
+          "trendDelta": {
+            "$ref": "#/components/schemas/BriefingTrendDeltaDto"
+          }
+        },
+        "required": [
+          "headline",
+          "oneLineTakeaway",
+          "bullets",
+          "qualityState",
+          "topicSections",
+          "sourceMix",
+          "topReads",
+          "trendDelta",
+          "openQuestions",
+          "risks",
+          "nextActions"
+        ],
+        "type": "object"
+      },
+      "BriefingReaderItemDto": {
+        "properties": {
+          "canonicalUrl": {
+            "type": "string"
+          },
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "matchedRules": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "matchedTopicIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "providerMetrics": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingProviderMetricDto"
+            },
+            "type": "array"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "signalScore": {
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "whyImportant": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "whyNow": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "providerKey",
+          "reason",
+          "matchedTopicIds",
+          "matchedRules",
+          "signalScore",
+          "providerMetrics",
+          "whyImportant",
+          "whyNow",
+          "citationIds"
+        ],
+        "type": "object"
+      },
+      "BriefingReaderQualityStateDto": {
+        "properties": {
+          "flags": {
+            "items": {
+              "enum": [
+                "no_signal",
+                "low_confidence",
+                "conflicting_evidence",
+                "limited_sources",
+                "partial_evidence",
+                "context_unavailable",
+                "provider_failed"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "isSingleSource": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "partial",
+              "limited_sources",
+              "low_confidence",
+              "no_signal",
+              "failed_provider"
+            ],
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "flags",
+          "warnings",
+          "isSingleSource"
+        ],
+        "type": "object"
+      },
+      "BriefingReaderTopicSectionDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "insight": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingReaderItemDto"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "topicId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "insight",
+          "items",
+          "citationIds"
         ],
         "type": "object"
       },
@@ -497,11 +775,15 @@
                 "conflicting_evidence",
                 "limited_sources",
                 "partial_evidence",
-                "context_unavailable"
+                "context_unavailable",
+                "provider_failed"
               ],
               "type": "string"
             },
             "type": "array"
+          },
+          "readerBrief": {
+            "$ref": "#/components/schemas/BriefingReaderBriefDto"
           },
           "repeatedSignals": {
             "items": {
@@ -569,6 +851,7 @@
           "contextArtifacts",
           "headline",
           "executiveSummary",
+          "readerBrief",
           "topStories",
           "topicHighlights",
           "repeatedSignals",
@@ -623,6 +906,44 @@
         },
         "required": [
           "type"
+        ],
+        "type": "object"
+      },
+      "BriefingSourceMixEntryDto": {
+        "properties": {
+          "citationCount": {
+            "type": "number"
+          },
+          "crossSourceClusterCount": {
+            "type": "number"
+          },
+          "itemCount": {
+            "type": "number"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "singleSourceOnly": {
+            "type": "boolean"
+          },
+          "storyClusterCount": {
+            "type": "number"
+          },
+          "topicIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "providerKey",
+          "itemCount",
+          "citationCount",
+          "storyClusterCount",
+          "crossSourceClusterCount",
+          "singleSourceOnly",
+          "topicIds"
         ],
         "type": "object"
       },
@@ -782,6 +1103,41 @@
         ],
         "type": "object"
       },
+      "BriefingTrendDeltaDto": {
+        "properties": {
+          "fadingSignals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "growingSignals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "newSignals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "repeatedSignals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "newSignals",
+          "growingSignals",
+          "repeatedSignals",
+          "fadingSignals"
+        ],
+        "type": "object"
+      },
       "BriefingUsageDto": {
         "properties": {
           "estimatedCostUsd": {
@@ -798,6 +1154,50 @@
           "inputTokens",
           "outputTokens",
           "estimatedCostUsd"
+        ],
+        "type": "object"
+      },
+      "BuildPersonalizedDigestResponseDto": {
+        "properties": {
+          "highSignalFeedItemIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RankedFeedItemDto"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "assembled",
+              "empty"
+            ],
+            "type": "string"
+          },
+          "topicIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "window": {
+            "$ref": "#/components/schemas/PersonalizedDigestWindowDto"
+          }
+        },
+        "required": [
+          "userId",
+          "status",
+          "window",
+          "topicIds",
+          "items",
+          "highSignalFeedItemIds"
         ],
         "type": "object"
       },
@@ -897,6 +1297,9 @@
           "id": {
             "type": "string"
           },
+          "normalizedSignal": {
+            "$ref": "#/components/schemas/FeedNormalizedSignalDto"
+          },
           "observedAt": {
             "format": "date-time",
             "type": "string"
@@ -907,6 +1310,31 @@
           "providerMetadata": {
             "additionalProperties": true,
             "type": "object"
+          },
+          "providerMetrics": {
+            "discriminator": {
+              "mapping": {
+                "github_repository": "#/components/schemas/GitHubRepositoryProviderMetricsDto",
+                "hacker_news_story": "#/components/schemas/HackerNewsStoryProviderMetricsDto",
+                "reddit_post": "#/components/schemas/RedditPostProviderMetricsDto",
+                "x_post": "#/components/schemas/XPostProviderMetricsDto"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RedditPostProviderMetricsDto"
+              },
+              {
+                "$ref": "#/components/schemas/GitHubRepositoryProviderMetricsDto"
+              },
+              {
+                "$ref": "#/components/schemas/HackerNewsStoryProviderMetricsDto"
+              },
+              {
+                "$ref": "#/components/schemas/XPostProviderMetricsDto"
+              }
+            ]
           },
           "publishedAt": {
             "format": "date-time",
@@ -939,6 +1367,118 @@
         ],
         "type": "object"
       },
+      "FeedMetricDeltaDto": {
+        "properties": {
+          "value": {
+            "type": "number"
+          },
+          "window": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "window",
+          "value"
+        ],
+        "type": "object"
+      },
+      "FeedNormalizedSignalDto": {
+        "properties": {
+          "band": {
+            "enum": [
+              "no_signal",
+              "low",
+              "normal",
+              "high",
+              "breakout"
+            ],
+            "type": "string"
+          },
+          "basis": {
+            "enum": [
+              "cohort_baseline_v1"
+            ],
+            "type": "string"
+          },
+          "cohort": {
+            "$ref": "#/components/schemas/FeedSignalCohortDto"
+          },
+          "computedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "score": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "score",
+          "band",
+          "confidence",
+          "basis",
+          "computedAt",
+          "cohort"
+        ],
+        "type": "object"
+      },
+      "FeedSignalCohortDto": {
+        "properties": {
+          "ageBucket": {
+            "type": "string"
+          },
+          "baselineWindow": {
+            "enum": [
+              "24h",
+              "7d",
+              "30d",
+              "all"
+            ],
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "fallback": {
+            "enum": [
+              "exact",
+              "source",
+              "provider_age",
+              "provider"
+            ],
+            "type": "string"
+          },
+          "percentile": {
+            "type": "number"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "sampleSize": {
+            "type": "number"
+          },
+          "sourceKey": {
+            "type": "string"
+          },
+          "zScore": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "providerKey",
+          "sourceKey",
+          "contentType",
+          "ageBucket",
+          "baselineWindow",
+          "sampleSize",
+          "percentile",
+          "zScore",
+          "fallback"
+        ],
+        "type": "object"
+      },
       "GetFeedItemResponseDto": {
         "properties": {
           "authorHandle": {
@@ -953,6 +1493,9 @@
           "id": {
             "type": "string"
           },
+          "normalizedSignal": {
+            "$ref": "#/components/schemas/FeedNormalizedSignalDto"
+          },
           "observedAt": {
             "format": "date-time",
             "type": "string"
@@ -963,6 +1506,31 @@
           "providerMetadata": {
             "additionalProperties": true,
             "type": "object"
+          },
+          "providerMetrics": {
+            "discriminator": {
+              "mapping": {
+                "github_repository": "#/components/schemas/GitHubRepositoryProviderMetricsDto",
+                "hacker_news_story": "#/components/schemas/HackerNewsStoryProviderMetricsDto",
+                "reddit_post": "#/components/schemas/RedditPostProviderMetricsDto",
+                "x_post": "#/components/schemas/XPostProviderMetricsDto"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RedditPostProviderMetricsDto"
+              },
+              {
+                "$ref": "#/components/schemas/GitHubRepositoryProviderMetricsDto"
+              },
+              {
+                "$ref": "#/components/schemas/HackerNewsStoryProviderMetricsDto"
+              },
+              {
+                "$ref": "#/components/schemas/XPostProviderMetricsDto"
+              }
+            ]
           },
           "publishedAt": {
             "format": "date-time",
@@ -1037,6 +1605,97 @@
           "retryBudget",
           "nextRunAt",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "GitHubRepositoryProviderMetricsDto": {
+        "properties": {
+          "contentType": {
+            "enum": [
+              "repository"
+            ],
+            "type": "string"
+          },
+          "forks": {
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "github_repository"
+            ],
+            "type": "string"
+          },
+          "providerKey": {
+            "enum": [
+              "github-repo-radar"
+            ],
+            "type": "string"
+          },
+          "sourceKey": {
+            "type": "string"
+          },
+          "stars": {
+            "type": "number"
+          },
+          "trendDeltas": {
+            "items": {
+              "$ref": "#/components/schemas/FeedMetricDeltaDto"
+            },
+            "type": "array"
+          },
+          "trendingDelta": {
+            "$ref": "#/components/schemas/FeedMetricDeltaDto"
+          }
+        },
+        "required": [
+          "kind",
+          "providerKey",
+          "sourceKey",
+          "contentType",
+          "stars",
+          "forks",
+          "trendingDelta",
+          "trendDeltas"
+        ],
+        "type": "object"
+      },
+      "HackerNewsStoryProviderMetricsDto": {
+        "properties": {
+          "comments": {
+            "type": "number"
+          },
+          "contentType": {
+            "enum": [
+              "story"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "hacker_news_story"
+            ],
+            "type": "string"
+          },
+          "points": {
+            "type": "number"
+          },
+          "providerKey": {
+            "enum": [
+              "hacker-news"
+            ],
+            "type": "string"
+          },
+          "sourceKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "providerKey",
+          "sourceKey",
+          "contentType",
+          "points",
+          "comments"
         ],
         "type": "object"
       },
@@ -1156,6 +1815,213 @@
         ],
         "type": "object"
       },
+      "PersonalizedDigestWindowDto": {
+        "properties": {
+          "endedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "startedAt",
+          "endedAt"
+        ],
+        "type": "object"
+      },
+      "RankedFeedItemDto": {
+        "properties": {
+          "authorHandle": {
+            "type": "string"
+          },
+          "bodyPreview": {
+            "type": "string"
+          },
+          "canonicalUrl": {
+            "type": "string"
+          },
+          "clusterId": {
+            "type": "string"
+          },
+          "clusterSize": {
+            "type": "number"
+          },
+          "duplicateFeedItemIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "feedItemId": {
+            "type": "string"
+          },
+          "observedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "providerMetadata": {
+            "type": "object"
+          },
+          "publishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "rank": {
+            "type": "number"
+          },
+          "safety": {
+            "$ref": "#/components/schemas/SourceContentSafetyDto"
+          },
+          "score": {
+            "type": "number"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          },
+          "sourceItemId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "topicId": {
+            "type": "string"
+          },
+          "whyImportant": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "feedItemId",
+          "sourceItemId",
+          "sourceBindingId",
+          "topicId",
+          "providerKey",
+          "canonicalUrl",
+          "title",
+          "publishedAt",
+          "observedAt",
+          "score",
+          "rank",
+          "clusterId",
+          "clusterSize",
+          "duplicateFeedItemIds",
+          "whyImportant",
+          "safety"
+        ],
+        "type": "object"
+      },
+      "RankFeedItemsResponseDto": {
+        "properties": {
+          "generatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RankedFeedItemDto"
+            },
+            "type": "array"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/UserRelevanceProfileDto"
+          },
+          "profileApplied": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "profileApplied",
+          "items"
+        ],
+        "type": "object"
+      },
+      "RecordRelevanceFeedbackRequestDto": {
+        "properties": {
+          "action": {
+            "enum": [
+              "more_like_this",
+              "less_like_this",
+              "hide_source",
+              "dismiss",
+              "save"
+            ],
+            "type": "string"
+          },
+          "bodyPreview": {
+            "type": "string"
+          },
+          "canonicalUrl": {
+            "type": "string"
+          },
+          "feedItemId": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "rating": {
+            "maximum": 5,
+            "minimum": 1,
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "topicId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "action",
+          "topicId",
+          "providerKey",
+          "title"
+        ],
+        "type": "object"
+      },
+      "RecordRelevanceFeedbackResponseDto": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "feedback": {
+            "$ref": "#/components/schemas/RelevanceFeedbackSignalDto"
+          },
+          "learningDirection": {
+            "enum": [
+              "positive",
+              "negative",
+              "block_provider"
+            ],
+            "type": "string"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/UserRelevanceProfileDto"
+          }
+        },
+        "required": [
+          "feedback",
+          "profile",
+          "created",
+          "learningDirection"
+        ],
+        "type": "object"
+      },
       "RecordSummaryFeedbackRequestDto": {
         "properties": {
           "category": {
@@ -1244,6 +2110,49 @@
         ],
         "type": "object"
       },
+      "RedditPostProviderMetricsDto": {
+        "properties": {
+          "comments": {
+            "type": "number"
+          },
+          "contentType": {
+            "enum": [
+              "post"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "reddit_post"
+            ],
+            "type": "string"
+          },
+          "providerKey": {
+            "enum": [
+              "reddit"
+            ],
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "sourceKey": {
+            "type": "string"
+          },
+          "upvoteRatio": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "providerKey",
+          "sourceKey",
+          "contentType",
+          "score",
+          "comments"
+        ],
+        "type": "object"
+      },
       "RegenerateSummaryResponseDto": {
         "properties": {
           "created": {
@@ -1267,6 +2176,81 @@
           "summaryJobId",
           "status",
           "created"
+        ],
+        "type": "object"
+      },
+      "RelevanceFeedbackSignalDto": {
+        "properties": {
+          "action": {
+            "enum": [
+              "more_like_this",
+              "less_like_this",
+              "hide_source",
+              "dismiss",
+              "save"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "feedbackId": {
+            "type": "string"
+          },
+          "rating": {
+            "maximum": 5,
+            "minimum": 1,
+            "type": "number"
+          },
+          "target": {
+            "$ref": "#/components/schemas/RelevanceFeedbackTargetDto"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "feedbackId",
+          "userId",
+          "action",
+          "target",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "RelevanceFeedbackTargetDto": {
+        "properties": {
+          "feedItemId": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "topicId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "topicId",
+          "providerKey"
+        ],
+        "type": "object"
+      },
+      "RelevanceWeightDto": {
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "weight": {
+            "maximum": 3,
+            "minimum": -3,
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "weight"
         ],
         "type": "object"
       },
@@ -1805,6 +2789,46 @@
         ],
         "type": "object"
       },
+      "SourceContentSafetyDto": {
+        "properties": {
+          "categories": {
+            "items": {
+              "enum": [
+                "prompt_injection",
+                "sensitive_data",
+                "untrusted_instruction",
+                "raw_payload_retention_disabled"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rawPayloadRetained": {
+            "type": "boolean"
+          },
+          "retentionPolicy": {
+            "enum": [
+              "normalized_preview_only"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "allowed",
+              "sanitized",
+              "blocked"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "categories",
+          "rawPayloadRetained",
+          "retentionPolicy"
+        ],
+        "type": "object"
+      },
       "SourceProfileDto": {
         "properties": {
           "acquisitionMode": {
@@ -1995,6 +3019,9 @@
       },
       "SummaryCitationViewDto": {
         "properties": {
+          "canonicalUrl": {
+            "type": "string"
+          },
           "citationId": {
             "type": "string"
           },
@@ -2539,6 +3566,171 @@
       },
       "UpsertSummaryPolicyRequestDto": {
         "properties": {},
+        "type": "object"
+      },
+      "UpsertUserRelevanceProfileRequestDto": {
+        "properties": {
+          "blockedProviderKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "keywordWeights": {
+            "items": {
+              "$ref": "#/components/schemas/RelevanceWeightDto"
+            },
+            "type": "array"
+          },
+          "mutedKeywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sourceWeights": {
+            "items": {
+              "$ref": "#/components/schemas/RelevanceWeightDto"
+            },
+            "type": "array"
+          },
+          "topicWeights": {
+            "items": {
+              "$ref": "#/components/schemas/RelevanceWeightDto"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "UpsertUserRelevanceProfileResponseDto": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/UserRelevanceProfileDto"
+          }
+        },
+        "required": [
+          "profile",
+          "created"
+        ],
+        "type": "object"
+      },
+      "UserRelevanceProfileDto": {
+        "properties": {
+          "blockedProviderKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "keywordWeights": {
+            "items": {
+              "$ref": "#/components/schemas/RelevanceWeightDto"
+            },
+            "type": "array"
+          },
+          "mutedKeywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rulesVersion": {
+            "type": "string"
+          },
+          "sourceWeights": {
+            "items": {
+              "$ref": "#/components/schemas/RelevanceWeightDto"
+            },
+            "type": "array"
+          },
+          "topicWeights": {
+            "items": {
+              "$ref": "#/components/schemas/RelevanceWeightDto"
+            },
+            "type": "array"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "topicWeights",
+          "sourceWeights",
+          "keywordWeights",
+          "mutedKeywords",
+          "blockedProviderKeys",
+          "rulesVersion",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "XPostProviderMetricsDto": {
+        "properties": {
+          "bookmarks": {
+            "type": "number"
+          },
+          "contentType": {
+            "enum": [
+              "post"
+            ],
+            "type": "string"
+          },
+          "impressions": {
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "x_post"
+            ],
+            "type": "string"
+          },
+          "likes": {
+            "type": "number"
+          },
+          "providerKey": {
+            "enum": [
+              "x-twitter"
+            ],
+            "type": "string"
+          },
+          "quotes": {
+            "type": "number"
+          },
+          "replies": {
+            "type": "number"
+          },
+          "reposts": {
+            "type": "number"
+          },
+          "sourceKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "providerKey",
+          "sourceKey",
+          "contentType",
+          "likes",
+          "reposts",
+          "replies",
+          "quotes",
+          "bookmarks",
+          "impressions"
+        ],
         "type": "object"
       }
     }
@@ -3718,9 +4910,7 @@
             "schema": {
               "enum": [
                 "24h",
-                "7d",
-                "30d",
-                "90d"
+                "48h"
               ],
               "type": "string"
             }
@@ -4230,6 +5420,342 @@
         "summary": "Replay tenant/workspace realtime events for REST resync.",
         "tags": [
           "realtime"
+        ]
+      }
+    },
+    "/relevance/users/{userId}/digest": {
+      "get": {
+        "operationId": "RelevanceController_digest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "windowEndedAt",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "windowStartedAt",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "topicIds",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Personalized digest reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildPersonalizedDigestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Build a personalized digest candidate set for one user and time window.",
+        "tags": [
+          "relevance"
+        ]
+      }
+    },
+    "/relevance/users/{userId}/feed": {
+      "get": {
+        "operationId": "RelevanceController_feed",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "observedAfter",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "topicId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Personalized feed reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RankFeedItemsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Rank feed items for one user with dedupe, clustering and source safety metadata.",
+        "tags": [
+          "relevance"
+        ]
+      }
+    },
+    "/relevance/users/{userId}/feedback": {
+      "post": {
+        "operationId": "RelevanceController_feedback",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Relevance feedback writes allow owner, admin or member. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordRelevanceFeedbackRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordRelevanceFeedbackResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Record relevance feedback and update the user learning profile.",
+        "tags": [
+          "relevance"
+        ]
+      }
+    },
+    "/relevance/users/{userId}/profile": {
+      "put": {
+        "operationId": "RelevanceController_upsertProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Relevance profile writes allow owner, admin or member. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertUserRelevanceProfileRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpsertUserRelevanceProfileResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Create or update personalized relevance weights for one user.",
+        "tags": [
+          "relevance"
         ]
       }
     },

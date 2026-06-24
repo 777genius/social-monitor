@@ -1,3 +1,5 @@
+import type { JsonObject } from '@social-monitor/shared-kernel';
+
 export type BriefingEvidenceItem = {
   readonly feedItemId: string;
   readonly sourceItemId: string;
@@ -12,6 +14,8 @@ export type BriefingEvidenceItem = {
   readonly observedAt: Date;
   readonly score: number;
   readonly whyImportant: readonly string[];
+  readonly providerMetrics?: JsonObject;
+  readonly matchedRules?: readonly string[];
   readonly storyKeyHint?: string;
 };
 

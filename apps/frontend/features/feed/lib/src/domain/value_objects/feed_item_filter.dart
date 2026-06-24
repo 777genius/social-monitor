@@ -87,7 +87,7 @@ String? _normalizeTrendWindow(String? value) {
   final normalized = _normalizeOptional(value)?.toLowerCase();
 
   return switch (normalized) {
-    '24h' || '7d' || '30d' || '90d' => normalized,
+    '24h' || '48h' => normalized,
     _ => null,
   };
 }

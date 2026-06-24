@@ -25,6 +25,7 @@ export class GitHubRepositoryLiveVerifierAdapter implements GitHubRepositoryLive
       topics: repository.topics,
       license: repository.licenseSpdxId,
       totalStars: repository.stargazersCount,
+      forksCount: repository.forksCount,
       fork: repository.fork,
       archived: repository.archived,
       pushedAt: readDate(repository.pushedAt),

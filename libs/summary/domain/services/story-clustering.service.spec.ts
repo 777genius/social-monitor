@@ -62,6 +62,46 @@ describe('StoryClusteringService', () => {
     expect(selection.sourceWindow.selectedFeedItemIds).toEqual(['feed-github']);
   });
 
+  it('uses a GitHub repository as the canonical entity across discussion sources', () => {
+    const service = new StoryClusteringService(clock);
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        scope: { type: 'workspace' },
+      },
+      limit: 10,
+      items: [
+        evidenceItem({
+          feedItemId: 'feed-repo',
+          providerKey: 'github-repo-radar',
+          canonicalUrl: 'https://github.com/OpenAI/Codex?utm_source=radar',
+          title: 'openai/codex',
+          score: 2.2,
+          storyKeyHint: 'url:github.com/openai/codex?source=old',
+        }),
+        evidenceItem({
+          feedItemId: 'feed-reddit',
+          sourceItemId: 'reddit-1',
+          providerKey: 'reddit',
+          canonicalUrl: 'https://www.reddit.com/r/programming/comments/1/why_openai_codex_matters',
+          title: 'Why openai/codex is suddenly everywhere',
+          score: 1.7,
+          storyKeyHint: 'reddit:discussion-1',
+        }),
+      ],
+    });
+
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]).toMatchObject({
+      storyKey: 'github-repo:openai/codex',
+      representativeFeedItemId: 'feed-repo',
+      duplicateFeedItemIds: ['feed-reddit'],
+      providerKeys: ['github-repo-radar', 'reddit'],
+    });
+  });
+
   it('returns a deterministic empty source window for no evidence', () => {
     const service = new StoryClusteringService(clock);
 

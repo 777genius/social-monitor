@@ -19,6 +19,7 @@ export type BigQueryGitHubRepoRadarClientOptions = {
 type BigQueryRow = {
   readonly full_name?: unknown;
   readonly stars_24h?: unknown;
+  readonly stars_48h?: unknown;
   readonly stars_7d?: unknown;
   readonly stars_30d?: unknown;
   readonly stars_90d?: unknown;
@@ -50,7 +51,7 @@ export class BigQueryGitHubRepoRadarClient implements GitHubRepoRadarClientPort 
       maximumBytesBilled: this.maximumBytesBilled,
       jobTimeoutMs: this.jobTimeoutMs,
       params: {
-        startTableSuffix: dayTableSuffix(daysBefore(query.checkedAt, 90)),
+        startTableSuffix: dayTableSuffix(daysBefore(query.checkedAt, 2)),
         endTableSuffix: dayTableSuffix(query.checkedAt),
         checkedAt: query.checkedAt.toISOString(),
         query: query.query.toLocaleLowerCase('en-US'),
@@ -81,18 +82,19 @@ aggregated AS (
   SELECT
     full_name,
     COUNTIF(created_at >= TIMESTAMP_SUB(TIMESTAMP(@checkedAt), INTERVAL 1 DAY)) AS stars_24h,
-    COUNTIF(created_at >= TIMESTAMP_SUB(TIMESTAMP(@checkedAt), INTERVAL 7 DAY)) AS stars_7d,
-    COUNTIF(created_at >= TIMESTAMP_SUB(TIMESTAMP(@checkedAt), INTERVAL 30 DAY)) AS stars_30d,
-    COUNTIF(created_at >= TIMESTAMP_SUB(TIMESTAMP(@checkedAt), INTERVAL 90 DAY)) AS stars_90d
+    COUNTIF(created_at >= TIMESTAMP_SUB(TIMESTAMP(@checkedAt), INTERVAL 2 DAY)) AS stars_48h,
+    0 AS stars_7d,
+    0 AS stars_30d,
+    0 AS stars_90d
   FROM events
   GROUP BY full_name
 )
-SELECT full_name, stars_24h, stars_7d, stars_30d, stars_90d
+SELECT full_name, stars_24h, stars_48h, stars_7d, stars_30d, stars_90d
 FROM aggregated
 WHERE
   (@query = '' OR LOWER(full_name) LIKE CONCAT('%', @query, '%'))
-  AND stars_90d > 0
-ORDER BY stars_24h DESC, stars_7d DESC, stars_30d DESC, stars_90d DESC, full_name ASC
+  AND stars_48h > 0
+ORDER BY stars_24h DESC, stars_48h DESC, full_name ASC
 LIMIT @limit
 `;
 
@@ -110,12 +112,14 @@ const rowToCandidate = (
   const candidate = {
     fullName,
     stars24h: readInteger(row.stars_24h),
+    stars48h: readInteger(row.stars_48h),
     stars7d: readInteger(row.stars_7d),
     stars30d: readInteger(row.stars_30d),
     stars90d: readInteger(row.stars_90d),
     rank,
     primaryWindow: primaryWindow({
       stars24h: readInteger(row.stars_24h),
+      stars48h: readInteger(row.stars_48h),
       stars7d: readInteger(row.stars_7d),
       stars30d: readInteger(row.stars_30d),
       stars90d: readInteger(row.stars_90d),
@@ -126,11 +130,12 @@ const rowToCandidate = (
 };
 
 const primaryWindow = (
-  scores: Pick<GitHubRepoRadarCandidate, 'stars24h' | 'stars7d' | 'stars30d' | 'stars90d'>,
+  scores: Pick<GitHubRepoRadarCandidate, 'stars24h' | 'stars48h' | 'stars7d' | 'stars30d' | 'stars90d'>,
   windows: readonly GitHubRepositoryTrendWindow[],
 ): GitHubRepositoryTrendWindow => {
   const candidates = [
     ['24h', scores.stars24h],
+    ['48h', scores.stars48h],
     ['7d', scores.stars7d],
     ['30d', scores.stars30d],
     ['90d', scores.stars90d],

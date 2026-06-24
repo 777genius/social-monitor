@@ -1,5 +1,19 @@
 import type { PrismaFeedItemRecord } from './prisma-feed-records';
 
+export type PrismaFeedSignalBaselineSampleRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly topicId: string;
+  readonly feedItemId: string;
+  readonly providerKey: string;
+  readonly sourceKey: string;
+  readonly contentType: string;
+  readonly strength: number;
+  readonly publishedAt: Date;
+  readonly observedAt: Date;
+};
+
 export type PrismaFeedClient = {
   readonly feedItem: {
     upsert(args: {
@@ -73,5 +87,55 @@ export type PrismaFeedClient = {
         readonly status: 'VISIBLE';
       };
     }): Promise<PrismaFeedItemRecord | null>;
+  };
+  readonly feedSignalBaselineSample: {
+    upsert(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_feedItemId: {
+          readonly tenantId: string;
+          readonly workspaceId: string;
+          readonly feedItemId: string;
+        };
+      };
+      readonly update: {
+        readonly topicId: string;
+        readonly providerKey: string;
+        readonly sourceKey: string;
+        readonly contentType: string;
+        readonly strength: number;
+        readonly publishedAt: Date;
+        readonly observedAt: Date;
+      };
+      readonly create: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly topicId: string;
+        readonly feedItemId: string;
+        readonly providerKey: string;
+        readonly sourceKey: string;
+        readonly contentType: string;
+        readonly strength: number;
+        readonly publishedAt: Date;
+        readonly observedAt: Date;
+      };
+    }): Promise<PrismaFeedSignalBaselineSampleRecord>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly topicId?: string;
+        readonly observedAt: { readonly gt: Date };
+      };
+      readonly orderBy: readonly [{ readonly observedAt: 'desc' }, { readonly feedItemId: 'desc' }];
+      readonly take: number;
+    }): Promise<readonly PrismaFeedSignalBaselineSampleRecord[]>;
+    deleteMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly feedItemId: string;
+      };
+    }): Promise<{ readonly count: number }>;
   };
 };

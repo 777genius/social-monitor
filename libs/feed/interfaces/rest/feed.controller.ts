@@ -42,7 +42,7 @@ export class FeedController {
   @ApiQuery({ name: 'topicId', required: false, type: String })
   @ApiQuery({ name: 'q', required: false, type: String })
   @ApiQuery({ name: 'providerKey', required: false, type: String })
-  @ApiQuery({ name: 'repositoryTrendWindow', required: false, enum: ['24h', '7d', '30d', '90d'] })
+  @ApiQuery({ name: 'repositoryTrendWindow', required: false, enum: ['24h', '48h'] })
   @ApiQuery({ name: 'repositoryLanguage', required: false, type: String })
   @ApiQuery({ name: 'repositoryTopic', required: false, type: String })
   @ApiOkResponse({ type: ListFeedItemsResponseDto })

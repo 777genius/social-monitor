@@ -90,7 +90,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     state: 'enabled_beta',
     runtimeReadiness: 'fixture_ready',
     liveBetaBlockers: [
-      'BigQuery GH Archive credentials/quota evidence, npm run check:github-repo-radar-live-smoke and GitHub live verification rate-limit budget required before external beta.',
+      'BigQuery GH Archive credentials/quota evidence, npm run check:github-repo-radar-live-smoke, npm run check:github-repo-radar-prisma-live-e2e and GitHub live verification rate-limit budget required before external beta.',
     ],
     acquisitionMode: 'official_or_open_api',
     approvalOwner: 'engineering',
@@ -107,6 +107,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
       'Fixture certification passes',
       'BigQuery maximumBytesBilled is configured',
       'GITHUB_REPO_RADAR_LIVE_SMOKE=1 npm run check:github-repo-radar-live-smoke passes in staging',
+      'GITHUB_REPO_RADAR_PRISMA_LIVE_E2E=1 npm run check:github-repo-radar-prisma-live-e2e proves Postgres source/feed/trend persistence',
       'GitHub REST live verifier rate-limit behavior documented',
       'Trend history persistence smoke passes',
     ],

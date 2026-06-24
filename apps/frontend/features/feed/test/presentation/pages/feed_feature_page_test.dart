@@ -23,7 +23,15 @@ void main() {
         title: 'openai/codex is trending on GitHub',
         canonicalUrl: 'https://github.com/openai/codex',
         authorHandle: 'openai',
+        normalizedSignal: feedSignalApiDto(
+          score: 91,
+          band: 'breakout',
+          providerKey: 'github-repo-radar',
+          sourceKey: 'repo-trending:24h',
+          contentType: 'repository',
+        ),
         providerMetadata: githubRepositoryTrendMetadataFixture(),
+        providerMetrics: githubRepositoryMetricsFixture(),
       ),
     ]);
 
@@ -32,10 +40,17 @@ void main() {
 
     expect(find.text('openai/codex is trending on GitHub'), findsWidgets);
     expect(find.text('Repo Radar'), findsWidgets);
-    expect(find.text('54.0k stars'), findsOneWidget);
+    expect(find.text('Signal 91 - Breakout'), findsWidgets);
+    expect(find.text('54.0k stars'), findsWidgets);
+    expect(find.text('6.1k forks'), findsWidgets);
+    expect(find.text('+210 / 24h'), findsWidgets);
+    expect(find.text('+360 / 48h'), findsWidgets);
+    expect(find.text('+1.2k / 7d'), findsWidgets);
     expect(find.text('Repository trend'), findsOneWidget);
     expect(find.text('openai/codex'), findsWidgets);
-    expect(find.text('+1,200'), findsOneWidget);
+    expect(find.text('Primary window'), findsOneWidget);
+    expect(find.text('24h'), findsOneWidget);
+    expect(find.text('Checked'), findsOneWidget);
     expect(find.text('Body preview'), findsOneWidget);
     expect(find.text('Canonical URL'), findsOneWidget);
     expect(find.text('Copy URL'), findsOneWidget);
@@ -121,7 +136,7 @@ void main() {
           url: 'https://github.com/astral-sh/uv',
           language: 'Rust',
           topics: const ['python', 'cli'],
-          primaryWindow: '7d',
+          primaryWindow: '48h',
           rank: 2,
         ),
       ),

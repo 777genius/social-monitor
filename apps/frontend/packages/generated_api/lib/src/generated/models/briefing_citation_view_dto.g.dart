@@ -15,11 +15,13 @@ BriefingCitationViewDto _$BriefingCitationViewDtoFromJson(
   label: json['label'] as String,
   providerKey: json['providerKey'] as String,
   sourceItemId: json['sourceItemId'] as String,
+  canonicalUrl: json['canonicalUrl'] as String?,
 );
 
 Map<String, dynamic> _$BriefingCitationViewDtoToJson(
   BriefingCitationViewDto instance,
 ) => <String, dynamic>{
+  'canonicalUrl': instance.canonicalUrl,
   'citationId': instance.citationId,
   'feedItemId': instance.feedItemId,
   'field': instance.field,

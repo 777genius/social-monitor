@@ -1,7 +1,8 @@
+import { feedProviderMetricsFromMetadata } from '@social-monitor/feed';
 import type { FeedItemReadRepositoryPort } from '@social-monitor/feed/ports';
 import type { RankFeedItemsUseCase } from '@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case';
 import type { RankedFeedItemView } from '@social-monitor/relevance/features/rank-feed-items/rank-feed-items.result';
-import type { Clock } from '@social-monitor/shared-kernel';
+import { normalizeJsonObject, type Clock, type JsonObject } from '@social-monitor/shared-kernel';
 
 import { StoryClusteringService, type BriefingEvidenceItem } from '../../domain';
 import type { BriefingEvidenceSelectorPort } from '../../ports';
@@ -84,6 +85,10 @@ export class RelevanceBriefingEvidenceSelector implements BriefingEvidenceSelect
           observedAt: snapshot.observedAt,
           score: Math.max(0, rankedItem.score - 0.001),
           whyImportant: rankedItem.whyImportant,
+          providerMetrics: providerMetricsJson({
+            providerKey: snapshot.providerKey,
+            providerMetadata: snapshot.providerMetadata,
+          }),
           storyKeyHint: rankedItem.clusterId,
         });
       }
@@ -107,5 +112,18 @@ const mapRankedItem = (item: RankedFeedItemView): BriefingEvidenceItem => ({
   observedAt: new Date(item.observedAt),
   score: item.score,
   whyImportant: item.whyImportant,
+  providerMetrics: providerMetricsJson({
+    providerKey: item.providerKey,
+    providerMetadata: item.providerMetadata,
+  }),
   storyKeyHint: item.clusterId,
 });
+
+const providerMetricsJson = (params: {
+  readonly providerKey: string;
+  readonly providerMetadata?: JsonObject;
+}): JsonObject | undefined => {
+  const metrics = feedProviderMetricsFromMetadata(params);
+
+  return metrics === undefined ? undefined : normalizeJsonObject(metrics);
+};

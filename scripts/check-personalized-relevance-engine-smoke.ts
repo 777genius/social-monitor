@@ -1,6 +1,8 @@
 import { FeedItem } from '@social-monitor/feed/domain';
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
+import { InMemoryRelevanceFeedbackLearningStore } from '@social-monitor/relevance/adapters/persistence/in-memory-relevance-feedback-learning.store';
 import { InMemoryRelevanceFeedbackRepository } from '@social-monitor/relevance/adapters/persistence/in-memory-relevance-feedback.repository';
+import { InMemoryRelevanceMemoryProjectionRepository } from '@social-monitor/relevance/adapters/persistence/in-memory-relevance-memory-projection.repository';
 import { InMemoryUserRelevanceProfileRepository } from '@social-monitor/relevance/adapters/persistence/in-memory-user-relevance-profile.repository';
 import { BuildPersonalizedDigestUseCase } from '@social-monitor/relevance/features/build-personalized-digest/build-personalized-digest.use-case';
 import { RankFeedItemsUseCase } from '@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case';
@@ -46,6 +48,7 @@ async function main(): Promise<void> {
   const feedItems = new InMemoryFeedItemReadRepository();
   const profiles = new InMemoryUserRelevanceProfileRepository();
   const relevanceFeedback = new InMemoryRelevanceFeedbackRepository();
+  const relevanceMemoryProjections = new InMemoryRelevanceMemoryProjectionRepository();
   const rankFeedItems = new RankFeedItemsUseCase(feedItems, profiles, clock);
 
   seedFeed(feedItems);
@@ -87,8 +90,7 @@ async function main(): Promise<void> {
   assert(summary?.toSnapshot().sourceHighlights.some((highlight) => highlight.includes('Matches')), 'summary highlights should carry why-important context');
 
   const feedbackResult = await new RecordRelevanceFeedbackUseCase(
-    profiles,
-    relevanceFeedback,
+    new InMemoryRelevanceFeedbackLearningStore(profiles, relevanceFeedback, relevanceMemoryProjections),
     ids,
     clock,
   ).execute({

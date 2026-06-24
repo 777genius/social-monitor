@@ -11,6 +11,8 @@ extension SummariesReviewStoreBriefingWorkflow on SummariesReviewStore {
   UserActionIntent requestWorkspaceBriefingIntent() {
     final disabledReasonCode = !_scope.isValid
         ? 'summaries.workspace_scope_required'
+        : _userId.trim().isEmpty
+        ? 'summaries.user_scope_required'
         : isBriefingGenerationInProgress
         ? 'summaries.briefing_generation_in_progress'
         : null;
@@ -38,9 +40,10 @@ extension SummariesReviewStoreBriefingWorkflow on SummariesReviewStore {
     );
     _notifyStateChanged();
 
-    final result = await _requestWorkspaceBriefing(
+    final result = await _dependencies.requestWorkspaceBriefing(
       RequestWorkspaceBriefingCommand(
         scope: _scope,
+        userId: _userId,
         idempotencyKey: _briefingRequestIdempotencyKeyFactory(_scope),
       ),
     );
@@ -86,7 +89,7 @@ extension SummariesReviewStoreBriefingWorkflow on SummariesReviewStore {
         return;
       }
 
-      final result = await _loadWorkspaceBriefingJobStatus(
+      final result = await _dependencies.loadWorkspaceBriefingJobStatus(
         LoadWorkspaceBriefingJobStatusQuery(
           scope: _scope,
           briefingJobId: current.id,
@@ -154,7 +157,7 @@ Future<void> _loadWorkspaceBriefingForStore(
   );
   store._notifyStateChanged();
 
-  final result = await store._loadWorkspaceBriefing(
+  final result = await store._dependencies.loadWorkspaceBriefing(
     LoadWorkspaceBriefingQuery(scope: store._scope),
   );
   if (!store._briefingGenerationGuard.isCurrent(generation)) {

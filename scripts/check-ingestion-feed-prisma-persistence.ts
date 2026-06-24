@@ -3,7 +3,10 @@ import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 
 import { PrismaFeedItemReadRepository } from '../libs/feed/adapters/persistence/prisma/prisma-feed-item-read.repository';
 import { PrismaFeedProjectionAdapter } from '../libs/feed/adapters/persistence/prisma/prisma-feed-projection.adapter';
-import type { PrismaFeedClient } from '../libs/feed/adapters/persistence/prisma/prisma-feed-client';
+import type {
+  PrismaFeedClient,
+  PrismaFeedSignalBaselineSampleRecord,
+} from '../libs/feed/adapters/persistence/prisma/prisma-feed-client';
 import type { PrismaFeedItemRecord } from '../libs/feed/adapters/persistence/prisma/prisma-feed-records';
 import { resolveFeedPersistenceMode } from '../libs/feed/interfaces/rest/feed-provider-tokens';
 import { ScanAttempt, SourceItem } from '../libs/ingestion/domain';
@@ -372,6 +375,8 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
   private readonly sourceItems = new Map<string, PrismaSourceItemRecord>();
   private readonly cursors = new Map<string, PrismaCursorCheckpointRecord>();
   private readonly feedItems = new Map<string, PrismaFeedItemRecord>();
+  private readonly feedSignalBaselineSamples =
+    new Map<string, PrismaFeedSignalBaselineSampleRecord>();
   private readonly failureEntries: PrismaScanFailureQueueEntryRecord[] = [];
   private readonly attempts = new Map<string, PrismaScanAttemptRecord>();
   private readonly leases = new Map<string, PrismaScanLeaseEntryRecord>();
@@ -527,15 +532,15 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
       )) ?? null,
   };
 
-  readonly githubRepositoryTrendCandidate: PrismaIngestionClient['githubRepositoryTrendCandidate'] = {
+  readonly gitHubRepositoryTrendCandidate: PrismaIngestionClient['gitHubRepositoryTrendCandidate'] = {
     upsert: async (args) => args.create,
   };
 
-  readonly githubRepositoryTrendSnapshot: PrismaIngestionClient['githubRepositoryTrendSnapshot'] = {
+  readonly gitHubRepositoryTrendSnapshot: PrismaIngestionClient['gitHubRepositoryTrendSnapshot'] = {
     upsert: async (args) => args.create,
   };
 
-  readonly githubRepositoryTrendResult: PrismaIngestionClient['githubRepositoryTrendResult'] = {
+  readonly gitHubRepositoryTrendResult: PrismaIngestionClient['gitHubRepositoryTrendResult'] = {
     upsert: async (args) => args.create,
   };
 
@@ -577,6 +582,56 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
     count: async (args) => this.filterFeedItems(args.where).length,
     findFirst: async (args) =>
       this.filterFeedItems(args.where).find((record) => record.id === args.where.id) ?? null,
+  };
+
+  readonly feedSignalBaselineSample: PrismaFeedClient['feedSignalBaselineSample'] = {
+    upsert: async (args) => {
+      const key = [
+        args.where.tenantId_workspaceId_feedItemId.tenantId,
+        args.where.tenantId_workspaceId_feedItemId.workspaceId,
+        args.where.tenantId_workspaceId_feedItemId.feedItemId,
+      ].join(':');
+      const existing = this.feedSignalBaselineSamples.get(key);
+      const record: PrismaFeedSignalBaselineSampleRecord = {
+        id: existing?.id ?? args.create.id,
+        tenantId: existing?.tenantId ?? args.create.tenantId,
+        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
+        topicId: args.update.topicId,
+        feedItemId: existing?.feedItemId ?? args.create.feedItemId,
+        providerKey: args.update.providerKey,
+        sourceKey: args.update.sourceKey,
+        contentType: args.update.contentType,
+        strength: args.update.strength,
+        publishedAt: args.update.publishedAt,
+        observedAt: args.update.observedAt,
+      };
+      this.feedSignalBaselineSamples.set(key, record);
+
+      return record;
+    },
+    findMany: async (args) =>
+      [...this.feedSignalBaselineSamples.values()]
+        .filter((record) => (
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          (args.where.topicId === undefined || record.topicId === args.where.topicId) &&
+          record.observedAt.getTime() > args.where.observedAt.gt.getTime()
+        ))
+        .sort((left, right) => (
+          right.observedAt.getTime() - left.observedAt.getTime() ||
+          right.feedItemId.localeCompare(left.feedItemId)
+        ))
+        .slice(0, args.take),
+    deleteMany: async (args) => {
+      const key = [
+        args.where.tenantId,
+        args.where.workspaceId,
+        args.where.feedItemId,
+      ].join(':');
+      const existed = this.feedSignalBaselineSamples.delete(key);
+
+      return { count: existed ? 1 : 0 };
+    },
   };
 
   private filterFeedItems(where: {

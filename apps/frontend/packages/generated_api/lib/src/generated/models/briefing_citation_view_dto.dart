@@ -17,11 +17,13 @@ class BriefingCitationViewDto {
     required this.label,
     required this.providerKey,
     required this.sourceItemId,
+    this.canonicalUrl,
   });
 
   factory BriefingCitationViewDto.fromJson(Map<String, Object?> json) =>
       _$BriefingCitationViewDtoFromJson(json);
 
+  final String? canonicalUrl;
   final String citationId;
   final String feedItemId;
   final BriefingCitationViewDtoFieldField field;
