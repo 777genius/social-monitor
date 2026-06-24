@@ -211,6 +211,40 @@ void main() {
     );
   });
 
+  testWidgets('workspace briefing renders the top ten reader reads', (
+    tester,
+  ) async {
+    final store = _store([
+      repoRadarSummaryApiDto(),
+    ], workspaceBriefing: repoRadarTopTenBriefingApiDto());
+    await store.loadWorkspaceBriefing();
+
+    await _pumpSizedFeature(
+      tester,
+      store: store,
+      size: const Size(1280, 1100),
+      autoload: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Repo radar top ten'), findsOneWidget);
+    expect(find.text('Showing 10 top reads'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('reader-brief-top-read-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('reader-brief-top-read-9')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('reader-brief-top-read-10')),
+      findsNothing,
+    );
+    expect(find.text('repo-radar/project-10'), findsWidgets);
+    expect(find.text('repo-radar/project-11'), findsNothing);
+  });
+
   testWidgets('stale briefing keeps previous content while refreshing', (
     tester,
   ) async {

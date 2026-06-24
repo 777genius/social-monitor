@@ -348,6 +348,62 @@ BriefingApiDto repoRadarBriefingApiDto() {
   );
 }
 
+BriefingApiDto repoRadarTopTenBriefingApiDto() {
+  final topReads = List<BriefingReaderItemApiDto>.generate(11, (index) {
+    final rank = index + 1;
+
+    return BriefingReaderItemApiDto(
+      title: 'repo-radar/project-$rank',
+      providerKey: 'github-repo-radar',
+      reason: 'Repository $rank is gaining stars in the current window.',
+      matchedTopicIds: const ['ai-developer-tools'],
+      matchedRules: const [
+        'topic:ai-developer-tools',
+        'provider:github-repo-radar',
+      ],
+      signalScore: 1 - index / 20,
+      providerMetrics: [
+        BriefingProviderMetricApiDto(
+          label: 'Stars',
+          value: '${54000 - index * 100}',
+        ),
+        BriefingProviderMetricApiDto(
+          label: 'Trend',
+          value: '+${360 - index} / 48h',
+        ),
+      ],
+      whyImportant: [
+        'Repository $rank is gaining stars in the current window.',
+      ],
+      whyNow: 'Current summary window has Repo Radar coverage.',
+      canonicalUrl: 'https://github.com/repo-radar/project-$rank',
+      citationIds: ['bc-$rank'],
+    );
+  });
+
+  return briefingApiDto(
+    title: 'Repo radar top ten briefing',
+    executiveSummary:
+        'GitHub Repo Radar found ten repositories worth reviewing today.',
+    readerBrief: briefingReaderBriefApiDto(
+      headline: 'Repo radar top ten',
+      oneLineTakeaway:
+          'Review the ten strongest repository signals before drilling into the long tail.',
+      topReads: topReads,
+    ),
+    citations: List<SummaryCitationApiDto>.generate(11, (index) {
+      final rank = index + 1;
+
+      return summaryCitationApiDto(
+        id: 'bc-$rank',
+        sourceLabel: 'Repo Radar [$rank] repo-radar/project-$rank',
+        rawSnippet: 'Repository $rank is gaining stars in the current window.',
+        canonicalUrl: 'https://github.com/repo-radar/project-$rank',
+      );
+    }),
+  );
+}
+
 PageResult<GeneratedSummary> generatedSummaryPage(
   List<GeneratedSummary> items, {
   PageRequest request = const PageRequest(),

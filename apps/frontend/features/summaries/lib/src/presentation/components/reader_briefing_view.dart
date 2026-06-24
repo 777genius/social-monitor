@@ -9,6 +9,8 @@ import 'reader_briefing_quality_summary.dart';
 import 'reader_briefing_sections.dart';
 import 'reader_briefing_top_reads.dart';
 
+const _maxVisibleTopReads = 10;
+
 class ReaderBriefingView extends StatelessWidget {
   const ReaderBriefingView({
     super.key,
@@ -74,7 +76,7 @@ class ReaderBriefingView extends StatelessWidget {
         if (readerBrief.topReads.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.md),
           ReaderBriefingTopReads(
-            items: readerBrief.topReads.take(3).toList(),
+            items: readerBrief.topReads.take(_maxVisibleTopReads).toList(),
             citationsById: citationsById,
           ),
         ],

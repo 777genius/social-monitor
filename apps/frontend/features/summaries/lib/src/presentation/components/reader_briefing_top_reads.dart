@@ -23,18 +23,31 @@ class ReaderBriefingTopReads extends StatelessWidget {
       title: 'Top reads',
       icon: Icons.open_in_new_outlined,
       child: Column(
-        children: items.indexed
-            .map(
-              (entry) => _TopReadRow(
-                index: entry.$1,
-                item: entry.$2,
-                citations: entry.$2.citationIds
-                    .map((citationId) => citationsById[citationId])
-                    .whereType<SummaryCitation>()
-                    .toList(growable: false),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            key: const ValueKey('reader-brief-top-read-count'),
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Text(
+              'Showing ${items.length} top reads',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
               ),
-            )
-            .toList(growable: false),
+            ),
+          ),
+          ...items.indexed.map(
+            (entry) => _TopReadRow(
+              index: entry.$1,
+              item: entry.$2,
+              citations: entry.$2.citationIds
+                  .map((citationId) => citationsById[citationId])
+                  .whereType<SummaryCitation>()
+                  .toList(growable: false),
+            ),
+          ),
+        ],
       ),
     );
   }
