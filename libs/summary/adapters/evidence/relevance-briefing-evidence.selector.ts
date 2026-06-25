@@ -26,14 +26,17 @@ export class RelevanceBriefingEvidenceSelector implements BriefingEvidenceSelect
       workspaceId: params.workspaceId,
       topicId: params.scope.type === 'topic' ? params.scope.topicId : undefined,
       userId: params.userId,
-      limit: params.maxItems,
+      limit: expandedCandidateLimit(params.maxItems),
     });
 
     if (!ranked.ok) {
       throw ranked.error;
     }
 
-    const items = await this.expandRankedItems(params, ranked.value.items);
+    const items = selectProviderDiverseEvidence(
+      await this.expandRankedItems(params, ranked.value.items),
+      params.maxItems,
+    );
 
     return this.clusterer.cluster({
       identity: {
@@ -126,4 +129,76 @@ const providerMetricsJson = (params: {
   const metrics = feedProviderMetricsFromMetadata(params);
 
   return metrics === undefined ? undefined : normalizeJsonObject(metrics);
+};
+
+const expandedCandidateLimit = (limit: number): number => {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+    return limit;
+  }
+
+  return Math.min(50, Math.max(limit, limit * 3));
+};
+
+const selectProviderDiverseEvidence = (
+  items: readonly BriefingEvidenceItem[],
+  limit: number,
+): readonly BriefingEvidenceItem[] => {
+  const normalizedLimit = normalizeSelectionLimit(limit);
+
+  if (items.length <= normalizedLimit) {
+    return items;
+  }
+
+  const selected: BriefingEvidenceItem[] = [];
+  const selectedIds = new Set<string>();
+  const providerKeys = uniqueStable(items.map((item) => item.providerKey));
+
+  for (const providerKey of providerKeys) {
+    if (selected.length >= normalizedLimit) {
+      break;
+    }
+
+    const providerItem = items.find((item) => item.providerKey === providerKey);
+    if (providerItem !== undefined) {
+      selected.push(providerItem);
+      selectedIds.add(providerItem.feedItemId);
+    }
+  }
+
+  for (const item of items) {
+    if (selected.length >= normalizedLimit) {
+      break;
+    }
+
+    if (selectedIds.has(item.feedItemId)) {
+      continue;
+    }
+
+    selected.push(item);
+    selectedIds.add(item.feedItemId);
+  }
+
+  return selected;
+};
+
+const normalizeSelectionLimit = (limit: number): number => {
+  if (!Number.isInteger(limit) || limit < 1) {
+    return 1;
+  }
+
+  return Math.min(limit, 50);
+};
+
+const uniqueStable = <T>(values: readonly T[]): readonly T[] => {
+  const seen = new Set<T>();
+  const result: T[] = [];
+
+  for (const value of values) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      result.push(value);
+    }
+  }
+
+  return result;
 };

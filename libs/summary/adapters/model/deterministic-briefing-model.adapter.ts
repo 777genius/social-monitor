@@ -106,7 +106,7 @@ export class DeterministicBriefingModelAdapter implements BriefingModelPort {
       };
     }
 
-    const selectedEvidence = input.evidence.selectedEvidence.slice(0, input.policy.maxStories);
+    const selectedEvidence = selectProviderDiverseEvidence(input.evidence.selectedEvidence, input.policy.maxStories);
     const citationMap = selectedEvidence.map((item, index) => ({
       citationId: `c${index + 1}`,
       feedItemId: item.feedItemId,
@@ -115,8 +115,12 @@ export class DeterministicBriefingModelAdapter implements BriefingModelPort {
       field: 'title' as const,
       canonicalUrl: item.canonicalUrl,
     }));
-    const topStories = input.evidence.clusters
-      .slice(0, input.policy.maxStories)
+    const topStoryClusters = selectClustersForEvidence(
+      input.evidence.clusters,
+      selectedEvidence,
+      input.policy.maxStories,
+    );
+    const topStories = topStoryClusters
       .map((cluster, index) => {
         const representative = selectedEvidence.find((item) => item.feedItemId === cluster.representativeFeedItemId)
           ?? selectedEvidence[index]
@@ -279,4 +283,98 @@ const buildTopicHighlights = (
       citationMap.find((citation) => citation.feedItemId === item.feedItemId)?.citationId ?? 'c1',
     ],
   }));
+};
+
+const selectProviderDiverseEvidence = (
+  evidence: BriefingModelInput['evidence']['selectedEvidence'],
+  limit: number,
+): BriefingModelInput['evidence']['selectedEvidence'] => {
+  const normalizedLimit = normalizeStoryLimit(limit);
+
+  if (evidence.length <= normalizedLimit) {
+    return evidence;
+  }
+
+  const selected: BriefingModelInput['evidence']['selectedEvidence'][number][] = [];
+  const selectedIds = new Set<string>();
+  const providerKeys = uniqueStable(evidence.map((item) => item.providerKey));
+
+  for (const providerKey of providerKeys) {
+    if (selected.length >= normalizedLimit) {
+      break;
+    }
+
+    const providerItem = evidence.find((item) => item.providerKey === providerKey);
+    if (providerItem !== undefined) {
+      selected.push(providerItem);
+      selectedIds.add(providerItem.feedItemId);
+    }
+  }
+
+  for (const item of evidence) {
+    if (selected.length >= normalizedLimit) {
+      break;
+    }
+
+    if (selectedIds.has(item.feedItemId)) {
+      continue;
+    }
+
+    selected.push(item);
+    selectedIds.add(item.feedItemId);
+  }
+
+  return selected;
+};
+
+const selectClustersForEvidence = (
+  clusters: BriefingModelInput['evidence']['clusters'],
+  evidence: BriefingModelInput['evidence']['selectedEvidence'],
+  limit: number,
+): BriefingModelInput['evidence']['clusters'] => {
+  const normalizedLimit = normalizeStoryLimit(limit);
+  const clusterByRepresentative = new Map(
+    clusters.map((cluster) => [cluster.representativeFeedItemId, cluster] as const),
+  );
+  const selectedClusters = evidence
+    .map((item) => clusterByRepresentative.get(item.feedItemId))
+    .filter((cluster): cluster is BriefingModelInput['evidence']['clusters'][number] => cluster !== undefined);
+  const selectedClusterIds = new Set(selectedClusters.map((cluster) => cluster.id));
+
+  for (const cluster of clusters) {
+    if (selectedClusters.length >= normalizedLimit) {
+      break;
+    }
+
+    if (selectedClusterIds.has(cluster.id)) {
+      continue;
+    }
+
+    selectedClusters.push(cluster);
+    selectedClusterIds.add(cluster.id);
+  }
+
+  return selectedClusters.slice(0, normalizedLimit);
+};
+
+const normalizeStoryLimit = (limit: number): number => {
+  if (!Number.isInteger(limit) || limit < 1) {
+    return 1;
+  }
+
+  return Math.min(limit, 20);
+};
+
+const uniqueStable = <T>(values: readonly T[]): readonly T[] => {
+  const seen = new Set<T>();
+  const result: T[] = [];
+
+  for (const value of values) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      result.push(value);
+    }
+  }
+
+  return result;
 };
