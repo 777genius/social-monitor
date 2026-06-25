@@ -13,7 +13,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   go_router: ^17.3.0
-  marionette_flutter: ^0.5.0
+  marionette_flutter: ^0.6.0
   modularity_flutter: ^0.3.1
   social_monitor_auth: any
   social_monitor_design_system: any

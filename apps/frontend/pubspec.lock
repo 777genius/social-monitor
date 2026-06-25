@@ -498,10 +498,10 @@ packages:
     dependency: transitive
     description:
       name: marionette_flutter
-      sha256: cfcc9c3671f240a7a249578a3c1ec7c28425b397911b56436021f530881508a7
+      sha256: "9bf6aa531157edeb3d94f7c4972367240a1d704bbe9f4ac558ef1a125c4d1a6d"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.0"
+    version: "0.6.0"
   matcher:
     dependency: transitive
     description:
