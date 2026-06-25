@@ -31,6 +31,7 @@ import type {
   SourceProviderScanContext,
   SourceQuery,
   SourceQueryMode,
+  SourceReadinessFreshnessGuard,
   SourceReadinessState,
 } from '../libs/ingestion/ports';
 
@@ -53,6 +54,7 @@ type ProviderCertificationReport = {
   readonly runtimeReadiness: string;
   readonly liveBetaReady: boolean;
   readonly liveBetaBlockers: readonly string[];
+  readonly freshnessGuard: SourceReadinessFreshnessGuard;
   readonly productionSafe: boolean;
   readonly cursorModel: SourceCursorModel;
   readonly quotaModel: string;
@@ -77,6 +79,7 @@ type CertificationReport = {
     readonly state: string;
     readonly runtimeReadiness: string;
     readonly liveBetaBlockers: readonly string[];
+    readonly freshnessGuard: SourceReadinessFreshnessGuard;
     readonly acquisitionMode: string;
   }[];
 };
@@ -204,6 +207,9 @@ async function main(): Promise<void> {
     ),
     'Enabled beta providers must declare fixture_ready or live_beta_ready runtime readiness',
   );
+  for (const profile of sourceReadinessProfiles) {
+    assertFreshnessGuard(profile.providerKey, profile);
+  }
 
   const certifiedProviders = await Promise.all(
     cases.map((providerCase) =>
@@ -217,6 +223,7 @@ async function main(): Promise<void> {
       state: profile.state,
       runtimeReadiness: profile.runtimeReadiness,
       liveBetaBlockers: profile.liveBetaBlockers,
+      freshnessGuard: profile.freshnessGuard,
       acquisitionMode: profile.acquisitionMode,
     }))
     .sort((left, right) => left.providerKey.localeCompare(right.providerKey));
@@ -338,6 +345,7 @@ async function certifyProvider(
     ),
     `${providerCase.expectedProviderKey}: beta criteria must mention certification`,
   );
+  assertFreshnessGuard(providerCase.expectedProviderKey, readiness);
   assert(
     validation.ok,
     `${providerCase.expectedProviderKey}: valid query was rejected`,
@@ -413,6 +421,7 @@ async function certifyProvider(
     runtimeReadiness: readiness.runtimeReadiness,
     liveBetaReady: false,
     liveBetaBlockers: readiness.liveBetaBlockers,
+    freshnessGuard: readiness.freshnessGuard,
     productionSafe: profile.productionSafe,
     cursorModel: profile.cursorModel,
     quotaModel: profile.quotaModel,
@@ -429,8 +438,61 @@ async function certifyProvider(
       'cursor_contract_is_non_empty_for_cursor_models',
       'fixture_repeated_scan_is_deterministic',
       'provider_errors_are_classified',
+      'freshness_guard_declared',
+      'scan_history_required_for_freshness',
+      'rate_limit_backoff_declared_for_quota_models',
     ],
   };
+}
+
+function assertFreshnessGuard(
+  providerKey: string,
+  readiness: (typeof sourceReadinessProfiles)[number],
+): void {
+  const guard = readiness.freshnessGuard;
+  assert(
+    Number.isInteger(guard.maxStalenessSeconds) &&
+      guard.maxStalenessSeconds >= 60 &&
+      guard.maxStalenessSeconds <= 86_400,
+    `${providerKey}: freshness guard maxStalenessSeconds must be 60..86400`,
+  );
+  assert(
+    guard.skipRecentlyScanned === true,
+    `${providerKey}: freshness guard must skip recently scanned bindings`,
+  );
+  assert(
+    guard.scanHistoryRequired === true,
+    `${providerKey}: freshness guard must require scan history`,
+  );
+  assert(
+    guard.signals.length > 0 &&
+      guard.signals.every((signal) => signal.trim().length > 0),
+    `${providerKey}: freshness guard signals are required`,
+  );
+
+  if (readiness.cursorModel === 'none') {
+    assert(
+      guard.cursorResumeRequired === false,
+      `${providerKey}: cursorResumeRequired must be false for cursorModel=none`,
+    );
+  } else {
+    assert(
+      guard.cursorResumeRequired === true,
+      `${providerKey}: cursor models must require cursor resume freshness guard`,
+    );
+  }
+
+  if (readiness.quotaModel === 'none') {
+    assert(
+      guard.rateLimitBackoffRequired === false,
+      `${providerKey}: rateLimitBackoffRequired must be false when quotaModel=none`,
+    );
+  } else {
+    assert(
+      guard.rateLimitBackoffRequired === true,
+      `${providerKey}: quota models must require rate-limit backoff`,
+    );
+  }
 }
 
 function makeContext(

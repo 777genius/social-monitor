@@ -6,6 +6,16 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     state: 'certification_ready',
     runtimeReadiness: 'fixture_ready',
     liveBetaBlockers: ['Synthetic provider is not a real external source.'],
+    freshnessGuard: {
+      maxStalenessSeconds: 86_400,
+      skipRecentlyScanned: true,
+      scanHistoryRequired: true,
+      cursorResumeRequired: true,
+      rateLimitBackoffRequired: false,
+      staleReadModelState: 'stale',
+      providerFailureHealthState: 'degraded',
+      signals: ['synthetic_fixture_freshness', 'scan_history_window'],
+    },
     acquisitionMode: 'deterministic_local_adapter',
     approvalOwner: 'engineering',
     termsNotes: 'Local fake provider for MVP certification only.',
@@ -30,6 +40,16 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'Live HTTP smoke and deployed rate-limit evidence required before external beta.',
     ],
+    freshnessGuard: {
+      maxStalenessSeconds: 900,
+      skipRecentlyScanned: true,
+      scanHistoryRequired: true,
+      cursorResumeRequired: true,
+      rateLimitBackoffRequired: true,
+      staleReadModelState: 'stale',
+      providerFailureHealthState: 'down',
+      signals: ['hn_story_timestamp', 'scan_history_window', 'rate_limit_backoff'],
+    },
     acquisitionMode: 'official_or_open_api',
     approvalOwner: 'engineering',
     termsNotes:
@@ -58,6 +78,20 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'Representative live feed allowlist, HTTP cache and SSRF controls need deployed evidence.',
     ],
+    freshnessGuard: {
+      maxStalenessSeconds: 3_600,
+      skipRecentlyScanned: true,
+      scanHistoryRequired: true,
+      cursorResumeRequired: true,
+      rateLimitBackoffRequired: true,
+      staleReadModelState: 'stale',
+      providerFailureHealthState: 'degraded',
+      signals: [
+        'rss_etag_last_modified',
+        'scan_history_window',
+        'rate_limit_backoff',
+      ],
+    },
     acquisitionMode: 'feed_polling_with_site_policy_respect',
     approvalOwner: 'engineering',
     termsNotes:
@@ -86,6 +120,20 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'Live GitHub issues API smoke and deployed rate-limit budget evidence required before external beta.',
     ],
+    freshnessGuard: {
+      maxStalenessSeconds: 1_800,
+      skipRecentlyScanned: true,
+      scanHistoryRequired: true,
+      cursorResumeRequired: true,
+      rateLimitBackoffRequired: true,
+      staleReadModelState: 'stale',
+      providerFailureHealthState: 'down',
+      signals: [
+        'github_search_updated_at',
+        'scan_history_window',
+        'rate_limit_backoff',
+      ],
+    },
     acquisitionMode: 'official_or_open_api',
     approvalOwner: 'engineering',
     termsNotes:
@@ -114,6 +162,20 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'BigQuery GH Archive credentials/quota evidence, npm run check:github-repo-radar-live-smoke, npm run check:github-repo-radar-prisma-live-e2e and GitHub live verification rate-limit budget required before external beta.',
     ],
+    freshnessGuard: {
+      maxStalenessSeconds: 21_600,
+      skipRecentlyScanned: true,
+      scanHistoryRequired: true,
+      cursorResumeRequired: true,
+      rateLimitBackoffRequired: true,
+      staleReadModelState: 'stale',
+      providerFailureHealthState: 'down',
+      signals: [
+        'gh_archive_window_end',
+        'repository_snapshot_checked_at',
+        'rate_limit_backoff',
+      ],
+    },
     acquisitionMode: 'official_or_open_api',
     approvalOwner: 'engineering',
     termsNotes:
@@ -151,6 +213,20 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'Representative live page smoke, parser drift alert and rate-limit evidence required before external beta.',
     ],
+    freshnessGuard: {
+      maxStalenessSeconds: 3_600,
+      skipRecentlyScanned: true,
+      scanHistoryRequired: true,
+      cursorResumeRequired: true,
+      rateLimitBackoffRequired: true,
+      staleReadModelState: 'stale',
+      providerFailureHealthState: 'degraded',
+      signals: [
+        'github_trending_since_window',
+        'repository_rank_checked_at',
+        'rate_limit_backoff',
+      ],
+    },
     acquisitionMode: 'public_page_with_site_policy_respect',
     approvalOwner: 'engineering',
     termsNotes:
@@ -192,6 +268,20 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'App-only OAuth client credentials and live Reddit API rate-limit evidence required before external beta.',
     ],
+    freshnessGuard: {
+      maxStalenessSeconds: 900,
+      skipRecentlyScanned: true,
+      scanHistoryRequired: true,
+      cursorResumeRequired: true,
+      rateLimitBackoffRequired: true,
+      staleReadModelState: 'stale',
+      providerFailureHealthState: 'down',
+      signals: [
+        'reddit_listing_after_cursor',
+        'scan_history_window',
+        'rate_limit_backoff',
+      ],
+    },
     acquisitionMode: 'official_oauth_api',
     approvalOwner: 'product_and_legal',
     termsNotes:
@@ -222,6 +312,16 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
       'Paid X API or approved vendor contract is required before enablement.',
       'Read-only scopes, endpoint rate limits, retention policy and spend cap must be proven before beta binding.',
     ],
+    freshnessGuard: {
+      maxStalenessSeconds: 900,
+      skipRecentlyScanned: true,
+      scanHistoryRequired: true,
+      cursorResumeRequired: true,
+      rateLimitBackoffRequired: true,
+      staleReadModelState: 'stale',
+      providerFailureHealthState: 'down',
+      signals: ['x_since_id_cursor', 'scan_history_window', 'rate_limit_backoff'],
+    },
     acquisitionMode: 'approved_paid_api_or_vendor',
     approvalOwner: 'product_and_legal',
     termsNotes:
@@ -252,6 +352,20 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'Authorized channel scope and credential lifecycle are required before automation.',
     ],
+    freshnessGuard: {
+      maxStalenessSeconds: 3_600,
+      skipRecentlyScanned: true,
+      scanHistoryRequired: true,
+      cursorResumeRequired: true,
+      rateLimitBackoffRequired: true,
+      staleReadModelState: 'stale',
+      providerFailureHealthState: 'degraded',
+      signals: [
+        'telegram_message_cursor',
+        'scan_history_window',
+        'rate_limit_backoff',
+      ],
+    },
     acquisitionMode: 'bot_or_channel_api_with_clear_scope',
     approvalOwner: 'product_and_legal',
     termsNotes: 'Only channels/scopes with explicit authorization.',

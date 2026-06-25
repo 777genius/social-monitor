@@ -12,7 +12,7 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
   it('maps available summary memory into a reader context artifact', async () => {
     const memory = new CapturingSummaryMemory({
       status: 'available',
-      renderedText: 'User prefers concise risk-first summaries. Bearer secret-token',
+      renderedText: 'User prefers concise risk-first summaries. Bearer token-value',
       retrieval: {
         retrievalSourcesUsed: ['vector', 'graph'],
         factsUsed: 2,

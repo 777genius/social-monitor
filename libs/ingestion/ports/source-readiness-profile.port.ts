@@ -11,11 +11,23 @@ export type SourceReadinessState =
 
 export type SourceRuntimeReadiness = 'fixture_ready' | 'live_beta_ready' | 'deferred';
 
+export type SourceReadinessFreshnessGuard = {
+  readonly maxStalenessSeconds: number;
+  readonly skipRecentlyScanned: boolean;
+  readonly scanHistoryRequired: boolean;
+  readonly cursorResumeRequired: boolean;
+  readonly rateLimitBackoffRequired: boolean;
+  readonly staleReadModelState: 'stale' | 'degraded';
+  readonly providerFailureHealthState: 'degraded' | 'down';
+  readonly signals: readonly string[];
+};
+
 export type SourceReadinessProfile = {
   readonly providerKey: ProviderKey;
   readonly state: SourceReadinessState;
   readonly runtimeReadiness: SourceRuntimeReadiness;
   readonly liveBetaBlockers: readonly string[];
+  readonly freshnessGuard: SourceReadinessFreshnessGuard;
   readonly acquisitionMode: string;
   readonly approvalOwner: string;
   readonly termsNotes: string;
