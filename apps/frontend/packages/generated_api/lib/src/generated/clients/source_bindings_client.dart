@@ -10,6 +10,7 @@ import '../models/bind_source_request_dto.dart';
 import '../models/bind_source_response_dto.dart';
 import '../models/change_source_binding_status_request_dto.dart';
 import '../models/change_source_binding_status_response_dto.dart';
+import '../models/list_source_binding_overview_response_dto.dart';
 import '../models/list_source_bindings_response_dto.dart';
 import '../models/source_binding_health_response_dto.dart';
 
@@ -85,6 +86,22 @@ abstract class SourceBindingsClient {
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
     @Body() required ChangeSourceBindingStatusRequestDto body,
+    @Header('authorization') String? authorization,
+    @Header('x-workspace-role') String? xWorkspaceRole,
+  });
+
+  /// List source bindings with operational health for a topic.
+  ///
+  /// [authorization] - Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.
+  ///
+  /// [xWorkspaceRole] - Comma-separated workspace roles. Source binding overview reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.
+  @GET('/topics/{topicId}/source-bindings/overview')
+  Future<ListSourceBindingOverviewResponseDto> sourceBindingControllerOverview({
+    @Path('topicId') required String topicId,
+    @Header('x-workspace-id') required String xWorkspaceId,
+    @Header('x-tenant-id') required String xTenantId,
+    @Query('cursor') String? cursor,
+    @Query('limit') num? limit,
     @Header('authorization') String? authorization,
     @Header('x-workspace-role') String? xWorkspaceRole,
   });

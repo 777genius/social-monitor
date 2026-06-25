@@ -81,6 +81,32 @@ describe('Bind source flow (e2e)', () => {
       created: false,
     });
 
+    const overview = await request(app.getHttpServer())
+      .get(`/topics/${topic.body.topicId}/source-bindings/overview`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(overview.body).toEqual({
+      items: [
+        expect.objectContaining({
+          sourceBinding: expect.objectContaining({
+            id: first.body.sourceBindingId,
+            providerKey: 'fake-source',
+          }),
+          healthState: 'not_configured',
+          operatorAction: 'create_scan_policy_for_source_binding',
+          evaluatedAt: expect.any(String),
+          recentWindow: expect.objectContaining({
+            providerHealthState: 'unknown',
+            totalScans: 0,
+            signals: ['no_recent_scans'],
+          }),
+        }),
+      ],
+    });
+
     const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
       tenantId: tenant,
       workspaceId: workspace,

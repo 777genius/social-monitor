@@ -61,6 +61,7 @@ export 'models/list_briefings_response_dto.dart';
 export 'models/list_feed_items_response_dto.dart';
 export 'models/list_scan_requests_response_dto.dart';
 export 'models/list_source_binding_daily_scan_history_response_dto.dart';
+export 'models/list_source_binding_overview_response_dto.dart';
 export 'models/list_source_bindings_response_dto.dart';
 export 'models/list_source_profiles_response_dto.dart';
 export 'models/list_summaries_response_dto.dart';

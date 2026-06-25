@@ -56,9 +56,10 @@ import { GetScanPolicyUseCase } from '../../features/get-scan-policy/get-scan-po
 import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
 import { GetSourceBindingHealthUseCase } from '../../features/get-source-binding-health/get-source-binding-health.use-case';
 import { ListSourceCredentialsUseCase } from '../../features/list-source-credentials/list-source-credentials.use-case';
-import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
 import { ListSourceBindingDailyHistoryUseCase } from '../../features/list-source-binding-daily-history/list-source-binding-daily-history.use-case';
+import { ListSourceBindingOverviewUseCase } from '../../features/list-source-binding-overview/list-source-binding-overview.use-case';
 import { ListSourceBindingScansUseCase } from '../../features/list-source-binding-scans/list-source-binding-scans.use-case';
+import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
 import { ListTopicsUseCase } from '../../features/list-topics/list-topics.use-case';
 import { RecordScanExecutionUseCase } from '../../features/record-scan-execution/record-scan-execution.use-case';
 import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
@@ -439,6 +440,18 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
         MONITORING_SCAN_JOB_REPOSITORY,
         MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
       ],
+    },
+    {
+      provide: ListSourceBindingOverviewUseCase,
+      useFactory: (
+        listSourceBindings: ListSourceBindingsUseCase,
+        getSourceBindingHealth: GetSourceBindingHealthUseCase,
+      ) =>
+        new ListSourceBindingOverviewUseCase(
+          listSourceBindings,
+          getSourceBindingHealth,
+        ),
+      inject: [ListSourceBindingsUseCase, GetSourceBindingHealthUseCase],
     },
     {
       provide: SetScanPolicyUseCase,

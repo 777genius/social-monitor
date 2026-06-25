@@ -18,9 +18,11 @@ import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
 import { GetSourceBindingHealthUseCase } from '../../features/get-source-binding-health/get-source-binding-health.use-case';
+import { ListSourceBindingOverviewUseCase } from '../../features/list-source-binding-overview/list-source-binding-overview.use-case';
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
 import { BindSourceRequestDto, BindSourceResponseDto, normalizeSourceBindingConfig } from './bind-source.dto';
 import { ListSourceBindingsResponseDto } from './list-source-bindings.dto';
+import { ListSourceBindingOverviewResponseDto } from './source-binding-overview.dto';
 import {
   ChangeSourceBindingStatusRequestDto,
   ChangeSourceBindingStatusResponseDto,
@@ -34,6 +36,7 @@ export class SourceBindingController {
     private readonly bindSource: BindSourceUseCase,
     private readonly changeSourceBindingStatus: ChangeSourceBindingStatusUseCase,
     private readonly listSourceBindings: ListSourceBindingsUseCase,
+    private readonly listSourceBindingOverview: ListSourceBindingOverviewUseCase,
     private readonly getSourceBindingHealth: GetSourceBindingHealthUseCase,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
@@ -144,6 +147,55 @@ export class SourceBindingController {
       limit: parsePaginationLimit(limitQuery, {
         defaultLimit: 50,
         invalidMessage: 'Source binding list limit must be between 1 and 100',
+      }),
+      cursor,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
+
+  @Get('overview')
+  @ApiOperation({ summary: 'List source bindings with operational health for a topic.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:topics',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Source binding overview reads allow owner, admin, member or viewer.',
+  })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'cursor', required: false, type: String })
+  @ApiOkResponse({ type: ListSourceBindingOverviewResponseDto })
+  async overview(
+    @Param('topicId') topicId: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
+    @Query('limit') limitQuery: string | undefined,
+    @Query('cursor') cursor: string | undefined,
+  ): Promise<ListSourceBindingOverviewResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+    await this.authorizeSourceBindingRead(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
+
+    const result = await this.listSourceBindingOverview.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      topicId,
+      limit: parsePaginationLimit(limitQuery, {
+        defaultLimit: 50,
+        invalidMessage: 'Source binding overview limit must be between 1 and 100',
       }),
       cursor,
     });

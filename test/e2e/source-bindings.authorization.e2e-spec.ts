@@ -103,5 +103,34 @@ describe('Source binding workspace authorization (e2e)', () => {
       sourceBindingId: expect.any(String),
       created: true,
     });
+
+    const missingReadRole = await request(app.getHttpServer())
+      .get(`/topics/${topic.body.topicId}/source-bindings/overview`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .expect(403);
+
+    expect(missingReadRole.body).toMatchObject({
+      code: 'authorization.denied',
+      detail: 'Workspace role is required',
+      details: {
+        action: 'source_bindings.read',
+      },
+    });
+
+    const overview = await request(app.getHttpServer())
+      .get(`/topics/${topic.body.topicId}/source-bindings/overview`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(overview.body.items).toEqual([
+      expect.objectContaining({
+        sourceBinding: expect.objectContaining({
+          id: owner.body.sourceBindingId,
+        }),
+      }),
+    ]);
   });
 });
