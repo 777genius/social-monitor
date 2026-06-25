@@ -1,18 +1,18 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../application/commands/regenerate_summary_command.dart';
-import '../../application/commands/request_workspace_briefing_command.dart';
-import '../../application/commands/submit_briefing_reader_action_command.dart';
+import '../../application/commands/request_workspace_summary_command.dart';
+import '../../application/commands/submit_reader_action_command.dart';
 import '../../application/commands/submit_summary_feedback_command.dart';
 import '../../application/contracts/summary_review_catalog.dart';
 import '../../application/queries/list_summaries_query.dart';
 import '../../application/queries/load_summary_detail_query.dart';
-import '../../application/queries/load_workspace_briefing_job_status_query.dart';
-import '../../application/queries/load_workspace_briefing_query.dart';
-import '../../domain/entities/briefing_job_snapshot.dart';
-import '../../domain/entities/generated_briefing.dart';
+import '../../application/queries/load_workspace_summary_job_status_query.dart';
+import '../../application/queries/load_workspace_summary_query.dart';
+import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/generated_summary.dart';
-import '../../domain/value_objects/briefing_reader_action_target.dart';
+import '../../domain/entities/reader_summary_job_snapshot.dart';
+import '../../domain/value_objects/reader_action_target.dart';
 import '../api/summary_api_dto.dart';
 import '../api_clients/summaries_api_client.dart';
 import '../mappers/summary_mapper.dart';
@@ -78,56 +78,56 @@ final class GeneratedSummaryReviewCatalog implements SummaryReviewCatalog {
   }
 
   @override
-  Future<Result<BriefingReaderActionResult>> submitBriefingReaderAction(
-    SubmitBriefingReaderActionCommand command,
+  Future<Result<ReaderActionResult>> submitReaderAction(
+    SubmitReaderActionCommand command,
   ) {
-    return _apiClient.submitBriefingReaderAction(
-      SubmitBriefingReaderActionApiRequest.fromCommand(command),
+    return _apiClient.submitReaderAction(
+      SubmitReaderActionApiRequest.fromCommand(command),
     );
   }
 
   @override
-  Future<Result<WorkspaceBriefingSnapshot>> loadWorkspaceBriefing(
-    LoadWorkspaceBriefingQuery query,
+  Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummary(
+    LoadWorkspaceSummaryQuery query,
   ) async {
-    final result = await _apiClient.loadWorkspaceBriefing(
-      LoadWorkspaceBriefingApiRequest.fromQuery(query),
+    final result = await _apiClient.loadWorkspaceSummary(
+      LoadWorkspaceSummaryApiRequest.fromQuery(query),
     );
     return result.fold(
       onSuccess: (dto) => Result.success(
-        WorkspaceBriefingSnapshot(
+        WorkspaceSummarySnapshot(
           current: dto.current == null
               ? null
-              : _mapper.briefingToDomain(dto.current!),
+              : _mapper.readerSummaryToDomain(dto.current!),
         ),
       ),
-      onFailure: Result<WorkspaceBriefingSnapshot>.failure,
+      onFailure: Result<WorkspaceSummarySnapshot>.failure,
     );
   }
 
   @override
-  Future<Result<BriefingJobSnapshot>> requestWorkspaceBriefing(
-    RequestWorkspaceBriefingCommand command,
+  Future<Result<ReaderSummaryJobSnapshot>> requestWorkspaceSummary(
+    RequestWorkspaceSummaryCommand command,
   ) async {
-    final result = await _apiClient.requestWorkspaceBriefing(
-      RequestWorkspaceBriefingApiRequest.fromCommand(command),
+    final result = await _apiClient.requestWorkspaceSummary(
+      RequestWorkspaceSummaryApiRequest.fromCommand(command),
     );
     return result.fold(
-      onSuccess: (dto) => Result.success(_mapper.briefingJobToDomain(dto)),
-      onFailure: Result<BriefingJobSnapshot>.failure,
+      onSuccess: (dto) => Result.success(_mapper.summaryJobToDomain(dto)),
+      onFailure: Result<ReaderSummaryJobSnapshot>.failure,
     );
   }
 
   @override
-  Future<Result<BriefingJobSnapshot>> loadWorkspaceBriefingJobStatus(
-    LoadWorkspaceBriefingJobStatusQuery query,
+  Future<Result<ReaderSummaryJobSnapshot>> loadWorkspaceSummaryJobStatus(
+    LoadWorkspaceSummaryJobStatusQuery query,
   ) async {
-    final result = await _apiClient.loadWorkspaceBriefingJobStatus(
-      LoadWorkspaceBriefingJobStatusApiRequest.fromQuery(query),
+    final result = await _apiClient.loadWorkspaceSummaryJobStatus(
+      LoadWorkspaceSummaryJobStatusApiRequest.fromQuery(query),
     );
     return result.fold(
-      onSuccess: (dto) => Result.success(_mapper.briefingJobToDomain(dto)),
-      onFailure: Result<BriefingJobSnapshot>.failure,
+      onSuccess: (dto) => Result.success(_mapper.summaryJobToDomain(dto)),
+      onFailure: Result<ReaderSummaryJobSnapshot>.failure,
     );
   }
 

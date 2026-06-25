@@ -1,25 +1,25 @@
 import 'package:modularity_flutter/modularity_flutter.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
-import '../../application/contracts/briefing_reader_source_launcher.dart';
+import '../../application/contracts/reader_source_launcher.dart';
 import '../../application/contracts/summary_review_catalog.dart';
 import '../../application/use_cases/list_summaries_use_case.dart';
 import '../../application/use_cases/load_summary_detail_use_case.dart';
-import '../../application/use_cases/load_workspace_briefing_job_status_use_case.dart';
-import '../../application/use_cases/load_workspace_briefing_use_case.dart';
-import '../../application/use_cases/open_briefing_reader_source_use_case.dart';
+import '../../application/use_cases/load_workspace_summary_job_status_use_case.dart';
+import '../../application/use_cases/load_workspace_summary_use_case.dart';
+import '../../application/use_cases/open_reader_source_use_case.dart';
 import '../../application/use_cases/regenerate_summary_use_case.dart';
-import '../../application/use_cases/request_workspace_briefing_use_case.dart';
-import '../../application/use_cases/submit_briefing_reader_action_use_case.dart';
+import '../../application/use_cases/request_workspace_summary_use_case.dart';
+import '../../application/use_cases/submit_reader_action_use_case.dart';
 import '../../application/use_cases/submit_summary_feedback_use_case.dart';
+import '../../infrastructure/api/summaries_demo_api_fixtures.dart';
 import '../../infrastructure/api_clients/generated_summaries_api_client.dart';
 import '../../infrastructure/api_clients/in_memory_summaries_api_client.dart';
 import '../../infrastructure/api_clients/summaries_api_client.dart';
-import '../../infrastructure/data_sources/url_launcher_briefing_reader_source_launcher.dart';
+import '../../infrastructure/data_sources/url_launcher_reader_source_launcher.dart';
 import '../../infrastructure/repositories/generated_summary_review_catalog.dart';
 import '../stores/summaries_review_store.dart';
 import '../workflows/summaries_review_store_dependencies.dart';
-import 'summaries_feature_demo_fixtures.dart';
 
 final class SummariesFeatureModule extends Module {
   SummariesFeatureModule()
@@ -46,8 +46,8 @@ final class SummariesFeatureModule extends Module {
   void binds(Binder i) {
     i.registerSingleton<WorkspaceScope>(scope);
     i.registerLazySingleton<SummariesApiClient>(_createApiClient);
-    i.registerLazySingleton<BriefingReaderSourceLauncher>(
-      () => const UrlLauncherBriefingReaderSourceLauncher(),
+    i.registerLazySingleton<ReaderSourceLauncher>(
+      () => const UrlLauncherReaderSourceLauncher(),
     );
     i.registerLazySingleton<SummaryReviewCatalog>(
       () =>
@@ -57,13 +57,13 @@ final class SummariesFeatureModule extends Module {
       () => SummariesReviewStore(
         dependencies: SummariesReviewStoreDependencies(
           listSummaries: ListSummariesUseCase(i.get<SummaryReviewCatalog>()),
-          loadWorkspaceBriefing: LoadWorkspaceBriefingUseCase(
+          loadWorkspaceSummary: LoadWorkspaceSummaryUseCase(
             i.get<SummaryReviewCatalog>(),
           ),
-          requestWorkspaceBriefing: RequestWorkspaceBriefingUseCase(
+          requestWorkspaceSummary: RequestWorkspaceSummaryUseCase(
             i.get<SummaryReviewCatalog>(),
           ),
-          loadWorkspaceBriefingJobStatus: LoadWorkspaceBriefingJobStatusUseCase(
+          loadWorkspaceSummaryJobStatus: LoadWorkspaceSummaryJobStatusUseCase(
             i.get<SummaryReviewCatalog>(),
           ),
           loadSummaryDetail: LoadSummaryDetailUseCase(
@@ -75,11 +75,11 @@ final class SummariesFeatureModule extends Module {
           submitFeedback: SubmitSummaryFeedbackUseCase(
             i.get<SummaryReviewCatalog>(),
           ),
-          submitBriefingReaderAction: SubmitBriefingReaderActionUseCase(
+          submitReaderAction: SubmitReaderActionUseCase(
             i.get<SummaryReviewCatalog>(),
           ),
-          openBriefingReaderSource: OpenBriefingReaderSourceUseCase(
-            i.get<BriefingReaderSourceLauncher>(),
+          openReaderSource: OpenReaderSourceUseCase(
+            i.get<ReaderSourceLauncher>(),
           ),
         ),
         scope: scope,
@@ -94,17 +94,17 @@ final class SummariesFeatureModule extends Module {
     return SummariesReviewStore(
       dependencies: SummariesReviewStoreDependencies(
         listSummaries: ListSummariesUseCase(catalog),
-        loadWorkspaceBriefing: LoadWorkspaceBriefingUseCase(catalog),
-        requestWorkspaceBriefing: RequestWorkspaceBriefingUseCase(catalog),
-        loadWorkspaceBriefingJobStatus: LoadWorkspaceBriefingJobStatusUseCase(
+        loadWorkspaceSummary: LoadWorkspaceSummaryUseCase(catalog),
+        requestWorkspaceSummary: RequestWorkspaceSummaryUseCase(catalog),
+        loadWorkspaceSummaryJobStatus: LoadWorkspaceSummaryJobStatusUseCase(
           catalog,
         ),
         loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
         regenerateSummary: RegenerateSummaryUseCase(catalog),
         submitFeedback: SubmitSummaryFeedbackUseCase(catalog),
-        submitBriefingReaderAction: SubmitBriefingReaderActionUseCase(catalog),
-        openBriefingReaderSource: OpenBriefingReaderSourceUseCase(
-          const UrlLauncherBriefingReaderSourceLauncher(),
+        submitReaderAction: SubmitReaderActionUseCase(catalog),
+        openReaderSource: OpenReaderSourceUseCase(
+          const UrlLauncherReaderSourceLauncher(),
         ),
       ),
       scope: scope,
@@ -119,7 +119,7 @@ final class SummariesFeatureModule extends Module {
     }
     return InMemorySummariesApiClient(
       items: summariesFeatureDemoItems(),
-      workspaceBriefing: summariesFeatureDemoBriefing(),
+      workspaceSummary: summariesFeatureDemoWorkspaceSummary(),
     );
   }
 }

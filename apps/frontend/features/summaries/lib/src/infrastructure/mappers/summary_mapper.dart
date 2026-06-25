@@ -1,6 +1,6 @@
-import '../../domain/entities/briefing_job_snapshot.dart';
-import '../../domain/entities/generated_briefing.dart';
+import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/generated_summary.dart';
+import '../../domain/entities/reader_summary_job_snapshot.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../../domain/value_objects/summary_generation_status.dart';
 import '../../domain/value_objects/summary_id.dart';
@@ -21,34 +21,35 @@ final class SummaryMapper {
     );
   }
 
-  GeneratedBriefing briefingToDomain(BriefingApiDto dto) {
-    return GeneratedBriefing(
-      id: _nonEmpty(dto.id, fallback: 'briefing-unknown'),
-      title: _nonEmpty(dto.title, fallback: 'Workspace briefing'),
+  ReaderSummary readerSummaryToDomain(ReaderSummaryApiDto dto) {
+    return ReaderSummary(
+      id: _nonEmpty(dto.id, fallback: 'summary-unknown'),
+      title: _nonEmpty(dto.title, fallback: 'Workspace summary'),
       executiveSummary: _safeText(
         dto.executiveSummary,
-        fallback: 'No briefing available',
+        fallback: 'No summary available',
       ),
       userId: _nonEmptyOrNull(dto.userId),
-      readerBrief: _readerBriefToDomain(dto.readerBrief),
+      content: _readerSummaryContentToDomain(dto.content),
       topStories: dto.topStories
-          .map(_briefingStoryToDomain)
+          .map(_summaryStoryToDomain)
           .toList(growable: false),
       repeatedSignals: dto.repeatedSignals
-          .map(_briefingSignalToDomain)
+          .map(_repeatedSignalToDomain)
           .toList(growable: false),
       citations: dto.citations.map(_citationToDomain).toList(growable: false),
+      summaryWindow: SummaryWindow.current(),
       freshnessLabel: _nonEmpty(dto.freshnessLabel, fallback: 'Unknown'),
       isDegraded: dto.isDegraded,
     );
   }
 
-  BriefingJobSnapshot briefingJobToDomain(BriefingJobApiDto dto) {
-    return BriefingJobSnapshot(
-      id: _nonEmpty(dto.id, fallback: 'briefing-job-unknown'),
-      status: _briefingJobStatusFromApi(dto.status),
+  ReaderSummaryJobSnapshot summaryJobToDomain(ReaderSummaryJobApiDto dto) {
+    return ReaderSummaryJobSnapshot(
+      id: _nonEmpty(dto.id, fallback: 'summary-job-unknown'),
+      status: _summaryJobStatusFromApi(dto.status),
       created: dto.created,
-      briefingId: dto.briefingId,
+      summaryId: dto.summaryId,
       failureReason: dto.failureReason,
       requestedAt: dto.requestedAt,
       startedAt: dto.startedAt,
@@ -69,15 +70,17 @@ final class SummaryMapper {
     );
   }
 
-  BriefingReaderBrief _readerBriefToDomain(BriefingReaderBriefApiDto dto) {
-    return BriefingReaderBrief(
-      headline: _nonEmpty(dto.headline, fallback: 'Workspace briefing'),
+  ReaderSummaryContent _readerSummaryContentToDomain(
+    ReaderSummaryContentApiDto dto,
+  ) {
+    return ReaderSummaryContent(
+      headline: _nonEmpty(dto.headline, fallback: 'Workspace summary'),
       oneLineTakeaway: _safeText(
         dto.oneLineTakeaway,
-        fallback: 'No briefing takeaway available',
+        fallback: 'No summary takeaway available',
       ),
       bullets: _safeTextList(dto.bullets),
-      qualityState: BriefingReaderQualityState(
+      qualityState: ReaderSummaryQualityState(
         status: _nonEmpty(dto.qualityState.status, fallback: 'ready'),
         flags: _safeTextList(dto.qualityState.flags),
         warnings: _safeTextList(dto.qualityState.warnings),
@@ -88,7 +91,7 @@ final class SummaryMapper {
           .toList(growable: false),
       sourceMix: dto.sourceMix.map(_sourceMixToDomain).toList(growable: false),
       topReads: dto.topReads.map(_readerItemToDomain).toList(growable: false),
-      trendDelta: BriefingTrendDelta(
+      trendDelta: ReaderTrendDelta(
         newSignals: _safeTextList(dto.trendDelta.newSignals),
         growingSignals: _safeTextList(dto.trendDelta.growingSignals),
         repeatedSignals: _safeTextList(dto.trendDelta.repeatedSignals),
@@ -102,8 +105,8 @@ final class SummaryMapper {
     );
   }
 
-  BriefingTopicSection _topicSectionToDomain(BriefingTopicSectionApiDto dto) {
-    return BriefingTopicSection(
+  ReaderTopicSection _topicSectionToDomain(ReaderTopicSectionApiDto dto) {
+    return ReaderTopicSection(
       topicId: _nonEmptyOrNull(dto.topicId),
       title: _nonEmpty(dto.title, fallback: 'Topic signal'),
       insight: _safeText(dto.insight, fallback: 'No topic insight available'),
@@ -112,15 +115,15 @@ final class SummaryMapper {
     );
   }
 
-  BriefingReaderItem _readerItemToDomain(BriefingReaderItemApiDto dto) {
-    return BriefingReaderItem(
+  TopRead _readerItemToDomain(TopReadApiDto dto) {
+    return TopRead(
       title: _nonEmpty(dto.title, fallback: 'Untitled item'),
       providerKey: _nonEmpty(dto.providerKey, fallback: 'unknown'),
       reason: _safeText(dto.reason, fallback: 'Selected as relevant evidence'),
       matchedTopicIds: _safeTextList(dto.matchedTopicIds),
       matchedRules: _safeTextList(dto.matchedRules),
-      signalScore: dto.signalScore < 0 ? 0 : dto.signalScore,
-      confidence: BriefingReaderItemConfidence(
+      signalScore: SignalScore.normalized(dto.signalScore),
+      confidence: TopReadConfidence(
         level: _readerItemConfidenceLevel(dto.confidence.level),
         score: dto.confidence.score < 0
             ? 0
@@ -135,7 +138,7 @@ final class SummaryMapper {
       confirmedProviderKeys: _safeTextList(dto.confirmedProviderKeys),
       providerMetrics: dto.providerMetrics
           .map(
-            (metric) => BriefingProviderMetric(
+            (metric) => ProviderMetric(
               label: _nonEmpty(metric.label, fallback: 'Metric'),
               value: _nonEmpty(metric.value, fallback: '0'),
             ),
@@ -159,8 +162,8 @@ final class SummaryMapper {
     };
   }
 
-  BriefingSourceMixEntry _sourceMixToDomain(BriefingSourceMixEntryApiDto dto) {
-    return BriefingSourceMixEntry(
+  SourceMixEntry _sourceMixToDomain(SourceMixEntryApiDto dto) {
+    return SourceMixEntry(
       providerKey: _nonEmpty(dto.providerKey, fallback: 'unknown'),
       itemCount: dto.itemCount < 0 ? 0 : dto.itemCount,
       citationCount: dto.citationCount < 0 ? 0 : dto.citationCount,
@@ -173,18 +176,18 @@ final class SummaryMapper {
     );
   }
 
-  BriefingNextAction _nextActionToDomain(BriefingNextActionApiDto dto) {
-    return BriefingNextAction(
+  ReaderAction _nextActionToDomain(ReaderActionApiDto dto) {
+    return ReaderAction(
       kind: _nonEmpty(dto.kind, fallback: 'read_source'),
       label: _safeText(dto.label, fallback: 'Review source'),
-      reason: _safeText(dto.reason, fallback: 'Recommended by briefing'),
+      reason: _safeText(dto.reason, fallback: 'Recommended by summary'),
       citationIds: dto.citationIds,
       canonicalUrl: _safeUrl(dto.canonicalUrl),
     );
   }
 
-  BriefingStory _briefingStoryToDomain(BriefingStoryApiDto dto) {
-    return BriefingStory(
+  SummaryStory _summaryStoryToDomain(SummaryStoryApiDto dto) {
+    return SummaryStory(
       title: _nonEmpty(dto.title, fallback: 'Untitled story'),
       summary: _safeText(dto.summary, fallback: 'No story summary available'),
       topicCount: dto.topicCount,
@@ -193,10 +196,8 @@ final class SummaryMapper {
     );
   }
 
-  BriefingRepeatedSignal _briefingSignalToDomain(
-    BriefingRepeatedSignalApiDto dto,
-  ) {
-    return BriefingRepeatedSignal(
+  RepeatedSignal _repeatedSignalToDomain(RepeatedSignalApiDto dto) {
+    return RepeatedSignal(
       title: _nonEmpty(dto.title, fallback: 'Repeated signal'),
       topicIds: dto.topicIds,
       citationIds: dto.citationIds,
@@ -213,14 +214,14 @@ final class SummaryMapper {
     };
   }
 
-  BriefingJobStatus _briefingJobStatusFromApi(String value) {
+  ReaderSummaryJobStatus _summaryJobStatusFromApi(String value) {
     return switch (value.trim().toLowerCase()) {
-      'requested' => BriefingJobStatus.requested,
-      'running' => BriefingJobStatus.running,
-      'completed' => BriefingJobStatus.completed,
-      'no_signal' => BriefingJobStatus.noSignal,
-      'failed' => BriefingJobStatus.failed,
-      _ => BriefingJobStatus.unknown,
+      'requested' => ReaderSummaryJobStatus.requested,
+      'running' => ReaderSummaryJobStatus.running,
+      'completed' => ReaderSummaryJobStatus.completed,
+      'no_signal' => ReaderSummaryJobStatus.noSignal,
+      'failed' => ReaderSummaryJobStatus.failed,
+      _ => ReaderSummaryJobStatus.unknown,
     };
   }
 

@@ -2,20 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
-import 'package:social_monitor_summaries/src/application/contracts/briefing_reader_source_launcher.dart';
+import 'package:social_monitor_summaries/src/application/contracts/reader_source_launcher.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/list_summaries_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_summary_detail_use_case.dart';
-import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_briefing_job_status_use_case.dart';
-import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_briefing_use_case.dart';
-import 'package:social_monitor_summaries/src/application/use_cases/open_briefing_reader_source_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_job_status_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/open_reader_source_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/regenerate_summary_use_case.dart';
-import 'package:social_monitor_summaries/src/application/use_cases/request_workspace_briefing_use_case.dart';
-import 'package:social_monitor_summaries/src/application/use_cases/submit_briefing_reader_action_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/request_workspace_summary_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/submit_reader_action_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/submit_summary_feedback_use_case.dart';
-import 'package:social_monitor_summaries/src/domain/entities/briefing_job_snapshot.dart';
-import 'package:social_monitor_summaries/src/domain/entities/generated_briefing.dart';
+import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/domain/entities/generated_summary.dart';
-import 'package:social_monitor_summaries/src/domain/value_objects/briefing_reader_action_target.dart';
+import 'package:social_monitor_summaries/src/domain/entities/reader_summary_job_snapshot.dart';
+import 'package:social_monitor_summaries/src/domain/value_objects/reader_action_target.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api_clients/in_memory_summaries_api_client.dart';
 import 'package:social_monitor_summaries/src/infrastructure/repositories/generated_summary_review_catalog.dart';
@@ -32,7 +32,7 @@ void main() {
   ) async {
     final store = _store([
       githubTrendingSummaryApiDto(),
-    ], workspaceBriefing: githubTrendingBriefingApiDto());
+    ], workspaceSummary: githubTrendingReaderSummaryApiDto());
 
     await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
     await tester.pumpAndSettle();
@@ -46,13 +46,13 @@ void main() {
       findsOneWidget,
     );
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('reader-brief-evidence-quality')),
+      find.byKey(const ValueKey('reader-summary-evidence-quality')),
       500,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey('reader-brief-evidence-quality')),
+      find.byKey(const ValueKey('reader-summary-evidence-quality')),
     );
     await tester.pumpAndSettle();
     expect(find.text('Coverage'), findsOneWidget);
@@ -71,16 +71,16 @@ void main() {
     expect(find.text('Signal 1.00'), findsWidgets);
     expect(find.text('Medium confidence 57%'), findsWidgets);
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('reader-brief-top-read-0-inline-details')),
+      find.byKey(const ValueKey('reader-summary-top-read-0-inline-details')),
       -500,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey('reader-brief-top-read-0-inline-details')),
+      find.byKey(const ValueKey('reader-summary-top-read-0-inline-details')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Ranking inputs'), findsOneWidget);
+    expect(find.text('Ranking inputs'), findsNothing);
     expect(find.text('Source metrics'), findsWidgets);
     expect(find.text('Stars: 18,398'), findsOneWidget);
     expect(
@@ -108,21 +108,18 @@ void main() {
     expect(find.text('Helpful'), findsOneWidget);
 
     final markRelevantButton = find.byKey(
-      const ValueKey('reader-brief-action-mark_relevant-true'),
+      const ValueKey('reader-summary-action-mark_relevant-true'),
     );
     await tester.ensureVisible(markRelevantButton);
     await tester.pumpAndSettle();
     await tester.tap(markRelevantButton);
     await tester.pumpAndSettle();
 
-    expect(
-      store.readerActionState,
-      isA<ReadyViewState<BriefingReaderActionResult>>(),
-    );
+    expect(store.readerActionState, isA<ReadyViewState<ReaderActionResult>>());
     expect(find.text('Marked relevant'), findsOneWidget);
     expect(find.text('Saved to preferences'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('reader-brief-action-mark_relevant-false')),
+      find.byKey(const ValueKey('reader-summary-action-mark_relevant-false')),
       findsOneWidget,
     );
   });
@@ -132,7 +129,7 @@ void main() {
   ) async {
     final store = _store([
       githubTrendingSummaryApiDto(),
-    ], workspaceBriefing: mixedSourceBriefingApiDto());
+    ], workspaceSummary: mixedSourceReaderSummaryApiDto());
 
     await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
     await tester.pumpAndSettle();
@@ -157,13 +154,13 @@ void main() {
   ) async {
     final store = _store([
       githubTrendingSummaryApiDto(),
-    ], workspaceBriefing: githubTrendingBriefingApiDto());
+    ], workspaceSummary: githubTrendingReaderSummaryApiDto());
 
     await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
     await tester.pumpAndSettle();
 
     final notRelevantButton = find.byKey(
-      const ValueKey('reader-brief-action-mark_not_relevant-true'),
+      const ValueKey('reader-summary-action-mark_not_relevant-true'),
     );
     await tester.ensureVisible(notRelevantButton);
     await tester.pumpAndSettle();
@@ -176,14 +173,11 @@ void main() {
     expect(find.text('Overrated provider'), findsOneWidget);
 
     await tester.tap(
-      find.byKey(const ValueKey('reader-brief-feedback-reason-duplicate')),
+      find.byKey(const ValueKey('reader-summary-feedback-reason-duplicate')),
     );
     await tester.pumpAndSettle();
 
-    expect(
-      store.readerActionState,
-      isA<ReadyViewState<BriefingReaderActionResult>>(),
-    );
+    expect(store.readerActionState, isA<ReadyViewState<ReaderActionResult>>());
     expect(find.text('Marked not relevant'), findsOneWidget);
     expect(find.text('Saved to preferences'), findsOneWidget);
   });
@@ -249,14 +243,14 @@ void main() {
     expect(find.text('Summary 119'), findsOneWidget);
   });
 
-  testWidgets('shows terminal briefing job failure instead of hiding panel', (
+  testWidgets('shows terminal summary job failure instead of hiding panel', (
     tester,
   ) async {
     final store = _store([summaryApiDto()]);
-    store.briefingJobState = const ReadyViewState<BriefingJobSnapshot>(
-      BriefingJobSnapshot(
-        id: 'briefing-job-failed',
-        status: BriefingJobStatus.failed,
+    store.summaryJobState = const ReadyViewState<ReaderSummaryJobSnapshot>(
+      ReaderSummaryJobSnapshot(
+        id: 'summary-job-failed',
+        status: ReaderSummaryJobStatus.failed,
         failureReason: 'Provider unavailable',
       ),
     );
@@ -273,13 +267,13 @@ void main() {
     expect(find.text('Provider unavailable'), findsOneWidget);
   });
 
-  testWidgets('compact briefing keeps actionable controls readable', (
+  testWidgets('compact summary keeps actionable controls readable', (
     tester,
   ) async {
     final store = _store([
       githubTrendingSummaryApiDto(),
-    ], workspaceBriefing: githubTrendingBriefingApiDto());
-    await store.loadWorkspaceBriefing();
+    ], workspaceSummary: githubTrendingReaderSummaryApiDto());
+    await store.loadWorkspaceSummary();
 
     await _pumpSizedFeature(
       tester,
@@ -292,38 +286,40 @@ void main() {
     expect(find.text('GitHub daily radar'), findsOneWidget);
     expect(find.text('Evidence and quality'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('reader-brief-top-read-0-details')),
+      find.byKey(const ValueKey('reader-summary-top-read-0-details')),
       findsOneWidget,
     );
 
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('reader-brief-action-read_source-true')),
+      find.byKey(const ValueKey('reader-summary-action-read_source-true')),
       500,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey('reader-brief-action-watch_repository-false')),
+      find.byKey(
+        const ValueKey('reader-summary-action-watch_repository-false'),
+      ),
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey('reader-brief-action-read_source-true')),
+      find.byKey(const ValueKey('reader-summary-action-read_source-true')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('reader-brief-action-mark_relevant-true')),
+      find.byKey(const ValueKey('reader-summary-action-mark_relevant-true')),
       findsOneWidget,
     );
   });
 
-  testWidgets('workspace briefing renders the top ten reader reads', (
+  testWidgets('workspace summary renders the top ten reader reads', (
     tester,
   ) async {
     final store = _store([
       githubTrendingSummaryApiDto(),
-    ], workspaceBriefing: repoRadarTopTenBriefingApiDto());
-    await store.loadWorkspaceBriefing();
+    ], workspaceSummary: repoRadarTopTenReaderSummaryApiDto());
+    await store.loadWorkspaceSummary();
 
     await _pumpSizedFeature(
       tester,
@@ -336,40 +332,44 @@ void main() {
     expect(find.text('Repo radar top ten'), findsOneWidget);
     expect(find.text('Showing 3 of 10 top reads'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('reader-brief-top-read-0')),
+      find.byKey(const ValueKey('reader-summary-top-read-0')),
       findsOneWidget,
     );
-    expect(find.byKey(const ValueKey('reader-brief-top-read-9')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('reader-summary-top-read-9')),
+      findsNothing,
+    );
     expect(find.text('repo-radar/project-10'), findsNothing);
 
     await tester.tap(
-      find.byKey(const ValueKey('reader-brief-top-reads-toggle')),
+      find.byKey(const ValueKey('reader-summary-top-reads-toggle')),
     );
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey('reader-brief-top-read-9')),
+      find.byKey(const ValueKey('reader-summary-top-read-9')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('reader-brief-top-read-10')),
+      find.byKey(const ValueKey('reader-summary-top-read-10')),
       findsNothing,
     );
     expect(find.text('repo-radar/project-10'), findsWidgets);
     expect(find.text('repo-radar/project-11'), findsNothing);
   });
 
-  testWidgets('stale briefing keeps previous content while refreshing', (
+  testWidgets('stale summary keeps previous content while refreshing', (
     tester,
   ) async {
     final store = _store([
       githubTrendingSummaryApiDto(),
-    ], workspaceBriefing: githubTrendingBriefingApiDto());
-    await store.loadWorkspaceBriefing();
+    ], workspaceSummary: githubTrendingReaderSummaryApiDto());
+    await store.loadWorkspaceSummary();
     final ready =
-        (store.briefingState as ReadyViewState<WorkspaceBriefingSnapshot>)
+        (store.workspaceSummaryState
+                as ReadyViewState<WorkspaceSummarySnapshot>)
             .value;
-    store.briefingState = LoadingViewState<WorkspaceBriefingSnapshot>(
+    store.workspaceSummaryState = LoadingViewState<WorkspaceSummarySnapshot>(
       previousValue: ready,
     );
 
@@ -384,17 +384,17 @@ void main() {
     expect(find.text('GitHub daily radar'), findsOneWidget);
     expect(find.text('Refreshing'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('workspace-briefing-generate-false')),
+      find.byKey(const ValueKey('workspace-summary-generate-false')),
       findsOneWidget,
     );
   });
 
-  testWidgets('compact failure and empty briefing states stay visible', (
+  testWidgets('compact failure and empty summary states stay visible', (
     tester,
   ) async {
     final failedStore = _store([summaryApiDto()]);
-    failedStore.briefingState =
-        const FailureViewState<WorkspaceBriefingSnapshot>(
+    failedStore.workspaceSummaryState =
+        const FailureViewState<WorkspaceSummarySnapshot>(
           failure: UnexpectedFailure(
             message: 'Provider evidence unavailable',
             code: 'summaries.provider_failed',
@@ -413,9 +413,10 @@ void main() {
     expect(find.text('Provider evidence unavailable'), findsOneWidget);
 
     final emptyStore = _store([]);
-    emptyStore.briefingState = const EmptyViewState<WorkspaceBriefingSnapshot>(
-      reason: 'briefings.empty',
-    );
+    emptyStore.workspaceSummaryState =
+        const EmptyViewState<WorkspaceSummarySnapshot>(
+          reason: 'summaries.empty',
+        );
 
     await _pumpSizedFeature(
       tester,
@@ -435,39 +436,38 @@ void main() {
 
 SummariesReviewStore _store(
   List<SummaryApiDto> items, {
-  BriefingApiDto? workspaceBriefing,
+  ReaderSummaryApiDto? workspaceSummary,
 }) {
   final catalog = GeneratedSummaryReviewCatalog(
     apiClient: InMemorySummariesApiClient(
       items: items,
-      workspaceBriefing: workspaceBriefing,
+      workspaceSummary: workspaceSummary,
     ),
   );
   return SummariesReviewStore(
     dependencies: SummariesReviewStoreDependencies(
       listSummaries: ListSummariesUseCase(catalog),
-      loadWorkspaceBriefing: LoadWorkspaceBriefingUseCase(catalog),
-      requestWorkspaceBriefing: RequestWorkspaceBriefingUseCase(catalog),
-      loadWorkspaceBriefingJobStatus: LoadWorkspaceBriefingJobStatusUseCase(
+      loadWorkspaceSummary: LoadWorkspaceSummaryUseCase(catalog),
+      requestWorkspaceSummary: RequestWorkspaceSummaryUseCase(catalog),
+      loadWorkspaceSummaryJobStatus: LoadWorkspaceSummaryJobStatusUseCase(
         catalog,
       ),
       loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
       regenerateSummary: RegenerateSummaryUseCase(catalog),
       submitFeedback: SubmitSummaryFeedbackUseCase(catalog),
-      submitBriefingReaderAction: SubmitBriefingReaderActionUseCase(catalog),
-      openBriefingReaderSource: const OpenBriefingReaderSourceUseCase(
-        _FakeBriefingReaderSourceLauncher(),
+      submitReaderAction: SubmitReaderActionUseCase(catalog),
+      openReaderSource: const OpenReaderSourceUseCase(
+        _FakeReaderSourceLauncher(),
       ),
     ),
     scope: summaryWorkspaceScope,
     userId: 'user-test',
-    briefingPollInterval: Duration.zero,
+    summaryPollInterval: Duration.zero,
   );
 }
 
-final class _FakeBriefingReaderSourceLauncher
-    implements BriefingReaderSourceLauncher {
-  const _FakeBriefingReaderSourceLauncher();
+final class _FakeReaderSourceLauncher implements ReaderSourceLauncher {
+  const _FakeReaderSourceLauncher();
 
   @override
   Future<Result<Unit>> open(Uri uri) async => const Result.success(Unit.value);

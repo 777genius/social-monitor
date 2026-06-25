@@ -3,28 +3,28 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import 'package:social_monitor_summaries/src/application/commands/regenerate_summary_command.dart';
-import 'package:social_monitor_summaries/src/application/commands/request_workspace_briefing_command.dart';
-import 'package:social_monitor_summaries/src/application/commands/submit_briefing_reader_action_command.dart';
+import 'package:social_monitor_summaries/src/application/commands/request_workspace_summary_command.dart';
+import 'package:social_monitor_summaries/src/application/commands/submit_reader_action_command.dart';
 import 'package:social_monitor_summaries/src/application/commands/submit_summary_feedback_command.dart';
-import 'package:social_monitor_summaries/src/application/contracts/briefing_reader_source_launcher.dart';
+import 'package:social_monitor_summaries/src/application/contracts/reader_source_launcher.dart';
 import 'package:social_monitor_summaries/src/application/contracts/summary_review_catalog.dart';
 import 'package:social_monitor_summaries/src/application/queries/list_summaries_query.dart';
 import 'package:social_monitor_summaries/src/application/queries/load_summary_detail_query.dart';
-import 'package:social_monitor_summaries/src/application/queries/load_workspace_briefing_job_status_query.dart';
-import 'package:social_monitor_summaries/src/application/queries/load_workspace_briefing_query.dart';
+import 'package:social_monitor_summaries/src/application/queries/load_workspace_summary_job_status_query.dart';
+import 'package:social_monitor_summaries/src/application/queries/load_workspace_summary_query.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/list_summaries_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_summary_detail_use_case.dart';
-import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_briefing_job_status_use_case.dart';
-import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_briefing_use_case.dart';
-import 'package:social_monitor_summaries/src/application/use_cases/open_briefing_reader_source_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_job_status_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/open_reader_source_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/regenerate_summary_use_case.dart';
-import 'package:social_monitor_summaries/src/application/use_cases/request_workspace_briefing_use_case.dart';
-import 'package:social_monitor_summaries/src/application/use_cases/submit_briefing_reader_action_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/request_workspace_summary_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/submit_reader_action_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/submit_summary_feedback_use_case.dart';
-import 'package:social_monitor_summaries/src/domain/entities/briefing_job_snapshot.dart';
-import 'package:social_monitor_summaries/src/domain/entities/generated_briefing.dart';
+import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/domain/entities/generated_summary.dart';
-import 'package:social_monitor_summaries/src/domain/value_objects/briefing_reader_action_target.dart';
+import 'package:social_monitor_summaries/src/domain/entities/reader_summary_job_snapshot.dart';
+import 'package:social_monitor_summaries/src/domain/value_objects/reader_action_target.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/summary_feedback_kind.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/summary_id.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
@@ -80,54 +80,54 @@ void main() {
     );
   });
 
-  test('requests workspace briefing and refreshes it after polling', () async {
+  test('requests workspace summary and refreshes it after polling', () async {
     final store = _store([
       summaryApiDto(),
-    ], workspaceBriefing: briefingApiDto());
+    ], workspaceSummary: readerSummaryApiDto());
 
-    await store.requestWorkspaceBriefing();
+    await store.requestWorkspaceSummary();
 
     final jobState =
-        store.briefingJobState as ReadyViewState<BriefingJobSnapshot>;
-    expect(jobState.value.status, BriefingJobStatus.completed);
-    final briefingState =
-        store.briefingState as ReadyViewState<WorkspaceBriefingSnapshot>;
-    expect(briefingState.value.current?.title, 'AI workspace summary');
-    expect(store.isBriefingGenerationInProgress, isFalse);
+        store.summaryJobState as ReadyViewState<ReaderSummaryJobSnapshot>;
+    expect(jobState.value.status, ReaderSummaryJobStatus.completed);
+    final workspaceSummaryState =
+        store.workspaceSummaryState as ReadyViewState<WorkspaceSummarySnapshot>;
+    expect(workspaceSummaryState.value.current?.title, 'AI workspace summary');
+    expect(store.isSummaryGenerationInProgress, isFalse);
   });
 
-  test('submits reader relevance action from briefing top read', () async {
+  test('submits reader relevance action from summary top read', () async {
     final store = _store([
       summaryApiDto(),
-    ], workspaceBriefing: briefingApiDto());
+    ], workspaceSummary: readerSummaryApiDto());
 
-    await store.loadWorkspaceBriefing();
+    await store.loadWorkspaceSummary();
 
-    final briefing =
-        (store.briefingState as ReadyViewState<WorkspaceBriefingSnapshot>)
+    final summary =
+        (store.workspaceSummaryState
+                as ReadyViewState<WorkspaceSummarySnapshot>)
             .value
             .current!;
-    final markRelevant = briefing.readerBrief.nextActions.firstWhere(
+    final markRelevant = summary.content.nextActions.firstWhere(
       (action) => action.kind == 'mark_relevant',
     );
-    final watchRepository = briefing.readerBrief.nextActions.firstWhere(
+    final watchRepository = summary.content.nextActions.firstWhere(
       (action) => action.kind == 'watch_repository',
     );
-    final readSource = briefing.readerBrief.nextActions.firstWhere(
+    final readSource = summary.content.nextActions.firstWhere(
       (action) => action.kind == 'read_source',
     );
 
-    expect(store.readerActionIntentFor(briefing, readSource).isEnabled, true);
-    expect(store.readerActionIntentFor(briefing, markRelevant).isEnabled, true);
+    expect(store.readerActionIntentFor(summary, readSource).isEnabled, true);
+    expect(store.readerActionIntentFor(summary, markRelevant).isEnabled, true);
     expect(
-      store.readerActionIntentFor(briefing, watchRepository).disabledReasonCode,
+      store.readerActionIntentFor(summary, watchRepository).disabledReasonCode,
       'summaries.reader_action_not_supported',
     );
 
-    await store.submitReaderAction(briefing, markRelevant);
+    await store.submitReaderAction(summary, markRelevant);
 
-    final state =
-        store.readerActionState as ReadyViewState<BriefingReaderActionResult>;
+    final state = store.readerActionState as ReadyViewState<ReaderActionResult>;
     expect(state.value.kind, 'mark_relevant');
     expect(state.value.learningDirection, 'positive');
     expect(state.value.idempotencyKey, contains(':mark_relevant:'));
@@ -136,80 +136,81 @@ void main() {
   test('submits reader negative feedback with an explicit reason', () async {
     final apiClient = InMemorySummariesApiClient(
       items: [summaryApiDto()],
-      workspaceBriefing: briefingApiDto(),
+      workspaceSummary: readerSummaryApiDto(),
     );
     final catalog = GeneratedSummaryReviewCatalog(apiClient: apiClient);
     final store = _storeFromCatalog(catalog);
 
-    await store.loadWorkspaceBriefing();
+    await store.loadWorkspaceSummary();
 
-    final briefing =
-        (store.briefingState as ReadyViewState<WorkspaceBriefingSnapshot>)
+    final summary =
+        (store.workspaceSummaryState
+                as ReadyViewState<WorkspaceSummarySnapshot>)
             .value
             .current!;
-    final notRelevant = briefing.readerBrief.nextActions.firstWhere(
+    final notRelevant = summary.content.nextActions.firstWhere(
       (action) => action.kind == 'mark_not_relevant',
     );
 
     await store.submitReaderAction(
-      briefing,
+      summary,
       notRelevant,
-      BriefingReaderFeedbackReason.notSameStory,
+      ReaderFeedbackReason.notSameStory,
     );
 
-    final state =
-        store.readerActionState as ReadyViewState<BriefingReaderActionResult>;
+    final state = store.readerActionState as ReadyViewState<ReaderActionResult>;
     expect(state.value.kind, 'mark_not_relevant');
     expect(state.value.learningDirection, 'negative');
     expect(
       apiClient.submittedReaderActionRequests.single.feedbackReason,
-      BriefingReaderFeedbackReason.notSameStory,
+      ReaderFeedbackReason.notSameStory,
     );
   });
 
   test(
     'opens reader source action without relevance feedback target',
     () async {
-      final launcher = _FakeBriefingReaderSourceLauncher();
+      final launcher = _FakeReaderSourceLauncher();
       final store = _store(
         [summaryApiDto()],
-        workspaceBriefing: briefingApiDto(),
+        workspaceSummary: readerSummaryApiDto(),
         sourceLauncher: launcher,
       );
 
-      await store.loadWorkspaceBriefing();
+      await store.loadWorkspaceSummary();
 
-      final briefing =
-          (store.briefingState as ReadyViewState<WorkspaceBriefingSnapshot>)
+      final summary =
+          (store.workspaceSummaryState
+                  as ReadyViewState<WorkspaceSummarySnapshot>)
               .value
               .current!;
-      final readSource = briefing.readerBrief.nextActions.firstWhere(
+      final readSource = summary.content.nextActions.firstWhere(
         (action) => action.kind == 'read_source',
       );
 
-      await store.submitReaderAction(briefing, readSource);
+      await store.submitReaderAction(summary, readSource);
 
       expect(
         launcher.opened.single.toString(),
         'https://github.com/example/ai-coding-tools',
       );
       final state =
-          store.readerActionState as ReadyViewState<BriefingReaderActionResult>;
+          store.readerActionState as ReadyViewState<ReaderActionResult>;
       expect(state.value.kind, 'read_source');
       expect(state.value.learningDirection, 'external_source_opened');
     },
   );
 
-  test('briefing request tolerates reentrant workspace switch', () async {
+  test('summary request tolerates reentrant workspace switch', () async {
     final store = _store([
       summaryApiDto(),
-    ], workspaceBriefing: briefingApiDto());
+    ], workspaceSummary: readerSummaryApiDto());
     var switchedScope = false;
     store.addListener(() {
       if (switchedScope) {
         return;
       }
-      if (store.briefingJobState is ReadyViewState<BriefingJobSnapshot>) {
+      if (store.summaryJobState is ReadyViewState<ReaderSummaryJobSnapshot>) {
         switchedScope = true;
         store.updateScope(
           const WorkspaceScope(tenantId: 'tenant-demo', workspaceId: 'next'),
@@ -217,17 +218,17 @@ void main() {
       }
     });
 
-    await store.requestWorkspaceBriefing();
+    await store.requestWorkspaceSummary();
 
     expect(switchedScope, isTrue);
     expect(store.scope.workspaceId, 'next');
     expect(
-      store.briefingJobState,
-      isA<InitialViewState<BriefingJobSnapshot>>(),
+      store.summaryJobState,
+      isA<InitialViewState<ReaderSummaryJobSnapshot>>(),
     );
     expect(
-      store.briefingState,
-      isA<InitialViewState<WorkspaceBriefingSnapshot>>(),
+      store.workspaceSummaryState,
+      isA<InitialViewState<WorkspaceSummarySnapshot>>(),
     );
   });
 
@@ -275,13 +276,13 @@ void main() {
     expect(store.hasExplicitSelection, isFalse);
   });
 
-  test('slow workspace briefing does not block summary list load', () async {
+  test('slow workspace summary does not block summary list load', () async {
     final catalog = _DeferredSummaryReviewCatalog([
       generatedSummary(id: 's-1', title: 'Stored summary'),
-    ], hangWorkspaceBriefing: true);
+    ], hangWorkspaceSummary: true);
     final store = _storeFromCatalog(
       catalog,
-      workspaceBriefingLoadTimeout: const Duration(milliseconds: 1),
+      workspaceSummaryLoadTimeout: const Duration(milliseconds: 1),
     );
 
     await store.load();
@@ -290,39 +291,43 @@ void main() {
     final listState =
         store.listState as ReadyViewState<PageResult<GeneratedSummary>>;
     expect(listState.value.items.single.title, 'Stored summary');
-    final briefingState =
-        store.briefingState as FailureViewState<WorkspaceBriefingSnapshot>;
-    expect(briefingState.failure.code, 'summaries.workspace_briefing_timeout');
+    final workspaceSummaryState =
+        store.workspaceSummaryState
+            as FailureViewState<WorkspaceSummarySnapshot>;
+    expect(
+      workspaceSummaryState.failure.code,
+      'summaries.workspace_summary_timeout',
+    );
   });
 
-  test('dispose invalidates pending workspace briefing load', () async {
+  test('dispose invalidates pending workspace summary load', () async {
     final catalog = _DeferredSummaryReviewCatalog([
       generatedSummary(id: 's-1', title: 'Stored summary'),
-    ], deferWorkspaceBriefing: true);
+    ], deferWorkspaceSummary: true);
     final store = _storeFromCatalog(catalog);
 
     await store.load();
-    expect(catalog.pendingWorkspaceBriefings, hasLength(1));
+    expect(catalog.pendingWorkspaceSummarys, hasLength(1));
 
     store.dispose();
-    catalog.pendingWorkspaceBriefings.single.complete(
-      const Result.success(WorkspaceBriefingSnapshot()),
+    catalog.pendingWorkspaceSummarys.single.complete(
+      const Result.success(WorkspaceSummarySnapshot()),
     );
     await Future<void>.delayed(Duration.zero);
 
-    expect(catalog.pendingWorkspaceBriefings.single.isCompleted, isTrue);
+    expect(catalog.pendingWorkspaceSummarys.single.isCompleted, isTrue);
   });
 }
 
 SummariesReviewStore _store(
   List<SummaryApiDto> items, {
-  BriefingApiDto? workspaceBriefing,
-  BriefingReaderSourceLauncher? sourceLauncher,
+  ReaderSummaryApiDto? workspaceSummary,
+  ReaderSourceLauncher? sourceLauncher,
 }) {
   final catalog = GeneratedSummaryReviewCatalog(
     apiClient: InMemorySummariesApiClient(
       items: items,
-      workspaceBriefing: workspaceBriefing,
+      workspaceSummary: workspaceSummary,
     ),
   );
   return _storeFromCatalog(catalog, sourceLauncher: sourceLauncher);
@@ -330,35 +335,34 @@ SummariesReviewStore _store(
 
 SummariesReviewStore _storeFromCatalog(
   SummaryReviewCatalog catalog, {
-  BriefingReaderSourceLauncher? sourceLauncher,
-  Duration workspaceBriefingLoadTimeout = const Duration(seconds: 20),
+  ReaderSourceLauncher? sourceLauncher,
+  Duration workspaceSummaryLoadTimeout = const Duration(seconds: 20),
 }) {
   return SummariesReviewStore(
     dependencies: SummariesReviewStoreDependencies(
       listSummaries: ListSummariesUseCase(catalog),
-      loadWorkspaceBriefing: LoadWorkspaceBriefingUseCase(catalog),
-      requestWorkspaceBriefing: RequestWorkspaceBriefingUseCase(catalog),
-      loadWorkspaceBriefingJobStatus: LoadWorkspaceBriefingJobStatusUseCase(
+      loadWorkspaceSummary: LoadWorkspaceSummaryUseCase(catalog),
+      requestWorkspaceSummary: RequestWorkspaceSummaryUseCase(catalog),
+      loadWorkspaceSummaryJobStatus: LoadWorkspaceSummaryJobStatusUseCase(
         catalog,
       ),
       loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
       regenerateSummary: RegenerateSummaryUseCase(catalog),
       submitFeedback: SubmitSummaryFeedbackUseCase(catalog),
-      submitBriefingReaderAction: SubmitBriefingReaderActionUseCase(catalog),
-      openBriefingReaderSource: OpenBriefingReaderSourceUseCase(
-        sourceLauncher ?? _FakeBriefingReaderSourceLauncher(),
+      submitReaderAction: SubmitReaderActionUseCase(catalog),
+      openReaderSource: OpenReaderSourceUseCase(
+        sourceLauncher ?? _FakeReaderSourceLauncher(),
       ),
     ),
     scope: summaryWorkspaceScope,
     userId: 'user-test',
-    briefingRequestIdempotencyKeyFactory: (_) => 'briefing-test-key',
-    briefingPollInterval: Duration.zero,
-    workspaceBriefingLoadTimeout: workspaceBriefingLoadTimeout,
+    summaryRequestIdempotencyKeyFactory: (_) => 'summary-test-key',
+    summaryPollInterval: Duration.zero,
+    workspaceSummaryLoadTimeout: workspaceSummaryLoadTimeout,
   );
 }
 
-final class _FakeBriefingReaderSourceLauncher
-    implements BriefingReaderSourceLauncher {
+final class _FakeReaderSourceLauncher implements ReaderSourceLauncher {
   final opened = <Uri>[];
 
   @override
@@ -371,16 +375,16 @@ final class _FakeBriefingReaderSourceLauncher
 final class _DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
   _DeferredSummaryReviewCatalog(
     this.items, {
-    this.hangWorkspaceBriefing = false,
-    this.deferWorkspaceBriefing = false,
+    this.hangWorkspaceSummary = false,
+    this.deferWorkspaceSummary = false,
   });
 
   final List<GeneratedSummary> items;
-  final bool hangWorkspaceBriefing;
-  final bool deferWorkspaceBriefing;
+  final bool hangWorkspaceSummary;
+  final bool deferWorkspaceSummary;
   final pendingDetails = <_PendingDetailRequest>[];
-  final pendingWorkspaceBriefings =
-      <Completer<Result<WorkspaceBriefingSnapshot>>>[];
+  final pendingWorkspaceSummarys =
+      <Completer<Result<WorkspaceSummarySnapshot>>>[];
 
   @override
   Future<Result<PageResult<GeneratedSummary>>> listSummaries(
@@ -417,8 +421,8 @@ final class _DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
   }
 
   @override
-  Future<Result<BriefingReaderActionResult>> submitBriefingReaderAction(
-    SubmitBriefingReaderActionCommand command,
+  Future<Result<ReaderActionResult>> submitReaderAction(
+    SubmitReaderActionCommand command,
   ) {
     return Future.value(
       const Result.failure(
@@ -428,38 +432,38 @@ final class _DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
   }
 
   @override
-  Future<Result<WorkspaceBriefingSnapshot>> loadWorkspaceBriefing(
-    LoadWorkspaceBriefingQuery query,
+  Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummary(
+    LoadWorkspaceSummaryQuery query,
   ) {
-    if (hangWorkspaceBriefing) {
-      return Completer<Result<WorkspaceBriefingSnapshot>>().future;
+    if (hangWorkspaceSummary) {
+      return Completer<Result<WorkspaceSummarySnapshot>>().future;
     }
-    if (deferWorkspaceBriefing) {
-      final completer = Completer<Result<WorkspaceBriefingSnapshot>>();
-      pendingWorkspaceBriefings.add(completer);
+    if (deferWorkspaceSummary) {
+      final completer = Completer<Result<WorkspaceSummarySnapshot>>();
+      pendingWorkspaceSummarys.add(completer);
       return completer.future;
     }
-    return Future.value(const Result.success(WorkspaceBriefingSnapshot()));
+    return Future.value(const Result.success(WorkspaceSummarySnapshot()));
   }
 
   @override
-  Future<Result<BriefingJobSnapshot>> requestWorkspaceBriefing(
-    RequestWorkspaceBriefingCommand command,
+  Future<Result<ReaderSummaryJobSnapshot>> requestWorkspaceSummary(
+    RequestWorkspaceSummaryCommand command,
   ) {
     return Future.value(
       const Result.failure(
-        UnexpectedFailure(message: 'Unexpected briefing request in test'),
+        UnexpectedFailure(message: 'Unexpected summary request in test'),
       ),
     );
   }
 
   @override
-  Future<Result<BriefingJobSnapshot>> loadWorkspaceBriefingJobStatus(
-    LoadWorkspaceBriefingJobStatusQuery query,
+  Future<Result<ReaderSummaryJobSnapshot>> loadWorkspaceSummaryJobStatus(
+    LoadWorkspaceSummaryJobStatusQuery query,
   ) {
     return Future.value(
       const Result.failure(
-        UnexpectedFailure(message: 'Unexpected briefing status read in test'),
+        UnexpectedFailure(message: 'Unexpected summary status read in test'),
       ),
     );
   }

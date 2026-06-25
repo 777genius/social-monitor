@@ -39,8 +39,8 @@ final class SummaryPageApiDto {
   final String? nextCursor;
 }
 
-final class BriefingStoryApiDto {
-  const BriefingStoryApiDto({
+final class SummaryStoryApiDto {
+  const SummaryStoryApiDto({
     required this.title,
     required this.summary,
     required this.topicCount,
@@ -55,8 +55,8 @@ final class BriefingStoryApiDto {
   final List<String> citationIds;
 }
 
-final class BriefingRepeatedSignalApiDto {
-  const BriefingRepeatedSignalApiDto({
+final class RepeatedSignalApiDto {
+  const RepeatedSignalApiDto({
     required this.title,
     required this.topicIds,
     required this.citationIds,
@@ -67,8 +67,8 @@ final class BriefingRepeatedSignalApiDto {
   final List<String> citationIds;
 }
 
-final class BriefingReaderItemApiDto {
-  const BriefingReaderItemApiDto({
+final class TopReadApiDto {
+  const TopReadApiDto({
     required this.title,
     required this.providerKey,
     required this.reason,
@@ -76,7 +76,7 @@ final class BriefingReaderItemApiDto {
     this.matchedTopicIds = const [],
     this.matchedRules = const [],
     this.signalScore = 0,
-    this.confidence = const BriefingReaderItemConfidenceApiDto(
+    this.confidence = const TopReadConfidenceApiDto(
       level: 'low',
       score: 0.35,
       rationale: 'Single-source story signal.',
@@ -94,17 +94,17 @@ final class BriefingReaderItemApiDto {
   final List<String> matchedTopicIds;
   final List<String> matchedRules;
   final double signalScore;
-  final BriefingReaderItemConfidenceApiDto confidence;
+  final TopReadConfidenceApiDto confidence;
   final List<String> confirmedProviderKeys;
-  final List<BriefingProviderMetricApiDto> providerMetrics;
+  final List<ProviderMetricApiDto> providerMetrics;
   final List<String> whyImportant;
   final String whyNow;
   final List<String> citationIds;
   final String? canonicalUrl;
 }
 
-final class BriefingReaderItemConfidenceApiDto {
-  const BriefingReaderItemConfidenceApiDto({
+final class TopReadConfidenceApiDto {
+  const TopReadConfidenceApiDto({
     required this.level,
     required this.score,
     required this.rationale,
@@ -115,18 +115,15 @@ final class BriefingReaderItemConfidenceApiDto {
   final String rationale;
 }
 
-final class BriefingProviderMetricApiDto {
-  const BriefingProviderMetricApiDto({
-    required this.label,
-    required this.value,
-  });
+final class ProviderMetricApiDto {
+  const ProviderMetricApiDto({required this.label, required this.value});
 
   final String label;
   final String value;
 }
 
-final class BriefingTopicSectionApiDto {
-  const BriefingTopicSectionApiDto({
+final class ReaderTopicSectionApiDto {
+  const ReaderTopicSectionApiDto({
     required this.title,
     required this.insight,
     required this.items,
@@ -136,13 +133,13 @@ final class BriefingTopicSectionApiDto {
 
   final String title;
   final String insight;
-  final List<BriefingReaderItemApiDto> items;
+  final List<TopReadApiDto> items;
   final List<String> citationIds;
   final String? topicId;
 }
 
-final class BriefingSourceMixEntryApiDto {
-  const BriefingSourceMixEntryApiDto({
+final class SourceMixEntryApiDto {
+  const SourceMixEntryApiDto({
     required this.providerKey,
     required this.itemCount,
     required this.citationCount,
@@ -161,8 +158,8 @@ final class BriefingSourceMixEntryApiDto {
   final List<String> topicIds;
 }
 
-final class BriefingReaderQualityStateApiDto {
-  const BriefingReaderQualityStateApiDto({
+final class ReaderSummaryQualityStateApiDto {
+  const ReaderSummaryQualityStateApiDto({
     required this.status,
     required this.flags,
     required this.warnings,
@@ -175,8 +172,8 @@ final class BriefingReaderQualityStateApiDto {
   final bool isSingleSource;
 }
 
-final class BriefingTrendDeltaApiDto {
-  const BriefingTrendDeltaApiDto({
+final class ReaderTrendDeltaApiDto {
+  const ReaderTrendDeltaApiDto({
     required this.newSignals,
     required this.growingSignals,
     required this.repeatedSignals,
@@ -189,8 +186,8 @@ final class BriefingTrendDeltaApiDto {
   final List<String> fadingSignals;
 }
 
-final class BriefingNextActionApiDto {
-  const BriefingNextActionApiDto({
+final class ReaderActionApiDto {
+  const ReaderActionApiDto({
     required this.kind,
     required this.label,
     required this.reason,
@@ -205,8 +202,8 @@ final class BriefingNextActionApiDto {
   final String? canonicalUrl;
 }
 
-final class BriefingReaderBriefApiDto {
-  const BriefingReaderBriefApiDto({
+final class ReaderSummaryContentApiDto {
+  const ReaderSummaryContentApiDto({
     required this.headline,
     required this.oneLineTakeaway,
     required this.bullets,
@@ -217,7 +214,7 @@ final class BriefingReaderBriefApiDto {
     required this.openQuestions,
     required this.risks,
     required this.nextActions,
-    this.qualityState = const BriefingReaderQualityStateApiDto(
+    this.qualityState = const ReaderSummaryQualityStateApiDto(
       status: 'ready',
       flags: [],
       warnings: [],
@@ -228,23 +225,23 @@ final class BriefingReaderBriefApiDto {
   final String headline;
   final String oneLineTakeaway;
   final List<String> bullets;
-  final BriefingReaderQualityStateApiDto qualityState;
-  final List<BriefingTopicSectionApiDto> topicSections;
-  final List<BriefingSourceMixEntryApiDto> sourceMix;
-  final List<BriefingReaderItemApiDto> topReads;
-  final BriefingTrendDeltaApiDto trendDelta;
+  final ReaderSummaryQualityStateApiDto qualityState;
+  final List<ReaderTopicSectionApiDto> topicSections;
+  final List<SourceMixEntryApiDto> sourceMix;
+  final List<TopReadApiDto> topReads;
+  final ReaderTrendDeltaApiDto trendDelta;
   final List<String> openQuestions;
   final List<String> risks;
-  final List<BriefingNextActionApiDto> nextActions;
+  final List<ReaderActionApiDto> nextActions;
 }
 
-final class BriefingApiDto {
-  const BriefingApiDto({
+final class ReaderSummaryApiDto {
+  const ReaderSummaryApiDto({
     required this.id,
     required this.title,
     required this.executiveSummary,
     required this.userId,
-    required this.readerBrief,
+    required this.content,
     required this.topStories,
     required this.repeatedSignals,
     required this.citations,
@@ -256,26 +253,26 @@ final class BriefingApiDto {
   final String title;
   final String executiveSummary;
   final String? userId;
-  final BriefingReaderBriefApiDto readerBrief;
-  final List<BriefingStoryApiDto> topStories;
-  final List<BriefingRepeatedSignalApiDto> repeatedSignals;
+  final ReaderSummaryContentApiDto content;
+  final List<SummaryStoryApiDto> topStories;
+  final List<RepeatedSignalApiDto> repeatedSignals;
   final List<SummaryCitationApiDto> citations;
   final String freshnessLabel;
   final bool isDegraded;
 }
 
-final class WorkspaceBriefingApiDto {
-  const WorkspaceBriefingApiDto({this.current});
+final class WorkspaceSummaryApiDto {
+  const WorkspaceSummaryApiDto({this.current});
 
-  final BriefingApiDto? current;
+  final ReaderSummaryApiDto? current;
 }
 
-final class BriefingJobApiDto {
-  const BriefingJobApiDto({
+final class ReaderSummaryJobApiDto {
+  const ReaderSummaryJobApiDto({
     required this.id,
     required this.status,
     this.created = false,
-    this.briefingId,
+    this.summaryId,
     this.failureReason,
     this.requestedAt,
     this.startedAt,
@@ -286,7 +283,7 @@ final class BriefingJobApiDto {
   final String id;
   final String status;
   final bool created;
-  final String? briefingId;
+  final String? summaryId;
   final String? failureReason;
   final DateTime? requestedAt;
   final DateTime? startedAt;

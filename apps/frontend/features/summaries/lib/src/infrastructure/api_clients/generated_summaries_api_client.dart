@@ -2,7 +2,7 @@ import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
     as generated;
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
-import '../../domain/value_objects/briefing_reader_action_target.dart';
+import '../../domain/value_objects/reader_action_target.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
 import '../api/summary_api_dto.dart';
 import '../mappers/generated_summary_rest_mapper.dart';
@@ -63,8 +63,8 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
   }
 
   @override
-  Future<Result<WorkspaceBriefingApiDto>> loadWorkspaceBriefing(
-    LoadWorkspaceBriefingApiRequest request,
+  Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummary(
+    LoadWorkspaceSummaryApiRequest request,
   ) async {
     final result = await _runtime.client
         .send<generated.ListBriefingsResponseDto>(
@@ -78,17 +78,19 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
         );
     return result.fold(
       onSuccess: (dto) => Result.success(
-        WorkspaceBriefingApiDto(
-          current: dto.items.isEmpty ? null : _mapper.briefing(dto.items.first),
+        WorkspaceSummaryApiDto(
+          current: dto.items.isEmpty
+              ? null
+              : _mapper.readerSummary(dto.items.first),
         ),
       ),
-      onFailure: Result<WorkspaceBriefingApiDto>.failure,
+      onFailure: Result<WorkspaceSummaryApiDto>.failure,
     );
   }
 
   @override
-  Future<Result<BriefingJobApiDto>> requestWorkspaceBriefing(
-    RequestWorkspaceBriefingApiRequest request,
+  Future<Result<ReaderSummaryJobApiDto>> requestWorkspaceSummary(
+    RequestWorkspaceSummaryApiRequest request,
   ) async {
     final result = await _runtime.client
         .send<generated.RequestBriefingResponseDto>(
@@ -106,27 +108,28 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
           ),
         );
     return result.fold(
-      onSuccess: (dto) => Result.success(_mapper.requestedBriefingJob(dto)),
-      onFailure: Result<BriefingJobApiDto>.failure,
+      onSuccess: (dto) =>
+          Result.success(_mapper.requestedReaderSummaryJob(dto)),
+      onFailure: Result<ReaderSummaryJobApiDto>.failure,
     );
   }
 
   @override
-  Future<Result<BriefingJobApiDto>> loadWorkspaceBriefingJobStatus(
-    LoadWorkspaceBriefingJobStatusApiRequest request,
+  Future<Result<ReaderSummaryJobApiDto>> loadWorkspaceSummaryJobStatus(
+    LoadWorkspaceSummaryJobStatusApiRequest request,
   ) async {
     final result = await _runtime.client
         .send<generated.BriefingJobStatusResponseDto>(
           generated.WorkspaceRequest(scope: request.scope),
           () => _runtime.rest.briefings.briefingJobControllerGetStatus(
-            briefingJobId: request.briefingJobId,
+            briefingJobId: request.summaryJobId,
             xWorkspaceId: request.scope.workspaceId,
             xTenantId: request.scope.tenantId,
           ),
         );
     return result.fold(
-      onSuccess: (dto) => Result.success(_mapper.briefingJobStatus(dto)),
-      onFailure: Result<BriefingJobApiDto>.failure,
+      onSuccess: (dto) => Result.success(_mapper.readerSummaryJobStatus(dto)),
+      onFailure: Result<ReaderSummaryJobApiDto>.failure,
     );
   }
 
@@ -188,8 +191,8 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
   }
 
   @override
-  Future<Result<BriefingReaderActionResult>> submitBriefingReaderAction(
-    SubmitBriefingReaderActionApiRequest request,
+  Future<Result<ReaderActionResult>> submitReaderAction(
+    SubmitReaderActionApiRequest request,
   ) async {
     final relevanceAction = _readerActionToRelevanceAction(request.kind);
     if (relevanceAction == null) {
@@ -225,7 +228,7 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
         );
     return result.fold(
       onSuccess: (dto) => Result.success(
-        BriefingReaderActionResult(
+        ReaderActionResult(
           actionId: dto.feedback.feedbackId,
           idempotencyKey: request.idempotencyKey,
           kind: request.kind,
@@ -233,7 +236,7 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
           learningDirection: dto.learningDirection.json ?? 'unknown',
         ),
       ),
-      onFailure: Result<BriefingReaderActionResult>.failure,
+      onFailure: Result<ReaderActionResult>.failure,
     );
   }
 
@@ -319,18 +322,18 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
   }
 
   generated.RecordRelevanceFeedbackRequestDtoReasonReason? _feedbackReason(
-    BriefingReaderFeedbackReason? reason,
+    ReaderFeedbackReason? reason,
   ) {
     return switch (reason) {
-      BriefingReaderFeedbackReason.notSameStory =>
+      ReaderFeedbackReason.notSameStory =>
         generated.RecordRelevanceFeedbackRequestDtoReasonReason.notSameStory,
-      BriefingReaderFeedbackReason.duplicate =>
+      ReaderFeedbackReason.duplicate =>
         generated.RecordRelevanceFeedbackRequestDtoReasonReason.duplicate,
-      BriefingReaderFeedbackReason.lowQualitySource =>
+      ReaderFeedbackReason.lowQualitySource =>
         generated
             .RecordRelevanceFeedbackRequestDtoReasonReason
             .lowQualitySource,
-      BriefingReaderFeedbackReason.overratedProvider =>
+      ReaderFeedbackReason.overratedProvider =>
         generated
             .RecordRelevanceFeedbackRequestDtoReasonReason
             .overratedProvider,

@@ -29,37 +29,37 @@ void main() {
     expect(page.items.single.freshnessLabel, 'Fresh');
   });
 
-  test('maps generated briefing reader brief into feature DTO', () {
+  test('maps generated Briefing reader payload into reader summary DTO', () {
     const mapper = GeneratedSummaryRestMapper();
 
-    final briefing = mapper.briefing(_briefingArtifact());
+    final readerSummary = mapper.readerSummary(_briefingArtifact());
 
-    expect(briefing.readerBrief.headline, 'GitHub daily radar');
+    expect(readerSummary.content.headline, 'GitHub daily radar');
     expect(
-      briefing.readerBrief.oneLineTakeaway,
+      readerSummary.content.oneLineTakeaway,
       contains('calesthio/OpenMontage'),
     );
-    expect(briefing.readerBrief.qualityState.status, 'limited_sources');
+    expect(readerSummary.content.qualityState.status, 'limited_sources');
     expect(
-      briefing.readerBrief.topReads.single.canonicalUrl,
+      readerSummary.content.topReads.single.canonicalUrl,
       contains('github.com/calesthio/OpenMontage'),
     );
-    expect(briefing.readerBrief.topReads.single.matchedTopicIds, ['ai-tools']);
+    expect(readerSummary.content.topReads.single.matchedTopicIds, ['ai-tools']);
     expect(
-      briefing.readerBrief.topReads.single.providerMetrics.single.value,
+      readerSummary.content.topReads.single.providerMetrics.single.value,
       '#1, +3,703 stars today',
     );
     expect(
-      briefing.readerBrief.sourceMix.single.providerKey,
+      readerSummary.content.sourceMix.single.providerKey,
       'github-trending-page',
     );
-    expect(briefing.readerBrief.sourceMix.single.storyClusterCount, 1);
-    expect(briefing.readerBrief.nextActions.single.kind, 'watch_repository');
+    expect(readerSummary.content.sourceMix.single.storyClusterCount, 1);
+    expect(readerSummary.content.nextActions.single.kind, 'watch_repository');
   });
 
-  test('maps generated briefing job request and status DTOs', () {
+  test('maps generated Briefing job request and status DTOs', () {
     const mapper = GeneratedSummaryRestMapper();
-    final requested = mapper.requestedBriefingJob(
+    final requested = mapper.requestedReaderSummaryJob(
       const generated.RequestBriefingResponseDto(
         briefingJobId: 'briefing-job-1',
         created: true,
@@ -72,7 +72,7 @@ void main() {
     expect(requested.created, isTrue);
 
     final completedAt = DateTime.utc(2026, 6, 23, 10);
-    final status = mapper.briefingJobStatus(
+    final status = mapper.readerSummaryJobStatus(
       generated.BriefingJobStatusResponseDto(
         briefingId: 'briefing-1',
         briefingJobId: 'briefing-job-1',
@@ -87,7 +87,7 @@ void main() {
     );
 
     expect(status.status, 'completed');
-    expect(status.briefingId, 'briefing-1');
+    expect(status.summaryId, 'briefing-1');
     expect(status.completedAt, completedAt);
   });
 }

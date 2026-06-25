@@ -64,14 +64,14 @@ void main() {
     expect(summary.citations.single.canonicalUrl, isNull);
   });
 
-  test('maps reader brief and sanitizes action URLs', () {
+  test('maps reader summary content and sanitizes action URLs', () {
     const mapper = SummaryMapper();
 
-    final briefing = mapper.briefingToDomain(
-      briefingApiDto(
-        readerBrief: briefingReaderBriefApiDto(
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(
           topReads: const [
-            BriefingReaderItemApiDto(
+            TopReadApiDto(
               title: 'openai/codex',
               providerKey: 'github-repo-radar',
               reason: 'Fast repo growth.',
@@ -79,7 +79,7 @@ void main() {
               matchedRules: ['topic:ai-tools'],
               signalScore: 1.23,
               providerMetrics: [
-                BriefingProviderMetricApiDto(label: 'Stars', value: '54,000'),
+                ProviderMetricApiDto(label: 'Stars', value: '54,000'),
               ],
               whyImportant: ['Fast repo growth.'],
               whyNow: 'Current summary window has Repo Radar coverage.',
@@ -92,18 +92,19 @@ void main() {
       ),
     );
 
-    expect(briefing.readerBrief.headline, 'AI workspace summary');
+    expect(summary.content.headline, 'AI workspace summary');
     expect(
-      briefing.readerBrief.topReads.single.canonicalUrl,
+      summary.content.topReads.single.canonicalUrl,
       'https://github.com/openai/codex?utm_source=feed',
     );
-    expect(briefing.readerBrief.topReads.single.signalScore, 1.23);
+    expect(summary.content.topReads.single.signalScore.value, 1.23);
+    expect(summary.summaryWindow.label, 'Current summary window');
     expect(
-      briefing.readerBrief.topReads.single.providerMetrics.single.value,
+      summary.content.topReads.single.providerMetrics.single.value,
       '54,000',
     );
     expect(
-      briefing.readerBrief.nextActions.map((action) => action.kind),
+      summary.content.nextActions.map((action) => action.kind),
       containsAll(['watch_repository', 'mark_relevant', 'mark_not_relevant']),
     );
   });

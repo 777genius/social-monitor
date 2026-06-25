@@ -4,9 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 part 'support/frontend_architecture_test_support.dart';
 part 'support/frontend_growth_architecture_test_cases.dart';
+part 'support/summaries_architecture_test_cases.dart';
 
 void main() {
   registerFrontendGrowthArchitectureTests();
+  registerSummariesArchitectureTests();
 
   test('frontend feature slices keep clean boundaries', () {
     final importsByFile = _collectImportsByFile(

@@ -1,17 +1,17 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
-import '../../domain/entities/briefing_job_snapshot.dart';
-import '../../domain/entities/generated_briefing.dart';
+import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/generated_summary.dart';
-import '../../domain/value_objects/briefing_reader_action_target.dart';
+import '../../domain/entities/reader_summary_job_snapshot.dart';
+import '../../domain/value_objects/reader_action_target.dart';
 import '../commands/regenerate_summary_command.dart';
-import '../commands/request_workspace_briefing_command.dart';
-import '../commands/submit_briefing_reader_action_command.dart';
+import '../commands/request_workspace_summary_command.dart';
+import '../commands/submit_reader_action_command.dart';
 import '../commands/submit_summary_feedback_command.dart';
 import '../queries/list_summaries_query.dart';
 import '../queries/load_summary_detail_query.dart';
-import '../queries/load_workspace_briefing_job_status_query.dart';
-import '../queries/load_workspace_briefing_query.dart';
+import '../queries/load_workspace_summary_job_status_query.dart';
+import '../queries/load_workspace_summary_query.dart';
 
 abstract interface class SummaryReviewCatalog {
   Future<Result<PageResult<GeneratedSummary>>> listSummaries(
@@ -30,19 +30,19 @@ abstract interface class SummaryReviewCatalog {
     SubmitSummaryFeedbackCommand command,
   );
 
-  Future<Result<BriefingReaderActionResult>> submitBriefingReaderAction(
-    SubmitBriefingReaderActionCommand command,
+  Future<Result<ReaderActionResult>> submitReaderAction(
+    SubmitReaderActionCommand command,
   );
 
-  Future<Result<WorkspaceBriefingSnapshot>> loadWorkspaceBriefing(
-    LoadWorkspaceBriefingQuery query,
+  Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummary(
+    LoadWorkspaceSummaryQuery query,
   );
 
-  Future<Result<BriefingJobSnapshot>> requestWorkspaceBriefing(
-    RequestWorkspaceBriefingCommand command,
+  Future<Result<ReaderSummaryJobSnapshot>> requestWorkspaceSummary(
+    RequestWorkspaceSummaryCommand command,
   );
 
-  Future<Result<BriefingJobSnapshot>> loadWorkspaceBriefingJobStatus(
-    LoadWorkspaceBriefingJobStatusQuery query,
+  Future<Result<ReaderSummaryJobSnapshot>> loadWorkspaceSummaryJobStatus(
+    LoadWorkspaceSummaryJobStatusQuery query,
   );
 }

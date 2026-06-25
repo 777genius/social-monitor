@@ -9,7 +9,7 @@ import '../../domain/entities/summary_citation.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
 import '../../domain/value_objects/summary_generation_status.dart';
 import '../components/github_mark.dart';
-import '../components/workspace_briefing_panel.dart';
+import '../components/workspace_summary_panel.dart';
 import '../stores/summaries_review_store.dart';
 
 class SummariesFeaturePage extends StatefulWidget {
@@ -142,18 +142,18 @@ class _SummariesBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        WorkspaceBriefingPanel(
-          state: store.briefingState,
-          jobState: store.briefingJobState,
+        WorkspaceSummaryPanel(
+          state: store.workspaceSummaryState,
+          jobState: store.summaryJobState,
           readerActionState: store.readerActionState,
           activeReaderActionIdempotencyKey:
               store.activeReaderActionIdempotencyKey,
           lastReaderActionIdempotencyKey: store.lastReaderActionIdempotencyKey,
-          onRetry: () => unawaited(store.loadWorkspaceBriefing()),
-          onGenerate: () => unawaited(store.requestWorkspaceBriefing()),
+          onRetry: () => unawaited(store.loadWorkspaceSummary()),
+          onGenerate: () => unawaited(store.requestWorkspaceSummary()),
           intentForAction: store.readerActionIntentFor,
-          onAction: (briefing, action, [feedbackReason]) => unawaited(
-            store.submitReaderAction(briefing, action, feedbackReason),
+          onAction: (summary, action, [feedbackReason]) => unawaited(
+            store.submitReaderAction(summary, action, feedbackReason),
           ),
         ),
         if (showSummaryHistory) ...[

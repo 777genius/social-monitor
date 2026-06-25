@@ -1,22 +1,21 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
-import '../../domain/value_objects/briefing_reader_action_target.dart';
+import '../../domain/value_objects/reader_action_target.dart';
 import '../api/summary_api_dto.dart';
 import 'summaries_api_client.dart';
 
 final class InMemorySummariesApiClient implements SummariesApiClient {
   InMemorySummariesApiClient({
     required List<SummaryApiDto> items,
-    BriefingApiDto? workspaceBriefing,
+    ReaderSummaryApiDto? workspaceSummary,
   }) : _items = List<SummaryApiDto>.of(items),
-       _workspaceBriefing = workspaceBriefing;
+       _workspaceSummary = workspaceSummary;
 
   final List<SummaryApiDto> _items;
-  final BriefingApiDto? _workspaceBriefing;
-  final Map<String, BriefingJobApiDto> _briefingJobs = {};
-  final List<BriefingReaderActionResult> submittedReaderActions = [];
-  final List<SubmitBriefingReaderActionApiRequest>
-  submittedReaderActionRequests = [];
+  final ReaderSummaryApiDto? _workspaceSummary;
+  final Map<String, ReaderSummaryJobApiDto> _summaryJobs = {};
+  final List<ReaderActionResult> submittedReaderActions = [];
+  final List<SubmitReaderActionApiRequest> submittedReaderActionRequests = [];
 
   @override
   Future<Result<SummaryPageApiDto>> listSummaries(
@@ -50,62 +49,62 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
   }
 
   @override
-  Future<Result<WorkspaceBriefingApiDto>> loadWorkspaceBriefing(
-    LoadWorkspaceBriefingApiRequest request,
+  Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummary(
+    LoadWorkspaceSummaryApiRequest request,
   ) async {
     final failure = _workspaceFailure(request.scope);
     if (failure != null) {
       return Result.failure(failure);
     }
-    return Result.success(WorkspaceBriefingApiDto(current: _workspaceBriefing));
+    return Result.success(WorkspaceSummaryApiDto(current: _workspaceSummary));
   }
 
   @override
-  Future<Result<BriefingJobApiDto>> requestWorkspaceBriefing(
-    RequestWorkspaceBriefingApiRequest request,
+  Future<Result<ReaderSummaryJobApiDto>> requestWorkspaceSummary(
+    RequestWorkspaceSummaryApiRequest request,
   ) async {
     final failure = _workspaceFailure(request.scope);
     if (failure != null) {
       return Result.failure(failure);
     }
-    final job = BriefingJobApiDto(
-      id: 'briefing-job-${request.idempotencyKey.hashCode.abs()}',
+    final job = ReaderSummaryJobApiDto(
+      id: 'summary-job-${request.idempotencyKey.hashCode.abs()}',
       status: 'requested',
       created: true,
       requestedAt: DateTime.now(),
     );
-    _briefingJobs[job.id] = job;
+    _summaryJobs[job.id] = job;
     return Result.success(job);
   }
 
   @override
-  Future<Result<BriefingJobApiDto>> loadWorkspaceBriefingJobStatus(
-    LoadWorkspaceBriefingJobStatusApiRequest request,
+  Future<Result<ReaderSummaryJobApiDto>> loadWorkspaceSummaryJobStatus(
+    LoadWorkspaceSummaryJobStatusApiRequest request,
   ) async {
     final failure = _workspaceFailure(request.scope);
     if (failure != null) {
       return Result.failure(failure);
     }
-    final current = _briefingJobs[request.briefingJobId];
+    final current = _summaryJobs[request.summaryJobId];
     if (current == null) {
       return Result.failure(
         NotFoundFailure(
-          message: 'Briefing job ${request.briefingJobId} is not available',
-          code: 'summaries.briefing_job_not_found',
+          message: 'Summary job ${request.summaryJobId} is not available',
+          code: 'summaries.summary_job_not_found',
         ),
       );
     }
 
-    final completed = BriefingJobApiDto(
+    final completed = ReaderSummaryJobApiDto(
       id: current.id,
-      status: _workspaceBriefing == null ? 'no_signal' : 'completed',
+      status: _workspaceSummary == null ? 'no_signal' : 'completed',
       created: current.created,
-      briefingId: _workspaceBriefing?.id,
+      summaryId: _workspaceSummary?.id,
       requestedAt: current.requestedAt,
       startedAt: current.startedAt ?? DateTime.now(),
       completedAt: DateTime.now(),
     );
-    _briefingJobs[current.id] = completed;
+    _summaryJobs[current.id] = completed;
     return Result.success(completed);
   }
 
@@ -150,14 +149,14 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
   }
 
   @override
-  Future<Result<BriefingReaderActionResult>> submitBriefingReaderAction(
-    SubmitBriefingReaderActionApiRequest request,
+  Future<Result<ReaderActionResult>> submitReaderAction(
+    SubmitReaderActionApiRequest request,
   ) async {
     final failure = _workspaceFailure(request.scope);
     if (failure != null) {
       return Result.failure(failure);
     }
-    final result = BriefingReaderActionResult(
+    final result = ReaderActionResult(
       actionId: 'reader-action-${request.idempotencyKey.hashCode.abs()}',
       idempotencyKey: request.idempotencyKey,
       kind: request.kind,

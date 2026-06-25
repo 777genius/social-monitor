@@ -1,14 +1,14 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../application/commands/regenerate_summary_command.dart';
-import '../../application/commands/request_workspace_briefing_command.dart';
-import '../../application/commands/submit_briefing_reader_action_command.dart';
+import '../../application/commands/request_workspace_summary_command.dart';
+import '../../application/commands/submit_reader_action_command.dart';
 import '../../application/commands/submit_summary_feedback_command.dart';
 import '../../application/queries/list_summaries_query.dart';
 import '../../application/queries/load_summary_detail_query.dart';
-import '../../application/queries/load_workspace_briefing_job_status_query.dart';
-import '../../application/queries/load_workspace_briefing_query.dart';
-import '../../domain/value_objects/briefing_reader_action_target.dart';
+import '../../application/queries/load_workspace_summary_job_status_query.dart';
+import '../../application/queries/load_workspace_summary_query.dart';
+import '../../domain/value_objects/reader_action_target.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
 import '../api/summary_api_dto.dart';
 
@@ -29,20 +29,20 @@ abstract interface class SummariesApiClient {
     SubmitSummaryFeedbackApiRequest request,
   );
 
-  Future<Result<BriefingReaderActionResult>> submitBriefingReaderAction(
-    SubmitBriefingReaderActionApiRequest request,
+  Future<Result<ReaderActionResult>> submitReaderAction(
+    SubmitReaderActionApiRequest request,
   );
 
-  Future<Result<WorkspaceBriefingApiDto>> loadWorkspaceBriefing(
-    LoadWorkspaceBriefingApiRequest request,
+  Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummary(
+    LoadWorkspaceSummaryApiRequest request,
   );
 
-  Future<Result<BriefingJobApiDto>> requestWorkspaceBriefing(
-    RequestWorkspaceBriefingApiRequest request,
+  Future<Result<ReaderSummaryJobApiDto>> requestWorkspaceSummary(
+    RequestWorkspaceSummaryApiRequest request,
   );
 
-  Future<Result<BriefingJobApiDto>> loadWorkspaceBriefingJobStatus(
-    LoadWorkspaceBriefingJobStatusApiRequest request,
+  Future<Result<ReaderSummaryJobApiDto>> loadWorkspaceSummaryJobStatus(
+    LoadWorkspaceSummaryJobStatusApiRequest request,
   );
 }
 
@@ -84,29 +84,29 @@ final class LoadSummaryDetailApiRequest {
   final String summaryId;
 }
 
-final class LoadWorkspaceBriefingApiRequest {
-  const LoadWorkspaceBriefingApiRequest({required this.scope});
+final class LoadWorkspaceSummaryApiRequest {
+  const LoadWorkspaceSummaryApiRequest({required this.scope});
 
-  factory LoadWorkspaceBriefingApiRequest.fromQuery(
-    LoadWorkspaceBriefingQuery query,
+  factory LoadWorkspaceSummaryApiRequest.fromQuery(
+    LoadWorkspaceSummaryQuery query,
   ) {
-    return LoadWorkspaceBriefingApiRequest(scope: query.scope);
+    return LoadWorkspaceSummaryApiRequest(scope: query.scope);
   }
 
   final WorkspaceScope scope;
 }
 
-final class RequestWorkspaceBriefingApiRequest {
-  const RequestWorkspaceBriefingApiRequest({
+final class RequestWorkspaceSummaryApiRequest {
+  const RequestWorkspaceSummaryApiRequest({
     required this.scope,
     required this.userId,
     required this.idempotencyKey,
   });
 
-  factory RequestWorkspaceBriefingApiRequest.fromCommand(
-    RequestWorkspaceBriefingCommand command,
+  factory RequestWorkspaceSummaryApiRequest.fromCommand(
+    RequestWorkspaceSummaryCommand command,
   ) {
-    return RequestWorkspaceBriefingApiRequest(
+    return RequestWorkspaceSummaryApiRequest(
       scope: command.scope,
       userId: command.userId,
       idempotencyKey: command.idempotencyKey,
@@ -118,23 +118,23 @@ final class RequestWorkspaceBriefingApiRequest {
   final String idempotencyKey;
 }
 
-final class LoadWorkspaceBriefingJobStatusApiRequest {
-  const LoadWorkspaceBriefingJobStatusApiRequest({
+final class LoadWorkspaceSummaryJobStatusApiRequest {
+  const LoadWorkspaceSummaryJobStatusApiRequest({
     required this.scope,
-    required this.briefingJobId,
+    required this.summaryJobId,
   });
 
-  factory LoadWorkspaceBriefingJobStatusApiRequest.fromQuery(
-    LoadWorkspaceBriefingJobStatusQuery query,
+  factory LoadWorkspaceSummaryJobStatusApiRequest.fromQuery(
+    LoadWorkspaceSummaryJobStatusQuery query,
   ) {
-    return LoadWorkspaceBriefingJobStatusApiRequest(
+    return LoadWorkspaceSummaryJobStatusApiRequest(
       scope: query.scope,
-      briefingJobId: query.briefingJobId,
+      summaryJobId: query.summaryJobId,
     );
   }
 
   final WorkspaceScope scope;
-  final String briefingJobId;
+  final String summaryJobId;
 }
 
 final class RegenerateSummaryApiRequest {
@@ -178,10 +178,10 @@ final class SubmitSummaryFeedbackApiRequest {
   final SummaryFeedbackKind kind;
 }
 
-final class SubmitBriefingReaderActionApiRequest {
-  const SubmitBriefingReaderActionApiRequest({
+final class SubmitReaderActionApiRequest {
+  const SubmitReaderActionApiRequest({
     required this.scope,
-    required this.briefingId,
+    required this.summaryId,
     required this.userId,
     required this.kind,
     required this.label,
@@ -190,12 +190,12 @@ final class SubmitBriefingReaderActionApiRequest {
     this.feedbackReason,
   });
 
-  factory SubmitBriefingReaderActionApiRequest.fromCommand(
-    SubmitBriefingReaderActionCommand command,
+  factory SubmitReaderActionApiRequest.fromCommand(
+    SubmitReaderActionCommand command,
   ) {
-    return SubmitBriefingReaderActionApiRequest(
+    return SubmitReaderActionApiRequest(
       scope: command.scope,
-      briefingId: command.briefingId,
+      summaryId: command.summaryId,
       userId: command.userId,
       kind: command.kind,
       label: command.label,
@@ -206,11 +206,11 @@ final class SubmitBriefingReaderActionApiRequest {
   }
 
   final WorkspaceScope scope;
-  final String briefingId;
+  final String summaryId;
   final String userId;
   final String kind;
   final String label;
-  final BriefingReaderActionTarget target;
+  final ReaderActionTarget target;
   final String idempotencyKey;
-  final BriefingReaderFeedbackReason? feedbackReason;
+  final ReaderFeedbackReason? feedbackReason;
 }

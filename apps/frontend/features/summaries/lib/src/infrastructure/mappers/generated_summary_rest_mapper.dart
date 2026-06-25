@@ -2,12 +2,12 @@ import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
     as generated;
 
 import '../api/summary_api_dto.dart';
-import 'briefing_reader_brief_rest_mapper.dart';
+import 'reader_summary_content_rest_mapper.dart';
 
 final class GeneratedSummaryRestMapper {
   const GeneratedSummaryRestMapper();
 
-  static const _readerBriefMapper = BriefingReaderBriefRestMapper();
+  static const _readerSummaryContentMapper = ReaderSummaryContentRestMapper();
 
   SummaryPageApiDto list(generated.ListSummariesResponseDto dto) {
     return SummaryPageApiDto(
@@ -16,19 +16,19 @@ final class GeneratedSummaryRestMapper {
     );
   }
 
-  BriefingApiDto briefing(generated.BriefingArtifactResponseDto dto) {
-    return BriefingApiDto(
+  ReaderSummaryApiDto readerSummary(generated.BriefingArtifactResponseDto dto) {
+    return ReaderSummaryApiDto(
       id: dto.briefingId,
       title: dto.headline,
-      executiveSummary: _briefingBodyText(
+      executiveSummary: _readerSummaryBodyText(
         executiveSummary: dto.executiveSummary,
         noSignalReason: dto.noSignalReason,
       ),
       userId: dto.userId,
-      readerBrief: _readerBriefMapper.map(dto.readerBrief),
+      content: _readerSummaryContentMapper.map(dto.readerBrief),
       topStories: dto.topStories
           .map(
-            (story) => BriefingStoryApiDto(
+            (story) => SummaryStoryApiDto(
               title: story.title,
               summary: story.summary,
               topicCount: story.topicIds.length,
@@ -39,36 +39,38 @@ final class GeneratedSummaryRestMapper {
           .toList(growable: false),
       repeatedSignals: dto.repeatedSignals
           .map(
-            (signal) => BriefingRepeatedSignalApiDto(
+            (signal) => RepeatedSignalApiDto(
               title: signal.title,
               topicIds: signal.topicIds,
               citationIds: signal.citationIds,
             ),
           )
           .toList(growable: false),
-      citations: dto.citations.map(_briefingCitation).toList(growable: false),
-      freshnessLabel: _briefingFreshnessLabel(dto.freshness),
-      isDegraded: dto.qualityFlags.any(_isDegradedBriefingFlag),
+      citations: dto.citations
+          .map(_readerSummaryCitation)
+          .toList(growable: false),
+      freshnessLabel: _readerSummaryFreshnessLabel(dto.freshness),
+      isDegraded: dto.qualityFlags.any(_isDegradedReaderSummaryFlag),
     );
   }
 
-  BriefingJobApiDto requestedBriefingJob(
+  ReaderSummaryJobApiDto requestedReaderSummaryJob(
     generated.RequestBriefingResponseDto dto,
   ) {
-    return BriefingJobApiDto(
+    return ReaderSummaryJobApiDto(
       id: dto.briefingJobId,
-      status: _requestBriefingStatus(dto.status),
+      status: _requestReaderSummaryStatus(dto.status),
       created: dto.created,
     );
   }
 
-  BriefingJobApiDto briefingJobStatus(
+  ReaderSummaryJobApiDto readerSummaryJobStatus(
     generated.BriefingJobStatusResponseDto dto,
   ) {
-    return BriefingJobApiDto(
+    return ReaderSummaryJobApiDto(
       id: dto.briefingJobId,
-      status: _briefingJobStatus(dto.status),
-      briefingId: dto.briefingId,
+      status: _readerSummaryJobStatus(dto.status),
+      summaryId: dto.briefingId,
       failureReason: dto.failureReason,
       requestedAt: dto.requestedAt,
       startedAt: dto.startedAt,
@@ -133,7 +135,7 @@ final class GeneratedSummaryRestMapper {
     );
   }
 
-  SummaryCitationApiDto _briefingCitation(
+  SummaryCitationApiDto _readerSummaryCitation(
     generated.BriefingCitationViewDto dto,
   ) {
     final field = dto.field.json ?? 'evidence';
@@ -222,7 +224,7 @@ final class GeneratedSummaryRestMapper {
     };
   }
 
-  bool _isDegradedBriefingFlag(
+  bool _isDegradedReaderSummaryFlag(
     generated.BriefingArtifactResponseDtoQualityFlagsQualityFlags flag,
   ) {
     return switch (flag) {
@@ -259,7 +261,9 @@ final class GeneratedSummaryRestMapper {
     };
   }
 
-  String _briefingFreshnessLabel(generated.BriefingFreshnessDto freshness) {
+  String _readerSummaryFreshnessLabel(
+    generated.BriefingFreshnessDto freshness,
+  ) {
     return switch (freshness.status) {
       generated.BriefingFreshnessDtoStatusStatus.fresh => 'Fresh',
       generated.BriefingFreshnessDtoStatusStatus.stale => 'Stale',
@@ -267,7 +271,7 @@ final class GeneratedSummaryRestMapper {
     };
   }
 
-  String _requestBriefingStatus(
+  String _requestReaderSummaryStatus(
     generated.RequestBriefingResponseDtoStatusStatus status,
   ) {
     return switch (status) {
@@ -280,7 +284,7 @@ final class GeneratedSummaryRestMapper {
     };
   }
 
-  String _briefingJobStatus(
+  String _readerSummaryJobStatus(
     generated.BriefingJobStatusResponseDtoStatusStatus status,
   ) {
     return switch (status) {
@@ -296,7 +300,7 @@ final class GeneratedSummaryRestMapper {
     };
   }
 
-  String _briefingBodyText({
+  String _readerSummaryBodyText({
     required String executiveSummary,
     required String? noSignalReason,
   }) {
@@ -308,7 +312,7 @@ final class GeneratedSummaryRestMapper {
         .map((part) => part.trim())
         .where((part) => part.isNotEmpty)
         .join(' ');
-    return normalized.isEmpty ? 'No briefing available' : normalized;
+    return normalized.isEmpty ? 'No summary available' : normalized;
   }
 
   String _bodyText({

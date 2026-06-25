@@ -30,7 +30,8 @@ lib/src/presentation/pages/summaries_feature_page.dart
 
 ## Bounded Context Purpose
 
-Owns generated summaries, briefings, citations, regeneration, feedback and review language.
+Owns generated summaries, reader summaries, citations, source mix, reader
+actions, regeneration, feedback and review language.
 
 ## Growth Triggers
 
@@ -48,6 +49,8 @@ When growing, use the tactical folders from the shared DDD standard. Do not crea
 - Use typed shared async state and typed failures instead of loose `isLoading`/`error` fields.
 - Guard async/realtime updates against stale workspace, filter, route or selection state before mutating stores.
 - Keep generated DTOs and provider payload language inside infrastructure mappers or anti-corruption folders.
+- Map legacy backend/API `Briefing*` DTOs to `ReaderSummary` before data reaches domain, application stores or widgets.
+- Keep provider-native metrics separate from normalized `signalScore`; Reddit score, HN points, GitHub stars and X likes are provider metrics, not Summary scores.
 - Keep risky actions explicit with action id, risk, disabled reason, confirmation policy and idempotency key.
 - Do not add raw route paths, direct environment flag reads, persistent cache packages or console logging in feature code.
 - Realtime input needs event id, schema version, cursor, sequence, workspace scope and order guarding.

@@ -2,23 +2,23 @@ import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.
 
 import 'summaries_test_fixtures.dart';
 
-BriefingApiDto mixedSourceBriefingApiDto() {
-  return briefingApiDto(
+ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
+  return readerSummaryApiDto(
     title: 'Mixed AI source summary',
     executiveSummary:
         'Reddit, GitHub and Hacker News all contributed cited AI signals.',
-    readerBrief: briefingReaderBriefApiDto(
+    content: readerSummaryContentApiDto(
       headline: 'AI source mix',
       oneLineTakeaway:
           'The current AI signal is confirmed across discussion and repository sources.',
-      qualityState: const BriefingReaderQualityStateApiDto(
+      qualityState: const ReaderSummaryQualityStateApiDto(
         status: 'ready',
         flags: [],
         warnings: [],
         isSingleSource: false,
       ),
       sourceMix: const [
-        BriefingSourceMixEntryApiDto(
+        SourceMixEntryApiDto(
           providerKey: 'reddit',
           itemCount: 2,
           citationCount: 2,
@@ -27,7 +27,7 @@ BriefingApiDto mixedSourceBriefingApiDto() {
           singleSourceOnly: false,
           topicIds: ['ai-developer-tools'],
         ),
-        BriefingSourceMixEntryApiDto(
+        SourceMixEntryApiDto(
           providerKey: 'github-trending-page',
           itemCount: 2,
           citationCount: 2,
@@ -36,7 +36,7 @@ BriefingApiDto mixedSourceBriefingApiDto() {
           singleSourceOnly: false,
           topicIds: ['ai-developer-tools'],
         ),
-        BriefingSourceMixEntryApiDto(
+        SourceMixEntryApiDto(
           providerKey: 'hacker-news',
           itemCount: 2,
           citationCount: 2,
@@ -47,7 +47,7 @@ BriefingApiDto mixedSourceBriefingApiDto() {
         ),
       ],
       topReads: const [
-        BriefingReaderItemApiDto(
+        TopReadApiDto(
           title: 'Reddit thread on agent reliability',
           providerKey: 'reddit',
           reason: 'High-engagement Reddit discussion with concrete failures.',
@@ -55,15 +55,15 @@ BriefingApiDto mixedSourceBriefingApiDto() {
           matchedRules: ['provider:reddit', 'topic:ai-developer-tools'],
           signalScore: 0.94,
           providerMetrics: [
-            BriefingProviderMetricApiDto(label: 'Reddit score', value: '540'),
-            BriefingProviderMetricApiDto(label: 'Comments', value: '126'),
+            ProviderMetricApiDto(label: 'Reddit score', value: '540'),
+            ProviderMetricApiDto(label: 'Comments', value: '126'),
           ],
           whyImportant: ['Shows what practitioners are struggling with.'],
           whyNow: 'Current summary window includes an active Reddit thread.',
           canonicalUrl: 'https://reddit.example/r/MachineLearning/comments/1',
           citationIds: ['bc-1'],
         ),
-        BriefingReaderItemApiDto(
+        TopReadApiDto(
           title: 'calesthio/OpenMontage',
           providerKey: 'github-trending-page',
           reason: 'Daily GitHub Trending repository in the AI workflow space.',
@@ -74,8 +74,8 @@ BriefingApiDto mixedSourceBriefingApiDto() {
           ],
           signalScore: 0.89,
           providerMetrics: [
-            BriefingProviderMetricApiDto(label: 'Stars', value: '18,398'),
-            BriefingProviderMetricApiDto(
+            ProviderMetricApiDto(label: 'Stars', value: '18,398'),
+            ProviderMetricApiDto(
               label: 'GitHub Trending today',
               value: '#1, +3,703 stars today',
             ),
@@ -85,7 +85,7 @@ BriefingApiDto mixedSourceBriefingApiDto() {
           canonicalUrl: 'https://github.com/calesthio/OpenMontage',
           citationIds: ['bc-2'],
         ),
-        BriefingReaderItemApiDto(
+        TopReadApiDto(
           title: 'HN discussion on model routing',
           providerKey: 'hacker-news',
           reason: 'Hacker News discussion adds technical review context.',
@@ -93,8 +93,8 @@ BriefingApiDto mixedSourceBriefingApiDto() {
           matchedRules: ['provider:hacker-news', 'topic:ai-developer-tools'],
           signalScore: 0.83,
           providerMetrics: [
-            BriefingProviderMetricApiDto(label: 'HN points', value: '312'),
-            BriefingProviderMetricApiDto(label: 'Comments', value: '74'),
+            ProviderMetricApiDto(label: 'HN points', value: '312'),
+            ProviderMetricApiDto(label: 'Comments', value: '74'),
           ],
           whyImportant: [
             'Adds engineering critique beyond repository metrics.',

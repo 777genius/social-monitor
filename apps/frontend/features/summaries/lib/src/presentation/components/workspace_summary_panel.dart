@@ -1,0 +1,283 @@
+import 'package:flutter/material.dart';
+import 'package:social_monitor_design_system/social_monitor_design_system.dart';
+import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
+
+import '../../domain/aggregates/reader_summary.dart';
+import '../../domain/entities/reader_summary_job_snapshot.dart';
+import '../../domain/value_objects/reader_action_target.dart';
+import 'reader_summary_view.dart';
+
+class WorkspaceSummaryPanel extends StatelessWidget {
+  const WorkspaceSummaryPanel({
+    super.key,
+    required this.state,
+    required this.jobState,
+    required this.readerActionState,
+    required this.activeReaderActionIdempotencyKey,
+    required this.lastReaderActionIdempotencyKey,
+    required this.onRetry,
+    required this.onGenerate,
+    required this.intentForAction,
+    required this.onAction,
+  });
+
+  final AsyncViewState<WorkspaceSummarySnapshot> state;
+  final AsyncViewState<ReaderSummaryJobSnapshot> jobState;
+  final AsyncViewState<ReaderActionResult> readerActionState;
+  final String? activeReaderActionIdempotencyKey;
+  final String? lastReaderActionIdempotencyKey;
+  final VoidCallback onRetry;
+  final VoidCallback onGenerate;
+  final UserActionIntent Function(ReaderSummary summary, ReaderAction action)
+  intentForAction;
+  final void Function(
+    ReaderSummary summary,
+    ReaderAction action, [
+    ReaderFeedbackReason? feedbackReason,
+  ])
+  onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    if (jobState is LoadingViewState<ReaderSummaryJobSnapshot>) {
+      final current = _currentSummary(state);
+      if (current != null) {
+        return _ReadySummary(
+          summary: current,
+          isRefreshing: true,
+          readerActionState: readerActionState,
+          activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
+          lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
+          onGenerate: onGenerate,
+          intentForAction: intentForAction,
+          onAction: onAction,
+        );
+      }
+      return const _GeneratingSummary();
+    }
+    final failedJob = _failedJob(jobState);
+    if (failedJob != null) {
+      return AppInlineProblem(
+        title: 'Summary generation failed',
+        message: failedJob.failureReason ?? 'The summary job failed.',
+        tone: AppProblemTone.warning,
+        actionLabel: 'Generate',
+        onAction: onGenerate,
+      );
+    }
+    final activeJob = _activeJob(jobState);
+    if (activeJob != null) {
+      final current = _currentSummary(state);
+      if (current != null) {
+        return _ReadySummary(
+          summary: current,
+          isRefreshing: true,
+          readerActionState: readerActionState,
+          activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
+          lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
+          onGenerate: onGenerate,
+          intentForAction: intentForAction,
+          onAction: onAction,
+        );
+      }
+      return _GeneratingSummary(job: activeJob);
+    }
+    if (jobState case FailureViewState<ReaderSummaryJobSnapshot>(
+      :final failure,
+    )) {
+      return AppInlineProblem(
+        title: 'Summary request failed',
+        message: failure.message,
+        tone: AppProblemTone.warning,
+        actionLabel: 'Generate',
+        onAction: onGenerate,
+      );
+    }
+
+    return switch (state) {
+      ReadyViewState<WorkspaceSummarySnapshot>(:final value) =>
+        value.current == null
+            ? _EmptySummary(onGenerate: onGenerate)
+            : _ReadySummary(
+                summary: value.current!,
+                readerActionState: readerActionState,
+                activeReaderActionIdempotencyKey:
+                    activeReaderActionIdempotencyKey,
+                lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
+                onGenerate: onGenerate,
+                intentForAction: intentForAction,
+                onAction: onAction,
+              ),
+      LoadingViewState<WorkspaceSummarySnapshot>(:final previousValue) =>
+        previousValue?.current == null
+            ? const _SummarySkeleton()
+            : _ReadySummary(
+                summary: previousValue!.current!,
+                isRefreshing: true,
+                readerActionState: readerActionState,
+                activeReaderActionIdempotencyKey:
+                    activeReaderActionIdempotencyKey,
+                lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
+                onGenerate: onGenerate,
+                intentForAction: intentForAction,
+                onAction: onAction,
+              ),
+      FailureViewState<WorkspaceSummarySnapshot>(:final failure) =>
+        AppInlineProblem(
+          title: 'Summary unavailable',
+          message: failure.message,
+          tone: AppProblemTone.warning,
+          actionLabel: 'Retry',
+          onAction: onRetry,
+        ),
+      EmptyViewState<WorkspaceSummarySnapshot>() => _EmptySummary(
+        onGenerate: onGenerate,
+      ),
+      _ => const SizedBox.shrink(),
+    };
+  }
+
+  ReaderSummaryJobSnapshot? _activeJob(
+    AsyncViewState<ReaderSummaryJobSnapshot> state,
+  ) {
+    return switch (state) {
+      LoadingViewState<ReaderSummaryJobSnapshot>(:final previousValue) =>
+        previousValue?.status.isPending == true ? previousValue : null,
+      ReadyViewState<ReaderSummaryJobSnapshot>(:final value)
+          when value.status.isPending =>
+        value,
+      _ => null,
+    };
+  }
+
+  ReaderSummaryJobSnapshot? _failedJob(
+    AsyncViewState<ReaderSummaryJobSnapshot> state,
+  ) {
+    return switch (state) {
+      ReadyViewState<ReaderSummaryJobSnapshot>(:final value)
+          when value.status == ReaderSummaryJobStatus.failed =>
+        value,
+      _ => null,
+    };
+  }
+
+  ReaderSummary? _currentSummary(
+    AsyncViewState<WorkspaceSummarySnapshot> state,
+  ) {
+    return switch (state) {
+      ReadyViewState<WorkspaceSummarySnapshot>(:final value) => value.current,
+      LoadingViewState<WorkspaceSummarySnapshot>(:final previousValue) =>
+        previousValue?.current,
+      _ => null,
+    };
+  }
+}
+
+class _ReadySummary extends StatelessWidget {
+  const _ReadySummary({
+    required this.summary,
+    required this.readerActionState,
+    required this.activeReaderActionIdempotencyKey,
+    required this.lastReaderActionIdempotencyKey,
+    required this.onGenerate,
+    required this.intentForAction,
+    required this.onAction,
+    this.isRefreshing = false,
+  });
+
+  final ReaderSummary summary;
+  final AsyncViewState<ReaderActionResult> readerActionState;
+  final String? activeReaderActionIdempotencyKey;
+  final String? lastReaderActionIdempotencyKey;
+  final VoidCallback onGenerate;
+  final UserActionIntent Function(ReaderSummary summary, ReaderAction action)
+  intentForAction;
+  final void Function(
+    ReaderSummary summary,
+    ReaderAction action, [
+    ReaderFeedbackReason? feedbackReason,
+  ])
+  onAction;
+  final bool isRefreshing;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border.all(color: colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: ReaderSummaryView(
+          summary: summary,
+          isRefreshing: isRefreshing,
+          readerActionState: readerActionState,
+          activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
+          lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
+          onGenerate: onGenerate,
+          intentForAction: (action) => intentForAction(summary, action),
+          onAction: (action, [feedbackReason]) =>
+              onAction(summary, action, feedbackReason),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptySummary extends StatelessWidget {
+  const _EmptySummary({required this.onGenerate});
+
+  final VoidCallback onGenerate;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppInlineProblem(
+      title: 'No workspace summary',
+      message: 'Run a workspace summary after feed items are collected.',
+      tone: AppProblemTone.neutral,
+      actionLabel: 'Generate',
+      onAction: onGenerate,
+    );
+  }
+}
+
+class _GeneratingSummary extends StatelessWidget {
+  const _GeneratingSummary({this.job});
+
+  final ReaderSummaryJobSnapshot? job;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = switch (job?.status) {
+      ReaderSummaryJobStatus.requested => 'Queued',
+      ReaderSummaryJobStatus.running => 'Running',
+      ReaderSummaryJobStatus.completed => 'Completed',
+      ReaderSummaryJobStatus.noSignal => 'No signal',
+      ReaderSummaryJobStatus.failed => 'Failed',
+      ReaderSummaryJobStatus.unknown => 'Unknown',
+      null => 'Starting',
+    };
+    return AppInlineProblem(
+      title: 'Generating summary',
+      message: '$status - collecting the latest workspace signal.',
+      tone: AppProblemTone.neutral,
+    );
+  }
+}
+
+class _SummarySkeleton extends StatelessWidget {
+  const _SummarySkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const AppInlineProblem(
+      title: 'Loading summary',
+      message: 'Fetching the latest workspace summary.',
+      tone: AppProblemTone.neutral,
+    );
+  }
+}

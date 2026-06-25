@@ -45,15 +45,15 @@ SummaryApiDto summaryApiDto({
   );
 }
 
-BriefingApiDto briefingApiDto({
+ReaderSummaryApiDto readerSummaryApiDto({
   String id = 'briefing-1',
   String title = 'AI workspace summary',
   String executiveSummary =
       'AI model launches and developer tooling changes are the strongest signals.',
   String? userId = 'user-demo',
-  BriefingReaderBriefApiDto? readerBrief,
-  List<BriefingStoryApiDto> topStories = const [
-    BriefingStoryApiDto(
+  ReaderSummaryContentApiDto? content,
+  List<SummaryStoryApiDto> topStories = const [
+    SummaryStoryApiDto(
       title: 'New AI coding tools gain adoption',
       summary: 'Developers discussed new agent workflows and IDE support.',
       topicCount: 2,
@@ -61,17 +61,17 @@ BriefingApiDto briefingApiDto({
       citationIds: ['bc-1'],
     ),
   ],
-  List<BriefingRepeatedSignalApiDto> repeatedSignals = const [],
+  List<RepeatedSignalApiDto> repeatedSignals = const [],
   List<SummaryCitationApiDto>? citations,
   String freshnessLabel = 'Fresh',
   bool isDegraded = false,
 }) {
-  return BriefingApiDto(
+  return ReaderSummaryApiDto(
     id: id,
     title: title,
     executiveSummary: executiveSummary,
     userId: userId,
-    readerBrief: readerBrief ?? briefingReaderBriefApiDto(),
+    content: content ?? readerSummaryContentApiDto(),
     topStories: topStories,
     repeatedSignals: repeatedSignals,
     citations: citations ?? [summaryCitationApiDto(id: 'bc-1')],
@@ -80,16 +80,16 @@ BriefingApiDto briefingApiDto({
   );
 }
 
-BriefingReaderBriefApiDto briefingReaderBriefApiDto({
+ReaderSummaryContentApiDto readerSummaryContentApiDto({
   String headline = 'AI workspace summary',
   String oneLineTakeaway =
       'New AI coding tools are the clearest signal to inspect first.',
   String sourceProviderKey = 'github-repo-radar',
   List<String> newSignals = const ['1 Repo Radar item selected'],
-  BriefingReaderQualityStateApiDto? qualityState,
-  List<BriefingSourceMixEntryApiDto>? sourceMix,
-  List<BriefingReaderItemApiDto> topReads = const [
-    BriefingReaderItemApiDto(
+  ReaderSummaryQualityStateApiDto? qualityState,
+  List<SourceMixEntryApiDto>? sourceMix,
+  List<TopReadApiDto> topReads = const [
+    TopReadApiDto(
       title: 'AI coding tools',
       providerKey: 'github-repo-radar',
       reason: 'Developers discussed new agent workflows and IDE support.',
@@ -97,8 +97,8 @@ BriefingReaderBriefApiDto briefingReaderBriefApiDto({
       matchedRules: ['topic:ai-developer-tools', 'provider:github-repo-radar'],
       signalScore: 1,
       providerMetrics: [
-        BriefingProviderMetricApiDto(label: 'Stars', value: '12,400'),
-        BriefingProviderMetricApiDto(label: 'Trend', value: '+420 / 48h'),
+        ProviderMetricApiDto(label: 'Stars', value: '12,400'),
+        ProviderMetricApiDto(label: 'Trend', value: '+420 / 48h'),
       ],
       whyImportant: [
         'Developers discussed new agent workflows and IDE support.',
@@ -114,7 +114,7 @@ BriefingReaderBriefApiDto briefingReaderBriefApiDto({
   final primaryUrl = primaryRead?.canonicalUrl;
   final primaryCitationIds = primaryRead?.citationIds ?? const <String>[];
 
-  return BriefingReaderBriefApiDto(
+  return ReaderSummaryContentApiDto(
     headline: headline,
     oneLineTakeaway: oneLineTakeaway,
     bullets: const [
@@ -122,14 +122,14 @@ BriefingReaderBriefApiDto briefingReaderBriefApiDto({
     ],
     qualityState:
         qualityState ??
-        const BriefingReaderQualityStateApiDto(
+        const ReaderSummaryQualityStateApiDto(
           status: 'limited_sources',
           flags: ['limited_sources'],
           warnings: ['Source coverage is limited or single-source.'],
           isSingleSource: true,
         ),
     topicSections: [
-      BriefingTopicSectionApiDto(
+      ReaderTopicSectionApiDto(
         title: 'Developer tooling',
         insight: 'Agent workflows and IDE support are the main discussion.',
         items: topReads,
@@ -139,7 +139,7 @@ BriefingReaderBriefApiDto briefingReaderBriefApiDto({
     sourceMix:
         sourceMix ??
         [
-          BriefingSourceMixEntryApiDto(
+          SourceMixEntryApiDto(
             providerKey: sourceProviderKey,
             itemCount: topReads.length,
             citationCount: topReads.fold<int>(
@@ -153,7 +153,7 @@ BriefingReaderBriefApiDto briefingReaderBriefApiDto({
           ),
         ],
     topReads: topReads,
-    trendDelta: BriefingTrendDeltaApiDto(
+    trendDelta: ReaderTrendDeltaApiDto(
       newSignals: newSignals,
       growingSignals: const ['Developer tooling'],
       repeatedSignals: [],
@@ -162,28 +162,28 @@ BriefingReaderBriefApiDto briefingReaderBriefApiDto({
     openQuestions: const [],
     risks: const [],
     nextActions: [
-      BriefingNextActionApiDto(
+      ReaderActionApiDto(
         kind: 'read_source',
         label: 'Read source',
         reason: 'Open the cited source behind this summary item.',
         canonicalUrl: primaryUrl,
         citationIds: primaryCitationIds,
       ),
-      BriefingNextActionApiDto(
+      ReaderActionApiDto(
         kind: 'watch_repository',
         label: 'Watch $primaryTitle',
         reason: 'Check whether the signal keeps growing.',
         canonicalUrl: primaryUrl,
         citationIds: primaryCitationIds,
       ),
-      BriefingNextActionApiDto(
+      ReaderActionApiDto(
         kind: 'mark_relevant',
         label: 'Mark relevant',
         reason: 'Use feedback to keep future summaries aligned.',
         canonicalUrl: primaryUrl,
         citationIds: primaryCitationIds,
       ),
-      BriefingNextActionApiDto(
+      ReaderActionApiDto(
         kind: 'mark_not_relevant',
         label: 'Not relevant',
         reason: 'Use feedback to reduce similar future signals.',
@@ -254,19 +254,19 @@ SummaryApiDto githubTrendingSummaryApiDto() {
   );
 }
 
-BriefingApiDto githubTrendingBriefingApiDto() {
-  return briefingApiDto(
+ReaderSummaryApiDto githubTrendingReaderSummaryApiDto() {
+  return readerSummaryApiDto(
     title: 'AI signal summary',
     executiveSummary:
         'GitHub Trending page found concrete repositories worth reviewing today, while Repo Radar should be used for longer-window GH Archive growth checks.',
-    readerBrief: briefingReaderBriefApiDto(
+    content: readerSummaryContentApiDto(
       headline: 'GitHub daily radar',
       oneLineTakeaway:
           'GitHub Trending is the daily radar for what is breaking out today; Repo Radar is the historical analytics layer for 7d, 30d and 90d growth.',
       sourceProviderKey: 'github-trending-page',
       newSignals: const ['3 GitHub Trending page items selected'],
       topReads: const [
-        BriefingReaderItemApiDto(
+        TopReadApiDto(
           title: 'calesthio/OpenMontage',
           providerKey: 'github-trending-page',
           reason:
@@ -277,19 +277,18 @@ BriefingApiDto githubTrendingBriefingApiDto() {
             'provider:github-trending-page',
           ],
           signalScore: 1,
-          confidence: BriefingReaderItemConfidenceApiDto(
+          confidence: TopReadConfidenceApiDto(
             level: 'medium',
             score: 0.57,
             rationale: 'Daily GitHub Trending signal with raw metrics.',
           ),
           confirmedProviderKeys: ['github-trending-page'],
           providerMetrics: [
-            BriefingProviderMetricApiDto(label: 'Story signal', value: '1'),
-            BriefingProviderMetricApiDto(
+            ProviderMetricApiDto(
               label: 'GitHub Trending today',
               value: '#1, +3,703 stars today',
             ),
-            BriefingProviderMetricApiDto(label: 'Stars', value: '18,398'),
+            ProviderMetricApiDto(label: 'Stars', value: '18,398'),
           ],
           whyImportant: [
             'It is the clearest daily breakout on the public GitHub Trending page.',
@@ -299,7 +298,7 @@ BriefingApiDto githubTrendingBriefingApiDto() {
           canonicalUrl: 'https://github.com/calesthio/OpenMontage',
           citationIds: ['bc-1'],
         ),
-        BriefingReaderItemApiDto(
+        TopReadApiDto(
           title: 'apple/container',
           providerKey: 'github-trending-page',
           reason:
@@ -311,11 +310,11 @@ BriefingApiDto githubTrendingBriefingApiDto() {
           ],
           signalScore: 0.9,
           providerMetrics: [
-            BriefingProviderMetricApiDto(
+            ProviderMetricApiDto(
               label: 'GitHub Trending today',
               value: '#2, +1,746 stars today',
             ),
-            BriefingProviderMetricApiDto(label: 'Stars', value: '41,719'),
+            ProviderMetricApiDto(label: 'Stars', value: '41,719'),
           ],
           whyImportant: ['Useful infrastructure signal from Apple.'],
           whyNow:
@@ -323,7 +322,7 @@ BriefingApiDto githubTrendingBriefingApiDto() {
           canonicalUrl: 'https://github.com/apple/container',
           citationIds: ['bc-2'],
         ),
-        BriefingReaderItemApiDto(
+        TopReadApiDto(
           title: 'ZhuLinsen/daily_stock_analysis',
           providerKey: 'github-trending-page',
           reason: 'Useful follow-up for LLM-assisted analysis workflows.',
@@ -334,14 +333,11 @@ BriefingApiDto githubTrendingBriefingApiDto() {
           ],
           signalScore: 0.82,
           providerMetrics: [
-            BriefingProviderMetricApiDto(
+            ProviderMetricApiDto(
               label: 'GitHub Trending today',
               value: '#3 daily signal',
             ),
-            BriefingProviderMetricApiDto(
-              label: 'Source',
-              value: 'github.com/trending',
-            ),
+            ProviderMetricApiDto(label: 'Source', value: 'github.com/trending'),
           ],
           whyImportant: [
             'Shows LLM workflows breaking into daily GitHub attention.',
@@ -354,7 +350,7 @@ BriefingApiDto githubTrendingBriefingApiDto() {
       ],
     ),
     topStories: const [
-      BriefingStoryApiDto(
+      SummaryStoryApiDto(
         title: 'OpenMontage leads today\'s GitHub Trending page',
         summary:
             'The daily radar is driven by the public github.com/trending page, not Repo Radar history.',
@@ -391,11 +387,11 @@ BriefingApiDto githubTrendingBriefingApiDto() {
   );
 }
 
-BriefingApiDto repoRadarTopTenBriefingApiDto() {
-  final topReads = List<BriefingReaderItemApiDto>.generate(11, (index) {
+ReaderSummaryApiDto repoRadarTopTenReaderSummaryApiDto() {
+  final topReads = List<TopReadApiDto>.generate(11, (index) {
     final rank = index + 1;
 
-    return BriefingReaderItemApiDto(
+    return TopReadApiDto(
       title: 'repo-radar/project-$rank',
       providerKey: 'github-repo-radar',
       reason: 'Repository $rank is gaining stars in the current window.',
@@ -406,14 +402,8 @@ BriefingApiDto repoRadarTopTenBriefingApiDto() {
       ],
       signalScore: 1 - index / 20,
       providerMetrics: [
-        BriefingProviderMetricApiDto(
-          label: 'Stars',
-          value: '${54000 - index * 100}',
-        ),
-        BriefingProviderMetricApiDto(
-          label: 'Trend',
-          value: '+${360 - index} / 48h',
-        ),
+        ProviderMetricApiDto(label: 'Stars', value: '${54000 - index * 100}'),
+        ProviderMetricApiDto(label: 'Trend', value: '+${360 - index} / 48h'),
       ],
       whyImportant: [
         'Repository $rank is gaining stars in the current window.',
@@ -424,11 +414,11 @@ BriefingApiDto repoRadarTopTenBriefingApiDto() {
     );
   });
 
-  return briefingApiDto(
+  return readerSummaryApiDto(
     title: 'Repo radar top ten briefing',
     executiveSummary:
         'GitHub Repo Radar found ten repositories worth reviewing today.',
-    readerBrief: briefingReaderBriefApiDto(
+    content: readerSummaryContentApiDto(
       headline: 'Repo radar top ten',
       oneLineTakeaway:
           'Review the ten strongest repository signals before drilling into the long tail.',
