@@ -233,6 +233,84 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
       .set('Authorization', `Bearer ${workflowSecret}`)
       .expect(200);
 
+    const briefing = await request(app.getHttpServer())
+      .post('/briefing-requests')
+      .set(headers)
+      .set('Authorization', `Bearer ${workflowSecret}`)
+      .set('x-request-id', 'write-summary-api-key-briefing-request')
+      .set('idempotency-key', 'write-summary-api-key-briefing-request')
+      .send({
+        scope: {
+          type: 'topic',
+          topicId,
+        },
+        userId: 'write-summary-api-key-user',
+      })
+      .expect(201);
+
+    expect(briefing.body).toMatchObject({
+      briefingJobId: expect.any(String),
+      created: true,
+    });
+
+    await request(app.getHttpServer())
+      .get(`/briefing-jobs/${briefing.body.briefingJobId}/status`)
+      .set(headers)
+      .set('Authorization', `Bearer ${workflowSecret}`)
+      .expect(200);
+
+    const relevanceProfile = await request(app.getHttpServer())
+      .put('/relevance/users/write-summary-api-key-user/profile')
+      .set(headers)
+      .set('Authorization', `Bearer ${workflowSecret}`)
+      .set('x-request-id', 'write-summary-api-key-relevance-profile')
+      .send({
+        sourceWeights: [
+          {
+            key: 'github',
+            weight: 2,
+          },
+        ],
+        mutedKeywords: ['giveaway'],
+      })
+      .expect(200);
+
+    expect(relevanceProfile.body.profile).toMatchObject({
+      userId: 'write-summary-api-key-user',
+      sourceWeights: [
+        {
+          key: 'github',
+          weight: 2,
+        },
+      ],
+    });
+
+    const relevanceFeedback = await request(app.getHttpServer())
+      .post('/relevance/users/write-summary-api-key-user/feedback')
+      .set(headers)
+      .set('Authorization', `Bearer ${workflowSecret}`)
+      .set('x-request-id', 'write-summary-api-key-relevance-feedback')
+      .send({
+        idempotencyKey: 'write-summary-api-key-relevance-feedback',
+        action: 'less_like_this',
+        rating: 2,
+        topicId,
+        providerKey: 'rss',
+        title: 'Low quality source',
+        bodyPreview: 'The user does not want more of this source.',
+        reason: 'low_quality_source',
+      })
+      .expect(201);
+
+    expect(relevanceFeedback.body).toMatchObject({
+      created: true,
+      learningDirection: 'negative',
+      feedback: {
+        userId: 'write-summary-api-key-user',
+        action: 'less_like_this',
+      },
+    });
+
     await request(app.getHttpServer())
       .put(`/topics/${topicId}/summary-policy`)
       .set(headers)
@@ -245,6 +323,33 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
         maxKeyPoints: 4,
         includeRisks: true,
         includeSourceHighlights: true,
+      })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post('/briefing-requests')
+      .set(headers)
+      .set('Authorization', `Bearer ${readOnlySecret}`)
+      .set('idempotency-key', 'write-summary-api-key-briefing-read-only-denied')
+      .send({
+        scope: {
+          type: 'topic',
+          topicId,
+        },
+      })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .put('/relevance/users/write-summary-api-key-user/profile')
+      .set(headers)
+      .set('Authorization', `Bearer ${readOnlySecret}`)
+      .send({
+        keywordWeights: [
+          {
+            key: 'agents',
+            weight: 1,
+          },
+        ],
       })
       .expect(403);
   });

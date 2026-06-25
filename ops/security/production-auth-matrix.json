@@ -37,6 +37,7 @@
       ],
       "operations": [
         { "method": "GET", "path": "/topics/{topicId}/source-bindings", "action": "source_bindings.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/topics/{topicId}/source-bindings/overview", "action": "source_bindings.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/topics/{topicId}/source-bindings", "action": "source_bindings.create", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] },
         { "method": "GET", "path": "/topics/{topicId}/source-bindings/{sourceBindingId}/health", "action": "source_bindings.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "PATCH", "path": "/topics/{topicId}/source-bindings/{sourceBindingId}/status", "action": "source_bindings.update_status", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] }
@@ -52,6 +53,8 @@
       ],
       "operations": [
         { "method": "GET", "path": "/scan-requests/{scanJobId}/status", "action": "scan_jobs.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/source-bindings/{sourceBindingId}/scan-requests", "action": "scan_jobs.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/source-bindings/{sourceBindingId}/scan-requests/daily", "action": "scan_jobs.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/source-bindings/{sourceBindingId}/scan-requests", "action": "scan_requests.create", "apiKeyScope": "write:scan_requests", "roles": ["owner", "admin", "member"] },
         { "method": "GET", "path": "/source-bindings/{sourceBindingId}/scan-policy", "action": "scan_policies.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/source-bindings/{sourceBindingId}/scan-policy", "action": "scan_policies.set", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] },
@@ -63,11 +66,14 @@
       "evidenceFiles": [
         "test/e2e/feed.items.list.e2e-spec.ts",
         "test/e2e/feed.tenant-scope.e2e-spec.ts",
-        "test/e2e/read-surfaces.api-key-scope.e2e-spec.ts"
+        "test/e2e/read-surfaces.api-key-scope.e2e-spec.ts",
+        "scripts/check-personalized-relevance-engine-smoke.ts"
       ],
       "operations": [
         { "method": "GET", "path": "/feed/items", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "GET", "path": "/feed/items/{feedItemId}", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] }
+        { "method": "GET", "path": "/feed/items/{feedItemId}", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/relevance/users/{userId}/digest", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/relevance/users/{userId}/feed", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] }
       ]
     },
     {
@@ -78,9 +84,14 @@
         "test/e2e/summary-requests.authorization.e2e-spec.ts",
         "test/e2e/summary-regenerations.authorization.e2e-spec.ts",
         "test/e2e/read-surfaces.api-key-scope.e2e-spec.ts",
-        "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts"
+        "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts",
+        "scripts/check-briefing-workflow-smoke.ts"
       ],
       "operations": [
+        { "method": "GET", "path": "/briefing-jobs/{briefingJobId}/status", "action": "briefing_jobs.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/briefing-requests", "action": "briefing_requests.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
+        { "method": "GET", "path": "/briefings", "action": "briefings.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/briefings/{briefingId}", "action": "briefings.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/summaries", "action": "summaries.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/summaries/{summaryId}", "action": "summaries.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/summaries/{summaryId}/regenerations", "action": "summary_regenerations.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
@@ -95,9 +106,12 @@
       "evidenceFiles": [
         "test/e2e/summary-feedback.submit.e2e-spec.ts",
         "test/e2e/summary-ready-to-realtime.e2e-spec.ts",
-        "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts"
+        "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts",
+        "scripts/check-personalized-relevance-engine-smoke.ts"
       ],
       "operations": [
+        { "method": "PUT", "path": "/relevance/users/{userId}/profile", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
+        { "method": "POST", "path": "/relevance/users/{userId}/feedback", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
         { "method": "GET", "path": "/summaries/{summaryId}/feedback", "action": "summary_feedback.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/summaries/{summaryId}/feedback", "action": "summary_feedback.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member", "viewer"] }
       ]

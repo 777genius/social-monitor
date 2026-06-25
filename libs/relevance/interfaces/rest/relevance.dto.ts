@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
@@ -44,16 +45,19 @@ export class RelevanceWeightDto implements RelevanceWeight {
 export class UpsertUserRelevanceProfileRequestDto {
   @ApiPropertyOptional({ type: () => [RelevanceWeightDto] })
   @IsOptional()
+  @Type(() => RelevanceWeightDto)
   @ValidateNested({ each: true })
   declare readonly topicWeights?: readonly RelevanceWeightDto[];
 
   @ApiPropertyOptional({ type: () => [RelevanceWeightDto] })
   @IsOptional()
+  @Type(() => RelevanceWeightDto)
   @ValidateNested({ each: true })
   declare readonly sourceWeights?: readonly RelevanceWeightDto[];
 
   @ApiPropertyOptional({ type: () => [RelevanceWeightDto] })
   @IsOptional()
+  @Type(() => RelevanceWeightDto)
   @ValidateNested({ each: true })
   declare readonly keywordWeights?: readonly RelevanceWeightDto[];
 

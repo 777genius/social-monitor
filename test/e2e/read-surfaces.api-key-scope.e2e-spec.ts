@@ -97,6 +97,46 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
       .set('Authorization', `Bearer ${feedKey}`)
       .expect(200);
 
+    const rankedFeed = await request(app.getHttpServer())
+      .get('/relevance/users/read-api-key-user/feed')
+      .query({ topicId, limit: 10 })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${feedKey}`)
+      .expect(200);
+
+    expect(rankedFeed.body.items).toEqual([
+      expect.objectContaining({
+        feedItemId: 'feed-read-api-key-1',
+        topicId,
+        providerKey: 'github',
+      }),
+    ]);
+
+    const digest = await request(app.getHttpServer())
+      .get('/relevance/users/read-api-key-user/digest')
+      .query({
+        topicIds: topicId,
+        windowStartedAt: '2026-06-06T00:00:00.000Z',
+        windowEndedAt: '2026-06-07T00:00:00.000Z',
+        limit: 10,
+      })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${feedKey}`)
+      .expect(200);
+
+    expect(digest.body).toMatchObject({
+      userId: 'read-api-key-user',
+      topicIds: [topicId],
+    });
+    expect(digest.body.items).toEqual([
+      expect.objectContaining({
+        feedItemId: 'feed-read-api-key-1',
+        topicId,
+      }),
+    ]);
+
     await request(app.getHttpServer())
       .get('/feed/items')
       .set('x-tenant-id', tenant)
@@ -152,6 +192,28 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
 
     await request(app.getHttpServer())
       .get(`/summaries/${executed.value.summaryId}`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${feedKey}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get('/briefings')
+      .query({ limit: 10 })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${summaryKey}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get('/briefing-jobs/missing-read-api-key-briefing-job/status')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${summaryKey}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get('/briefings')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('Authorization', `Bearer ${feedKey}`)
