@@ -1,27 +1,25 @@
-import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
-import type { FetchedSourceItem } from './source-fetcher.port';
-import type { SourceRuntimeConfig } from './source-config-reader.port';
+import type {
+  ProviderFailureKind,
+  SourceCapabilityProfile,
+  SourceContentUnit,
+  SourceCursorModel,
+  SourceProviderKey,
+  SourceQueryMode,
+  SourceQuotaModel,
+} from "../domain";
+import type { FetchedSourceItem } from "./source-fetcher.port";
+import type { SourceRuntimeConfig } from "./source-config-reader.port";
 
-export type ProviderKey = string;
-
-export type SourceContentUnit = 'post' | 'comment' | 'profile' | 'community' | 'media' | 'link';
-export type SourceQueryMode = 'search' | 'listing' | 'account_feed' | 'thread' | 'url';
-export type SourceCursorModel = 'none' | 'time' | 'page_token' | 'opaque' | 'since_id' | 'etag_last_modified';
-export type SourceQuotaModel = 'none' | 'per_app' | 'per_credential' | 'per_tenant' | 'per_source_binding';
-export type ProviderFailureKind = 'rate_limited' | 'auth_failed' | 'unavailable' | 'invalid_query' | 'unknown';
-
-export type SourceCapabilityProfile = {
-  readonly providerKey: ProviderKey;
-  readonly displayName: string;
-  readonly version: number;
-  readonly productionSafe: boolean;
-  readonly supportedContentUnits: readonly SourceContentUnit[];
-  readonly supportedQueryModes: readonly SourceQueryMode[];
-  readonly cursorModel: SourceCursorModel;
-  readonly stableIdentity: readonly string[];
-  readonly quotaModel: SourceQuotaModel;
-  readonly limitations: readonly string[];
+export type ProviderKey = SourceProviderKey;
+export type {
+  ProviderFailureKind,
+  SourceCapabilityProfile,
+  SourceContentUnit,
+  SourceCursorModel,
+  SourceQueryMode,
+  SourceQuotaModel,
 };
 
 export type SourceQuery = {
@@ -64,7 +62,16 @@ export interface SourceProviderPort {
   key(): ProviderKey;
   capabilityProfile(): SourceCapabilityProfile;
   validateBinding(query: SourceQuery): SourceProviderValidationResult;
-  planScan(query: SourceQuery, context: SourceProviderScanContext): SourceProviderScanPlan;
-  scan(plan: SourceProviderScanPlan, context: SourceProviderScanContext): Promise<SourceProviderScanResult>;
-  classifyError(error: unknown, context: SourceProviderScanContext): ProviderFailure;
+  planScan(
+    query: SourceQuery,
+    context: SourceProviderScanContext,
+  ): SourceProviderScanPlan;
+  scan(
+    plan: SourceProviderScanPlan,
+    context: SourceProviderScanContext,
+  ): Promise<SourceProviderScanResult>;
+  classifyError(
+    error: unknown,
+    context: SourceProviderScanContext,
+  ): ProviderFailure;
 }

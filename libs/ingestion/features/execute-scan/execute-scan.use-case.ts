@@ -5,9 +5,14 @@ import {
   err,
   ok,
   type Result,
-} from '@social-monitor/shared-kernel';
+} from "@social-monitor/shared-kernel";
 
-import { ScanAttempt, SourceItem } from '../../domain';
+import {
+  createScanPolicy,
+  createSourceBinding,
+  ScanAttempt,
+  SourceItem,
+} from "../../domain";
 import {
   noopSourceItemMetadataProjection,
   noopSourceItemEnrichment,
@@ -22,9 +27,9 @@ import {
   type SourceItemEnrichmentPort,
   type SourceItemMetadataProjectionPort,
   type SourceItemRepositoryPort,
-} from '../../ports';
-import type { ExecuteScanCommand } from './execute-scan.command';
-import type { ExecuteScanResult } from './execute-scan.result';
+} from "../../ports";
+import type { ExecuteScanCommand } from "./execute-scan.command";
+import type { ExecuteScanResult } from "./execute-scan.result";
 
 type ExecuteScanFailure = DomainError | Error;
 
@@ -44,36 +49,62 @@ export class ExecuteScanUseCase {
     private readonly sourceItemEnrichment: SourceItemEnrichmentPort = noopSourceItemEnrichment,
   ) {}
 
-  async execute(command: ExecuteScanCommand): Promise<Result<ExecuteScanResult, ExecuteScanFailure>> {
+  async execute(
+    command: ExecuteScanCommand,
+  ): Promise<Result<ExecuteScanResult, ExecuteScanFailure>> {
     if (command.scanJobId.trim().length === 0) {
-      return err(new DomainError('validation.failed', 'Scan job id must be non-empty'));
+      return err(
+        new DomainError("validation.failed", "Scan job id must be non-empty"),
+      );
     }
 
-    if (command.sourceBindingId.trim().length === 0) {
-      return err(new DomainError('validation.failed', 'Source binding id must be non-empty'));
+    const bindingResult = createDomainValue(() =>
+      createSourceBinding({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        topicId: command.topicId,
+        sourceBindingId: command.sourceBindingId,
+        providerKey: command.providerKey,
+      }),
+    );
+    if (!bindingResult.ok) {
+      return err(bindingResult.error);
     }
-    const attemptNumber = command.attemptNumber ?? 1;
-    const retryBudget = command.retryBudget ?? 3;
+    const policyResult = createDomainValue(() =>
+      createScanPolicy({
+        scanPolicyId: command.scanPolicyId,
+        attemptNumber: command.attemptNumber,
+        retryBudget: command.retryBudget,
+        leaseTtlSeconds: command.leaseTtlSeconds,
+      }),
+    );
+    if (!policyResult.ok) {
+      return err(policyResult.error);
+    }
+    const sourceBinding = bindingResult.value;
+    const scanPolicy = policyResult.value;
     const lease = await this.scanLeases.acquire({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       scanJobId: command.scanJobId,
-      workerId: command.workerId ?? 'ingestion-worker-local',
+      workerId: command.workerId ?? "ingestion-worker-local",
       leasedAt: this.clock.now(),
-      ttlSeconds: command.leaseTtlSeconds ?? 300,
+      ttlSeconds: scanPolicy.leaseTtlSeconds,
     });
 
     if (lease === null) {
-      return err(new DomainError('operation.conflict', 'Scan job is already leased', {
-        scanJobId: command.scanJobId,
-      }));
+      return err(
+        new DomainError("operation.conflict", "Scan job is already leased", {
+          scanJobId: command.scanJobId,
+        }),
+      );
     }
 
     let attempt = ScanAttempt.start({
       scanJobId: command.scanJobId,
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      sourceBindingId: command.sourceBindingId,
+      sourceBindingId: sourceBinding.sourceBindingId,
       startedAt: this.clock.now(),
     });
     await this.scanAttempts.save(attempt);
@@ -82,14 +113,14 @@ export class ExecuteScanUseCase {
       const existingCursor = await this.scanCursors.findBySourceBinding({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        sourceBindingId: command.sourceBindingId,
+        sourceBindingId: sourceBinding.sourceBindingId,
       });
       const fetched = await this.sourceFetcher.fetch({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        sourceBindingId: command.sourceBindingId,
+        sourceBindingId: sourceBinding.sourceBindingId,
         scanJobId: command.scanJobId,
-        providerKey: command.providerKey,
+        providerKey: sourceBinding.providerKey,
         sourceQuery: command.sourceQuery,
         correlationId: command.correlationId,
         cursor: existingCursor?.cursor,
@@ -99,9 +130,9 @@ export class ExecuteScanUseCase {
       const enriched = await this.sourceItemEnrichment.enrich({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        sourceBindingId: command.sourceBindingId,
+        sourceBindingId: sourceBinding.sourceBindingId,
         scanJobId: command.scanJobId,
-        providerKey: command.providerKey,
+        providerKey: sourceBinding.providerKey,
         correlationId: command.correlationId,
         items: fetched.items,
       });
@@ -110,7 +141,7 @@ export class ExecuteScanUseCase {
           id: this.ids.generate(),
           tenantId: command.tenantId,
           workspaceId: command.workspaceId,
-          sourceBindingId: command.sourceBindingId,
+          sourceBindingId: sourceBinding.sourceBindingId,
           externalId: item.externalId,
           canonicalUrl: item.canonicalUrl,
           title: item.title,
@@ -125,31 +156,31 @@ export class ExecuteScanUseCase {
       const saveResult = await this.sourceItems.saveBatch({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        providerKey: command.providerKey,
+        providerKey: sourceBinding.providerKey,
         items,
       });
       const projectionResult = await this.feedProjection.project({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        topicId: command.topicId,
-        sourceBindingId: command.sourceBindingId,
-        providerKey: command.providerKey,
+        topicId: sourceBinding.topicId,
+        sourceBindingId: sourceBinding.sourceBindingId,
+        providerKey: sourceBinding.providerKey,
         sourceItems: items,
       });
       await this.sourceItemMetadataProjection.project({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        topicId: command.topicId,
-        sourceBindingId: command.sourceBindingId,
+        topicId: sourceBinding.topicId,
+        sourceBindingId: sourceBinding.sourceBindingId,
         scanJobId: command.scanJobId,
-        providerKey: command.providerKey,
+        providerKey: sourceBinding.providerKey,
         sourceItems: items,
       });
       if (fetched.nextCursor !== undefined) {
         await this.scanCursors.save({
           tenantId: command.tenantId,
           workspaceId: command.workspaceId,
-          sourceBindingId: command.sourceBindingId,
+          sourceBindingId: sourceBinding.sourceBindingId,
           cursor: fetched.nextCursor,
           committedAt: this.clock.now(),
         });
@@ -194,28 +225,35 @@ export class ExecuteScanUseCase {
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         scanJobId: command.scanJobId,
-        topicId: command.topicId,
-        sourceBindingId: command.sourceBindingId,
-        scanPolicyId: command.scanPolicyId,
-        providerKey: command.providerKey,
+        topicId: sourceBinding.topicId,
+        sourceBindingId: sourceBinding.sourceBindingId,
+        scanPolicyId: scanPolicy.scanPolicyId,
+        providerKey: sourceBinding.providerKey,
         sourceQuery: command.sourceQuery,
         correlationId: command.correlationId,
         causationId: command.causationId,
-        attemptNumber,
-        retryBudget,
+        attemptNumber: scanPolicy.attemptNumber,
+        retryBudget: scanPolicy.retryBudget,
         failureReason: safeFailureReason,
       };
 
-      if (isRetryableScanFailure(error) && attemptNumber < retryBudget) {
+      if (
+        isRetryableScanFailure(error) &&
+        scanPolicy.attemptNumber < scanPolicy.retryBudget
+      ) {
         await this.scanFailures.enqueueRetry({
           ...failedCommand,
-          nextAttemptNumber: attemptNumber + 1,
+          nextAttemptNumber: scanPolicy.attemptNumber + 1,
         });
       } else {
         await this.scanFailures.deadLetter(failedCommand);
       }
 
-      return err(error instanceof Error ? error : new Error('Unknown scan execution failure'));
+      return err(
+        error instanceof Error
+          ? error
+          : new Error("Unknown scan execution failure"),
+      );
     } finally {
       await this.scanLeases.release(lease);
     }
@@ -225,6 +263,19 @@ export class ExecuteScanUseCase {
 const isRetryableScanFailure = (error: unknown): boolean =>
   error instanceof SourceFetchError ? error.retryable : true;
 
+const createDomainValue = <T>(factory: () => T): Result<T, DomainError> => {
+  try {
+    return ok(factory());
+  } catch (error) {
+    return err(
+      new DomainError(
+        "validation.failed",
+        error instanceof Error ? error.message : "Invalid scan command",
+      ),
+    );
+  }
+};
+
 const formatScanFailureReason = (error: unknown): string => {
   if (error instanceof SourceFetchError) {
     return [
@@ -232,8 +283,10 @@ const formatScanFailureReason = (error: unknown): string => {
       `kind=${error.kind}`,
       `retryable=${String(error.retryable)}`,
       `message=${error.message}`,
-    ].join(' ');
+    ].join(" ");
   }
 
-  return error instanceof Error ? error.message : 'Unknown scan execution failure';
+  return error instanceof Error
+    ? error.message
+    : "Unknown scan execution failure";
 };
