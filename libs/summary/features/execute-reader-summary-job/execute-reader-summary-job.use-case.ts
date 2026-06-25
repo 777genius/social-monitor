@@ -14,6 +14,7 @@ import {
   assertReaderSummaryCitationsAgainstEvidence,
   defaultReaderSummaryGenerationPolicy,
   ReaderSummaryArtifact,
+  resolveEffectiveReaderSummaryPolicy,
   type ReaderSummaryContextArtifact,
   type ReaderSummaryJob,
   type ReaderSummaryReadyEvent,
@@ -32,6 +33,8 @@ import {
   type ReaderSummaryModelPort,
   type ReaderSummaryPolicyRepositoryPort,
   type SummaryEventPublisherPort,
+  NOOP_USER_SUMMARY_PREFERENCE_READER,
+  type UserSummaryPreferenceReaderPort,
 } from "../../ports";
 import type { ExecuteReaderSummaryJobCommand } from "./execute-reader-summary-job.command";
 import type { ExecuteReaderSummaryJobResult } from "./execute-reader-summary-job.result";
@@ -69,6 +72,7 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
     private readonly contextProvider: ReaderSummaryContextProviderPort = NOOP_READER_SUMMARY_CONTEXT_PROVIDER,
+    private readonly userSummaryPreferences: UserSummaryPreferenceReaderPort = NOOP_USER_SUMMARY_PREFERENCE_READER,
   ) {}
 
   async execute(
@@ -236,7 +240,18 @@ export class ExecuteReaderSummaryJobUseCase {
       workspaceId: snapshot.workspaceId,
       scope: snapshot.scope,
     });
+    const userPreference = snapshot.userId === undefined
+      ? null
+      : await this.userSummaryPreferences.findEffectivePreference({
+          tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId,
+          userId: snapshot.userId,
+          subscriptionId: snapshot.subscriptionId,
+          topicId: readerSummaryPreferenceTopicId(snapshot, evidence),
+        });
     const context = await this.safeBuildContext(snapshot, evidence);
+    const basePolicy =
+      policy?.toGenerationPolicy() ?? defaultReaderSummaryGenerationPolicy();
     const input = {
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
@@ -245,8 +260,7 @@ export class ExecuteReaderSummaryJobUseCase {
       subscriptionId: snapshot.subscriptionId,
       evidence,
       contextArtifacts: context.artifacts,
-      policy:
-        policy?.toGenerationPolicy() ?? defaultReaderSummaryGenerationPolicy(),
+      policy: resolveEffectiveReaderSummaryPolicy(basePolicy, userPreference),
       requestedAt: snapshot.requestedAt,
     };
     const route = this.readerSummaryModel.route(
@@ -355,3 +369,11 @@ const withContextUnavailableFlag = (
 });
 
 const unique = <T>(values: readonly T[]): readonly T[] => [...new Set(values)];
+
+const readerSummaryPreferenceTopicId = (
+  snapshot: ReturnType<ReaderSummaryJob["toSnapshot"]>,
+  evidence: SummaryEvidenceSelection,
+): string =>
+  snapshot.scope.type === "topic"
+    ? snapshot.scope.topicId
+    : evidence.selectedEvidence[0]?.topicId ?? "workspace";

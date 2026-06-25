@@ -16,6 +16,7 @@ import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
 import { FeedReaderSummaryFreshnessProbe } from "../../adapters/evidence/feed-reader-summary-freshness.probe";
 import { RelevanceReaderSummaryEvidenceSelector } from "../../adapters/evidence/relevance-reader-summary-evidence.selector";
 import { ReaderSummaryLegacyEventPublisherAdapter } from "../../adapters/anti-corruption/reader-summary-legacy-event-publisher.adapter";
+import { SummaryMemoryReaderSummaryContextProvider } from "../../adapters/memory/summary-memory-reader-summary-context.provider";
 import { StoryRankingMetricsRecorder } from "../../adapters/metrics/story-ranking-metrics.recorder";
 import { ReaderSummaryJobQueuePublisherAdapter } from "../../adapters/messaging/reader-summary-job-queue.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "../../adapters/model/deterministic-reader-summary-model.adapter";
@@ -47,6 +48,8 @@ import {
   type ReaderSummaryPolicyRepositoryPort,
   type StoryRankingMetricsPort,
   type SummaryEventPublisherPort,
+  type SummaryMemoryPort,
+  type UserSummaryPreferenceReaderPort,
 } from "../../ports";
 import {
   READER_SUMMARY_ARTIFACT_REPOSITORY,
@@ -58,6 +61,8 @@ import {
   READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS,
   READER_SUMMARY_POLICY_REPOSITORY,
   SUMMARY_EVENT_PUBLISHER,
+  SUMMARY_MEMORY,
+  SUMMARY_USER_SUMMARY_PREFERENCE_READER,
   SUMMARY_JOB_QUEUE_MODE,
   SUMMARY_PERSISTENCE_MODE,
   SUMMARY_PRISMA_CLIENT,
@@ -193,7 +198,11 @@ export const summaryReaderSummaryProviders: Provider[] = [
   },
   {
     provide: READER_SUMMARY_CONTEXT_PROVIDER,
-    useValue: NOOP_READER_SUMMARY_CONTEXT_PROVIDER,
+    useFactory: (memory: SummaryMemoryPort): ReaderSummaryContextProviderPort =>
+      memory === undefined
+        ? NOOP_READER_SUMMARY_CONTEXT_PROVIDER
+        : new SummaryMemoryReaderSummaryContextProvider(memory),
+    inject: [SUMMARY_MEMORY],
   },
   DeterministicReaderSummaryModelAdapter,
   {
@@ -253,6 +262,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       readerSummaryModel: MeteredReaderSummaryModelAdapter,
       events: SummaryEventPublisherPort,
       contextProvider: ReaderSummaryContextProviderPort,
+      userSummaryPreferences: UserSummaryPreferenceReaderPort,
     ) =>
       new ExecuteReaderSummaryJobUseCase(
         readerSummaryJobs,
@@ -264,6 +274,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
         new CryptoIdGenerator(),
         new SystemClock(),
         contextProvider,
+        userSummaryPreferences,
       ),
     inject: [
       READER_SUMMARY_JOB_REPOSITORY,
@@ -273,6 +284,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       MeteredReaderSummaryModelAdapter,
       SUMMARY_EVENT_PUBLISHER,
       READER_SUMMARY_CONTEXT_PROVIDER,
+      SUMMARY_USER_SUMMARY_PREFERENCE_READER,
     ],
   },
   {

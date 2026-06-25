@@ -29,3 +29,9 @@ export interface UserSummaryPreferenceReaderPort {
     query: FindEffectiveUserSummaryPreferenceQuery,
   ): Promise<UserSummaryPreferenceOverlay | null>;
 }
+
+export const NOOP_USER_SUMMARY_PREFERENCE_READER: UserSummaryPreferenceReaderPort = {
+  async findEffectivePreference(): Promise<UserSummaryPreferenceOverlay | null> {
+    return null;
+  },
+};
