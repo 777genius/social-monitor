@@ -66,6 +66,12 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
       name: 'Summary reader key',
       scopes: ['read:summaries'],
     });
+    const topicKey = await createApiKey({
+      tenant,
+      workspace,
+      name: 'Topic reader key',
+      scopes: ['read:topics'],
+    });
     const otherWorkspaceFeedKey = await createApiKey({
       tenant,
       workspace: workspaceId('workspace-read-api-key-other-e2e'),
@@ -149,6 +155,110 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('Authorization', `Bearer ${otherWorkspaceFeedKey}`)
+      .expect(403);
+
+    const monitoringTopic = await request(app.getHttpServer())
+      .post('/topics')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'read-api-key-monitoring-topic')
+      .set('idempotency-key', 'read-api-key-monitoring-topic')
+      .send({
+        name: 'Read API key monitoring topic',
+        query: 'read api key monitoring',
+      })
+      .expect(201);
+
+    const binding = await request(app.getHttpServer())
+      .post(`/topics/${monitoringTopic.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'read-api-key-monitoring-binding')
+      .set('idempotency-key', 'read-api-key-monitoring-binding')
+      .send({
+        providerKey: 'fake-source',
+        config: { query: 'read api key monitoring' },
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'read-api-key-monitoring-policy')
+      .set('idempotency-key', 'read-api-key-monitoring-policy')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(201);
+
+    const scan = await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
+      .set('x-request-id', 'read-api-key-monitoring-scan')
+      .set('idempotency-key', 'read-api-key-monitoring-scan')
+      .expect(201);
+
+    const overview = await request(app.getHttpServer())
+      .get(`/topics/${monitoringTopic.body.topicId}/source-bindings/overview`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${topicKey}`)
+      .expect(200);
+
+    expect(overview.body.items).toEqual([
+      expect.objectContaining({
+        sourceBinding: expect.objectContaining({
+          id: binding.body.sourceBindingId,
+          providerKey: 'fake-source',
+        }),
+      }),
+    ]);
+
+    const scanHistory = await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .query({ limit: 10 })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${topicKey}`)
+      .expect(200);
+
+    expect(scanHistory.body.scanRequests).toEqual([
+      expect.objectContaining({
+        scanJobId: scan.body.scanJobId,
+        sourceBindingId: binding.body.sourceBindingId,
+        status: 'enqueued',
+      }),
+    ]);
+
+    const dailyHistory = await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-requests/daily`)
+      .query({ days: 1 })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${topicKey}`)
+      .expect(200);
+
+    expect(dailyHistory.body.days).toEqual([
+      expect.objectContaining({
+        totalScans: 1,
+        activeScans: 1,
+        signals: ['active_scan_in_progress'],
+      }),
+    ]);
+
+    await request(app.getHttpServer())
+      .get(`/topics/${monitoringTopic.body.topicId}/source-bindings/overview`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${feedKey}`)
       .expect(403);
 
     const summaryRequest = await request(app.getHttpServer())
