@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { FeedItem } from '@social-monitor/feed/domain';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { ExecuteReaderSummaryJobUseCase } from '@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case';
 import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case';
 import request from 'supertest';
 
@@ -307,13 +308,81 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
       .set('Authorization', `Bearer ${feedKey}`)
       .expect(403);
 
-    await request(app.getHttpServer())
-      .get('/briefings')
-      .query({ limit: 10 })
+    const briefingRequest = await request(app.getHttpServer())
+      .post('/briefing-requests')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
+      .set('x-request-id', 'read-api-key-briefing-request')
+      .set('idempotency-key', 'read-api-key-briefing-request')
+      .send({
+        scope: {
+          type: 'topic',
+          topicId,
+        },
+        userId: 'read-api-key-user',
+      })
+      .expect(201);
+
+    const executedBriefing = await app.get(ExecuteReaderSummaryJobUseCase).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: briefingRequest.body.briefingJobId,
+    });
+
+    if (!executedBriefing.ok || executedBriefing.value.readerSummaryId === undefined) {
+      throw new Error('Expected briefing execution to produce a briefing id');
+    }
+
+    const briefingStatus = await request(app.getHttpServer())
+      .get(`/briefing-jobs/${briefingRequest.body.briefingJobId}/status`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('Authorization', `Bearer ${summaryKey}`)
       .expect(200);
+
+    expect(briefingStatus.body).toMatchObject({
+      briefingJobId: briefingRequest.body.briefingJobId,
+      briefingId: executedBriefing.value.readerSummaryId,
+      status: 'completed',
+    });
+
+    const briefingList = await request(app.getHttpServer())
+      .get('/briefings')
+      .query({ scopeType: 'topic', topicId, limit: 10 })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${summaryKey}`)
+      .expect(200);
+
+    expect(briefingList.body.items).toEqual([
+      expect.objectContaining({
+        briefingId: executedBriefing.value.readerSummaryId,
+        scope: {
+          type: 'topic',
+          topicId,
+        },
+      }),
+    ]);
+
+    const briefingDetail = await request(app.getHttpServer())
+      .get(`/briefings/${executedBriefing.value.readerSummaryId}`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${summaryKey}`)
+      .expect(200);
+
+    expect(briefingDetail.body).toMatchObject({
+      briefingId: executedBriefing.value.readerSummaryId,
+      readerBrief: {
+        topReads: [
+          expect.objectContaining({
+            providerKey: 'github',
+            canonicalUrl: 'https://example.test/read-api-key-feed',
+          }),
+        ],
+      },
+    });
 
     await request(app.getHttpServer())
       .get('/briefing-jobs/missing-read-api-key-briefing-job/status')
@@ -324,6 +393,13 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
 
     await request(app.getHttpServer())
       .get('/briefings')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('Authorization', `Bearer ${feedKey}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`/briefings/${executedBriefing.value.readerSummaryId}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('Authorization', `Bearer ${feedKey}`)
