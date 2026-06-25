@@ -43,6 +43,13 @@ const githubRepoRadarProfile: SourceCapabilityProfile = {
   supportsCursor: false,
 };
 
+const githubTrendingPageProfile: SourceCapabilityProfile = {
+  providerKey: 'github-trending-page',
+  version: 1,
+  productionSafe: true,
+  supportsCursor: false,
+};
+
 const redditProfile: SourceCapabilityProfile = {
   providerKey: 'reddit',
   version: 1,
@@ -56,12 +63,11 @@ const sourceProfiles = new Map([
   [rssProfile.providerKey, rssProfile],
   [githubIssuesProfile.providerKey, githubIssuesProfile],
   [githubRepoRadarProfile.providerKey, githubRepoRadarProfile],
+  [githubTrendingPageProfile.providerKey, githubTrendingPageProfile],
   [redditProfile.providerKey, redditProfile],
 ]);
 
-const providerAliases = new Map([
-  ['github', 'github-issues'],
-]);
+const providerAliases = new Map([['github', 'github-issues']]);
 
 type FakeSourceCatalogAdapterOptions = {
   readonly includeFixtureProviders?: boolean;
@@ -69,8 +75,9 @@ type FakeSourceCatalogAdapterOptions = {
 
 const fixtureProviderKeys = new Set(['fake-source']);
 
-export const shouldIncludeFixtureSourceCatalogEntries = (env: NodeJS.ProcessEnv): boolean =>
-  resolveRuntimeProfile(env) !== 'beta';
+export const shouldIncludeFixtureSourceCatalogEntries = (
+  env: NodeJS.ProcessEnv,
+): boolean => resolveRuntimeProfile(env) !== 'beta';
 
 export class FakeSourceCatalogAdapter implements SourceCatalogPort {
   private readonly includeFixtureProviders: boolean;
@@ -79,7 +86,9 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
     this.includeFixtureProviders = options.includeFixtureProviders ?? true;
   }
 
-  async getCapability(providerKey: string): Promise<SourceCapabilityProfile | null> {
+  async getCapability(
+    providerKey: string,
+  ): Promise<SourceCapabilityProfile | null> {
     if (!this.isProviderAvailable(providerKey)) {
       return null;
     }
@@ -98,10 +107,17 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
     }
 
     if (canonicalKey === 'rss') {
-      const feedUrl = firstNonEmptyString(config.feedUrl, config.url, config.query);
+      const feedUrl = firstNonEmptyString(
+        config.feedUrl,
+        config.url,
+        config.query,
+      );
 
       if (feedUrl === undefined) {
-        return { ok: false, reason: 'RSS source requires feedUrl, url or query.' };
+        return {
+          ok: false,
+          reason: 'RSS source requires feedUrl, url or query.',
+        };
       }
 
       return validateFeedUrl(feedUrl);
@@ -111,19 +127,29 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
       const mode = firstNonEmptyString(config.mode) ?? 'search';
 
       if (mode !== 'search' && mode !== 'listing') {
-        return { ok: false, reason: `Unsupported Hacker News query mode: ${mode}` };
+        return {
+          ok: false,
+          reason: `Unsupported Hacker News query mode: ${mode}`,
+        };
       }
 
       if (mode === 'listing') {
-        const listing = firstNonEmptyString(config.listing, config.query) ?? 'top';
+        const listing =
+          firstNonEmptyString(config.listing, config.query) ?? 'top';
 
         return supportedHackerNewsListings.has(listing)
           ? { ok: true }
-          : { ok: false, reason: `Unsupported Hacker News listing: ${listing}` };
+          : {
+              ok: false,
+              reason: `Unsupported Hacker News listing: ${listing}`,
+            };
       }
 
       return firstNonEmptyString(config.query, config.term) === undefined
-        ? { ok: false, reason: 'Hacker News search source requires query or term.' }
+        ? {
+            ok: false,
+            reason: 'Hacker News search source requires query or term.',
+          }
         : { ok: true };
     }
 
@@ -135,11 +161,16 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
       }
 
       if (mode === 'listing') {
-        const subreddit = normalizeSubreddit(firstNonEmptyString(config.subreddit, config.query));
+        const subreddit = normalizeSubreddit(
+          firstNonEmptyString(config.subreddit, config.query),
+        );
         const listing = firstNonEmptyString(config.listing) ?? 'hot';
 
         if (subreddit === undefined) {
-          return { ok: false, reason: 'Reddit listing source requires subreddit or query.' };
+          return {
+            ok: false,
+            reason: 'Reddit listing source requires subreddit or query.',
+          };
         }
 
         return supportedRedditListings.has(listing)
@@ -156,11 +187,17 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
       const mode = firstNonEmptyString(config.mode) ?? 'search';
 
       if (mode !== 'search') {
-        return { ok: false, reason: `Unsupported GitHub issues query mode: ${mode}` };
+        return {
+          ok: false,
+          reason: `Unsupported GitHub issues query mode: ${mode}`,
+        };
       }
 
       return firstNonEmptyString(config.query, config.term) === undefined
-        ? { ok: false, reason: 'GitHub issues search source requires query or term.' }
+        ? {
+            ok: false,
+            reason: 'GitHub issues search source requires query or term.',
+          }
         : { ok: true };
     }
 
@@ -168,25 +205,72 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
       const mode = firstNonEmptyString(config.mode) ?? 'search';
 
       if (mode !== 'search') {
-        return { ok: false, reason: `Unsupported GitHub repo radar query mode: ${mode}` };
+        return {
+          ok: false,
+          reason: `Unsupported GitHub repo radar query mode: ${mode}`,
+        };
       }
 
       const windows = readStringArray(config.windows);
-      const unsupportedWindow = windows.find((window) => !githubRepoRadarWindows.has(window));
+      const unsupportedWindow = windows.find(
+        (window) => !githubRepoRadarWindows.has(window),
+      );
       if (unsupportedWindow !== undefined) {
-        return { ok: false, reason: `Unsupported GitHub repo radar trend window: ${unsupportedWindow}` };
+        return {
+          ok: false,
+          reason: `Unsupported GitHub repo radar trend window: ${unsupportedWindow}`,
+        };
       }
 
-      const integerValidation = validateBoundedInteger(config.maxItems, 'maxItems', 1, 100)
-        ?? validateBoundedInteger(config.maxCandidates, 'maxCandidates', 1, 300)
-        ?? validateBoundedInteger(config.minStars, 'minStars', 0, 1_000_000);
+      const integerValidation =
+        validateBoundedInteger(config.maxItems, 'maxItems', 1, 100) ??
+        validateBoundedInteger(config.maxCandidates, 'maxCandidates', 1, 300) ??
+        validateBoundedInteger(config.minStars, 'minStars', 0, 1_000_000);
       if (integerValidation !== undefined) {
         return integerValidation;
       }
 
-      return firstNonEmptyString(config.query, config.term, firstStringArrayItem(config.topics), firstStringArrayItem(config.languages)) === undefined
-        ? { ok: false, reason: 'GitHub repo radar source requires query, term, topics or languages.' }
+      return firstNonEmptyString(
+        config.query,
+        config.term,
+        firstStringArrayItem(config.topics),
+        firstStringArrayItem(config.languages),
+      ) === undefined
+        ? {
+            ok: false,
+            reason:
+              'GitHub repo radar source requires query, term, topics or languages.',
+          }
         : { ok: true };
+    }
+
+    if (canonicalKey === 'github-trending-page') {
+      const mode = firstNonEmptyString(config.mode) ?? 'listing';
+
+      if (mode !== 'listing') {
+        return {
+          ok: false,
+          reason: `Unsupported GitHub Trending page query mode: ${mode}`,
+        };
+      }
+
+      const window =
+        firstNonEmptyString(config.window, config.since, config.query) ??
+        'daily';
+      if (!githubTrendingPageWindows.has(window)) {
+        return {
+          ok: false,
+          reason: `Unsupported GitHub Trending page window: ${window}`,
+        };
+      }
+
+      const integerValidation = validateBoundedInteger(
+        config.maxItems,
+        'maxItems',
+        1,
+        100,
+      );
+      return integerValidation ?? { ok: true };
     }
 
     const mode = firstNonEmptyString(config.mode) ?? 'search';
@@ -206,18 +290,37 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
       return false;
     }
 
-    return this.includeFixtureProviders || !fixtureProviderKeys.has(canonicalKey);
+    return (
+      this.includeFixtureProviders || !fixtureProviderKeys.has(canonicalKey)
+    );
   }
 }
 
 const canonicalProviderKey = (providerKey: string): string =>
   providerAliases.get(providerKey) ?? providerKey;
 
-const supportedHackerNewsListings = new Set(['top', 'new', 'best', 'ask', 'show', 'job']);
+const supportedHackerNewsListings = new Set([
+  'top',
+  'new',
+  'best',
+  'ask',
+  'show',
+  'job',
+]);
 const supportedRedditListings = new Set(['hot', 'new', 'top', 'rising']);
-const githubRepoRadarWindows = new Set(['24h', '7d', '30d', '90d']);
+const githubRepoRadarWindows = new Set(['24h', '48h', '7d', '30d', '90d']);
+const githubTrendingPageWindows = new Set([
+  'daily',
+  'weekly',
+  'monthly',
+  'today',
+  'week',
+  'month',
+]);
 
-const firstNonEmptyString = (...values: readonly unknown[]): string | undefined => {
+const firstNonEmptyString = (
+  ...values: readonly unknown[]
+): string | undefined => {
   for (const value of values) {
     if (typeof value === 'string' && value.trim().length > 0) {
       return value.trim();
@@ -229,7 +332,10 @@ const firstNonEmptyString = (...values: readonly unknown[]): string | undefined 
 
 const readStringArray = (value: unknown): readonly string[] =>
   Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    ? value.filter(
+        (item): item is string =>
+          typeof item === 'string' && item.trim().length > 0,
+      )
     : [];
 
 const firstStringArrayItem = (value: unknown): string | undefined =>
@@ -245,12 +351,20 @@ const validateBoundedInteger = (
     return undefined;
   }
 
-  return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
+  return typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= min &&
+    value <= max
     ? undefined
-    : { ok: false, reason: `GitHub repo radar ${field} must be an integer between ${min} and ${max}.` };
+    : {
+        ok: false,
+        reason: `GitHub repo radar ${field} must be an integer between ${min} and ${max}.`,
+      };
 };
 
-const validateFeedUrl = (value: string): SourceBindingConfigValidationResult => {
+const validateFeedUrl = (
+  value: string,
+): SourceBindingConfigValidationResult => {
   const result = validateOutboundUrl(value, {
     label: 'Feed URL',
     allowedProtocols: ['http:', 'https:'],

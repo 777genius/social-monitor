@@ -84,6 +84,32 @@
       ]
     },
     {
+      "providerKey": "github-trending-page",
+      "readinessState": "enabled_beta",
+      "runtimeReadiness": "fixture_ready",
+      "liveBetaReady": false,
+      "liveBetaBlockers": [
+        "Representative live page smoke, parser drift alert and rate-limit evidence required before external beta."
+      ],
+      "productionSafe": true,
+      "cursorModel": "time",
+      "quotaModel": "per_app",
+      "itemCount": 3,
+      "warningCount": 0,
+      "firstExternalId": "github-trending-page:daily:calesthio/OpenMontage:2026-06-24T12:00:00.000Z",
+      "nextCursor": "2026-06-24T12:00:00.000Z",
+      "repeatedScanItemCount": 3,
+      "failureKind": "unavailable",
+      "checks": [
+        "capability_profile_matches_readiness",
+        "unsupported_query_rejected_before_scan",
+        "normalized_items_have_stable_identity",
+        "cursor_contract_is_non_empty_for_cursor_models",
+        "fixture_repeated_scan_is_deterministic",
+        "provider_errors_are_classified"
+      ]
+    },
+    {
       "providerKey": "hacker-news",
       "readinessState": "enabled_beta",
       "runtimeReadiness": "fixture_ready",

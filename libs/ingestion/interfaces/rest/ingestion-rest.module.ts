@@ -17,6 +17,8 @@ import {
 import { FixtureGitHubRepoRadarClient } from '../../adapters/source/github-repo-radar/fixture-github-repo-radar-client';
 import { FixtureGitHubRepositoryLiveVerifier } from '../../adapters/source/github-repo-radar/fixture-github-repository-live-verifier';
 import { GitHubRepoRadarSourceProvider } from '../../adapters/source/github-repo-radar/github-repo-radar-source.provider';
+import { FixtureGitHubTrendingPageClient } from '../../adapters/source/github-trending-page/fixture-github-trending-page-client';
+import { GitHubTrendingPageSourceProvider } from '../../adapters/source/github-trending-page/github-trending-page-source.provider';
 import { FixtureHackerNewsClient } from '../../adapters/source/hacker-news/fixture-hacker-news-client';
 import { HackerNewsSourceProvider } from '../../adapters/source/hacker-news/hacker-news-source.provider';
 import { InMemorySourceProviderRegistry } from '../../adapters/source/in-memory-source-provider.registry';
@@ -47,14 +49,19 @@ import { SourceProfileController } from './source-profile.controller';
     ingestionSupportPersistenceModeProvider,
     {
       provide: INGESTION_SUPPORT_PRISMA_CLIENT,
-      useFactory: (mode: IngestionSupportPersistenceMode): PrismaIngestionClient | null =>
-        mode === 'prisma' ? new PrismaIngestionConnection(process.env.DATABASE_URL ?? '') : null,
+      useFactory: (
+        mode: IngestionSupportPersistenceMode,
+      ): PrismaIngestionClient | null =>
+        mode === 'prisma'
+          ? new PrismaIngestionConnection(process.env.DATABASE_URL ?? '')
+          : null,
       inject: [INGESTION_SUPPORT_PERSISTENCE_MODE],
     },
     InMemoryMetricsRecorder,
     {
       provide: InMemoryScanFailureQueueAdapter,
-      useFactory: (metrics: InMemoryMetricsRecorder) => new InMemoryScanFailureQueueAdapter(metrics),
+      useFactory: (metrics: InMemoryMetricsRecorder) =>
+        new InMemoryScanFailureQueueAdapter(metrics),
       inject: [InMemoryMetricsRecorder],
     },
     {
@@ -66,7 +73,11 @@ import { SourceProfileController } from './source-profile.controller';
         metrics: InMemoryMetricsRecorder,
       ): ScanFailureInspectionPort =>
         mode === 'prisma'
-          ? new PrismaScanFailureQueueAdapter(requirePrismaIngestionClient(prisma), metrics, new CryptoIdGenerator())
+          ? new PrismaScanFailureQueueAdapter(
+              requirePrismaIngestionClient(prisma),
+              metrics,
+              new CryptoIdGenerator(),
+            )
           : inMemoryFailures,
       inject: [
         INGESTION_SUPPORT_PERSISTENCE_MODE,
@@ -79,21 +90,25 @@ import { SourceProfileController } from './source-profile.controller';
     FixtureGitHubClient,
     FixtureGitHubRepoRadarClient,
     FixtureGitHubRepositoryLiveVerifier,
+    FixtureGitHubTrendingPageClient,
     FixtureHackerNewsClient,
     FixtureRedditClient,
     {
       provide: StaticRedditTokenProvider,
-      useFactory: () => new StaticRedditTokenProvider('fixture-reddit-app-token'),
+      useFactory: () =>
+        new StaticRedditTokenProvider('fixture-reddit-app-token'),
     },
     FixtureRssClient,
     {
       provide: HackerNewsSourceProvider,
-      useFactory: (client: FixtureHackerNewsClient) => new HackerNewsSourceProvider(client),
+      useFactory: (client: FixtureHackerNewsClient) =>
+        new HackerNewsSourceProvider(client),
       inject: [FixtureHackerNewsClient],
     },
     {
       provide: GitHubSourceProvider,
-      useFactory: (client: FixtureGitHubClient) => new GitHubSourceProvider(client),
+      useFactory: (client: FixtureGitHubClient) =>
+        new GitHubSourceProvider(client),
       inject: [FixtureGitHubClient],
     },
     {
@@ -101,10 +116,22 @@ import { SourceProfileController } from './source-profile.controller';
       useFactory: (
         radarClient: FixtureGitHubRepoRadarClient,
         liveVerifier: FixtureGitHubRepositoryLiveVerifier,
-      ) => new GitHubRepoRadarSourceProvider(radarClient, liveVerifier, {
-        now: () => new Date('2026-06-23T12:00:00.000Z'),
-      }),
-      inject: [FixtureGitHubRepoRadarClient, FixtureGitHubRepositoryLiveVerifier],
+      ) =>
+        new GitHubRepoRadarSourceProvider(radarClient, liveVerifier, {
+          now: () => new Date('2026-06-23T12:00:00.000Z'),
+        }),
+      inject: [
+        FixtureGitHubRepoRadarClient,
+        FixtureGitHubRepositoryLiveVerifier,
+      ],
+    },
+    {
+      provide: GitHubTrendingPageSourceProvider,
+      useFactory: (client: FixtureGitHubTrendingPageClient) =>
+        new GitHubTrendingPageSourceProvider(client, {
+          now: () => new Date('2026-06-24T12:00:00.000Z'),
+        }),
+      inject: [FixtureGitHubTrendingPageClient],
     },
     {
       provide: RssSourceProvider,
@@ -125,22 +152,37 @@ import { SourceProfileController } from './source-profile.controller';
         fakeProvider: FakeSourceProvider,
         githubProvider: GitHubSourceProvider,
         githubRepoRadarProvider: GitHubRepoRadarSourceProvider,
+        githubTrendingPageProvider: GitHubTrendingPageSourceProvider,
         hackerNewsProvider: HackerNewsSourceProvider,
         redditProvider: RedditSourceProvider,
         rssProvider: RssSourceProvider,
       ) =>
         new InMemorySourceProviderRegistry(
           selectRuntimeSourceProviders(
-            [fakeProvider, githubProvider, githubRepoRadarProvider, hackerNewsProvider, redditProvider, rssProvider],
+            [
+              fakeProvider,
+              githubProvider,
+              githubRepoRadarProvider,
+              githubTrendingPageProvider,
+              hackerNewsProvider,
+              redditProvider,
+              rssProvider,
+            ],
             process.env,
           ),
           sourceReadinessProfiles,
-          [{ providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY, canonicalProviderKey: GITHUB_ISSUES_PROVIDER_KEY }],
+          [
+            {
+              providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
+              canonicalProviderKey: GITHUB_ISSUES_PROVIDER_KEY,
+            },
+          ],
         ),
       inject: [
         FakeSourceProvider,
         GitHubSourceProvider,
         GitHubRepoRadarSourceProvider,
+        GitHubTrendingPageSourceProvider,
         HackerNewsSourceProvider,
         RedditSourceProvider,
         RssSourceProvider,
@@ -148,22 +190,32 @@ import { SourceProfileController } from './source-profile.controller';
     },
     {
       provide: ListSourceProfilesUseCase,
-      useFactory: (registry: InMemorySourceProviderRegistry) => new ListSourceProfilesUseCase(registry),
+      useFactory: (registry: InMemorySourceProviderRegistry) =>
+        new ListSourceProfilesUseCase(registry),
       inject: [InMemorySourceProviderRegistry],
     },
     {
       provide: ListScanDeadLettersUseCase,
-      useFactory: (failures: ScanFailureInspectionPort) => new ListScanDeadLettersUseCase(failures),
+      useFactory: (failures: ScanFailureInspectionPort) =>
+        new ListScanDeadLettersUseCase(failures),
       inject: [INGESTION_SCAN_FAILURE_INSPECTION],
     },
   ],
-  exports: [InMemoryScanFailureQueueAdapter, INGESTION_SCAN_FAILURE_INSPECTION, ListScanDeadLettersUseCase],
+  exports: [
+    InMemoryScanFailureQueueAdapter,
+    INGESTION_SCAN_FAILURE_INSPECTION,
+    ListScanDeadLettersUseCase,
+  ],
 })
 export class IngestionRestModule {}
 
-const requirePrismaIngestionClient = (client: PrismaIngestionClient | null): PrismaIngestionClient => {
+const requirePrismaIngestionClient = (
+  client: PrismaIngestionClient | null,
+): PrismaIngestionClient => {
   if (client === null) {
-    throw new Error('Prisma ingestion client is required when INGESTION_SUPPORT_PERSISTENCE=prisma');
+    throw new Error(
+      'Prisma ingestion client is required when INGESTION_SUPPORT_PERSISTENCE=prisma',
+    );
   }
 
   return client;

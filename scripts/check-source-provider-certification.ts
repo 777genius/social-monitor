@@ -5,10 +5,15 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { FakeSourceProvider } from '../libs/ingestion/adapters/source/fake-source.provider';
 import { FixtureGitHubClient } from '../libs/ingestion/adapters/source/github/fixture-github-client';
-import { GITHUB_ISSUES_PROVIDER_KEY, GitHubSourceProvider } from '../libs/ingestion/adapters/source/github/github-source.provider';
+import {
+  GITHUB_ISSUES_PROVIDER_KEY,
+  GitHubSourceProvider,
+} from '../libs/ingestion/adapters/source/github/github-source.provider';
 import { FixtureGitHubRepoRadarClient } from '../libs/ingestion/adapters/source/github-repo-radar/fixture-github-repo-radar-client';
 import { FixtureGitHubRepositoryLiveVerifier } from '../libs/ingestion/adapters/source/github-repo-radar/fixture-github-repository-live-verifier';
 import { GitHubRepoRadarSourceProvider } from '../libs/ingestion/adapters/source/github-repo-radar/github-repo-radar-source.provider';
+import { FixtureGitHubTrendingPageClient } from '../libs/ingestion/adapters/source/github-trending-page/fixture-github-trending-page-client';
+import { GitHubTrendingPageSourceProvider } from '../libs/ingestion/adapters/source/github-trending-page/github-trending-page-source.provider';
 import { FixtureHackerNewsClient } from '../libs/ingestion/adapters/source/hacker-news/fixture-hacker-news-client';
 import { HackerNewsSourceProvider } from '../libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
 import { FixtureRedditClient } from '../libs/ingestion/adapters/source/reddit/fixture-reddit-client';
@@ -86,7 +91,8 @@ const cases: readonly ProviderCase[] = [
     expectedFailureKind: 'unknown',
   },
   {
-    providerFactory: () => new HackerNewsSourceProvider(new FixtureHackerNewsClient()),
+    providerFactory: () =>
+      new HackerNewsSourceProvider(new FixtureHackerNewsClient()),
     validQuery: { mode: 'search', query: 'monitoring' },
     unsupportedQueryMode: 'thread',
     expectedProviderKey: 'hacker-news',
@@ -95,7 +101,10 @@ const cases: readonly ProviderCase[] = [
   },
   {
     providerFactory: () => new GitHubSourceProvider(new FixtureGitHubClient()),
-    validQuery: { mode: 'search', query: 'social monitoring repo:777genius/social-monitor' },
+    validQuery: {
+      mode: 'search',
+      query: 'social monitoring repo:777genius/social-monitor',
+    },
     unsupportedQueryMode: 'thread',
     expectedProviderKey: GITHUB_ISSUES_PROVIDER_KEY,
     expectedReadinessState: 'enabled_beta',
@@ -105,11 +114,12 @@ const cases: readonly ProviderCase[] = [
     },
   },
   {
-    providerFactory: () => new GitHubRepoRadarSourceProvider(
-      new FixtureGitHubRepoRadarClient(),
-      new FixtureGitHubRepositoryLiveVerifier(),
-      { now: () => new Date('2026-06-23T12:00:00.000Z') },
-    ),
+    providerFactory: () =>
+      new GitHubRepoRadarSourceProvider(
+        new FixtureGitHubRepoRadarClient(),
+        new FixtureGitHubRepositoryLiveVerifier(),
+        { now: () => new Date('2026-06-23T12:00:00.000Z') },
+      ),
     validQuery: { mode: 'search', query: 'agents' },
     unsupportedQueryMode: 'listing',
     expectedProviderKey: 'github-repo-radar',
@@ -125,6 +135,22 @@ const cases: readonly ProviderCase[] = [
     },
   },
   {
+    providerFactory: () =>
+      new GitHubTrendingPageSourceProvider(
+        new FixtureGitHubTrendingPageClient(),
+        { now: () => new Date('2026-06-24T12:00:00.000Z') },
+      ),
+    validQuery: { mode: 'listing', query: 'daily' },
+    unsupportedQueryMode: 'search',
+    expectedProviderKey: 'github-trending-page',
+    expectedReadinessState: 'enabled_beta',
+    expectedFailureKind: 'unavailable',
+    contextConfig: {
+      maxItems: 3,
+      fixtureMode: true,
+    },
+  },
+  {
     providerFactory: () => new RssSourceProvider(new FixtureRssClient()),
     validQuery: { mode: 'url', query: 'https://example.test/feed.xml' },
     unsupportedQueryMode: 'thread',
@@ -133,10 +159,11 @@ const cases: readonly ProviderCase[] = [
     expectedFailureKind: 'unavailable',
   },
   {
-    providerFactory: () => new RedditSourceProvider(
-      new FixtureRedditClient(),
-      new StaticRedditTokenProvider('fixture-reddit-app-token'),
-    ),
+    providerFactory: () =>
+      new RedditSourceProvider(
+        new FixtureRedditClient(),
+        new StaticRedditTokenProvider('fixture-reddit-app-token'),
+      ),
     validQuery: { mode: 'listing', query: 'observability:hot' },
     unsupportedQueryMode: 'thread',
     expectedProviderKey: 'reddit',
@@ -155,9 +182,15 @@ void main().catch((error) => {
 });
 
 async function main(): Promise<void> {
-  const readinessByProvider = new Map(sourceReadinessProfiles.map((profile) => [profile.providerKey, profile]));
-  const enabledBetaProfiles = sourceReadinessProfiles.filter((profile) => profile.state === 'enabled_beta');
-  const caseKeys = new Set(cases.map((providerCase) => providerCase.expectedProviderKey));
+  const readinessByProvider = new Map(
+    sourceReadinessProfiles.map((profile) => [profile.providerKey, profile]),
+  );
+  const enabledBetaProfiles = sourceReadinessProfiles.filter(
+    (profile) => profile.state === 'enabled_beta',
+  );
+  const caseKeys = new Set(
+    cases.map((providerCase) => providerCase.expectedProviderKey),
+  );
 
   assert(
     enabledBetaProfiles.every((profile) => caseKeys.has(profile.providerKey)),
@@ -166,12 +199,16 @@ async function main(): Promise<void> {
       .join(', ')}`,
   );
   assert(
-    enabledBetaProfiles.every((profile) => profile.runtimeReadiness !== 'deferred'),
+    enabledBetaProfiles.every(
+      (profile) => profile.runtimeReadiness !== 'deferred',
+    ),
     'Enabled beta providers must declare fixture_ready or live_beta_ready runtime readiness',
   );
 
   const certifiedProviders = await Promise.all(
-    cases.map((providerCase) => certifyProvider(providerCase, readinessByProvider)),
+    cases.map((providerCase) =>
+      certifyProvider(providerCase, readinessByProvider),
+    ),
   );
   const deferredProviders = sourceReadinessProfiles
     .filter((profile) => profile.runtimeReadiness === 'deferred')
@@ -189,7 +226,9 @@ async function main(): Promise<void> {
     generatedBy: 'npm run check:source-certification',
     fixtureMode: 'deterministic_no_network',
     blockingPassed: true,
-    certifiedProviders: certifiedProviders.sort((left, right) => left.providerKey.localeCompare(right.providerKey)),
+    certifiedProviders: certifiedProviders.sort((left, right) =>
+      left.providerKey.localeCompare(right.providerKey),
+    ),
     deferredProviders,
   };
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
@@ -202,34 +241,55 @@ async function main(): Promise<void> {
   }
 
   if (!existsSync(outputPath)) {
-    throw new Error(`${outputPath} is missing. Run npm run check:source-certification -- --update`);
+    throw new Error(
+      `${outputPath} is missing. Run npm run check:source-certification -- --update`,
+    );
   }
 
   const expected = normalizeLineEndings(readFileSync(outputPath, 'utf8'));
   if (expected !== serialized) {
-    throw new Error(`${outputPath} is stale. Run npm run check:source-certification -- --update`);
+    throw new Error(
+      `${outputPath} is stale. Run npm run check:source-certification -- --update`,
+    );
   }
 
-  console.log(`Source provider certification OK (${report.certifiedProviders.length} providers)`);
+  console.log(
+    `Source provider certification OK (${report.certifiedProviders.length} providers)`,
+  );
 }
 
 async function certifyProvider(
   providerCase: ProviderCase,
-  readinessByProvider: ReadonlyMap<string, (typeof sourceReadinessProfiles)[number]>,
+  readinessByProvider: ReadonlyMap<
+    string,
+    (typeof sourceReadinessProfiles)[number]
+  >,
 ): Promise<ProviderCertificationReport> {
   const provider = providerCase.providerFactory();
   const profile = provider.capabilityProfile();
   const readiness = readinessByProvider.get(providerCase.expectedProviderKey);
-  const context = makeContext(providerCase.expectedProviderKey, providerCase.contextConfig);
+  const context = makeContext(
+    providerCase.expectedProviderKey,
+    providerCase.contextConfig,
+  );
   const validation = provider.validateBinding(providerCase.validQuery);
   const unsupportedValidation = provider.validateBinding({
     ...providerCase.validQuery,
     mode: providerCase.unsupportedQueryMode,
   });
 
-  assert(provider.key() === providerCase.expectedProviderKey, `${providerCase.expectedProviderKey}: key mismatch`);
-  assert(profile.providerKey === providerCase.expectedProviderKey, `${providerCase.expectedProviderKey}: profile key mismatch`);
-  assert(readiness !== undefined, `${providerCase.expectedProviderKey}: missing source readiness profile`);
+  assert(
+    provider.key() === providerCase.expectedProviderKey,
+    `${providerCase.expectedProviderKey}: key mismatch`,
+  );
+  assert(
+    profile.providerKey === providerCase.expectedProviderKey,
+    `${providerCase.expectedProviderKey}: profile key mismatch`,
+  );
+  assert(
+    readiness !== undefined,
+    `${providerCase.expectedProviderKey}: missing source readiness profile`,
+  );
   assert(
     readiness.state === providerCase.expectedReadinessState,
     `${providerCase.expectedProviderKey}: readiness profile must be ${providerCase.expectedReadinessState}`,
@@ -242,28 +302,73 @@ async function certifyProvider(
     readiness.liveBetaBlockers.length > 0,
     `${providerCase.expectedProviderKey}: fixture-ready providers must declare live beta blockers`,
   );
-  assert(profile.productionSafe === true, `${providerCase.expectedProviderKey}: provider must be productionSafe for beta`);
-  assert(profile.displayName.trim().length > 0, `${providerCase.expectedProviderKey}: displayName is required`);
-  assert(profile.version >= 1, `${providerCase.expectedProviderKey}: version must be >= 1`);
-  assert(profile.cursorModel === readiness.cursorModel, `${providerCase.expectedProviderKey}: cursor model mismatch`);
-  assert(profile.quotaModel === readiness.quotaModel, `${providerCase.expectedProviderKey}: quota model mismatch`);
-  assertArrayIncludesAll(profile.supportedContentUnits, readiness.supportedContentUnits, `${providerCase.expectedProviderKey}: content units`);
-  assertArrayIntersects(profile.stableIdentity, readiness.identityStrategy, `${providerCase.expectedProviderKey}: identity strategy`);
   assert(
-    readiness.betaEnablementCriteria.some((criterion) => criterion.toLowerCase().includes('certification')),
+    profile.productionSafe === true,
+    `${providerCase.expectedProviderKey}: provider must be productionSafe for beta`,
+  );
+  assert(
+    profile.displayName.trim().length > 0,
+    `${providerCase.expectedProviderKey}: displayName is required`,
+  );
+  assert(
+    profile.version >= 1,
+    `${providerCase.expectedProviderKey}: version must be >= 1`,
+  );
+  assert(
+    profile.cursorModel === readiness.cursorModel,
+    `${providerCase.expectedProviderKey}: cursor model mismatch`,
+  );
+  assert(
+    profile.quotaModel === readiness.quotaModel,
+    `${providerCase.expectedProviderKey}: quota model mismatch`,
+  );
+  assertArrayIncludesAll(
+    profile.supportedContentUnits,
+    readiness.supportedContentUnits,
+    `${providerCase.expectedProviderKey}: content units`,
+  );
+  assertArrayIntersects(
+    profile.stableIdentity,
+    readiness.identityStrategy,
+    `${providerCase.expectedProviderKey}: identity strategy`,
+  );
+  assert(
+    readiness.betaEnablementCriteria.some((criterion) =>
+      criterion.toLowerCase().includes('certification'),
+    ),
     `${providerCase.expectedProviderKey}: beta criteria must mention certification`,
   );
-  assert(validation.ok, `${providerCase.expectedProviderKey}: valid query was rejected`);
-  assert(!unsupportedValidation.ok, `${providerCase.expectedProviderKey}: unsupported query mode was accepted`);
+  assert(
+    validation.ok,
+    `${providerCase.expectedProviderKey}: valid query was rejected`,
+  );
+  assert(
+    !unsupportedValidation.ok,
+    `${providerCase.expectedProviderKey}: unsupported query mode was accepted`,
+  );
 
   const plan = provider.planScan(providerCase.validQuery, context);
-  assert(plan.maxItems > 0 && plan.maxItems <= 100, `${providerCase.expectedProviderKey}: maxItems must be bounded`);
-  assert(plan.query.mode === providerCase.validQuery.mode, `${providerCase.expectedProviderKey}: plan mode mismatch`);
-  assert(plan.query.query === providerCase.validQuery.query, `${providerCase.expectedProviderKey}: plan query mismatch`);
+  assert(
+    plan.maxItems > 0 && plan.maxItems <= 100,
+    `${providerCase.expectedProviderKey}: maxItems must be bounded`,
+  );
+  assert(
+    plan.query.mode === providerCase.validQuery.mode,
+    `${providerCase.expectedProviderKey}: plan mode mismatch`,
+  );
+  assert(
+    plan.query.query === providerCase.validQuery.query,
+    `${providerCase.expectedProviderKey}: plan query mismatch`,
+  );
 
   const result = await provider.scan(plan, context);
-  assert(result.items.length > 0, `${providerCase.expectedProviderKey}: fixture scan must return items`);
-  assertStableItems(providerCase.expectedProviderKey, result.items, { allowEmpty: false });
+  assert(
+    result.items.length > 0,
+    `${providerCase.expectedProviderKey}: fixture scan must return items`,
+  );
+  assertStableItems(providerCase.expectedProviderKey, result.items, {
+    allowEmpty: false,
+  });
 
   if (profile.cursorModel !== 'none') {
     assert(
@@ -272,17 +377,35 @@ async function certifyProvider(
     );
   }
 
-  const repeatedResult = await provider.scan({ ...plan, cursor: result.nextCursor }, context);
-  assertStableItems(providerCase.expectedProviderKey, repeatedResult.items, { allowEmpty: true });
+  const repeatedResult = await provider.scan(
+    { ...plan, cursor: result.nextCursor },
+    context,
+  );
+  assertStableItems(providerCase.expectedProviderKey, repeatedResult.items, {
+    allowEmpty: true,
+  });
   assert(
-    repeatedResult.nextCursor === undefined || repeatedResult.nextCursor.trim().length > 0,
+    repeatedResult.nextCursor === undefined ||
+      repeatedResult.nextCursor.trim().length > 0,
     `${providerCase.expectedProviderKey}: repeated scan cursor must be undefined or non-empty`,
   );
 
-  const failure = provider.classifyError(new Error('fixture provider failure'), context);
-  assert(failure.kind === providerCase.expectedFailureKind, `${providerCase.expectedProviderKey}: failure kind mismatch`);
-  assert(failure.message.trim().length > 0, `${providerCase.expectedProviderKey}: failure message is required`);
-  assert(typeof failure.retryable === 'boolean', `${providerCase.expectedProviderKey}: retryable flag is required`);
+  const failure = provider.classifyError(
+    new Error('fixture provider failure'),
+    context,
+  );
+  assert(
+    failure.kind === providerCase.expectedFailureKind,
+    `${providerCase.expectedProviderKey}: failure kind mismatch`,
+  );
+  assert(
+    failure.message.trim().length > 0,
+    `${providerCase.expectedProviderKey}: failure message is required`,
+  );
+  assert(
+    typeof failure.retryable === 'boolean',
+    `${providerCase.expectedProviderKey}: retryable flag is required`,
+  );
 
   return {
     providerKey: providerCase.expectedProviderKey,
@@ -333,32 +456,70 @@ function assertStableItems(
   const canonicalUrls = new Set<string>();
 
   for (const item of items) {
-    assert(item.externalId.trim().length > 0, `${providerKey}: item externalId is required`);
-    assert(!externalIds.has(item.externalId), `${providerKey}: duplicate externalId ${item.externalId}`);
+    assert(
+      item.externalId.trim().length > 0,
+      `${providerKey}: item externalId is required`,
+    );
+    assert(
+      !externalIds.has(item.externalId),
+      `${providerKey}: duplicate externalId ${item.externalId}`,
+    );
     externalIds.add(item.externalId);
 
-    assert(item.canonicalUrl.trim().length > 0, `${providerKey}: item canonicalUrl is required`);
-    assert(isHttpUrl(item.canonicalUrl), `${providerKey}: item canonicalUrl must be http(s): ${item.canonicalUrl}`);
+    assert(
+      item.canonicalUrl.trim().length > 0,
+      `${providerKey}: item canonicalUrl is required`,
+    );
+    assert(
+      isHttpUrl(item.canonicalUrl),
+      `${providerKey}: item canonicalUrl must be http(s): ${item.canonicalUrl}`,
+    );
     canonicalUrls.add(item.canonicalUrl);
 
-    assert(item.title.trim().length + item.body.trim().length > 0, `${providerKey}: item title/body are both empty`);
-    assert(item.publishedAt instanceof Date, `${providerKey}: item publishedAt must be a Date`);
-    assert(!Number.isNaN(item.publishedAt.getTime()), `${providerKey}: item publishedAt must be valid`);
+    assert(
+      item.title.trim().length + item.body.trim().length > 0,
+      `${providerKey}: item title/body are both empty`,
+    );
+    assert(
+      item.publishedAt instanceof Date,
+      `${providerKey}: item publishedAt must be a Date`,
+    );
+    assert(
+      !Number.isNaN(item.publishedAt.getTime()),
+      `${providerKey}: item publishedAt must be valid`,
+    );
   }
 
   if (!options.allowEmpty) {
-    assert(canonicalUrls.size > 0, `${providerKey}: at least one canonical URL is required`);
+    assert(
+      canonicalUrls.size > 0,
+      `${providerKey}: at least one canonical URL is required`,
+    );
   }
 }
 
-function assertArrayIncludesAll(actual: readonly string[], expected: readonly string[], label: string): void {
+function assertArrayIncludesAll(
+  actual: readonly string[],
+  expected: readonly string[],
+  label: string,
+): void {
   for (const expectedValue of expected) {
-    assert(actual.includes(expectedValue), `${label}: missing ${expectedValue}`);
+    assert(
+      actual.includes(expectedValue),
+      `${label}: missing ${expectedValue}`,
+    );
   }
 }
 
-function assertArrayIntersects(left: readonly string[], right: readonly string[], label: string): void {
-  assert(left.some((value) => right.includes(value)), `${label}: no shared value`);
+function assertArrayIntersects(
+  left: readonly string[],
+  right: readonly string[],
+  label: string,
+): void {
+  assert(
+    left.some((value) => right.includes(value)),
+    `${label}: no shared value`,
+  );
 }
 
 function isHttpUrl(value: string): boolean {

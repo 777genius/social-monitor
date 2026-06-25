@@ -6,21 +6,14 @@ import { RecordScanExecutionUseCase } from '@social-monitor/monitoring/features/
 import { ScheduleDueScansUseCase } from '@social-monitor/monitoring/features/schedule-due-scans/schedule-due-scans.use-case';
 import { ScheduleDueScansCommandHandler } from '@social-monitor/monitoring/interfaces/queue/schedule-due-scans-command.handler';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
-import {
-  MONITORING_CONFIG_PROTECTOR,
-  MONITORING_SOURCE_BINDING_REPOSITORY,
-  MONITORING_SOURCE_CREDENTIAL_RESOLVER,
-} from '@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens';
-import type {
-  SourceBindingConfigProtectorPort,
-  SourceBindingRepositoryPort,
-  SourceCredentialResolverPort,
-} from '@social-monitor/monitoring/ports';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import { AmqplibRabbitMqChannel } from '@social-monitor/platform-queue/adapters/rabbitmq';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
-import { WorkerRuntime, WorkerRuntimeModule } from '@social-monitor/platform-worker';
+import {
+  WorkerRuntime,
+  WorkerRuntimeModule,
+} from '@social-monitor/platform-worker';
 import { InMemoryScanLeaseAdapter } from '@social-monitor/ingestion/adapters/lease/in-memory-scan-lease.adapter';
 import { InMemoryScanAttemptRepository } from '@social-monitor/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
 import { InMemoryScanCursorRepository } from '@social-monitor/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
@@ -33,26 +26,8 @@ import { PrismaSourceItemRepository } from '@social-monitor/ingestion/adapters/p
 import { InMemoryScanFailureQueueAdapter } from '@social-monitor/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
 import { NoopScanExecutionReporterAdapter } from '@social-monitor/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter';
 import { CircuitBreakerSourceFetcherAdapter } from '@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
-import { FakeSourceProvider } from '@social-monitor/ingestion/adapters/source/fake-source.provider';
-import {
-  GITHUB_ISSUES_PROVIDER_KEY,
-  GitHubSourceProvider,
-  LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
-} from '@social-monitor/ingestion/adapters/source/github/github-source.provider';
-import { HttpGitHubClient } from '@social-monitor/ingestion/adapters/source/github/http-github-client';
-import { GitHubRepoRadarSourceProvider } from '@social-monitor/ingestion/adapters/source/github-repo-radar/github-repo-radar-source.provider';
-import { HackerNewsSourceProvider } from '@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
-import { HttpHackerNewsClient } from '@social-monitor/ingestion/adapters/source/hacker-news/http-hacker-news-client';
 import { InMemorySourceProviderRegistry } from '@social-monitor/ingestion/adapters/source/in-memory-source-provider.registry';
 import { RegistrySourceFetcherAdapter } from '@social-monitor/ingestion/adapters/source/registry-source-fetcher.adapter';
-import { HttpRedditClient } from '@social-monitor/ingestion/adapters/source/reddit/http-reddit-client';
-import { RedditAppOnlyTokenProvider } from '@social-monitor/ingestion/adapters/source/reddit/app-only-reddit-token-provider';
-import { RedditRefreshTokenProvider } from '@social-monitor/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider';
-import { RedditSourceProvider } from '@social-monitor/ingestion/adapters/source/reddit/reddit-source.provider';
-import { HttpRssClient } from '@social-monitor/ingestion/adapters/source/rss/http-rss-client';
-import { RssSourceProvider } from '@social-monitor/ingestion/adapters/source/rss/rss-source.provider';
-import { sourceReadinessProfiles } from '@social-monitor/ingestion/adapters/source/source-readiness-profiles';
-import { selectRuntimeSourceProviders } from '@social-monitor/ingestion/adapters/source/source-provider-runtime-scope';
 import { ExecuteScanUseCase } from '@social-monitor/ingestion/features/execute-scan/execute-scan.use-case';
 import { ExecuteScanCommandHandler } from '@social-monitor/ingestion/interfaces/queue/execute-scan-command.handler';
 import type { ScanExecutionReporterPort } from '@social-monitor/ingestion/ports';
@@ -60,11 +35,9 @@ import type {
   FeedProjectionPort,
   ScanAttemptRepositoryPort,
   ScanCursorRepositoryPort,
-  SourceConfigReaderPort,
   ScanFailureQueuePort,
   ScanRetryQueuePort,
   ScanLeasePort,
-  SourceItemMetadataProjectionPort,
   SourceItemRepositoryPort,
 } from '@social-monitor/ingestion/ports';
 import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-projection.adapter';
@@ -74,7 +47,6 @@ import {
   PrismaIngestionWorkerConnection,
   type PrismaIngestionWorkerClient,
 } from './adapters/persistence/prisma-ingestion-worker-connection';
-import { MonitoringSourceConfigReaderAdapter } from './adapters/source/monitoring-source-config-reader.adapter';
 import {
   INGESTION_FEED_PROJECTION,
   INGESTION_RABBITMQ_SCAN_QUEUE_READER_OPTIONS,
@@ -87,7 +59,6 @@ import {
   INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS,
   INGESTION_SCAN_REPORTER_MODE,
   INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS,
-  INGESTION_SOURCE_ITEM_METADATA_PROJECTION,
   INGESTION_SOURCE_ITEM_REPOSITORY,
   INGESTION_WORKER_PERSISTENCE_MODE,
   INGESTION_WORKER_PRISMA_CLIENT,
@@ -101,7 +72,7 @@ import {
   resolveIngestionScanQueueDrainLoopOptions,
   resolveIngestionScanSchedulerLoopOptions,
 } from './ingestion-worker-provider-tokens';
-import { githubRepoRadarProviders } from './github-repo-radar.module';
+import { sourceProviderRegistryProviders } from './source-provider-registry.module';
 import {
   INGESTION_SCAN_COMMAND_QUEUE_READER,
   InMemoryScanCommandQueueReader,
@@ -111,10 +82,15 @@ import {
 import { ScanQueueDrainLoop } from './scan-queue-drain-loop';
 import { ScanSchedulerLoop } from './scan-scheduler-loop';
 
-const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL');
+const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
+  'INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL',
+);
 
 @Module({
-  imports: [WorkerRuntimeModule.register({ serviceName: 'ingestion-worker' }), MonitoringRestModule],
+  imports: [
+    WorkerRuntimeModule.register({ serviceName: 'ingestion-worker' }),
+    MonitoringRestModule,
+  ],
   providers: [
     {
       provide: INGESTION_WORKER_PERSISTENCE_MODE,
@@ -122,8 +98,12 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
     },
     {
       provide: INGESTION_WORKER_PRISMA_CLIENT,
-      useFactory: (mode: IngestionWorkerPersistenceMode): PrismaIngestionWorkerClient | null =>
-        mode === 'prisma' ? new PrismaIngestionWorkerConnection(process.env.DATABASE_URL ?? '') : null,
+      useFactory: (
+        mode: IngestionWorkerPersistenceMode,
+      ): PrismaIngestionWorkerClient | null =>
+        mode === 'prisma'
+          ? new PrismaIngestionWorkerConnection(process.env.DATABASE_URL ?? '')
+          : null,
       inject: [INGESTION_WORKER_PERSISTENCE_MODE],
     },
     {
@@ -136,7 +116,8 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
     },
     {
       provide: INGESTION_RABBITMQ_SCAN_QUEUE_READER_OPTIONS,
-      useFactory: () => resolveIngestionRabbitMqScanQueueReaderOptions(process.env),
+      useFactory: () =>
+        resolveIngestionRabbitMqScanQueueReaderOptions(process.env),
     },
     {
       provide: INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS,
@@ -146,126 +127,25 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
       provide: INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS,
       useFactory: () => resolveIngestionScanQueueDrainLoopOptions(process.env),
     },
-    FakeSourceProvider,
-    {
-      provide: HttpGitHubClient,
-      useFactory: () => new HttpGitHubClient(),
-    },
-    ...githubRepoRadarProviders,
-    {
-      provide: GitHubSourceProvider,
-      useFactory: (client: HttpGitHubClient) => new GitHubSourceProvider(client),
-      inject: [HttpGitHubClient],
-    },
-    {
-      provide: HttpHackerNewsClient,
-      useFactory: () => new HttpHackerNewsClient(),
-    },
-    {
-      provide: HackerNewsSourceProvider,
-      useFactory: (client: HttpHackerNewsClient) => new HackerNewsSourceProvider(client),
-      inject: [HttpHackerNewsClient],
-    },
-    {
-      provide: HttpRssClient,
-      useFactory: () => new HttpRssClient(),
-    },
-    {
-      provide: HttpRedditClient,
-      useFactory: () => new HttpRedditClient(),
-    },
-    {
-      provide: RedditAppOnlyTokenProvider,
-      useFactory: (): RedditAppOnlyTokenProvider | null => RedditAppOnlyTokenProvider.fromEnvironment(process.env),
-    },
-    {
-      provide: RedditRefreshTokenProvider,
-      useFactory: (): RedditRefreshTokenProvider => RedditRefreshTokenProvider.fromEnvironment(process.env),
-    },
-    {
-      provide: RssSourceProvider,
-      useFactory: (client: HttpRssClient) => new RssSourceProvider(client),
-      inject: [HttpRssClient],
-    },
-    {
-      provide: RedditSourceProvider,
-      useFactory: (
-        client: HttpRedditClient,
-        tokenProvider: RedditAppOnlyTokenProvider | null,
-        refreshTokenProvider: RedditRefreshTokenProvider,
-      ) => new RedditSourceProvider(client, tokenProvider ?? undefined, refreshTokenProvider),
-      inject: [HttpRedditClient, RedditAppOnlyTokenProvider, RedditRefreshTokenProvider],
-    },
-    {
-      provide: InMemorySourceProviderRegistry,
-      useFactory: (
-        fakeProvider: FakeSourceProvider,
-        githubProvider: GitHubSourceProvider,
-        githubRepoRadarProvider: GitHubRepoRadarSourceProvider,
-        hackerNewsProvider: HackerNewsSourceProvider,
-        redditProvider: RedditSourceProvider,
-        rssProvider: RssSourceProvider,
-      ) =>
-        new InMemorySourceProviderRegistry(
-          selectRuntimeSourceProviders(
-            [fakeProvider, githubProvider, githubRepoRadarProvider, hackerNewsProvider, redditProvider, rssProvider],
-            process.env,
-          ),
-          sourceReadinessProfiles,
-          [{ providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY, canonicalProviderKey: GITHUB_ISSUES_PROVIDER_KEY }],
-        ),
-      inject: [
-        FakeSourceProvider,
-        GitHubSourceProvider,
-        GitHubRepoRadarSourceProvider,
-        HackerNewsSourceProvider,
-        RedditSourceProvider,
-        RssSourceProvider,
-      ],
-    },
-    {
-      provide: RegistrySourceFetcherAdapter,
-      useFactory: (
-        registry: InMemorySourceProviderRegistry,
-        sourceConfigReader: SourceConfigReaderPort,
-      ) => new RegistrySourceFetcherAdapter(registry, sourceConfigReader),
-      inject: [InMemorySourceProviderRegistry, MonitoringSourceConfigReaderAdapter],
-    },
-    {
-      provide: MonitoringSourceConfigReaderAdapter,
-      useFactory: (
-        sourceBindings: SourceBindingRepositoryPort,
-        configProtector: SourceBindingConfigProtectorPort,
-        sourceCredentials: SourceCredentialResolverPort,
-      ) => new MonitoringSourceConfigReaderAdapter(sourceBindings, configProtector, sourceCredentials),
-      inject: [
-        MONITORING_SOURCE_BINDING_REPOSITORY,
-        MONITORING_CONFIG_PROTECTOR,
-        MONITORING_SOURCE_CREDENTIAL_RESOLVER,
-      ],
-    },
-    {
-      provide: CircuitBreakerSourceFetcherAdapter,
-      useFactory: (sourceFetcher: RegistrySourceFetcherAdapter) =>
-        new CircuitBreakerSourceFetcherAdapter(sourceFetcher, new SystemClock(), {
-          failureThreshold: 3,
-          cooldownSeconds: 60,
-        }),
-      inject: [RegistrySourceFetcherAdapter],
-    },
+    ...sourceProviderRegistryProviders,
     InMemoryScanAttemptRepository,
     InMemoryScanCursorRepository,
     {
       provide: InMemoryScanFailureQueueAdapter,
-      useFactory: (metrics: InMemoryMetricsRecorder) => new InMemoryScanFailureQueueAdapter(metrics),
+      useFactory: (metrics: InMemoryMetricsRecorder) =>
+        new InMemoryScanFailureQueueAdapter(metrics),
       inject: [InMemoryMetricsRecorder],
     },
     InMemoryScanLeaseAdapter,
     InMemoryMetricsRecorder,
     {
       provide: INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL,
-      useFactory: (mode: IngestionScanQueueReaderMode): AmqplibRabbitMqChannel | null =>
-        mode === 'rabbitmq' ? new AmqplibRabbitMqChannel({ url: process.env.RABBITMQ_URL ?? '' }) : null,
+      useFactory: (
+        mode: IngestionScanQueueReaderMode,
+      ): AmqplibRabbitMqChannel | null =>
+        mode === 'rabbitmq'
+          ? new AmqplibRabbitMqChannel({ url: process.env.RABBITMQ_URL ?? '' })
+          : null,
       inject: [INGESTION_SCAN_QUEUE_READER_MODE],
     },
     {
@@ -274,10 +154,15 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         mode: IngestionScanQueueReaderMode,
         queue: InMemoryQueuePublisher,
         channel: AmqplibRabbitMqChannel | null,
-        options: ReturnType<typeof resolveIngestionRabbitMqScanQueueReaderOptions>,
+        options: ReturnType<
+          typeof resolveIngestionRabbitMqScanQueueReaderOptions
+        >,
       ): ScanCommandQueueReaderPort =>
         mode === 'rabbitmq'
-          ? new RabbitMqScanCommandQueueReader(requireRabbitMqScanQueueChannel(channel), options)
+          ? new RabbitMqScanCommandQueueReader(
+              requireRabbitMqScanQueueChannel(channel),
+              options,
+            )
           : new InMemoryScanCommandQueueReader(queue),
       inject: [
         INGESTION_SCAN_QUEUE_READER_MODE,
@@ -298,13 +183,18 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         mode === 'monitoring'
           ? new MonitoringScanExecutionReporterAdapter(recordScanExecution)
           : noopReporter,
-      inject: [INGESTION_SCAN_REPORTER_MODE, NoopScanExecutionReporterAdapter, RecordScanExecutionUseCase],
+      inject: [
+        INGESTION_SCAN_REPORTER_MODE,
+        NoopScanExecutionReporterAdapter,
+        RecordScanExecutionUseCase,
+      ],
     },
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     {
       provide: InMemoryFeedProjectionAdapter,
-      useFactory: (feedItems: InMemoryFeedItemReadRepository) => new InMemoryFeedProjectionAdapter(feedItems),
+      useFactory: (feedItems: InMemoryFeedItemReadRepository) =>
+        new InMemoryFeedProjectionAdapter(feedItems),
       inject: [InMemoryFeedItemReadRepository],
     },
     {
@@ -315,9 +205,15 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         inMemorySourceItems: InMemorySourceItemRepository,
       ): SourceItemRepositoryPort =>
         mode === 'prisma'
-          ? new PrismaSourceItemRepository(requirePrismaIngestionWorkerClient(prisma))
+          ? new PrismaSourceItemRepository(
+              requirePrismaIngestionWorkerClient(prisma),
+            )
           : inMemorySourceItems,
-      inject: [INGESTION_WORKER_PERSISTENCE_MODE, INGESTION_WORKER_PRISMA_CLIENT, InMemorySourceItemRepository],
+      inject: [
+        INGESTION_WORKER_PERSISTENCE_MODE,
+        INGESTION_WORKER_PRISMA_CLIENT,
+        InMemorySourceItemRepository,
+      ],
     },
     {
       provide: INGESTION_SCAN_CURSOR_REPOSITORY,
@@ -327,9 +223,16 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         inMemoryScanCursors: InMemoryScanCursorRepository,
       ): ScanCursorRepositoryPort =>
         mode === 'prisma'
-          ? new PrismaScanCursorRepository(requirePrismaIngestionWorkerClient(prisma), new CryptoIdGenerator())
+          ? new PrismaScanCursorRepository(
+              requirePrismaIngestionWorkerClient(prisma),
+              new CryptoIdGenerator(),
+            )
           : inMemoryScanCursors,
-      inject: [INGESTION_WORKER_PERSISTENCE_MODE, INGESTION_WORKER_PRISMA_CLIENT, InMemoryScanCursorRepository],
+      inject: [
+        INGESTION_WORKER_PERSISTENCE_MODE,
+        INGESTION_WORKER_PRISMA_CLIENT,
+        InMemoryScanCursorRepository,
+      ],
     },
     {
       provide: INGESTION_SCAN_ATTEMPT_REPOSITORY,
@@ -339,9 +242,15 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         inMemoryScanAttempts: InMemoryScanAttemptRepository,
       ): ScanAttemptRepositoryPort =>
         mode === 'prisma'
-          ? new PrismaScanAttemptRepository(requirePrismaIngestionWorkerClient(prisma))
+          ? new PrismaScanAttemptRepository(
+              requirePrismaIngestionWorkerClient(prisma),
+            )
           : inMemoryScanAttempts,
-      inject: [INGESTION_WORKER_PERSISTENCE_MODE, INGESTION_WORKER_PRISMA_CLIENT, InMemoryScanAttemptRepository],
+      inject: [
+        INGESTION_WORKER_PERSISTENCE_MODE,
+        INGESTION_WORKER_PRISMA_CLIENT,
+        InMemoryScanAttemptRepository,
+      ],
     },
     {
       provide: INGESTION_SCAN_LEASE,
@@ -351,9 +260,16 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         inMemoryScanLeases: InMemoryScanLeaseAdapter,
       ): ScanLeasePort =>
         mode === 'prisma'
-          ? new PrismaScanLeaseAdapter(requirePrismaIngestionWorkerClient(prisma), new CryptoIdGenerator())
+          ? new PrismaScanLeaseAdapter(
+              requirePrismaIngestionWorkerClient(prisma),
+              new CryptoIdGenerator(),
+            )
           : inMemoryScanLeases,
-      inject: [INGESTION_WORKER_PERSISTENCE_MODE, INGESTION_WORKER_PRISMA_CLIENT, InMemoryScanLeaseAdapter],
+      inject: [
+        INGESTION_WORKER_PERSISTENCE_MODE,
+        INGESTION_WORKER_PRISMA_CLIENT,
+        InMemoryScanLeaseAdapter,
+      ],
     },
     {
       provide: INGESTION_FEED_PROJECTION,
@@ -363,9 +279,16 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         inMemoryFeedProjection: InMemoryFeedProjectionAdapter,
       ): FeedProjectionPort =>
         mode === 'prisma'
-          ? new PrismaFeedProjectionAdapter(requirePrismaIngestionWorkerClient(prisma), new CryptoIdGenerator())
+          ? new PrismaFeedProjectionAdapter(
+              requirePrismaIngestionWorkerClient(prisma),
+              new CryptoIdGenerator(),
+            )
           : inMemoryFeedProjection,
-      inject: [INGESTION_WORKER_PERSISTENCE_MODE, INGESTION_WORKER_PRISMA_CLIENT, InMemoryFeedProjectionAdapter],
+      inject: [
+        INGESTION_WORKER_PERSISTENCE_MODE,
+        INGESTION_WORKER_PRISMA_CLIENT,
+        InMemoryFeedProjectionAdapter,
+      ],
     },
     {
       provide: INGESTION_SCAN_FAILURE_QUEUE,
@@ -396,14 +319,18 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         scheduleDueScans: ScheduleDueScansUseCase,
         metrics: InMemoryMetricsRecorder,
         runtime: WorkerRuntime,
-      ) => new ScheduleDueScansCommandHandler(scheduleDueScans, metrics, runtime),
+      ) =>
+        new ScheduleDueScansCommandHandler(scheduleDueScans, metrics, runtime),
       inject: [ScheduleDueScansUseCase, InMemoryMetricsRecorder, WorkerRuntime],
     },
     ScanSchedulerLoop,
     {
       provide: ExecuteScanCommandHandler,
-      useFactory: (executeScan: ExecuteScanUseCase, metrics: InMemoryMetricsRecorder, runtime: WorkerRuntime) =>
-        new ExecuteScanCommandHandler(executeScan, metrics, runtime),
+      useFactory: (
+        executeScan: ExecuteScanUseCase,
+        metrics: InMemoryMetricsRecorder,
+        runtime: WorkerRuntime,
+      ) => new ExecuteScanCommandHandler(executeScan, metrics, runtime),
       inject: [ExecuteScanUseCase, InMemoryMetricsRecorder, WorkerRuntime],
     },
     {
@@ -414,7 +341,15 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
         retryQueue: ScanRetryQueuePort,
         options: ReturnType<typeof resolveIngestionScanQueueDrainLoopOptions>,
         metrics: InMemoryMetricsRecorder,
-      ) => new ScanQueueDrainLoop(queue, handler, retryQueue, options, metrics, new SystemClock()),
+      ) =>
+        new ScanQueueDrainLoop(
+          queue,
+          handler,
+          retryQueue,
+          options,
+          metrics,
+          new SystemClock(),
+        ),
       inject: [
         INGESTION_SCAN_COMMAND_QUEUE_READER,
         ExecuteScanCommandHandler,
@@ -449,16 +384,24 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol('INGESTION_RABBITMQ_SCAN_QU
 })
 export class IngestionWorkerModule {}
 
-const requirePrismaIngestionWorkerClient = (client: PrismaIngestionWorkerClient | null): PrismaIngestionWorkerClient => {
+const requirePrismaIngestionWorkerClient = (
+  client: PrismaIngestionWorkerClient | null,
+): PrismaIngestionWorkerClient => {
   if (client === null) {
-    throw new Error('Prisma ingestion worker client is required when INGESTION_WORKER_PERSISTENCE=prisma');
+    throw new Error(
+      'Prisma ingestion worker client is required when INGESTION_WORKER_PERSISTENCE=prisma',
+    );
   }
   return client;
 };
 
-const requireRabbitMqScanQueueChannel = (channel: AmqplibRabbitMqChannel | null): AmqplibRabbitMqChannel => {
+const requireRabbitMqScanQueueChannel = (
+  channel: AmqplibRabbitMqChannel | null,
+): AmqplibRabbitMqChannel => {
   if (channel === null) {
-    throw new Error('RabbitMQ scan queue channel is required when INGESTION_SCAN_QUEUE_READER=rabbitmq');
+    throw new Error(
+      'RabbitMQ scan queue channel is required when INGESTION_SCAN_QUEUE_READER=rabbitmq',
+    );
   }
 
   return channel;

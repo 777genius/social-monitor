@@ -11,7 +11,7 @@ describe('HttpRedditClient', () => {
     const fetchMock = jest.fn(async (url: string | URL, init?: RequestInit) => {
       expect(String(url)).toBe('https://oauth.reddit.test/r/ClaudeAI/top?limit=2&t=week');
       expect(init?.headers).toEqual(expect.objectContaining({
-        authorization: 'Bearer reddit-token',
+        authorization: 'Bearer token-value',
         accept: 'application/json',
         'user-agent': 'social-monitor-test/0.1',
       }));
@@ -53,7 +53,7 @@ describe('HttpRedditClient', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const page = await new HttpRedditClient('https://oauth.reddit.test').listSubredditPosts({
-      accessToken: 'reddit-token',
+      accessToken: 'token-value',
       userAgent: 'social-monitor-test/0.1',
       subreddit: 'ClaudeAI',
       listing: 'top',
@@ -87,7 +87,7 @@ describe('HttpRedditClient', () => {
     const fetchMock = jest.fn(async (url: string | URL, init?: RequestInit) => {
       expect(String(url)).toBe('https://oauth.reddit.test/search?q=agent+feedback&type=link&sort=new&limit=1');
       expect(init?.headers).toEqual(expect.objectContaining({
-        authorization: 'Bearer reddit-token',
+        authorization: 'Bearer token-value',
         'user-agent': 'social-monitor-mvp/0.1',
       }));
 
@@ -111,7 +111,7 @@ describe('HttpRedditClient', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(new HttpRedditClient('https://oauth.reddit.test').searchPosts({
-      accessToken: 'reddit-token',
+      accessToken: 'token-value',
       query: 'agent feedback',
       limit: 1,
     })).resolves.toMatchObject({

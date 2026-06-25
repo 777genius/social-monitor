@@ -27,7 +27,10 @@ const assert = (condition: unknown, message: string): void => {
   }
 };
 
-const requireSource = (sources: readonly SourceProfile[], providerKey: string): SourceProfile => {
+const requireSource = (
+  sources: readonly SourceProfile[],
+  providerKey: string,
+): SourceProfile => {
   const source = sources.find((entry) => entry.providerKey === providerKey);
 
   if (source === undefined) {
@@ -60,68 +63,190 @@ async function main(): Promise<void> {
   await app.init();
 
   try {
-    const response = await request(app.getHttpServer()).get('/sources/profiles').expect(200);
+    const response = await request(app.getHttpServer())
+      .get('/sources/profiles')
+      .expect(200);
     const sources = response.body.sources as readonly SourceProfile[];
 
-    assert(Array.isArray(sources), 'source profile REST response must return a sources array');
-    assert(sources.length >= 5, 'source profile REST response must expose enabled MVP sources');
+    assert(
+      Array.isArray(sources),
+      'source profile REST response must return a sources array',
+    );
+    assert(
+      sources.length >= 5,
+      'source profile REST response must expose enabled MVP sources',
+    );
     assert(
       sources.map((source) => source.providerKey).join(',') ===
-        [...sources].map((source) => source.providerKey).sort().join(','),
+        [...sources]
+          .map((source) => source.providerKey)
+          .sort()
+          .join(','),
       'source profile REST response must be sorted by provider key for stable clients',
     );
 
     const fake = requireSource(sources, 'fake-source');
-    const github = requireSource(sources, 'github');
+    const github = requireSource(sources, 'github-issues');
+    const githubTrendingPage = requireSource(sources, 'github-trending-page');
     requireSource(sources, 'hacker-news');
     requireSource(sources, 'rss');
     const telegram = requireSource(sources, 'telegram');
     const xTwitter = requireSource(sources, 'x-twitter');
 
-    assert(fake.readinessState === 'certification_ready', 'Fake source must be certification-only');
-    assert(fake.runtimeReadiness === 'fixture_ready', 'Fake source must stay fixture-ready only');
     assert(
-      fake.liveBetaBlockers.some((blocker) => blocker.toLowerCase().includes('not a real external source')),
+      fake.readinessState === 'certification_ready',
+      'Fake source must be certification-only',
+    );
+    assert(
+      fake.runtimeReadiness === 'fixture_ready',
+      'Fake source must stay fixture-ready only',
+    );
+    assert(
+      fake.liveBetaBlockers.some((blocker) =>
+        blocker.toLowerCase().includes('not a real external source'),
+      ),
       'Fake source must explain why it cannot unblock external beta',
     );
 
-    assert(github.displayName === 'GitHub', 'GitHub profile must expose display name');
-    assert(github.productionSafe === true, 'GitHub profile must be marked production safe');
-    assert(github.readinessState === 'enabled_beta', 'GitHub readiness must be enabled beta');
-    assert(github.acquisitionMode === 'official_or_open_api', 'GitHub profile must document official API acquisition');
-    assert(github.supportedQueryModes.includes('search'), 'GitHub profile must support search mode');
-    assert(github.cursorModel === 'page_token', 'GitHub profile must expose page-token cursor model');
+    assert(
+      github.displayName === 'GitHub Issues',
+      'GitHub issues profile must expose display name',
+    );
+    assert(
+      github.productionSafe === true,
+      'GitHub profile must be marked production safe',
+    );
+    assert(
+      github.readinessState === 'enabled_beta',
+      'GitHub readiness must be enabled beta',
+    );
+    assert(
+      github.acquisitionMode === 'official_or_open_api',
+      'GitHub profile must document official API acquisition',
+    );
+    assert(
+      github.supportedQueryModes.includes('search'),
+      'GitHub profile must support search mode',
+    );
+    assert(
+      github.cursorModel === 'page_token',
+      'GitHub profile must expose page-token cursor model',
+    );
+
+    assert(
+      githubTrendingPage.displayName === 'GitHub Trending Page',
+      'GitHub Trending page profile must expose display name',
+    );
+    assert(
+      githubTrendingPage.productionSafe === true,
+      'GitHub Trending page profile must be marked production safe',
+    );
+    assert(
+      githubTrendingPage.readinessState === 'enabled_beta',
+      'GitHub Trending page readiness must be enabled beta',
+    );
+    assert(
+      githubTrendingPage.acquisitionMode ===
+        'public_page_with_site_policy_respect',
+      'GitHub Trending page profile must document public page acquisition',
+    );
+    assert(
+      githubTrendingPage.supportedQueryModes.includes('listing'),
+      'GitHub Trending page must support listing mode',
+    );
+    assert(
+      githubTrendingPage.cursorModel === 'time',
+      'GitHub Trending page must expose time cursor model',
+    );
 
     const reddit = requireSource(sources, 'reddit');
 
-    assert(reddit.displayName === 'Reddit', 'Reddit profile must expose display name');
-    assert(reddit.productionSafe === true, 'Reddit profile must be marked production safe after provider enablement');
-    assert(reddit.readinessState === 'enabled_beta', 'Reddit readiness must be enabled beta');
-    assert(reddit.acquisitionMode === 'official_oauth_api', 'Reddit profile must document official API acquisition');
-    assert(reddit.quotaModel === 'per_app', 'Reddit profile must expose app-only quota model');
-    assert(reddit.cursorModel === 'opaque', 'Reddit profile must expose opaque cursor model');
-    assert(reddit.supportedQueryModes.includes('listing'), 'Reddit profile must support subreddit listings');
-    assert(reddit.supportedQueryModes.includes('search'), 'Reddit profile must support search mode');
-    assert(reddit.supportedContentUnits.includes('post'), 'Reddit profile must support post content units');
     assert(
-      reddit.limitations.some((limitation) => limitation.toLowerCase().includes('oauth api')),
+      reddit.displayName === 'Reddit',
+      'Reddit profile must expose display name',
+    );
+    assert(
+      reddit.productionSafe === true,
+      'Reddit profile must be marked production safe after provider enablement',
+    );
+    assert(
+      reddit.readinessState === 'enabled_beta',
+      'Reddit readiness must be enabled beta',
+    );
+    assert(
+      reddit.acquisitionMode === 'official_oauth_api',
+      'Reddit profile must document official API acquisition',
+    );
+    assert(
+      reddit.quotaModel === 'per_app',
+      'Reddit profile must expose app-only quota model',
+    );
+    assert(
+      reddit.cursorModel === 'opaque',
+      'Reddit profile must expose opaque cursor model',
+    );
+    assert(
+      reddit.supportedQueryModes.includes('listing'),
+      'Reddit profile must support subreddit listings',
+    );
+    assert(
+      reddit.supportedQueryModes.includes('search'),
+      'Reddit profile must support search mode',
+    );
+    assert(
+      reddit.supportedContentUnits.includes('post'),
+      'Reddit profile must support post content units',
+    );
+    assert(
+      reddit.limitations.some((limitation) =>
+        limitation.toLowerCase().includes('oauth api'),
+      ),
       'Reddit profile must document OAuth API limitation',
     );
 
-    assert(xTwitter.displayName === undefined, 'X/Twitter must not expose runtime capability display name while deferred');
-    assert(xTwitter.productionSafe === false, 'X/Twitter must not be production-safe while provider-only');
-    assert(xTwitter.readinessState === 'provider_only', 'X/Twitter readiness must stay provider-only before paid API/vendor approval');
-    assert(xTwitter.runtimeReadiness === 'deferred', 'X/Twitter runtime readiness must stay deferred');
-    assert(xTwitter.acquisitionMode === 'approved_paid_api_or_vendor', 'X/Twitter must require approved paid API or vendor acquisition');
-    assert(xTwitter.supportedQueryModes.length === 0, 'X/Twitter must not expose query modes without a registered runtime provider');
     assert(
-      xTwitter.liveBetaBlockers.some((blocker) => blocker.toLowerCase().includes('paid x api')),
+      xTwitter.displayName === undefined,
+      'X/Twitter must not expose runtime capability display name while deferred',
+    );
+    assert(
+      xTwitter.productionSafe === false,
+      'X/Twitter must not be production-safe while provider-only',
+    );
+    assert(
+      xTwitter.readinessState === 'provider_only',
+      'X/Twitter readiness must stay provider-only before paid API/vendor approval',
+    );
+    assert(
+      xTwitter.runtimeReadiness === 'deferred',
+      'X/Twitter runtime readiness must stay deferred',
+    );
+    assert(
+      xTwitter.acquisitionMode === 'approved_paid_api_or_vendor',
+      'X/Twitter must require approved paid API or vendor acquisition',
+    );
+    assert(
+      xTwitter.supportedQueryModes.length === 0,
+      'X/Twitter must not expose query modes without a registered runtime provider',
+    );
+    assert(
+      xTwitter.liveBetaBlockers.some((blocker) =>
+        blocker.toLowerCase().includes('paid x api'),
+      ),
       'X/Twitter profile must explain paid API blocker',
     );
 
-    assert(telegram.readinessState === 'manual_only', 'Telegram readiness must stay manual-only before authorization model');
-    assert(telegram.runtimeReadiness === 'deferred', 'Telegram runtime readiness must stay deferred');
-    assert(telegram.supportedQueryModes.length === 0, 'Telegram must not expose query modes without a registered runtime provider');
+    assert(
+      telegram.readinessState === 'manual_only',
+      'Telegram readiness must stay manual-only before authorization model',
+    );
+    assert(
+      telegram.runtimeReadiness === 'deferred',
+      'Telegram runtime readiness must stay deferred',
+    );
+    assert(
+      telegram.supportedQueryModes.length === 0,
+      'Telegram must not expose query modes without a registered runtime provider',
+    );
 
     console.log('Source profile REST smoke OK');
   } finally {

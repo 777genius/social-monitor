@@ -37,21 +37,33 @@ export class BigQueryGitHubRepoRadarClient implements GitHubRepoRadarClientPort 
   private readonly jobTimeoutMs: number;
 
   constructor(options: BigQueryGitHubRepoRadarClientOptions = {}) {
-    this.client = options.client ?? new BigQuery({ projectId: options.projectId });
+    this.client =
+      options.client ?? new BigQuery({ projectId: options.projectId });
     this.location = options.location ?? 'US';
-    this.maximumBytesBilled = options.maximumBytesBilled ?? defaultMaximumBytesBilled;
-    this.timeoutMs = positiveIntegerOrFallback(options.timeoutMs, defaultTimeoutMs);
-    this.jobTimeoutMs = positiveIntegerOrFallback(options.jobTimeoutMs, defaultJobTimeoutMs);
+    this.maximumBytesBilled =
+      options.maximumBytesBilled ?? defaultMaximumBytesBilled;
+    this.timeoutMs = positiveIntegerOrFallback(
+      options.timeoutMs,
+      defaultTimeoutMs,
+    );
+    this.jobTimeoutMs = positiveIntegerOrFallback(
+      options.jobTimeoutMs,
+      defaultJobTimeoutMs,
+    );
   }
 
-  async findTrendingRepositories(query: GitHubRepoRadarQuery): Promise<readonly GitHubRepoRadarCandidate[]> {
+  async findTrendingRepositories(
+    query: GitHubRepoRadarQuery,
+  ): Promise<readonly GitHubRepoRadarCandidate[]> {
     const [job] = await this.client.createQueryJob({
       query: trendSql,
       location: this.location,
       maximumBytesBilled: this.maximumBytesBilled,
       jobTimeoutMs: this.jobTimeoutMs,
       params: {
-        startTableSuffix: dayTableSuffix(daysBefore(query.checkedAt, 2)),
+        startTableSuffix: dayTableSuffix(
+          daysBefore(query.checkedAt, largestWindowDays(query.windows)),
+        ),
         endTableSuffix: dayTableSuffix(query.checkedAt),
         checkedAt: query.checkedAt.toISOString(),
         query: query.query.toLocaleLowerCase('en-US'),
@@ -62,7 +74,10 @@ export class BigQueryGitHubRepoRadarClient implements GitHubRepoRadarClientPort 
 
     return (rows as readonly BigQueryRow[])
       .map((row, index) => rowToCandidate(row, index + 1, query.windows))
-      .filter((candidate): candidate is GitHubRepoRadarCandidate => candidate !== null)
+      .filter(
+        (candidate): candidate is GitHubRepoRadarCandidate =>
+          candidate !== null,
+      )
       .slice(0, query.limit);
   }
 }
@@ -83,9 +98,9 @@ aggregated AS (
     full_name,
     COUNTIF(created_at >= TIMESTAMP_SUB(TIMESTAMP(@checkedAt), INTERVAL 1 DAY)) AS stars_24h,
     COUNTIF(created_at >= TIMESTAMP_SUB(TIMESTAMP(@checkedAt), INTERVAL 2 DAY)) AS stars_48h,
-    0 AS stars_7d,
-    0 AS stars_30d,
-    0 AS stars_90d
+    COUNTIF(created_at >= TIMESTAMP_SUB(TIMESTAMP(@checkedAt), INTERVAL 7 DAY)) AS stars_7d,
+    COUNTIF(created_at >= TIMESTAMP_SUB(TIMESTAMP(@checkedAt), INTERVAL 30 DAY)) AS stars_30d,
+    COUNTIF(created_at >= TIMESTAMP_SUB(TIMESTAMP(@checkedAt), INTERVAL 90 DAY)) AS stars_90d
   FROM events
   GROUP BY full_name
 )
@@ -93,8 +108,8 @@ SELECT full_name, stars_24h, stars_48h, stars_7d, stars_30d, stars_90d
 FROM aggregated
 WHERE
   (@query = '' OR LOWER(full_name) LIKE CONCAT('%', @query, '%'))
-  AND stars_48h > 0
-ORDER BY stars_24h DESC, stars_48h DESC, full_name ASC
+  AND (stars_24h > 0 OR stars_48h > 0 OR stars_7d > 0 OR stars_30d > 0 OR stars_90d > 0)
+ORDER BY stars_24h DESC, stars_48h DESC, stars_7d DESC, stars_30d DESC, stars_90d DESC, full_name ASC
 LIMIT @limit
 `;
 
@@ -117,20 +132,26 @@ const rowToCandidate = (
     stars30d: readInteger(row.stars_30d),
     stars90d: readInteger(row.stars_90d),
     rank,
-    primaryWindow: primaryWindow({
-      stars24h: readInteger(row.stars_24h),
-      stars48h: readInteger(row.stars_48h),
-      stars7d: readInteger(row.stars_7d),
-      stars30d: readInteger(row.stars_30d),
-      stars90d: readInteger(row.stars_90d),
-    }, windows),
+    primaryWindow: primaryWindow(
+      {
+        stars24h: readInteger(row.stars_24h),
+        stars48h: readInteger(row.stars_48h),
+        stars7d: readInteger(row.stars_7d),
+        stars30d: readInteger(row.stars_30d),
+        stars90d: readInteger(row.stars_90d),
+      },
+      windows,
+    ),
   };
 
   return candidate;
 };
 
 const primaryWindow = (
-  scores: Pick<GitHubRepoRadarCandidate, 'stars24h' | 'stars48h' | 'stars7d' | 'stars30d' | 'stars90d'>,
+  scores: Pick<
+    GitHubRepoRadarCandidate,
+    'stars24h' | 'stars48h' | 'stars7d' | 'stars30d' | 'stars90d'
+  >,
   windows: readonly GitHubRepositoryTrendWindow[],
 ): GitHubRepositoryTrendWindow => {
   const candidates = [
@@ -143,9 +164,37 @@ const primaryWindow = (
   const filtered = candidates.filter(([window]) => windows.includes(window));
 
   return filtered.reduce(
-    (best, current) => current[1] > best[1] ? current : best,
+    (best, current) =>
+      trendVelocity(current) > trendVelocity(best) ? current : best,
     filtered[0] ?? ['24h', scores.stars24h],
   )[0];
+};
+
+const trendVelocity = ([window, value]: readonly [
+  GitHubRepositoryTrendWindow,
+  number,
+]): number => value / windowDays(window);
+
+const largestWindowDays = (
+  windows: readonly GitHubRepositoryTrendWindow[],
+): number =>
+  Math.max(
+    ...(windows.length === 0 ? (['24h'] as const) : windows).map(windowDays),
+  );
+
+const windowDays = (window: GitHubRepositoryTrendWindow): number => {
+  switch (window) {
+    case '24h':
+      return 1;
+    case '48h':
+      return 2;
+    case '7d':
+      return 7;
+    case '30d':
+      return 30;
+    case '90d':
+      return 90;
+  }
 };
 
 const dayTableSuffix = (date: Date): string =>
@@ -159,7 +208,9 @@ const daysBefore = (date: Date, days: number): Date =>
   new Date(date.getTime() - days * 24 * 60 * 60 * 1000);
 
 const readString = (value: unknown): string | undefined =>
-  typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+  typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : undefined;
 
 const readInteger = (value: unknown): number => {
   if (typeof value === 'bigint') {
@@ -177,5 +228,10 @@ const readInteger = (value: unknown): number => {
   return 0;
 };
 
-const positiveIntegerOrFallback = (value: number | undefined, fallback: number): number =>
-  value === undefined || !Number.isInteger(value) || value < 1 ? fallback : value;
+const positiveIntegerOrFallback = (
+  value: number | undefined,
+  fallback: number,
+): number =>
+  value === undefined || !Number.isInteger(value) || value < 1
+    ? fallback
+    : value;

@@ -125,7 +125,7 @@ export class GitHubRepoRadarSourceProvider implements SourceProviderPort {
         continue;
       }
 
-      items.push(normalizeRepositoryTrend(candidate, live, checkedAt, config.source));
+      items.push(normalizeRepositoryTrend(candidate, live, checkedAt, config, plan.query.query));
     }
 
     return {
@@ -194,7 +194,8 @@ const normalizeRepositoryTrend = (
   candidate: GitHubRepoRadarCandidate,
   live: GitHubRepositoryLiveRecord,
   checkedAt: Date,
-  source: GitHubRepositoryTrendMetadataInput['trend']['source'],
+  config: GitHubRepoRadarConfig,
+  query: string,
 ) => {
   const metadata = githubRepositoryTrendMetadata({
     repository: {
@@ -216,7 +217,12 @@ const normalizeRepositoryTrend = (
       rank: candidate.rank,
       primaryWindow: candidate.primaryWindow,
       checkedAt,
-      source,
+      source: config.source,
+    },
+    sourceCohort: {
+      query: shouldSearchByRepositoryName(config) ? query : undefined,
+      topics: config.topics,
+      languages: config.languages,
     },
   });
   const description = live.description ?? 'No GitHub description available.';

@@ -61,11 +61,20 @@ describe('GitHubRepoRadarSourceProvider', () => {
         stars7d: 1200,
         source: 'fixture_gh_archive_plus_github_live',
       },
+      sourceCohort: {
+        topics: ['ai', 'agents'],
+        languages: ['TypeScript'],
+      },
     });
     expect(parseGitHubRepositoryTrendMetadata(result.items[0]?.metadata)).toEqual(
       expect.objectContaining({
         repository: expect.objectContaining({ fullName: 'openai/codex' }),
         trend: expect.objectContaining({ primaryWindow: '24h' }),
+        sourceCohort: {
+          query: undefined,
+          topics: ['ai', 'agents'],
+          languages: ['TypeScript'],
+        },
       }),
     );
   });

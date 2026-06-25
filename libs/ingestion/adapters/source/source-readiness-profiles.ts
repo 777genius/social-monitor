@@ -17,39 +17,55 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     supportedContentUnits: ['post', 'link'],
     unsupportedContentUnits: ['comment', 'profile', 'community', 'media'],
     estimatedCostPerScan: 'zero',
-    betaEnablementCriteria: ['Certification tests pass', 'No external network dependency'],
+    betaEnablementCriteria: [
+      'Certification tests pass',
+      'No external network dependency',
+    ],
     rollbackPlan: 'Disable fake provider registration.',
   },
   {
     providerKey: 'hacker-news',
     state: 'enabled_beta',
     runtimeReadiness: 'fixture_ready',
-    liveBetaBlockers: ['Live HTTP smoke and deployed rate-limit evidence required before external beta.'],
+    liveBetaBlockers: [
+      'Live HTTP smoke and deployed rate-limit evidence required before external beta.',
+    ],
     acquisitionMode: 'official_or_open_api',
     approvalOwner: 'engineering',
-    termsNotes: 'Uses public HN Firebase listings and HN Algolia search endpoints; no credentials required.',
+    termsNotes:
+      'Uses public HN Firebase listings and HN Algolia search endpoints; no credentials required.',
     credentialOwnership: 'none',
     quotaModel: 'per_app',
-    retentionNotes: 'Store normalized public story/comment provenance; avoid raw payload retention by default.',
+    retentionNotes:
+      'Store normalized public story/comment provenance; avoid raw payload retention by default.',
     cursorModel: 'time',
     identityStrategy: ['providerId', 'canonicalUrl'],
     supportedContentUnits: ['post', 'comment', 'link'],
     unsupportedContentUnits: ['profile', 'community', 'media'],
     estimatedCostPerScan: 'low',
-    betaEnablementCriteria: ['HN fixtures pass certification', 'Live HTTP adapter smoke passes', 'Rate-limit behavior documented'],
-    rollbackPlan: 'Return source health unavailable and stop scheduling HN bindings.',
+    betaEnablementCriteria: [
+      'HN fixtures pass certification',
+      'Live HTTP adapter smoke passes',
+      'Rate-limit behavior documented',
+    ],
+    rollbackPlan:
+      'Return source health unavailable and stop scheduling HN bindings.',
   },
   {
     providerKey: 'rss',
     state: 'enabled_beta',
     runtimeReadiness: 'fixture_ready',
-    liveBetaBlockers: ['Representative live feed allowlist, HTTP cache and SSRF controls need deployed evidence.'],
+    liveBetaBlockers: [
+      'Representative live feed allowlist, HTTP cache and SSRF controls need deployed evidence.',
+    ],
     acquisitionMode: 'feed_polling_with_site_policy_respect',
     approvalOwner: 'engineering',
-    termsNotes: 'Use RSS/Atom feeds with ETag/Last-Modified where available; no broad page scraping.',
+    termsNotes:
+      'Use RSS/Atom feeds with ETag/Last-Modified where available; no broad page scraping.',
     credentialOwnership: 'none',
     quotaModel: 'per_source_binding',
-    retentionNotes: 'Respect publisher policy; raw payload retention disabled unless explicitly allowed.',
+    retentionNotes:
+      'Respect publisher policy; raw payload retention disabled unless explicitly allowed.',
     cursorModel: 'etag_last_modified',
     identityStrategy: ['guid', 'canonicalUrl', 'contentHash'],
     supportedContentUnits: ['post', 'link'],
@@ -60,19 +76,24 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
       'HTTP cache headers supported',
       'SSRF URL policy enforced',
     ],
-    rollbackPlan: 'Pause affected feed bindings and expose source health degraded.',
+    rollbackPlan:
+      'Pause affected feed bindings and expose source health degraded.',
   },
   {
     providerKey: 'github-issues',
     state: 'enabled_beta',
     runtimeReadiness: 'fixture_ready',
-    liveBetaBlockers: ['Live GitHub issues API smoke and deployed rate-limit budget evidence required before external beta.'],
+    liveBetaBlockers: [
+      'Live GitHub issues API smoke and deployed rate-limit budget evidence required before external beta.',
+    ],
     acquisitionMode: 'official_or_open_api',
     approvalOwner: 'engineering',
-    termsNotes: 'Uses GitHub REST search API for public issues; no GitHub UI scraping.',
+    termsNotes:
+      'Uses GitHub REST search API for public issues; no GitHub UI scraping.',
     credentialOwnership: 'none',
     quotaModel: 'per_app',
-    retentionNotes: 'Store normalized public issue provenance; avoid raw payload retention by default.',
+    retentionNotes:
+      'Store normalized public issue provenance; avoid raw payload retention by default.',
     cursorModel: 'page_token',
     identityStrategy: ['providerId', 'canonicalUrl'],
     supportedContentUnits: ['post', 'comment', 'link'],
@@ -83,7 +104,8 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
       'Official REST API path only',
       'Rate-limit behavior documented',
     ],
-    rollbackPlan: 'Pause GitHub issues bindings and expose source health rate_limited or degraded.',
+    rollbackPlan:
+      'Pause GitHub issues bindings and expose source health rate_limited or degraded.',
   },
   {
     providerKey: 'github-repo-radar',
@@ -94,14 +116,22 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     ],
     acquisitionMode: 'official_or_open_api',
     approvalOwner: 'engineering',
-    termsNotes: 'Uses GH Archive BigQuery public dataset and GitHub REST repository API; no GitHub UI scraping.',
+    termsNotes:
+      'Uses GH Archive BigQuery public dataset and GitHub REST repository API; no GitHub UI scraping.',
     credentialOwnership: 'app',
     quotaModel: 'per_app',
-    retentionNotes: 'Store normalized public repository trend metadata and daily snapshots; raw BigQuery rows are not retained.',
+    retentionNotes:
+      'Store normalized public repository trend metadata and daily snapshots; raw BigQuery rows are not retained.',
     cursorModel: 'time',
     identityStrategy: ['repositoryFullName', 'canonicalUrl', 'checkedAt'],
     supportedContentUnits: ['link'],
-    unsupportedContentUnits: ['post', 'comment', 'profile', 'community', 'media'],
+    unsupportedContentUnits: [
+      'post',
+      'comment',
+      'profile',
+      'community',
+      'media',
+    ],
     estimatedCostPerScan: 'medium_with_bigquery_cost_guard',
     betaEnablementCriteria: [
       'Fixture certification passes',
@@ -111,19 +141,65 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
       'GitHub REST live verifier rate-limit behavior documented',
       'Trend history persistence smoke passes',
     ],
-    rollbackPlan: 'Pause GitHub repo radar bindings and expose source health bigquery_unavailable or rate_limited.',
+    rollbackPlan:
+      'Pause GitHub repo radar bindings and expose source health bigquery_unavailable or rate_limited.',
+  },
+  {
+    providerKey: 'github-trending-page',
+    state: 'enabled_beta',
+    runtimeReadiness: 'fixture_ready',
+    liveBetaBlockers: [
+      'Representative live page smoke, parser drift alert and rate-limit evidence required before external beta.',
+    ],
+    acquisitionMode: 'public_page_with_site_policy_respect',
+    approvalOwner: 'engineering',
+    termsNotes:
+      'Uses the public GitHub Trending page only for normalized repository rank and star-gain signals.',
+    credentialOwnership: 'none',
+    quotaModel: 'per_app',
+    retentionNotes:
+      'Store normalized public repository trend metadata; do not retain raw GitHub HTML by default.',
+    cursorModel: 'time',
+    identityStrategy: [
+      'repositoryFullName',
+      'canonicalUrl',
+      'window',
+      'checkedAt',
+    ],
+    supportedContentUnits: ['link'],
+    unsupportedContentUnits: [
+      'post',
+      'comment',
+      'profile',
+      'community',
+      'media',
+    ],
+    estimatedCostPerScan: 'low_with_page_rate_limit_guard',
+    betaEnablementCriteria: [
+      'Fixture certification passes',
+      'HTML parser drift test covers repository name, rank, language, stars and stars gained',
+      'npm run check:github-trending-page-html-e2e proves HTML parsing through ingestion and feed projection',
+      'Live HTTP smoke records top repositories from github.com/trending?since=daily',
+      'Reader briefing separates GitHub Trending Page from Repo Radar',
+    ],
+    rollbackPlan:
+      'Pause GitHub Trending page bindings and keep GH Archive repo radar enabled.',
   },
   {
     providerKey: 'reddit',
     state: 'enabled_beta',
     runtimeReadiness: 'fixture_ready',
-    liveBetaBlockers: ['App-only OAuth client credentials and live Reddit API rate-limit evidence required before external beta.'],
+    liveBetaBlockers: [
+      'App-only OAuth client credentials and live Reddit API rate-limit evidence required before external beta.',
+    ],
     acquisitionMode: 'official_oauth_api',
     approvalOwner: 'product_and_legal',
-    termsNotes: 'Uses Reddit OAuth API only; no unsafe scraping or bypassing platform controls.',
+    termsNotes:
+      'Uses Reddit OAuth API only; no unsafe scraping or bypassing platform controls.',
     credentialOwnership: 'app_with_optional_tenant_override',
     quotaModel: 'per_app',
-    retentionNotes: 'Store normalized public post provenance; raw payload retention disabled unless explicitly approved.',
+    retentionNotes:
+      'Store normalized public post provenance; raw payload retention disabled unless explicitly approved.',
     cursorModel: 'opaque',
     identityStrategy: ['providerId', 'canonicalUrl'],
     supportedContentUnits: ['post', 'comment', 'community', 'link'],
@@ -135,7 +211,8 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
       'Certification fixtures pass',
       'Backpressure and rate-limit metrics enabled',
     ],
-    rollbackPlan: 'Pause Reddit bindings and expose source health auth_failed or rate_limited.',
+    rollbackPlan:
+      'Pause Reddit bindings and expose source health auth_failed or rate_limited.',
   },
   {
     providerKey: 'x-twitter',
@@ -147,10 +224,12 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     ],
     acquisitionMode: 'approved_paid_api_or_vendor',
     approvalOwner: 'product_and_legal',
-    termsNotes: 'No production path without explicit policy, cost, retention, deletion and access approval.',
+    termsNotes:
+      'No production path without explicit policy, cost, retention, deletion and access approval.',
     credentialOwnership: 'vendor_or_tenant',
     quotaModel: 'per_credential',
-    retentionNotes: 'Retention constraints depend on approved provider contract.',
+    retentionNotes:
+      'Retention constraints depend on approved provider contract.',
     cursorModel: 'since_id',
     identityStrategy: ['providerId', 'canonicalUrl'],
     supportedContentUnits: ['post', 'comment', 'profile', 'media', 'link'],
@@ -163,25 +242,32 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
       'Rate-limit headers are captured in live evidence',
       'Deletion and retention policy implemented',
     ],
-    rollbackPlan: 'Do not enable direct adapter; use vendor-only integration if approved.',
+    rollbackPlan:
+      'Do not enable direct adapter; use vendor-only integration if approved.',
   },
   {
     providerKey: 'telegram',
     state: 'manual_only',
     runtimeReadiness: 'deferred',
-    liveBetaBlockers: ['Authorized channel scope and credential lifecycle are required before automation.'],
+    liveBetaBlockers: [
+      'Authorized channel scope and credential lifecycle are required before automation.',
+    ],
     acquisitionMode: 'bot_or_channel_api_with_clear_scope',
     approvalOwner: 'product_and_legal',
     termsNotes: 'Only channels/scopes with explicit authorization.',
     credentialOwnership: 'tenant',
     quotaModel: 'per_credential',
-    retentionNotes: 'Retention depends on channel/admin authorization and user policy.',
+    retentionNotes:
+      'Retention depends on channel/admin authorization and user policy.',
     cursorModel: 'opaque',
     identityStrategy: ['providerId', 'channelId', 'messageId'],
     supportedContentUnits: ['post', 'media', 'link'],
     unsupportedContentUnits: ['profile', 'community', 'comment'],
     estimatedCostPerScan: 'unknown',
-    betaEnablementCriteria: ['Authorized scope model', 'Credential lifecycle implemented'],
+    betaEnablementCriteria: [
+      'Authorized scope model',
+      'Credential lifecycle implemented',
+    ],
     rollbackPlan: 'Disable automation and keep manual import path only.',
   },
 ];
