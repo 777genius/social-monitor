@@ -1,6 +1,5 @@
-import { createRequire } from 'node:module';
-
 import { PrismaPg } from '@prisma/adapter-pg';
+import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 import { Pool } from 'pg';
 
 import type { PrismaIdentityClient } from './prisma-identity-client';
@@ -12,12 +11,6 @@ type PrismaIdentityRuntimeClient = PrismaIdentityClient & {
 type PrismaIdentityRuntimeClientConstructor = new (args: {
   readonly adapter: PrismaPg;
 }) => PrismaIdentityRuntimeClient;
-
-type PrismaIdentityRuntimeModule = {
-  readonly PrismaClient: PrismaIdentityRuntimeClientConstructor;
-};
-
-const runtimeRequire = createRequire(`${process.cwd()}/package.json`);
 
 export class PrismaIdentityConnection implements PrismaIdentityClient {
   readonly apiKeyCredential: PrismaIdentityClient['apiKeyCredential'];
@@ -32,7 +25,7 @@ export class PrismaIdentityConnection implements PrismaIdentityClient {
     }
 
     this.pool = new Pool({ connectionString: databaseUrl });
-    const { PrismaClient } = runtimeRequire('./prisma/generated/client/client') as PrismaIdentityRuntimeModule;
+    const PrismaClient = loadPrismaRuntimeClient<PrismaIdentityRuntimeClientConstructor>();
     this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
 
     this.apiKeyCredential = this.client.apiKeyCredential;

@@ -1,6 +1,5 @@
-import { createRequire } from 'node:module';
-
 import { PrismaPg } from '@prisma/adapter-pg';
+import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 import { Pool } from 'pg';
 
 import type { PrismaMonitoringClient } from './prisma-monitoring-client';
@@ -12,12 +11,6 @@ type PrismaMonitoringRuntimeClient = PrismaMonitoringClient & {
 type PrismaMonitoringRuntimeClientConstructor = new (args: {
   readonly adapter: PrismaPg;
 }) => PrismaMonitoringRuntimeClient;
-
-type PrismaMonitoringRuntimeModule = {
-  readonly PrismaClient: PrismaMonitoringRuntimeClientConstructor;
-};
-
-const runtimeRequire = createRequire(`${process.cwd()}/package.json`);
 
 export class PrismaMonitoringConnection implements PrismaMonitoringClient {
   readonly topic: PrismaMonitoringClient['topic'];
@@ -40,7 +33,7 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
     }
 
     this.pool = new Pool({ connectionString: databaseUrl });
-    const { PrismaClient } = runtimeRequire('./prisma/generated/client/client') as PrismaMonitoringRuntimeModule;
+    const PrismaClient = loadPrismaRuntimeClient<PrismaMonitoringRuntimeClientConstructor>();
     this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
 
     this.topic = this.client.topic;

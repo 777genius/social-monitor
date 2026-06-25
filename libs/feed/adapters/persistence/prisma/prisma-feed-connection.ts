@@ -1,6 +1,5 @@
-import { createRequire } from 'node:module';
-
 import { PrismaPg } from '@prisma/adapter-pg';
+import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 import { Pool } from 'pg';
 
 import type { PrismaFeedClient } from './prisma-feed-client';
@@ -12,12 +11,6 @@ type PrismaFeedRuntimeClient = PrismaFeedClient & {
 type PrismaFeedRuntimeClientConstructor = new (args: {
   readonly adapter: PrismaPg;
 }) => PrismaFeedRuntimeClient;
-
-type PrismaFeedRuntimeModule = {
-  readonly PrismaClient: PrismaFeedRuntimeClientConstructor;
-};
-
-const runtimeRequire = createRequire(`${process.cwd()}/package.json`);
 
 export class PrismaFeedConnection implements PrismaFeedClient {
   readonly feedItem: PrismaFeedClient['feedItem'];
@@ -32,7 +25,7 @@ export class PrismaFeedConnection implements PrismaFeedClient {
     }
 
     this.pool = new Pool({ connectionString: databaseUrl });
-    const { PrismaClient } = runtimeRequire('./prisma/generated/client/client') as PrismaFeedRuntimeModule;
+    const PrismaClient = loadPrismaRuntimeClient<PrismaFeedRuntimeClientConstructor>();
     this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
     this.feedItem = this.client.feedItem;
     this.feedSignalBaselineSample = this.client.feedSignalBaselineSample;

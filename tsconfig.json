@@ -28,6 +28,9 @@
       "@social-monitor/platform-logging": ["libs/platform/logging/src/index.ts"],
       "@social-monitor/platform-metrics": ["libs/platform/metrics/src/index.ts"],
       "@social-monitor/platform-persistence": ["libs/platform/persistence/src/index.ts"],
+      "@social-monitor/platform-persistence/prisma-runtime-client": [
+        "libs/platform/persistence/src/prisma-runtime-client.ts"
+      ],
       "@social-monitor/platform-queue": ["libs/platform/queue/src/index.ts"],
       "@social-monitor/platform-queue/*": ["libs/platform/queue/src/*"],
       "@social-monitor/platform-request-context": ["libs/platform/request-context/src/index.ts"],

@@ -1,6 +1,5 @@
-import { createRequire } from 'node:module';
-
 import { PrismaPg } from '@prisma/adapter-pg';
+import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 import { Pool } from 'pg';
 
 import type { PrismaEventStoreClient } from './prisma-event-store-client';
@@ -12,12 +11,6 @@ type PrismaEventStoreRuntimeClient = PrismaEventStoreClient & {
 type PrismaEventStoreRuntimeClientConstructor = new (args: {
   readonly adapter: PrismaPg;
 }) => PrismaEventStoreRuntimeClient;
-
-type PrismaEventStoreRuntimeModule = {
-  readonly PrismaClient: PrismaEventStoreRuntimeClientConstructor;
-};
-
-const runtimeRequire = createRequire(`${process.cwd()}/package.json`);
 
 export class PrismaEventStoreConnection implements PrismaEventStoreClient {
   readonly outboxEvent: PrismaEventStoreClient['outboxEvent'];
@@ -32,7 +25,7 @@ export class PrismaEventStoreConnection implements PrismaEventStoreClient {
     }
 
     this.pool = new Pool({ connectionString: databaseUrl });
-    const { PrismaClient } = runtimeRequire('./prisma/generated/client/client') as PrismaEventStoreRuntimeModule;
+    const PrismaClient = loadPrismaRuntimeClient<PrismaEventStoreRuntimeClientConstructor>();
     this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
 
     this.outboxEvent = this.client.outboxEvent;

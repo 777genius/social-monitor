@@ -4,6 +4,6 @@
     "rootDir": ".",
     "noEmit": false
   },
-  "include": ["apps/**/*.ts", "libs/**/*.ts", "scripts/**/*.ts"],
-  "exclude": ["node_modules", "dist", "test", "prisma/generated", "**/*.spec.ts", "**/*.e2e-spec.ts"]
+  "include": ["apps/**/*.ts", "libs/**/*.ts", "scripts/**/*.ts", "prisma/generated/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test", "**/*.spec.ts", "**/*.e2e-spec.ts"]
 }

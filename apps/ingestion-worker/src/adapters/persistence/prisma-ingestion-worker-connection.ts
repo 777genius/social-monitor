@@ -1,8 +1,7 @@
-import { createRequire } from 'node:module';
-
 import { PrismaPg } from '@prisma/adapter-pg';
 import type { PrismaFeedClient } from '@social-monitor/feed/adapters/persistence/prisma/prisma-feed-client';
 import type { PrismaIngestionClient } from '@social-monitor/ingestion/adapters/persistence/prisma/prisma-ingestion-client';
+import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 import { Pool } from 'pg';
 
 export type PrismaIngestionWorkerClient = PrismaIngestionClient & PrismaFeedClient;
@@ -14,12 +13,6 @@ type PrismaIngestionWorkerRuntimeClient = PrismaIngestionWorkerClient & {
 type PrismaIngestionWorkerRuntimeClientConstructor = new (args: {
   readonly adapter: PrismaPg;
 }) => PrismaIngestionWorkerRuntimeClient;
-
-type PrismaIngestionWorkerRuntimeModule = {
-  readonly PrismaClient: PrismaIngestionWorkerRuntimeClientConstructor;
-};
-
-const runtimeRequire = createRequire(`${process.cwd()}/package.json`);
 
 export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerClient {
   readonly sourceItem: PrismaIngestionClient['sourceItem'];
@@ -42,7 +35,7 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
     }
 
     this.pool = new Pool({ connectionString: databaseUrl });
-    const { PrismaClient } = runtimeRequire('./prisma/generated/client/client') as PrismaIngestionWorkerRuntimeModule;
+    const PrismaClient = loadPrismaRuntimeClient<PrismaIngestionWorkerRuntimeClientConstructor>();
     this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
 
     this.sourceItem = this.client.sourceItem;

@@ -25,4 +25,4 @@ ENV NODE_ENV=production
 ENV SERVICE=${SERVICE}
 USER node
 
-CMD ["sh", "-c", "npm run start:${SERVICE}"]
+CMD ["sh", "-c", "case \"$SERVICE\" in api) exec node dist/apps/api-gateway/src/main.js ;; ingestion) exec node dist/apps/ingestion-worker/src/main.js ;; intelligence) exec node dist/apps/intelligence-worker/src/main.js ;; delivery) exec node dist/apps/delivery-service/src/main.js ;; event-relay) exec node dist/apps/event-relay/src/main.js ;; *) echo \"Unknown service: $SERVICE\" >&2; exit 64 ;; esac"]

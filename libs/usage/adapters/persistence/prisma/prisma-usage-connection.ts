@@ -1,6 +1,5 @@
-import { createRequire } from 'node:module';
-
 import { PrismaPg } from '@prisma/adapter-pg';
+import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 import { Pool } from 'pg';
 
 import type { PrismaUsageClient, PrismaUsageTransactionClient, PrismaUsageTransactionOptions } from './prisma-usage-client';
@@ -12,12 +11,6 @@ type PrismaUsageRuntimeClient = PrismaUsageClient & {
 type PrismaUsageRuntimeClientConstructor = new (args: {
   readonly adapter: PrismaPg;
 }) => PrismaUsageRuntimeClient;
-
-type PrismaUsageRuntimeModule = {
-  readonly PrismaClient: PrismaUsageRuntimeClientConstructor;
-};
-
-const runtimeRequire = createRequire(`${process.cwd()}/package.json`);
 
 export class PrismaUsageConnection implements PrismaUsageClient {
   readonly publicApiAuditEvent: PrismaUsageClient['publicApiAuditEvent'];
@@ -33,7 +26,7 @@ export class PrismaUsageConnection implements PrismaUsageClient {
     }
 
     this.pool = new Pool({ connectionString: databaseUrl });
-    const { PrismaClient } = runtimeRequire('./prisma/generated/client/client') as PrismaUsageRuntimeModule;
+    const PrismaClient = loadPrismaRuntimeClient<PrismaUsageRuntimeClientConstructor>();
     this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
 
     this.publicApiAuditEvent = this.client.publicApiAuditEvent;

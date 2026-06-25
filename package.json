@@ -5,7 +5,7 @@
   "description": "Backend/API-first social monitoring MVP platform.",
   "license": "MIT",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "check:agent-quality-rules": "node scripts/check-agent-quality-rules.mjs",
     "check:claude-hooks": "node scripts/check-claude-hooks.mjs",
     "check:architecture": "node scripts/check-architecture.mjs",
@@ -84,6 +84,9 @@
     "check:github-repo-radar-smoke": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-github-repo-radar-smoke.ts",
     "check:github-repo-radar-live-smoke": "node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-github-repo-radar-live-smoke.ts",
     "check:github-repo-radar-prisma-live-e2e": "node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-github-repo-radar-prisma-live-e2e.ts",
+    "check:github-trending-page-smoke": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-github-trending-page-smoke.ts",
+    "check:github-trending-page-html-e2e": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-github-trending-page-html-e2e.ts",
+    "check:github-trending-page-live-smoke": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-github-trending-page-live-smoke.ts",
     "check:github-live-summary-smoke": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-github-live-summary-smoke.ts",
     "check:local-infra": "node scripts/check-local-infra.mjs",
     "check:load-cost": "node scripts/check-load-cost.mjs",
@@ -238,6 +241,7 @@
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
+    "tsc-alias": "^1.8.17",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.48.0"

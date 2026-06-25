@@ -1,6 +1,5 @@
-import { createRequire } from 'node:module';
-
 import { PrismaPg } from '@prisma/adapter-pg';
+import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 import { Pool } from 'pg';
 
 import type { PrismaSummaryClient } from './prisma-summary-client';
@@ -12,12 +11,6 @@ type PrismaSummaryRuntimeClient = PrismaSummaryClient & {
 type PrismaSummaryRuntimeClientConstructor = new (args: {
   readonly adapter: PrismaPg;
 }) => PrismaSummaryRuntimeClient;
-
-type PrismaSummaryRuntimeModule = {
-  readonly PrismaClient: PrismaSummaryRuntimeClientConstructor;
-};
-
-const runtimeRequire = createRequire(`${process.cwd()}/package.json`);
 
 export class PrismaSummaryConnection implements PrismaSummaryClient {
   readonly $queryRaw: PrismaSummaryClient['$queryRaw'];
@@ -39,7 +32,7 @@ export class PrismaSummaryConnection implements PrismaSummaryClient {
     }
 
     this.pool = new Pool({ connectionString: databaseUrl });
-    const { PrismaClient } = runtimeRequire('./prisma/generated/client/client') as PrismaSummaryRuntimeModule;
+    const PrismaClient = loadPrismaRuntimeClient<PrismaSummaryRuntimeClientConstructor>();
     this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
 
     this.summaryJob = this.client.summaryJob;

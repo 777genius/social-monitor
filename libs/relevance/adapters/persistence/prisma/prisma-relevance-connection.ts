@@ -1,6 +1,5 @@
-import { createRequire } from 'node:module';
-
 import { PrismaPg } from '@prisma/adapter-pg';
+import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 import { Pool } from 'pg';
 
 import type {
@@ -17,12 +16,6 @@ type PrismaRelevanceRuntimeClientConstructor = new (args: {
   readonly adapter: PrismaPg;
 }) => PrismaRelevanceRuntimeClient;
 
-type PrismaRelevanceRuntimeModule = {
-  readonly PrismaClient: PrismaRelevanceRuntimeClientConstructor;
-};
-
-const runtimeRequire = createRequire(`${process.cwd()}/package.json`);
-
 export class PrismaRelevanceConnection implements PrismaRelevanceClient {
   readonly userRelevanceProfile: PrismaRelevanceClient['userRelevanceProfile'];
   readonly relevanceFeedbackSignal: PrismaRelevanceClient['relevanceFeedbackSignal'];
@@ -37,7 +30,7 @@ export class PrismaRelevanceConnection implements PrismaRelevanceClient {
     }
 
     this.pool = new Pool({ connectionString: databaseUrl });
-    const { PrismaClient } = runtimeRequire('./prisma/generated/client/client') as PrismaRelevanceRuntimeModule;
+    const PrismaClient = loadPrismaRuntimeClient<PrismaRelevanceRuntimeClientConstructor>();
     this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
     this.userRelevanceProfile = this.client.userRelevanceProfile;
     this.relevanceFeedbackSignal = this.client.relevanceFeedbackSignal;
