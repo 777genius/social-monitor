@@ -22,7 +22,7 @@ import type {
 } from '../../ports';
 import type { RequestScanCommand } from './request-scan.command';
 import type { RequestScanResult } from './request-scan.result';
-import { isFreshSuccessfulScan } from '../shared/scan-freshness-guard';
+import { isFreshSuccessfulScan, rateLimitBackoffUntil } from '../shared/scan-freshness-guard';
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
 type RequestScanFailure = DomainError | Error;
@@ -115,6 +115,17 @@ export class RequestScanUseCase {
       freshnessSeconds: policySnapshot.freshnessSeconds,
       now,
     })) {
+      const snapshot = latestJob.toSnapshot();
+      const result = { scanJobId: snapshot.id, status: snapshot.status, created: false };
+      await this.cacheResult(command, result);
+      return ok(result);
+    }
+    const rateLimitBackoff = rateLimitBackoffUntil({
+      latestJob,
+      backoffSeconds: policySnapshot.intervalSeconds,
+      now,
+    });
+    if (latestJob !== null && rateLimitBackoff !== null) {
       const snapshot = latestJob.toSnapshot();
       const result = { scanJobId: snapshot.id, status: snapshot.status, created: false };
       await this.cacheResult(command, result);

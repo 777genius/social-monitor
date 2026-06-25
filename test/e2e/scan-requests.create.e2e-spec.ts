@@ -340,4 +340,105 @@ describe('Request scan flow (e2e)', () => {
 
     expect(auditRecords.records.filter((record) => record.action === 'scan_request.created')).toHaveLength(1);
   });
+
+  it('backs off manual scan requests while latest scan is provider rate limited', async () => {
+    const tenant = tenantId('tenant-scan-rate-limit-e2e');
+    const workspace = workspaceId('workspace-scan-rate-limit-e2e');
+    const queueBaseline = queue.all().length;
+
+    const topic = await request(app.getHttpServer())
+      .post('/topics')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-scan-rate-limit-topic')
+      .set('idempotency-key', 'create-scan-rate-limit-topic')
+      .send({
+        name: 'Rate Limit Scan Monitoring',
+        query: 'rate limit scan monitoring',
+      })
+      .expect(201);
+
+    const binding = await request(app.getHttpServer())
+      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-scan-rate-limit-bind')
+      .set('idempotency-key', 'bind-rate-limit-scan-source')
+      .send({
+        providerKey: 'fake-source',
+        config: { query: 'rate limit scan monitoring' },
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-scan-rate-limit-policy')
+      .set('idempotency-key', 'set-rate-limit-scan-policy')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(201);
+
+    const first = await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
+      .set('x-request-id', 'request-scan-rate-limit-first')
+      .set('x-correlation-id', 'correlation-scan-rate-limit-first')
+      .set('idempotency-key', 'request-scan-rate-limit-first')
+      .expect(201);
+
+    expect(first.body).toEqual({
+      scanJobId: expect.any(String),
+      status: 'enqueued',
+      created: true,
+    });
+    expect(queue.all()).toHaveLength(queueBaseline + 1);
+
+    const execution = await recordScanExecution.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scanJobId: first.body.scanJobId,
+      completedAt: new Date(),
+      status: 'failed',
+      failureReason: 'Provider rate limit 429',
+    });
+
+    if (!execution.ok) {
+      throw execution.error;
+    }
+
+    const backedOff = await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
+      .set('x-request-id', 'request-scan-rate-limit-backoff')
+      .set('x-correlation-id', 'correlation-scan-rate-limit-backoff')
+      .set('idempotency-key', 'request-scan-rate-limit-backoff')
+      .expect(201);
+
+    expect(backedOff.body).toEqual({
+      scanJobId: first.body.scanJobId,
+      status: 'failed',
+      created: false,
+    });
+    expect(queue.all()).toHaveLength(queueBaseline + 1);
+
+    const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 10,
+    });
+
+    expect(auditRecords.records.filter((record) => record.action === 'scan_request.created')).toHaveLength(1);
+  });
 });

@@ -388,6 +388,67 @@ describe('RequestScanUseCase', () => {
     })).resolves.toBeNull();
   });
 
+  it('returns latest rate-limited failed scan job while provider backoff is active', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    await scanJobs.save(ScanJob.request({
+      id: 'rate-limited-scan-job',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      scanPolicyId: 'policy-1',
+      idempotencyKey: 'rate-limited-scan',
+      requestedAt: new Date('2026-06-05T00:05:00.000Z'),
+    }).markEnqueued({
+      enqueuedAt: new Date('2026-06-05T00:05:01.000Z'),
+    }).markFailed({
+      completedAt: new Date('2026-06-05T00:06:00.000Z'),
+      failureReason: 'Provider rate limit 429',
+    }));
+    const queue = new FakeScanQueue();
+    const outbox = new FakeOutbox();
+    const quota = new AllowingScanRequestQuota();
+    const useCase = new RequestScanUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      outbox,
+      new FakeIdempotency(),
+      quota,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:10:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'manual-scan-rate-limit-backoff',
+      correlationId: 'correlation-rate-limit-backoff',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scanJobId: 'rate-limited-scan-job',
+        status: 'failed',
+        created: false,
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect(outbox.events).toHaveLength(0);
+    expect(quota.reservationCount).toBe(0);
+    await expect(scanJobs.findByIdempotencyKey({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      idempotencyKey: 'manual-scan-rate-limit-backoff',
+    })).resolves.toBeNull();
+  });
+
   it('rejects new manual scan requests when the source binding is paused', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding().pause());
