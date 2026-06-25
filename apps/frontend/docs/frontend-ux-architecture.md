@@ -23,7 +23,7 @@ Primary areas:
 - `topics` - monitoring intents, rules, keywords and topic lifecycle.
 - `sources` - source catalog, credentials health and collection health.
 - `feed` - mentions, filtering, triage, provenance and evidence preview.
-- `summaries` - briefings, citations, regeneration and feedback.
+- `summaries` - workspace summaries, citations, regeneration and feedback.
 - `settings` - workspace governance, account controls and diagnostics.
 
 Every route must answer:
@@ -120,6 +120,18 @@ Preferred future patterns:
 /settings/workspace
 ```
 
+## Summary Naming
+
+`Summary` is the product term for the aggregated view of posts, source mix,
+top reads, citations and next actions. Frontend UI must not introduce a second
+visible concept named `Briefing`.
+
+`Briefing` may remain as a backend/API artifact name while the backend contract
+is being migrated. Presentation copy, navigation labels and empty/loading/error
+states should say `Summary`. Future cleanup should rename internal
+workspace-level briefing contracts to `WorkspaceSummary` or `ReaderSummary`
+after OpenAPI, generated clients and backend tests can move together.
+
 Query params are allowed only through `RouteQueryContract`.
 Filters with complex state should use typed query objects and shareable saved views, not ad hoc query strings.
 
@@ -162,4 +174,3 @@ Before building a substantial feature, define:
 - back behavior;
 - telemetry screen id and action ids;
 - widget or route tests that prove the critical flow.
-

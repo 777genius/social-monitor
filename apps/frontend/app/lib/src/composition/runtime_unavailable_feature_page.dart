@@ -10,9 +10,8 @@ class RuntimeUnavailableFeaturePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppPageSurface(
       child: AppInlineProblem(
-        title: '$title runtime not configured',
-        message:
-            'Connect the approved backend contract before enabling this normal runtime route.',
+        title: '$title data is not connected yet',
+        message: 'Connect the backend runtime to load real workspace data.',
         tone: AppProblemTone.warning,
         actionLabel: null,
         onAction: null,

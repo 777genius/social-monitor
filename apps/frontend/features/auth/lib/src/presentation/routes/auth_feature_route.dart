@@ -9,11 +9,13 @@ class AuthFeatureRoute extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const host = AuthFeatureModuleHost();
     return ModuleScope<AuthFeatureModule>(
       module: AuthFeatureModule(),
       retentionPolicy: ModuleRetentionPolicy.routeBound,
       retentionKey: 'auth',
-      child: const AuthFeatureModuleHost(),
+      loadingBuilder: (context) => host,
+      child: host,
     );
   }
 }

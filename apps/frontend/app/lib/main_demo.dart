@@ -22,7 +22,11 @@ Future<void> main() async {
     WidgetsFlutterBinding.ensureInitialized();
   }
 
-  final composition = AppCompositionRoot.demo();
+  const initialLocation = String.fromEnvironment(
+    'SOCIAL_MONITOR_INITIAL_ROUTE',
+    defaultValue: '/',
+  );
+  final composition = AppCompositionRoot.demo(initialLocation: initialLocation);
 
   runApp(SocialMonitorApp(composition: composition));
 }

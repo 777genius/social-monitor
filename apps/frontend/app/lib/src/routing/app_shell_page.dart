@@ -42,6 +42,7 @@ class AppShellPage extends StatelessWidget {
       ],
       selectedPath: location,
       onDestinationSelected: (path) => context.go(path),
+      appBarActions: [_CompactThemeModeMenu(controller: themeModeController)],
       header: AppShellHeader(
         runtime: runtime,
         themeModeController: themeModeController,
@@ -59,6 +60,74 @@ class AppShellPage extends StatelessWidget {
     }
     return '/';
   }
+}
+
+class _CompactThemeModeMenu extends StatelessWidget {
+  const _CompactThemeModeMenu({required this.controller});
+
+  final AppThemeModeController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        return PopupMenuButton<ThemeMode>(
+          key: const ValueKey('app-compact-theme-mode-menu'),
+          tooltip: 'Theme',
+          icon: Icon(_themeIcon(controller.themeMode)),
+          onSelected: controller.setThemeMode,
+          itemBuilder: (context) => [
+            _themeMenuItem(
+              mode: ThemeMode.system,
+              selectedMode: controller.themeMode,
+              icon: Icons.brightness_auto_outlined,
+              label: 'System',
+            ),
+            _themeMenuItem(
+              mode: ThemeMode.light,
+              selectedMode: controller.themeMode,
+              icon: Icons.light_mode_outlined,
+              label: 'Light',
+            ),
+            _themeMenuItem(
+              mode: ThemeMode.dark,
+              selectedMode: controller.themeMode,
+              icon: Icons.dark_mode_outlined,
+              label: 'Dark',
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+PopupMenuItem<ThemeMode> _themeMenuItem({
+  required ThemeMode mode,
+  required ThemeMode selectedMode,
+  required IconData icon,
+  required String label,
+}) {
+  return PopupMenuItem<ThemeMode>(
+    value: mode,
+    child: Row(
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(child: Text(label)),
+        if (mode == selectedMode) const Icon(Icons.check, size: 18),
+      ],
+    ),
+  );
+}
+
+IconData _themeIcon(ThemeMode mode) {
+  return switch (mode) {
+    ThemeMode.system => Icons.brightness_auto_outlined,
+    ThemeMode.light => Icons.light_mode_outlined,
+    ThemeMode.dark => Icons.dark_mode_outlined,
+  };
 }
 
 class FeatureOverviewPage extends StatelessWidget {

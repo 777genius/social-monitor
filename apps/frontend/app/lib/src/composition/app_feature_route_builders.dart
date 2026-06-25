@@ -9,6 +9,7 @@ import 'package:social_monitor_topics/social_monitor_topics.dart';
 
 import 'app_demo_feature_builders.dart';
 import 'app_runtime.dart';
+import 'app_theme_mode_controller.dart';
 import 'runtime_unavailable_feature_page.dart';
 
 typedef AppRouteWidgetBuilder = Widget Function(BuildContext context, Uri uri);
@@ -21,10 +22,19 @@ AppRouteWidgetBuilder authFeatureBuilder({required bool useDemoRoutes}) {
   );
 }
 
-AppRouteWidgetBuilder settingsFeatureBuilder({required bool useDemoRoutes}) {
+AppRouteWidgetBuilder settingsFeatureBuilder({
+  required bool useDemoRoutes,
+  required AppThemeModeController themeModeController,
+}) {
   return _featureBuilder(
     useDemoRoutes: useDemoRoutes,
-    demoBuilder: (context) => const SettingsFeatureRoute(),
+    demoBuilder: (context) => AnimatedBuilder(
+      animation: themeModeController,
+      builder: (context, _) => SettingsFeatureRoute(
+        themeMode: themeModeController.themeMode,
+        onThemeModeChanged: themeModeController.setThemeMode,
+      ),
+    ),
     title: 'Settings',
   );
 }

@@ -13,6 +13,7 @@ class AppAdaptiveShell extends StatelessWidget {
     required this.onDestinationSelected,
     required this.child,
     this.header,
+    this.appBarActions = const [],
   });
 
   final String title;
@@ -21,6 +22,7 @@ class AppAdaptiveShell extends StatelessWidget {
   final ValueChanged<String> onDestinationSelected;
   final Widget child;
   final Widget? header;
+  final List<Widget> appBarActions;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +36,9 @@ class AppAdaptiveShell extends StatelessWidget {
         final usesCompactNavigation = navigation.usesCompactNavigation;
 
         return Scaffold(
-          appBar: usesCompactNavigation ? AppBar(title: Text(title)) : null,
+          appBar: usesCompactNavigation
+              ? AppBar(title: Text(title), actions: appBarActions)
+              : null,
           drawer: usesCompactNavigation
               ? Drawer(
                   child: _DestinationList(

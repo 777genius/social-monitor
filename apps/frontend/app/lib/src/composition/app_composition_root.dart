@@ -161,7 +161,10 @@ final class AppCompositionRoot {
         ),
         icon: Icons.tune_outlined,
         status: useDemoRoutes ? 'Shell' : 'Not configured',
-        builder: settingsFeatureBuilder(useDemoRoutes: useDemoRoutes),
+        builder: settingsFeatureBuilder(
+          useDemoRoutes: useDemoRoutes,
+          themeModeController: resolvedThemeModeController,
+        ),
       ),
     ];
 

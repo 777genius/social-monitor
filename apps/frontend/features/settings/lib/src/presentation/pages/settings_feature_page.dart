@@ -15,10 +15,14 @@ class SettingsFeaturePage extends StatefulWidget {
     super.key,
     required this.store,
     this.autoload = true,
+    this.themeMode,
+    this.onThemeModeChanged,
   });
 
   final WorkspaceSettingsStore store;
   final bool autoload;
+  final ThemeMode? themeMode;
+  final ValueChanged<ThemeMode>? onThemeModeChanged;
 
   @override
   State<SettingsFeaturePage> createState() => _SettingsFeaturePageState();
@@ -52,7 +56,11 @@ class _SettingsFeaturePageState extends State<SettingsFeaturePage> {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.only(top: AppSpacing.md),
-                  child: _SettingsBody(store: widget.store),
+                  child: _SettingsBody(
+                    store: widget.store,
+                    themeMode: widget.themeMode,
+                    onThemeModeChanged: widget.onThemeModeChanged,
+                  ),
                 ),
               ),
             ],
@@ -64,9 +72,15 @@ class _SettingsFeaturePageState extends State<SettingsFeaturePage> {
 }
 
 class _SettingsBody extends StatelessWidget {
-  const _SettingsBody({required this.store});
+  const _SettingsBody({
+    required this.store,
+    required this.themeMode,
+    required this.onThemeModeChanged,
+  });
 
   final WorkspaceSettingsStore store;
+  final ThemeMode? themeMode;
+  final ValueChanged<ThemeMode>? onThemeModeChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -103,6 +117,8 @@ class _SettingsBody extends StatelessWidget {
       _ when readySettings != null => _ReadySettings(
         store: store,
         settings: readySettings,
+        themeMode: themeMode,
+        onThemeModeChanged: onThemeModeChanged,
       ),
       _ => const AppInlineProblem(
         title: 'Settings unavailable',
@@ -114,10 +130,17 @@ class _SettingsBody extends StatelessWidget {
 }
 
 class _ReadySettings extends StatelessWidget {
-  const _ReadySettings({required this.store, required this.settings});
+  const _ReadySettings({
+    required this.store,
+    required this.settings,
+    required this.themeMode,
+    required this.onThemeModeChanged,
+  });
 
   final WorkspaceSettingsStore store;
   final WorkspaceSettings settings;
+  final ThemeMode? themeMode;
+  final ValueChanged<ThemeMode>? onThemeModeChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -138,6 +161,13 @@ class _ReadySettings extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (themeMode != null && onThemeModeChanged != null) ...[
+          _ThemePreferencePanel(
+            themeMode: themeMode!,
+            onThemeModeChanged: onThemeModeChanged!,
+          ),
+          const SizedBox(height: AppSpacing.md),
+        ],
         const AppInlineProblem(
           title: 'Support-safe diagnostics',
           message:
@@ -206,6 +236,84 @@ class _ReadySettings extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _ThemePreferencePanel extends StatelessWidget {
+  const _ThemePreferencePanel({
+    required this.themeMode,
+    required this.onThemeModeChanged,
+  });
+
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border.all(
+          color: dark ? AppColors.darkBorder : AppColors.border,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Theme',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Choose how the app should look on this device.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                letterSpacing: 0,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SegmentedButton<ThemeMode>(
+                key: const ValueKey('settings-theme-mode-control'),
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(
+                    value: ThemeMode.system,
+                    icon: Icon(Icons.brightness_auto_outlined),
+                    label: Text('System'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.light,
+                    icon: Icon(Icons.light_mode_outlined),
+                    label: Text('Light'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.dark,
+                    icon: Icon(Icons.dark_mode_outlined),
+                    label: Text('Dark'),
+                  ),
+                ],
+                selected: {themeMode},
+                onSelectionChanged: (selection) {
+                  onThemeModeChanged(selection.first);
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

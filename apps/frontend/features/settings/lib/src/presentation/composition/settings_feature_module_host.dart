@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../application/use_cases/load_workspace_settings_use_case.dart';
@@ -11,7 +11,14 @@ import '../pages/settings_feature_page.dart';
 import '../stores/workspace_settings_store.dart';
 
 class SettingsFeatureModuleHost extends StatefulWidget {
-  const SettingsFeatureModuleHost({super.key});
+  const SettingsFeatureModuleHost({
+    super.key,
+    this.themeMode,
+    this.onThemeModeChanged,
+  });
+
+  final ThemeMode? themeMode;
+  final ValueChanged<ThemeMode>? onThemeModeChanged;
 
   @override
   State<SettingsFeatureModuleHost> createState() =>
@@ -48,7 +55,11 @@ class _SettingsFeatureModuleHostState extends State<SettingsFeatureModuleHost> {
 
   @override
   Widget build(BuildContext context) {
-    return SettingsFeaturePage(store: _store);
+    return SettingsFeaturePage(
+      store: _store,
+      themeMode: widget.themeMode,
+      onThemeModeChanged: widget.onThemeModeChanged,
+    );
   }
 }
 

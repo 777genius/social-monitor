@@ -23,13 +23,13 @@ void main() {
     await tester.pumpWidget(SocialMonitorApp(composition: composition));
     await tester.pumpAndSettle();
 
-    expect(find.text('Runtime not configured'), findsWidgets);
+    expect(find.text('Workspace required'), findsWidgets);
     expect(find.text('Acme alerts'), findsNothing);
 
     composition.router.go('/auth');
     await tester.pumpAndSettle();
 
-    expect(find.text('Auth runtime not configured'), findsOneWidget);
+    expect(find.text('Auth data is not connected yet'), findsOneWidget);
   });
 
   testWidgets('redirects signed out users to auth route', (tester) async {
