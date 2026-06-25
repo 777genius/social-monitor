@@ -238,6 +238,20 @@ export type PrismaMonitoringClient = {
       };
       readonly orderBy?: { readonly requestedAt: 'asc' | 'desc' };
     }): Promise<PrismaScanJobRecord | null>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly sourceBindingId: string;
+      };
+      readonly orderBy: readonly [
+        { readonly requestedAt: 'desc' },
+        { readonly id: 'desc' },
+      ];
+      readonly take: number;
+      readonly cursor?: { readonly id: string };
+      readonly skip?: number;
+    }): Promise<readonly PrismaScanJobRecord[]>;
   };
   readonly scanAttempt: {
     findFirst(args: {

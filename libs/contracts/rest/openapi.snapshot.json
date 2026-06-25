@@ -1900,6 +1900,23 @@
         ],
         "type": "object"
       },
+      "ListScanRequestsResponseDto": {
+        "properties": {
+          "nextCursor": {
+            "type": "string"
+          },
+          "scanRequests": {
+            "items": {
+              "$ref": "#/components/schemas/ScanStatusResponseDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "scanRequests"
+        ],
+        "type": "object"
+      },
       "ListSourceBindingsResponseDto": {
         "properties": {
           "nextCursor": {
@@ -6156,6 +6173,85 @@
       }
     },
     "/source-bindings/{sourceBindingId}/scan-requests": {
+      "get": {
+        "operationId": "ScanRequestController_list",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sourceBindingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Scan request reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListScanRequestsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "List scan requests for a source binding.",
+        "tags": [
+          "scan-requests"
+        ]
+      },
       "post": {
         "operationId": "ScanRequestController_create",
         "parameters": [

@@ -59,6 +59,7 @@ export 'models/git_hub_trending_repository_provider_metrics_dto.dart';
 export 'models/hacker_news_story_provider_metrics_dto.dart';
 export 'models/list_briefings_response_dto.dart';
 export 'models/list_feed_items_response_dto.dart';
+export 'models/list_scan_requests_response_dto.dart';
 export 'models/list_source_bindings_response_dto.dart';
 export 'models/list_source_profiles_response_dto.dart';
 export 'models/list_summaries_response_dto.dart';

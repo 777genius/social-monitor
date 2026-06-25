@@ -152,6 +152,25 @@ describe('Request scan flow (e2e)', () => {
     });
     expect(queue.all()).toHaveLength(1);
 
+    const listed = await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-requests?limit=10`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(listed.body).toEqual({
+      scanRequests: [
+        expect.objectContaining({
+          scanJobId: first.body.scanJobId,
+          sourceBindingId: binding.body.sourceBindingId,
+          status: 'enqueued',
+          userState: 'scan_in_progress',
+          operatorAction: 'check_worker_lag_if_status_exceeds_freshness_slo',
+        }),
+      ],
+    });
+
     const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
       tenantId: tenant,
       workspaceId: workspace,

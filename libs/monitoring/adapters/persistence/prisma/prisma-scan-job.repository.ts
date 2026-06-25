@@ -2,13 +2,17 @@ import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { ScanJob } from '../../../domain';
-import type { ScanJobRepositoryPort } from '../../../ports';
+import type {
+  ListScanJobsBySourceBindingResult,
+  ScanJobHistoryReadPort,
+  ScanJobRepositoryPort,
+} from '../../../ports';
 import type { PrismaMonitoringClient } from './prisma-monitoring-client';
 import { scanJobFromPrisma, scanJobStatusToPrisma } from './prisma-monitoring-records';
 
 const ACTIVE_SCAN_JOB_STATUSES = ['REQUESTED', 'ENQUEUED'] as const;
 
-export class PrismaScanJobRepository implements ScanJobRepositoryPort {
+export class PrismaScanJobRepository implements ScanJobRepositoryPort, ScanJobHistoryReadPort {
   constructor(private readonly prisma: PrismaMonitoringClient) {}
 
   async save(job: ScanJob): Promise<void> {
@@ -90,6 +94,40 @@ export class PrismaScanJobRepository implements ScanJobRepositoryPort {
     });
 
     return record === null ? null : scanJobFromPrisma(record);
+  }
+
+  async listBySourceBinding(params: {
+    tenantId: TenantId;
+    workspaceId: WorkspaceId;
+    sourceBindingId: string;
+    limit: number;
+    cursor?: string;
+  }): Promise<ListScanJobsBySourceBindingResult> {
+    const records = await this.prisma.scanJob.findMany({
+      where: {
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        sourceBindingId: params.sourceBindingId,
+      },
+      orderBy: [
+        { requestedAt: 'desc' },
+        { id: 'desc' },
+      ],
+      take: params.limit + 1,
+      ...(params.cursor === undefined
+        ? {}
+        : {
+            cursor: { id: params.cursor },
+            skip: 1,
+          }),
+    });
+    const page = records.slice(0, params.limit);
+    const next = records[params.limit];
+
+    return {
+      scanJobs: page.map(scanJobFromPrisma),
+      nextCursor: next?.id,
+    };
   }
 
   async findByIdempotencyKey(params: {

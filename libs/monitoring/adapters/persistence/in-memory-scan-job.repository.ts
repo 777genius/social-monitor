@@ -1,9 +1,13 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { ScanJob } from '../../domain';
-import type { ScanJobRepositoryPort } from '../../ports';
+import type {
+  ListScanJobsBySourceBindingResult,
+  ScanJobHistoryReadPort,
+  ScanJobRepositoryPort,
+} from '../../ports';
 
-export class InMemoryScanJobRepository implements ScanJobRepositoryPort {
+export class InMemoryScanJobRepository implements ScanJobRepositoryPort, ScanJobHistoryReadPort {
   private readonly jobsByIdempotencyKey = new Map<string, ScanJob>();
   private readonly jobsById = new Map<string, ScanJob>();
 
@@ -48,7 +52,56 @@ export class InMemoryScanJobRepository implements ScanJobRepositoryPort {
     workspaceId: WorkspaceId;
     sourceBindingId: string;
   }): Promise<ScanJob | null> {
-    const jobs = [...this.jobsById.values()]
+    const jobs = this.sortedJobsBySourceBinding(params);
+
+    return jobs[0] ?? null;
+  }
+
+  async listBySourceBinding(params: {
+    tenantId: TenantId;
+    workspaceId: WorkspaceId;
+    sourceBindingId: string;
+    limit: number;
+    cursor?: string;
+  }): Promise<ListScanJobsBySourceBindingResult> {
+    const jobs = this.sortedJobsBySourceBinding(params);
+    const startIndex = params.cursor === undefined
+      ? 0
+      : Math.max(
+          0,
+          jobs.findIndex((job) => job.toSnapshot().id === params.cursor) + 1,
+        );
+    const page = jobs.slice(startIndex, startIndex + params.limit);
+    const next = jobs[startIndex + params.limit];
+
+    return {
+      scanJobs: page,
+      nextCursor: next?.toSnapshot().id,
+    };
+  }
+
+  async findByIdempotencyKey(params: {
+    tenantId: TenantId;
+    workspaceId: WorkspaceId;
+    idempotencyKey: string;
+  }): Promise<ScanJob | null> {
+    return this.jobsByIdempotencyKey.get(this.key(params.tenantId, params.workspaceId, params.idempotencyKey)) ?? null;
+  }
+
+  private key(tenantId: TenantId, workspaceId: WorkspaceId, idempotencyKey: string): string {
+    return `${tenantId}:${workspaceId}:${idempotencyKey}`;
+  }
+
+  private idKey(tenantId: TenantId, workspaceId: WorkspaceId, scanJobId: string): string {
+    return `${tenantId}:${workspaceId}:${scanJobId}`;
+  }
+
+  private sortedJobsBySourceBinding(params: {
+    readonly tenantId: TenantId;
+    readonly workspaceId: WorkspaceId;
+    readonly sourceBindingId: string;
+  }): readonly ScanJob[] {
+    return [...this.jobsById.values()]
       .filter((job) => {
         const snapshot = job.toSnapshot();
 
@@ -69,23 +122,5 @@ export class InMemoryScanJobRepository implements ScanJobRepositoryPort {
 
         return rightSnapshot.id.localeCompare(leftSnapshot.id);
       });
-
-    return jobs[0] ?? null;
-  }
-
-  async findByIdempotencyKey(params: {
-    tenantId: TenantId;
-    workspaceId: WorkspaceId;
-    idempotencyKey: string;
-  }): Promise<ScanJob | null> {
-    return this.jobsByIdempotencyKey.get(this.key(params.tenantId, params.workspaceId, params.idempotencyKey)) ?? null;
-  }
-
-  private key(tenantId: TenantId, workspaceId: WorkspaceId, idempotencyKey: string): string {
-    return `${tenantId}:${workspaceId}:${idempotencyKey}`;
-  }
-
-  private idKey(tenantId: TenantId, workspaceId: WorkspaceId, scanJobId: string): string {
-    return `${tenantId}:${workspaceId}:${scanJobId}`;
   }
 }

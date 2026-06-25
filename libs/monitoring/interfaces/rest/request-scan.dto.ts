@@ -1,7 +1,7 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import type { ScanJobStatus } from '../../domain';
-import { scanJobStatusValues } from './scan-status.dto';
+import { scanJobStatusValues, ScanStatusResponseDto } from './scan-status.dto';
 
 export class RequestScanResponseDto {
   @ApiProperty()
@@ -12,4 +12,12 @@ export class RequestScanResponseDto {
 
   @ApiProperty()
   declare readonly created: boolean;
+}
+
+export class ListScanRequestsResponseDto {
+  @ApiProperty({ type: () => ScanStatusResponseDto, isArray: true })
+  declare readonly scanRequests: readonly ScanStatusResponseDto[];
+
+  @ApiPropertyOptional()
+  declare readonly nextCursor?: string;
 }

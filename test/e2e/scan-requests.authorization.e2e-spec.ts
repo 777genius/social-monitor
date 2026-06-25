@@ -82,6 +82,37 @@ describe('Manual scan request workspace authorization (e2e)', () => {
       created: true,
     });
   });
+
+  it('allows viewer role to list scan request history', async () => {
+    const tenant = tenantId('tenant-scan-request-list-authorization-e2e');
+    const workspace = workspaceId('workspace-scan-request-list-authorization-e2e');
+    const bindingId = await createReadyBinding({ app, tenant, workspace });
+
+    const missingRole = await request(app.getHttpServer())
+      .get(`/source-bindings/${bindingId}/scan-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .expect(403);
+
+    expect(missingRole.body).toMatchObject({
+      code: 'authorization.denied',
+      detail: 'Workspace role is required',
+      details: {
+        action: 'scan_jobs.read',
+      },
+    });
+
+    const viewer = await request(app.getHttpServer())
+      .get(`/source-bindings/${bindingId}/scan-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(viewer.body).toEqual({
+      scanRequests: [],
+    });
+  });
 });
 
 const createReadyBinding = async (params: {

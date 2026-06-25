@@ -624,6 +624,24 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
 
       return records[0] ?? null;
     },
+    findMany: async (args) => {
+      const records = [...this.scanJobs.values()]
+        .filter((record) => (
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          record.sourceBindingId === args.where.sourceBindingId
+        ))
+        .sort((left, right) => {
+          const requestedDiff = right.requestedAt.getTime() - left.requestedAt.getTime();
+
+          return requestedDiff === 0 ? right.id.localeCompare(left.id) : requestedDiff;
+        });
+      const startIndex = args.cursor === undefined
+        ? 0
+        : Math.max(0, records.findIndex((record) => record.id === args.cursor?.id) + (args.skip ?? 0));
+
+      return records.slice(startIndex, startIndex + args.take);
+    },
   };
 
   readonly scanAttempt: PrismaMonitoringClient['scanAttempt'] = {

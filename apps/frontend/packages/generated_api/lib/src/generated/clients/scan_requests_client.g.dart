@@ -60,6 +60,51 @@ class _ScanRequestsClient implements ScanRequestsClient {
   }
 
   @override
+  Future<ListScanRequestsResponseDto> scanRequestControllerList({
+    required String sourceBindingId,
+    required String xWorkspaceId,
+    required String xTenantId,
+    String? cursor,
+    num? limit,
+    String? authorization,
+    String? xWorkspaceRole,
+  }) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{
+      r'cursor': cursor,
+      r'limit': limit,
+    };
+    queryParameters.removeWhere((k, v) => v == null);
+    final _headers = <String, dynamic>{
+      r'x-workspace-id': xWorkspaceId,
+      r'x-tenant-id': xTenantId,
+      r'authorization': authorization,
+      r'x-workspace-role': xWorkspaceRole,
+    };
+    _headers.removeWhere((k, v) => v == null);
+    const Map<String, dynamic>? _data = null;
+    final _options = _setStreamType<ListScanRequestsResponseDto>(
+      Options(method: 'GET', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            '/source-bindings/${sourceBindingId}/scan-requests',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, Object?>>(_options);
+    late ListScanRequestsResponseDto _value;
+    try {
+      _value = ListScanRequestsResponseDto.fromJson(_result.data!);
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options, response: _result);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
   Future<RequestScanResponseDto> scanRequestControllerCreate({
     required String sourceBindingId,
     required String idempotencyKey,
