@@ -1,4 +1,9 @@
-import { ApiExtraModels, ApiProperty, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger';
+import {
+  ApiExtraModels,
+  ApiProperty,
+  ApiPropertyOptional,
+  getSchemaPath,
+} from '@nestjs/swagger';
 
 export class FeedMetricDeltaDto {
   @ApiProperty()
@@ -44,17 +49,67 @@ export class GitHubRepositoryProviderMetricsDto {
   @ApiProperty({ enum: ['repository'] })
   declare readonly contentType: 'repository';
 
+  @ApiProperty({ enum: ['gh_archive_watch_event'] })
+  declare readonly evidenceSource: 'gh_archive_watch_event';
+
+  @ApiProperty({
+    description:
+      'Human-readable source evidence label for Repo Radar freshness context.',
+  })
+  declare readonly evidenceLabel: string;
+
   @ApiProperty()
   declare readonly stars: number;
 
   @ApiProperty()
   declare readonly forks: number;
 
+  @ApiPropertyOptional({
+    format: 'date-time',
+    description: 'When the GH Archive trend window was computed.',
+  })
+  declare readonly checkedAt?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Internal normalized source marker, for example gh_archive_bigquery_plus_github_live.',
+  })
+  declare readonly source?: string;
+
   @ApiProperty({ type: () => FeedMetricDeltaDto })
   declare readonly trendingDelta: FeedMetricDeltaDto;
 
   @ApiProperty({ type: () => [FeedMetricDeltaDto] })
   declare readonly trendDeltas: readonly FeedMetricDeltaDto[];
+}
+
+export class GitHubTrendingRepositoryProviderMetricsDto {
+  @ApiProperty({ enum: ['github_trending_repository'] })
+  declare readonly kind: 'github_trending_repository';
+
+  @ApiProperty({ enum: ['github-trending-page'] })
+  declare readonly providerKey: 'github-trending-page';
+
+  @ApiProperty()
+  declare readonly sourceKey: string;
+
+  @ApiProperty({ enum: ['repository'] })
+  declare readonly contentType: 'repository';
+
+  @ApiProperty()
+  declare readonly stars: number;
+
+  @ApiProperty()
+  declare readonly forks: number;
+
+  @ApiProperty()
+  declare readonly rank: number;
+
+  @ApiProperty()
+  declare readonly starsGained: number;
+
+  @ApiProperty({ enum: ['daily', 'weekly', 'monthly'] })
+  declare readonly window: 'daily' | 'weekly' | 'monthly';
 }
 
 export class HackerNewsStoryProviderMetricsDto {
@@ -112,12 +167,14 @@ export class XPostProviderMetricsDto {
 export type FeedProviderMetricsDto =
   | RedditPostProviderMetricsDto
   | GitHubRepositoryProviderMetricsDto
+  | GitHubTrendingRepositoryProviderMetricsDto
   | HackerNewsStoryProviderMetricsDto
   | XPostProviderMetricsDto;
 
 const feedProviderMetricsOneOf = [
   { $ref: getSchemaPath(RedditPostProviderMetricsDto) },
   { $ref: getSchemaPath(GitHubRepositoryProviderMetricsDto) },
+  { $ref: getSchemaPath(GitHubTrendingRepositoryProviderMetricsDto) },
   { $ref: getSchemaPath(HackerNewsStoryProviderMetricsDto) },
   { $ref: getSchemaPath(XPostProviderMetricsDto) },
 ];
@@ -175,6 +232,7 @@ export class FeedNormalizedSignalDto {
   FeedMetricDeltaDto,
   RedditPostProviderMetricsDto,
   GitHubRepositoryProviderMetricsDto,
+  GitHubTrendingRepositoryProviderMetricsDto,
   HackerNewsStoryProviderMetricsDto,
   XPostProviderMetricsDto,
 )
@@ -222,6 +280,9 @@ export class FeedItemDto {
       mapping: {
         reddit_post: getSchemaPath(RedditPostProviderMetricsDto),
         github_repository: getSchemaPath(GitHubRepositoryProviderMetricsDto),
+        github_trending_repository: getSchemaPath(
+          GitHubTrendingRepositoryProviderMetricsDto,
+        ),
         hacker_news_story: getSchemaPath(HackerNewsStoryProviderMetricsDto),
         x_post: getSchemaPath(XPostProviderMetricsDto),
       },

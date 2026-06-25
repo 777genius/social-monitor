@@ -11,6 +11,8 @@ const makeItem = (params: {
   readonly providerKey?: string;
   readonly providerMetadata?: JsonObject;
   readonly canonicalUrl: string;
+  readonly publishedAt?: Date;
+  readonly observedAt?: Date;
 }) =>
   FeedItem.publish({
     id: params.id,
@@ -24,8 +26,8 @@ const makeItem = (params: {
     title: `Title ${params.id}`,
     bodyPreview: `Body ${params.id}`,
     authorHandle: 'author',
-    publishedAt: new Date('2026-06-05T00:00:00.000Z'),
-    observedAt: new Date('2026-06-05T00:01:00.000Z'),
+    publishedAt: params.publishedAt ?? new Date('2026-06-05T00:00:00.000Z'),
+    observedAt: params.observedAt ?? new Date('2026-06-05T00:01:00.000Z'),
     providerMetadata: params.providerMetadata,
   });
 
@@ -268,6 +270,7 @@ describe('InMemoryFeedItemReadRepository', () => {
     expect(samples).toEqual([
       {
         feedItemId: 'feed-reddit',
+        topicId: 'topic-1',
         providerKey: 'reddit',
         sourceKey: 'r/startups',
         contentType: 'post',
@@ -275,6 +278,71 @@ describe('InMemoryFeedItemReadRepository', () => {
         publishedAt: new Date('2026-06-05T00:00:00.000Z'),
         observedAt: new Date('2026-06-05T00:01:00.000Z'),
       },
+    ]);
+  });
+
+  it('filters lightweight baseline samples by exact cohort and orders them by observation time', async () => {
+    const repository = new InMemoryFeedItemReadRepository();
+    repository.upsert(makeItem({
+      id: 'feed-startups-old-published',
+      sourceItemId: 'source-startups-old-published',
+      topicId: 'topic-1',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://reddit.com/r/startups/comments/old-published',
+      publishedAt: new Date('2026-06-01T00:00:00.000Z'),
+      observedAt: new Date('2026-06-05T00:03:00.000Z'),
+      providerMetadata: {
+        subreddit: 'startups',
+        score: 55,
+        numComments: 18,
+      },
+    }));
+    repository.upsert(makeItem({
+      id: 'feed-startups-newer-published',
+      sourceItemId: 'source-startups-newer-published',
+      topicId: 'topic-1',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://reddit.com/r/startups/comments/newer-published',
+      publishedAt: new Date('2026-06-05T00:00:00.000Z'),
+      observedAt: new Date('2026-06-05T00:02:00.000Z'),
+      providerMetadata: {
+        subreddit: 'startups',
+        score: 35,
+        numComments: 8,
+      },
+    }));
+    repository.upsert(makeItem({
+      id: 'feed-programming',
+      sourceItemId: 'source-programming',
+      topicId: 'topic-1',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://reddit.com/r/programming/comments/demo',
+      observedAt: new Date('2026-06-05T00:04:00.000Z'),
+      providerMetadata: {
+        subreddit: 'programming',
+        score: 120,
+        numComments: 30,
+      },
+    }));
+
+    const samples = await repository.listSamples({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      observedAfter: new Date('2026-06-04T00:00:00.000Z'),
+      limit: 10,
+      cohortFilters: [
+        {
+          providerKey: 'reddit',
+          sourceKey: 'r/startups',
+          contentType: 'post',
+        },
+      ],
+    });
+
+    expect(samples.map((sample) => sample.feedItemId)).toEqual([
+      'feed-startups-old-published',
+      'feed-startups-newer-published',
     ]);
   });
 });

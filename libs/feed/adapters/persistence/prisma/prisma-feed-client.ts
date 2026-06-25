@@ -126,6 +126,11 @@ export type PrismaFeedClient = {
         readonly workspaceId: string;
         readonly topicId?: string;
         readonly observedAt: { readonly gt: Date };
+        readonly OR?: readonly {
+          readonly providerKey: string;
+          readonly sourceKey: string;
+          readonly contentType: string;
+        }[];
       };
       readonly orderBy: readonly [{ readonly observedAt: 'desc' }, { readonly feedItemId: 'desc' }];
       readonly take: number;

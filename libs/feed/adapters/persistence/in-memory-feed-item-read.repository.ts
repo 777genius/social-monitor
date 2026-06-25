@@ -1,6 +1,7 @@
-import { feedSignalBaselineSampleFromItem, type FeedItem } from '../../domain';
+import { feedSignalBaselineSampleFromItem, type FeedItem, type FeedSignalBaselineSample } from '../../domain';
 import type { FeedItemReadRepositoryPort, ListFeedItemsQuery, ListFeedItemsResult } from '../../ports';
 import type {
+  FeedSignalBaselineCohortFilter,
   FeedSignalBaselineRepositoryPort,
   ListFeedSignalBaselineSamplesQuery,
 } from '../../ports/feed-signal-baseline-repository.port';
@@ -85,23 +86,24 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
 
   async listSamples(query: ListFeedSignalBaselineSamplesQuery) {
     return [...this.itemsById.values()]
-      .filter((item) => {
+      .flatMap((item) => {
         const snapshot = item.toSnapshot();
-
-        return (
-          snapshot.tenantId === query.tenantId &&
+        const inScope = snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
           (query.topicId === undefined || snapshot.topicId === query.topicId) &&
-          snapshot.observedAt.getTime() > query.observedAfter.getTime()
-        );
-      })
-      .sort(compareFeedItems)
-      .slice(0, query.limit)
-      .flatMap((item) => {
+          snapshot.observedAt.getTime() > query.observedAfter.getTime();
+
+        if (!inScope) {
+          return [];
+        }
+
         const sample = feedSignalBaselineSampleFromItem(item);
 
         return sample === undefined ? [] : [sample];
-      });
+      })
+      .filter((sample) => matchesBaselineCohortFilters(sample, query.cohortFilters ?? []))
+      .sort(compareFeedSignalBaselineSamples)
+      .slice(0, query.limit);
   }
 
   all(): readonly FeedItem[] {
@@ -120,6 +122,29 @@ const compareFeedItems = (left: FeedItem, right: FeedItem): number => {
 
   return rightSnapshot.id.localeCompare(leftSnapshot.id);
 };
+
+const compareFeedSignalBaselineSamples = (
+  left: FeedSignalBaselineSample,
+  right: FeedSignalBaselineSample,
+): number => {
+  const observedDiff = right.observedAt.getTime() - left.observedAt.getTime();
+
+  if (observedDiff !== 0) {
+    return observedDiff;
+  }
+
+  return right.feedItemId.localeCompare(left.feedItemId);
+};
+
+const matchesBaselineCohortFilters = (
+  sample: FeedSignalBaselineSample,
+  filters: readonly FeedSignalBaselineCohortFilter[],
+): boolean =>
+  filters.length === 0 ||
+  filters.some((filter) =>
+    sample.providerKey === filter.providerKey &&
+    sample.sourceKey === filter.sourceKey &&
+    sample.contentType === filter.contentType);
 
 const encodeCursor = (offset: number): string => Buffer.from(JSON.stringify({ offset })).toString('base64url');
 

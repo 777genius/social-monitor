@@ -365,6 +365,95 @@ describe('Feed items list (e2e)', () => {
     });
   });
 
+  it('keeps a niche source cohort when the broad topic baseline is crowded by newer popular sources', async () => {
+    const tenant = 'tenant-feed-crowded-baseline-e2e';
+    const workspace = 'workspace-feed-crowded-baseline-e2e';
+    const topicId = 'topic-feed-crowded-baseline-e2e';
+    const now = Date.now();
+
+    seedFeedItem({
+      id: 'feed-crowded-tiny-target',
+      sourceItemId: 'source-crowded-tiny-target',
+      tenant,
+      workspace,
+      topicId,
+      sourceBindingId: 'reddit-tiny-saas',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://reddit.test/r/tiny-saas/comments/target',
+      publishedAt: new Date(now - 30 * 60 * 1000),
+      observedAt: new Date(now - 29 * 60 * 1000),
+      providerMetadata: {
+        subreddit: 'tiny-saas',
+        score: 70,
+        numComments: 14,
+      },
+    });
+    for (const index of [1, 2, 3, 4]) {
+      seedFeedItem({
+        id: `feed-crowded-tiny-history-${index}`,
+        sourceItemId: `source-crowded-tiny-history-${index}`,
+        tenant,
+        workspace,
+        topicId,
+        sourceBindingId: 'reddit-tiny-saas',
+        providerKey: 'reddit',
+        canonicalUrl: `https://reddit.test/r/tiny-saas/comments/history-${index}`,
+        publishedAt: new Date(now - (48 + index) * 60 * 60 * 1000),
+        observedAt: new Date(now - (48 + index) * 60 * 60 * 1000),
+        providerMetadata: {
+          subreddit: 'tiny-saas',
+          score: 10 + index,
+          numComments: 2,
+        },
+      });
+    }
+    for (let index = 0; index < 2001; index += 1) {
+      seedFeedItem({
+        id: `feed-crowded-programming-${index}`,
+        sourceItemId: `source-crowded-programming-${index}`,
+        tenant,
+        workspace,
+        topicId,
+        sourceBindingId: 'reddit-programming',
+        providerKey: 'reddit',
+        canonicalUrl: `https://reddit.test/r/programming/comments/${index}`,
+        publishedAt: new Date(now - 60 * 60 * 1000 - index),
+        observedAt: new Date(now - 60 * 60 * 1000 - index),
+        providerMetadata: {
+          subreddit: 'programming',
+          score: 500 + index,
+          numComments: 50,
+        },
+      });
+    }
+
+    const response = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 1, topicId })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(response.body.items).toEqual([
+      expect.objectContaining({
+        id: 'feed-crowded-tiny-target',
+        providerMetrics: expect.objectContaining({
+          sourceKey: 'r/tiny-saas',
+          score: 70,
+        }),
+        normalizedSignal: expect.objectContaining({
+          cohort: expect.objectContaining({
+            sourceKey: 'r/tiny-saas',
+            fallback: 'source',
+            baselineWindow: '7d',
+            sampleSize: 5,
+          }),
+        }),
+      }),
+    ]);
+  });
+
   it('returns provider-specific raw metrics for GitHub, Hacker News and X posts', async () => {
     const tenant = 'tenant-feed-provider-metrics-e2e';
     const workspace = 'workspace-feed-provider-metrics-e2e';
@@ -448,7 +537,8 @@ describe('Feed items list (e2e)', () => {
       providerMetrics: {
         kind: 'github_repository',
         providerKey: 'github-repo-radar',
-        sourceKey: 'repo-trending:24h',
+        sourceKey:
+          'repo-trending:24h:query:any:language:typescript:topic:agents+ai',
         contentType: 'repository',
         stars: 54000,
         forks: 6100,
@@ -468,7 +558,8 @@ describe('Feed items list (e2e)', () => {
         basis: 'cohort_baseline_v1',
         cohort: {
           providerKey: 'github-repo-radar',
-          sourceKey: 'repo-trending:24h',
+            sourceKey:
+              'repo-trending:24h:query:any:language:typescript:topic:agents+ai',
           contentType: 'repository',
           baselineWindow: '30d',
         },
@@ -664,6 +755,7 @@ describe('Feed items list (e2e)', () => {
     readonly providerKey?: string;
     readonly canonicalUrl?: string;
     readonly publishedAt: Date;
+    readonly observedAt?: Date;
     readonly providerMetadata?: JsonObject;
   }): void => {
     repository.upsert(
@@ -680,7 +772,7 @@ describe('Feed items list (e2e)', () => {
         bodyPreview: `Body ${params.id}`,
         authorHandle: 'author',
         publishedAt: params.publishedAt,
-        observedAt: new Date('2026-06-05T12:00:00.000Z'),
+        observedAt: params.observedAt ?? new Date('2026-06-05T12:00:00.000Z'),
         providerMetadata: params.providerMetadata,
       }),
     );
@@ -755,6 +847,8 @@ describe('Feed items list (e2e)', () => {
     kind: 'github_repository_trend',
     repository: {
       fullName: 'openai/codex',
+      language: 'TypeScript',
+      topics: ['ai', 'agents', 'developer-tools'],
       forksCount: params.forks,
     },
     trend: {
@@ -765,6 +859,10 @@ describe('Feed items list (e2e)', () => {
       stars30d: params.stars30d,
       stars90d: params.stars90d,
       primaryWindow: params.primaryWindow,
+    },
+    sourceCohort: {
+      topics: ['ai', 'agents'],
+      languages: ['TypeScript'],
     },
   });
 });

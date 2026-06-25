@@ -14,6 +14,7 @@ export type FeedSignalView = {
 
 type BaselineCandidate = {
   readonly strength: number;
+  readonly topicId: string;
   readonly providerKey: string;
   readonly sourceKey: string;
   readonly contentType: string;
@@ -120,6 +121,7 @@ const toSignalCandidate = (item: FeedItem, now: Date): readonly SignalCandidate[
     id: snapshot.id,
     metrics,
     strength: feedProviderMetricStrength(metrics),
+    topicId: snapshot.topicId,
     providerKey: metrics.providerKey,
     sourceKey: metrics.sourceKey,
     contentType: metrics.contentType,
@@ -133,6 +135,7 @@ const toBaselineCandidate = (
   now: Date,
 ): BaselineCandidate => ({
   strength: sample.strength,
+  topicId: sample.topicId,
   providerKey: sample.providerKey,
   sourceKey: sample.sourceKey,
   contentType: sample.contentType,
@@ -274,23 +277,46 @@ const windowsFor = (candidate: BaselineCandidate, now: Date): readonly BaselineW
     .map((window) => window.name);
 
 const exactKey = (candidate: BaselineCandidate, baselineWindow: BaselineWindow): string =>
-  [
+  cohortKey([
     'exact',
     baselineWindow,
+    candidate.topicId,
     candidate.providerKey,
     candidate.sourceKey,
     candidate.contentType,
     candidate.ageBucket,
-  ].join('|');
+  ]);
 
 const sourceKey = (candidate: BaselineCandidate, baselineWindow: BaselineWindow): string =>
-  ['source', baselineWindow, candidate.providerKey, candidate.sourceKey, candidate.contentType].join('|');
+  cohortKey([
+    'source',
+    baselineWindow,
+    candidate.topicId,
+    candidate.providerKey,
+    candidate.sourceKey,
+    candidate.contentType,
+  ]);
 
 const providerAgeKey = (candidate: BaselineCandidate, baselineWindow: BaselineWindow): string =>
-  ['provider_age', baselineWindow, candidate.providerKey, candidate.contentType, candidate.ageBucket].join('|');
+  cohortKey([
+    'provider_age',
+    baselineWindow,
+    candidate.topicId,
+    candidate.providerKey,
+    candidate.contentType,
+    candidate.ageBucket,
+  ]);
 
 const providerKey = (candidate: BaselineCandidate, baselineWindow: BaselineWindow): string =>
-  ['provider', baselineWindow, candidate.providerKey, candidate.contentType].join('|');
+  cohortKey([
+    'provider',
+    baselineWindow,
+    candidate.topicId,
+    candidate.providerKey,
+    candidate.contentType,
+  ]);
+
+const cohortKey = (parts: readonly string[]): string => JSON.stringify(parts);
 
 const fallbackOptions: readonly {
   readonly fallback: CohortFallback;

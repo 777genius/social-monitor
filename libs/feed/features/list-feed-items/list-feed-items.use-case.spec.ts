@@ -60,6 +60,28 @@ const makeItem = (id: string) =>
     observedAt: new Date('2026-06-05T00:01:00.000Z'),
   });
 
+const makeRedditItem = (id: string, subreddit: string) =>
+  FeedItem.publish({
+    id,
+    tenantId: tenantId('tenant-1'),
+    workspaceId: workspaceId('workspace-1'),
+    topicId: 'topic-1',
+    sourceItemId: `source-${id}`,
+    sourceBindingId: `binding-${subreddit}`,
+    providerKey: 'reddit',
+    canonicalUrl: `https://reddit.test/r/${subreddit}/comments/${id}`,
+    title: `Title ${id}`,
+    bodyPreview: `Body ${id}`,
+    authorHandle: 'author',
+    publishedAt: new Date('2026-06-05T00:00:00.000Z'),
+    observedAt: new Date('2026-06-05T00:01:00.000Z'),
+    providerMetadata: {
+      subreddit,
+      score: 42,
+      numComments: 8,
+    },
+  });
+
 describe('ListFeedItemsUseCase', () => {
   it('returns feed items as stable read-model DTOs', async () => {
     const item = makeItem('1');
@@ -106,7 +128,7 @@ describe('ListFeedItemsUseCase', () => {
       {
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: undefined,
+        topicId: 'topic-1',
         observedAfter: new Date('2026-05-06T01:00:00.000Z'),
         limit: 2000,
       },
@@ -163,12 +185,7 @@ describe('ListFeedItemsUseCase', () => {
         searchQuery: 'open source',
       }),
     ]);
-    expect(baseline.queries).toEqual([
-      expect.objectContaining({
-        observedAfter: new Date('2026-05-06T01:00:00.000Z'),
-        limit: 2000,
-      }),
-    ]);
+    expect(baseline.queries).toEqual([]);
   });
 
   it('passes provider and repository trend filters to read repository', async () => {
@@ -195,6 +212,22 @@ describe('ListFeedItemsUseCase', () => {
         repositoryTopic: 'agents',
       }),
     ]);
+    expect(baseline.queries).toEqual([]);
+  });
+
+  it('loads an exact source baseline cohort for visible items with comparable metrics', async () => {
+    const item = makeRedditItem('reddit-1', 'TinySaaS');
+    const repository = new FakeFeedItemReadRepository({ items: [item] });
+    const baseline = new FakeFeedSignalBaselineRepository();
+    const useCase = new ListFeedItemsUseCase(repository, baseline, fixedClock);
+
+    await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 20,
+      topicId: 'topic-1',
+    });
+
     expect(baseline.queries).toEqual([
       {
         tenantId: tenantId('tenant-1'),
@@ -202,6 +235,82 @@ describe('ListFeedItemsUseCase', () => {
         topicId: 'topic-1',
         observedAfter: new Date('2026-05-06T01:00:00.000Z'),
         limit: 2000,
+      },
+      {
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        topicId: 'topic-1',
+        observedAfter: new Date('2026-05-06T01:00:00.000Z'),
+        limit: 2000,
+        cohortFilters: [
+          {
+            providerKey: 'reddit',
+            sourceKey: 'r/tinysaas',
+            contentType: 'post',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('loads all-topics baseline cohorts separately for each visible topic', async () => {
+    const firstTopicItem = makeRedditItem('reddit-1', 'TinySaaS');
+    const secondTopicItem = FeedItem.publish({
+      ...makeRedditItem('reddit-2', 'Programming').toSnapshot(),
+      topicId: 'topic-2',
+    });
+    const repository = new FakeFeedItemReadRepository({ items: [firstTopicItem, secondTopicItem] });
+    const baseline = new FakeFeedSignalBaselineRepository();
+    const useCase = new ListFeedItemsUseCase(repository, baseline, fixedClock);
+
+    await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 20,
+    });
+
+    expect(baseline.queries).toEqual([
+      {
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        topicId: 'topic-1',
+        observedAfter: new Date('2026-05-06T01:00:00.000Z'),
+        limit: 2000,
+      },
+      {
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        topicId: 'topic-1',
+        observedAfter: new Date('2026-05-06T01:00:00.000Z'),
+        limit: 2000,
+        cohortFilters: [
+          {
+            providerKey: 'reddit',
+            sourceKey: 'r/tinysaas',
+            contentType: 'post',
+          },
+        ],
+      },
+      {
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        topicId: 'topic-2',
+        observedAfter: new Date('2026-05-06T01:00:00.000Z'),
+        limit: 2000,
+      },
+      {
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        topicId: 'topic-2',
+        observedAfter: new Date('2026-05-06T01:00:00.000Z'),
+        limit: 2000,
+        cohortFilters: [
+          {
+            providerKey: 'reddit',
+            sourceKey: 'r/programming',
+            contentType: 'post',
+          },
+        ],
       },
     ]);
   });

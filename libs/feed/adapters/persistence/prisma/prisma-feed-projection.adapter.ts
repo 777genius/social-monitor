@@ -52,7 +52,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
             authorHandle: snapshot.authorHandle ?? null,
             publishedAt: snapshot.publishedAt,
             observedAt: snapshot.ingestedAt,
-            providerMetadata: snapshot.metadata ?? undefined,
+            providerMetadata: snapshot.metadata ?? null,
             status: 'VISIBLE',
           },
           create: {
@@ -70,7 +70,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
             authorHandle: snapshot.authorHandle ?? null,
             publishedAt: snapshot.publishedAt,
             observedAt: snapshot.ingestedAt,
-            providerMetadata: snapshot.metadata ?? undefined,
+            providerMetadata: snapshot.metadata ?? null,
             status: 'VISIBLE',
           },
         });

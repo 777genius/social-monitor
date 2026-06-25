@@ -552,25 +552,42 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
         args.where.tenantId_topicId_dedupeKey.dedupeKey,
       ].join(':');
       const existing = this.feedItems.get(key);
-      const record: PrismaFeedItemRecord = {
-        id: existing?.id ?? args.create.id,
-        tenantId: existing?.tenantId ?? args.create.tenantId,
-        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
-        topicId: existing?.topicId ?? args.create.topicId,
-        sourceItemId: args.update.sourceItemId,
-        sourceBindingId: args.update.sourceBindingId,
-        providerKey: args.update.providerKey,
-        dedupeKey: existing?.dedupeKey ?? args.create.dedupeKey,
-        canonicalUrl: args.update.canonicalUrl,
-        title: args.update.title,
-        bodyPreview: args.update.bodyPreview,
-        authorHandle: args.update.authorHandle ?? null,
-        publishedAt: args.update.publishedAt,
-        observedAt: args.update.observedAt,
-        providerMetadata: args.update.providerMetadata ?? null,
-        status: args.update.status,
-        createdAt: existing?.createdAt ?? clock.now(),
-      };
+      const record: PrismaFeedItemRecord = existing === undefined
+        ? {
+          id: args.create.id,
+          tenantId: args.create.tenantId,
+          workspaceId: args.create.workspaceId,
+          topicId: args.create.topicId,
+          sourceItemId: args.create.sourceItemId,
+          sourceBindingId: args.create.sourceBindingId,
+          providerKey: args.create.providerKey,
+          dedupeKey: args.create.dedupeKey,
+          canonicalUrl: args.create.canonicalUrl,
+          title: args.create.title,
+          bodyPreview: args.create.bodyPreview,
+          authorHandle: args.create.authorHandle ?? null,
+          publishedAt: args.create.publishedAt,
+          observedAt: args.create.observedAt,
+          providerMetadata: args.create.providerMetadata ?? null,
+          status: args.create.status,
+          createdAt: clock.now(),
+        }
+        : {
+          ...existing,
+          sourceItemId: args.update.sourceItemId,
+          sourceBindingId: args.update.sourceBindingId,
+          providerKey: args.update.providerKey,
+          canonicalUrl: args.update.canonicalUrl,
+          title: args.update.title,
+          bodyPreview: args.update.bodyPreview,
+          authorHandle: args.update.authorHandle ?? null,
+          publishedAt: args.update.publishedAt,
+          observedAt: args.update.observedAt,
+          providerMetadata: args.update.providerMetadata === undefined
+            ? existing.providerMetadata
+            : args.update.providerMetadata ?? null,
+          status: args.update.status,
+        };
       this.feedItems.set(key, record);
 
       return record;
@@ -615,7 +632,8 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
           record.tenantId === args.where.tenantId &&
           record.workspaceId === args.where.workspaceId &&
           (args.where.topicId === undefined || record.topicId === args.where.topicId) &&
-          record.observedAt.getTime() > args.where.observedAt.gt.getTime()
+          record.observedAt.getTime() > args.where.observedAt.gt.getTime() &&
+          matchesFeedSignalBaselineCohortFilters(record, args.where.OR ?? [])
         ))
         .sort((left, right) => (
           right.observedAt.getTime() - left.observedAt.getTime() ||
@@ -650,6 +668,16 @@ class FakePrismaIngestionFeedClient implements PrismaIngestionClient, PrismaFeed
     ));
   }
 }
+
+const matchesFeedSignalBaselineCohortFilters = (
+  record: PrismaFeedSignalBaselineSampleRecord,
+  filters: NonNullable<Parameters<PrismaFeedClient['feedSignalBaselineSample']['findMany']>[0]['where']['OR']>,
+): boolean =>
+  filters.length === 0 ||
+  filters.some((filter) =>
+    record.providerKey === filter.providerKey &&
+    record.sourceKey === filter.sourceKey &&
+    record.contentType === filter.contentType);
 
 const leaseKey = (record: {
   readonly tenantId: string;

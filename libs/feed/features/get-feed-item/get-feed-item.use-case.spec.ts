@@ -54,6 +54,28 @@ const makeItem = () =>
     observedAt: new Date('2026-06-05T00:01:00.000Z'),
   });
 
+const makeRedditItem = () =>
+  FeedItem.publish({
+    id: 'feed-reddit',
+    tenantId: tenantId('tenant-1'),
+    workspaceId: workspaceId('workspace-1'),
+    topicId: 'topic-1',
+    sourceItemId: 'source-reddit',
+    sourceBindingId: 'binding-tinysaas',
+    providerKey: 'reddit',
+    canonicalUrl: 'https://reddit.test/r/tinysaas/comments/feed-reddit',
+    title: 'Reddit feed',
+    bodyPreview: 'Discussion',
+    authorHandle: 'author',
+    publishedAt: new Date('2026-06-05T00:00:00.000Z'),
+    observedAt: new Date('2026-06-05T00:01:00.000Z'),
+    providerMetadata: {
+      subreddit: 'TinySaaS',
+      score: 42,
+      numComments: 8,
+    },
+  });
+
 describe('GetFeedItemUseCase', () => {
   it('returns one feed item DTO', async () => {
     const repository = new FakeFeedItemReadRepository(makeItem());
@@ -112,5 +134,44 @@ describe('GetFeedItemUseCase', () => {
     });
 
     expect(result.ok).toBe(false);
+  });
+
+  it('loads an exact source baseline cohort for detail items with comparable metrics', async () => {
+    const baseline = new FakeFeedSignalBaselineRepository();
+    const useCase = new GetFeedItemUseCase(
+      new FakeFeedItemReadRepository(makeRedditItem()),
+      baseline,
+      fixedClock,
+    );
+
+    await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      feedItemId: 'feed-reddit',
+    });
+
+    expect(baseline.queries).toEqual([
+      {
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        topicId: 'topic-1',
+        observedAfter: new Date('2026-05-06T01:00:00.000Z'),
+        limit: 2000,
+      },
+      {
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        topicId: 'topic-1',
+        observedAfter: new Date('2026-05-06T01:00:00.000Z'),
+        limit: 2000,
+        cohortFilters: [
+          {
+            providerKey: 'reddit',
+            sourceKey: 'r/tinysaas',
+            contentType: 'post',
+          },
+        ],
+      },
+    ]);
   });
 });

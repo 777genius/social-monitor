@@ -8,13 +8,12 @@ import {
 
 import { CohortBaselineFeedSignalNormalizer } from '../../domain';
 import type { FeedItemReadRepositoryPort, FeedSignalBaselineRepositoryPort } from '../../ports';
+import { loadFeedSignalBaselineSamples } from '../shared/feed-signal-baseline-loader';
 import { presentFeedItem } from '../shared/feed-item-presenter';
 import type { GetFeedItemQuery } from './get-feed-item.query';
 import type { GetFeedItemResult } from './get-feed-item.result';
 
 type GetFeedItemFailure = DomainError;
-const MAX_HISTORICAL_BASELINE_ITEMS = 2000;
-const HISTORICAL_BASELINE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 export class GetFeedItemUseCase {
   constructor(
@@ -37,12 +36,13 @@ export class GetFeedItemUseCase {
     }
 
     const snapshot = item.toSnapshot();
-    const baselineSamples = await this.signalBaseline.listSamples({
+    const baselineSamples = await loadFeedSignalBaselineSamples({
+      signalBaseline: this.signalBaseline,
       tenantId: query.tenantId,
       workspaceId: query.workspaceId,
       topicId: snapshot.topicId,
-      observedAfter: new Date(now.getTime() - HISTORICAL_BASELINE_WINDOW_MS),
-      limit: MAX_HISTORICAL_BASELINE_ITEMS,
+      items: [item],
+      now,
     });
     const signalById = this.signalNormalizer.normalize({
       items: [item],

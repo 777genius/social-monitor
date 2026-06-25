@@ -51,6 +51,7 @@ describe('Prisma feed signal baseline materialization', () => {
     })).resolves.toEqual([
       {
         feedItemId: 'feed-1',
+        topicId: 'topic-1',
         providerKey: 'reddit',
         sourceKey: 'r/startups',
         contentType: 'post',
@@ -61,7 +62,70 @@ describe('Prisma feed signal baseline materialization', () => {
     ]);
   });
 
-  it('removes stale samples when a projected item no longer has comparable provider metrics', async () => {
+  it('filters lightweight baseline samples by exact cohort when reading materialized samples', async () => {
+    const prisma = new FakePrismaFeedClient();
+    const ids = new SequenceIdGenerator([
+      'feed-startups',
+      'sample-startups',
+      'feed-programming',
+      'sample-programming',
+    ]);
+    const projection = new PrismaFeedProjectionAdapter(prisma, ids);
+    const baseline = new PrismaFeedSignalBaselineRepository(prisma);
+
+    await projection.project({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      sourceBindingId: 'binding-1',
+      providerKey: 'reddit',
+      sourceItems: [
+        sourceItem({
+          id: 'source-startups',
+          externalId: 'reddit-startups',
+          metadata: {
+            subreddit: 'startups',
+            score: 55,
+            numComments: 18,
+          },
+        }),
+        sourceItem({
+          id: 'source-programming',
+          externalId: 'reddit-programming',
+          metadata: {
+            subreddit: 'programming',
+            score: 550,
+            numComments: 75,
+          },
+        }),
+      ],
+    });
+
+    await expect(baseline.listSamples({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      topicId: 'topic-1',
+      observedAfter: new Date('2026-06-22T12:00:00.000Z'),
+      limit: 10,
+      cohortFilters: [
+        {
+          providerKey: 'reddit',
+          sourceKey: 'r/startups',
+          contentType: 'post',
+        },
+      ],
+    })).resolves.toEqual([
+      expect.objectContaining({
+        feedItemId: 'feed-startups',
+        topicId: 'topic-1',
+        providerKey: 'reddit',
+        sourceKey: 'r/startups',
+        contentType: 'post',
+      }),
+    ]);
+  });
+
+  it('removes stale samples when a same-provider projected item no longer has comparable provider metrics', async () => {
     const prisma = new FakePrismaFeedClient();
     const ids = new SequenceIdGenerator([
       'feed-1',
@@ -94,7 +158,7 @@ describe('Prisma feed signal baseline materialization', () => {
       workspaceId: workspaceId('workspace-1'),
       topicId: 'topic-1',
       sourceBindingId: 'binding-1',
-      providerKey: 'rss',
+      providerKey: 'reddit',
       sourceItems: [
         sourceItem({
           id: 'source-2',
@@ -163,25 +227,42 @@ class FakePrismaFeedClient implements PrismaFeedClient {
         args.where.tenantId_topicId_dedupeKey.dedupeKey,
       ].join(':');
       const existing = this.feedItems.get(key);
-      const record: PrismaFeedItemRecord = {
-        id: existing?.id ?? args.create.id,
-        tenantId: existing?.tenantId ?? args.create.tenantId,
-        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
-        topicId: existing?.topicId ?? args.create.topicId,
-        sourceItemId: args.update.sourceItemId,
-        sourceBindingId: args.update.sourceBindingId,
-        providerKey: args.update.providerKey,
-        dedupeKey: existing?.dedupeKey ?? args.create.dedupeKey,
-        canonicalUrl: args.update.canonicalUrl,
-        title: args.update.title,
-        bodyPreview: args.update.bodyPreview,
-        authorHandle: args.update.authorHandle ?? null,
-        publishedAt: args.update.publishedAt,
-        observedAt: args.update.observedAt,
-        providerMetadata: args.update.providerMetadata ?? null,
-        status: args.update.status,
-        createdAt: existing?.createdAt ?? now,
-      };
+      const record: PrismaFeedItemRecord = existing === undefined
+        ? {
+          id: args.create.id,
+          tenantId: args.create.tenantId,
+          workspaceId: args.create.workspaceId,
+          topicId: args.create.topicId,
+          sourceItemId: args.create.sourceItemId,
+          sourceBindingId: args.create.sourceBindingId,
+          providerKey: args.create.providerKey,
+          dedupeKey: args.create.dedupeKey,
+          canonicalUrl: args.create.canonicalUrl,
+          title: args.create.title,
+          bodyPreview: args.create.bodyPreview,
+          authorHandle: args.create.authorHandle ?? null,
+          publishedAt: args.create.publishedAt,
+          observedAt: args.create.observedAt,
+          providerMetadata: args.create.providerMetadata ?? null,
+          status: args.create.status,
+          createdAt: now,
+        }
+        : {
+          ...existing,
+          sourceItemId: args.update.sourceItemId,
+          sourceBindingId: args.update.sourceBindingId,
+          providerKey: args.update.providerKey,
+          canonicalUrl: args.update.canonicalUrl,
+          title: args.update.title,
+          bodyPreview: args.update.bodyPreview,
+          authorHandle: args.update.authorHandle ?? null,
+          publishedAt: args.update.publishedAt,
+          observedAt: args.update.observedAt,
+          providerMetadata: args.update.providerMetadata === undefined
+            ? existing.providerMetadata
+            : args.update.providerMetadata ?? null,
+          status: args.update.status,
+        };
       this.feedItems.set(key, record);
 
       return record;
@@ -222,7 +303,8 @@ class FakePrismaFeedClient implements PrismaFeedClient {
           record.tenantId === args.where.tenantId &&
           record.workspaceId === args.where.workspaceId &&
           (args.where.topicId === undefined || record.topicId === args.where.topicId) &&
-          record.observedAt.getTime() > args.where.observedAt.gt.getTime()
+          record.observedAt.getTime() > args.where.observedAt.gt.getTime() &&
+          matchesSampleCohortFilters(record, args.where.OR ?? [])
         ))
         .sort((left, right) => (
           right.observedAt.getTime() - left.observedAt.getTime() ||
@@ -241,3 +323,13 @@ class FakePrismaFeedClient implements PrismaFeedClient {
     },
   };
 }
+
+const matchesSampleCohortFilters = (
+  record: PrismaFeedSignalBaselineSampleRecord,
+  filters: NonNullable<Parameters<PrismaFeedClient['feedSignalBaselineSample']['findMany']>[0]['where']['OR']>,
+): boolean =>
+  filters.length === 0 ||
+  filters.some((filter) =>
+    record.providerKey === filter.providerKey &&
+    record.sourceKey === filter.sourceKey &&
+    record.contentType === filter.contentType);
