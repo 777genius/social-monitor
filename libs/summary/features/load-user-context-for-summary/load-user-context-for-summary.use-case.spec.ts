@@ -91,6 +91,6 @@ class FailingSummaryMemory extends CapturingSummaryMemory {
   }
 
   override async buildContext(): Promise<SummaryMemoryContext> {
-    throw new Error("memo-stack failed Bearer secret-token");
+    throw new Error("memo-stack failed Bearer token-value");
   }
 }
