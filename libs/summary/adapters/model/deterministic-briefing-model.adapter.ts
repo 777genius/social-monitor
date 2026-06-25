@@ -65,6 +65,7 @@ export class DeterministicBriefingModelAdapter implements BriefingModelPort {
       providerVersion: selectedRoute.provider,
       rulesVersion: input.policy.rulesVersion,
       evalDatasetVersion: 'briefing.eval.mvp.v1',
+      rankingPolicyVersion: input.evidence.rankingPolicyVersion,
     } as const;
     const firstItem = input.evidence.selectedEvidence[0];
 

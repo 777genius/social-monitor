@@ -8,24 +8,31 @@ import type {
 } from '../value-objects/briefing-evidence-item';
 import type { BriefingScopeIdentity } from '../value-objects/briefing-scope';
 import { briefingScopeKey } from '../value-objects/briefing-scope';
+import {
+  STORY_RANKING_POLICY_V1,
+  type StoryRankingPolicy,
+} from '../policies/story-ranking-policy';
+import { storyKey } from './story-key-normalizer';
 
 export class StoryClusteringService {
-  constructor(private readonly clock: Clock) {}
+  constructor(
+    private readonly clock: Clock,
+    private readonly policy: StoryRankingPolicy = STORY_RANKING_POLICY_V1,
+  ) {}
 
   cluster(params: {
     readonly identity: BriefingScopeIdentity;
     readonly items: readonly BriefingEvidenceItem[];
     readonly limit: number;
   }): BriefingEvidenceSelection {
-    const limit = normalizeLimit(params.limit);
-    const clusters = [...buildClusters(params.items)]
+    const limit = normalizeLimit(params.limit, this.policy);
+    const clusters = [...buildClusters(params.items, this.clock.now(), this.policy)]
       .sort(compareStoryClusters)
       .slice(0, limit);
-    const selectedEvidence = clusters
-      .map((cluster) => params.items.find((item) => item.feedItemId === cluster.representativeFeedItemId))
-      .filter((item): item is BriefingEvidenceItem => item !== undefined);
+    const selectedEvidence = selectedClusterEvidence(params.items, clusters, this.policy);
 
     return {
+      rankingPolicyVersion: this.policy.version,
       sourceWindow: buildSourceWindow(params.identity, clusters, selectedEvidence, this.clock),
       clusters,
       selectedEvidence,
@@ -33,11 +40,15 @@ export class StoryClusteringService {
   }
 }
 
-const buildClusters = (items: readonly BriefingEvidenceItem[]): readonly StoryCluster[] => {
+const buildClusters = (
+  items: readonly BriefingEvidenceItem[],
+  now: Date,
+  policy: StoryRankingPolicy,
+): readonly StoryCluster[] => {
   const groups = new Map<string, BriefingEvidenceItem[]>();
 
   for (const item of items) {
-    const key = storyKey(item);
+    const key = storyKey(item, policy);
     groups.set(key, [...(groups.get(key) ?? []), item]);
   }
 
@@ -48,24 +59,168 @@ const buildClusters = (items: readonly BriefingEvidenceItem[]): readonly StoryCl
       throw new Error('Briefing story cluster must contain evidence');
     }
     const observedTimes = sorted.map((item) => item.observedAt.getTime());
+    const signal = storyClusterSignal(sorted, now, policy);
 
     return {
       id: `story:${key}`,
       storyKey: key,
+      rankingPolicyVersion: policy.version,
       representativeFeedItemId: representative.feedItemId,
       duplicateFeedItemIds: sorted
         .slice(1)
         .map((item) => item.feedItemId),
       topicIds: uniqueSorted(sorted.map((item) => item.topicId)),
       providerKeys: uniqueSorted(sorted.map((item) => item.providerKey)),
-      score: representative.score,
+      score: signal.score,
+      signalBreakdown: signal.breakdown,
       observedAtRange: {
         startedAt: new Date(Math.min(...observedTimes)),
         endedAt: new Date(Math.max(...observedTimes) + 1),
       },
-      whyImportant: uniqueStable(sorted.flatMap((item) => item.whyImportant)),
+      whyImportant: uniqueStable([
+        ...signal.reasons,
+        ...sorted.flatMap((item) => item.whyImportant),
+      ]),
     } satisfies StoryCluster;
   });
+};
+
+const selectedClusterEvidence = (
+  items: readonly BriefingEvidenceItem[],
+  clusters: readonly StoryCluster[],
+  policy: StoryRankingPolicy,
+): readonly BriefingEvidenceItem[] => {
+  const byId = new Map(items.map((item) => [item.feedItemId, item] as const));
+  const selected: BriefingEvidenceItem[] = [];
+  const selectedIds = new Set<string>();
+
+  for (const cluster of clusters) {
+    const ids = [
+      cluster.representativeFeedItemId,
+      ...cluster.duplicateFeedItemIds,
+    ].slice(0, policy.maxSelectedEvidencePerCluster);
+
+    for (const id of ids) {
+      const item = byId.get(id);
+      if (item === undefined || selectedIds.has(id)) {
+        continue;
+      }
+      selected.push(item);
+      selectedIds.add(id);
+    }
+  }
+
+  return selected;
+};
+
+const storyClusterSignal = (
+  items: readonly BriefingEvidenceItem[],
+  now: Date,
+  policy: StoryRankingPolicy,
+): {
+  readonly score: number;
+  readonly breakdown: StoryCluster['signalBreakdown'];
+  readonly reasons: readonly string[];
+} => {
+  const sorted = [...items].sort(compareEvidenceItems);
+  const representative = sorted[0];
+  if (representative === undefined) {
+    return {
+      score: 0,
+      breakdown: zeroSignalBreakdown(),
+      reasons: [],
+    };
+  }
+
+  const providerKeys = uniqueSorted(sorted.map((item) => item.providerKey));
+  const topicIds = uniqueSorted(sorted.map((item) => item.topicId));
+  const strongestByProvider = new Map<string, number>();
+
+  for (const item of sorted) {
+    const current = strongestByProvider.get(item.providerKey) ?? 0;
+    strongestByProvider.set(item.providerKey, Math.max(current, item.score));
+  }
+
+  const otherProviderSupport = [...strongestByProvider.entries()]
+    .filter(([providerKey]) => providerKey !== representative.providerKey)
+    .map(([, score]) => Math.max(0, score))
+    .sort((left, right) => right - left)
+    .slice(0, policy.maxCrossProviderEvidence)
+    .reduce((total, score) => total + Math.min(
+      policy.crossProviderContributionCap,
+      score * policy.crossProviderScoreWeight,
+    ), 0);
+  const sameProviderDuplicateCount =
+    sorted.filter((item) => item.providerKey === representative.providerKey).length - 1;
+  const sameProviderSupport = Math.min(
+    policy.sameProviderSupportCap,
+    Math.log1p(Math.max(0, sameProviderDuplicateCount)) * policy.sameProviderDuplicateWeight,
+  );
+  const providerDiversityBoost = Math.min(
+    policy.providerDiversityCap,
+    (providerKeys.length - 1) * policy.providerDiversityWeight,
+  );
+  const topicDiversityBoost = Math.min(
+    policy.topicDiversityCap,
+    (topicIds.length - 1) * policy.topicDiversityWeight,
+  );
+  const freshnessBoost = freshnessBoostFor(representative.observedAt, now, policy);
+  const breakdown = {
+    baseScore: roundScore(representative.score),
+    crossProviderSupport: roundScore(otherProviderSupport),
+    sameProviderSupport: roundScore(sameProviderSupport),
+    providerDiversityBoost: roundScore(providerDiversityBoost),
+    topicDiversityBoost: roundScore(topicDiversityBoost),
+    freshnessBoost: roundScore(freshnessBoost),
+    totalScore: 0,
+  };
+  const score = roundScore(Object.values({
+    baseScore: breakdown.baseScore,
+    crossProviderSupport: breakdown.crossProviderSupport,
+    sameProviderSupport: breakdown.sameProviderSupport,
+    providerDiversityBoost: breakdown.providerDiversityBoost,
+    topicDiversityBoost: breakdown.topicDiversityBoost,
+    freshnessBoost: breakdown.freshnessBoost,
+  }).reduce((total, value) => total + value, 0));
+  const completeBreakdown = { ...breakdown, totalScore: score };
+
+  return {
+    score,
+    breakdown: completeBreakdown,
+    reasons: storyClusterReasons({
+      providerKeys,
+      topicIds,
+      evidenceCount: sorted.length,
+      score,
+    }),
+  };
+};
+
+const storyClusterReasons = (params: {
+  readonly providerKeys: readonly string[];
+  readonly topicIds: readonly string[];
+  readonly evidenceCount: number;
+  readonly score: number;
+}): readonly string[] => {
+  const reasons: string[] = [];
+
+  if (params.providerKeys.length > 1) {
+    reasons.push(
+      `Confirmed by ${params.providerKeys.length} providers: ${params.providerKeys.slice(0, 3).join(', ')}`,
+    );
+  }
+
+  if (params.evidenceCount > 1) {
+    reasons.push(`Clustered ${params.evidenceCount} related source items`);
+  }
+
+  if (params.topicIds.length > 1) {
+    reasons.push(`Appears across ${params.topicIds.length} monitored topics`);
+  }
+
+  reasons.push(`Story signal score ${formatScore(params.score)}`);
+
+  return reasons;
 };
 
 const buildSourceWindow = (
@@ -107,84 +262,6 @@ const buildSourceWindow = (
   };
 };
 
-const storyKey = (item: BriefingEvidenceItem): string => {
-  const githubRepositoryKey = githubRepositoryStoryKey(item);
-  if (githubRepositoryKey !== null) {
-    return githubRepositoryKey;
-  }
-
-  const storyKeyHint = item.storyKeyHint?.trim();
-  if (storyKeyHint !== undefined && storyKeyHint.length > 0) {
-    return storyKeyHint;
-  }
-
-  const canonicalUrlKey = canonicalUrlStoryKey(item.canonicalUrl);
-  if (canonicalUrlKey !== null) {
-    return canonicalUrlKey;
-  }
-
-  if (item.sourceItemId.trim().length > 0) {
-    return `source:${item.providerKey}:${item.sourceItemId}`;
-  }
-
-  return `title:${titleFingerprint(item.title)}`;
-};
-
-const githubRepositoryStoryKey = (item: BriefingEvidenceItem): string | null =>
-  githubRepositoryUrlKey(item.canonicalUrl) ?? githubRepositoryTitleKey(item.title);
-
-const githubRepositoryUrlKey = (value: string): string | null => {
-  try {
-    const parsed = new URL(value);
-    const host = parsed.hostname.toLocaleLowerCase('en-US').replace(/^www\./u, '');
-    if (host !== 'github.com') {
-      return null;
-    }
-
-    const [owner, repo] = parsed.pathname
-      .split('/')
-      .filter((part) => part.trim().length > 0);
-    if (owner === undefined || repo === undefined) {
-      return null;
-    }
-
-    return `github-repo:${owner.toLocaleLowerCase('en-US')}/${repo.toLocaleLowerCase('en-US')}`;
-  } catch {
-    return null;
-  }
-};
-
-const githubRepositoryTitleKey = (value: string): string | null => {
-  const match = /(?:^|\s)([a-z0-9_.-]+)\/([a-z0-9_.-]+)(?:\s|$)/iu.exec(value);
-  if (match?.[1] === undefined || match[2] === undefined) {
-    return null;
-  }
-
-  return `github-repo:${match[1].toLocaleLowerCase('en-US')}/${match[2].toLocaleLowerCase('en-US')}`;
-};
-
-const canonicalUrlStoryKey = (value: string): string | null => {
-  try {
-    const parsed = new URL(value);
-    parsed.hash = '';
-    parsed.search = '';
-    parsed.hostname = parsed.hostname.toLocaleLowerCase('en-US');
-
-    return `url:${parsed.hostname}${parsed.pathname.replace(/\/+$/u, '')}`;
-  } catch {
-    return null;
-  }
-};
-
-const titleFingerprint = (value: string): string =>
-  value
-    .toLocaleLowerCase('en-US')
-    .replace(/[^\p{Letter}\p{Number}\s]+/gu, ' ')
-    .split(/\s+/u)
-    .filter((token) => token.length > 2)
-    .slice(0, 10)
-    .join('-') || 'untitled';
-
 const compareEvidenceItems = (left: BriefingEvidenceItem, right: BriefingEvidenceItem): number => {
   const scoreDiff = right.score - left.score;
   if (scoreDiff !== 0) {
@@ -195,14 +272,19 @@ const compareEvidenceItems = (left: BriefingEvidenceItem, right: BriefingEvidenc
 };
 
 const compareStoryClusters = (left: StoryCluster, right: StoryCluster): number => {
-  const topicCoverageDiff = right.topicIds.length - left.topicIds.length;
-  if (topicCoverageDiff !== 0) {
-    return topicCoverageDiff;
-  }
-
   const scoreDiff = right.score - left.score;
   if (scoreDiff !== 0) {
     return scoreDiff;
+  }
+
+  const providerCoverageDiff = right.providerKeys.length - left.providerKeys.length;
+  if (providerCoverageDiff !== 0) {
+    return providerCoverageDiff;
+  }
+
+  const topicCoverageDiff = right.topicIds.length - left.topicIds.length;
+  if (topicCoverageDiff !== 0) {
+    return topicCoverageDiff;
   }
 
   return right.observedAtRange.endedAt.getTime() - left.observedAtRange.endedAt.getTime();
@@ -223,10 +305,33 @@ const uniqueStable = (values: readonly string[]): readonly string[] => {
   return result;
 };
 
-const normalizeLimit = (value: number): number => {
+const normalizeLimit = (value: number, policy: StoryRankingPolicy): number => {
   if (!Number.isInteger(value) || value < 1) {
     return 1;
   }
 
-  return Math.min(value, 50);
+  return Math.min(value, policy.maxClusters);
 };
+
+const zeroSignalBreakdown = (): NonNullable<StoryCluster['signalBreakdown']> => ({
+  baseScore: 0,
+  crossProviderSupport: 0,
+  sameProviderSupport: 0,
+  providerDiversityBoost: 0,
+  topicDiversityBoost: 0,
+  freshnessBoost: 0,
+  totalScore: 0,
+});
+
+const freshnessBoostFor = (observedAt: Date, now: Date, policy: StoryRankingPolicy): number => {
+  const ageHours = Math.max(0, (now.getTime() - observedAt.getTime()) / 3_600_000);
+
+  const boost = policy.freshnessBoosts.find((candidate) => ageHours <= candidate.maxAgeHours);
+
+  return boost?.boost ?? 0;
+};
+
+const roundScore = (value: number): number => Math.round(value * 1000) / 1000;
+
+const formatScore = (value: number): string =>
+  Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/0+$/u, '').replace(/\.$/u, '');

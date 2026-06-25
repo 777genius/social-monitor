@@ -14,6 +14,17 @@ export class BriefingProviderMetricDto {
   declare readonly value: string;
 }
 
+export class BriefingReaderItemConfidenceDto {
+  @ApiProperty({ enum: ["low", "medium", "high"] })
+  declare readonly level: "low" | "medium" | "high";
+
+  @ApiProperty({ minimum: 0, maximum: 1 })
+  declare readonly score: number;
+
+  @ApiProperty()
+  declare readonly rationale: string;
+}
+
 export class BriefingReaderItemDto {
   @ApiProperty()
   declare readonly title: string;
@@ -32,6 +43,12 @@ export class BriefingReaderItemDto {
 
   @ApiProperty()
   declare readonly signalScore: number;
+
+  @ApiProperty({ type: () => BriefingReaderItemConfidenceDto })
+  declare readonly confidence: BriefingReaderItemConfidenceDto;
+
+  @ApiProperty({ type: [String] })
+  declare readonly confirmedProviderKeys: readonly string[];
 
   @ApiProperty({ type: () => [BriefingProviderMetricDto] })
   declare readonly providerMetrics: readonly BriefingProviderMetricDto[];

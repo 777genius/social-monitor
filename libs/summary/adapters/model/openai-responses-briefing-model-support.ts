@@ -107,6 +107,7 @@ export const buildOpenAiBriefingLineage = (
   providerVersion: route.provider,
   rulesVersion: input.policy.rulesVersion,
   evalDatasetVersion,
+  rankingPolicyVersion: input.evidence.rankingPolicyVersion,
 });
 
 export const assertOpenAiBriefingDraftShape = (draft: GeneratedBriefingDraft): void => {

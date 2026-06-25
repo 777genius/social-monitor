@@ -364,6 +364,8 @@ const normalizeBriefingReaderBrief = (value: unknown): BriefingReaderBrief | und
       item.whyNow === undefined ||
       item.matchedTopicIds === undefined ||
       item.matchedRules === undefined ||
+      item.confidence === undefined ||
+      item.confirmedProviderKeys === undefined ||
       item.providerMetrics === undefined ||
       item.whyImportant === undefined)
   ) {

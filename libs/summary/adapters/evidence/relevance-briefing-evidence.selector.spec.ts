@@ -10,6 +10,8 @@ import {
 } from '@social-monitor/shared-kernel';
 
 import { RelevanceBriefingEvidenceSelector } from './relevance-briefing-evidence.selector';
+import type { BriefingEvidenceSelection } from '../../domain';
+import type { StoryRankingMetricsPort } from '../../ports';
 
 const clock: Clock = {
   now: () => new Date('2026-06-23T12:00:00.000Z'),
@@ -73,7 +75,13 @@ describe('RelevanceBriefingEvidenceSelector', () => {
       list: jest.fn(),
       findById: jest.fn(async () => null),
     };
-    const selector = new RelevanceBriefingEvidenceSelector(rankFeedItems, feedItems, clock);
+    const storyRankingMetrics = new FakeStoryRankingMetrics();
+    const selector = new RelevanceBriefingEvidenceSelector(
+      rankFeedItems,
+      feedItems,
+      clock,
+      storyRankingMetrics,
+    );
 
     const selection = await selector.select({
       tenantId: tenantId('tenant-1'),
@@ -91,5 +99,14 @@ describe('RelevanceBriefingEvidenceSelector', () => {
       'rss',
     ]);
     expect(selection.sourceWindow.selectedFeedItemIds).toContain('feed-issues');
+    expect(storyRankingMetrics.recorded[0]?.rankingPolicyVersion).toBe('story_ranking_v1');
   });
 });
+
+class FakeStoryRankingMetrics implements StoryRankingMetricsPort {
+  readonly recorded: BriefingEvidenceSelection[] = [];
+
+  recordStoryRanking(selection: BriefingEvidenceSelection): void {
+    this.recorded.push(selection);
+  }
+}

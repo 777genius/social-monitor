@@ -5,7 +5,11 @@ import type { RankedFeedItemView } from '@social-monitor/relevance/features/rank
 import { normalizeJsonObject, type Clock, type JsonObject } from '@social-monitor/shared-kernel';
 
 import { StoryClusteringService, type BriefingEvidenceItem } from '../../domain';
-import type { BriefingEvidenceSelectorPort } from '../../ports';
+import {
+  NOOP_STORY_RANKING_METRICS,
+  type BriefingEvidenceSelectorPort,
+  type StoryRankingMetricsPort,
+} from '../../ports';
 
 export class RelevanceBriefingEvidenceSelector implements BriefingEvidenceSelectorPort {
   private readonly clusterer: StoryClusteringService;
@@ -14,6 +18,7 @@ export class RelevanceBriefingEvidenceSelector implements BriefingEvidenceSelect
     private readonly rankFeedItems: RankFeedItemsUseCase,
     private readonly feedItems: FeedItemReadRepositoryPort,
     clock: Clock,
+    private readonly storyRankingMetrics: StoryRankingMetricsPort = NOOP_STORY_RANKING_METRICS,
   ) {
     this.clusterer = new StoryClusteringService(clock);
   }
@@ -38,7 +43,7 @@ export class RelevanceBriefingEvidenceSelector implements BriefingEvidenceSelect
       params.maxItems,
     );
 
-    return this.clusterer.cluster({
+    const selection = this.clusterer.cluster({
       identity: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
@@ -47,6 +52,9 @@ export class RelevanceBriefingEvidenceSelector implements BriefingEvidenceSelect
       items,
       limit: params.maxItems,
     });
+    this.storyRankingMetrics.recordStoryRanking(selection);
+
+    return selection;
   }
 
   private async expandRankedItems(

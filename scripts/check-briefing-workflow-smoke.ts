@@ -11,6 +11,7 @@ import { ExecuteBriefingJobUseCase } from '@social-monitor/summary/features/exec
 import { RequestBriefingUseCase } from '@social-monitor/summary/features/request-briefing/request-briefing.use-case';
 import { ExecuteBriefingJobCommandHandler } from '@social-monitor/summary/interfaces/queue/execute-briefing-job-command.handler';
 import { FixedClock, type IdGenerator, ok, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import type { BriefingReaderItem } from '@social-monitor/summary/domain';
 import type { BriefingEvidenceSelectorPort, SummaryQuotaPort } from '@social-monitor/summary/ports';
 
 import { BriefingJobQueueDrainLoop } from '../apps/intelligence-worker/src/briefing-job-queue-drain-loop';
@@ -29,6 +30,7 @@ class SequenceIdGenerator implements IdGenerator {
 class SelectedBriefingEvidenceSelector implements BriefingEvidenceSelectorPort {
   async select(): ReturnType<BriefingEvidenceSelectorPort['select']> {
     return {
+      rankingPolicyVersion: 'story_ranking_v1',
       sourceWindow: {
         windowId: 'workspace:briefing-workflow-smoke',
         startedAt: new Date('2026-06-23T08:00:00.000Z'),
@@ -149,6 +151,27 @@ async function main(): Promise<void> {
   assert(typeof snapshot.briefingId === 'string', 'briefing job must persist briefing artifact id');
   assert(queue.all().length === 0, `briefing queue must drain, got ${queue.all().length}`);
   assert(artifacts.all().length === 1, `briefing workflow must persist one artifact, got ${artifacts.all().length}`);
+  const artifact = artifacts.all()[0]?.toSnapshot();
+  assert(artifact !== undefined, 'briefing workflow must expose the persisted artifact snapshot');
+  assert(artifact.readerBrief !== undefined, 'briefing workflow must persist the reader brief');
+  assert(artifact.readerBrief.topReads.length > 0, 'reader brief must expose top reads');
+  assert(artifact.citationMap.length > 0, 'briefing artifact must expose citations');
+  assert(
+    new Set(artifact.readerBrief.topReads.map(readerTopReadKey)).size === artifact.readerBrief.topReads.length,
+    'reader brief top reads must not contain duplicate source links',
+  );
+  assert(
+    artifact.readerBrief.sourceMix.some((source) => source.providerKey === 'github'),
+    'reader brief source mix must include clustered GitHub evidence',
+  );
+  assert(
+    artifact.readerBrief.sourceMix.some((source) => source.providerKey === 'reddit'),
+    'reader brief source mix must include Reddit evidence',
+  );
+  assert(
+    artifact.readerBrief.topReads[0]?.whyNow.includes('cross-source coverage'),
+    'reader brief must explain why the top read matters now',
+  );
   assert(events.all().length === 1, `briefing workflow must publish one briefing.ready event, got ${events.all().length}`);
   assert(
     metrics.counterValue('summary_jobs_total', {
@@ -161,6 +184,11 @@ async function main(): Promise<void> {
 
   console.log('Briefing workflow smoke OK');
 }
+
+const readerTopReadKey = (item: BriefingReaderItem): string =>
+  item.canonicalUrl ??
+  item.citationIds.join('|') ??
+  `${item.providerKey}:${item.title}`;
 
 class AllowingSummaryQuota implements SummaryQuotaPort {
   async reserveSummaryJob(): ReturnType<SummaryQuotaPort['reserveSummaryJob']> {

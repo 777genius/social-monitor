@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { IsIn, IsOptional, IsString } from "class-validator";
 
 import {
   briefingCitationFields,
@@ -10,9 +11,12 @@ import { BriefingReaderBriefDto } from "./briefing-reader.dto";
 
 export class BriefingScopeDto {
   @ApiProperty({ enum: ["workspace", "topic"] })
+  @IsIn(["workspace", "topic"])
   declare readonly type: "workspace" | "topic";
 
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   declare readonly topicId?: string;
 }
 
@@ -41,12 +45,38 @@ export class BriefingObservedAtRangeDto {
   declare readonly endedAt: string;
 }
 
+export class BriefingStorySignalBreakdownDto {
+  @ApiProperty()
+  declare readonly baseScore: number;
+
+  @ApiProperty()
+  declare readonly crossProviderSupport: number;
+
+  @ApiProperty()
+  declare readonly sameProviderSupport: number;
+
+  @ApiProperty()
+  declare readonly providerDiversityBoost: number;
+
+  @ApiProperty()
+  declare readonly topicDiversityBoost: number;
+
+  @ApiProperty()
+  declare readonly freshnessBoost: number;
+
+  @ApiProperty()
+  declare readonly totalScore: number;
+}
+
 export class BriefingStoryClusterDto {
   @ApiProperty()
   declare readonly id: string;
 
   @ApiProperty()
   declare readonly storyKey: string;
+
+  @ApiPropertyOptional()
+  declare readonly rankingPolicyVersion?: string;
 
   @ApiProperty()
   declare readonly representativeFeedItemId: string;
@@ -62,6 +92,9 @@ export class BriefingStoryClusterDto {
 
   @ApiProperty()
   declare readonly score: number;
+
+  @ApiPropertyOptional({ type: () => BriefingStorySignalBreakdownDto })
+  declare readonly signalBreakdown?: BriefingStorySignalBreakdownDto;
 
   @ApiProperty({ type: () => BriefingObservedAtRangeDto })
   declare readonly observedAtRange: BriefingObservedAtRangeDto;
@@ -198,6 +231,9 @@ export class BriefingLineageDto {
 
   @ApiProperty()
   declare readonly evalDatasetVersion: string;
+
+  @ApiPropertyOptional()
+  declare readonly rankingPolicyVersion?: string;
 }
 
 export class BriefingUsageDto {

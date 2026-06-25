@@ -22,11 +22,13 @@ export type BriefingEvidenceItem = {
 export type StoryCluster = {
   readonly id: string;
   readonly storyKey: string;
+  readonly rankingPolicyVersion?: string;
   readonly representativeFeedItemId: string;
   readonly duplicateFeedItemIds: readonly string[];
   readonly topicIds: readonly string[];
   readonly providerKeys: readonly string[];
   readonly score: number;
+  readonly signalBreakdown?: StorySignalBreakdown;
   readonly observedAtRange: {
     readonly startedAt: Date;
     readonly endedAt: Date;
@@ -34,7 +36,18 @@ export type StoryCluster = {
   readonly whyImportant: readonly string[];
 };
 
+export type StorySignalBreakdown = {
+  readonly baseScore: number;
+  readonly crossProviderSupport: number;
+  readonly sameProviderSupport: number;
+  readonly providerDiversityBoost: number;
+  readonly topicDiversityBoost: number;
+  readonly freshnessBoost: number;
+  readonly totalScore: number;
+};
+
 export type BriefingEvidenceSelection = {
+  readonly rankingPolicyVersion: string;
   readonly sourceWindow: BriefingSourceWindow;
   readonly clusters: readonly StoryCluster[];
   readonly selectedEvidence: readonly BriefingEvidenceItem[];

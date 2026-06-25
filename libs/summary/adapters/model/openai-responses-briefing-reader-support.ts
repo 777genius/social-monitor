@@ -145,6 +145,7 @@ const normalizeReaderItem = (
   const trustedCitation = citationIds.map((citationId) => citationById.get(citationId)).find(Boolean);
   const providerKey = trustedCitation?.providerKey ?? requiredString(value.providerKey, 'reader item provider');
   const reason = requiredString(value.reason, 'reader item reason');
+  const signalScore = nonNegativeNumberOrFallback(value.signalScore, 0);
 
   return {
     title: requiredString(value.title, 'reader item title'),
@@ -156,7 +157,13 @@ const normalizeReaderItem = (
     matchedRules: optionalStringArray(value.matchedRules).length > 0
       ? optionalStringArray(value.matchedRules)
       : [`provider:${providerKey}`],
-    signalScore: nonNegativeNumberOrFallback(value.signalScore, 0),
+    signalScore,
+    confidence: {
+      level: signalScore >= 1 ? 'medium' : 'low',
+      score: signalScore >= 1 ? 0.5 : 0.35,
+      rationale: 'Model-provided reader item normalized without story clustering evidence.',
+    },
+    confirmedProviderKeys: [providerKey],
     providerMetrics: optionalArray<Record<string, unknown>>(value.providerMetrics)
       .map(normalizeProviderMetric),
     whyImportant: optionalStringArray(value.whyImportant).length > 0

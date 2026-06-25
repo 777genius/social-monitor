@@ -12,6 +12,7 @@ import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { FeedBriefingFreshnessProbe } from '../../adapters/evidence/feed-briefing-freshness.probe';
 import { RelevanceBriefingEvidenceSelector } from '../../adapters/evidence/relevance-briefing-evidence.selector';
+import { StoryRankingMetricsRecorder } from '../../adapters/metrics/story-ranking-metrics.recorder';
 import { BriefingJobQueuePublisherAdapter } from '../../adapters/messaging/in-memory-briefing-job-queue.adapter';
 import { DeterministicBriefingModelAdapter } from '../../adapters/model/deterministic-briefing-model.adapter';
 import { MeteredBriefingModelAdapter } from '../../adapters/model/metered-briefing-model.adapter';
@@ -40,6 +41,7 @@ import {
   type BriefingJobQueuePort,
   type BriefingJobRepositoryPort,
   type BriefingPolicyRepositoryPort,
+  type StoryRankingMetricsPort,
   type SummaryEventPublisherPort,
 } from '../../ports';
 import {
@@ -66,6 +68,12 @@ export const summaryBriefingProviders: Provider[] = [
   InMemoryBriefingJobRepository,
   InMemoryBriefingArtifactRepository,
   InMemoryBriefingPolicyRepository,
+  {
+    provide: StoryRankingMetricsRecorder,
+    useFactory: (metrics: InMemoryMetricsRecorder): StoryRankingMetricsPort =>
+      new StoryRankingMetricsRecorder(metrics),
+    inject: [InMemoryMetricsRecorder],
+  },
   {
     provide: BRIEFING_JOB_QUEUE,
     useFactory: (
@@ -130,8 +138,9 @@ export const summaryBriefingProviders: Provider[] = [
     useFactory: (
       rankFeedItems: RankFeedItemsUseCase,
       feedItems: FeedItemReadRepositoryPort,
-    ) => new RelevanceBriefingEvidenceSelector(rankFeedItems, feedItems, new SystemClock()),
-    inject: [RankFeedItemsUseCase, FEED_ITEM_READ_REPOSITORY],
+      metrics: StoryRankingMetricsPort,
+    ) => new RelevanceBriefingEvidenceSelector(rankFeedItems, feedItems, new SystemClock(), metrics),
+    inject: [RankFeedItemsUseCase, FEED_ITEM_READ_REPOSITORY, StoryRankingMetricsRecorder],
   },
   {
     provide: BRIEFING_EVIDENCE_SELECTOR,

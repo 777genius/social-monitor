@@ -62,6 +62,7 @@ const briefingInput = (): BriefingModelInput => {
     workspaceId: workspaceId('workspace-deterministic-briefing-adapter'),
     scope: { type: 'workspace' },
     evidence: {
+      rankingPolicyVersion: 'story_ranking_v1',
       sourceWindow: {
         windowId: 'workspace:deterministic-briefing',
         startedAt: selectedEvidence[0]?.observedAt ?? new Date('2026-06-23T08:00:00.000Z'),

@@ -150,6 +150,7 @@ describe('BriefingArtifact', () => {
         risksAndUnknowns: [],
       },
       {
+        rankingPolicyVersion: 'story_ranking_v1',
         sourceWindow: {
           windowId: 'window-1',
           startedAt: new Date('2026-06-23T08:00:00.000Z'),
