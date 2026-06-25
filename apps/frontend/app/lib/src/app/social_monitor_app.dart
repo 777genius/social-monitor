@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:modularity_flutter/modularity_flutter.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
@@ -16,6 +17,10 @@ class SocialMonitorApp extends StatelessWidget {
 
     return ModularityRoot(
       observer: composition.routeObserver,
+      interceptors: kDebugMode
+          ? const [_DebugModuleLifecycleInterceptor()]
+          : null,
+      lifecycleLogger: kDebugMode ? ModularityRoot.defaultDebugLogger : null,
       child: AnimatedBuilder(
         animation: composition.themeModeController,
         builder: (context, _) {
@@ -38,5 +43,29 @@ class SocialMonitorApp extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+final class _DebugModuleLifecycleInterceptor implements ModuleInterceptor {
+  const _DebugModuleLifecycleInterceptor();
+
+  @override
+  void onInit(Module module) {
+    debugPrint('[Modularity] INIT ${module.runtimeType}');
+  }
+
+  @override
+  void onLoaded(Module module) {
+    debugPrint('[Modularity] LOADED ${module.runtimeType}');
+  }
+
+  @override
+  void onError(Module module, Object error) {
+    debugPrint('[Modularity] ERROR ${module.runtimeType}: $error');
+  }
+
+  @override
+  void onDispose(Module module) {
+    debugPrint('[Modularity] DISPOSE ${module.runtimeType}');
   }
 }

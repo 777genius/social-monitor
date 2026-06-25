@@ -23,11 +23,55 @@ class SummariesFeatureRoute extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const host = SummariesFeatureModuleHost();
     return ModuleScope<SummariesFeatureModule>(
       module: _module,
       retentionPolicy: ModuleRetentionPolicy.routeBound,
       retentionKey: _module.retentionKey,
-      child: const SummariesFeatureModuleHost(),
+      loadingBuilder: (context) => const _LoadedModuleFallback(child: host),
+      child: host,
     );
+  }
+}
+
+class _LoadedModuleFallback extends StatefulWidget {
+  const _LoadedModuleFallback({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_LoadedModuleFallback> createState() => _LoadedModuleFallbackState();
+}
+
+class _LoadedModuleFallbackState extends State<_LoadedModuleFallback> {
+  bool _checkScheduled = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.getInheritedWidgetOfExactType<ModuleProvider>();
+    final status = provider?.controller.currentStatus;
+    if (status == ModuleStatus.loaded) {
+      return widget.child;
+    }
+
+    _scheduleStatusCheck();
+    return const Center(
+      child: Text('Loading...', textDirection: TextDirection.ltr),
+    );
+  }
+
+  void _scheduleStatusCheck() {
+    if (_checkScheduled) {
+      return;
+    }
+    _checkScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _checkScheduled = false;
+      });
+    });
   }
 }

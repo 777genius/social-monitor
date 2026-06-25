@@ -385,5 +385,6 @@ class _CitationDisclosure extends StatelessWidget {
 bool _isGithub(BriefingReaderItem item) {
   final uri = Uri.tryParse(item.canonicalUrl ?? '');
   return item.providerKey == 'github-repo-radar' ||
+      item.providerKey == 'github-trending-page' ||
       uri?.host.toLowerCase() == 'github.com';
 }

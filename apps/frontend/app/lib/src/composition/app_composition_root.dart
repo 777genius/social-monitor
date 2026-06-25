@@ -28,6 +28,7 @@ final class AppCompositionRoot {
     AppShellRuntime? runtime,
     AppThemeModeController? themeModeController,
     AppFrontendRuntimeConfig? runtimeConfig,
+    String initialLocation = AppRoutes.initialFromEnvironment,
   }) {
     return AppCompositionRoot._build(
       runtime:
@@ -37,17 +38,20 @@ final class AppCompositionRoot {
           AppShellRuntime.productionPending(),
       themeModeController: themeModeController,
       useDemoRoutes: false,
+      initialLocation: initialLocation,
     );
   }
 
   factory AppCompositionRoot.demo({
     AppShellRuntime? runtime,
     AppThemeModeController? themeModeController,
+    String initialLocation = AppRoutes.dashboard,
   }) {
     return AppCompositionRoot._build(
       runtime: runtime ?? AppShellRuntime.demo(),
       themeModeController: themeModeController,
       useDemoRoutes: true,
+      initialLocation: initialLocation,
     );
   }
 
@@ -65,6 +69,7 @@ final class AppCompositionRoot {
     required AppShellRuntime runtime,
     AppThemeModeController? themeModeController,
     required bool useDemoRoutes,
+    required String initialLocation,
   }) {
     final resolvedRuntime = runtime;
     final resolvedThemeModeController =
@@ -170,6 +175,7 @@ final class AppCompositionRoot {
         observers: [routeObserver],
         runtime: resolvedRuntime,
         themeModeController: resolvedThemeModeController,
+        initialLocation: initialLocation,
       ),
     );
   }

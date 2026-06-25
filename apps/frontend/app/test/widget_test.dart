@@ -56,6 +56,15 @@ void main() {
     expect(find.text('Route not found'), findsOneWidget);
   });
 
+  testWidgets('honors configured initial route for visual e2e', (tester) async {
+    final composition = AppCompositionRoot.demo(initialLocation: '/summaries');
+    await tester.pumpWidget(SocialMonitorApp(composition: composition));
+    await tester.pumpAndSettle();
+
+    expect(find.text('GitHub Trending daily summary'), findsWidgets);
+    expect(find.text('Monitoring command center'), findsNothing);
+  });
+
   testWidgets('navigates the MVP frontend critical path', (tester) async {
     final composition = AppCompositionRoot.demo();
     await tester.pumpWidget(SocialMonitorApp(composition: composition));
@@ -76,7 +85,7 @@ void main() {
 
     composition.router.go('/summaries');
     await tester.pumpAndSettle();
-    expect(find.text('GitHub repo radar summary'), findsWidgets);
+    expect(find.text('GitHub Trending daily summary'), findsWidgets);
 
     composition.router.go('/settings');
     await tester.pumpAndSettle();

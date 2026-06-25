@@ -5,6 +5,7 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../domain/entities/generated_briefing.dart';
 import '../../domain/value_objects/briefing_reader_action_target.dart';
 import 'reader_briefing_coverage_summary.dart';
+import 'reader_briefing_provider_label.dart';
 import 'reader_briefing_quality_summary.dart';
 import 'reader_briefing_sections.dart';
 import 'reader_briefing_top_reads.dart';
@@ -62,6 +63,14 @@ class ReaderBriefingView extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           _BulletList(items: readerBrief.bullets.take(4).toList()),
         ],
+        const SizedBox(height: AppSpacing.md),
+        _EvidenceStrip(
+          providerKeys: readerBrief.sourceMix
+              .map((entry) => entry.providerKey)
+              .toList(growable: false),
+          citationCount: briefing.citations.length,
+          topReadCount: readerBrief.topReads.length,
+        ),
         if (readerBrief.nextActions.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.md),
           ReaderBriefingNextActions(
@@ -147,6 +156,60 @@ class ReaderBriefingView extends StatelessWidget {
         qualityState.warnings.isNotEmpty ||
         qualityState.isSingleSource;
   }
+}
+
+class _EvidenceStrip extends StatelessWidget {
+  const _EvidenceStrip({
+    required this.providerKeys,
+    required this.citationCount,
+    required this.topReadCount,
+  });
+
+  final List<String> providerKeys;
+  final int citationCount;
+  final int topReadCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final uniqueProviders = _uniqueStable(providerKeys);
+
+    return Wrap(
+      spacing: AppSpacing.xs,
+      runSpacing: AppSpacing.xs,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        AppStatusBadge(
+          label: '$topReadCount top reads',
+          tone: AppStatusTone.neutral,
+        ),
+        AppStatusBadge(
+          label: '$citationCount citations',
+          tone: AppStatusTone.neutral,
+        ),
+        ...uniqueProviders
+            .take(5)
+            .map(
+              (providerKey) => AppStatusBadge(
+                label: readerBriefingProviderLabel(providerKey),
+                tone: AppStatusTone.neutral,
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+List<String> _uniqueStable(List<String> values) {
+  final seen = <String>{};
+  final result = <String>[];
+
+  for (final value in values) {
+    if (seen.add(value)) {
+      result.add(value);
+    }
+  }
+
+  return result;
 }
 
 class _BriefingHeader extends StatelessWidget {

@@ -11,9 +11,10 @@ GoRouter createAppRouter({
   required List<NavigatorObserver> observers,
   required AppShellRuntime runtime,
   required AppThemeModeController themeModeController,
+  String initialLocation = AppRoutes.dashboard,
 }) {
   return GoRouter(
-    initialLocation: AppRoutes.dashboard,
+    initialLocation: initialLocation,
     observers: observers,
     redirect: (context, state) {
       final path = state.uri.path;
@@ -68,6 +69,10 @@ GoRouter createAppRouter({
 abstract final class AppRoutes {
   static const dashboard = '/';
   static const auth = '/auth';
+  static const initialFromEnvironment = String.fromEnvironment(
+    'SOCIAL_MONITOR_INITIAL_ROUTE',
+    defaultValue: dashboard,
+  );
 }
 
 AppFeatureDescriptor? _featureForPath(

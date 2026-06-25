@@ -71,6 +71,7 @@ Keep this test green before claiming frontend architecture work is done.
 Run the smallest checks that prove the changed surface:
 
 - frontend Dart or architecture change: from `apps/frontend`, run `fvm flutter analyze` and `fvm flutter test app/test/architecture/frontend_architecture_boundaries_test.dart`;
+- frontend visual/e2e check: use Marionette MCP against a debug Flutter app, not only browser screenshots;
 - full frontend platform change: run `npm run check:frontend`;
 - frontend app/design-system change: also run the affected app or package tests;
 - frontend shared-kernel/generated-client change: also run `fvm dart test packages/shared_kernel packages/generated_api`;
