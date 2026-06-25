@@ -145,7 +145,15 @@ final class SourcesCatalogStore extends ChangeNotifier {
 
   Future<void> load() async {
     final generation = _generationGuard.markOperationStarted();
-    state = const LoadingViewState<PageResult<SourceSummary>>();
+    final previousValue = switch (state) {
+      ReadyViewState<PageResult<SourceSummary>>(:final value) => value,
+      LoadingViewState<PageResult<SourceSummary>>(:final previousValue) =>
+        previousValue,
+      _ => null,
+    };
+    state = LoadingViewState<PageResult<SourceSummary>>(
+      previousValue: previousValue,
+    );
     notifyListeners();
 
     final result = await _listSources(ListSourcesQuery(scope: _scope));

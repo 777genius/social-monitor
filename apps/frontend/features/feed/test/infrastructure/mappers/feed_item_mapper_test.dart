@@ -93,12 +93,33 @@ void main() {
 
     expect(item.providerMetrics, isA<GitHubRepositoryMetrics>());
     final metrics = item.providerMetrics as GitHubRepositoryMetrics;
+    expect(metrics.evidenceSource, 'gh_archive_watch_event');
+    expect(metrics.evidenceLabel, 'GH Archive WatchEvent - hourly updated');
     expect(metrics.trendingDelta.window, '24h');
     expect(metrics.trendingDelta.value, 210);
+    expect(metrics.checkedAt, DateTime.parse('2026-06-23T12:00:00.000Z'));
+    expect(metrics.source, 'gh_archive_bigquery_plus_github_live');
     expect(
       metrics.trendDeltas.map((delta) => '${delta.value}/${delta.window}'),
       ['210/24h', '360/48h', '1200/7d', '4800/30d', '11000/90d'],
     );
+  });
+
+  test('maps GitHub Trending page rank and stars gained separately', () {
+    const mapper = FeedItemMapper();
+
+    final item = mapper.toDomain(
+      feedItemApiDto(
+        providerKey: 'github-trending-page',
+        providerMetrics: githubTrendingRepositoryMetricsFixture(),
+      ),
+    );
+
+    expect(item.providerMetrics, isA<GitHubTrendingRepositoryMetrics>());
+    final metrics = item.providerMetrics as GitHubTrendingRepositoryMetrics;
+    expect(metrics.rank, 1);
+    expect(metrics.starsGained, 3703);
+    expect(metrics.window, 'daily');
   });
 
   test('ignores malformed provider metrics instead of fabricating zeros', () {

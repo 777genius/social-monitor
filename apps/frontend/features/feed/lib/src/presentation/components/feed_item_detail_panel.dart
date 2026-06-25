@@ -50,16 +50,26 @@ class FeedItemDetailPanel extends StatelessWidget {
         _DetailSection(
           title: 'Summary',
           child: Text(
-            '${visuals.label} item observed at '
+            '${_providerEvidenceLabel(visuals)} item observed at '
             '${feedDateTimeLabel(item.observedAt)}. ${item.bodyPreview}',
           ),
         ),
-        if (item.normalizedSignal != null || item.providerMetrics != null) ...[
+        if (item.normalizedSignal != null) ...[
           const SizedBox(height: AppSpacing.md),
           _DetailSection(
-            title: 'Signal',
+            title: 'Importance signal',
             child: FeedSignalMetricStrip(
               signal: item.normalizedSignal,
+              metrics: null,
+            ),
+          ),
+        ],
+        if (item.providerMetrics != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          _DetailSection(
+            title: 'Source metrics',
+            child: FeedSignalMetricStrip(
+              signal: null,
               metrics: item.providerMetrics,
             ),
           ),
@@ -73,7 +83,7 @@ class FeedItemDetailPanel extends StatelessWidget {
         _DetailSection(title: 'Body preview', child: Text(item.bodyPreview)),
         const SizedBox(height: AppSpacing.md),
         AppInlineProblem(
-          title: 'Canonical URL',
+          title: 'Source link',
           message: item.canonicalUrl,
           tone: AppProblemTone.neutral,
           actionLabel: _canCopyUrl(item.canonicalUrl) ? 'Copy URL' : null,
@@ -91,9 +101,9 @@ class FeedItemDetailPanel extends StatelessWidget {
               ('Feed item ID', item.id.value),
               ('Source item ID', item.sourceItemId),
               ('Author', item.authorHandle ?? 'Unknown author'),
-              ('Provider', visuals.label),
+              ('Provider', _providerEvidenceLabel(visuals)),
               ('Topic', item.topicId),
-              ('Source binding', item.sourceBindingId),
+              ('Source connection', item.sourceBindingId),
               ('Published', feedDateTimeLabel(item.publishedAt)),
               ('Observed', feedDateTimeLabel(item.observedAt)),
             ],
@@ -103,6 +113,11 @@ class FeedItemDetailPanel extends StatelessWidget {
     );
   }
 }
+
+String _providerEvidenceLabel(FeedProviderVisuals visuals) =>
+    visuals.originLabel == null
+    ? visuals.label
+    : '${visuals.label} - ${visuals.originLabel}';
 
 class _RepositoryTrendDetail extends StatelessWidget {
   const _RepositoryTrendDetail({required this.trend});
@@ -133,6 +148,9 @@ class _RepositoryTrendDetail extends StatelessWidget {
               if (trend.license != null) ('License', trend.license!),
               if (trend.checkedAt != null)
                 ('Checked', feedDateTimeLabel(trend.checkedAt!)),
+              ('Evidence source', 'GH Archive WatchEvent'),
+              ('Freshness', 'GH Archive BigQuery can lag by about an hour'),
+              ('Backend source', trend.source),
             ],
           ),
           if (trend.topics.isNotEmpty) ...[

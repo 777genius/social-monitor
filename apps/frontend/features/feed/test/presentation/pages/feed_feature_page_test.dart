@@ -39,22 +39,127 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('openai/codex is trending on GitHub'), findsWidgets);
+    expect(find.text('Today\'s summary'), findsOneWidget);
+    expect(find.textContaining('briefing'), findsNothing);
     expect(find.text('Repo Radar'), findsWidgets);
+    expect(find.textContaining('GH Archive WatchEvent'), findsWidgets);
+    expect(find.textContaining('1 hour'), findsWidgets);
     expect(find.text('Signal 91 - Breakout'), findsWidgets);
-    expect(find.text('54.0k stars'), findsWidgets);
-    expect(find.text('6.1k forks'), findsWidgets);
-    expect(find.text('+210 / 24h'), findsWidgets);
-    expect(find.text('+360 / 48h'), findsWidgets);
-    expect(find.text('+1.2k / 7d'), findsWidgets);
+    expect(find.text('GitHub stars 54.0k'), findsWidgets);
+    expect(find.text('GitHub forks 6.1k'), findsWidgets);
+    expect(find.text('Repo Radar trend +210 / 24h'), findsWidgets);
+    expect(find.text('Repo Radar trend +360 / 48h'), findsWidgets);
+    expect(find.text('Repo Radar trend +1.2k / 7d'), findsWidgets);
     expect(find.text('Repository trend'), findsOneWidget);
     expect(find.text('openai/codex'), findsWidgets);
     expect(find.text('Primary window'), findsOneWidget);
     expect(find.text('24h'), findsOneWidget);
     expect(find.text('Checked'), findsOneWidget);
+    expect(find.text('Evidence source'), findsOneWidget);
+    expect(find.text('Freshness'), findsOneWidget);
     expect(find.text('Body preview'), findsOneWidget);
-    expect(find.text('Canonical URL'), findsOneWidget);
+    expect(find.text('Source link'), findsOneWidget);
     expect(find.text('Copy URL'), findsOneWidget);
     expect(find.text('Mark reviewed'), findsNothing);
+  });
+
+  testWidgets('renders filtered empty feed state with clear action', (
+    tester,
+  ) async {
+    final store = _store([]);
+    await store.updateSearch('missing');
+
+    await _pumpSizedFeature(
+      tester,
+      store: store,
+      size: const Size(1280, 820),
+      autoload: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No posts match these filters'), findsOneWidget);
+    expect(
+      find.text('Clear filters to return to all collected posts.'),
+      findsOneWidget,
+    );
+    expect(find.text('Clear filters'), findsOneWidget);
+  });
+
+  testWidgets('labels provider-native metrics without calling them rating', (
+    tester,
+  ) async {
+    final store = _store([
+      feedItemApiDto(
+        id: 'feed-reddit',
+        providerKey: 'reddit',
+        title: 'Reddit agent discussion',
+        providerMetrics: redditPostMetricsFixture(score: 540, comments: 126),
+        normalizedSignal: feedSignalApiDto(score: 88, band: 'high'),
+      ),
+      feedItemApiDto(
+        id: 'feed-trending',
+        providerKey: 'github-trending-page',
+        title: 'calesthio/OpenMontage tops GitHub Trending',
+        providerMetrics: githubTrendingRepositoryMetricsFixture(),
+        normalizedSignal: feedSignalApiDto(
+          score: 94,
+          band: 'breakout',
+          providerKey: 'github-trending-page',
+          sourceKey: 'github-trending-page:daily',
+          contentType: 'repository',
+        ),
+      ),
+      feedItemApiDto(
+        id: 'feed-hn',
+        providerKey: 'hacker-news',
+        title: 'HN discussion on model routing',
+        providerMetrics: const {
+          'kind': 'hacker_news_story',
+          'sourceKey': 'hn:front-page',
+          'points': 312,
+          'comments': 74,
+        },
+        normalizedSignal: feedSignalApiDto(
+          score: 76,
+          band: 'normal',
+          providerKey: 'hacker-news',
+          sourceKey: 'hn:front-page',
+          contentType: 'story',
+        ),
+      ),
+      feedItemApiDto(
+        id: 'feed-x',
+        providerKey: 'x-twitter',
+        title: 'X thread about AI search agents',
+        providerMetrics: const {
+          'kind': 'x_post',
+          'sourceKey': 'account:openai',
+          'likes': 1200,
+          'reposts': 340,
+          'replies': 89,
+          'quotes': 27,
+          'bookmarks': 460,
+          'impressions': 50000,
+        },
+        normalizedSignal: feedSignalApiDto(
+          score: 81,
+          band: 'high',
+          providerKey: 'x-twitter',
+          sourceKey: 'account:openai',
+        ),
+      ),
+    ]);
+
+    await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Signal 88 - High'), findsWidgets);
+    expect(find.text('Reddit score 540'), findsWidgets);
+    expect(find.text('GitHub rank #1'), findsWidgets);
+    expect(find.text('GitHub stars +3.7k / daily'), findsWidgets);
+    expect(find.text('HN 312 points'), findsWidgets);
+    expect(find.text('X likes 1.2k'), findsWidgets);
+    expect(find.textContaining('rating'), findsNothing);
   });
 
   testWidgets('compact feed opens detail only after explicit selection', (

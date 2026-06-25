@@ -67,6 +67,37 @@ void main() {
     await tester.pumpWidget(_TestApp(store: permissionStore, autoload: false));
     expect(find.text('Source permission required'), findsOneWidget);
   });
+
+  testWidgets('empty source state offers a connect action', (tester) async {
+    final store = _store([]);
+
+    await tester.pumpWidget(_TestApp(store: store));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No sources'), findsOneWidget);
+    expect(find.text('Connect a source to begin collection.'), findsOneWidget);
+    expect(find.text('Connect source'), findsWidgets);
+
+    await tester.tap(find.widgetWithText(AppButton, 'Connect source').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Web mentions'), findsWidgets);
+    expect(find.text('Healthy'), findsWidgets);
+  });
+
+  testWidgets('source loading keeps the previous list visible', (tester) async {
+    final store = _store([sourceSummaryApiDto()]);
+    await store.load();
+    final previous =
+        (store.state as ReadyViewState<PageResult<SourceSummary>>).value;
+    store.state = LoadingViewState<PageResult<SourceSummary>>(
+      previousValue: previous,
+    );
+
+    await tester.pumpWidget(_TestApp(store: store, autoload: false));
+
+    expect(find.text('RSS feeds'), findsWidgets);
+  });
 }
 
 SourcesCatalogStore _store(List<SourceSummaryApiDto> items) {

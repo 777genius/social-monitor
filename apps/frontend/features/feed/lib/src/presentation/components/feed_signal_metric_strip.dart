@@ -3,6 +3,7 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/value_objects/feed_provider_metrics.dart';
 import '../../domain/value_objects/feed_signal_snapshot.dart';
+import '../formatters/feed_time_formatters.dart';
 
 class FeedSignalMetricStrip extends StatelessWidget {
   const FeedSignalMetricStrip({
@@ -25,7 +26,7 @@ class FeedSignalMetricStrip extends StatelessWidget {
           label: 'Signal ${signal!.score}',
           emphasis: _bandLabel(signal!.band),
         ),
-      ..._metricChips(metrics).take(dense ? 4 : 6),
+      ..._metricChips(metrics, dense: dense),
     ];
 
     if (chips.isEmpty) {
@@ -40,10 +41,13 @@ class FeedSignalMetricStrip extends StatelessWidget {
   }
 }
 
-List<Widget> _metricChips(FeedProviderMetrics? metrics) {
+List<Widget> _metricChips(FeedProviderMetrics? metrics, {required bool dense}) {
   return switch (metrics) {
     RedditPostMetrics() => [
-      _MetricChip(icon: Icons.arrow_upward, label: '${metrics.score} score'),
+      _MetricChip(
+        icon: Icons.arrow_upward,
+        label: 'Reddit score ${metrics.score}',
+      ),
       _MetricChip(
         icon: Icons.forum_outlined,
         label: '${metrics.comments} comments',
@@ -53,27 +57,67 @@ List<Widget> _metricChips(FeedProviderMetrics? metrics) {
           icon: Icons.thumb_up_alt_outlined,
           label: '${(metrics.upvoteRatio! * 100).round()}% upvotes',
         ),
-    ],
+    ].take(dense ? 2 : 3).toList(growable: false),
     GitHubRepositoryMetrics() => [
       _MetricChip(
+        icon: Icons.trending_up,
+        label:
+            'Repo Radar trend +${_compactNumber(metrics.trendingDelta.value)} / '
+            '${metrics.trendingDelta.window}',
+      ),
+      _MetricChip(
         icon: Icons.star_outline,
-        label: '${_compactNumber(metrics.stars)} stars',
+        label: 'GitHub stars ${_compactNumber(metrics.stars)}',
       ),
       _MetricChip(
         icon: Icons.call_split,
-        label: '${_compactNumber(metrics.forks)} forks',
+        label: 'GitHub forks ${_compactNumber(metrics.forks)}',
       ),
-      ...metrics.trendDeltas
-          .take(3)
-          .map(
-            (delta) => _MetricChip(
-              icon: Icons.trending_up,
-              label: '+${_compactNumber(delta.value)} / ${delta.window}',
+      if (!dense && metrics.checkedAt != null)
+        _MetricChip(
+          icon: Icons.schedule,
+          label: 'Updated ${feedDateTimeLabel(metrics.checkedAt!)}',
+        ),
+      if (!dense)
+        const _MetricChip(
+          icon: Icons.info_outline,
+          label: 'Trend data can lag about 1 hour',
+        ),
+      if (!dense)
+        ...metrics.trendDeltas
+            .skip(1)
+            .take(4)
+            .map(
+              (delta) => _MetricChip(
+                icon: Icons.trending_up,
+                label:
+                    'Repo Radar trend +${_compactNumber(delta.value)} / '
+                    '${delta.window}',
+              ),
             ),
-          ),
-    ],
+    ].take(dense ? 2 : 9).toList(growable: false),
+    GitHubTrendingRepositoryMetrics() => [
+      _MetricChip(
+        icon: Icons.leaderboard_outlined,
+        label: 'GitHub rank #${metrics.rank}',
+      ),
+      _MetricChip(
+        icon: Icons.trending_up,
+        label:
+            'GitHub stars +${_compactNumber(metrics.starsGained)} / '
+            '${metrics.window}',
+      ),
+      _MetricChip(
+        icon: Icons.star_outline,
+        label: 'GitHub stars ${_compactNumber(metrics.stars)}',
+      ),
+      _MetricChip(
+        icon: Icons.call_split,
+        label: 'GitHub forks ${_compactNumber(metrics.forks)}',
+      ),
+    ].take(dense ? 2 : 4).toList(growable: false),
     HackerNewsStoryMetrics() => [
-      _MetricChip(icon: Icons.north, label: '${metrics.points} points'),
+      _MetricChip(icon: Icons.north, label: 'HN ${metrics.points} points'),
       _MetricChip(
         icon: Icons.mode_comment_outlined,
         label: '${metrics.comments} comments',
@@ -82,29 +126,29 @@ List<Widget> _metricChips(FeedProviderMetrics? metrics) {
     XPostMetrics() => [
       _MetricChip(
         icon: Icons.favorite_border,
-        label: '${_compactNumber(metrics.likes)} likes',
+        label: 'X likes ${_compactNumber(metrics.likes)}',
       ),
       _MetricChip(
         icon: Icons.repeat,
-        label: '${_compactNumber(metrics.reposts)} reposts',
+        label: 'X reposts ${_compactNumber(metrics.reposts)}',
       ),
       _MetricChip(
         icon: Icons.mode_comment_outlined,
-        label: '${_compactNumber(metrics.replies)} replies',
+        label: 'X replies ${_compactNumber(metrics.replies)}',
       ),
       _MetricChip(
         icon: Icons.format_quote,
-        label: '${_compactNumber(metrics.quotes)} quotes',
+        label: 'X quotes ${_compactNumber(metrics.quotes)}',
       ),
       _MetricChip(
         icon: Icons.bookmark_border,
-        label: '${_compactNumber(metrics.bookmarks)} bookmarks',
+        label: 'X bookmarks ${_compactNumber(metrics.bookmarks)}',
       ),
       _MetricChip(
         icon: Icons.visibility_outlined,
-        label: '${_compactNumber(metrics.impressions)} impressions',
+        label: 'X impressions ${_compactNumber(metrics.impressions)}',
       ),
-    ],
+    ].take(dense ? 2 : 6).toList(growable: false),
     null => const [],
   };
 }

@@ -195,10 +195,23 @@ class _TopicsBody extends StatelessWidget {
           actionLabel: 'Refresh topics',
           onAction: () => unawaited(store.load()),
         ),
-      EmptyViewState<PageResult<TopicSummary>>() => const AppInlineProblem(
-        title: 'No topics',
-        message: 'Create a monitoring intent to start collecting mentions.',
+      EmptyViewState<PageResult<TopicSummary>>() => AppInlineProblem(
+        title: store.search.trim().isNotEmpty || store.status != null
+            ? 'No topics match these filters'
+            : 'No topics yet',
+        message: store.search.trim().isNotEmpty || store.status != null
+            ? 'Clear filters to return to all monitoring intents.'
+            : 'Create a topic to start collecting posts.',
         tone: AppProblemTone.neutral,
+        actionLabel: store.search.trim().isNotEmpty || store.status != null
+            ? 'Clear filters'
+            : null,
+        onAction: store.search.trim().isNotEmpty || store.status != null
+            ? () {
+                unawaited(store.updateSearch(''));
+                unawaited(store.updateStatus(null));
+              }
+            : null,
       ),
       _ => AppResponsiveSplitView(
         list: AppDataList<TopicSummary>(
@@ -206,8 +219,9 @@ class _TopicsBody extends StatelessWidget {
           stableId: (topic) => topic.id.value,
           isLoading: state is LoadingViewState<PageResult<TopicSummary>>,
           emptyTitle: 'No topics',
-          emptyMessage:
-              'Create a monitoring intent to start collecting mentions.',
+          emptyMessage: store.search.trim().isNotEmpty || store.status != null
+              ? 'Clear filters to return to all monitoring intents.'
+              : 'Create a topic to start collecting posts.',
           itemBuilder: (context, topic, index) {
             return ListTile(
               selected: selected?.id == topic.id,

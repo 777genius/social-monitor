@@ -236,8 +236,12 @@ Map<String, Object?> githubRepositoryMetricsFixture({
     'providerKey': 'github-repo-radar',
     'sourceKey': 'repo-trending:$window',
     'contentType': 'repository',
+    'evidenceSource': 'gh_archive_watch_event',
+    'evidenceLabel': 'GH Archive WatchEvent - hourly updated',
     'stars': stars,
     'forks': forks,
+    'checkedAt': '2026-06-23T12:00:00.000Z',
+    'source': 'gh_archive_bigquery_plus_github_live',
     'trendingDelta': {'window': window, 'value': delta},
     'trendDeltas': [
       {'window': '24h', 'value': delta},
@@ -246,6 +250,26 @@ Map<String, Object?> githubRepositoryMetricsFixture({
       {'window': '30d', 'value': delta30d},
       {'window': '90d', 'value': delta90d},
     ],
+  };
+}
+
+Map<String, Object?> githubTrendingRepositoryMetricsFixture({
+  int stars = 18398,
+  int forks = 2113,
+  int rank = 1,
+  int starsGained = 3703,
+  String window = 'daily',
+}) {
+  return {
+    'kind': 'github_trending_repository',
+    'providerKey': 'github-trending-page',
+    'sourceKey': 'github-trending-page:$window:language:python',
+    'contentType': 'repository',
+    'stars': stars,
+    'forks': forks,
+    'rank': rank,
+    'starsGained': starsGained,
+    'window': window,
   };
 }
 

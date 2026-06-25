@@ -77,7 +77,31 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('No topics'), findsOneWidget);
+    expect(find.text('No topics yet'), findsOneWidget);
+    expect(
+      find.text('Create a topic to start collecting posts.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('renders filtered empty topic state with clear action', (
+    tester,
+  ) async {
+    final catalog = _catalog([]);
+    final store = _listStore(catalog);
+    await store.updateSearch('missing');
+
+    await tester.pumpWidget(
+      _TestApp(store: store, formStore: _formStore(catalog), autoload: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No topics match these filters'), findsOneWidget);
+    expect(
+      find.text('Clear filters to return to all monitoring intents.'),
+      findsOneWidget,
+    );
+    expect(find.text('Clear filters'), findsOneWidget);
   });
 
   testWidgets('renders loading topic state', (tester) async {

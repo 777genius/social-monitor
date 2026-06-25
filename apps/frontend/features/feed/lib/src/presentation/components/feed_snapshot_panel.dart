@@ -128,7 +128,7 @@ class _SnapshotHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Today\'s briefing',
+                'Today\'s summary',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0,
@@ -227,7 +227,7 @@ class _TopSignals extends StatelessWidget {
   Widget build(BuildContext context) {
     if (items.isEmpty) {
       return const AppInlineProblem(
-        title: 'No briefing yet',
+        title: 'No summary yet',
         message: 'No posts are loaded for this filter.',
         tone: AppProblemTone.neutral,
       );

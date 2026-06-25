@@ -31,16 +31,41 @@ final class RedditPostMetrics extends FeedProviderMetrics {
 final class GitHubRepositoryMetrics extends FeedProviderMetrics {
   const GitHubRepositoryMetrics({
     required super.sourceKey,
+    required this.evidenceSource,
+    required this.evidenceLabel,
     required this.stars,
     required this.forks,
     required this.trendingDelta,
     required this.trendDeltas,
+    this.checkedAt,
+    this.source,
   }) : super(contentType: 'repository');
 
+  final String evidenceSource;
+  final String evidenceLabel;
   final int stars;
   final int forks;
   final FeedMetricDelta trendingDelta;
   final List<FeedMetricDelta> trendDeltas;
+  final DateTime? checkedAt;
+  final String? source;
+}
+
+final class GitHubTrendingRepositoryMetrics extends FeedProviderMetrics {
+  const GitHubTrendingRepositoryMetrics({
+    required super.sourceKey,
+    required this.stars,
+    required this.forks,
+    required this.rank,
+    required this.starsGained,
+    required this.window,
+  }) : super(contentType: 'repository');
+
+  final int stars;
+  final int forks;
+  final int rank;
+  final int starsGained;
+  final String window;
 }
 
 final class HackerNewsStoryMetrics extends FeedProviderMetrics {
@@ -80,6 +105,7 @@ FeedProviderMetrics? feedProviderMetricsFromApi(Object? raw) {
   return switch (kind) {
     'reddit_post' => _redditPostMetrics(record),
     'github_repository' => _githubRepositoryMetrics(record),
+    'github_trending_repository' => _githubTrendingRepositoryMetrics(record),
     'hacker_news_story' => _hackerNewsStoryMetrics(record),
     'x_post' => _xPostMetrics(record),
     _ => null,
@@ -123,6 +149,11 @@ FeedProviderMetrics? _githubRepositoryMetrics(Map<String, Object?>? record) {
 
   return GitHubRepositoryMetrics(
     sourceKey: _readString(record['sourceKey']) ?? 'repo-trending:unknown',
+    evidenceSource:
+        _readString(record['evidenceSource']) ?? 'gh_archive_watch_event',
+    evidenceLabel:
+        _readString(record['evidenceLabel']) ??
+        'GH Archive WatchEvent - hourly updated',
     stars: stars,
     forks: forks,
     trendingDelta: primaryDelta,
@@ -130,6 +161,33 @@ FeedProviderMetrics? _githubRepositoryMetrics(Map<String, Object?>? record) {
       record['trendDeltas'],
       fallback: primaryDelta,
     ),
+    checkedAt: _readDateTime(record['checkedAt']),
+    source: _readString(record['source']),
+  );
+}
+
+FeedProviderMetrics? _githubTrendingRepositoryMetrics(
+  Map<String, Object?>? record,
+) {
+  if (record == null) {
+    return null;
+  }
+  final stars = _readNonNegativeIntOrNull(record['stars']);
+  final forks = _readNonNegativeIntOrNull(record['forks']);
+  final rank = _readPositiveIntOrNull(record['rank']);
+  final starsGained = _readNonNegativeIntOrNull(record['starsGained']);
+  if (stars == null || forks == null || rank == null || starsGained == null) {
+    return null;
+  }
+
+  return GitHubTrendingRepositoryMetrics(
+    sourceKey:
+        _readString(record['sourceKey']) ?? 'github-trending-page:unknown',
+    stars: stars,
+    forks: forks,
+    rank: rank,
+    starsGained: starsGained,
+    window: _readString(record['window']) ?? 'daily',
   );
 }
 
@@ -227,6 +285,11 @@ String? _readString(Object? value) {
   return trimmed.isEmpty ? null : trimmed;
 }
 
+DateTime? _readDateTime(Object? value) {
+  final raw = _readString(value);
+  return raw == null ? null : DateTime.tryParse(raw);
+}
+
 int? _readNonNegativeIntOrNull(Object? value) {
   if (value is int && value >= 0) {
     return value;
@@ -235,6 +298,11 @@ int? _readNonNegativeIntOrNull(Object? value) {
     return value.truncate();
   }
   return null;
+}
+
+int? _readPositiveIntOrNull(Object? value) {
+  final parsed = _readNonNegativeIntOrNull(value);
+  return parsed != null && parsed > 0 ? parsed : null;
 }
 
 int? _readIntOrNull(Object? value) {

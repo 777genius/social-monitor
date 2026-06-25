@@ -99,14 +99,6 @@ class FeedItemCard extends StatelessWidget {
                         icon: Icons.account_circle_outlined,
                         label: item.authorHandle ?? 'Unknown author',
                       ),
-                      _MetaChip(
-                        icon: Icons.schedule,
-                        label: feedShortTimeLabel(item.observedAt),
-                      ),
-                      _MetaChip(
-                        icon: Icons.link_outlined,
-                        label: item.sourceBindingId,
-                      ),
                     ],
                   ),
                 ],
@@ -153,7 +145,10 @@ class _CardTopLine extends StatelessWidget {
         const SizedBox(width: AppSpacing.sm),
         Expanded(
           child: Text(
-            '${visuals.label} - ${item.sourceItemId}',
+            [
+              visuals.label,
+              if (visuals.originLabel != null) visuals.originLabel!,
+            ].join(' - '),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
@@ -164,7 +159,16 @@ class _CardTopLine extends StatelessWidget {
           ),
         ),
         const SizedBox(width: AppSpacing.sm),
-        AppStatusBadge(label: visuals.label, tone: visuals.tone),
+        Text(
+          feedShortTimeLabel(item.observedAt),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: dark ? AppColors.darkTextMuted : AppColors.textMuted,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0,
+          ),
+        ),
       ],
     );
   }

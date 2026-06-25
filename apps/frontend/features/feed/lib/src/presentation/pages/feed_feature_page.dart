@@ -59,7 +59,7 @@ class _FeedFeaturePageState extends State<FeedFeaturePage> {
                   eyebrow: 'Feed',
                   title: 'Feed',
                   description:
-                      'Collected posts, source context and a current briefing.',
+                      'Collected posts, source context and summary evidence.',
                 ),
               ),
               SliverToBoxAdapter(
@@ -165,11 +165,14 @@ class _FeedBody extends StatelessWidget {
       _ => const <FeedItem>[],
     };
     final isCompact = AppScreenClass.of(context).isCompact;
+    final hasAnyFilter = store.filter.hasAnyFilter;
+    final nextCursor = store.nextCursor;
+    final detailState = store.detailState;
     final selected = store.selectedListItem ?? items.firstOrNull;
     final detailItem = isCompact && !store.hasExplicitSelection
         ? null
         : store.selectedDetailItem ?? selected;
-    final detailFailure = switch (store.detailState) {
+    final detailFailure = switch (detailState) {
       FailureViewState<FeedItem>(:final failure) => failure,
       _ => null,
     };
@@ -183,17 +186,23 @@ class _FeedBody extends StatelessWidget {
           actionLabel: 'Retry',
           onAction: () => unawaited(store.refresh()),
         ),
-      EmptyViewState<PageResult<FeedItem>>() => const AppInlineProblem(
-        title: 'No feed items',
-        message: 'Adjust search or wait for the next collection run.',
+      EmptyViewState<PageResult<FeedItem>>() => AppInlineProblem(
+        title: hasAnyFilter
+            ? 'No posts match these filters'
+            : 'No feed items yet',
+        message: hasAnyFilter
+            ? 'Clear filters to return to all collected posts.'
+            : 'Connect sources or wait for the next collection run.',
         tone: AppProblemTone.neutral,
+        actionLabel: hasAnyFilter ? 'Clear filters' : null,
+        onAction: hasAnyFilter ? () => unawaited(store.clearFilters()) : null,
       ),
       _ => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           FeedSnapshotPanel(
             items: items,
-            nextCursor: store.nextCursor,
+            nextCursor: nextCursor,
             topicLabel: topicLabel,
           ),
           const SizedBox(height: AppSpacing.md),
@@ -206,13 +215,14 @@ class _FeedBody extends StatelessWidget {
                   state is ReadyViewState<PageResult<FeedItem>> &&
                   state.isStale,
               emptyTitle: 'No feed items',
-              emptyMessage:
-                  'Adjust search or wait for the next collection run.',
+              emptyMessage: hasAnyFilter
+                  ? 'Clear filters to return to all collected posts.'
+                  : 'Connect sources or wait for the next collection run.',
               footer: AppPaginationControls(
-                hasMore: store.nextCursor != null,
+                hasMore: nextCursor != null,
                 isLoading: state is LoadingViewState<PageResult<FeedItem>>,
                 summary: '${items.length} posts shown',
-                onLoadMore: store.nextCursor == null
+                onLoadMore: nextCursor == null
                     ? null
                     : () => unawaited(store.loadMore()),
               ),
@@ -237,7 +247,7 @@ class _FeedBody extends StatelessWidget {
                         )
                 : FeedItemDetailPanel(
                     item: detailItem,
-                    isLoading: store.detailState is LoadingViewState<FeedItem>,
+                    isLoading: detailState is LoadingViewState<FeedItem>,
                     failure: detailFailure,
                   ),
           ),

@@ -207,7 +207,7 @@ List<FeedItemApiDto> feedFeatureDemoItems() {
     _demoItem(
       order: 24,
       providerKey: 'github-issues',
-      title: 'Roadmap thread requests saved briefing views',
+      title: 'Roadmap thread requests saved summary views',
       bodyPreview:
           'A team wants saved views for support, product marketing and competitor monitoring.',
       authorHandle: 'pm-workflow',

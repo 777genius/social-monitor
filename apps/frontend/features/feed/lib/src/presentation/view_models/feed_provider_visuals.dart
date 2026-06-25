@@ -4,12 +4,14 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 final class FeedProviderVisuals {
   const FeedProviderVisuals({
     required this.label,
+    this.originLabel,
     required this.icon,
     required this.tone,
     required this.accent,
   });
 
   final String label;
+  final String? originLabel;
   final IconData icon;
   final AppStatusTone tone;
   final Color accent;
@@ -37,7 +39,15 @@ FeedProviderVisuals feedProviderVisuals(String providerKey) {
     ),
     'github-repo-radar' => const FeedProviderVisuals(
       label: 'Repo Radar',
+      originLabel: 'GH Archive WatchEvent',
       icon: Icons.trending_up,
+      tone: AppStatusTone.success,
+      accent: AppColors.primary,
+    ),
+    'github-trending-page' => const FeedProviderVisuals(
+      label: 'GitHub Trending',
+      originLabel: 'github.com/trending page',
+      icon: Icons.auto_graph,
       tone: AppStatusTone.success,
       accent: AppColors.primary,
     ),

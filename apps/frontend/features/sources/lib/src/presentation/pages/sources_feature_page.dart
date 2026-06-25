@@ -107,6 +107,8 @@ class _SourcesBody extends StatelessWidget {
     final state = store.state;
     final items = switch (state) {
       ReadyViewState<PageResult<SourceSummary>>(:final value) => value.items,
+      LoadingViewState<PageResult<SourceSummary>>(:final previousValue) =>
+        previousValue?.items ?? const <SourceSummary>[],
       _ => const <SourceSummary>[],
     };
     final selected = store.selectedSource ?? items.firstOrNull;
@@ -120,10 +122,14 @@ class _SourcesBody extends StatelessWidget {
           actionLabel: 'Retry',
           onAction: () => unawaited(store.load()),
         ),
-      EmptyViewState<PageResult<SourceSummary>>() => const AppInlineProblem(
+      EmptyViewState<PageResult<SourceSummary>>() => AppInlineProblem(
         title: 'No sources',
         message: 'Connect a source to begin collection.',
         tone: AppProblemTone.neutral,
+        actionLabel: store.connectIntent.isEnabled ? 'Connect source' : null,
+        onAction: store.connectIntent.isEnabled
+            ? () => unawaited(store.connectDemoSource())
+            : null,
       ),
       PermissionRequiredViewState<PageResult<SourceSummary>>(
         :final permissionKey,
