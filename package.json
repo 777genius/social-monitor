@@ -89,6 +89,8 @@
     "check:load-cost": "node scripts/check-load-cost.mjs",
     "check:live-open-connectors": "node scripts/run-with-timeout.mjs --timeout-ms 45000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-live-open-connectors.ts",
     "check:live-multi-provider-summary": "node scripts/run-with-timeout.mjs --timeout-ms 90000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-live-multi-provider-summary-smoke.ts",
+    "check:live-multi-provider-openai-contract-summary": "node scripts/check-live-multi-provider-openai-contract-summary.mjs",
+    "check:live-multi-provider-openai-summary": "node scripts/check-live-openai-summary-preflight.mjs && LIVE_MULTI_PROVIDER_SUMMARY_MODEL=openai-responses npm run check:live-multi-provider-summary",
     "check:live-reddit-app-oauth": "node scripts/run-with-timeout.mjs --timeout-ms 45000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-live-reddit-app-oauth.ts",
     "check:live-reddit-oauth": "node scripts/run-with-timeout.mjs --timeout-ms 45000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-live-reddit-oauth.ts",
     "check:ingestion-feed-persistence": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-ingestion-feed-prisma-persistence.ts",

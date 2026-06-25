@@ -43,7 +43,7 @@ type SummaryModelPipelineResult = Result<{ readonly artifact: SummaryArtifact },
 const defaultModelPolicy: SummaryModelPolicy = {
   preferredProvider: 'deterministic-local',
   maxInputTokens: 12_000,
-  maxOutputTokens: 1_500,
+  maxOutputTokens: 4_000,
   maxEstimatedCostUsd: 0.5,
 };
 

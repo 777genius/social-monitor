@@ -1,6 +1,16 @@
+import {
+  chmodSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { SummaryModelInput } from '../../ports';
+import { validateSummaryCitationsAgainstEvidence } from '../../features/shared/summary-citation-validator';
 import {
   OpenAiResponsesSummaryModelAdapter,
   resolveOpenAiResponsesSummaryModelOptions,
@@ -48,7 +58,7 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
     expect(request).toMatchObject({
       model: 'test-summary-model',
       store: false,
-      max_output_tokens: 1_500,
+      max_output_tokens: 4_000,
     });
     expect(text.format).toMatchObject({
       type: 'json_schema',
@@ -64,6 +74,58 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
       outputTokens: 123,
     });
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it('canonicalizes provider citation source fields from selected evidence', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          ...validProviderDraft(),
+          citationMap: [
+            {
+              citationId: 'c1',
+              feedItemId: 'wrong-feed',
+              sourceItemId: 'wrong-source',
+              providerKey: 'wrong-provider',
+              field: 'bodyPreview',
+            },
+            {
+              citationId: 'c2',
+              feedItemId: 'feed-2',
+              sourceItemId: 'source-2',
+              providerKey: 'github',
+              field: 'bodyPreview',
+            },
+          ],
+        }),
+      }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(attempt.draft.citationMap[0]).toMatchObject({
+      citationId: 'c1',
+      feedItemId: 'feed-1',
+      sourceItemId: 'source-1',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://example.test/reddit/backend-signals',
+      field: 'bodyPreview',
+    });
+    expect(() =>
+      validateSummaryCitationsAgainstEvidence(attempt.draft, input.evidence),
+    ).not.toThrow();
   });
 
   it('does not call OpenAI when selected evidence is empty', async () => {
@@ -251,12 +313,39 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
       resolveOpenAiResponsesSummaryModelOptions({}, {
         requireApiKey: true,
       }),
-    ).toThrow('SUMMARY_MODEL_PROVIDER=openai-responses requires OPENAI_API_KEY');
+    ).toThrow('SUMMARY_MODEL_PROVIDER=openai-responses requires OPENAI_API_KEY or OPENAI_API_KEY_FILE');
     expect(resolveOpenAiResponsesSummaryModelOptions({}, {
       requireApiKey: false,
     })).toMatchObject({
       apiKey: '',
     });
+  });
+
+  it('reads an OpenAI API key from a private key file for live-safe smoke runs', () => {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'summary-openai-key-'));
+    try {
+      const keyFile = join(tempDirectory, 'openai.key');
+      writeFileSync(keyFile, `${fakeOpenAiApiKey}\n`, { mode: 0o600 });
+
+      expect(resolveOpenAiResponsesSummaryModelOptions({
+        OPENAI_API_KEY_FILE: keyFile,
+      }, {
+        requireApiKey: true,
+      })).toMatchObject({
+        apiKey: fakeOpenAiApiKey,
+      });
+
+      chmodSync(keyFile, 0o644);
+      expect(() =>
+        resolveOpenAiResponsesSummaryModelOptions({
+          OPENAI_API_KEY_FILE: keyFile,
+        }, {
+          requireApiKey: true,
+        }),
+      ).toThrow('OPENAI_API_KEY_FILE must use private 0600-style permissions');
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
   });
 });
 

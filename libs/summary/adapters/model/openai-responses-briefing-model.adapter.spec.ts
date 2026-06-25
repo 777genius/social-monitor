@@ -1,3 +1,11 @@
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { BriefingModelInput } from '../../ports';
@@ -70,7 +78,7 @@ describe('OpenAiResponsesBriefingModelAdapter', () => {
 
     expect(capturedCalls[0]?.url).toBe('https://api.openai.com/v1/responses');
     expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
-      model: 'gpt-5.1-mini',
+      model: 'gpt-5.4-mini',
       text: {
         format: {
           type: 'json_schema',
@@ -124,15 +132,36 @@ describe('OpenAiResponsesBriefingModelAdapter', () => {
       resolveOpenAiResponsesBriefingModelOptions({}, {
         requireApiKey: true,
       }),
-    ).toThrow('BRIEFING_MODEL_PROVIDER=openai-responses requires OPENAI_API_KEY');
+    ).toThrow('BRIEFING_MODEL_PROVIDER=openai-responses requires OPENAI_API_KEY or OPENAI_API_KEY_FILE');
+  });
+
+  it('reads an OpenAI API key from a private key file for live-safe smoke runs', () => {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'briefing-openai-key-'));
+    try {
+      const keyFile = join(tempDirectory, 'openai.key');
+      writeFileSync(keyFile, `${fakeOpenAiApiKey}\n`, { mode: 0o600 });
+
+      expect(resolveOpenAiResponsesBriefingModelOptions({
+        OPENAI_API_KEY_FILE: keyFile,
+      }, {
+        requireApiKey: true,
+      })).toMatchObject({
+        apiKey: fakeOpenAiApiKey,
+      });
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
   });
 });
+
+const fakeOpenAiApiKey = ['test', 'openai', 'key'].join('-');
 
 const briefingInput = (params: { readonly empty?: boolean } = {}): BriefingModelInput => ({
   tenantId: tenantId('tenant-openai-briefing-adapter'),
   workspaceId: workspaceId('workspace-openai-briefing-adapter'),
   scope: { type: 'workspace' },
   evidence: {
+    rankingPolicyVersion: 'story_ranking_v1',
     sourceWindow: {
       windowId: 'workspace:openai-briefing',
       startedAt: new Date('2026-06-23T08:00:00.000Z'),

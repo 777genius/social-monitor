@@ -22,6 +22,10 @@ import {
   readOpenAiResponseBody,
   resolveOpenAiBriefingUsage,
 } from './openai-responses-briefing-model-support';
+import {
+  openAiApiKeySourceDescription,
+  resolveOpenAiApiKey,
+} from './openai-api-key-source';
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -40,7 +44,7 @@ export type OpenAiResponsesBriefingModelAdapterOptions = {
 };
 
 const provider = 'openai-responses';
-const defaultModel = 'gpt-5.1-mini';
+const defaultModel = 'gpt-5.4-mini';
 const defaultPromptVersion = 'briefing.prompt.openai.responses.v1';
 const defaultEvalDatasetVersion = 'briefing.eval.mvp.v1';
 const defaultEndpointUrl = 'https://api.openai.com/v1/responses';
@@ -318,10 +322,10 @@ export const resolveOpenAiResponsesBriefingModelOptions = (
   env: NodeJS.ProcessEnv,
   params: { readonly requireApiKey: boolean },
 ): OpenAiResponsesBriefingModelAdapterOptions => {
-  const apiKey = env.OPENAI_API_KEY?.trim() ?? '';
+  const apiKey = resolveOpenAiApiKey(env);
 
   if (params.requireApiKey && apiKey.length === 0) {
-    throw new Error('BRIEFING_MODEL_PROVIDER=openai-responses requires OPENAI_API_KEY');
+    throw new Error(`BRIEFING_MODEL_PROVIDER=openai-responses requires ${openAiApiKeySourceDescription}`);
   }
 
   return {
