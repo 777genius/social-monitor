@@ -7,7 +7,7 @@ import { InMemoryScanJobRepository } from '../libs/monitoring/adapters/persisten
 import { InMemoryScanPolicyRepository } from '../libs/monitoring/adapters/persistence/in-memory-scan-policy.repository';
 import { InMemorySourceBindingRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-binding.repository';
 import { InMemoryScanQueueAdapter } from '../libs/monitoring/adapters/queue/in-memory-scan-queue.adapter';
-import { ScanPolicy, SourceBinding } from '../libs/monitoring/domain';
+import { ScanJob, ScanPolicy, SourceBinding } from '../libs/monitoring/domain';
 import { ScheduleDueScansUseCase } from '../libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case';
 import { ScheduleDueScansCommandHandler } from '../libs/monitoring/interfaces/queue/schedule-due-scans-command.handler';
 import { ScanSchedulerLoop } from '../apps/ingestion-worker/src/scan-scheduler-loop';
@@ -86,6 +86,42 @@ async function main(): Promise<void> {
     nextRunAt: new Date('2026-06-06T09:59:30.000Z'),
     createdAt: new Date('2026-06-06T09:00:00.000Z'),
   }));
+  await bindings.save(SourceBinding.create({
+    id: 'fresh-source-binding-scheduler-loop-smoke',
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId: 'fresh-topic-scheduler-loop-smoke',
+    providerKey: 'rss',
+    capabilityProfileVersion: 1,
+    config: {
+      feedUrl: 'https://example.test/fresh-feed.xml',
+    },
+    createdAt: new Date('2026-06-06T09:00:00.000Z'),
+  }));
+  await policies.save(ScanPolicy.create({
+    id: 'fresh-scan-policy-scheduler-loop-smoke',
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: 'fresh-source-binding-scheduler-loop-smoke',
+    intervalSeconds: 300,
+    freshnessSeconds: 900,
+    retryBudget: 2,
+    nextRunAt: new Date('2026-06-06T09:59:30.000Z'),
+    createdAt: new Date('2026-06-06T09:00:00.000Z'),
+  }));
+  await jobs.save(ScanJob.request({
+    id: 'fresh-completed-scan-job-scheduler-loop-smoke',
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: 'fresh-source-binding-scheduler-loop-smoke',
+    scanPolicyId: 'fresh-scan-policy-scheduler-loop-smoke',
+    idempotencyKey: 'manual:fresh-completed-scan-job-scheduler-loop-smoke',
+    requestedAt: new Date('2026-06-06T09:54:00.000Z'),
+  }).markEnqueued({
+    enqueuedAt: new Date('2026-06-06T09:54:01.000Z'),
+  }).markSucceeded({
+    completedAt: new Date('2026-06-06T09:55:00.000Z'),
+  }));
 
   const loop = new ScanSchedulerLoop(
     new ScheduleDueScansCommandHandler(
@@ -151,6 +187,15 @@ async function main(): Promise<void> {
   assert(
     pausedPolicy?.toSnapshot().nextRunAt.toISOString() === '2026-06-06T09:59:30.000Z',
     `paused source binding policy must not advance next run, got ${pausedPolicy?.toSnapshot().nextRunAt.toISOString()}`,
+  );
+  const freshPolicy = await policies.findBySourceBinding({
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: 'fresh-source-binding-scheduler-loop-smoke',
+  });
+  assert(
+    freshPolicy?.toSnapshot().nextRunAt.toISOString() === '2026-06-06T10:04:30.000Z',
+    `fresh source binding policy must advance next run without enqueueing, got ${freshPolicy?.toSnapshot().nextRunAt.toISOString()}`,
   );
 
   console.log('Scan scheduler loop smoke OK');

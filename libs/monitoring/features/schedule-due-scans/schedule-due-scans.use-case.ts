@@ -64,6 +64,11 @@ export class ScheduleDueScansUseCase {
         workspaceId: policySnapshot.workspaceId,
         sourceBindingId: policySnapshot.sourceBindingId,
       });
+      const latestJob = await this.scanJobs.findLatestBySourceBinding({
+        tenantId: policySnapshot.tenantId,
+        workspaceId: policySnapshot.workspaceId,
+        sourceBindingId: policySnapshot.sourceBindingId,
+      });
       const idempotencyKey = scheduledIdempotencyKey(policySnapshot.id, policySnapshot.nextRunAt);
       const existingJob = await this.scanJobs.findByIdempotencyKey({
         tenantId: policySnapshot.tenantId,
@@ -71,7 +76,11 @@ export class ScheduleDueScansUseCase {
         idempotencyKey,
       });
 
-      if (activeJob === null && existingJob === null) {
+      if (activeJob === null && existingJob === null && !isFreshLatestScan({
+        latestJob,
+        freshnessSeconds: policySnapshot.freshnessSeconds,
+        now,
+      })) {
         const queueCommand = {
           tenantId: policySnapshot.tenantId,
           workspaceId: policySnapshot.workspaceId,
@@ -123,3 +132,17 @@ export class ScheduleDueScansUseCase {
 
 const scheduledIdempotencyKey = (scanPolicyId: string, dueAt: Date): string =>
   `scheduled:${scanPolicyId}:${dueAt.toISOString()}`;
+
+const isFreshLatestScan = (params: {
+  readonly latestJob: ScanJob | null;
+  readonly freshnessSeconds: number;
+  readonly now: Date;
+}): boolean => {
+  const latestSnapshot = params.latestJob?.toSnapshot();
+
+  return (
+    latestSnapshot?.status === 'succeeded' &&
+    latestSnapshot.completedAt !== undefined &&
+    latestSnapshot.completedAt.getTime() + params.freshnessSeconds * 1000 > params.now.getTime()
+  );
+};
