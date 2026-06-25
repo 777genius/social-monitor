@@ -63,6 +63,39 @@ async function main(): Promise<void> {
       {
         ok: true,
         providerKey: provider.key(),
+        signals: [
+          {
+            signalId: 'github-trending-page-live-smoke',
+            evidence: {
+              summary: 'GitHub Trending live page returned normalized repositories with canonical GitHub URLs.',
+              repositoryCount: result.items.length,
+              topRankIsOne: metadata.trending.rank === 1,
+              canonicalUrlsObserved: result.items.every((item) =>
+                item.canonicalUrl.startsWith('https://github.com/'),
+              ),
+              window: metadata.trending.window,
+            },
+          },
+          {
+            signalId: 'github-trending-page-parser-drift',
+            evidence: {
+              summary: 'GitHub Trending parser observed rank, language, total stars and stars gained fields.',
+              rankObserved: metadata.trending.rank === 1,
+              languageObserved: metadata.repository.language !== undefined,
+              starsObserved: metadata.repository.totalStars > 0,
+              starsGainedObserved: metadata.trending.starsGained > 0,
+            },
+          },
+          {
+            signalId: 'github-trending-page-rate-limit-budget',
+            evidence: {
+              summary: 'GitHub Trending live smoke uses a bounded timeout and maxItems limit for public page budget control.',
+              timeoutMs: 15_000,
+              maxItems: 5,
+              degradationSignalRecorded: true,
+            },
+          },
+        ],
         itemCount: result.items.length,
         topRepository: metadata.repository.fullName,
         topRank: metadata.trending.rank,

@@ -22,6 +22,7 @@ const liveOpenCaptureScriptPath = 'scripts/capture-live-open-connectors.mjs';
 const redditLiveScriptPath = 'scripts/check-live-reddit-oauth.ts';
 const redditLiveCaptureScriptPath = 'scripts/capture-live-reddit-oauth.mjs';
 const redditOAuthLocalCallbackScriptPath = 'scripts/reddit-oauth-local-callback.mjs';
+const githubTrendingPageLiveScriptPath = 'scripts/check-github-trending-page-live-smoke.ts';
 const redditSourceProviderPath = 'libs/ingestion/adapters/source/reddit/reddit-source.provider.ts';
 const redditRefreshTokenProviderPath = 'libs/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider.ts';
 const liveEvidenceArtifactHelperPath = 'scripts/lib/live-evidence-artifact.ts';
@@ -50,6 +51,14 @@ const requiredProviderSignals = new Map([
   ['hacker-news', new Set(['hn-live-http-smoke', 'hn-rate-limit-evidence'])],
   ['rss', new Set(['rss-allowlisted-live-feeds', 'rss-http-cache-evidence', 'rss-ssrf-proof'])],
   ['github-issues', new Set(['github-live-api-smoke', 'github-rate-limit-budget'])],
+  [
+    'github-trending-page',
+    new Set([
+      'github-trending-page-live-smoke',
+      'github-trending-page-parser-drift',
+      'github-trending-page-rate-limit-budget',
+    ]),
+  ],
   [
     'reddit',
     new Set([
@@ -129,6 +138,35 @@ const requiredEvidenceShapeBySignalId = new Map([
     ],
   ],
   [
+    'github-trending-page-live-smoke',
+    [
+      ['summary', 'non_empty_string'],
+      ['repositoryCount', 'positive_integer'],
+      ['topRankIsOne', 'boolean_true'],
+      ['canonicalUrlsObserved', 'boolean_true'],
+      ['window', 'non_empty_string'],
+    ],
+  ],
+  [
+    'github-trending-page-parser-drift',
+    [
+      ['summary', 'non_empty_string'],
+      ['rankObserved', 'boolean_true'],
+      ['languageObserved', 'boolean_true'],
+      ['starsObserved', 'boolean_true'],
+      ['starsGainedObserved', 'boolean_true'],
+    ],
+  ],
+  [
+    'github-trending-page-rate-limit-budget',
+    [
+      ['summary', 'non_empty_string'],
+      ['timeoutMs', 'positive_integer'],
+      ['maxItems', 'positive_integer'],
+      ['degradationSignalRecorded', 'boolean_true'],
+    ],
+  ],
+  [
     'reddit-tenant-oauth-smoke',
     [
       ['summary', 'non_empty_string'],
@@ -175,6 +213,7 @@ const expectedLiveCommands = new Map([
   ['hacker-news', 'npm run check:live-open-connectors'],
   ['rss', 'npm run check:live-open-connectors'],
   ['github-issues', 'npm run check:live-open-connectors'],
+  ['github-trending-page', 'npm run check:github-trending-page-live-smoke'],
   ['reddit', 'npm run capture:live-reddit-oauth'],
 ]);
 const forbiddenEvidenceFragments = [
@@ -303,6 +342,7 @@ function validateLiveSmokeScripts() {
   const redditLiveScript = readFileSync(redditLiveScriptPath, 'utf8');
   const redditLiveCaptureScript = readFileSync(redditLiveCaptureScriptPath, 'utf8');
   const redditOAuthLocalCallbackScript = readFileSync(redditOAuthLocalCallbackScriptPath, 'utf8');
+  const githubTrendingPageLiveScript = readFileSync(githubTrendingPageLiveScriptPath, 'utf8');
   const redditSourceProviderScript = readFileSync(redditSourceProviderPath, 'utf8');
   const redditRefreshTokenProviderScript = readFileSync(redditRefreshTokenProviderPath, 'utf8');
   const liveEvidenceArtifactHelper = readFileSync(liveEvidenceArtifactHelperPath, 'utf8');
@@ -312,6 +352,11 @@ function validateLiveSmokeScripts() {
     ...requiredProviderSignals.get('rss'),
     ...requiredProviderSignals.get('github-issues'),
   ]);
+  requireScriptSignals(
+    githubTrendingPageLiveScriptPath,
+    githubTrendingPageLiveScript,
+    [...requiredProviderSignals.get('github-trending-page')],
+  );
   requireScriptSignals(redditLiveScriptPath, redditLiveScript, [...requiredProviderSignals.get('reddit')]);
 
   if (!liveOpenScript.includes('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH')) {

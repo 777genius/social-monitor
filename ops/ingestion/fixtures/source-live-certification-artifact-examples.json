@@ -158,6 +158,58 @@
               }
             }
           ]
+        },
+        {
+          "providerKey": "github-trending-page",
+          "status": "passed",
+          "signalResults": [
+            {
+              "signalId": "github-trending-page-live-smoke",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:08.000Z",
+              "evidence": {
+                "summary": "Redacted live GitHub Trending page returned normalized repository items with rank and canonical GitHub URLs.",
+                "repositoryCount": 5,
+                "topRankIsOne": true,
+                "canonicalUrlsObserved": true,
+                "window": "daily"
+              },
+              "metrics": {
+                "repositoryCount": 5,
+                "window": "daily"
+              }
+            },
+            {
+              "signalId": "github-trending-page-parser-drift",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:09.000Z",
+              "evidence": {
+                "summary": "GitHub Trending parser observed repository rank, language, total stars and stars gained fields.",
+                "rankObserved": true,
+                "languageObserved": true,
+                "starsObserved": true,
+                "starsGainedObserved": true
+              },
+              "metrics": {
+                "parserVersion": "fixture-example"
+              }
+            },
+            {
+              "signalId": "github-trending-page-rate-limit-budget",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:10.000Z",
+              "evidence": {
+                "summary": "GitHub Trending public page scan used bounded timeout and maxItems for budget control.",
+                "timeoutMs": 15000,
+                "maxItems": 5,
+                "degradationSignalRecorded": true
+              },
+              "metrics": {
+                "timeoutMs": 15000,
+                "maxItems": 5
+              }
+            }
+          ]
         }
       ]
     },

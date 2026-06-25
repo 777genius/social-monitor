@@ -11,6 +11,7 @@
       "hacker-news",
       "rss",
       "github-issues",
+      "github-trending-page",
       "reddit"
     ],
     "forbiddenBindingProviders": [
@@ -22,7 +23,7 @@
       "fake-source"
     ],
     "matchingRules": [
-      "external beta live provider evidence must only cover Hacker News, RSS, GitHub and Reddit",
+      "external beta live provider evidence must only cover Hacker News, RSS, GitHub Issues, GitHub Trending Page and Reddit",
       "fake-source remains fixture-only and cannot be bound in beta runtime",
       "Telegram and X/Twitter remain deferred and cannot be bound until their provider contracts are approved"
     ]
@@ -262,6 +263,36 @@
       "exitCondition": "Attach live API smoke and rate-limit budget evidence for GitHub before external beta."
     },
     {
+      "providerKey": "github-trending-page",
+      "status": "pending_live_evidence",
+      "requiredForExternalBeta": true,
+      "owner": "source-owner",
+      "liveSmokeCommand": "npm run check:github-trending-page-live-smoke",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "commitSha": null,
+      "sampledAt": null,
+      "signals": [
+        {
+          "signalId": "github-trending-page-live-smoke",
+          "status": "pending_live_evidence",
+          "requiredSignal": "live GitHub Trending page smoke returns normalized repository items with rank and canonical GitHub URLs"
+        },
+        {
+          "signalId": "github-trending-page-parser-drift",
+          "status": "pending_live_evidence",
+          "requiredSignal": "parser drift evidence covers repository name, rank, language, stars and stars gained"
+        },
+        {
+          "signalId": "github-trending-page-rate-limit-budget",
+          "status": "pending_live_evidence",
+          "requiredSignal": "public page scan proves bounded timeout, maxItems and degradation behavior"
+        }
+      ],
+      "exitCondition": "Attach live page smoke, parser drift and public page budget evidence for GitHub Trending Page before external beta."
+    },
+    {
       "providerKey": "reddit",
       "status": "pending_live_evidence",
       "requiredForExternalBeta": true,
@@ -312,7 +343,7 @@
     }
   ],
   "externalBetaExitCriteria": [
-    "HN, RSS, GitHub and Reddit live evidence artifacts are attached for the promoted backend image.",
+    "HN, RSS, GitHub Issues, GitHub Trending Page and Reddit live evidence artifacts are attached for the promoted backend image.",
     "RSS SSRF proof and HTTP cache evidence are attached before any external beta feed binding is enabled.",
     "Reddit tenant OAuth lifecycle evidence proves create, rotate, revoke and redacted preview behavior.",
     "Fake-source remains fixture-only, while Telegram and X/Twitter remain deferred and cannot appear in enabled beta provider bindings."
