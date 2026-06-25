@@ -1,7 +1,7 @@
-import type { BriefingEvidenceSelection } from '../domain';
+import type { SummaryEvidenceSelection } from "../domain";
 
 export interface StoryRankingMetricsPort {
-  recordStoryRanking(selection: BriefingEvidenceSelection): void;
+  recordStoryRanking(selection: SummaryEvidenceSelection): void;
 }
 
 export const NOOP_STORY_RANKING_METRICS: StoryRankingMetricsPort = {

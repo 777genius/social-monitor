@@ -1,11 +1,19 @@
-import type { DomainError, Result, TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import type {
+  DomainError,
+  Result,
+  TenantId,
+  WorkspaceId,
+} from "@social-monitor/shared-kernel";
 
 export type ReserveSummaryJobQuotaCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly topicId?: string;
   readonly scopeKey?: string;
-  readonly operation: 'summary.request' | 'summary.regenerate' | 'briefing.request';
+  readonly operation:
+    | "summary.request"
+    | "summary.regenerate"
+    | "reader_summary.request";
 };
 
 export type ReserveSummaryJobQuotaResult = {
@@ -14,5 +22,7 @@ export type ReserveSummaryJobQuotaResult = {
 };
 
 export interface SummaryQuotaPort {
-  reserveSummaryJob(command: ReserveSummaryJobQuotaCommand): Promise<Result<ReserveSummaryJobQuotaResult, DomainError>>;
+  reserveSummaryJob(
+    command: ReserveSummaryJobQuotaCommand,
+  ): Promise<Result<ReserveSummaryJobQuotaResult, DomainError>>;
 }

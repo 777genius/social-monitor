@@ -19,10 +19,10 @@ import {
   workspaceId,
 } from "@social-monitor/shared-kernel";
 import { FeedSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/feed-summary-evidence.selector";
-import { RelevanceBriefingEvidenceSelector } from "@social-monitor/summary/adapters/evidence/relevance-briefing-evidence.selector";
-import { InMemoryBriefingJobQueueAdapter } from "@social-monitor/summary/adapters/messaging/in-memory-briefing-job-queue.adapter";
+import { RelevanceReaderSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/relevance-reader-summary-evidence.selector";
+import { InMemoryReaderSummaryJobQueueAdapter } from "@social-monitor/summary/adapters/messaging/reader-summary-job-queue.adapter";
 import { DeterministicSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-summary-model.adapter";
-import { DeterministicBriefingModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-briefing-model.adapter";
+import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import {
   OpenAiResponsesSummaryModelAdapter,
   resolveOpenAiResponsesSummaryModelOptions,
@@ -30,18 +30,21 @@ import {
 import { InMemorySummaryEventPublisher } from "@social-monitor/summary/adapters/messaging/in-memory-summary-event-publisher";
 import { InMemorySummaryJobQueueAdapter } from "@social-monitor/summary/adapters/messaging/in-memory-summary-job-queue.adapter";
 import { NoopUserSummaryPreferenceReader } from "@social-monitor/summary/adapters/preferences/noop-user-summary-preference.reader";
-import { InMemoryBriefingArtifactRepository } from "@social-monitor/summary/adapters/persistence/in-memory-briefing-artifact.repository";
-import { InMemoryBriefingJobRepository } from "@social-monitor/summary/adapters/persistence/in-memory-briefing-job.repository";
-import { InMemoryBriefingPolicyRepository } from "@social-monitor/summary/adapters/persistence/in-memory-briefing-policy.repository";
+import { InMemoryReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-artifact.repository";
+import { InMemoryReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-job.repository";
+import { InMemoryReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-policy.repository";
 import { InMemorySummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/in-memory-summary-artifact.repository";
 import { InMemorySummaryJobRepository } from "@social-monitor/summary/adapters/persistence/in-memory-summary-job.repository";
 import { InMemorySummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/in-memory-summary-policy.repository";
-import { BriefingPolicy, SummaryPolicy } from "@social-monitor/summary/domain";
-import { ExecuteBriefingJobUseCase } from "@social-monitor/summary/features/execute-briefing-job/execute-briefing-job.use-case";
+import {
+  ReaderSummaryPolicy,
+  SummaryPolicy,
+} from "@social-monitor/summary/domain";
+import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { ExecuteSummaryJobUseCase } from "@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case";
-import { RequestBriefingUseCase } from "@social-monitor/summary/features/request-briefing/request-briefing.use-case";
+import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import { RequestSummaryUseCase } from "@social-monitor/summary/features/request-summary/request-summary.use-case";
-import { presentBriefingArtifact } from "../libs/summary/features/shared/briefing-artifact-presenter";
+import { presentReaderSummaryArtifact } from "../libs/summary/features/shared/reader-summary-artifact-presenter";
 import type {
   ReserveSummaryJobQuotaResult,
   SummaryModelPort,
@@ -590,16 +593,16 @@ const runLiveBriefingSmoke = async (params: {
   readonly targets: readonly ScanTarget[];
   readonly clock: Clock;
 }): Promise<LiveBriefingSmokeResult> => {
-  const briefingJobs = new InMemoryBriefingJobRepository();
-  const briefingArtifacts = new InMemoryBriefingArtifactRepository();
-  const briefingPolicies = new InMemoryBriefingPolicyRepository();
+  const readerSummaryJobs = new InMemoryReaderSummaryJobRepository();
+  const readerSummaryArtifacts = new InMemoryReaderSummaryArtifactRepository();
+  const readerSummaryPolicies = new InMemoryReaderSummaryPolicyRepository();
   const briefingEvents = new InMemorySummaryEventPublisher();
-  const briefingQueue = new InMemoryBriefingJobQueueAdapter();
+  const briefingQueue = new InMemoryReaderSummaryJobQueueAdapter();
   const briefingIds = new SequenceIdGenerator("live-multi-provider-briefing");
   const scope = { type: "workspace" } as const;
 
-  await briefingPolicies.save(
-    BriefingPolicy.create({
+  await readerSummaryPolicies.save(
+    ReaderSummaryPolicy.create({
       id: "briefing-policy-live-multi-provider-smoke",
       tenantId: params.tenant,
       workspaceId: params.workspace,
@@ -619,8 +622,8 @@ const runLiveBriefingSmoke = async (params: {
     }),
   );
 
-  const requestBriefing = new RequestBriefingUseCase(
-    briefingJobs,
+  const requestBriefing = new RequestReaderSummaryUseCase(
+    readerSummaryJobs,
     briefingQueue,
     new AllowingSummaryQuota(),
     briefingIds,
@@ -651,17 +654,17 @@ const runLiveBriefingSmoke = async (params: {
     new InMemoryUserRelevanceProfileRepository(),
     params.clock,
   );
-  const evidenceSelector = new RelevanceBriefingEvidenceSelector(
+  const evidenceSelector = new RelevanceReaderSummaryEvidenceSelector(
     rankFeedItems,
     params.feedItems,
     params.clock,
   );
-  const executeBriefing = new ExecuteBriefingJobUseCase(
-    briefingJobs,
-    briefingArtifacts,
-    briefingPolicies,
+  const executeBriefing = new ExecuteReaderSummaryJobUseCase(
+    readerSummaryJobs,
+    readerSummaryArtifacts,
+    readerSummaryPolicies,
     evidenceSelector,
-    new DeterministicBriefingModelAdapter(),
+    new DeterministicReaderSummaryModelAdapter(),
     briefingEvents,
     briefingIds,
     params.clock,
@@ -670,7 +673,7 @@ const runLiveBriefingSmoke = async (params: {
     await executeBriefing.execute({
       tenantId: params.tenant,
       workspaceId: params.workspace,
-      briefingJobId: request.briefingJobId,
+      readerSummaryJobId: request.readerSummaryJobId,
       maxEvidenceItems,
     }),
     "execute live multi-provider briefing",
@@ -681,14 +684,14 @@ const runLiveBriefingSmoke = async (params: {
     `live multi-provider briefing must complete, got ${briefing.status}`,
   );
   assert(
-    briefing.briefingId !== undefined,
+    briefing.readerSummaryId !== undefined,
     "live multi-provider briefing must produce a briefing id",
   );
 
-  const artifact = await briefingArtifacts.findById({
+  const artifact = await readerSummaryArtifacts.findById({
     tenantId: params.tenant,
     workspaceId: params.workspace,
-    briefingId: briefing.briefingId,
+    readerSummaryId: briefing.readerSummaryId,
   });
   assert(
     artifact !== null,
@@ -713,7 +716,7 @@ const runLiveBriefingSmoke = async (params: {
   const citedProviders = new Set(
     artifactSnapshot.citationMap.map((citation) => citation.providerKey),
   );
-  const readerBrief = artifactSnapshot.readerBrief;
+  const readerBrief = artifactSnapshot.content;
   assert(
     readerBrief !== undefined,
     "live multi-provider briefing must include reader brief",
@@ -745,19 +748,21 @@ const runLiveBriefingSmoke = async (params: {
   }
 
   assert(
-    briefingEvents.all().some((event) => event.eventType === "briefing.ready"),
+    briefingEvents
+      .all()
+      .some((event) => event.eventType === "reader_summary.ready"),
     "live multi-provider briefing must publish briefing.ready",
   );
 
   return {
-    briefingId: briefing.briefingId,
+    briefingId: briefing.readerSummaryId,
     selectedProviders: [...selectedProviders].sort(),
     citedProviders: [...citedProviders].sort(),
     readerSourceMixProviders: [...readerSourceMixProviders].sort(),
     topReadProviders: [...topReadProviders].sort(),
     topReadCount: readerBrief.topReads.length,
     qualityFlags: artifactSnapshot.qualityFlags,
-    frontendArtifact: presentBriefingArtifact(artifact, {
+    frontendArtifact: presentReaderSummaryArtifact(artifact, {
       status: "fresh",
       checkedAt: params.clock.now(),
     }),
@@ -999,8 +1004,7 @@ const writeOptionalEvidenceArtifact = (input: {
       briefingId: input.briefing.briefingId,
       briefingSelectedProviders: input.briefing.selectedProviders,
       briefingCitedProviders: input.briefing.citedProviders,
-      briefingReaderSourceMixProviders:
-        input.briefing.readerSourceMixProviders,
+      briefingReaderSourceMixProviders: input.briefing.readerSourceMixProviders,
       briefingTopReadProviders: input.briefing.topReadProviders,
       briefingTopReadCount: input.briefing.topReadCount,
       briefingQualityFlags: input.briefing.qualityFlags,

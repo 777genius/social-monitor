@@ -1,18 +1,20 @@
-import type { Clock } from '@social-monitor/shared-kernel';
+import type { Clock } from "@social-monitor/shared-kernel";
 
 import type {
-  BriefingEvidenceItem,
-  BriefingEvidenceSelection,
-  BriefingSourceWindow,
+  SummaryEvidenceItem,
+  SummaryEvidenceSelection,
+  SummarySourceWindow,
   StoryCluster,
-} from '../value-objects/briefing-evidence-item';
-import type { BriefingScopeIdentity } from '../value-objects/briefing-scope';
-import { briefingScopeKey } from '../value-objects/briefing-scope';
+} from "../value-objects/summary-evidence-item";
+import {
+  readerSummaryScopeKey,
+  type ReaderSummaryScopeIdentity,
+} from "../value-objects/reader-summary-scope";
 import {
   STORY_RANKING_POLICY_V1,
   type StoryRankingPolicy,
-} from '../policies/story-ranking-policy';
-import { storyKey } from './story-key-normalizer';
+} from "../policies/story-ranking-policy";
+import { storyKey } from "./story-key-normalizer";
 
 export class StoryClusteringService {
   constructor(
@@ -21,19 +23,30 @@ export class StoryClusteringService {
   ) {}
 
   cluster(params: {
-    readonly identity: BriefingScopeIdentity;
-    readonly items: readonly BriefingEvidenceItem[];
+    readonly identity: ReaderSummaryScopeIdentity;
+    readonly items: readonly SummaryEvidenceItem[];
     readonly limit: number;
-  }): BriefingEvidenceSelection {
+  }): SummaryEvidenceSelection {
     const limit = normalizeLimit(params.limit, this.policy);
-    const clusters = [...buildClusters(params.items, this.clock.now(), this.policy)]
+    const clusters = [
+      ...buildClusters(params.items, this.clock.now(), this.policy),
+    ]
       .sort(compareStoryClusters)
       .slice(0, limit);
-    const selectedEvidence = selectedClusterEvidence(params.items, clusters, this.policy);
+    const selectedEvidence = selectedClusterEvidence(
+      params.items,
+      clusters,
+      this.policy,
+    );
 
     return {
       rankingPolicyVersion: this.policy.version,
-      sourceWindow: buildSourceWindow(params.identity, clusters, selectedEvidence, this.clock),
+      sourceWindow: buildSourceWindow(
+        params.identity,
+        clusters,
+        selectedEvidence,
+        this.clock,
+      ),
       clusters,
       selectedEvidence,
     };
@@ -41,11 +54,11 @@ export class StoryClusteringService {
 }
 
 const buildClusters = (
-  items: readonly BriefingEvidenceItem[],
+  items: readonly SummaryEvidenceItem[],
   now: Date,
   policy: StoryRankingPolicy,
 ): readonly StoryCluster[] => {
-  const groups = new Map<string, BriefingEvidenceItem[]>();
+  const groups = new Map<string, SummaryEvidenceItem[]>();
 
   for (const item of items) {
     const key = storyKey(item, policy);
@@ -56,7 +69,7 @@ const buildClusters = (
     const sorted = [...clusterItems].sort(compareEvidenceItems);
     const representative = sorted[0];
     if (representative === undefined) {
-      throw new Error('Briefing story cluster must contain evidence');
+      throw new Error("Reader summary story cluster must contain evidence");
     }
     const observedTimes = sorted.map((item) => item.observedAt.getTime());
     const signal = storyClusterSignal(sorted, now, policy);
@@ -66,9 +79,7 @@ const buildClusters = (
       storyKey: key,
       rankingPolicyVersion: policy.version,
       representativeFeedItemId: representative.feedItemId,
-      duplicateFeedItemIds: sorted
-        .slice(1)
-        .map((item) => item.feedItemId),
+      duplicateFeedItemIds: sorted.slice(1).map((item) => item.feedItemId),
       topicIds: uniqueSorted(sorted.map((item) => item.topicId)),
       providerKeys: uniqueSorted(sorted.map((item) => item.providerKey)),
       score: signal.score,
@@ -86,12 +97,12 @@ const buildClusters = (
 };
 
 const selectedClusterEvidence = (
-  items: readonly BriefingEvidenceItem[],
+  items: readonly SummaryEvidenceItem[],
   clusters: readonly StoryCluster[],
   policy: StoryRankingPolicy,
-): readonly BriefingEvidenceItem[] => {
+): readonly SummaryEvidenceItem[] => {
   const byId = new Map(items.map((item) => [item.feedItemId, item] as const));
-  const selected: BriefingEvidenceItem[] = [];
+  const selected: SummaryEvidenceItem[] = [];
   const selectedIds = new Set<string>();
 
   for (const cluster of clusters) {
@@ -114,12 +125,12 @@ const selectedClusterEvidence = (
 };
 
 const storyClusterSignal = (
-  items: readonly BriefingEvidenceItem[],
+  items: readonly SummaryEvidenceItem[],
   now: Date,
   policy: StoryRankingPolicy,
 ): {
   readonly score: number;
-  readonly breakdown: StoryCluster['signalBreakdown'];
+  readonly breakdown: StoryCluster["signalBreakdown"];
   readonly reasons: readonly string[];
 } => {
   const sorted = [...items].sort(compareEvidenceItems);
@@ -146,15 +157,22 @@ const storyClusterSignal = (
     .map(([, score]) => Math.max(0, score))
     .sort((left, right) => right - left)
     .slice(0, policy.maxCrossProviderEvidence)
-    .reduce((total, score) => total + Math.min(
-      policy.crossProviderContributionCap,
-      score * policy.crossProviderScoreWeight,
-    ), 0);
+    .reduce(
+      (total, score) =>
+        total +
+        Math.min(
+          policy.crossProviderContributionCap,
+          score * policy.crossProviderScoreWeight,
+        ),
+      0,
+    );
   const sameProviderDuplicateCount =
-    sorted.filter((item) => item.providerKey === representative.providerKey).length - 1;
+    sorted.filter((item) => item.providerKey === representative.providerKey)
+      .length - 1;
   const sameProviderSupport = Math.min(
     policy.sameProviderSupportCap,
-    Math.log1p(Math.max(0, sameProviderDuplicateCount)) * policy.sameProviderDuplicateWeight,
+    Math.log1p(Math.max(0, sameProviderDuplicateCount)) *
+      policy.sameProviderDuplicateWeight,
   );
   const providerDiversityBoost = Math.min(
     policy.providerDiversityCap,
@@ -164,7 +182,11 @@ const storyClusterSignal = (
     policy.topicDiversityCap,
     (topicIds.length - 1) * policy.topicDiversityWeight,
   );
-  const freshnessBoost = freshnessBoostFor(representative.observedAt, now, policy);
+  const freshnessBoost = freshnessBoostFor(
+    representative.observedAt,
+    now,
+    policy,
+  );
   const breakdown = {
     baseScore: roundScore(representative.score),
     crossProviderSupport: roundScore(otherProviderSupport),
@@ -174,14 +196,16 @@ const storyClusterSignal = (
     freshnessBoost: roundScore(freshnessBoost),
     totalScore: 0,
   };
-  const score = roundScore(Object.values({
-    baseScore: breakdown.baseScore,
-    crossProviderSupport: breakdown.crossProviderSupport,
-    sameProviderSupport: breakdown.sameProviderSupport,
-    providerDiversityBoost: breakdown.providerDiversityBoost,
-    topicDiversityBoost: breakdown.topicDiversityBoost,
-    freshnessBoost: breakdown.freshnessBoost,
-  }).reduce((total, value) => total + value, 0));
+  const score = roundScore(
+    Object.values({
+      baseScore: breakdown.baseScore,
+      crossProviderSupport: breakdown.crossProviderSupport,
+      sameProviderSupport: breakdown.sameProviderSupport,
+      providerDiversityBoost: breakdown.providerDiversityBoost,
+      topicDiversityBoost: breakdown.topicDiversityBoost,
+      freshnessBoost: breakdown.freshnessBoost,
+    }).reduce((total, value) => total + value, 0),
+  );
   const completeBreakdown = { ...breakdown, totalScore: score };
 
   return {
@@ -206,7 +230,7 @@ const storyClusterReasons = (params: {
 
   if (params.providerKeys.length > 1) {
     reasons.push(
-      `Confirmed by ${params.providerKeys.length} providers: ${params.providerKeys.slice(0, 3).join(', ')}`,
+      `Confirmed by ${params.providerKeys.length} providers: ${params.providerKeys.slice(0, 3).join(", ")}`,
     );
   }
 
@@ -224,17 +248,17 @@ const storyClusterReasons = (params: {
 };
 
 const buildSourceWindow = (
-  identity: BriefingScopeIdentity,
+  identity: ReaderSummaryScopeIdentity,
   clusters: readonly StoryCluster[],
-  selectedEvidence: readonly BriefingEvidenceItem[],
+  selectedEvidence: readonly SummaryEvidenceItem[],
   clock: Clock,
-): BriefingSourceWindow => {
+): SummarySourceWindow => {
   if (clusters.length === 0 || selectedEvidence.length === 0) {
     const endedAt = clock.now();
     const startedAt = new Date(endedAt.getTime() - 1);
 
     return {
-      windowId: `${identity.tenantId}:${identity.workspaceId}:${briefingScopeKey(identity.scope)}:empty`,
+      windowId: `${identity.tenantId}:${identity.workspaceId}:${readerSummaryScopeKey(identity.scope)}:empty`,
       startedAt,
       endedAt,
       selectedFeedItemIds: [],
@@ -242,19 +266,23 @@ const buildSourceWindow = (
     };
   }
 
-  const observedTimes = selectedEvidence.map((item) => item.observedAt.getTime());
+  const observedTimes = selectedEvidence.map((item) =>
+    item.observedAt.getTime(),
+  );
   const startedAt = new Date(Math.min(...observedTimes));
   const endedAtValue = Math.max(...observedTimes);
-  const endedAt = new Date(endedAtValue > startedAt.getTime() ? endedAtValue : endedAtValue + 1);
+  const endedAt = new Date(
+    endedAtValue > startedAt.getTime() ? endedAtValue : endedAtValue + 1,
+  );
 
   return {
     windowId: [
       identity.tenantId,
       identity.workspaceId,
-      briefingScopeKey(identity.scope),
+      readerSummaryScopeKey(identity.scope),
       startedAt.toISOString(),
       endedAt.toISOString(),
-    ].join(':'),
+    ].join(":"),
     startedAt,
     endedAt,
     selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
@@ -262,7 +290,10 @@ const buildSourceWindow = (
   };
 };
 
-const compareEvidenceItems = (left: BriefingEvidenceItem, right: BriefingEvidenceItem): number => {
+const compareEvidenceItems = (
+  left: SummaryEvidenceItem,
+  right: SummaryEvidenceItem,
+): number => {
   const scoreDiff = right.score - left.score;
   if (scoreDiff !== 0) {
     return scoreDiff;
@@ -271,13 +302,17 @@ const compareEvidenceItems = (left: BriefingEvidenceItem, right: BriefingEvidenc
   return right.observedAt.getTime() - left.observedAt.getTime();
 };
 
-const compareStoryClusters = (left: StoryCluster, right: StoryCluster): number => {
+const compareStoryClusters = (
+  left: StoryCluster,
+  right: StoryCluster,
+): number => {
   const scoreDiff = right.score - left.score;
   if (scoreDiff !== 0) {
     return scoreDiff;
   }
 
-  const providerCoverageDiff = right.providerKeys.length - left.providerKeys.length;
+  const providerCoverageDiff =
+    right.providerKeys.length - left.providerKeys.length;
   if (providerCoverageDiff !== 0) {
     return providerCoverageDiff;
   }
@@ -287,10 +322,14 @@ const compareStoryClusters = (left: StoryCluster, right: StoryCluster): number =
     return topicCoverageDiff;
   }
 
-  return right.observedAtRange.endedAt.getTime() - left.observedAtRange.endedAt.getTime();
+  return (
+    right.observedAtRange.endedAt.getTime() -
+    left.observedAtRange.endedAt.getTime()
+  );
 };
 
-const uniqueSorted = (values: readonly string[]): readonly string[] => [...new Set(values)].sort();
+const uniqueSorted = (values: readonly string[]): readonly string[] =>
+  [...new Set(values)].sort();
 
 const uniqueStable = (values: readonly string[]): readonly string[] => {
   const seen = new Set<string>();
@@ -313,7 +352,9 @@ const normalizeLimit = (value: number, policy: StoryRankingPolicy): number => {
   return Math.min(value, policy.maxClusters);
 };
 
-const zeroSignalBreakdown = (): NonNullable<StoryCluster['signalBreakdown']> => ({
+const zeroSignalBreakdown = (): NonNullable<
+  StoryCluster["signalBreakdown"]
+> => ({
   baseScore: 0,
   crossProviderSupport: 0,
   sameProviderSupport: 0,
@@ -323,10 +364,19 @@ const zeroSignalBreakdown = (): NonNullable<StoryCluster['signalBreakdown']> => 
   totalScore: 0,
 });
 
-const freshnessBoostFor = (observedAt: Date, now: Date, policy: StoryRankingPolicy): number => {
-  const ageHours = Math.max(0, (now.getTime() - observedAt.getTime()) / 3_600_000);
+const freshnessBoostFor = (
+  observedAt: Date,
+  now: Date,
+  policy: StoryRankingPolicy,
+): number => {
+  const ageHours = Math.max(
+    0,
+    (now.getTime() - observedAt.getTime()) / 3_600_000,
+  );
 
-  const boost = policy.freshnessBoosts.find((candidate) => ageHours <= candidate.maxAgeHours);
+  const boost = policy.freshnessBoosts.find(
+    (candidate) => ageHours <= candidate.maxAgeHours,
+  );
 
   return boost?.boost ?? 0;
 };
@@ -334,4 +384,6 @@ const freshnessBoostFor = (observedAt: Date, now: Date, policy: StoryRankingPoli
 const roundScore = (value: number): number => Math.round(value * 1000) / 1000;
 
 const formatScore = (value: number): string =>
-  Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/0+$/u, '').replace(/\.$/u, '');
+  Number.isInteger(value)
+    ? String(value)
+    : value.toFixed(3).replace(/0+$/u, "").replace(/\.$/u, "");

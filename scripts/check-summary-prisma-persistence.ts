@@ -5,21 +5,26 @@ import {
   FixedClock,
   tenantId,
   workspaceId,
-} from '@social-monitor/shared-kernel';
+} from "@social-monitor/shared-kernel";
 
-import { SummaryArtifact, SummaryFeedback, SummaryJob, SummaryPolicy } from '../libs/summary/domain';
-import { PrismaSummaryArtifactRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-artifact.repository';
-import type { PrismaSummaryClient } from '../libs/summary/adapters/persistence/prisma/prisma-summary-client';
-import { PrismaSummaryEventPublisher } from '../libs/summary/adapters/persistence/prisma/prisma-summary-event.publisher';
-import { PrismaSummaryFeedbackRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-feedback.repository';
-import { PrismaSummaryJobRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-job.repository';
-import { PrismaSummaryPolicyRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-policy.repository';
-import { resolveSummaryPersistenceMode } from '../libs/summary/interfaces/rest/summary-provider-tokens';
+import {
+  SummaryArtifact,
+  SummaryFeedback,
+  SummaryJob,
+  SummaryPolicy,
+} from "../libs/summary/domain";
+import { PrismaSummaryArtifactRepository } from "../libs/summary/adapters/persistence/prisma/prisma-summary-artifact.repository";
+import type { PrismaSummaryClient } from "../libs/summary/adapters/persistence/prisma/prisma-summary-client";
+import { PrismaSummaryEventPublisher } from "../libs/summary/adapters/persistence/prisma/prisma-summary-event.publisher";
+import { PrismaSummaryFeedbackRepository } from "../libs/summary/adapters/persistence/prisma/prisma-summary-feedback.repository";
+import { PrismaSummaryJobRepository } from "../libs/summary/adapters/persistence/prisma/prisma-summary-job.repository";
+import { PrismaSummaryPolicyRepository } from "../libs/summary/adapters/persistence/prisma/prisma-summary-policy.repository";
+import { resolveSummaryPersistenceMode } from "../libs/summary/interfaces/rest/summary-provider-tokens";
 import type {
-  PrismaBriefingArtifactRecord,
-  PrismaBriefingJobRecord,
-  PrismaBriefingPolicyRecord,
-} from '../libs/summary/adapters/persistence/prisma/prisma-briefing-records';
+  PrismaReaderSummaryArtifactRecord,
+  PrismaReaderSummaryJobRecord,
+  PrismaReaderSummaryPolicyRecord,
+} from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-records";
 import type {
   PrismaSummaryArtifactRecord,
   PrismaSummaryFeedbackRecord,
@@ -27,25 +32,28 @@ import type {
   PrismaSummaryOutboxEventRecord,
   PrismaSummaryPolicyRecord,
   PrismaSummaryStatus,
-} from '../libs/summary/adapters/persistence/prisma/prisma-summary-records';
+} from "../libs/summary/adapters/persistence/prisma/prisma-summary-records";
 
-const clock = new FixedClock(new Date('2026-06-08T00:00:00.000Z'));
-const tenant = tenantId('00000000-0000-7000-8000-000000000401');
-const workspace = workspaceId('00000000-0000-7000-8000-000000000402');
-const topicId = '00000000-0000-7000-8000-000000000403';
+const clock = new FixedClock(new Date("2026-06-08T00:00:00.000Z"));
+const tenant = tenantId("00000000-0000-7000-8000-000000000401");
+const workspace = workspaceId("00000000-0000-7000-8000-000000000402");
+const topicId = "00000000-0000-7000-8000-000000000403";
 
 async function main(): Promise<void> {
-  assert(resolveSummaryPersistenceMode({}) === 'in-memory', 'summary persistence must default to in-memory');
+  assert(
+    resolveSummaryPersistenceMode({}) === "in-memory",
+    "summary persistence must default to in-memory",
+  );
   assertThrows(
-    () => resolveSummaryPersistenceMode({ SUMMARY_PERSISTENCE: 'prisma' }),
-    'SUMMARY_PERSISTENCE=prisma must require DATABASE_URL',
+    () => resolveSummaryPersistenceMode({ SUMMARY_PERSISTENCE: "prisma" }),
+    "SUMMARY_PERSISTENCE=prisma must require DATABASE_URL",
   );
   assert(
     resolveSummaryPersistenceMode({
-      SUMMARY_PERSISTENCE: 'prisma',
-      DATABASE_URL: 'postgresql://example.test/social-monitor',
-    }) === 'prisma',
-    'summary persistence must accept explicit Prisma mode with DATABASE_URL',
+      SUMMARY_PERSISTENCE: "prisma",
+      DATABASE_URL: "postgresql://example.test/social-monitor",
+    }) === "prisma",
+    "summary persistence must accept explicit Prisma mode with DATABASE_URL",
   );
 
   const prisma = new FakePrismaSummaryClient();
@@ -54,25 +62,31 @@ async function main(): Promise<void> {
   const feedbackRepository = new PrismaSummaryFeedbackRepository(prisma);
   const summaryPolicies = new PrismaSummaryPolicyRepository(prisma);
   const summaryEvents = new PrismaSummaryEventPublisher(prisma);
-  const completedArtifact = makeCompletedArtifact('00000000-0000-7000-8000-000000000501');
-  const noSignalArtifact = makeNoSignalArtifact('00000000-0000-7000-8000-000000000502');
+  const completedArtifact = makeCompletedArtifact(
+    "00000000-0000-7000-8000-000000000501",
+  );
+  const noSignalArtifact = makeNoSignalArtifact(
+    "00000000-0000-7000-8000-000000000502",
+  );
 
   await summaryArtifacts.save(completedArtifact);
   await summaryArtifacts.save(noSignalArtifact);
 
   const requestedJob = SummaryJob.request({
-    id: '00000000-0000-7000-8000-000000000601',
+    id: "00000000-0000-7000-8000-000000000601",
     tenantId: tenant,
     workspaceId: workspace,
     topicId,
-    idempotencyKey: 'summary-job:topic:2026-06-08',
+    idempotencyKey: "summary-job:topic:2026-06-08",
     requestedAt: clock.now(),
   });
   await summaryJobs.save(requestedJob);
-  const runningJob = requestedJob.start({ startedAt: new Date('2026-06-08T00:01:00.000Z') });
+  const runningJob = requestedJob.start({
+    startedAt: new Date("2026-06-08T00:01:00.000Z"),
+  });
   await summaryJobs.save(runningJob);
   const completedJob = runningJob.complete({
-    completedAt: new Date('2026-06-08T00:02:00.000Z'),
+    completedAt: new Date("2026-06-08T00:02:00.000Z"),
     summaryId: completedArtifact.toSnapshot().summaryId,
   });
   await summaryJobs.save(completedJob);
@@ -80,30 +94,47 @@ async function main(): Promise<void> {
   const foundJob = await summaryJobs.findByIdempotencyKey({
     tenantId: tenant,
     workspaceId: workspace,
-    idempotencyKey: 'summary-job:topic:2026-06-08',
+    idempotencyKey: "summary-job:topic:2026-06-08",
   });
-  assert(foundJob?.toSnapshot().status === 'completed', 'summary job status must round-trip as completed');
   assert(
-    foundJob.toSnapshot().summaryId === completedArtifact.toSnapshot().summaryId,
-    'completed summary job must keep artifact reference',
+    foundJob?.toSnapshot().status === "completed",
+    "summary job status must round-trip as completed",
+  );
+  assert(
+    foundJob.toSnapshot().summaryId ===
+      completedArtifact.toSnapshot().summaryId,
+    "completed summary job must keep artifact reference",
   );
 
   const noSignalJob = SummaryJob.request({
-    id: '00000000-0000-7000-8000-000000000602',
+    id: "00000000-0000-7000-8000-000000000602",
     tenantId: tenant,
     workspaceId: workspace,
     topicId,
-    idempotencyKey: 'summary-job:topic:2026-06-08:no-signal',
+    idempotencyKey: "summary-job:topic:2026-06-08:no-signal",
     requestedAt: clock.now(),
-  }).start({ startedAt: new Date('2026-06-08T00:03:00.000Z') }).markNoSignal({
-    completedAt: new Date('2026-06-08T00:04:00.000Z'),
-    summaryId: noSignalArtifact.toSnapshot().summaryId,
-  });
+  })
+    .start({ startedAt: new Date("2026-06-08T00:03:00.000Z") })
+    .markNoSignal({
+      completedAt: new Date("2026-06-08T00:04:00.000Z"),
+      summaryId: noSignalArtifact.toSnapshot().summaryId,
+    });
   await summaryJobs.save(noSignalJob);
 
-  const listed = await summaryArtifacts.list({ tenantId: tenant, workspaceId: workspace, topicId, limit: 1 });
-  assert(listed.items.length === 1, 'summary artifact repository must page first item');
-  assert(listed.nextCursor !== undefined, 'summary artifact repository must return cursor when more items exist');
+  const listed = await summaryArtifacts.list({
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId,
+    limit: 1,
+  });
+  assert(
+    listed.items.length === 1,
+    "summary artifact repository must page first item",
+  );
+  assert(
+    listed.nextCursor !== undefined,
+    "summary artifact repository must return cursor when more items exist",
+  );
   const secondPage = await summaryArtifacts.list({
     tenantId: tenant,
     workspaceId: workspace,
@@ -111,41 +142,51 @@ async function main(): Promise<void> {
     limit: 1,
     cursor: listed.nextCursor,
   });
-  assert(secondPage.items.length === 1, 'summary artifact repository must page second item');
+  assert(
+    secondPage.items.length === 1,
+    "summary artifact repository must page second item",
+  );
 
   const foundArtifact = await summaryArtifacts.findById({
     tenantId: tenant,
     workspaceId: workspace,
     summaryId: completedArtifact.toSnapshot().summaryId,
   });
-  assert(foundArtifact !== null, 'summary artifact findById must return saved artifact');
-  const foundSnapshot = foundArtifact.toSnapshot();
-  assert(foundSnapshot.executiveSummary === 'Durable summary body', 'summary artifact text must rehydrate');
   assert(
-    foundSnapshot.sourceWindow.startedAt.toISOString() === '2026-06-08T00:00:00.000Z',
-    'summary artifact source window start must rehydrate as Date',
+    foundArtifact !== null,
+    "summary artifact findById must return saved artifact",
+  );
+  const foundSnapshot = foundArtifact.toSnapshot();
+  assert(
+    foundSnapshot.executiveSummary === "Durable summary body",
+    "summary artifact text must rehydrate",
+  );
+  assert(
+    foundSnapshot.sourceWindow.startedAt.toISOString() ===
+      "2026-06-08T00:00:00.000Z",
+    "summary artifact source window start must rehydrate as Date",
   );
 
   const feedback = SummaryFeedback.record({
-    id: '00000000-0000-7000-8000-000000000701',
+    id: "00000000-0000-7000-8000-000000000701",
     tenantId: tenant,
     workspaceId: workspace,
     summaryId: completedArtifact.toSnapshot().summaryId,
     topicId,
-    idempotencyKey: 'feedback:summary:durable',
-    submittedBy: 'beta-user@example.test',
+    idempotencyKey: "feedback:summary:durable",
+    submittedBy: "beta-user@example.test",
     rating: 2,
-    category: 'bad_citation',
-    comment: 'The cited item does not support the claim.',
+    category: "bad_citation",
+    comment: "The cited item does not support the claim.",
     evidence: {
       summaryId: completedArtifact.toSnapshot().summaryId,
       topicId,
-      citationId: 'citation-1',
-      feedItemId: 'feed-1',
-      sourceItemId: 'source-1',
-      providerKey: 'rss',
+      citationId: "citation-1",
+      feedItemId: "feed-1",
+      sourceItemId: "source-1",
+      providerKey: "rss",
     },
-    triageOwner: 'summary-owner',
+    triageOwner: "summary-owner",
     eligibleForEvalFixture: true,
     createdAt: clock.now(),
   });
@@ -154,16 +195,19 @@ async function main(): Promise<void> {
   const foundFeedback = await feedbackRepository.findByIdempotencyKey({
     tenantId: tenant,
     workspaceId: workspace,
-    idempotencyKey: 'feedback:summary:durable',
+    idempotencyKey: "feedback:summary:durable",
   });
-  assert(foundFeedback?.toSnapshot().category === 'bad_citation', 'summary feedback category must round-trip');
   assert(
-    foundFeedback.toSnapshot().evidence.citationId === 'citation-1',
-    'summary feedback evidence must round-trip',
+    foundFeedback?.toSnapshot().category === "bad_citation",
+    "summary feedback category must round-trip",
   );
   assert(
-    foundFeedback.toSnapshot().evidence.providerKey === 'rss',
-    'summary feedback provider key evidence must round-trip',
+    foundFeedback.toSnapshot().evidence.citationId === "citation-1",
+    "summary feedback evidence must round-trip",
+  );
+  assert(
+    foundFeedback.toSnapshot().evidence.providerKey === "rss",
+    "summary feedback provider key evidence must round-trip",
   );
 
   const listedFeedback = await feedbackRepository.list({
@@ -172,44 +216,55 @@ async function main(): Promise<void> {
     summaryId: completedArtifact.toSnapshot().summaryId,
     limit: 1,
   });
-  assert(listedFeedback.items.length === 1, 'summary feedback repository must list saved feedback');
+  assert(
+    listedFeedback.items.length === 1,
+    "summary feedback repository must list saved feedback",
+  );
   assert(
     listedFeedback.items[0]?.toSnapshot().id === feedback.toSnapshot().id,
-    'summary feedback repository list must preserve feedback identity',
+    "summary feedback repository list must preserve feedback identity",
   );
 
   const policy = SummaryPolicy.create({
-    id: '00000000-0000-7000-8000-000000000801',
+    id: "00000000-0000-7000-8000-000000000801",
     tenantId: tenant,
     workspaceId: workspace,
     topicId,
-    language: 'ru',
-    format: 'bullet_digest',
-    tone: 'analytical',
+    language: "ru",
+    format: "bullet_digest",
+    tone: "analytical",
     maxKeyPoints: 7,
     includeRisks: true,
     includeSourceHighlights: false,
-    customInstructions: 'Focus on launch and pricing signals.',
+    customInstructions: "Focus on launch and pricing signals.",
     createdAt: clock.now(),
     updatedAt: clock.now(),
   });
   await summaryPolicies.save(policy);
-  const foundPolicy = await summaryPolicies.findByTopic({ tenantId: tenant, workspaceId: workspace, topicId });
-  assert(foundPolicy?.toSnapshot().language === 'ru', 'summary policy language must round-trip');
+  const foundPolicy = await summaryPolicies.findByTopic({
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId,
+  });
   assert(
-    foundPolicy.toSnapshot().customInstructions === 'Focus on launch and pricing signals.',
-    'summary policy custom instructions must round-trip',
+    foundPolicy?.toSnapshot().language === "ru",
+    "summary policy language must round-trip",
+  );
+  assert(
+    foundPolicy.toSnapshot().customInstructions ===
+      "Focus on launch and pricing signals.",
+    "summary policy custom instructions must round-trip",
   );
 
   await summaryEvents.publish({
-    eventId: eventId('00000000-0000-7000-8000-000000000901'),
-    eventType: 'summary.ready',
+    eventId: eventId("00000000-0000-7000-8000-000000000901"),
+    eventType: "summary.ready",
     schemaVersion: 1,
     occurredAt: clock.now(),
     tenantId: tenant,
     workspaceId: workspace,
-    correlationId: correlationId('summary-prisma-outbox-smoke'),
-    causationId: causationId('summary-job:topic:2026-06-08'),
+    correlationId: correlationId("summary-prisma-outbox-smoke"),
+    causationId: causationId("summary-job:topic:2026-06-08"),
     payload: {
       summaryId: completedArtifact.toSnapshot().summaryId,
       topicId,
@@ -217,65 +272,79 @@ async function main(): Promise<void> {
     },
   });
 
-  const outboxRecord = prisma.outboxEvents.get('00000000-0000-7000-8000-000000000901');
-  assert(outboxRecord?.eventType === 'summary.ready', 'summary event publisher must persist event type');
-  assert(outboxRecord.status === 'PENDING', 'summary outbox event must start pending');
-  assert(outboxRecord.tenantId === tenant, 'summary outbox event must preserve tenant scope');
-  assert(outboxRecord.workspaceId === workspace, 'summary outbox event must preserve workspace scope');
+  const outboxRecord = prisma.outboxEvents.get(
+    "00000000-0000-7000-8000-000000000901",
+  );
+  assert(
+    outboxRecord?.eventType === "summary.ready",
+    "summary event publisher must persist event type",
+  );
+  assert(
+    outboxRecord.status === "PENDING",
+    "summary outbox event must start pending",
+  );
+  assert(
+    outboxRecord.tenantId === tenant,
+    "summary outbox event must preserve tenant scope",
+  );
+  assert(
+    outboxRecord.workspaceId === workspace,
+    "summary outbox event must preserve workspace scope",
+  );
 
-  console.log('Summary Prisma persistence smoke OK');
+  console.log("Summary Prisma persistence smoke OK");
 }
 
 const makeCompletedArtifact = (summaryId: string): SummaryArtifact =>
   SummaryArtifact.create({
-    schemaVersion: 'summary.artifact.v1',
+    schemaVersion: "summary.artifact.v1",
     summaryId,
     tenantId: tenant,
     workspaceId: workspace,
     topicId,
     sourceWindow: {
-      windowId: 'window-1',
-      startedAt: new Date('2026-06-08T00:00:00.000Z'),
-      endedAt: new Date('2026-06-08T01:00:00.000Z'),
-      selectedFeedItemIds: ['feed-1'],
+      windowId: "window-1",
+      startedAt: new Date("2026-06-08T00:00:00.000Z"),
+      endedAt: new Date("2026-06-08T01:00:00.000Z"),
+      selectedFeedItemIds: ["feed-1"],
     },
-    headline: 'Durable summary',
-    executiveSummary: 'Durable summary body',
+    headline: "Durable summary",
+    executiveSummary: "Durable summary body",
     keyPoints: [
       {
-        claim: 'Durable summary claim',
-        citationIds: ['citation-1'],
+        claim: "Durable summary claim",
+        citationIds: ["citation-1"],
       },
     ],
     risksAndUnknowns: [
       {
-        description: 'Limited beta evidence',
-        citationIds: ['citation-1'],
+        description: "Limited beta evidence",
+        citationIds: ["citation-1"],
       },
     ],
-    sourceHighlights: ['Durable source highlight'],
+    sourceHighlights: ["Durable source highlight"],
     citationMap: [
       {
-        citationId: 'citation-1',
-        feedItemId: 'feed-1',
-        sourceItemId: 'source-1',
-        providerKey: 'rss',
-        field: 'bodyPreview',
+        citationId: "citation-1",
+        feedItemId: "feed-1",
+        sourceItemId: "source-1",
+        providerKey: "rss",
+        field: "bodyPreview",
       },
     ],
     qualityFlags: [],
     confidence: {
-      level: 'high',
+      level: "high",
       score: 0.91,
-      rationale: 'Single controlled fixture with direct citation',
+      rationale: "Single controlled fixture with direct citation",
     },
     lineage: {
-      promptVersion: 'summary.prompt.v1',
-      schemaVersion: 'summary.artifact.v1',
-      modelVersion: 'deterministic-local.v1',
-      providerVersion: 'local',
-      rulesVersion: 'summary.rules.v1',
-      evalDatasetVersion: 'summary.eval.v1',
+      promptVersion: "summary.prompt.v1",
+      schemaVersion: "summary.artifact.v1",
+      modelVersion: "deterministic-local.v1",
+      providerVersion: "local",
+      rulesVersion: "summary.rules.v1",
+      evalDatasetVersion: "summary.eval.v1",
     },
     usage: {
       inputTokens: 120,
@@ -286,48 +355,48 @@ const makeCompletedArtifact = (summaryId: string): SummaryArtifact =>
 
 const makeNoSignalArtifact = (summaryId: string): SummaryArtifact =>
   SummaryArtifact.create({
-    schemaVersion: 'summary.artifact.v1',
+    schemaVersion: "summary.artifact.v1",
     summaryId,
     tenantId: tenant,
     workspaceId: workspace,
     topicId,
     sourceWindow: {
-      windowId: 'window-2',
-      startedAt: new Date('2026-06-08T02:00:00.000Z'),
-      endedAt: new Date('2026-06-08T03:00:00.000Z'),
+      windowId: "window-2",
+      startedAt: new Date("2026-06-08T02:00:00.000Z"),
+      endedAt: new Date("2026-06-08T03:00:00.000Z"),
       selectedFeedItemIds: [],
     },
-    headline: 'No reliable signal',
-    executiveSummary: 'No reliable signal in the selected source window.',
+    headline: "No reliable signal",
+    executiveSummary: "No reliable signal in the selected source window.",
     keyPoints: [],
     risksAndUnknowns: [
       {
-        description: 'No evidence was selected',
-        reason: 'insufficient_evidence',
+        description: "No evidence was selected",
+        reason: "insufficient_evidence",
       },
     ],
     sourceHighlights: [],
     citationMap: [],
-    qualityFlags: ['no_signal'],
+    qualityFlags: ["no_signal"],
     confidence: {
-      level: 'none',
+      level: "none",
       score: 0,
-      rationale: 'No selected evidence',
+      rationale: "No selected evidence",
     },
     lineage: {
-      promptVersion: 'summary.prompt.v1',
-      schemaVersion: 'summary.artifact.v1',
-      modelVersion: 'deterministic-local.v1',
-      providerVersion: 'local',
-      rulesVersion: 'summary.rules.v1',
-      evalDatasetVersion: 'summary.eval.v1',
+      promptVersion: "summary.prompt.v1",
+      schemaVersion: "summary.artifact.v1",
+      modelVersion: "deterministic-local.v1",
+      providerVersion: "local",
+      rulesVersion: "summary.rules.v1",
+      evalDatasetVersion: "summary.eval.v1",
     },
     usage: {
       inputTokens: 12,
       outputTokens: 12,
       estimatedCostUsd: 0,
     },
-    noSignalReason: 'No selected evidence',
+    noSignalReason: "No selected evidence",
   });
 
 class FakePrismaSummaryClient implements PrismaSummaryClient {
@@ -335,16 +404,27 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
   private readonly artifacts = new Map<string, PrismaSummaryArtifactRecord>();
   private readonly feedback = new Map<string, PrismaSummaryFeedbackRecord>();
   private readonly policies = new Map<string, PrismaSummaryPolicyRecord>();
-  private readonly briefingJobs = new Map<string, PrismaBriefingJobRecord>();
-  private readonly briefingArtifacts = new Map<string, PrismaBriefingArtifactRecord>();
-  private readonly briefingPolicies = new Map<string, PrismaBriefingPolicyRecord>();
+  private readonly readerSummaryJobs = new Map<
+    string,
+    PrismaReaderSummaryJobRecord
+  >();
+  private readonly readerSummaryArtifacts = new Map<
+    string,
+    PrismaReaderSummaryArtifactRecord
+  >();
+  private readonly readerSummaryPolicies = new Map<
+    string,
+    PrismaReaderSummaryPolicyRecord
+  >();
   readonly outboxEvents = new Map<string, PrismaSummaryOutboxEventRecord>();
 
-  readonly $queryRaw: PrismaSummaryClient['$queryRaw'] = async () => {
-    throw new Error('FakePrismaSummaryClient.$queryRaw is not implemented for this smoke');
+  readonly $queryRaw: PrismaSummaryClient["$queryRaw"] = async () => {
+    throw new Error(
+      "FakePrismaSummaryClient.$queryRaw is not implemented for this smoke",
+    );
   };
 
-  readonly summaryJob: PrismaSummaryClient['summaryJob'] = {
+  readonly summaryJob: PrismaSummaryClient["summaryJob"] = {
     upsert: async (args) => {
       const existing = this.jobs.get(args.where.id);
       const record: PrismaSummaryJobRecord = {
@@ -352,8 +432,13 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         tenantId: existing?.tenantId ?? args.create.tenantId,
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
         topicId: existing?.topicId ?? args.create.topicId,
-        userId: args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
-        subscriptionId: args.update.subscriptionId ?? existing?.subscriptionId ?? args.create.subscriptionId ?? null,
+        userId:
+          args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
+        subscriptionId:
+          args.update.subscriptionId ??
+          existing?.subscriptionId ??
+          args.create.subscriptionId ??
+          null,
         status: args.update.status,
         idempotencyKey: args.update.idempotencyKey,
         requestedAt: args.update.requestedAt,
@@ -370,28 +455,36 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
       return record;
     },
     findFirst: async (args) =>
-      [...this.jobs.values()].find((record) => (
-        record.tenantId === args.where.tenantId &&
-        record.workspaceId === args.where.workspaceId &&
-        (args.where.id === undefined || record.id === args.where.id) &&
-        (args.where.idempotencyKey === undefined || record.idempotencyKey === args.where.idempotencyKey)
-      )) ?? null,
+      [...this.jobs.values()].find(
+        (record) =>
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          (args.where.id === undefined || record.id === args.where.id) &&
+          (args.where.idempotencyKey === undefined ||
+            record.idempotencyKey === args.where.idempotencyKey),
+      ) ?? null,
     findMany: async (args) =>
       [...this.jobs.values()]
-        .filter((record) => (
-          record.status === args.where.status &&
-          (args.where.tenantId === undefined || record.tenantId === args.where.tenantId) &&
-          (args.where.workspaceId === undefined || record.workspaceId === args.where.workspaceId)
-        ))
+        .filter(
+          (record) =>
+            record.status === args.where.status &&
+            (args.where.tenantId === undefined ||
+              record.tenantId === args.where.tenantId) &&
+            (args.where.workspaceId === undefined ||
+              record.workspaceId === args.where.workspaceId),
+        )
         .sort((left, right) => {
-          const requestedDiff = left.requestedAt.getTime() - right.requestedAt.getTime();
+          const requestedDiff =
+            left.requestedAt.getTime() - right.requestedAt.getTime();
 
-          return requestedDiff === 0 ? left.id.localeCompare(right.id) : requestedDiff;
+          return requestedDiff === 0
+            ? left.id.localeCompare(right.id)
+            : requestedDiff;
         })
         .slice(0, args.take),
   };
 
-  readonly summaryArtifact: PrismaSummaryClient['summaryArtifact'] = {
+  readonly summaryArtifact: PrismaSummaryClient["summaryArtifact"] = {
     upsert: async (args) => {
       const existing = this.artifacts.get(args.where.id);
       const record: PrismaSummaryArtifactRecord = {
@@ -399,8 +492,13 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         tenantId: existing?.tenantId ?? args.create.tenantId,
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
         topicId: existing?.topicId ?? args.create.topicId,
-        userId: args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
-        subscriptionId: args.update.subscriptionId ?? existing?.subscriptionId ?? args.create.subscriptionId ?? null,
+        userId:
+          args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
+        subscriptionId:
+          args.update.subscriptionId ??
+          existing?.subscriptionId ??
+          args.create.subscriptionId ??
+          null,
         schemaVersion: existing?.schemaVersion ?? args.create.schemaVersion,
         status: args.update.status,
         modelVersion: args.update.modelVersion,
@@ -418,11 +516,12 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
       return record;
     },
     findFirst: async (args) =>
-      [...this.artifacts.values()].find((record) => (
-        record.tenantId === args.where.tenantId &&
-        record.workspaceId === args.where.workspaceId &&
-        record.id === args.where.id
-      )) ?? null,
+      [...this.artifacts.values()].find(
+        (record) =>
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          record.id === args.where.id,
+      ) ?? null,
     findMany: async (args) =>
       this.filterArtifacts(args.where)
         .sort(compareArtifacts)
@@ -430,7 +529,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
     count: async (args) => this.filterArtifacts(args.where).length,
   };
 
-  readonly summaryFeedback: PrismaSummaryClient['summaryFeedback'] = {
+  readonly summaryFeedback: PrismaSummaryClient["summaryFeedback"] = {
     upsert: async (args) => {
       const key = `${args.where.tenantId_idempotencyKey.tenantId}:${args.where.tenantId_idempotencyKey.idempotencyKey}`;
       const existing = this.feedback.get(key);
@@ -438,7 +537,8 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         id: existing?.id ?? args.create.id,
         tenantId: existing?.tenantId ?? args.create.tenantId,
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
-        summaryArtifactId: existing?.summaryArtifactId ?? args.create.summaryArtifactId,
+        summaryArtifactId:
+          existing?.summaryArtifactId ?? args.create.summaryArtifactId,
         topicId: existing?.topicId ?? args.create.topicId,
         idempotencyKey: existing?.idempotencyKey ?? args.create.idempotencyKey,
         submittedBy: args.update.submittedBy,
@@ -455,11 +555,12 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
       return record;
     },
     findFirst: async (args) =>
-      [...this.feedback.values()].find((record) => (
-        record.tenantId === args.where.tenantId &&
-        record.workspaceId === args.where.workspaceId &&
-        record.idempotencyKey === args.where.idempotencyKey
-      )) ?? null,
+      [...this.feedback.values()].find(
+        (record) =>
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          record.idempotencyKey === args.where.idempotencyKey,
+      ) ?? null,
     findMany: async (args) =>
       this.filterFeedback(args.where)
         .sort(compareFeedback)
@@ -467,13 +568,13 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
     count: async (args) => this.filterFeedback(args.where).length,
   };
 
-  readonly summaryPolicy: PrismaSummaryClient['summaryPolicy'] = {
+  readonly summaryPolicy: PrismaSummaryClient["summaryPolicy"] = {
     upsert: async (args) => {
       const key = [
         args.where.tenantId_workspaceId_topicId.tenantId,
         args.where.tenantId_workspaceId_topicId.workspaceId,
         args.where.tenantId_workspaceId_topicId.topicId,
-      ].join(':');
+      ].join(":");
       const existing = this.policies.get(key);
       const record: PrismaSummaryPolicyRecord = {
         id: existing?.id ?? args.create.id,
@@ -496,25 +597,35 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
       return record;
     },
     findFirst: async (args) =>
-      [...this.policies.values()].find((record) => (
-        record.tenantId === args.where.tenantId &&
-        record.workspaceId === args.where.workspaceId &&
-        record.topicId === args.where.topicId
-      )) ?? null,
+      [...this.policies.values()].find(
+        (record) =>
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          record.topicId === args.where.topicId,
+      ) ?? null,
   };
 
-  readonly briefingJob: PrismaSummaryClient['briefingJob'] = {
+  readonly briefingJob: PrismaSummaryClient["briefingJob"] = {
     upsert: async (args) => {
-      const existing = this.briefingJobs.get(args.where.id);
-      const record: PrismaBriefingJobRecord = {
+      const existing = this.readerSummaryJobs.get(args.where.id);
+      const record: PrismaReaderSummaryJobRecord = {
         id: existing?.id ?? args.create.id,
         tenantId: existing?.tenantId ?? args.create.tenantId,
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
         scopeType: args.update.scopeType,
         scopeKey: args.update.scopeKey,
-        topicId: args.update.topicId ?? existing?.topicId ?? args.create.topicId ?? null,
-        userId: args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
-        subscriptionId: args.update.subscriptionId ?? existing?.subscriptionId ?? args.create.subscriptionId ?? null,
+        topicId:
+          args.update.topicId ??
+          existing?.topicId ??
+          args.create.topicId ??
+          null,
+        userId:
+          args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
+        subscriptionId:
+          args.update.subscriptionId ??
+          existing?.subscriptionId ??
+          args.create.subscriptionId ??
+          null,
         status: args.update.status,
         idempotencyKey: args.update.idempotencyKey,
         requestedAt: args.update.requestedAt,
@@ -526,20 +637,22 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         createdAt: existing?.createdAt ?? clock.now(),
         updatedAt: clock.now(),
       };
-      this.briefingJobs.set(record.id, record);
+      this.readerSummaryJobs.set(record.id, record);
 
       return record;
     },
     findFirst: async (args) =>
-      [...this.briefingJobs.values()].find((record) => (
-        record.tenantId === args.where.tenantId &&
-        record.workspaceId === args.where.workspaceId &&
-        (args.where.id === undefined || record.id === args.where.id) &&
-        (args.where.idempotencyKey === undefined || record.idempotencyKey === args.where.idempotencyKey) &&
-        briefingJobStatusMatches(record.status, args.where.status)
-      )) ?? null,
+      [...this.readerSummaryJobs.values()].find(
+        (record) =>
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          (args.where.id === undefined || record.id === args.where.id) &&
+          (args.where.idempotencyKey === undefined ||
+            record.idempotencyKey === args.where.idempotencyKey) &&
+          readerSummaryJobStatusMatches(record.status, args.where.status),
+      ) ?? null,
     updateMany: async (args) => {
-      const record = this.briefingJobs.get(args.where.id);
+      const record = this.readerSummaryJobs.get(args.where.id);
       if (
         record === undefined ||
         record.tenantId !== args.where.tenantId ||
@@ -549,7 +662,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         return { count: 0 };
       }
 
-      this.briefingJobs.set(record.id, {
+      this.readerSummaryJobs.set(record.id, {
         ...record,
         ...args.data,
         updatedAt: clock.now(),
@@ -558,32 +671,47 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
       return { count: 1 };
     },
     findMany: async (args) =>
-      [...this.briefingJobs.values()]
-        .filter((record) => (
-          record.status === args.where.status &&
-          (args.where.tenantId === undefined || record.tenantId === args.where.tenantId) &&
-          (args.where.workspaceId === undefined || record.workspaceId === args.where.workspaceId)
-        ))
+      [...this.readerSummaryJobs.values()]
+        .filter(
+          (record) =>
+            record.status === args.where.status &&
+            (args.where.tenantId === undefined ||
+              record.tenantId === args.where.tenantId) &&
+            (args.where.workspaceId === undefined ||
+              record.workspaceId === args.where.workspaceId),
+        )
         .sort((left, right) => {
-          const requestedDiff = left.requestedAt.getTime() - right.requestedAt.getTime();
+          const requestedDiff =
+            left.requestedAt.getTime() - right.requestedAt.getTime();
 
-          return requestedDiff === 0 ? left.id.localeCompare(right.id) : requestedDiff;
+          return requestedDiff === 0
+            ? left.id.localeCompare(right.id)
+            : requestedDiff;
         })
         .slice(0, args.take),
   };
 
-  readonly briefingArtifact: PrismaSummaryClient['briefingArtifact'] = {
+  readonly briefingArtifact: PrismaSummaryClient["briefingArtifact"] = {
     upsert: async (args) => {
-      const existing = this.briefingArtifacts.get(args.where.id);
-      const record: PrismaBriefingArtifactRecord = {
+      const existing = this.readerSummaryArtifacts.get(args.where.id);
+      const record: PrismaReaderSummaryArtifactRecord = {
         id: existing?.id ?? args.create.id,
         tenantId: existing?.tenantId ?? args.create.tenantId,
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
         scopeType: args.update.scopeType,
         scopeKey: args.update.scopeKey,
-        topicId: args.update.topicId ?? existing?.topicId ?? args.create.topicId ?? null,
-        userId: args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
-        subscriptionId: args.update.subscriptionId ?? existing?.subscriptionId ?? args.create.subscriptionId ?? null,
+        topicId:
+          args.update.topicId ??
+          existing?.topicId ??
+          args.create.topicId ??
+          null,
+        userId:
+          args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
+        subscriptionId:
+          args.update.subscriptionId ??
+          existing?.subscriptionId ??
+          args.create.subscriptionId ??
+          null,
         schemaVersion: existing?.schemaVersion ?? args.create.schemaVersion,
         status: args.update.status,
         modelVersion: args.update.modelVersion,
@@ -596,38 +724,43 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         createdAt: existing?.createdAt ?? clock.now(),
         updatedAt: clock.now(),
       };
-      this.briefingArtifacts.set(record.id, record);
+      this.readerSummaryArtifacts.set(record.id, record);
 
       return record;
     },
     findFirst: async (args) =>
-      [...this.briefingArtifacts.values()].find((record) => (
-        record.tenantId === args.where.tenantId &&
-        record.workspaceId === args.where.workspaceId &&
-        record.id === args.where.id
-      )) ?? null,
+      [...this.readerSummaryArtifacts.values()].find(
+        (record) =>
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          record.id === args.where.id,
+      ) ?? null,
     findMany: async (args) =>
-      this.filterBriefingArtifacts(args.where)
-        .sort(compareBriefingArtifacts)
+      this.filterReaderSummaryArtifacts(args.where)
+        .sort(compareReaderSummaryArtifacts)
         .slice(args.skip, args.skip + args.take),
-    count: async (args) => this.filterBriefingArtifacts(args.where).length,
+    count: async (args) => this.filterReaderSummaryArtifacts(args.where).length,
   };
 
-  readonly briefingPolicy: PrismaSummaryClient['briefingPolicy'] = {
+  readonly briefingPolicy: PrismaSummaryClient["briefingPolicy"] = {
     upsert: async (args) => {
       const key = [
         args.where.tenantId_workspaceId_scopeKey.tenantId,
         args.where.tenantId_workspaceId_scopeKey.workspaceId,
         args.where.tenantId_workspaceId_scopeKey.scopeKey,
-      ].join(':');
-      const existing = this.briefingPolicies.get(key);
-      const record: PrismaBriefingPolicyRecord = {
+      ].join(":");
+      const existing = this.readerSummaryPolicies.get(key);
+      const record: PrismaReaderSummaryPolicyRecord = {
         id: existing?.id ?? args.create.id,
         tenantId: existing?.tenantId ?? args.create.tenantId,
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
         scopeType: args.update.scopeType,
         scopeKey: args.update.scopeKey,
-        topicId: args.update.topicId ?? existing?.topicId ?? args.create.topicId ?? null,
+        topicId:
+          args.update.topicId ??
+          existing?.topicId ??
+          args.create.topicId ??
+          null,
         language: args.update.language,
         format: args.update.format,
         tone: args.update.tone,
@@ -641,19 +774,20 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         createdAt: existing?.createdAt ?? args.create.createdAt,
         updatedAt: args.update.updatedAt,
       };
-      this.briefingPolicies.set(key, record);
+      this.readerSummaryPolicies.set(key, record);
 
       return record;
     },
     findFirst: async (args) =>
-      [...this.briefingPolicies.values()].find((record) => (
-        record.tenantId === args.where.tenantId &&
-        record.workspaceId === args.where.workspaceId &&
-        record.scopeKey === args.where.scopeKey
-      )) ?? null,
+      [...this.readerSummaryPolicies.values()].find(
+        (record) =>
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          record.scopeKey === args.where.scopeKey,
+      ) ?? null,
   };
 
-  readonly outboxEvent: PrismaSummaryClient['outboxEvent'] = {
+  readonly outboxEvent: PrismaSummaryClient["outboxEvent"] = {
     create: async (args) => {
       const record: PrismaSummaryOutboxEventRecord = {
         id: args.data.id,
@@ -662,7 +796,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         eventType: args.data.eventType,
         schemaVersion: args.data.schemaVersion,
         payload: args.data.payload,
-        status: 'PENDING',
+        status: "PENDING",
         correlationId: args.data.correlationId,
         causationId: args.data.causationId ?? null,
         createdAt: clock.now(),
@@ -680,12 +814,13 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
     readonly topicId?: string;
     readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
   }): PrismaSummaryArtifactRecord[] {
-    return [...this.artifacts.values()].filter((record) => (
-      record.tenantId === where.tenantId &&
-      record.workspaceId === where.workspaceId &&
-      (where.topicId === undefined || record.topicId === where.topicId) &&
-      (where.status === undefined || where.status.in.includes(record.status))
-    ));
+    return [...this.artifacts.values()].filter(
+      (record) =>
+        record.tenantId === where.tenantId &&
+        record.workspaceId === where.workspaceId &&
+        (where.topicId === undefined || record.topicId === where.topicId) &&
+        (where.status === undefined || where.status.in.includes(record.status)),
+    );
   }
 
   private filterFeedback(where: {
@@ -697,53 +832,38 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
       readonly lte?: Date;
     };
   }): PrismaSummaryFeedbackRecord[] {
-    return [...this.feedback.values()].filter((record) => (
-      record.tenantId === where.tenantId &&
-      record.workspaceId === where.workspaceId &&
-      (where.summaryArtifactId === undefined || record.summaryArtifactId === where.summaryArtifactId) &&
-      (where.createdAt?.gte === undefined || record.createdAt.getTime() >= where.createdAt.gte.getTime()) &&
-      (where.createdAt?.lte === undefined || record.createdAt.getTime() <= where.createdAt.lte.getTime())
-    ));
+    return [...this.feedback.values()].filter(
+      (record) =>
+        record.tenantId === where.tenantId &&
+        record.workspaceId === where.workspaceId &&
+        (where.summaryArtifactId === undefined ||
+          record.summaryArtifactId === where.summaryArtifactId) &&
+        (where.createdAt?.gte === undefined ||
+          record.createdAt.getTime() >= where.createdAt.gte.getTime()) &&
+        (where.createdAt?.lte === undefined ||
+          record.createdAt.getTime() <= where.createdAt.lte.getTime()),
+    );
   }
 
-  private filterBriefingArtifacts(where: {
+  private filterReaderSummaryArtifacts(where: {
     readonly tenantId: string;
     readonly workspaceId: string;
     readonly scopeKey?: string;
     readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
-  }): PrismaBriefingArtifactRecord[] {
-    return [...this.briefingArtifacts.values()].filter((record) => (
-      record.tenantId === where.tenantId &&
-      record.workspaceId === where.workspaceId &&
-      (where.scopeKey === undefined || record.scopeKey === where.scopeKey) &&
-      (where.status === undefined || where.status.in.includes(record.status))
-    ));
+  }): PrismaReaderSummaryArtifactRecord[] {
+    return [...this.readerSummaryArtifacts.values()].filter(
+      (record) =>
+        record.tenantId === where.tenantId &&
+        record.workspaceId === where.workspaceId &&
+        (where.scopeKey === undefined || record.scopeKey === where.scopeKey) &&
+        (where.status === undefined || where.status.in.includes(record.status)),
+    );
   }
 }
 
-const compareArtifacts = (left: PrismaSummaryArtifactRecord, right: PrismaSummaryArtifactRecord): number => {
-  const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
-
-  if (createdDiff !== 0) {
-    return createdDiff;
-  }
-
-  return right.id.localeCompare(left.id);
-};
-
-const compareFeedback = (left: PrismaSummaryFeedbackRecord, right: PrismaSummaryFeedbackRecord): number => {
-  const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
-
-  if (createdDiff !== 0) {
-    return createdDiff;
-  }
-
-  return right.id.localeCompare(left.id);
-};
-
-const compareBriefingArtifacts = (
-  left: PrismaBriefingArtifactRecord,
-  right: PrismaBriefingArtifactRecord,
+const compareArtifacts = (
+  left: PrismaSummaryArtifactRecord,
+  right: PrismaSummaryArtifactRecord,
 ): number => {
   const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
 
@@ -754,14 +874,43 @@ const compareBriefingArtifacts = (
   return right.id.localeCompare(left.id);
 };
 
-const briefingJobStatusMatches = (
+const compareFeedback = (
+  left: PrismaSummaryFeedbackRecord,
+  right: PrismaSummaryFeedbackRecord,
+): number => {
+  const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
+
+  if (createdDiff !== 0) {
+    return createdDiff;
+  }
+
+  return right.id.localeCompare(left.id);
+};
+
+const compareReaderSummaryArtifacts = (
+  left: PrismaReaderSummaryArtifactRecord,
+  right: PrismaReaderSummaryArtifactRecord,
+): number => {
+  const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
+
+  if (createdDiff !== 0) {
+    return createdDiff;
+  }
+
+  return right.id.localeCompare(left.id);
+};
+
+const readerSummaryJobStatusMatches = (
   recordStatus: PrismaSummaryStatus,
-  filter: PrismaSummaryStatus | { readonly in: readonly PrismaSummaryStatus[] } | undefined,
+  filter:
+    | PrismaSummaryStatus
+    | { readonly in: readonly PrismaSummaryStatus[] }
+    | undefined,
 ): boolean => {
   if (filter === undefined) {
     return true;
   }
-  if (typeof filter === 'string') {
+  if (typeof filter === "string") {
     return recordStatus === filter;
   }
 

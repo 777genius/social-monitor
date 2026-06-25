@@ -21,14 +21,15 @@ import {
   type WorkspaceId,
 } from "@social-monitor/shared-kernel";
 
-import { GetBriefingJobStatusUseCase } from "../../features/get-briefing-job-status/get-briefing-job-status.use-case";
+import { GetReaderSummaryJobStatusUseCase } from "../../features/get-reader-summary-job-status/get-reader-summary-job-status.use-case";
+import { briefingJobStatusFromReaderSummary } from "./briefing-legacy.mapper";
 import { BriefingJobStatusResponseDto } from "./briefing-job-status.dto";
 
 @ApiTags("briefings")
 @Controller("briefing-jobs")
 export class BriefingJobController {
   constructor(
-    private readonly getBriefingJobStatus: GetBriefingJobStatusUseCase,
+    private readonly getReaderSummaryJobStatus: GetReaderSummaryJobStatusUseCase,
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
@@ -63,17 +64,17 @@ export class BriefingJobController {
       authorizationHeader,
     );
 
-    const result = await this.getBriefingJobStatus.execute({
+    const result = await this.getReaderSummaryJobStatus.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      briefingJobId,
+      readerSummaryJobId: briefingJobId,
     });
 
     if (!result.ok) {
       throw result.error;
     }
 
-    return result.value;
+    return briefingJobStatusFromReaderSummary(result.value);
   }
 
   private async authorizeBriefingJobRead(

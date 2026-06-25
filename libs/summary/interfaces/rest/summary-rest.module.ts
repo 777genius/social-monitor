@@ -10,9 +10,9 @@ import { UsageSummaryQuotaAdapter } from "../../adapters/quota/usage-summary-quo
 import { FeedSummaryFreshnessProbe } from "../../adapters/evidence/feed-summary-freshness.probe";
 import { MeteredSummaryModelAdapter } from "../../adapters/model/metered-summary-model.adapter";
 import { EvaluateSummaryQualityUseCase } from "../../features/evaluate-summary-quality/evaluate-summary-quality.use-case";
-import { ExecuteBriefingJobUseCase } from "../../features/execute-briefing-job/execute-briefing-job.use-case";
+import { ExecuteReaderSummaryJobUseCase } from "../../features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { ExecuteSummaryJobUseCase } from "../../features/execute-summary-job/execute-summary-job.use-case";
-import { GetBriefingJobStatusUseCase } from "../../features/get-briefing-job-status/get-briefing-job-status.use-case";
+import { GetReaderSummaryJobStatusUseCase } from "../../features/get-reader-summary-job-status/get-reader-summary-job-status.use-case";
 import { GetSummaryPolicyUseCase } from "../../features/get-summary-policy/get-summary-policy.use-case";
 import { GetSummaryJobStatusUseCase } from "../../features/get-summary-job-status/get-summary-job-status.use-case";
 import { GetSummaryUseCase } from "../../features/get-summary/get-summary.use-case";
@@ -44,14 +44,14 @@ import { BriefingRequestController } from "./briefing-request.controller";
 import { SummaryFeedbackController } from "./summary-feedback.controller";
 import { SummaryJobController } from "./summary-job.controller";
 import { SummaryPolicyController } from "./summary-policy.controller";
-import { summaryBriefingProviders } from "./summary-briefing.providers";
+import { summaryReaderSummaryProviders } from "./summary-reader-summary.providers";
 import {
-  BRIEFING_ARTIFACT_REPOSITORY,
-  BRIEFING_CONTEXT_PROVIDER,
-  BRIEFING_EVIDENCE_SELECTOR,
-  BRIEFING_JOB_QUEUE,
-  BRIEFING_JOB_REPOSITORY,
-  BRIEFING_POLICY_REPOSITORY,
+  READER_SUMMARY_ARTIFACT_REPOSITORY,
+  READER_SUMMARY_CONTEXT_PROVIDER,
+  READER_SUMMARY_EVIDENCE_SELECTOR,
+  READER_SUMMARY_JOB_QUEUE,
+  READER_SUMMARY_JOB_REPOSITORY,
+  READER_SUMMARY_POLICY_REPOSITORY,
   SUMMARY_ARTIFACT_REPOSITORY,
   SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY,
   SUMMARY_EVIDENCE_SELECTOR,
@@ -62,8 +62,8 @@ import {
   SUMMARY_MEMORY,
   SUMMARY_POLICY_REPOSITORY,
   SUMMARY_USER_SUMMARY_PREFERENCE_READER,
-  briefingOpenAiResponsesModelOptionsProvider,
-  briefingModelProviderModeProvider,
+  readerSummaryOpenAiResponsesModelOptionsProvider,
+  readerSummaryModelProviderModeProvider,
   summaryJobQueueModeProvider,
   summaryMemoryModeProvider,
   summaryModelProviderModeProvider,
@@ -100,13 +100,13 @@ import { SummaryController } from "./summary.controller";
     summaryPersistenceModeProvider,
     summaryJobQueueModeProvider,
     summaryModelProviderModeProvider,
-    briefingModelProviderModeProvider,
-    briefingOpenAiResponsesModelOptionsProvider,
+    readerSummaryModelProviderModeProvider,
+    readerSummaryOpenAiResponsesModelOptionsProvider,
     summaryMemoryModeProvider,
     summaryYoutubeVideoSummaryProviderModeProvider,
     summaryRabbitMqJobQueueOptionsProvider,
     ...summaryRestInfrastructureProviders,
-    ...summaryBriefingProviders,
+    ...summaryReaderSummaryProviders,
     {
       provide: RequestSummaryUseCase,
       useFactory: (
@@ -272,19 +272,19 @@ import { SummaryController } from "./summary.controller";
     },
   ],
   exports: [
-    ExecuteBriefingJobUseCase,
+    ExecuteReaderSummaryJobUseCase,
     EvaluateSummaryQualityUseCase,
     ExecuteSummaryJobUseCase,
-    GetBriefingJobStatusUseCase,
+    GetReaderSummaryJobStatusUseCase,
     GetSummaryJobStatusUseCase,
     ListSummaryFeedbackUseCase,
     ...summaryRestInfrastructureExports,
-    BRIEFING_ARTIFACT_REPOSITORY,
-    BRIEFING_CONTEXT_PROVIDER,
-    BRIEFING_EVIDENCE_SELECTOR,
-    BRIEFING_JOB_QUEUE,
-    BRIEFING_JOB_REPOSITORY,
-    BRIEFING_POLICY_REPOSITORY,
+    READER_SUMMARY_ARTIFACT_REPOSITORY,
+    READER_SUMMARY_CONTEXT_PROVIDER,
+    READER_SUMMARY_EVIDENCE_SELECTOR,
+    READER_SUMMARY_JOB_QUEUE,
+    READER_SUMMARY_JOB_REPOSITORY,
+    READER_SUMMARY_POLICY_REPOSITORY,
     GetSummaryPolicyUseCase,
     RecordSummaryFeedbackUseCase,
     RegenerateSummaryUseCase,

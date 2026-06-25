@@ -104,6 +104,20 @@ const topReads = dailyTrendingSeeds.map(
           ? ['repo_growth', 'daily_github_trending_page']
           : ['repo_growth', 'repo_radar_history'],
     signalScore: Number((0.92 - index * 0.04).toFixed(2)),
+    confidence: {
+      level: index < 2 ? 'high' : index < 5 ? 'medium' : 'low',
+      score: Number((0.88 - index * 0.05).toFixed(2)),
+      rationale:
+        index === 0
+          ? 'GitHub Trending rank is confirmed by a secondary Reddit citation.'
+          : index < 5
+            ? 'GitHub Trending rank provides a current daily signal.'
+            : 'Repo Radar keeps this as historical growth context.',
+    },
+    confirmedProviderKeys:
+      index === 0
+        ? ['github-trending-page', 'reddit']
+        : [index < 5 ? 'github-trending-page' : 'github-repo-radar'],
     providerMetrics: [
       { label: 'Stars', value: stars },
       {

@@ -1,0 +1,400 @@
+import type { SummaryEvidenceSelection } from "../value-objects/summary-evidence-item";
+import { assertReaderSummaryScope } from "../value-objects/reader-summary-scope";
+import type {
+  GeneratedReaderSummaryDraft,
+  ReaderSummaryArtifactProps,
+  ReaderSummaryContent,
+  ReaderSummaryItem,
+} from "./reader-summary-artifact";
+import type { ReaderSummaryCitation } from "./citation";
+
+export const assertReaderSummaryArtifactValid = (
+  props: ReaderSummaryArtifactProps,
+): void => {
+  if (props.schemaVersion !== "reader_summary.artifact.v1") {
+    throw new Error("Unsupported reader summary schema version");
+  }
+
+  if (props.readerSummaryId.trim().length === 0) {
+    throw new Error("Reader summary id must be non-empty");
+  }
+
+  assertReaderSummaryScope(props.scope);
+
+  if (
+    (props.userId ?? "").trim().length === 0 &&
+    props.subscriptionId !== undefined
+  ) {
+    throw new Error("Subscription-scoped reader summary must include user id");
+  }
+
+  if (
+    props.sourceWindow.endedAt.getTime() <=
+    props.sourceWindow.startedAt.getTime()
+  ) {
+    throw new Error("Reader summary source window end must be after start");
+  }
+
+  if (
+    props.sourceWindow.storyClusterIds.length !== props.storyClusters.length
+  ) {
+    throw new Error(
+      "Reader summary source window must reference every story cluster",
+    );
+  }
+
+  const clusterIds = new Set(props.storyClusters.map((cluster) => cluster.id));
+  const citationIds = assertCitations(props.citationMap);
+
+  for (const cluster of props.storyClusters) {
+    if (
+      cluster.id.trim().length === 0 ||
+      cluster.representativeFeedItemId.trim().length === 0
+    ) {
+      throw new Error("Reader summary story cluster ids must be non-empty");
+    }
+
+    if (cluster.topicIds.length === 0 || cluster.providerKeys.length === 0) {
+      throw new Error(
+        "Reader summary story clusters must include topic and provider coverage",
+      );
+    }
+  }
+
+  for (const story of props.topStories) {
+    assertClusterReference(
+      story.storyClusterId,
+      clusterIds,
+      "Reader summary top story",
+    );
+    assertCitedSection(
+      story.title,
+      story.summary,
+      story.citationIds,
+      citationIds,
+      "Reader summary top story",
+    );
+  }
+
+  for (const highlight of props.topicHighlights) {
+    if (highlight.topicId.trim().length === 0) {
+      throw new Error(
+        "Reader summary topic highlight topic id must be non-empty",
+      );
+    }
+    assertCitedSection(
+      highlight.title,
+      highlight.summary,
+      highlight.citationIds,
+      citationIds,
+      "Reader summary topic highlight",
+    );
+  }
+
+  for (const signal of props.repeatedSignals) {
+    assertClusterReference(
+      signal.storyClusterId,
+      clusterIds,
+      "Reader summary repeated signal",
+    );
+    assertCitedSection(
+      signal.title,
+      signal.title,
+      signal.citationIds,
+      citationIds,
+      "Reader summary repeated signal",
+    );
+    if (signal.topicIds.length < 2) {
+      throw new Error(
+        "Reader summary repeated signal must cover at least two topics",
+      );
+    }
+  }
+
+  for (const risk of props.risksAndUnknowns) {
+    for (const citationId of risk.citationIds ?? []) {
+      if (!citationIds.has(citationId)) {
+        throw new Error(
+          "Reader summary risk cites evidence outside citation map",
+        );
+      }
+    }
+  }
+
+  if (props.content !== undefined) {
+    assertReaderSummaryContent(props.content, citationIds);
+  }
+
+  for (const contextArtifact of props.contextArtifacts) {
+    if (
+      contextArtifact.artifactId.trim().length === 0 ||
+      contextArtifact.summaryText.trim().length === 0
+    ) {
+      throw new Error(
+        "Reader summary context artifact must include id and summary text",
+      );
+    }
+    assertReaderSummaryScope(contextArtifact.scope);
+  }
+
+  if (
+    props.topStories.length === 0 &&
+    !props.qualityFlags.includes("no_signal")
+  ) {
+    throw new Error(
+      "No-signal reader summary must include no_signal quality flag",
+    );
+  }
+
+  if (
+    props.qualityFlags.includes("no_signal") &&
+    (props.noSignalReason ?? "").trim().length === 0
+  ) {
+    throw new Error("No-signal reader summary must include a reason");
+  }
+
+  if (
+    props.usage.inputTokens < 0 ||
+    props.usage.outputTokens < 0 ||
+    props.usage.estimatedCostUsd < 0
+  ) {
+    throw new Error("Reader summary usage values must be non-negative");
+  }
+
+  if (props.confidence.score < 0 || props.confidence.score > 1) {
+    throw new Error("Reader summary confidence score must be between 0 and 1");
+  }
+
+  if (
+    props.confidence.level === "none" &&
+    !props.qualityFlags.includes("no_signal")
+  ) {
+    throw new Error(
+      "No-confidence reader summary must include no_signal quality flag",
+    );
+  }
+
+  if (props.confidence.rationale.trim().length === 0) {
+    throw new Error("Reader summary confidence rationale must be non-empty");
+  }
+};
+
+export const assertReaderSummaryCitationsAgainstEvidence = (
+  draft: Pick<
+    GeneratedReaderSummaryDraft,
+    | "citationMap"
+    | "topStories"
+    | "topicHighlights"
+    | "repeatedSignals"
+    | "risksAndUnknowns"
+  >,
+  evidence: SummaryEvidenceSelection,
+): void => {
+  const selectedFeedItemIds = new Set(
+    evidence.sourceWindow.selectedFeedItemIds,
+  );
+  for (const selectedFeedItemId of selectedFeedItemIds) {
+    if (
+      !draft.citationMap.some(
+        (citation) => citation.feedItemId === selectedFeedItemId,
+      )
+    ) {
+      continue;
+    }
+  }
+
+  for (const citation of draft.citationMap) {
+    if (!selectedFeedItemIds.has(citation.feedItemId)) {
+      throw new Error(
+        `Reader summary citation ${citation.citationId} references evidence outside selection`,
+      );
+    }
+  }
+};
+
+const assertReaderSummaryContent = (
+  content: ReaderSummaryContent,
+  knownCitationIds: ReadonlySet<string>,
+): void => {
+  if (
+    content.headline.trim().length === 0 ||
+    content.oneLineTakeaway.trim().length === 0 ||
+    content.bullets.some((bullet) => bullet.trim().length === 0)
+  ) {
+    throw new Error(
+      "Reader summary content must include headline, takeaway and non-empty bullets",
+    );
+  }
+
+  for (const source of content.sourceMix) {
+    if (
+      source.providerKey.trim().length === 0 ||
+      source.itemCount < 0 ||
+      source.citationCount < 0 ||
+      source.storyClusterCount < 0 ||
+      source.crossSourceClusterCount < 0
+    ) {
+      throw new Error(
+        "Reader summary source mix entries must include provider and non-negative counts",
+      );
+    }
+  }
+
+  if (
+    content.qualityState.warnings.some((warning) => warning.trim().length === 0)
+  ) {
+    throw new Error("Reader summary quality state warnings must be non-empty");
+  }
+
+  for (const section of content.topicSections) {
+    if (
+      section.title.trim().length === 0 ||
+      section.insight.trim().length === 0
+    ) {
+      throw new Error(
+        "Reader summary topic sections must include title and insight",
+      );
+    }
+    assertCitationIds(
+      section.citationIds,
+      knownCitationIds,
+      "Reader summary topic section",
+    );
+    for (const item of section.items) {
+      assertReaderItem(item, knownCitationIds, "Reader summary topic item");
+    }
+  }
+
+  for (const item of content.topReads) {
+    assertReaderItem(item, knownCitationIds, "Reader summary top read");
+  }
+
+  for (const action of content.nextActions) {
+    if (action.label.trim().length === 0 || action.reason.trim().length === 0) {
+      throw new Error(
+        "Reader summary next actions must include label and reason",
+      );
+    }
+    assertCitationIds(
+      action.citationIds,
+      knownCitationIds,
+      "Reader summary next action",
+    );
+  }
+};
+
+const assertReaderItem = (
+  item: ReaderSummaryItem,
+  knownCitationIds: ReadonlySet<string>,
+  label: string,
+): void => {
+  if (
+    item.title.trim().length === 0 ||
+    item.providerKey.trim().length === 0 ||
+    item.providerName.trim().length === 0 ||
+    item.reason.trim().length === 0 ||
+    item.whyNow.trim().length === 0 ||
+    item.whyImportant.length === 0 ||
+    item.matchedTopicIds.length === 0 ||
+    item.matchedRules.length === 0 ||
+    !Number.isFinite(item.signalScore) ||
+    item.signalScore < 0 ||
+    item.confirmedProviderKeys.length === 0 ||
+    !Number.isFinite(item.confidence.score) ||
+    item.confidence.score < 0 ||
+    item.confidence.score > 1 ||
+    item.confidence.rationale.trim().length === 0
+  ) {
+    throw new Error(`${label} must include title, provider and reason`);
+  }
+  if (!["low", "medium", "high"].includes(item.confidence.level)) {
+    throw new Error(`${label} confidence level is unsupported`);
+  }
+  if (!["read_source", "watch_repository"].includes(item.primaryActionKind)) {
+    throw new Error(`${label} primary action kind is unsupported`);
+  }
+  for (const metric of item.providerMetrics) {
+    if (metric.label.trim().length === 0 || metric.value.trim().length === 0) {
+      throw new Error(`${label} provider metrics must include label and value`);
+    }
+  }
+  assertCitationIds(item.citationIds, knownCitationIds, label);
+};
+
+const assertCitationIds = (
+  citationIds: readonly string[],
+  knownCitationIds: ReadonlySet<string>,
+  label: string,
+): void => {
+  for (const citationId of citationIds) {
+    if (!knownCitationIds.has(citationId)) {
+      throw new Error(`${label} cites evidence outside citation map`);
+    }
+  }
+};
+
+const assertCitations = (
+  citations: readonly ReaderSummaryCitation[],
+): Set<string> => {
+  const citationIds = new Set<string>();
+
+  for (const citation of citations) {
+    if (citation.citationId.trim().length === 0) {
+      throw new Error("Reader summary citation id must be non-empty");
+    }
+
+    if (citation.feedItemId.trim().length === 0) {
+      throw new Error("Reader summary citation feed item id must be non-empty");
+    }
+
+    if (citation.sourceItemId.trim().length === 0) {
+      throw new Error(
+        "Reader summary citation source item id must be non-empty",
+      );
+    }
+
+    if (citation.providerKey.trim().length === 0) {
+      throw new Error("Reader summary citation provider key must be non-empty");
+    }
+
+    if (citationIds.has(citation.citationId)) {
+      throw new Error("Reader summary citation ids must be unique");
+    }
+
+    citationIds.add(citation.citationId);
+  }
+
+  return citationIds;
+};
+
+const assertCitedSection = (
+  title: string,
+  summary: string,
+  citationIds: readonly string[],
+  knownCitationIds: ReadonlySet<string>,
+  label: string,
+): void => {
+  if (
+    title.trim().length === 0 ||
+    summary.trim().length === 0 ||
+    citationIds.length === 0
+  ) {
+    throw new Error(`${label} must include title, summary and citations`);
+  }
+
+  for (const citationId of citationIds) {
+    if (!knownCitationIds.has(citationId)) {
+      throw new Error(`${label} cites evidence outside citation map`);
+    }
+  }
+};
+
+const assertClusterReference = (
+  storyClusterId: string,
+  knownClusterIds: ReadonlySet<string>,
+  label: string,
+): void => {
+  if (!knownClusterIds.has(storyClusterId)) {
+    throw new Error(`${label} references unknown story cluster`);
+  }
+};

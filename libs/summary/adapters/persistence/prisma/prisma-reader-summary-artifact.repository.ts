@@ -1,0 +1,120 @@
+import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
+
+import {
+  readerSummaryScopeKey,
+  type ReaderSummaryArtifact,
+} from "../../../domain";
+import type {
+  ListReaderSummaryArtifactsQuery,
+  ListReaderSummaryArtifactsResult,
+  ReaderSummaryArtifactRepositoryPort,
+} from "../../../ports";
+import type { PrismaSummaryClient } from "./prisma-summary-client";
+import {
+  readerSummaryArtifactFromPrisma,
+  readerSummaryArtifactStatusToPrisma,
+  readerSummaryQualitySignalsToPrisma,
+  readerSummaryScopeToPrisma,
+  serializeReaderSummaryArtifact,
+} from "./prisma-reader-summary-records";
+import {
+  encodeSummaryCursor,
+  parseSummaryCursor,
+} from "./prisma-summary-records";
+
+const VISIBLE_READER_SUMMARY_STATUSES = ["COMPLETED", "NO_SIGNAL"] as const;
+
+export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtifactRepositoryPort {
+  constructor(private readonly prisma: PrismaSummaryClient) {}
+
+  async save(artifact: ReaderSummaryArtifact): Promise<void> {
+    const snapshot = artifact.toSnapshot();
+    const status = readerSummaryArtifactStatusToPrisma(artifact);
+    const artifactPayload = serializeReaderSummaryArtifact(artifact);
+    const scopeFields = readerSummaryScopeToPrisma(snapshot.scope);
+
+    await withPrismaWriteRetry(() =>
+      this.prisma.briefingArtifact.upsert({
+        where: { id: snapshot.readerSummaryId },
+        update: {
+          ...scopeFields,
+          status,
+          userId: snapshot.userId ?? null,
+          subscriptionId: snapshot.subscriptionId ?? null,
+          modelVersion: snapshot.lineage.modelVersion,
+          promptVersion: snapshot.lineage.promptVersion,
+          headline: snapshot.headline,
+          summaryText: snapshot.executiveSummary,
+          artifactPayload,
+          citations: snapshot.citationMap,
+          qualitySignals: readerSummaryQualitySignalsToPrisma(artifact),
+        },
+        create: {
+          id: snapshot.readerSummaryId,
+          tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId,
+          ...scopeFields,
+          userId: snapshot.userId ?? null,
+          subscriptionId: snapshot.subscriptionId ?? null,
+          status,
+          schemaVersion: 1,
+          modelVersion: snapshot.lineage.modelVersion,
+          promptVersion: snapshot.lineage.promptVersion,
+          headline: snapshot.headline,
+          summaryText: snapshot.executiveSummary,
+          artifactPayload,
+          citations: snapshot.citationMap,
+          qualitySignals: readerSummaryQualitySignalsToPrisma(artifact),
+        },
+      }),
+    );
+  }
+
+  async list(
+    query: ListReaderSummaryArtifactsQuery,
+  ): Promise<ListReaderSummaryArtifactsResult> {
+    const offset = parseSummaryCursor(query.cursor);
+    const where = {
+      tenantId: query.tenantId,
+      workspaceId: query.workspaceId,
+      scopeKey:
+        query.scope === undefined
+          ? undefined
+          : readerSummaryScopeKey(query.scope),
+      status: { in: VISIBLE_READER_SUMMARY_STATUSES },
+    };
+    const [records, total] = await Promise.all([
+      this.prisma.briefingArtifact.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: offset,
+        take: query.limit,
+      }),
+      this.prisma.briefingArtifact.count({ where }),
+    ]);
+    const items = records.map((record) =>
+      readerSummaryArtifactFromPrisma(record),
+    );
+    const nextOffset = offset + items.length;
+
+    return {
+      items,
+      nextCursor:
+        nextOffset < total ? encodeSummaryCursor(nextOffset) : undefined,
+    };
+  }
+
+  async findById(
+    params: Parameters<ReaderSummaryArtifactRepositoryPort["findById"]>[0],
+  ): Promise<ReaderSummaryArtifact | null> {
+    const record = await this.prisma.briefingArtifact.findFirst({
+      where: {
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        id: params.readerSummaryId,
+      },
+    });
+
+    return record === null ? null : readerSummaryArtifactFromPrisma(record);
+  }
+}

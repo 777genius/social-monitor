@@ -5,12 +5,12 @@ import type {
   PrismaSummaryStatus,
   PrismaSummaryJobRecord,
   PrismaSummaryPolicyRecord,
-} from './prisma-summary-records';
+} from "./prisma-summary-records";
 import type {
-  PrismaBriefingArtifactRecord,
-  PrismaBriefingJobRecord,
-  PrismaBriefingPolicyRecord,
-} from './prisma-briefing-records';
+  PrismaReaderSummaryArtifactRecord,
+  PrismaReaderSummaryJobRecord,
+  PrismaReaderSummaryPolicyRecord,
+} from "./prisma-reader-summary-records";
 
 export type PrismaSummaryArtifactMutation = {
   readonly status: PrismaSummaryStatus;
@@ -75,7 +75,7 @@ export type PrismaSummaryPolicyCreate = PrismaSummaryPolicyMutation & {
   readonly createdAt: Date;
 };
 
-export type PrismaBriefingArtifactMutation = {
+export type PrismaReaderSummaryArtifactMutation = {
   readonly status: PrismaSummaryStatus;
   readonly scopeType: string;
   readonly scopeKey: string;
@@ -91,14 +91,15 @@ export type PrismaBriefingArtifactMutation = {
   readonly qualitySignals: Readonly<Record<string, unknown>>;
 };
 
-export type PrismaBriefingArtifactCreate = PrismaBriefingArtifactMutation & {
-  readonly id: string;
-  readonly tenantId: string;
-  readonly workspaceId: string;
-  readonly schemaVersion: number;
-};
+export type PrismaReaderSummaryArtifactCreate =
+  PrismaReaderSummaryArtifactMutation & {
+    readonly id: string;
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly schemaVersion: number;
+  };
 
-export type PrismaBriefingPolicyMutation = {
+export type PrismaReaderSummaryPolicyMutation = {
   readonly scopeType: string;
   readonly scopeKey: string;
   readonly topicId?: string | null;
@@ -115,15 +116,19 @@ export type PrismaBriefingPolicyMutation = {
   readonly updatedAt: Date;
 };
 
-export type PrismaBriefingPolicyCreate = PrismaBriefingPolicyMutation & {
-  readonly id: string;
-  readonly tenantId: string;
-  readonly workspaceId: string;
-  readonly createdAt: Date;
-};
+export type PrismaReaderSummaryPolicyCreate =
+  PrismaReaderSummaryPolicyMutation & {
+    readonly id: string;
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly createdAt: Date;
+  };
 
 export type PrismaSummaryClient = {
-  readonly $queryRaw: <T = unknown>(query: TemplateStringsArray, ...values: readonly unknown[]) => Promise<T>;
+  readonly $queryRaw: <T = unknown>(
+    query: TemplateStringsArray,
+    ...values: readonly unknown[]
+  ) => Promise<T>;
   readonly summaryJob: {
     upsert(args: {
       readonly where: { readonly id: string };
@@ -170,7 +175,10 @@ export type PrismaSummaryClient = {
         readonly workspaceId?: string;
         readonly status: PrismaSummaryStatus;
       };
-      readonly orderBy: readonly [{ readonly requestedAt: 'asc' }, { readonly id: 'asc' }];
+      readonly orderBy: readonly [
+        { readonly requestedAt: "asc" },
+        { readonly id: "asc" },
+      ];
       readonly take: number;
     }): Promise<readonly PrismaSummaryJobRecord[]>;
   };
@@ -194,7 +202,10 @@ export type PrismaSummaryClient = {
         readonly topicId?: string;
         readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
       };
-      readonly orderBy: readonly [{ readonly createdAt: 'desc' }, { readonly id: 'desc' }];
+      readonly orderBy: readonly [
+        { readonly createdAt: "desc" },
+        { readonly id: "desc" },
+      ];
       readonly skip: number;
       readonly take: number;
     }): Promise<readonly PrismaSummaryArtifactRecord[]>;
@@ -235,7 +246,10 @@ export type PrismaSummaryClient = {
           readonly lte?: Date;
         };
       };
-      readonly orderBy: readonly [{ readonly createdAt: 'desc' }, { readonly id: 'desc' }];
+      readonly orderBy: readonly [
+        { readonly createdAt: "desc" },
+        { readonly id: "desc" },
+      ];
       readonly skip: number;
       readonly take: number;
     }): Promise<readonly PrismaSummaryFeedbackRecord[]>;
@@ -303,16 +317,18 @@ export type PrismaSummaryClient = {
         readonly briefingArtifactId?: string | null;
         readonly failureReason?: string | null;
       };
-    }): Promise<PrismaBriefingJobRecord>;
+    }): Promise<PrismaReaderSummaryJobRecord>;
     findFirst(args: {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly id?: string;
         readonly idempotencyKey?: string;
-        readonly status?: PrismaSummaryStatus | { readonly in: readonly PrismaSummaryStatus[] };
+        readonly status?:
+          | PrismaSummaryStatus
+          | { readonly in: readonly PrismaSummaryStatus[] };
       };
-    }): Promise<PrismaBriefingJobRecord | null>;
+    }): Promise<PrismaReaderSummaryJobRecord | null>;
     updateMany(args: {
       readonly where: {
         readonly tenantId: string;
@@ -336,23 +352,26 @@ export type PrismaSummaryClient = {
         readonly workspaceId?: string;
         readonly status: PrismaSummaryStatus;
       };
-      readonly orderBy: readonly [{ readonly requestedAt: 'asc' }, { readonly id: 'asc' }];
+      readonly orderBy: readonly [
+        { readonly requestedAt: "asc" },
+        { readonly id: "asc" },
+      ];
       readonly take: number;
-    }): Promise<readonly PrismaBriefingJobRecord[]>;
+    }): Promise<readonly PrismaReaderSummaryJobRecord[]>;
   };
   readonly briefingArtifact: {
     upsert(args: {
       readonly where: { readonly id: string };
-      readonly update: PrismaBriefingArtifactMutation;
-      readonly create: PrismaBriefingArtifactCreate;
-    }): Promise<PrismaBriefingArtifactRecord>;
+      readonly update: PrismaReaderSummaryArtifactMutation;
+      readonly create: PrismaReaderSummaryArtifactCreate;
+    }): Promise<PrismaReaderSummaryArtifactRecord>;
     findFirst(args: {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly id: string;
       };
-    }): Promise<PrismaBriefingArtifactRecord | null>;
+    }): Promise<PrismaReaderSummaryArtifactRecord | null>;
     findMany(args: {
       readonly where: {
         readonly tenantId: string;
@@ -360,10 +379,13 @@ export type PrismaSummaryClient = {
         readonly scopeKey?: string;
         readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
       };
-      readonly orderBy: readonly [{ readonly createdAt: 'desc' }, { readonly id: 'desc' }];
+      readonly orderBy: readonly [
+        { readonly createdAt: "desc" },
+        { readonly id: "desc" },
+      ];
       readonly skip: number;
       readonly take: number;
-    }): Promise<readonly PrismaBriefingArtifactRecord[]>;
+    }): Promise<readonly PrismaReaderSummaryArtifactRecord[]>;
     count(args: {
       readonly where: {
         readonly tenantId: string;
@@ -382,16 +404,16 @@ export type PrismaSummaryClient = {
           readonly scopeKey: string;
         };
       };
-      readonly update: PrismaBriefingPolicyMutation;
-      readonly create: PrismaBriefingPolicyCreate;
-    }): Promise<PrismaBriefingPolicyRecord>;
+      readonly update: PrismaReaderSummaryPolicyMutation;
+      readonly create: PrismaReaderSummaryPolicyCreate;
+    }): Promise<PrismaReaderSummaryPolicyRecord>;
     findFirst(args: {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly scopeKey: string;
       };
-    }): Promise<PrismaBriefingPolicyRecord | null>;
+    }): Promise<PrismaReaderSummaryPolicyRecord | null>;
   };
   readonly outboxEvent: {
     create(args: {

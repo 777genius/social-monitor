@@ -24,8 +24,9 @@ import {
   type WorkspaceId,
 } from "@social-monitor/shared-kernel";
 
-import type { BriefingScope } from "../../domain";
-import { RequestBriefingUseCase } from "../../features/request-briefing/request-briefing.use-case";
+import type { ReaderSummaryScope } from "../../domain";
+import { RequestReaderSummaryUseCase } from "../../features/request-reader-summary/request-reader-summary.use-case";
+import { requestBriefingResponseFromReaderSummary } from "./briefing-legacy.mapper";
 import {
   RequestBriefingRequestDto,
   RequestBriefingResponseDto,
@@ -35,7 +36,7 @@ import {
 @Controller("briefing-requests")
 export class BriefingRequestController {
   constructor(
-    private readonly requestBriefing: RequestBriefingUseCase,
+    private readonly requestReaderSummary: RequestReaderSummaryUseCase,
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
@@ -44,7 +45,9 @@ export class BriefingRequestController {
   ) {}
 
   @Post()
-  @ApiOperation({ summary: "Request a briefing for a workspace or topic scope." })
+  @ApiOperation({
+    summary: "Request a briefing for a workspace or topic scope.",
+  })
   @ApiHeader({ name: "x-tenant-id", required: true })
   @ApiHeader({ name: "x-workspace-id", required: true })
   @ApiKeyOrWorkspaceRoleAuth({
@@ -76,7 +79,7 @@ export class BriefingRequestController {
       "briefing_requests.create",
     );
 
-    const result = await this.requestBriefing.execute({
+    const result = await this.requestReaderSummary.execute({
       tenantId: tenantScope.tenantId,
       workspaceId: tenantScope.workspaceId,
       scope: normalizeBriefingScope(body.scope),
@@ -90,7 +93,7 @@ export class BriefingRequestController {
       throw result.error;
     }
 
-    return result.value;
+    return requestBriefingResponseFromReaderSummary(result.value);
   }
 
   private async authorizeBriefingWrite(
@@ -124,7 +127,9 @@ export class BriefingRequestController {
   }
 }
 
-const normalizeBriefingScope = (scope: RequestBriefingRequestDto["scope"] | undefined): BriefingScope => {
+const normalizeBriefingScope = (
+  scope: RequestBriefingRequestDto["scope"] | undefined,
+): ReaderSummaryScope => {
   if (scope === undefined) {
     throw new DomainError("validation.failed", "Briefing scope is required");
   }
@@ -137,5 +142,8 @@ const normalizeBriefingScope = (scope: RequestBriefingRequestDto["scope"] | unde
     return { type: "topic", topicId: scope.topicId ?? "" };
   }
 
-  throw new DomainError("validation.failed", "Briefing scope type must be workspace or topic");
+  throw new DomainError(
+    "validation.failed",
+    "Briefing scope type must be workspace or topic",
+  );
 };
