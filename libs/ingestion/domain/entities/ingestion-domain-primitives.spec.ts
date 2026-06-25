@@ -31,6 +31,26 @@ describe("Ingestion DDD primitives", () => {
     ).toThrow("Scan attempt number must not exceed retry budget");
   });
 
+  it("allows zero retry budget for a single no-retry scan attempt", () => {
+    expect(
+      createScanPolicy({
+        scanPolicyId: "scan-policy-no-retry",
+        attemptNumber: 1,
+        retryBudget: 0,
+      }),
+    ).toMatchObject({
+      attemptNumber: 1,
+      retryBudget: 0,
+    });
+    expect(() =>
+      createScanPolicy({
+        scanPolicyId: "scan-policy-no-retry",
+        attemptNumber: 2,
+        retryBudget: 0,
+      }),
+    ).toThrow("Scan attempt number must not exceed retry budget");
+  });
+
   it("validates source provider capability profiles before adapters expose them", () => {
     expect(
       createSourceProviderProfile({

@@ -103,6 +103,7 @@ describe('Request scan flow (e2e)', () => {
         scanJobId: first.body.scanJobId,
         topicId: topic.body.topicId,
         sourceBindingId: binding.body.sourceBindingId,
+        retryBudget: 3,
       },
     });
     expect(

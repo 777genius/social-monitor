@@ -515,6 +515,37 @@ describe('ExecuteScanUseCase', () => {
     expect(failures.deadLetters).toHaveLength(1);
   });
 
+  it('dead letters failed scan without retry when retry budget is zero', async () => {
+    const failures = new FakeScanFailureQueue();
+    const useCase = new ExecuteScanUseCase(
+      new FailingSourceFetcher(),
+      new FakeSourceItemRepository(),
+      new FakeFeedProjection(),
+      new FakeScanAttemptRepository(),
+      new FakeScanCursorRepository(),
+      new FakeScanExecutionReporter(),
+      failures,
+      new FakeScanLease(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute(makeExecuteScanCommand({
+      scanJobId: 'scan-job-zero-retry',
+      retryBudget: 0,
+    }));
+
+    expect(result.ok).toBe(false);
+    expect(failures.retries).toHaveLength(0);
+    expect(failures.deadLetters).toEqual([
+      expect.objectContaining({
+        scanJobId: 'scan-job-zero-retry',
+        attemptNumber: 1,
+        retryBudget: 0,
+      }),
+    ]);
+  });
+
   it('keeps classified provider failure metadata and stops downstream writes', async () => {
     const repository = new FakeSourceItemRepository();
     const projection = new FakeFeedProjection();

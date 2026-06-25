@@ -129,7 +129,7 @@ const parsePayload = (payload: Readonly<Record<string, unknown>>): ExecuteScanQu
   providerKey: readString(payload, 'providerKey'),
   sourceQuery: readSourceQuery(payload, 'sourceQuery'),
   attemptNumber: readOptionalPositiveInteger(payload, 'attemptNumber'),
-  retryBudget: readOptionalPositiveInteger(payload, 'retryBudget'),
+  retryBudget: readOptionalNonNegativeInteger(payload, 'retryBudget'),
   workerId: readOptionalString(payload, 'workerId'),
   leaseTtlSeconds: readOptionalPositiveInteger(payload, 'leaseTtlSeconds'),
 });
@@ -182,6 +182,23 @@ const readOptionalPositiveInteger = (
   }
 
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    throw new Error(`Invalid execute scan command payload field: ${field}`);
+  }
+
+  return value;
+};
+
+const readOptionalNonNegativeInteger = (
+  payload: Readonly<Record<string, unknown>>,
+  field: string,
+): number | undefined => {
+  const value = payload[field];
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
     throw new Error(`Invalid execute scan command payload field: ${field}`);
   }
 

@@ -235,6 +235,7 @@ describe('ScheduleDueScansUseCase', () => {
         scanPolicyId: 'policy-1',
         providerKey: 'fake-source',
         sourceQuery: { mode: 'search', query: 'binding-1' },
+        retryBudget: 3,
         causationId: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
       }),
     ]);
@@ -308,6 +309,7 @@ describe('ScheduleDueScansUseCase', () => {
         scanPolicyId: 'repo-radar-daily-policy',
         providerKey: 'github-repo-radar',
         sourceQuery: { mode: 'search', query: 'agent tooling' },
+        retryBudget: 3,
         causationId: 'scheduled:repo-radar-daily-policy:2026-06-05T12:00:00.000Z',
       }),
     ]);

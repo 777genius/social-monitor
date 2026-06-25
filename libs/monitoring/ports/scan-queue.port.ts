@@ -16,6 +16,7 @@ export type EnqueueScanCommand = {
   readonly scanPolicyId: string;
   readonly providerKey: string;
   readonly sourceQuery: EnqueuedScanSourceQuery;
+  readonly retryBudget: number;
   readonly correlationId: string;
   readonly causationId: string;
 };

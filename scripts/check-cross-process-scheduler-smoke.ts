@@ -144,9 +144,14 @@ async function main(): Promise<void> {
   assert(rabbit.published[0]?.routingKey === 'ingestion.scan.execute', 'scheduler must route scan command');
 
   const publishedPayload = JSON.parse(rabbit.published[0]?.content.toString('utf8') ?? '{}') as {
-    readonly payload?: { readonly providerKey?: string; readonly scanJobId?: string };
+    readonly payload?: {
+      readonly providerKey?: string;
+      readonly retryBudget?: number;
+      readonly scanJobId?: string;
+    };
   };
   assert(publishedPayload.payload?.providerKey === 'rss', 'scheduler must publish provider key from persisted binding');
+  assert(publishedPayload.payload?.retryBudget === 2, 'scheduler must publish retry budget from persisted policy');
 
   const persistedJob = [...prisma.scanJobs.values()][0];
   assert(persistedJob?.status === 'ENQUEUED', `expected persisted enqueued job, got ${persistedJob?.status}`);

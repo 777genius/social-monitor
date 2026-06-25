@@ -81,6 +81,7 @@ export class ScheduleDueScansUseCase {
           scanPolicyId: policySnapshot.id,
           providerKey: bindingSnapshot.providerKey,
           sourceQuery: sourceBindingScanQuery(bindingSnapshot),
+          retryBudget: policySnapshot.retryBudget,
           correlationId: command.correlationId,
           causationId: idempotencyKey,
         };

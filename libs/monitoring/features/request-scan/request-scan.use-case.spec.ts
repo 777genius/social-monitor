@@ -273,6 +273,7 @@ describe('RequestScanUseCase', () => {
         topicId: 'topic-1',
         providerKey: 'fake-source',
         sourceQuery: { mode: 'search', query: 'binding-1' },
+        retryBudget: 3,
       }),
     ]);
   });

@@ -123,6 +123,10 @@ async function main(): Promise<void> {
     `paused source binding must not enqueue scan commands, got ${JSON.stringify(queued[0]?.payload)}`,
   );
   assert(
+    queued[0]?.payload.retryBudget === 2,
+    `scheduled scan command must preserve retry budget, got ${JSON.stringify(queued[0]?.payload)}`,
+  );
+  assert(
     metrics.counterValue('monitoring_scan_scheduler_runs_total', {
       status: 'succeeded',
       worker: 'ingestion-worker',

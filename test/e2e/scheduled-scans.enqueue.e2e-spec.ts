@@ -113,6 +113,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
         topicId: topic.body.topicId,
         sourceBindingId: binding.body.sourceBindingId,
         scanPolicyId: policy.body.id,
+        retryBudget: 3,
       },
     });
 

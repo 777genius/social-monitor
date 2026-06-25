@@ -20,9 +20,9 @@ export const createScanPolicy = (props: {
     throw new Error("Scan policy id must be non-empty");
   }
   assertPositiveInteger(attemptNumber, "Scan attempt number");
-  assertPositiveInteger(retryBudget, "Scan retry budget");
+  assertNonNegativeInteger(retryBudget, "Scan retry budget");
   assertPositiveInteger(leaseTtlSeconds, "Scan lease ttl seconds");
-  if (attemptNumber > retryBudget) {
+  if (attemptNumber > maxAttemptNumberFor(retryBudget)) {
     throw new Error("Scan attempt number must not exceed retry budget");
   }
 
@@ -39,3 +39,12 @@ const assertPositiveInteger = (value: number, label: string): void => {
     throw new Error(`${label} must be a positive integer`);
   }
 };
+
+const assertNonNegativeInteger = (value: number, label: string): void => {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+};
+
+const maxAttemptNumberFor = (retryBudget: number): number =>
+  retryBudget === 0 ? 1 : retryBudget;

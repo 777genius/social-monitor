@@ -53,6 +53,7 @@ export class InMemoryScanQueueAdapter implements ScanQueuePort {
         scanPolicyId: command.scanPolicyId,
         providerKey: command.providerKey,
         sourceQuery: command.sourceQuery,
+        retryBudget: command.retryBudget,
       },
     });
     this.metrics.incrementCounter({

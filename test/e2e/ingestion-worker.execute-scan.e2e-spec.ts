@@ -235,4 +235,48 @@ describe('ingestion worker execute scan command (e2e)', () => {
 
     await moduleRef.close();
   });
+
+  it('accepts zero retry budget and dead-letters failed execution without retry', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [IngestionWorkerModule],
+    })
+      .overrideProvider(RegistrySourceFetcherAdapter)
+      .useValue(new FailingSourceFetcher())
+      .compile();
+
+    await moduleRef.init();
+
+    const handler = moduleRef.get(ExecuteScanCommandHandler);
+    const failureQueue = moduleRef.get(InMemoryScanFailureQueueAdapter);
+    const command = {
+      commandId: 'scan-job-zero-retry',
+      commandType: 'ingestion.scan.execute',
+      schemaVersion: 1,
+      correlationId: 'correlation-zero-retry',
+      causationId: 'scan-request-zero-retry',
+      payload: {
+        tenantId: 'tenant-1',
+        workspaceId: 'workspace-1',
+        scanJobId: 'scan-job-zero-retry',
+        topicId: 'topic-worker-e2e',
+        sourceBindingId: 'source-binding-1',
+        scanPolicyId: 'scan-policy-1',
+        providerKey: 'fake-source',
+        sourceQuery: { mode: 'search', query: 'worker e2e' },
+        retryBudget: 0,
+      },
+    };
+
+    await expect(handler.handle(command)).rejects.toThrow('Provider unavailable');
+    expect(failureQueue.retries()).toEqual([]);
+    expect(failureQueue.deadLettered()).toEqual([
+      expect.objectContaining({
+        scanJobId: 'scan-job-zero-retry',
+        attemptNumber: 1,
+        retryBudget: 0,
+      }),
+    ]);
+
+    await moduleRef.close();
+  });
 });

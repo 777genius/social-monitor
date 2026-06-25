@@ -20,6 +20,7 @@ describe('InMemoryScanQueueAdapter', () => {
       scanPolicyId: 'scan-policy-1',
       providerKey: 'fake-source',
       sourceQuery: { mode: 'search', query: 'queue monitoring' },
+      retryBudget: 0,
       correlationId: 'correlation-1',
       causationId: 'causation-1',
     });
@@ -34,6 +35,7 @@ describe('InMemoryScanQueueAdapter', () => {
           providerKey: 'fake-source',
           topicId: 'topic-queue-metrics',
           sourceQuery: { mode: 'search', query: 'queue monitoring' },
+          retryBudget: 0,
         }),
       }),
     ]);
@@ -65,6 +67,7 @@ describe('InMemoryScanQueueAdapter', () => {
       scanPolicyId: 'scan-policy-1',
       providerKey: 'fake-source',
       sourceQuery: { mode: 'search', query: 'queue monitoring' },
+      retryBudget: 1,
       correlationId: 'correlation-1',
       causationId: 'causation-1',
     };
