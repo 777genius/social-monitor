@@ -1,4 +1,5 @@
 import type {
+  RelevanceFeedbackReason,
   RelevanceFeedbackSignal,
   SourceContentSafetyVerdict,
   UserRelevanceProfile,
@@ -25,6 +26,7 @@ export type RelevanceFeedbackSignalView = {
     readonly feedItemId?: string;
     readonly topicId: string;
     readonly providerKey: string;
+    readonly feedbackReason?: RelevanceFeedbackReason;
   };
   readonly createdAt: string;
 };
@@ -66,6 +68,7 @@ export const presentRelevanceFeedbackSignal = (
       feedItemId: snapshot.target.feedItemId,
       topicId: snapshot.target.topicId,
       providerKey: snapshot.target.providerKey,
+      feedbackReason: snapshot.target.feedbackReason,
     },
     createdAt: snapshot.createdAt.toISOString(),
   };

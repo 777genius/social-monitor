@@ -70,6 +70,34 @@ describe('RecordRelevanceFeedbackUseCase', () => {
     expect(learning.allMemoryProjections()).toHaveLength(1);
   });
 
+  it('persists explicit reader feedback reason into feedback and memory projection targets', async () => {
+    const learning = new FakeRelevanceFeedbackLearningStore();
+    const useCase = new RecordRelevanceFeedbackUseCase(
+      learning,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-22T10:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-feedback-reason'),
+      workspaceId: workspaceId('workspace-feedback-reason'),
+      userId: 'user-feedback-reason',
+      idempotencyKey: 'feedback-reason-1',
+      action: 'less_like_this',
+      rating: 2,
+      target: {
+        topicId: 'topic-ai',
+        providerKey: 'reddit',
+        title: 'Same title but unrelated event',
+        feedbackReason: 'not_same_story',
+      },
+    });
+
+    expect(result.ok && result.value.feedback.target.feedbackReason).toBe('not_same_story');
+    expect(learning.allFeedback()[0]?.toSnapshot().target.feedbackReason).toBe('not_same_story');
+    expect(learning.allMemoryProjections()[0]?.toSnapshot().target.feedbackReason).toBe('not_same_story');
+  });
+
   it('can block a provider from future ranking', async () => {
     const learning = new FakeRelevanceFeedbackLearningStore();
     const useCase = new RecordRelevanceFeedbackUseCase(

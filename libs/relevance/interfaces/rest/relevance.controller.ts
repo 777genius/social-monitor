@@ -201,6 +201,7 @@ export class RelevanceController {
         title: body.title,
         bodyPreview: body.bodyPreview,
         canonicalUrl: body.canonicalUrl,
+        feedbackReason: body.reason,
       },
     });
 

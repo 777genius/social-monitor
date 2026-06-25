@@ -1,6 +1,6 @@
 import { FeedItem } from '@social-monitor/feed/domain';
 import type { FeedItemReadRepositoryPort, ListFeedItemsQuery, ListFeedItemsResult } from '@social-monitor/feed/ports';
-import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { FixedClock, tenantId, workspaceId, type JsonObject } from '@social-monitor/shared-kernel';
 
 import { UserRelevanceProfile, type UserRelevanceProfile as UserRelevanceProfileEntity } from '../../domain';
 import type { UserRelevanceProfileRepositoryPort } from '../../ports';
@@ -121,6 +121,79 @@ describe('RankFeedItemsUseCase', () => {
 
     expect(result.ok).toBe(false);
   });
+
+  it('uses provider engagement metrics so high-signal Reddit posts reach workspace summaries', async () => {
+    const tenant = tenantId('tenant-rank-metrics');
+    const workspace = workspaceId('workspace-rank-metrics');
+    const topicId = 'topic-ai-news';
+    const feedItems = new FakeFeedItemReadRepository();
+    const now = new Date('2026-06-22T10:00:00.000Z');
+
+    addFeedItem(feedItems, {
+      id: 'feed-github-low-signal',
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      providerKey: 'github-trending-page',
+      title: 'Small AI utility library lands on GitHub',
+      bodyPreview: 'A fresh repository appears in the trending page.',
+      canonicalUrl: 'https://github.com/example/small-ai-utility',
+      publishedAt: new Date('2026-06-22T09:59:00.000Z'),
+      providerMetadata: {
+        kind: 'github_trending_page_repository',
+        repository: {
+          totalStars: 12,
+          forksCount: 1,
+          language: 'Dart',
+        },
+        trending: {
+          rank: 25,
+          starsGained: 1,
+          window: 'daily',
+        },
+      },
+    });
+    addFeedItem(feedItems, {
+      id: 'feed-reddit-high-signal',
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      providerKey: 'reddit',
+      title: 'AI engineers discuss production agent reliability',
+      bodyPreview: 'Large thread compares orchestration failures and fixes.',
+      canonicalUrl: 'https://reddit.example/r/MachineLearning/comments/reliability',
+      publishedAt: new Date('2026-06-22T09:40:00.000Z'),
+      providerMetadata: {
+        subreddit: 'MachineLearning',
+        score: 540,
+        numComments: 126,
+        upvoteRatio: 0.91,
+      },
+    });
+
+    const result = await new RankFeedItemsUseCase(
+      feedItems,
+      new FakeUserRelevanceProfileRepository(),
+      new FixedClock(now),
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      limit: 10,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.value.profileApplied).toBe(false);
+    expect(result.value.items[0]).toEqual(expect.objectContaining({
+      feedItemId: 'feed-reddit-high-signal',
+      providerKey: 'reddit',
+    }));
+    expect(result.value.items[0]?.whyImportant).toContain('Strong source engagement signal');
+  });
 });
 
 const addFeedItem = (
@@ -135,6 +208,7 @@ const addFeedItem = (
     readonly bodyPreview: string;
     readonly canonicalUrl: string;
     readonly publishedAt: Date;
+    readonly providerMetadata?: JsonObject;
   },
 ): void => {
   repository.upsert(FeedItem.publish({
@@ -142,6 +216,7 @@ const addFeedItem = (
     sourceItemId: `${props.id}:source`,
     sourceBindingId: `${props.providerKey}:binding`,
     observedAt: new Date(props.publishedAt.getTime() + 60_000),
+    providerMetadata: props.providerMetadata,
   }));
 };
 

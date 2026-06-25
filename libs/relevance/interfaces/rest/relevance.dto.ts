@@ -13,6 +13,8 @@ import {
 import {
   type RelevanceFeedbackAction,
   relevanceFeedbackActions,
+  type RelevanceFeedbackReason,
+  relevanceFeedbackReasons,
   type RelevanceWeight,
 } from '../../domain';
 
@@ -108,6 +110,11 @@ export class RecordRelevanceFeedbackRequestDto {
   @IsOptional()
   @IsString()
   declare readonly canonicalUrl?: string;
+
+  @ApiPropertyOptional({ enum: relevanceFeedbackReasons })
+  @IsOptional()
+  @IsIn(relevanceFeedbackReasons)
+  declare readonly reason?: RelevanceFeedbackReason;
 }
 
 export class UserRelevanceProfileDto {
@@ -271,6 +278,9 @@ export class RelevanceFeedbackTargetDto {
 
   @ApiProperty()
   declare readonly providerKey: string;
+
+  @ApiPropertyOptional({ enum: relevanceFeedbackReasons })
+  declare readonly feedbackReason?: RelevanceFeedbackReason;
 }
 
 export class RelevanceFeedbackSignalDto {

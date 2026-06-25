@@ -10,6 +10,15 @@ export const relevanceFeedbackActions = [
 
 export type RelevanceFeedbackAction = (typeof relevanceFeedbackActions)[number];
 
+export const relevanceFeedbackReasons = [
+  'not_same_story',
+  'duplicate',
+  'low_quality_source',
+  'overrated_provider',
+] as const;
+
+export type RelevanceFeedbackReason = (typeof relevanceFeedbackReasons)[number];
+
 export type RelevanceFeedbackTarget = {
   readonly feedItemId?: string;
   readonly topicId: string;
@@ -17,6 +26,7 @@ export type RelevanceFeedbackTarget = {
   readonly title: string;
   readonly bodyPreview?: string;
   readonly canonicalUrl?: string;
+  readonly feedbackReason?: RelevanceFeedbackReason;
 };
 
 export type RelevanceFeedbackSignalProps = {
@@ -32,6 +42,7 @@ export type RelevanceFeedbackSignalProps = {
 };
 
 const supportedActions = new Set<RelevanceFeedbackAction>(relevanceFeedbackActions);
+const supportedReasons = new Set<RelevanceFeedbackReason>(relevanceFeedbackReasons);
 
 export class RelevanceFeedbackSignal {
   private constructor(private readonly props: RelevanceFeedbackSignalProps) {}
@@ -119,6 +130,7 @@ const normalizeTarget = (target: RelevanceFeedbackTarget): RelevanceFeedbackTarg
     title: target.title.trim(),
     bodyPreview: normalizeOptional(target.bodyPreview),
     canonicalUrl: normalizeOptional(target.canonicalUrl),
+    feedbackReason: normalizeReason(target.feedbackReason),
   };
 };
 
@@ -126,4 +138,18 @@ const normalizeOptional = (value: string | undefined): string | undefined => {
   const normalized = value?.trim();
 
   return normalized === undefined || normalized.length === 0 ? undefined : normalized;
+};
+
+const normalizeReason = (
+  value: RelevanceFeedbackReason | undefined,
+): RelevanceFeedbackReason | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!supportedReasons.has(value)) {
+    throw new Error('Relevance feedback reason is unsupported');
+  }
+
+  return value;
 };

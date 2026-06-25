@@ -31,6 +31,19 @@ const defaultTimeoutMs = 30_000;
 const maxWorkflowIdempotencyKeyLength = 115;
 const maxSourceIdLength = 160;
 
+type RankingFeedbackKind =
+  | 'positive_relevance'
+  | 'provider_overranked'
+  | 'low_quality_source'
+  | 'possible_false_merge'
+  | 'possible_duplicate_missed';
+
+type RankingFeedbackSignal = {
+  readonly kind: RankingFeedbackKind;
+  readonly guidance: string;
+  readonly tags: readonly string[];
+};
+
 export class MemoStackRelevanceMemoryProjector implements RelevanceMemoryProjectorPort {
   private readonly client: MemoStackRelevanceMemoryClient;
 
@@ -50,6 +63,7 @@ export class MemoStackRelevanceMemoryProjector implements RelevanceMemoryProject
 
   async recordRelevanceFeedback(projection: RelevanceMemoryProjection): Promise<RelevanceMemoryProjectionResult> {
     const snapshot = projection.toSnapshot();
+    const rankingFeedback = rankingFeedbackSignal(projection);
     const text = relevanceMemoryText(projection);
     if (text.length === 0) {
       return {
@@ -85,13 +99,16 @@ export class MemoStackRelevanceMemoryProjector implements RelevanceMemoryProject
         action: snapshot.action,
         rating: snapshot.rating,
         learning_direction: snapshot.learningDirection,
+        feedback_reason: snapshot.target.feedbackReason,
+        ranking_feedback_kind: rankingFeedback.kind,
+        ranking_feedback_strength: 'explicit_reader_action',
         memory_scope_external_ref: scope,
       },
       rememberAsFact: true,
       factText: text,
       factKind: 'user_preference',
       factCategory: 'user_preferences',
-      factTags: relevanceTags(projection),
+      factTags: relevanceTags(projection, rankingFeedback),
       factTtlPolicy: 'durable',
       factMemoryScopeExternalRef: scope,
     });
@@ -119,10 +136,12 @@ export const resolveMemoStackRelevanceMemoryProjectorOptions = (
 
 const relevanceMemoryText = (projection: RelevanceMemoryProjection): string => {
   const snapshot = projection.toSnapshot();
+  const rankingFeedback = rankingFeedbackSignal(projection);
 
   return redactSensitiveText([
     `User relevance feedback for topic ${snapshot.target.topicId}: ${snapshot.action} produced ${snapshot.learningDirection} learning.`,
     `Guidance: ${guidanceFor(projection)}.`,
+    `Ranking quality signal: ${rankingFeedback.kind}. ${rankingFeedback.guidance}.`,
     `Provider ${snapshot.target.providerKey} was involved.`,
     `Item title: ${snapshot.target.title}.`,
     snapshot.target.bodyPreview === undefined ? '' : `Item context: ${snapshot.target.bodyPreview}.`,
@@ -141,11 +160,90 @@ const guidanceFor = (projection: RelevanceMemoryProjection): string => {
   return `down-rank similar ${snapshot.target.providerKey} evidence and weakly related topic signals for this user`;
 };
 
-const relevanceTags = (projection: RelevanceMemoryProjection): readonly string[] => {
+const rankingFeedbackSignal = (projection: RelevanceMemoryProjection): RankingFeedbackSignal => {
+  const snapshot = projection.toSnapshot();
+  const text = `${snapshot.target.title} ${snapshot.target.bodyPreview ?? ''}`.toLocaleLowerCase('en-US');
+
+  switch (snapshot.target.feedbackReason) {
+    case 'not_same_story':
+      return {
+        kind: 'possible_false_merge',
+        guidance: 'use this as an explicit eval candidate for over-merged stories',
+        tags: ['ranking-feedback', 'ranking-feedback-false-merge'],
+      };
+    case 'duplicate':
+      return {
+        kind: 'possible_duplicate_missed',
+        guidance: 'use this as an explicit eval candidate for stories that should have been deduplicated',
+        tags: ['ranking-feedback', 'ranking-feedback-duplicate-missed'],
+      };
+    case 'low_quality_source':
+      return {
+        kind: 'low_quality_source',
+        guidance: `treat ${snapshot.target.providerKey} as a low-quality source for this user/topic until stronger evidence appears`,
+        tags: ['ranking-feedback', 'ranking-feedback-low-quality-source'],
+      };
+    case 'overrated_provider':
+      return {
+        kind: 'provider_overranked',
+        guidance: `down-rank similar ${snapshot.target.providerKey} evidence as an explicit provider-overranked signal`,
+        tags: ['ranking-feedback', 'ranking-feedback-provider-overranked'],
+      };
+    case undefined:
+      break;
+  }
+
+  if (snapshot.learningDirection === 'block_provider') {
+    return {
+      kind: 'low_quality_source',
+      guidance: `treat ${snapshot.target.providerKey} as a low-quality source for this user/topic until stronger evidence appears`,
+      tags: ['ranking-feedback', 'ranking-feedback-low-quality-source'],
+    };
+  }
+
+  if (snapshot.learningDirection === 'positive') {
+    return {
+      kind: 'positive_relevance',
+      guidance: 'prefer similar story signals as weak positive ranking feedback',
+      tags: ['ranking-feedback', 'ranking-feedback-positive-relevance'],
+    };
+  }
+
+  if (containsAny(text, ['false merge', 'wrongly merged', 'not the same story', 'unrelated story'])) {
+    return {
+      kind: 'possible_false_merge',
+      guidance: 'use this as a weak eval candidate for over-merged stories',
+      tags: ['ranking-feedback', 'ranking-feedback-false-merge'],
+    };
+  }
+
+  if (containsAny(text, ['duplicate missed', 'same story duplicated', 'split story', 'already covered'])) {
+    return {
+      kind: 'possible_duplicate_missed',
+      guidance: 'use this as a weak eval candidate for stories that should have been deduplicated',
+      tags: ['ranking-feedback', 'ranking-feedback-duplicate-missed'],
+    };
+  }
+
+  return {
+    kind: 'provider_overranked',
+    guidance: `down-rank similar ${snapshot.target.providerKey} evidence as a weak provider-overranked signal`,
+    tags: ['ranking-feedback', 'ranking-feedback-provider-overranked'],
+  };
+};
+
+const containsAny = (value: string, needles: readonly string[]): boolean =>
+  needles.some((needle) => value.includes(needle));
+
+const relevanceTags = (
+  projection: RelevanceMemoryProjection,
+  rankingFeedback: RankingFeedbackSignal,
+): readonly string[] => {
   const snapshot = projection.toSnapshot();
 
   return [
     'relevance-feedback',
+    ...rankingFeedback.tags,
     `direction-${snapshot.learningDirection}`,
     `action-${snapshot.action}`,
     `provider-${snapshot.target.providerKey}`,

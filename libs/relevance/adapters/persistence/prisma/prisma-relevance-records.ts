@@ -6,6 +6,7 @@ import {
   type RelevanceMemoryProjectionProps,
   type RelevanceMemoryProjectionStatus,
   type RelevanceFeedbackAction,
+  type RelevanceFeedbackReason,
   type RelevanceFeedbackSignalProps,
   type RelevanceFeedbackTarget,
   type RelevanceWeight,
@@ -180,6 +181,7 @@ const normalizeTarget = (value: unknown): RelevanceFeedbackTarget => {
     title: requiredString(record.title, 'title'),
     bodyPreview: optionalString(record.bodyPreview),
     canonicalUrl: optionalString(record.canonicalUrl),
+    feedbackReason: optionalFeedbackReason(record.feedbackReason),
   };
 };
 
@@ -193,3 +195,16 @@ const requiredString = (value: unknown, label: string): string => {
 
 const optionalString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+
+const optionalFeedbackReason = (value: unknown): RelevanceFeedbackReason | undefined => {
+  if (
+    value === 'not_same_story' ||
+    value === 'duplicate' ||
+    value === 'low_quality_source' ||
+    value === 'overrated_provider'
+  ) {
+    return value;
+  }
+
+  return undefined;
+};

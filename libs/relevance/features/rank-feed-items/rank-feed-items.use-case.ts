@@ -1,4 +1,8 @@
-import type { FeedItem } from '@social-monitor/feed/domain';
+import {
+  type FeedItem,
+  feedProviderMetricsFromMetadata,
+  feedProviderMetricStrength,
+} from '@social-monitor/feed/domain';
 import type { FeedItemReadRepositoryPort } from '@social-monitor/feed/ports';
 import {
   type Clock,
@@ -111,8 +115,17 @@ const scoreFeedItem = (
   const keywordScore = keywords.reduce((total, keyword) => total + (profile?.keywordWeight(keyword) ?? 0), 0);
   const ageHours = Math.max(0, (now.getTime() - snapshot.publishedAt.getTime()) / 3_600_000);
   const recencyScore = Math.max(0, 0.5 - ageHours / 336);
+  const sourceSignalScore = providerSignalScore(snapshot.providerKey, snapshot.providerMetadata);
   const safetyPenalty = safety.status === 'sanitized' ? -0.25 : 0;
-  const score = roundScore(1 + topicWeight * 0.8 + sourceWeight * 0.7 + keywordScore * 0.35 + recencyScore + safetyPenalty);
+  const score = roundScore(
+    1 +
+      topicWeight * 0.8 +
+      sourceWeight * 0.7 +
+      keywordScore * 0.35 +
+      sourceSignalScore +
+      recencyScore +
+      safetyPenalty,
+  );
 
   return {
     snapshot,
@@ -122,6 +135,7 @@ const scoreFeedItem = (
       topicWeight,
       sourceWeight,
       keywordMatches: keywords.filter((keyword) => (profile?.keywordWeight(keyword) ?? 0) > 0),
+      sourceSignalScore,
       recencyScore,
       safety,
     }),
@@ -202,6 +216,7 @@ const buildWhyImportant = (params: {
   readonly topicWeight: number;
   readonly sourceWeight: number;
   readonly keywordMatches: readonly string[];
+  readonly sourceSignalScore: number;
   readonly recencyScore: number;
   readonly safety: SourceContentSafetyVerdict;
 }): readonly string[] => {
@@ -217,6 +232,10 @@ const buildWhyImportant = (params: {
 
   if (params.keywordMatches.length > 0) {
     reasons.push(`Matches interest keywords: ${params.keywordMatches.slice(0, 3).join(', ')}`);
+  }
+
+  if (params.sourceSignalScore >= 0.35) {
+    reasons.push('Strong source engagement signal');
   }
 
   if (params.recencyScore > 0.25) {
@@ -238,6 +257,19 @@ const compareScoredItems = (left: ScoredFeedItem, right: ScoredFeedItem): number
   }
 
   return right.snapshot.publishedAt.getTime() - left.snapshot.publishedAt.getTime();
+};
+
+const providerSignalScore = (
+  providerKey: string,
+  providerMetadata: ReturnType<FeedItem['toSnapshot']>['providerMetadata'],
+): number => {
+  const metrics = feedProviderMetricsFromMetadata({ providerKey, providerMetadata });
+
+  if (metrics === undefined) {
+    return 0;
+  }
+
+  return Math.min(0.85, feedProviderMetricStrength(metrics) / 10);
 };
 
 const canonicalClusterKey = (canonicalUrl: string, title: string): string => {
