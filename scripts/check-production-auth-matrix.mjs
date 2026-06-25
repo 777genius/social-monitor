@@ -36,6 +36,7 @@ const requiredNegativeCases = new Set([
   'dev-role-header-ignored-in-beta',
   'read-scope-matrix',
   'write-scope-matrix',
+  'reader-surface-tenant-isolation',
 ]);
 
 if (matrix.schemaVersion !== 1) {

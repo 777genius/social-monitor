@@ -67,6 +67,7 @@
         "test/e2e/feed.items.list.e2e-spec.ts",
         "test/e2e/feed.tenant-scope.e2e-spec.ts",
         "test/e2e/read-surfaces.api-key-scope.e2e-spec.ts",
+        "test/e2e/reader-surfaces.tenant-scope.e2e-spec.ts",
         "scripts/check-personalized-relevance-engine-smoke.ts"
       ],
       "operations": [
@@ -84,6 +85,7 @@
         "test/e2e/summary-requests.authorization.e2e-spec.ts",
         "test/e2e/summary-regenerations.authorization.e2e-spec.ts",
         "test/e2e/read-surfaces.api-key-scope.e2e-spec.ts",
+        "test/e2e/reader-surfaces.tenant-scope.e2e-spec.ts",
         "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts",
         "scripts/check-briefing-workflow-smoke.ts"
       ],
@@ -214,6 +216,11 @@
       "caseId": "write-scope-matrix",
       "evidenceFile": "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts",
       "requiredSnippet": "write-monitoring-api-key-read-only-denied"
+    },
+    {
+      "caseId": "reader-surface-tenant-isolation",
+      "evidenceFile": "test/e2e/reader-surfaces.tenant-scope.e2e-spec.ts",
+      "requiredSnippet": "keeps relevance and briefing data isolated by tenant and workspace"
     }
   ]
 }
