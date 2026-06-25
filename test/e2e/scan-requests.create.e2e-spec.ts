@@ -6,12 +6,14 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/in-memory-public-api-audit-log';
 import request from 'supertest';
 
+import { RecordScanExecutionUseCase } from '../../libs/monitoring/features/record-scan-execution/record-scan-execution.use-case';
 import { MonitoringRestModule } from '../../libs/monitoring/interfaces/rest/monitoring-rest.module';
 
 describe('Request scan flow (e2e)', () => {
   let app: INestApplication;
   let queue: InMemoryQueuePublisher;
   let metrics: InMemoryMetricsRecorder;
+  let recordScanExecution: RecordScanExecutionUseCase;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -21,6 +23,7 @@ describe('Request scan flow (e2e)', () => {
     app = moduleRef.createNestApplication();
     queue = moduleRef.get(InMemoryQueuePublisher);
     metrics = moduleRef.get(InMemoryMetricsRecorder);
+    recordScanExecution = moduleRef.get(RecordScanExecutionUseCase);
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -218,5 +221,123 @@ describe('Request scan flow (e2e)', () => {
         },
       }),
     ]);
+  });
+
+  it('returns latest fresh successful scan instead of enqueueing duplicate manual work', async () => {
+    const tenant = tenantId('tenant-scan-fresh-e2e');
+    const workspace = workspaceId('workspace-scan-fresh-e2e');
+    const queueBaseline = queue.all().length;
+
+    const topic = await request(app.getHttpServer())
+      .post('/topics')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-scan-fresh-topic')
+      .set('idempotency-key', 'create-scan-fresh-topic')
+      .send({
+        name: 'Fresh Scan Monitoring',
+        query: 'fresh scan monitoring',
+      })
+      .expect(201);
+
+    const binding = await request(app.getHttpServer())
+      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-scan-fresh-bind')
+      .set('idempotency-key', 'bind-fresh-scan-source')
+      .send({
+        providerKey: 'fake-source',
+        config: { query: 'fresh scan monitoring' },
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-scan-fresh-policy')
+      .set('idempotency-key', 'set-fresh-scan-policy')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(201);
+
+    const first = await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
+      .set('x-request-id', 'request-scan-fresh-first')
+      .set('x-correlation-id', 'correlation-scan-fresh-first')
+      .set('idempotency-key', 'request-scan-fresh-first')
+      .expect(201);
+
+    expect(first.body).toEqual({
+      scanJobId: expect.any(String),
+      status: 'enqueued',
+      created: true,
+    });
+    expect(queue.all()).toHaveLength(queueBaseline + 1);
+
+    const execution = await recordScanExecution.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scanJobId: first.body.scanJobId,
+      completedAt: new Date(),
+      status: 'succeeded',
+    });
+
+    if (!execution.ok) {
+      throw execution.error;
+    }
+
+    const fresh = await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
+      .set('x-request-id', 'request-scan-fresh-skip')
+      .set('x-correlation-id', 'correlation-scan-fresh-skip')
+      .set('idempotency-key', 'request-scan-fresh-skip')
+      .expect(201);
+
+    expect(fresh.body).toEqual({
+      scanJobId: first.body.scanJobId,
+      status: 'succeeded',
+      created: false,
+    });
+    expect(queue.all()).toHaveLength(queueBaseline + 1);
+
+    const listed = await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-requests?limit=10`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(listed.body).toEqual({
+      scanRequests: [
+        expect.objectContaining({
+          scanJobId: first.body.scanJobId,
+          sourceBindingId: binding.body.sourceBindingId,
+          status: 'succeeded',
+          userState: 'content_current',
+        }),
+      ],
+    });
+
+    const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 10,
+    });
+
+    expect(auditRecords.records.filter((record) => record.action === 'scan_request.created')).toHaveLength(1);
   });
 });

@@ -103,6 +103,23 @@ export class RequestScanUseCase {
     }
 
     const policySnapshot = policy.toSnapshot();
+    const now = this.clock.now();
+    const latestJob = await this.scanJobs.findLatestBySourceBinding({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      sourceBindingId: command.sourceBindingId,
+    });
+    if (latestJob !== null && isFreshLatestScan({
+      latestJob,
+      freshnessSeconds: policySnapshot.freshnessSeconds,
+      now,
+    })) {
+      const snapshot = latestJob.toSnapshot();
+      const result = { scanJobId: snapshot.id, status: snapshot.status, created: false };
+      await this.cacheResult(command, result);
+      return ok(result);
+    }
+
     const queueCommand = {
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
@@ -138,7 +155,7 @@ export class RequestScanUseCase {
       sourceBindingId: command.sourceBindingId,
       scanPolicyId: policySnapshot.id,
       idempotencyKey: command.idempotencyKey,
-      requestedAt: this.clock.now(),
+      requestedAt: now,
     });
     const snapshot = job.toSnapshot();
 
@@ -148,7 +165,7 @@ export class RequestScanUseCase {
       eventId: eventId(this.ids.generate()),
       eventType: 'monitoring.scan.requested',
       schemaVersion: 1,
-      occurredAt: this.clock.now(),
+      occurredAt: now,
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       correlationId: correlationId(command.correlationId),
@@ -166,7 +183,7 @@ export class RequestScanUseCase {
     await this.scanQueue.enqueue({
       ...queueCommand,
     });
-    const enqueuedJob = job.markEnqueued({ enqueuedAt: this.clock.now() });
+    const enqueuedJob = job.markEnqueued({ enqueuedAt: now });
     await this.scanJobs.save(enqueuedJob);
 
     const result = { scanJobId: snapshot.id, status: enqueuedJob.toSnapshot().status, created: true };
@@ -184,3 +201,17 @@ export class RequestScanUseCase {
     });
   }
 }
+
+const isFreshLatestScan = (params: {
+  readonly latestJob: ScanJob | null;
+  readonly freshnessSeconds: number;
+  readonly now: Date;
+}): boolean => {
+  const latestSnapshot = params.latestJob?.toSnapshot();
+
+  return (
+    latestSnapshot?.status === 'succeeded' &&
+    latestSnapshot.completedAt !== undefined &&
+    latestSnapshot.completedAt.getTime() + params.freshnessSeconds * 1000 > params.now.getTime()
+  );
+};

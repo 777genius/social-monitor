@@ -1,6 +1,6 @@
 import { DomainError, FixedClock, type IdGenerator, ok, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { ScanPolicy, SourceBinding, type ScanJob } from '../../domain';
+import { ScanJob, ScanPolicy, SourceBinding } from '../../domain';
 import type {
   IdempotencyPort,
   ListSourceBindingsQuery,
@@ -326,6 +326,66 @@ describe('RequestScanUseCase', () => {
       },
     });
     expect(queue.commands).toHaveLength(1);
+  });
+
+  it('returns latest fresh successful scan job instead of enqueueing duplicate manual scan', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    await scanJobs.save(ScanJob.request({
+      id: 'fresh-successful-scan-job',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      scanPolicyId: 'policy-1',
+      idempotencyKey: 'fresh-successful-scan',
+      requestedAt: new Date('2026-06-05T00:05:00.000Z'),
+    }).markEnqueued({
+      enqueuedAt: new Date('2026-06-05T00:05:01.000Z'),
+    }).markSucceeded({
+      completedAt: new Date('2026-06-05T00:06:00.000Z'),
+    }));
+    const queue = new FakeScanQueue();
+    const outbox = new FakeOutbox();
+    const quota = new AllowingScanRequestQuota();
+    const useCase = new RequestScanUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      outbox,
+      new FakeIdempotency(),
+      quota,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:10:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'manual-scan-fresh-skip',
+      correlationId: 'correlation-fresh-skip',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scanJobId: 'fresh-successful-scan-job',
+        status: 'succeeded',
+        created: false,
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect(outbox.events).toHaveLength(0);
+    expect(quota.reservationCount).toBe(0);
+    await expect(scanJobs.findByIdempotencyKey({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      idempotencyKey: 'manual-scan-fresh-skip',
+    })).resolves.toBeNull();
   });
 
   it('rejects new manual scan requests when the source binding is paused', async () => {
