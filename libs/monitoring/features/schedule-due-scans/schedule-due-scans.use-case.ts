@@ -16,6 +16,7 @@ import type {
 } from '../../ports';
 import type { ScheduleDueScansCommand } from './schedule-due-scans.command';
 import type { ScheduleDueScansResult } from './schedule-due-scans.result';
+import { isFreshSuccessfulScan, rateLimitBackoffUntil } from '../shared/scan-freshness-guard';
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
 type ScheduleDueScansFailure = DomainError | Error;
@@ -75,12 +76,17 @@ export class ScheduleDueScansUseCase {
         workspaceId: policySnapshot.workspaceId,
         idempotencyKey,
       });
+      const rateLimitBackoff = rateLimitBackoffUntil({
+        latestJob,
+        backoffSeconds: policySnapshot.intervalSeconds,
+        now,
+      });
 
-      if (activeJob === null && existingJob === null && !isFreshLatestScan({
+      if (activeJob === null && existingJob === null && !isFreshSuccessfulScan({
         latestJob,
         freshnessSeconds: policySnapshot.freshnessSeconds,
         now,
-      })) {
+      }) && rateLimitBackoff === null) {
         const queueCommand = {
           tenantId: policySnapshot.tenantId,
           workspaceId: policySnapshot.workspaceId,
@@ -117,7 +123,11 @@ export class ScheduleDueScansUseCase {
       }
 
       await this.scanPolicies.save(policy.scheduleNext({
-        nextRunAt: new Date(policySnapshot.nextRunAt.getTime() + policySnapshot.intervalSeconds * 1000),
+        nextRunAt: nextRunAtAfterSchedulerDecision({
+          dueAt: policySnapshot.nextRunAt,
+          intervalSeconds: policySnapshot.intervalSeconds,
+          rateLimitBackoff,
+        }),
       }));
     }
 
@@ -133,16 +143,18 @@ export class ScheduleDueScansUseCase {
 const scheduledIdempotencyKey = (scanPolicyId: string, dueAt: Date): string =>
   `scheduled:${scanPolicyId}:${dueAt.toISOString()}`;
 
-const isFreshLatestScan = (params: {
-  readonly latestJob: ScanJob | null;
-  readonly freshnessSeconds: number;
-  readonly now: Date;
-}): boolean => {
-  const latestSnapshot = params.latestJob?.toSnapshot();
+const nextRunAtAfterSchedulerDecision = (params: {
+  readonly dueAt: Date;
+  readonly intervalSeconds: number;
+  readonly rateLimitBackoff: Date | null;
+}): Date => {
+  const intervalNextRunAt = new Date(params.dueAt.getTime() + params.intervalSeconds * 1000);
 
-  return (
-    latestSnapshot?.status === 'succeeded' &&
-    latestSnapshot.completedAt !== undefined &&
-    latestSnapshot.completedAt.getTime() + params.freshnessSeconds * 1000 > params.now.getTime()
-  );
+  if (params.rateLimitBackoff === null) {
+    return intervalNextRunAt;
+  }
+
+  return params.rateLimitBackoff.getTime() > intervalNextRunAt.getTime()
+    ? params.rateLimitBackoff
+    : intervalNextRunAt;
 };

@@ -455,6 +455,72 @@ describe('ScheduleDueScansUseCase', () => {
     });
   });
 
+  it('backs off due policy when latest failed scan was provider rate limited', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    policies.add(ScanPolicy.create({
+      id: 'policy-1',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      intervalSeconds: 300,
+      freshnessSeconds: 900,
+      retryBudget: 3,
+      nextRunAt: new Date('2026-06-05T11:55:00.000Z'),
+      createdAt: new Date('2026-06-05T00:00:00.000Z'),
+    }));
+    const scanJobs = new FakeScanJobs();
+    await scanJobs.save(ScanJob.request({
+      id: 'rate-limited-scan-job',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      scanPolicyId: 'policy-1',
+      idempotencyKey: 'manual-scan-rate-limited',
+      requestedAt: new Date('2026-06-05T11:57:00.000Z'),
+    }).markEnqueued({
+      enqueuedAt: new Date('2026-06-05T11:57:01.000Z'),
+    }).markFailed({
+      completedAt: new Date('2026-06-05T11:58:00.000Z'),
+      failureReason: 'Provider rate limit 429',
+    }));
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-rate-limit-backoff',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 0,
+        skipped: 1,
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect((await policies.findBySourceBinding({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+    }))?.toSnapshot()).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:03:00.000Z'),
+    });
+  });
+
   it('skips due policy without advancing next run when source binding is paused', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding().pause());

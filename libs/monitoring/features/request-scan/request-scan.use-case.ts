@@ -22,6 +22,7 @@ import type {
 } from '../../ports';
 import type { RequestScanCommand } from './request-scan.command';
 import type { RequestScanResult } from './request-scan.result';
+import { isFreshSuccessfulScan } from '../shared/scan-freshness-guard';
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
 type RequestScanFailure = DomainError | Error;
@@ -109,7 +110,7 @@ export class RequestScanUseCase {
       workspaceId: command.workspaceId,
       sourceBindingId: command.sourceBindingId,
     });
-    if (latestJob !== null && isFreshLatestScan({
+    if (latestJob !== null && isFreshSuccessfulScan({
       latestJob,
       freshnessSeconds: policySnapshot.freshnessSeconds,
       now,
@@ -201,17 +202,3 @@ export class RequestScanUseCase {
     });
   }
 }
-
-const isFreshLatestScan = (params: {
-  readonly latestJob: ScanJob | null;
-  readonly freshnessSeconds: number;
-  readonly now: Date;
-}): boolean => {
-  const latestSnapshot = params.latestJob?.toSnapshot();
-
-  return (
-    latestSnapshot?.status === 'succeeded' &&
-    latestSnapshot.completedAt !== undefined &&
-    latestSnapshot.completedAt.getTime() + params.freshnessSeconds * 1000 > params.now.getTime()
-  );
-};
