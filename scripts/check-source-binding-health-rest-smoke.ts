@@ -81,6 +81,14 @@ async function main(): Promise<void> {
       healthBeforePolicy.body.operatorAction === 'create_scan_policy_for_source_binding',
       'source health must return setup action before policy exists',
     );
+    assert(
+      healthBeforePolicy.body.recentWindow.providerHealthState === 'unknown',
+      'source health must expose unknown provider health before scans',
+    );
+    assert(
+      healthBeforePolicy.body.recentWindow.totalScans === 0,
+      'source health recent window must start with no scans',
+    );
 
     await request(app.getHttpServer())
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
@@ -117,6 +125,14 @@ async function main(): Promise<void> {
     assert(
       healthDuringScan.body.latestScan.scanJobId === scan.body.scanJobId,
       'source health must expose latest scan job id',
+    );
+    assert(
+      healthDuringScan.body.recentWindow.activeScans === 1,
+      'source health recent window must count active scans',
+    );
+    assert(
+      healthDuringScan.body.recentWindow.signals.includes('active_scan_in_progress'),
+      'source health recent window must expose active scan signal',
     );
 
     await request(app.getHttpServer())

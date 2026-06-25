@@ -3,10 +3,13 @@ import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel
 import { ScanJob, ScanPolicy, SourceBinding } from '../../domain';
 import type {
   FindScanExecutionAttemptQuery,
+  ListScanJobsBySourceBindingQuery,
+  ListScanJobsBySourceBindingResult,
   ListSourceBindingsQuery,
   ListSourceBindingsResult,
   ScanExecutionAttemptReadPort,
   ScanExecutionAttemptSnapshot,
+  ScanJobHistoryReadPort,
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
   SourceBindingRepositoryPort,
@@ -63,7 +66,7 @@ class FakeScanPolicies implements ScanPolicyRepositoryPort {
   }
 }
 
-class FakeScanJobs implements ScanJobRepositoryPort {
+class FakeScanJobs implements ScanJobRepositoryPort, ScanJobHistoryReadPort {
   private readonly jobsById = new Map<string, ScanJob>();
   private readonly jobsByIdempotencyKey = new Map<string, ScanJob>();
 
@@ -97,7 +100,31 @@ class FakeScanJobs implements ScanJobRepositoryPort {
   async findLatestBySourceBinding(
     params: Parameters<ScanJobRepositoryPort['findLatestBySourceBinding']>[0],
   ): Promise<ScanJob | null> {
-    const jobs = [...this.jobsById.values()]
+    const jobs = this.sortedBySourceBinding(params);
+
+    return jobs[0] ?? null;
+  }
+
+  async listBySourceBinding(
+    query: ListScanJobsBySourceBindingQuery,
+  ): Promise<ListScanJobsBySourceBindingResult> {
+    return {
+      scanJobs: this.sortedBySourceBinding(query).slice(0, query.limit),
+    };
+  }
+
+  async findByIdempotencyKey(
+    params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0],
+  ): Promise<ScanJob | null> {
+    return this.jobsByIdempotencyKey.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
+  }
+
+  private sortedBySourceBinding(params: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly sourceBindingId: string;
+  }): readonly ScanJob[] {
+    return [...this.jobsById.values()]
       .filter((job) => {
         const snapshot = job.toSnapshot();
 
@@ -107,15 +134,13 @@ class FakeScanJobs implements ScanJobRepositoryPort {
           snapshot.sourceBindingId === params.sourceBindingId
         );
       })
-      .sort((left, right) => right.toSnapshot().requestedAt.getTime() - left.toSnapshot().requestedAt.getTime());
+      .sort((left, right) => {
+        const requestedDiff = right.toSnapshot().requestedAt.getTime() - left.toSnapshot().requestedAt.getTime();
 
-    return jobs[0] ?? null;
-  }
-
-  async findByIdempotencyKey(
-    params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0],
-  ): Promise<ScanJob | null> {
-    return this.jobsByIdempotencyKey.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
+        return requestedDiff === 0
+          ? right.toSnapshot().id.localeCompare(left.toSnapshot().id)
+          : requestedDiff;
+      });
   }
 }
 
@@ -186,6 +211,87 @@ describe('GetSourceBindingHealthUseCase', () => {
     expect(await healthState(fresh)).toBe('healthy');
     expect(await healthState(stale)).toBe('stale');
     expect(await healthState(failed)).toBe('degraded');
+  });
+
+  it('summarizes recent provider health window from scan history', async () => {
+    const { useCase, policies, jobs } = await setup();
+    await policies.save(makePolicy());
+    await jobs.save(
+      makeJob(new Date('2026-06-16T00:08:00.000Z'), 'scan-job-3')
+        .markEnqueued({ enqueuedAt: new Date('2026-06-16T00:08:01.000Z') })
+        .markFailed({
+          completedAt: new Date('2026-06-16T00:08:05.000Z'),
+          failureReason: 'Provider rate limit 429',
+        }),
+    );
+    await jobs.save(
+      makeJob(new Date('2026-06-16T00:07:00.000Z'), 'scan-job-2')
+        .markEnqueued({ enqueuedAt: new Date('2026-06-16T00:07:01.000Z') })
+        .markSucceeded({ completedAt: new Date('2026-06-16T00:07:05.000Z') }),
+    );
+    await jobs.save(
+      makeJob(new Date('2026-06-14T00:07:00.000Z'), 'old-scan-job')
+        .markEnqueued({ enqueuedAt: new Date('2026-06-14T00:07:01.000Z') })
+        .markFailed({
+          completedAt: new Date('2026-06-14T00:07:05.000Z'),
+          failureReason: 'Provider unavailable',
+        }),
+    );
+
+    const result = await useCase.execute(baseQuery());
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.recentWindow).toEqual({
+        providerHealthState: 'degraded',
+        windowStartedAt: '2026-06-15T00:10:00.000Z',
+        windowEndedAt: '2026-06-16T00:10:00.000Z',
+        totalScans: 2,
+        succeededScans: 1,
+        failedScans: 1,
+        activeScans: 0,
+        rateLimitedScans: 1,
+        providerUnavailableScans: 0,
+        consecutiveFailures: 1,
+        lastSucceededAt: '2026-06-16T00:07:05.000Z',
+        lastFailedAt: '2026-06-16T00:08:05.000Z',
+        operatorAction: 'inspect_recent_scan_failures_and_rate_limits',
+        signals: ['recent_success', 'recent_failure', 'rate_limited'],
+      });
+    }
+  });
+
+  it('marks provider health down after repeated recent provider failures', async () => {
+    const { useCase, policies, jobs } = await setup();
+    await policies.save(makePolicy());
+    for (const [index, requestedAt] of [
+      '2026-06-16T00:08:00.000Z',
+      '2026-06-16T00:07:00.000Z',
+      '2026-06-16T00:06:00.000Z',
+    ].entries()) {
+      await jobs.save(
+        makeJob(new Date(requestedAt), `scan-job-failed-${index}`)
+          .markEnqueued({ enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000) })
+          .markFailed({
+            completedAt: new Date(new Date(requestedAt).getTime() + 5_000),
+            failureReason: 'Provider unavailable',
+          }),
+      );
+    }
+
+    const result = await useCase.execute(baseQuery());
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.recentWindow).toEqual(expect.objectContaining({
+        providerHealthState: 'down',
+        failedScans: 3,
+        providerUnavailableScans: 3,
+        consecutiveFailures: 3,
+        operatorAction: 'pause_or_backoff_provider_until_recovery',
+        signals: ['recent_failure', 'provider_unavailable', 'consecutive_failures'],
+      }));
+    }
   });
 });
 
@@ -263,13 +369,16 @@ const makePolicy = () =>
     createdAt: new Date('2026-06-16T00:00:00.000Z'),
   });
 
-const makeJob = (requestedAt: Date = new Date('2026-06-16T00:00:00.000Z')) =>
+const makeJob = (
+  requestedAt: Date = new Date('2026-06-16T00:00:00.000Z'),
+  id: string = 'scan-job-1',
+) =>
   ScanJob.request({
-    id: 'scan-job-1',
+    id,
     tenantId: tenant,
     workspaceId: workspace,
     sourceBindingId: 'binding-1',
     scanPolicyId: 'policy-1',
-    idempotencyKey: 'scan-1',
+    idempotencyKey: `idempotency-${id}`,
     requestedAt,
   });

@@ -2837,6 +2837,80 @@
         ],
         "type": "object"
       },
+      "SourceBindingHealthRecentWindowResponseDto": {
+        "properties": {
+          "activeScans": {
+            "type": "number"
+          },
+          "consecutiveFailures": {
+            "type": "number"
+          },
+          "failedScans": {
+            "type": "number"
+          },
+          "lastFailedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastSucceededAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "providerHealthState": {
+            "enum": [
+              "unknown",
+              "operational",
+              "degraded",
+              "down"
+            ],
+            "type": "string"
+          },
+          "providerUnavailableScans": {
+            "type": "number"
+          },
+          "rateLimitedScans": {
+            "type": "number"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "succeededScans": {
+            "type": "number"
+          },
+          "totalScans": {
+            "type": "number"
+          },
+          "windowEndedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "windowStartedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "providerHealthState",
+          "windowStartedAt",
+          "windowEndedAt",
+          "totalScans",
+          "succeededScans",
+          "failedScans",
+          "activeScans",
+          "rateLimitedScans",
+          "providerUnavailableScans",
+          "consecutiveFailures",
+          "operatorAction",
+          "signals"
+        ],
+        "type": "object"
+      },
       "SourceBindingHealthResponseDto": {
         "properties": {
           "evaluatedAt": {
@@ -2863,6 +2937,9 @@
           },
           "operatorAction": {
             "type": "string"
+          },
+          "recentWindow": {
+            "$ref": "#/components/schemas/SourceBindingHealthRecentWindowResponseDto"
           },
           "scanPolicy": {
             "$ref": "#/components/schemas/SourceBindingHealthPolicyResponseDto"

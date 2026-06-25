@@ -6,6 +6,7 @@ import 'package:json_annotation/json_annotation.dart';
 
 import 'source_binding_health_freshness_response_dto.dart';
 import 'source_binding_health_policy_response_dto.dart';
+import 'source_binding_health_recent_window_response_dto.dart';
 import 'source_binding_health_response_dto_health_state_health_state.dart';
 import 'source_binding_health_scan_response_dto.dart';
 import 'source_binding_response_dto.dart';
@@ -21,6 +22,7 @@ class SourceBindingHealthResponseDto {
     required this.sourceBinding,
     this.freshness,
     this.latestScan,
+    this.recentWindow,
     this.scanPolicy,
   });
 
@@ -32,6 +34,7 @@ class SourceBindingHealthResponseDto {
   final SourceBindingHealthResponseDtoHealthStateHealthState healthState;
   final SourceBindingHealthScanResponseDto? latestScan;
   final String operatorAction;
+  final SourceBindingHealthRecentWindowResponseDto? recentWindow;
   final SourceBindingHealthPolicyResponseDto? scanPolicy;
   final SourceBindingResponseDto sourceBinding;
 

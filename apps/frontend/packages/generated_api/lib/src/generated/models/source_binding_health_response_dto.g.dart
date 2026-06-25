@@ -27,6 +27,11 @@ SourceBindingHealthResponseDto _$SourceBindingHealthResponseDtoFromJson(
       : SourceBindingHealthScanResponseDto.fromJson(
           json['latestScan'] as Map<String, dynamic>,
         ),
+  recentWindow: json['recentWindow'] == null
+      ? null
+      : SourceBindingHealthRecentWindowResponseDto.fromJson(
+          json['recentWindow'] as Map<String, dynamic>,
+        ),
   scanPolicy: json['scanPolicy'] == null
       ? null
       : SourceBindingHealthPolicyResponseDto.fromJson(
@@ -42,6 +47,7 @@ Map<String, dynamic> _$SourceBindingHealthResponseDtoToJson(
   'healthState': instance.healthState,
   'latestScan': instance.latestScan,
   'operatorAction': instance.operatorAction,
+  'recentWindow': instance.recentWindow,
   'scanPolicy': instance.scanPolicy,
   'sourceBinding': instance.sourceBinding,
 };

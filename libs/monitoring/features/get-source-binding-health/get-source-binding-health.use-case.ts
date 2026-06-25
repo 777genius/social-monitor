@@ -1,7 +1,12 @@
 import { DomainError, err, ok, type Clock, type Result } from '@social-monitor/shared-kernel';
 
 import type {
+  ScanJob,
+  ScanJobStatus,
+} from '../../domain';
+import type {
   ScanExecutionAttemptReadPort,
+  ScanJobHistoryReadPort,
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
   SourceBindingRepositoryPort,
@@ -13,16 +18,20 @@ import type { GetSourceBindingHealthQuery } from './get-source-binding-health.qu
 import type {
   GetSourceBindingHealthResult,
   SourceBindingHealthFreshnessView,
+  SourceBindingHealthRecentWindowView,
   SourceBindingHealthState,
+  SourceBindingProviderHealthState,
 } from './get-source-binding-health.result';
 
 type GetSourceBindingHealthFailure = DomainError;
+const recentScanWindowMs = 24 * 60 * 60 * 1000;
+const recentScanLimit = 50;
 
 export class GetSourceBindingHealthUseCase {
   constructor(
     private readonly sourceBindings: SourceBindingRepositoryPort,
     private readonly scanPolicies: ScanPolicyRepositoryPort,
-    private readonly scanJobs: ScanJobRepositoryPort,
+    private readonly scanJobs: ScanJobRepositoryPort & ScanJobHistoryReadPort,
     private readonly scanExecutionAttempts: ScanExecutionAttemptReadPort,
     private readonly clock: Clock,
   ) {}
@@ -64,6 +73,12 @@ export class GetSourceBindingHealthUseCase {
         sourceBindingId: query.sourceBindingId,
       }),
     ]);
+    const recentScanJobs = await this.scanJobs.listBySourceBinding({
+      tenantId: query.tenantId,
+      workspaceId: query.workspaceId,
+      sourceBindingId: query.sourceBindingId,
+      limit: recentScanLimit,
+    });
     const latestScanSnapshot = latestScanJob?.toSnapshot();
     const latestAttempt = latestScanSnapshot === undefined
       ? null
@@ -130,6 +145,10 @@ export class GetSourceBindingHealthUseCase {
             freshnessSeconds: scanPolicy.toSnapshot().freshnessSeconds,
             now,
           }),
+      recentWindow: buildRecentWindow({
+        jobs: recentScanJobs.scanJobs,
+        now,
+      }),
     });
   }
 }
@@ -179,6 +198,168 @@ const buildFreshness = (params: {
     freshnessDeadlineAt: new Date(freshnessDeadlineMs).toISOString(),
     staleBySeconds: staleBySeconds === 0 ? undefined : staleBySeconds,
   };
+};
+
+const buildRecentWindow = (params: {
+  readonly jobs: readonly ScanJob[];
+  readonly now: Date;
+}): SourceBindingHealthRecentWindowView => {
+  const windowStartedAt = new Date(params.now.getTime() - recentScanWindowMs);
+  const recentJobs = params.jobs
+    .map((job) => job.toSnapshot())
+    .filter((job) => job.requestedAt.getTime() >= windowStartedAt.getTime());
+  const failedJobs = recentJobs.filter((job) => job.status === 'failed');
+  const succeededJobs = recentJobs.filter((job) => job.status === 'succeeded');
+  const activeJobs = recentJobs.filter((job) => job.status === 'requested' || job.status === 'enqueued');
+  const failureClasses = failedJobs.map((job) =>
+    buildScanStatusView({
+      status: job.status,
+      failureReason: job.failureReason,
+    }).failureClass,
+  );
+  const rateLimitedScans = failureClasses.filter((failureClass) => failureClass === 'provider_rate_limited').length;
+  const providerUnavailableScans =
+    failureClasses.filter((failureClass) => failureClass === 'provider_unavailable').length;
+  const consecutiveFailures = countConsecutiveCompletedFailures(recentJobs);
+  const providerHealthState = providerHealthStateFor({
+    totalScans: recentJobs.length,
+    failedScans: failedJobs.length,
+    succeededScans: succeededJobs.length,
+    activeScans: activeJobs.length,
+    consecutiveFailures,
+    providerUnavailableScans,
+  });
+
+  return {
+    providerHealthState,
+    windowStartedAt: windowStartedAt.toISOString(),
+    windowEndedAt: params.now.toISOString(),
+    totalScans: recentJobs.length,
+    succeededScans: succeededJobs.length,
+    failedScans: failedJobs.length,
+    activeScans: activeJobs.length,
+    rateLimitedScans,
+    providerUnavailableScans,
+    consecutiveFailures,
+    lastSucceededAt: latestCompletedAt(succeededJobs),
+    lastFailedAt: latestCompletedAt(failedJobs),
+    operatorAction: operatorActionForProviderHealth(providerHealthState),
+    signals: recentWindowSignals({
+      totalScans: recentJobs.length,
+      succeededScans: succeededJobs.length,
+      failedScans: failedJobs.length,
+      activeScans: activeJobs.length,
+      rateLimitedScans,
+      providerUnavailableScans,
+      consecutiveFailures,
+    }),
+  };
+};
+
+const countConsecutiveCompletedFailures = (
+  jobs: readonly { readonly status: ScanJobStatus }[],
+): number => {
+  let count = 0;
+
+  for (const job of jobs) {
+    if (job.status === 'requested' || job.status === 'enqueued') {
+      continue;
+    }
+
+    if (job.status !== 'failed') {
+      break;
+    }
+
+    count += 1;
+  }
+
+  return count;
+};
+
+const latestCompletedAt = (
+  jobs: readonly { readonly completedAt?: Date }[],
+): string | undefined =>
+  jobs
+    .map((job) => job.completedAt)
+    .find((completedAt): completedAt is Date => completedAt !== undefined)
+    ?.toISOString();
+
+const providerHealthStateFor = (params: {
+  readonly totalScans: number;
+  readonly failedScans: number;
+  readonly succeededScans: number;
+  readonly activeScans: number;
+  readonly consecutiveFailures: number;
+  readonly providerUnavailableScans: number;
+}): SourceBindingProviderHealthState => {
+  if (params.totalScans === 0) {
+    return 'unknown';
+  }
+
+  if (params.consecutiveFailures >= 3 || params.providerUnavailableScans >= 3) {
+    return 'down';
+  }
+
+  if (params.failedScans > 0) {
+    return 'degraded';
+  }
+
+  if (params.succeededScans > 0) {
+    return 'operational';
+  }
+
+  return params.activeScans > 0 ? 'unknown' : 'degraded';
+};
+
+const operatorActionForProviderHealth = (
+  state: SourceBindingProviderHealthState,
+): string => {
+  switch (state) {
+    case 'unknown':
+      return 'wait_for_next_scan_or_trigger_manual_scan';
+    case 'operational':
+      return 'no_action_required';
+    case 'degraded':
+      return 'inspect_recent_scan_failures_and_rate_limits';
+    case 'down':
+      return 'pause_or_backoff_provider_until_recovery';
+  }
+};
+
+const recentWindowSignals = (params: {
+  readonly totalScans: number;
+  readonly succeededScans: number;
+  readonly failedScans: number;
+  readonly activeScans: number;
+  readonly rateLimitedScans: number;
+  readonly providerUnavailableScans: number;
+  readonly consecutiveFailures: number;
+}): readonly string[] => {
+  const signals: string[] = [];
+
+  if (params.totalScans === 0) {
+    signals.push('no_recent_scans');
+  }
+  if (params.succeededScans > 0) {
+    signals.push('recent_success');
+  }
+  if (params.failedScans > 0) {
+    signals.push('recent_failure');
+  }
+  if (params.activeScans > 0) {
+    signals.push('active_scan_in_progress');
+  }
+  if (params.rateLimitedScans > 0) {
+    signals.push('rate_limited');
+  }
+  if (params.providerUnavailableScans > 0) {
+    signals.push('provider_unavailable');
+  }
+  if (params.consecutiveFailures >= 2) {
+    signals.push('consecutive_failures');
+  }
+
+  return signals;
 };
 
 const operatorActionForHealth = (state: SourceBindingHealthState): string => {

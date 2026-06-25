@@ -45,6 +45,29 @@ export type SourceBindingHealthFreshnessView = {
   readonly staleBySeconds?: number;
 };
 
+export type SourceBindingProviderHealthState =
+  | 'unknown'
+  | 'operational'
+  | 'degraded'
+  | 'down';
+
+export type SourceBindingHealthRecentWindowView = {
+  readonly providerHealthState: SourceBindingProviderHealthState;
+  readonly windowStartedAt: string;
+  readonly windowEndedAt: string;
+  readonly totalScans: number;
+  readonly succeededScans: number;
+  readonly failedScans: number;
+  readonly activeScans: number;
+  readonly rateLimitedScans: number;
+  readonly providerUnavailableScans: number;
+  readonly consecutiveFailures: number;
+  readonly lastSucceededAt?: string;
+  readonly lastFailedAt?: string;
+  readonly operatorAction: string;
+  readonly signals: readonly string[];
+};
+
 export type SourceBindingHealthPolicyView = ScanPolicyView & {
   readonly isDue: boolean;
 };
@@ -57,4 +80,5 @@ export type GetSourceBindingHealthResult = {
   readonly scanPolicy?: SourceBindingHealthPolicyView;
   readonly latestScan?: SourceBindingHealthScanView;
   readonly freshness?: SourceBindingHealthFreshnessView;
+  readonly recentWindow?: SourceBindingHealthRecentWindowView;
 };

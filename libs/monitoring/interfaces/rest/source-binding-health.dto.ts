@@ -5,8 +5,10 @@ import type {
   SourceBindingHealthAttemptView,
   SourceBindingHealthFreshnessView,
   SourceBindingHealthPolicyView,
+  SourceBindingHealthRecentWindowView,
   SourceBindingHealthScanView,
   SourceBindingHealthState,
+  SourceBindingProviderHealthState,
 } from '../../features/get-source-binding-health/get-source-binding-health.result';
 import type { ScanStatusFailureClass, ScanStatusUserState } from '../../features/shared/scan-status-view';
 import type { ScanJobStatus } from '../../domain';
@@ -37,6 +39,12 @@ const scanStatusFailureClassValues = [
   'worker_conflict',
   'system_failure',
 ] as const satisfies readonly ScanStatusFailureClass[];
+const sourceBindingProviderHealthStateValues = [
+  'unknown',
+  'operational',
+  'degraded',
+  'down',
+] as const satisfies readonly SourceBindingProviderHealthState[];
 
 export class SourceBindingHealthAttemptResponseDto implements SourceBindingHealthAttemptView {
   @ApiProperty()
@@ -113,6 +121,50 @@ export class SourceBindingHealthFreshnessResponseDto implements SourceBindingHea
   declare readonly staleBySeconds?: number;
 }
 
+export class SourceBindingHealthRecentWindowResponseDto implements SourceBindingHealthRecentWindowView {
+  @ApiProperty({ enum: sourceBindingProviderHealthStateValues })
+  declare readonly providerHealthState: SourceBindingProviderHealthState;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly windowStartedAt: string;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly windowEndedAt: string;
+
+  @ApiProperty()
+  declare readonly totalScans: number;
+
+  @ApiProperty()
+  declare readonly succeededScans: number;
+
+  @ApiProperty()
+  declare readonly failedScans: number;
+
+  @ApiProperty()
+  declare readonly activeScans: number;
+
+  @ApiProperty()
+  declare readonly rateLimitedScans: number;
+
+  @ApiProperty()
+  declare readonly providerUnavailableScans: number;
+
+  @ApiProperty()
+  declare readonly consecutiveFailures: number;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly lastSucceededAt?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly lastFailedAt?: string;
+
+  @ApiProperty()
+  declare readonly operatorAction: string;
+
+  @ApiProperty({ type: String, isArray: true })
+  declare readonly signals: readonly string[];
+}
+
 export class SourceBindingHealthPolicyResponseDto implements SourceBindingHealthPolicyView {
   @ApiProperty()
   declare readonly id: string;
@@ -166,4 +218,7 @@ export class SourceBindingHealthResponseDto implements GetSourceBindingHealthRes
 
   @ApiPropertyOptional({ type: () => SourceBindingHealthFreshnessResponseDto })
   declare readonly freshness?: SourceBindingHealthFreshnessResponseDto;
+
+  @ApiPropertyOptional({ type: () => SourceBindingHealthRecentWindowResponseDto })
+  declare readonly recentWindow?: SourceBindingHealthRecentWindowResponseDto;
 }
