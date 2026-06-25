@@ -46,8 +46,8 @@ export const buildWhyNow = (
     uniqueNonEmpty(evidence.map((item) => item.topicId)).length;
   const coverage =
     providers.length > 1
-      ? `Current briefing window has cross-source coverage from ${providers.slice(0, 3).join(', ')}`
-      : `Current briefing window has ${providers[0] ?? 'source'} coverage`;
+      ? `Current summary window has cross-source coverage from ${providers.slice(0, 3).join(', ')}`
+      : `Current summary window has ${providers[0] ?? 'source'} coverage`;
   const duplicateText =
     duplicateCount === 0
       ? ''

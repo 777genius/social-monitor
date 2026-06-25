@@ -101,6 +101,50 @@ describe('RelevanceBriefingEvidenceSelector', () => {
     expect(selection.sourceWindow.selectedFeedItemIds).toContain('feed-issues');
     expect(storyRankingMetrics.recorded[0]?.rankingPolicyVersion).toBe('story_ranking_v1');
   });
+
+  it('treats GitHub provider variants as one source family before adding lower-ranked sources', async () => {
+    const rankedItems = [
+      rankedItem({ feedItemId: 'feed-github-trending', providerKey: 'github-trending-page', rank: 1, score: 3.0 }),
+      rankedItem({ feedItemId: 'feed-github-repo', providerKey: 'github-repo-radar', rank: 2, score: 2.9 }),
+      rankedItem({ feedItemId: 'feed-github-issues', providerKey: 'github-issues', rank: 3, score: 2.8 }),
+      rankedItem({ feedItemId: 'feed-reddit', providerKey: 'reddit', rank: 4, score: 2.2 }),
+      rankedItem({ feedItemId: 'feed-hn', providerKey: 'hacker-news', rank: 5, score: 2.1 }),
+      rankedItem({ feedItemId: 'feed-rss', providerKey: 'rss', rank: 6, score: 2.0 }),
+    ];
+    const rankFeedItems = {
+      execute: jest.fn(async (command: RankFeedItemsCommand) =>
+        ok({
+          generatedAt: clock.now().toISOString(),
+          profileApplied: false,
+          items: rankedItems.slice(0, command.limit),
+        }),
+      ),
+    } as unknown as RankFeedItemsUseCase;
+    const feedItems: FeedItemReadRepositoryPort = {
+      list: jest.fn(),
+      findById: jest.fn(async () => null),
+    };
+    const selector = new RelevanceBriefingEvidenceSelector(
+      rankFeedItems,
+      feedItems,
+      clock,
+      new FakeStoryRankingMetrics(),
+    );
+
+    const selection = await selector.select({
+      tenantId: tenantId('tenant-family'),
+      workspaceId: workspaceId('workspace-family'),
+      scope: { type: 'workspace' },
+      maxItems: 4,
+    });
+
+    expect(selection.selectedEvidence.map((item) => item.providerKey).sort()).toEqual([
+      'github-trending-page',
+      'hacker-news',
+      'reddit',
+      'rss',
+    ]);
+  });
 });
 
 class FakeStoryRankingMetrics implements StoryRankingMetricsPort {

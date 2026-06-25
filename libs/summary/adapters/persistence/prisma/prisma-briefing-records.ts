@@ -93,7 +93,9 @@ export type PrismaBriefingPolicyRecord = {
   readonly updatedAt: Date;
 };
 
-export const briefingJobFromPrisma = (record: PrismaBriefingJobRecord): BriefingJob =>
+export const briefingJobFromPrisma = (
+  record: PrismaBriefingJobRecord,
+): BriefingJob =>
   BriefingJob.rehydrate({
     id: record.id,
     tenantId: tenantId(record.tenantId),
@@ -111,10 +113,16 @@ export const briefingJobFromPrisma = (record: PrismaBriefingJobRecord): Briefing
     failureReason: record.failureReason ?? undefined,
   } satisfies BriefingJobProps);
 
-export const briefingArtifactFromPrisma = (record: PrismaBriefingArtifactRecord): BriefingArtifact =>
-  BriefingArtifact.rehydrate(normalizeBriefingArtifactPayload(record.artifactPayload, record));
+export const briefingArtifactFromPrisma = (
+  record: PrismaBriefingArtifactRecord,
+): BriefingArtifact =>
+  BriefingArtifact.rehydrate(
+    normalizeBriefingArtifactPayload(record.artifactPayload, record),
+  );
 
-export const briefingPolicyFromPrisma = (record: PrismaBriefingPolicyRecord): BriefingPolicy =>
+export const briefingPolicyFromPrisma = (
+  record: PrismaBriefingPolicyRecord,
+): BriefingPolicy =>
   BriefingPolicy.rehydrate({
     id: record.id,
     tenantId: tenantId(record.tenantId),
@@ -134,7 +142,9 @@ export const briefingPolicyFromPrisma = (record: PrismaBriefingPolicyRecord): Br
     updatedAt: record.updatedAt,
   } satisfies BriefingPolicyProps);
 
-export const briefingJobStatusToPrisma = (status: BriefingJobStatus): PrismaSummaryStatus => {
+export const briefingJobStatusToPrisma = (
+  status: BriefingJobStatus,
+): PrismaSummaryStatus => {
   if (status === 'requested') {
     return 'REQUESTED';
   }
@@ -154,10 +164,16 @@ export const briefingJobStatusToPrisma = (status: BriefingJobStatus): PrismaSumm
   return 'FAILED';
 };
 
-export const briefingArtifactStatusToPrisma = (artifact: BriefingArtifact): PrismaSummaryStatus =>
-  artifact.toSnapshot().qualityFlags.includes('no_signal') ? 'NO_SIGNAL' : 'COMPLETED';
+export const briefingArtifactStatusToPrisma = (
+  artifact: BriefingArtifact,
+): PrismaSummaryStatus =>
+  artifact.toSnapshot().qualityFlags.includes('no_signal')
+    ? 'NO_SIGNAL'
+    : 'COMPLETED';
 
-export const serializeBriefingArtifact = (artifact: BriefingArtifact): Readonly<Record<string, unknown>> => {
+export const serializeBriefingArtifact = (
+  artifact: BriefingArtifact,
+): Readonly<Record<string, unknown>> => {
   const snapshot = artifact.toSnapshot();
 
   return {
@@ -181,7 +197,9 @@ export const serializeBriefingArtifact = (artifact: BriefingArtifact): Readonly<
   };
 };
 
-export const briefingQualitySignalsToPrisma = (artifact: BriefingArtifact): Readonly<Record<string, unknown>> => {
+export const briefingQualitySignalsToPrisma = (
+  artifact: BriefingArtifact,
+): Readonly<Record<string, unknown>> => {
   const snapshot = artifact.toSnapshot();
 
   return {
@@ -191,7 +209,9 @@ export const briefingQualitySignalsToPrisma = (artifact: BriefingArtifact): Read
   };
 };
 
-export const briefingScopeToPrisma = (scope: BriefingScope): {
+export const briefingScopeToPrisma = (
+  scope: BriefingScope,
+): {
   readonly scopeType: string;
   readonly scopeKey: string;
   readonly topicId: string | null;
@@ -201,7 +221,9 @@ export const briefingScopeToPrisma = (scope: BriefingScope): {
   topicId: scope.type === 'topic' ? scope.topicId : null,
 });
 
-const briefingJobStatusFromPrisma = (status: PrismaSummaryStatus): BriefingJobStatus => {
+const briefingJobStatusFromPrisma = (
+  status: PrismaSummaryStatus,
+): BriefingJobStatus => {
   if (status === 'REQUESTED') {
     return 'requested';
   }
@@ -222,7 +244,9 @@ const briefingJobStatusFromPrisma = (status: PrismaSummaryStatus): BriefingJobSt
     return 'failed';
   }
 
-  throw new Error(`Cannot rehydrate unsupported briefing job status "${status}"`);
+  throw new Error(
+    `Cannot rehydrate unsupported briefing job status "${status}"`,
+  );
 };
 
 const briefingScopeFromPrisma = (record: {
@@ -237,14 +261,18 @@ const briefingScopeFromPrisma = (record: {
     return { type: 'topic', topicId: record.topicId };
   }
 
-  throw new Error(`Unsupported briefing scope "${record.scopeType}"`);
+  throw new Error(`Unsupported summary scope "${record.scopeType}"`);
 };
 
 const normalizeBriefingArtifactPayload = (
   payload: unknown,
   fallback: PrismaBriefingArtifactRecord,
 ): BriefingArtifactProps => {
-  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+  if (
+    payload === null ||
+    typeof payload !== 'object' ||
+    Array.isArray(payload)
+  ) {
     throw new Error('Briefing artifact payload must be an object');
   }
 
@@ -262,17 +290,34 @@ const normalizeBriefingArtifactPayload = (
   const serializedSourceWindow = sourceWindow as SerializedBriefingSourceWindow;
 
   return {
-    schemaVersion: requireStringLiteral(value.schemaVersion, 'briefing.artifact.v1', 'Briefing schema version'),
+    schemaVersion: requireStringLiteral(
+      value.schemaVersion,
+      'briefing.artifact.v1',
+      'Briefing schema version',
+    ),
     briefingId: fallback.id,
     tenantId: tenantId(fallback.tenantId),
     workspaceId: workspaceId(fallback.workspaceId),
     scope: briefingScopeFromPrisma(fallback),
-    userId: normalizeOptionalString(value.userId) ?? fallback.userId ?? undefined,
-    subscriptionId: normalizeOptionalString(value.subscriptionId) ?? fallback.subscriptionId ?? undefined,
+    userId:
+      normalizeOptionalString(value.userId) ?? fallback.userId ?? undefined,
+    subscriptionId:
+      normalizeOptionalString(value.subscriptionId) ??
+      fallback.subscriptionId ??
+      undefined,
     sourceWindow: {
-      windowId: requireString(serializedSourceWindow.windowId, 'Briefing source window id'),
-      startedAt: requireDate(serializedSourceWindow.startedAt, 'Briefing source window start'),
-      endedAt: requireDate(serializedSourceWindow.endedAt, 'Briefing source window end'),
+      windowId: requireString(
+        serializedSourceWindow.windowId,
+        'Briefing source window id',
+      ),
+      startedAt: requireDate(
+        serializedSourceWindow.startedAt,
+        'Briefing source window start',
+      ),
+      endedAt: requireDate(
+        serializedSourceWindow.endedAt,
+        'Briefing source window end',
+      ),
       selectedFeedItemIds: requireStringArray(
         serializedSourceWindow.selectedFeedItemIds,
         'Briefing source window selected feed ids',
@@ -290,23 +335,52 @@ const normalizeBriefingArtifactPayload = (
       value.contextArtifacts,
       'Briefing context artifacts',
     ).map(normalizeBriefingContextArtifact),
-    headline: requireString(value.headline ?? fallback.headline, 'Briefing headline'),
-    executiveSummary: requireString(value.executiveSummary ?? fallback.summaryText ?? '', 'Briefing text'),
+    headline: requireString(
+      value.headline ?? fallback.headline,
+      'Briefing headline',
+    ),
+    executiveSummary: requireString(
+      value.executiveSummary ?? fallback.summaryText ?? '',
+      'Briefing text',
+    ),
     readerBrief: normalizeBriefingReaderBrief(value.readerBrief),
-    topStories: requireArray<BriefingTopStory>(value.topStories, 'Briefing top stories'),
-    topicHighlights: requireArray<BriefingTopicHighlight>(value.topicHighlights, 'Briefing topic highlights'),
-    repeatedSignals: requireArray<BriefingRepeatedSignal>(value.repeatedSignals, 'Briefing repeated signals'),
-    risksAndUnknowns: requireArray<BriefingRisk>(value.risksAndUnknowns, 'Briefing risks'),
-    citationMap: requireArray<BriefingCitation>(value.citationMap, 'Briefing citation map'),
-    qualityFlags: requireArray<BriefingQualityFlag>(value.qualityFlags, 'Briefing quality flags'),
-    confidence: requireObject<BriefingConfidence>(value.confidence, 'Briefing confidence'),
+    topStories: requireArray<BriefingTopStory>(
+      value.topStories,
+      'Briefing top stories',
+    ),
+    topicHighlights: requireArray<BriefingTopicHighlight>(
+      value.topicHighlights,
+      'Briefing topic highlights',
+    ),
+    repeatedSignals: requireArray<BriefingRepeatedSignal>(
+      value.repeatedSignals,
+      'Briefing repeated signals',
+    ),
+    risksAndUnknowns: requireArray<BriefingRisk>(
+      value.risksAndUnknowns,
+      'Briefing risks',
+    ),
+    citationMap: requireArray<BriefingCitation>(
+      value.citationMap,
+      'Briefing citation map',
+    ),
+    qualityFlags: requireArray<BriefingQualityFlag>(
+      value.qualityFlags,
+      'Briefing quality flags',
+    ),
+    confidence: requireObject<BriefingConfidence>(
+      value.confidence,
+      'Briefing confidence',
+    ),
     lineage: requireObject<BriefingLineage>(value.lineage, 'Briefing lineage'),
     usage: requireObject<BriefingUsage>(value.usage, 'Briefing usage'),
     noSignalReason: normalizeOptionalString(value.noSignalReason),
   };
 };
 
-const normalizeBriefingPolicyLanguage = (value: string): BriefingPolicyLanguage => {
+const normalizeBriefingPolicyLanguage = (
+  value: string,
+): BriefingPolicyLanguage => {
   if (value === 'auto' || value === 'en' || value === 'ru') {
     return value;
   }
@@ -315,7 +389,11 @@ const normalizeBriefingPolicyLanguage = (value: string): BriefingPolicyLanguage 
 };
 
 const normalizeBriefingPolicyFormat = (value: string): BriefingPolicyFormat => {
-  if (value === 'executive_brief' || value === 'bullet_digest' || value === 'risk_brief') {
+  if (
+    value === 'executive_brief' ||
+    value === 'bullet_digest' ||
+    value === 'risk_brief'
+  ) {
     return value;
   }
 
@@ -330,7 +408,9 @@ const normalizeBriefingPolicyTone = (value: string): BriefingPolicyTone => {
   throw new Error(`Unsupported briefing policy tone "${value}"`);
 };
 
-const normalizeBriefingDedupeStrategy = (value: string): BriefingDedupeStrategy => {
+const normalizeBriefingDedupeStrategy = (
+  value: string,
+): BriefingDedupeStrategy => {
   if (value === 'canonical_url_then_title') {
     return value;
   }
@@ -338,36 +418,60 @@ const normalizeBriefingDedupeStrategy = (value: string): BriefingDedupeStrategy 
   throw new Error(`Unsupported briefing dedupe strategy "${value}"`);
 };
 
-const normalizeBriefingStoryCluster = (value: SerializedBriefingStoryCluster): StoryCluster => ({
-  ...requireObject<Omit<StoryCluster, 'observedAtRange'>>(value, 'Briefing story cluster'),
+const normalizeBriefingStoryCluster = (
+  value: SerializedBriefingStoryCluster,
+): StoryCluster => ({
+  ...requireObject<Omit<StoryCluster, 'observedAtRange'>>(
+    value,
+    'Briefing story cluster',
+  ),
   observedAtRange: {
-    startedAt: requireDate(value.observedAtRange?.startedAt, 'Briefing story cluster start'),
-    endedAt: requireDate(value.observedAtRange?.endedAt, 'Briefing story cluster end'),
+    startedAt: requireDate(
+      value.observedAtRange?.startedAt,
+      'Briefing story cluster start',
+    ),
+    endedAt: requireDate(
+      value.observedAtRange?.endedAt,
+      'Briefing story cluster end',
+    ),
   },
 });
 
 const normalizeBriefingContextArtifact = (
   value: SerializedBriefingContextArtifact,
 ): BriefingContextArtifact => ({
-  ...requireObject<Omit<BriefingContextArtifact, 'generatedAt'>>(value, 'Briefing context artifact'),
-  generatedAt: requireDate(value.generatedAt, 'Briefing context artifact generated date'),
+  ...requireObject<Omit<BriefingContextArtifact, 'generatedAt'>>(
+    value,
+    'Briefing context artifact',
+  ),
+  generatedAt: requireDate(
+    value.generatedAt,
+    'Briefing context artifact generated date',
+  ),
 });
 
-const normalizeBriefingReaderBrief = (value: unknown): BriefingReaderBrief | undefined => {
+const normalizeBriefingReaderBrief = (
+  value: unknown,
+): BriefingReaderBrief | undefined => {
   if (value === undefined) {
     return undefined;
   }
-  const readerBrief = requireObject<BriefingReaderBrief>(value, 'Briefing reader brief');
+  const readerBrief = requireObject<BriefingReaderBrief>(
+    value,
+    'Briefing reader brief',
+  );
   if (
     readerBrief.qualityState === undefined ||
-    readerBrief.topReads.some((item) =>
-      item.whyNow === undefined ||
-      item.matchedTopicIds === undefined ||
-      item.matchedRules === undefined ||
-      item.confidence === undefined ||
-      item.confirmedProviderKeys === undefined ||
-      item.providerMetrics === undefined ||
-      item.whyImportant === undefined)
+    readerBrief.topReads.some(
+      (item) =>
+        item.whyNow === undefined ||
+        item.matchedTopicIds === undefined ||
+        item.matchedRules === undefined ||
+        item.confidence === undefined ||
+        item.confirmedProviderKeys === undefined ||
+        item.providerMetrics === undefined ||
+        item.whyImportant === undefined,
+    )
   ) {
     return undefined;
   }
@@ -393,7 +497,10 @@ type SerializedBriefingStoryCluster = Omit<StoryCluster, 'observedAtRange'> & {
   };
 };
 
-type SerializedBriefingContextArtifact = Omit<BriefingContextArtifact, 'generatedAt'> & {
+type SerializedBriefingContextArtifact = Omit<
+  BriefingContextArtifact,
+  'generatedAt'
+> & {
   readonly generatedAt?: unknown;
 };
 
@@ -419,7 +526,11 @@ type SerializedBriefingArtifactPayload = {
   readonly noSignalReason?: unknown;
 };
 
-const requireStringLiteral = <T extends string>(value: unknown, expected: T, fieldName: string): T => {
+const requireStringLiteral = <T extends string>(
+  value: unknown,
+  expected: T,
+  fieldName: string,
+): T => {
   if (value !== expected) {
     throw new Error(`${fieldName} must be ${expected}`);
   }
@@ -449,7 +560,10 @@ const requireDate = (value: unknown, fieldName: string): Date => {
   return parsed;
 };
 
-const requireStringArray = (value: unknown, fieldName: string): readonly string[] => {
+const requireStringArray = (
+  value: unknown,
+  fieldName: string,
+): readonly string[] => {
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
     throw new Error(`${fieldName} must be a string array`);
   }

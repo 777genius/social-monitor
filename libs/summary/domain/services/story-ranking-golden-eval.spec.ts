@@ -1,4 +1,8 @@
-import { tenantId, workspaceId, type Clock } from '@social-monitor/shared-kernel';
+import {
+  tenantId,
+  workspaceId,
+  type Clock,
+} from '@social-monitor/shared-kernel';
 
 import { buildBriefingReaderBrief } from './briefing-reader-brief.factory';
 import { StoryClusteringService } from './story-clustering.service';
@@ -51,7 +55,8 @@ describe('story ranking golden eval', () => {
         feedItemId: 'reddit-openmontage',
         sourceItemId: 'reddit-openmontage',
         providerKey: 'reddit',
-        canonicalUrl: 'https://www.reddit.com/r/LocalLLaMA/comments/openmontage',
+        canonicalUrl:
+          'https://www.reddit.com/r/LocalLLaMA/comments/openmontage',
         title: 'Weak Reddit discussion about calesthio/OpenMontage',
         score: 0.5,
         providerMetrics: redditMetrics(22, 9),
@@ -61,7 +66,8 @@ describe('story ranking golden eval', () => {
         feedItemId: 'reddit-viral',
         sourceItemId: 'reddit-viral',
         providerKey: 'reddit',
-        canonicalUrl: 'https://www.reddit.com/r/programming/comments/viral_pricing_backlash',
+        canonicalUrl:
+          'https://www.reddit.com/r/programming/comments/viral_pricing_backlash',
         title: 'Viral Reddit pricing backlash',
         score: 2.35,
         providerMetrics: redditMetrics(8400, 1200),
@@ -97,9 +103,7 @@ describe('story ranking golden eval', () => {
         'Anthropic launches developer agents',
         'Anthropic launches developer agents',
       ],
-      falseMergePairs: [
-        ['false-release', 'false-outage'],
-      ],
+      falseMergePairs: [['false-release', 'false-outage']],
       falseSplitPairs: [
         ['github-codex', 'hn-codex'],
         ['github-openmontage', 'reddit-openmontage'],
@@ -124,40 +128,56 @@ describe('story ranking golden eval', () => {
       'Anthropic launches developer agents',
       'Anthropic launches developer agents',
     ]);
-    expect(readerBrief.topReads[0]?.providerMetrics).toEqual(expect.arrayContaining([
-      { label: 'Story signal', value: '3.08' },
-      { label: 'Cross-source support', value: '+0.3' },
-      { label: 'Confirmed by', value: '2 providers: Repo Radar, Hacker News' },
-      {
-        label: 'Repo Radar evidence',
-        value: '+360 stars / 48h, 54,000 total stars',
-      },
-      {
-        label: 'Hacker News evidence',
-        value: '420 points, 96 comments',
-      },
-    ]));
-    expect(readerBrief.topReads[1]?.providerMetrics).toEqual(expect.arrayContaining([
-      { label: 'Story signal', value: '2.97' },
-      { label: 'Confirmed by', value: '2 providers: GitHub Trending, Reddit' },
-      {
-        label: 'GitHub Trending evidence',
-        value: '#1, +3,703 stars today',
-      },
-      {
-        label: 'Reddit evidence',
-        value: '22 score, 9 comments, 91% upvoted',
-      },
-    ]));
-    expect(readerBrief.topReads[2]?.providerMetrics).toEqual(expect.arrayContaining([
-      { label: 'Evidence items', value: '10 source items' },
-      { label: 'Same-source support', value: '+0.23' },
-    ]));
-    expect(readerBrief.topReads.slice(4).map((item) => item.canonicalUrl)).toEqual([
+    expect(readerBrief.topReads[0]?.providerMetrics).toEqual(
+      expect.arrayContaining([
+        { label: 'Story signal', value: '3.08' },
+        { label: 'Cross-source support', value: '+0.3' },
+        {
+          label: 'Confirmed by',
+          value: '2 providers: Repo Radar, Hacker News',
+        },
+        {
+          label: 'Repo Radar evidence',
+          value: '+360 stars / 48h, 54,000 total stars',
+        },
+        {
+          label: 'Hacker News evidence',
+          value: '420 points, 96 comments',
+        },
+      ]),
+    );
+    expect(readerBrief.topReads[1]?.providerMetrics).toEqual(
+      expect.arrayContaining([
+        { label: 'Story signal', value: '2.97' },
+        {
+          label: 'Confirmed by',
+          value: '2 providers: GitHub Trending, Reddit',
+        },
+        {
+          label: 'GitHub Trending evidence',
+          value: '#1, +3,703 stars today',
+        },
+        {
+          label: 'Reddit evidence',
+          value: '22 score, 9 comments, 91% upvoted',
+        },
+      ]),
+    );
+    expect(readerBrief.topReads[2]?.providerMetrics).toEqual(
+      expect.arrayContaining([
+        { label: 'Evidence items', value: '10 source items' },
+        { label: 'Same-source support', value: '+0.23' },
+      ]),
+    );
+    expect(
+      readerBrief.topReads.slice(4).map((item) => item.canonicalUrl),
+    ).toEqual([
       'https://example.com/anthropic-release',
       'https://example.com/anthropic-outage',
     ]);
-    expect(selection.rankingPolicyVersion).toBe(STORY_RANKING_POLICY_V1.version);
+    expect(selection.rankingPolicyVersion).toBe(
+      STORY_RANKING_POLICY_V1.version,
+    );
     expect(evalResult).toEqual({
       topKOrderAccuracy: 1,
       falseMergeRate: 0,
@@ -193,7 +213,8 @@ describe('story ranking golden eval', () => {
         feedItemId: 'reddit-codex',
         sourceItemId: 'reddit-openai-codex',
         providerKey: 'reddit',
-        canonicalUrl: 'https://www.reddit.com/r/programming/comments/openai_codex',
+        canonicalUrl:
+          'https://www.reddit.com/r/programming/comments/openai_codex',
         title: 'Reddit debates openai/codex',
         score: 1.7,
         providerMetrics: redditMetrics(510, 88),
@@ -267,7 +288,7 @@ describe('story ranking golden eval', () => {
   ],
   "signalScore": 3.08,
   "title": "openai/codex",
-  "whyNow": "Current briefing window has cross-source coverage from Repo Radar, Reddit and clustered 1 related item.",
+  "whyNow": "Current summary window has cross-source coverage from Repo Radar, Reddit and clustered 1 related item.",
 }
 `);
   });
@@ -289,7 +310,8 @@ describe('story ranking golden eval', () => {
         providerKey: 'hacker-news',
         canonicalUrl: 'https://news.ycombinator.com/item?id=5001',
         title: 'Ask HN: Is openai/codex changing agent workflows?',
-        bodyPreview: 'HN links to https://github.com/openai/codex and compares real usage.',
+        bodyPreview:
+          'HN links to https://github.com/openai/codex and compares real usage.',
         score: 1.6,
         providerMetrics: hnMetrics(210, 64),
       }),
@@ -297,7 +319,8 @@ describe('story ranking golden eval', () => {
         feedItemId: 'small-subreddit-codex',
         sourceItemId: 'reddit-small-codex',
         providerKey: 'reddit',
-        canonicalUrl: 'https://www.reddit.com/r/LocalLLaMA/comments/small_codex',
+        canonicalUrl:
+          'https://www.reddit.com/r/LocalLLaMA/comments/small_codex',
         title: 'Small subreddit tests openai/codex on local workflows',
         bodyPreview: 'Low-score but detailed discussion of openai/codex.',
         score: 0.95,
@@ -334,7 +357,8 @@ describe('story ranking golden eval', () => {
         feedItemId: 'reddit-repost-copy',
         sourceItemId: 'reddit-repost-copy',
         providerKey: 'reddit',
-        canonicalUrl: 'https://example.com/browser-agent-repost?utm_source=reddit',
+        canonicalUrl:
+          'https://example.com/browser-agent-repost?utm_source=reddit',
         title: 'Browser agent benchmark repost copy',
         score: 1.4,
         providerMetrics: redditMetrics(310, 42),
@@ -377,15 +401,19 @@ describe('story ranking golden eval', () => {
     expect(clusterByFeedItemId.get('same-title-launch')).not.toBe(
       clusterByFeedItemId.get('same-title-outage'),
     );
-    expect(readerBrief.topReads[0]).toEqual(expect.objectContaining({
-      title: 'openai/codex',
-      confirmedProviderKeys: ['github-repo-radar', 'hacker-news', 'reddit'],
-      confidence: expect.objectContaining({ level: 'high' }),
-    }));
+    expect(readerBrief.topReads[0]).toEqual(
+      expect.objectContaining({
+        title: 'openai/codex',
+        confirmedProviderKeys: ['github-repo-radar', 'hacker-news', 'reddit'],
+        confidence: expect.objectContaining({ level: 'high' }),
+      }),
+    );
   });
 });
 
-const buildReaderBriefFromEvidence = (items: readonly BriefingEvidenceItem[]) => {
+const buildReaderBriefFromEvidence = (
+  items: readonly BriefingEvidenceItem[],
+) => {
   const selection = new StoryClusteringService(clock).cluster({
     identity: {
       tenantId: tenantId('tenant-1'),
@@ -403,14 +431,14 @@ const buildReaderBriefFromEvidence = (items: readonly BriefingEvidenceItem[]) =>
     field: 'title' as const,
     canonicalUrl: item.canonicalUrl,
   })) satisfies readonly BriefingCitation[];
-  const citationIdByFeedItemId = new Map(citationMap.map((citation) => [
-    citation.feedItemId,
-    citation.citationId,
-  ] as const));
-  const evidenceById = new Map(selection.selectedEvidence.map((item) => [
-    item.feedItemId,
-    item,
-  ] as const));
+  const citationIdByFeedItemId = new Map(
+    citationMap.map(
+      (citation) => [citation.feedItemId, citation.citationId] as const,
+    ),
+  );
+  const evidenceById = new Map(
+    selection.selectedEvidence.map((item) => [item.feedItemId, item] as const),
+  );
   const topStories = selection.clusters.map((cluster) => {
     const representative = evidenceById.get(cluster.representativeFeedItemId);
 
@@ -431,7 +459,8 @@ const buildReaderBriefFromEvidence = (items: readonly BriefingEvidenceItem[]) =>
     selection,
     readerBrief: buildBriefingReaderBrief({
       headline: 'Golden ranking eval',
-      executiveSummary: 'Golden ranking eval validates provider-aware story order.',
+      executiveSummary:
+        'Golden ranking eval validates provider-aware story order.',
       topStories,
       topicHighlights: [],
       repeatedSignals: [],
@@ -460,28 +489,41 @@ const evaluateGoldenRanking = (input: GoldenRankingEvalInput) => {
   const actualTitles = input.readerBrief.topReads.map((item) => item.title);
   const clusterByFeedItemId = new Map<string, string>();
   for (const cluster of input.selection.clusters) {
-    for (const feedItemId of [cluster.representativeFeedItemId, ...cluster.duplicateFeedItemIds]) {
+    for (const feedItemId of [
+      cluster.representativeFeedItemId,
+      ...cluster.duplicateFeedItemIds,
+    ]) {
       clusterByFeedItemId.set(feedItemId, cluster.id);
     }
   }
 
   return {
     topKOrderAccuracy: ratio(
-      input.expectedTopReadTitles.filter((title, index) => actualTitles[index] === title).length,
+      input.expectedTopReadTitles.filter(
+        (title, index) => actualTitles[index] === title,
+      ).length,
       input.expectedTopReadTitles.length,
     ),
     falseMergeRate: ratio(
-      input.falseMergePairs.filter(([left, right]) => clusterByFeedItemId.get(left) === clusterByFeedItemId.get(right)).length,
+      input.falseMergePairs.filter(
+        ([left, right]) =>
+          clusterByFeedItemId.get(left) === clusterByFeedItemId.get(right),
+      ).length,
       input.falseMergePairs.length,
     ),
     falseSplitRate: ratio(
-      input.falseSplitPairs.filter(([left, right]) => clusterByFeedItemId.get(left) !== clusterByFeedItemId.get(right)).length,
+      input.falseSplitPairs.filter(
+        ([left, right]) =>
+          clusterByFeedItemId.get(left) !== clusterByFeedItemId.get(right),
+      ).length,
       input.falseSplitPairs.length,
     ),
     crossProviderPreference: ratio(
-      input.crossProviderPreferences.filter((preference) =>
-        actualTitles.indexOf(preference.preferredTitle) >= 0 &&
-        actualTitles.indexOf(preference.preferredTitle) < actualTitles.indexOf(preference.demotedTitle),
+      input.crossProviderPreferences.filter(
+        (preference) =>
+          actualTitles.indexOf(preference.preferredTitle) >= 0 &&
+          actualTitles.indexOf(preference.preferredTitle) <
+            actualTitles.indexOf(preference.demotedTitle),
       ).length,
       input.crossProviderPreferences.length,
     ),
@@ -517,7 +559,8 @@ const sameSubredditDuplicates = (): readonly BriefingEvidenceItem[] =>
       title: `Same subreddit browser-agent duplicate ${index + 1}`,
       score: 2.25 - index * 0.01,
       providerMetrics: redditMetrics(900 - index * 10, 80 - index),
-    }));
+    }),
+  );
 
 const evidence = (
   overrides: Partial<BriefingEvidenceItem>,

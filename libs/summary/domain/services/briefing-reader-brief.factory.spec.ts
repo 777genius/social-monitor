@@ -143,7 +143,7 @@ describe('buildBriefingReaderBrief', () => {
       warnings: ['Source coverage is limited or single-source.'],
     });
     expect(readerBrief.bullets).toContain(
-      '1 follow-up link available in Top links.',
+      '1 follow-up link available in Top reads.',
     );
     expect(readerBrief.trendDelta.newSignals).toEqual([
       '2 Repo Radar items selected',
@@ -163,7 +163,7 @@ describe('buildBriefingReaderBrief', () => {
         'provider:github-repo-radar',
       ],
       signalScore: 1,
-      whyNow: 'Current briefing window has Repo Radar coverage.',
+      whyNow: 'Current summary window has Repo Radar coverage.',
       providerMetrics: [
         { label: 'Story signal', value: '1' },
         {
@@ -217,7 +217,7 @@ describe('buildBriefingReaderBrief', () => {
       'repo-radar/project-11',
     );
     expect(readerBrief.bullets).toContain(
-      '9 follow-up links available in Top links.',
+      '9 follow-up links available in Top reads.',
     );
   });
 
@@ -358,7 +358,7 @@ describe('buildBriefingReaderBrief', () => {
     );
     expect(readerBrief.topReads[0]).toMatchObject({
       providerKey: 'github-trending-page',
-      whyNow: 'Current briefing window has GitHub Trending coverage.',
+      whyNow: 'Current summary window has GitHub Trending coverage.',
       providerMetrics: [
         { label: 'Story signal', value: '1.5' },
         {
@@ -440,7 +440,7 @@ describe('buildBriefingReaderBrief', () => {
             endedAt: new Date('2026-06-23T09:00:00.000Z'),
           },
           whyImportant: [
-            'Cross-source confirmation appeared in the briefing window.',
+            'Cross-source confirmation appeared in the summary window.',
           ],
         },
       ],
@@ -497,7 +497,7 @@ describe('buildBriefingReaderBrief', () => {
       },
     ]);
     expect(readerBrief.topReads[0]?.whyNow).toBe(
-      'Current briefing window has cross-source coverage from Repo Radar, Reddit and clustered 1 related item.',
+      'Current summary window has cross-source coverage from Repo Radar, Reddit and clustered 1 related item.',
     );
     expect(readerBrief.topReads[0]?.providerMetrics).toEqual([
       { label: 'Story signal', value: '2.4' },
@@ -515,7 +515,7 @@ const readerTopReadFixture = (count: number) => {
   const indexes = Array.from({ length: count }, (_, index) => index + 1);
 
   return {
-    headline: 'Repo radar daily briefing',
+    headline: 'Repo radar daily summary',
     executiveSummary:
       'Repo Radar selected the strongest repositories for today.',
     topStories: indexes.map(

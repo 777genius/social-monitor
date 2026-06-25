@@ -159,6 +159,22 @@ const selectProviderDiverseEvidence = (
 
   const selected: BriefingEvidenceItem[] = [];
   const selectedIds = new Set<string>();
+  const selectedProviderKeys = new Set<string>();
+  const providerFamilies = uniqueStable(items.map((item) => providerFamilyKey(item.providerKey)));
+
+  for (const providerFamily of providerFamilies) {
+    if (selected.length >= normalizedLimit) {
+      break;
+    }
+
+    const providerItem = items.find((item) => providerFamilyKey(item.providerKey) === providerFamily);
+    if (providerItem !== undefined) {
+      selected.push(providerItem);
+      selectedIds.add(providerItem.feedItemId);
+      selectedProviderKeys.add(providerItem.providerKey);
+    }
+  }
+
   const providerKeys = uniqueStable(items.map((item) => item.providerKey));
 
   for (const providerKey of providerKeys) {
@@ -166,10 +182,15 @@ const selectProviderDiverseEvidence = (
       break;
     }
 
-    const providerItem = items.find((item) => item.providerKey === providerKey);
+    if (selectedProviderKeys.has(providerKey)) {
+      continue;
+    }
+
+    const providerItem = items.find((item) => item.providerKey === providerKey && !selectedIds.has(item.feedItemId));
     if (providerItem !== undefined) {
       selected.push(providerItem);
       selectedIds.add(providerItem.feedItemId);
+      selectedProviderKeys.add(providerItem.providerKey);
     }
   }
 
@@ -187,6 +208,28 @@ const selectProviderDiverseEvidence = (
   }
 
   return selected;
+};
+
+const providerFamilyKey = (providerKey: string): string => {
+  const normalized = providerKey.toLowerCase();
+
+  if (normalized === 'github' || normalized.startsWith('github-')) {
+    return 'github';
+  }
+
+  if (normalized === 'reddit') {
+    return 'reddit';
+  }
+
+  if (normalized === 'hacker-news' || normalized === 'hn') {
+    return 'hacker-news';
+  }
+
+  if (normalized === 'x-twitter' || normalized === 'twitter' || normalized === 'x') {
+    return 'x-twitter';
+  }
+
+  return normalized;
 };
 
 const normalizeSelectionLimit = (limit: number): number => {

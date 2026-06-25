@@ -18,7 +18,11 @@ const route: SummaryModelRoute = {
 };
 
 export class DeterministicSummaryModelAdapter implements SummaryModelPort {
-  route(input: SummaryModelInput, policy: SummaryModelPolicy, budget: SummaryModelBudget): SummaryModelRoute {
+  route(
+    input: SummaryModelInput,
+    policy: SummaryModelPolicy,
+    budget: SummaryModelBudget,
+  ): SummaryModelRoute {
     const estimate = this.estimate(input, route);
 
     if (
@@ -34,15 +38,21 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
     return route;
   }
 
-  estimate(input: SummaryModelInput, selectedRoute: SummaryModelRoute): SummaryModelEstimate {
+  estimate(
+    input: SummaryModelInput,
+    selectedRoute: SummaryModelRoute,
+  ): SummaryModelEstimate {
     void selectedRoute;
 
     const evidenceTextLength = input.evidence.items.reduce(
-      (total, item) => total + item.title.length + (item.bodyPreview?.length ?? 0),
+      (total, item) =>
+        total + item.title.length + (item.bodyPreview?.length ?? 0),
       0,
     );
     const memoryTextLength = input.memoryContext?.renderedText?.length ?? 0;
-    const inputTokens = Math.ceil((input.topicId.length + evidenceTextLength + memoryTextLength) / 4);
+    const inputTokens = Math.ceil(
+      (input.topicId.length + evidenceTextLength + memoryTextLength) / 4,
+    );
     const outputTokens = input.evidence.items.length === 0 ? 48 : 160;
 
     return {
@@ -52,7 +62,10 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
     };
   }
 
-  async summarize(input: SummaryModelInput, selectedRoute: SummaryModelRoute): Promise<ProviderSummaryAttempt> {
+  async summarize(
+    input: SummaryModelInput,
+    selectedRoute: SummaryModelRoute,
+  ): Promise<ProviderSummaryAttempt> {
     const firstItem = input.evidence.items[0];
     const usage = this.estimate(input, selectedRoute);
     const lineage = {
@@ -73,7 +86,8 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
           keyPoints: [],
           risksAndUnknowns: [
             {
-              description: 'The summary window did not contain enough source material to produce claims.',
+              description:
+                'The summary window did not contain enough source material to produce claims.',
               reason: 'insufficient_evidence',
             },
           ],
@@ -92,7 +106,10 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
       };
     }
 
-    const selectedItems = input.evidence.items.slice(0, input.policy.maxKeyPoints);
+    const selectedItems = input.evidence.items.slice(
+      0,
+      input.policy.maxKeyPoints,
+    );
     const citationMap = selectedItems.map((item, index) => ({
       citationId: `c${index + 1}`,
       feedItemId: item.feedItemId,
@@ -115,19 +132,24 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
         risksAndUnknowns: input.policy.includeRisks
           ? [
               {
-                description: 'This deterministic MVP summary only uses selected evidence titles.',
+                description:
+                  'This deterministic MVP summary only uses selected evidence titles.',
                 citationIds: ['c1'],
                 reason: 'source_limit',
               },
             ]
           : [],
-        sourceHighlights: input.policy.includeSourceHighlights ? selectedItems.map(formatSourceHighlight) : [],
+        sourceHighlights: input.policy.includeSourceHighlights
+          ? selectedItems.map(formatSourceHighlight)
+          : [],
         citationMap,
-        qualityFlags: input.evidence.items.length < 3 ? ['limited_sources'] : [],
+        qualityFlags:
+          input.evidence.items.length < 3 ? ['limited_sources'] : [],
         confidence: {
           level: input.evidence.items.length < 3 ? 'low' : 'medium',
           score: input.evidence.items.length < 3 ? 0.35 : 0.6,
-          rationale: 'Confidence is derived from the number of selected evidence items in this MVP adapter.',
+          rationale:
+            'Confidence is derived from the number of selected evidence items in this MVP adapter.',
         },
         lineage,
         usage,
@@ -135,7 +157,9 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
     };
   }
 
-  validateRawProviderResponse(attempt: ProviderSummaryAttempt): SummaryModelValidationResult {
+  validateRawProviderResponse(
+    attempt: ProviderSummaryAttempt,
+  ): SummaryModelValidationResult {
     if (attempt.route.schemaVersion !== 'summary.artifact.v1') {
       return {
         ok: false,
@@ -151,7 +175,8 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
   }
 
   classifyError(error: unknown): SummaryModelFailure {
-    const message = error instanceof Error ? error.message : 'Unknown summary model error';
+    const message =
+      error instanceof Error ? error.message : 'Unknown summary model error';
 
     if (message.toLowerCase().includes('budget')) {
       return {
@@ -180,17 +205,25 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
 const buildExecutiveSummary = (input: SummaryModelInput): string => {
   const formatLabel = input.policy.format.replace('_', ' ');
   const toneLabel = input.policy.tone;
-  const languageLabel = input.policy.language === 'auto' ? 'source language' : input.policy.language;
+  const languageLabel =
+    input.policy.language === 'auto'
+      ? 'source language'
+      : input.policy.language;
   const base = `Current ${formatLabel} uses ${input.evidence.items.length} selected item(s), ${toneLabel} tone, ${languageLabel}.`;
 
   if (input.policy.customInstructions === undefined) {
     return appendMemoryContext(base, input);
   }
 
-  return appendMemoryContext(`${base} Custom focus: ${input.policy.customInstructions}`, input);
+  return appendMemoryContext(
+    `${base} Custom focus: ${input.policy.customInstructions}`,
+    input,
+  );
 };
 
-const formatSourceHighlight = (item: SummaryModelInput['evidence']['items'][number]): string => {
+const formatSourceHighlight = (
+  item: SummaryModelInput['evidence']['items'][number],
+): string => {
   const repoTrend = formatRepositoryTrendHighlight(item.providerMetadata);
   if (repoTrend !== undefined) {
     return repoTrend;
@@ -201,56 +234,101 @@ const formatSourceHighlight = (item: SummaryModelInput['evidence']['items'][numb
   return why === undefined ? item.title : `${item.title} (${why})`;
 };
 
-const formatRepositoryTrendHighlight = (metadata: unknown): string | undefined => {
-  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
+const formatRepositoryTrendHighlight = (
+  metadata: unknown,
+): string | undefined => {
+  if (
+    typeof metadata !== 'object' ||
+    metadata === null ||
+    Array.isArray(metadata)
+  ) {
     return undefined;
   }
 
   const record = metadata as Readonly<Record<string, unknown>>;
+  const repository = readRecord(record.repository);
+  const fullName = readString(repository?.fullName);
+
+  if (record.kind === 'github_trending_page_repository') {
+    const trending = readRecord(record.trending);
+    const totalStars = readNumber(repository?.totalStars);
+    const starsGained = readNumber(trending?.starsGained);
+    const window = readString(trending?.window) ?? 'daily';
+    const rank = readNumber(trending?.rank);
+
+    if (
+      fullName === undefined ||
+      totalStars === undefined ||
+      starsGained === undefined ||
+      rank === undefined
+    ) {
+      return undefined;
+    }
+
+    return `${fullName}: #${rank} on GitHub Trending ${window}, ${totalStars} stars, +${starsGained}`;
+  }
+
   if (record.kind !== 'github_repository_trend') {
     return undefined;
   }
 
-  const repository = readRecord(record.repository);
   const trend = readRecord(record.trend);
-  const fullName = readString(repository?.fullName);
   const totalStars = readNumber(trend?.totalStars);
   const stars48h = readNumber(trend?.stars48h);
   const stars7d = readNumber(trend?.stars7d);
   const growthWindow = stars48h === undefined ? '7d' : '48h';
   const growth = stars48h ?? stars7d;
 
-  if (fullName === undefined || totalStars === undefined || growth === undefined) {
+  if (
+    fullName === undefined ||
+    totalStars === undefined ||
+    growth === undefined
+  ) {
     return undefined;
   }
 
   return `${fullName}: ${totalStars} stars, +${growth} in ${growthWindow}`;
 };
 
-const readRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
+const readRecord = (
+  value: unknown,
+): Readonly<Record<string, unknown>> | undefined =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Readonly<Record<string, unknown>>
+    ? (value as Readonly<Record<string, unknown>>)
     : undefined;
 
 const readString = (value: unknown): string | undefined =>
-  typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+  typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : undefined;
 
 const readNumber = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
 const buildNoSignalSummary = (input: SummaryModelInput): string => {
-  const base = 'No eligible evidence items were available for this topic window.';
+  const base =
+    'No eligible evidence items were available for this topic window.';
 
   if (input.policy.customInstructions === undefined) {
     return appendMemoryContext(base, input);
   }
 
-  return appendMemoryContext(`${base} Custom focus: ${input.policy.customInstructions}`, input);
+  return appendMemoryContext(
+    `${base} Custom focus: ${input.policy.customInstructions}`,
+    input,
+  );
 };
 
-const appendMemoryContext = (base: string, input: SummaryModelInput): string => {
+const appendMemoryContext = (
+  base: string,
+  input: SummaryModelInput,
+): string => {
   const memory = input.memoryContext;
-  if (memory?.status !== 'available' || memory.renderedText === undefined || memory.renderedText.trim().length === 0) {
+  if (
+    memory?.status !== 'available' ||
+    memory.renderedText === undefined ||
+    memory.renderedText.trim().length === 0
+  ) {
     return base;
   }
 

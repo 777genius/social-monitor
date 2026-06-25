@@ -6,11 +6,16 @@ import {
   workspaceId,
 } from '@social-monitor/shared-kernel';
 
-import { BriefingJob, type BriefingArtifact, type BriefingPolicy, type GeneratedBriefingDraft } from '../../domain';
+import {
+  BriefingJob,
+  type BriefingArtifact,
+  type BriefingPolicy,
+  type GeneratedBriefingDraft,
+} from '../../domain';
 import type {
-	  BriefingArtifactRepositoryPort,
-	  BriefingContextProviderPort,
-	  BriefingEvidenceSelectorPort,
+  BriefingArtifactRepositoryPort,
+  BriefingContextProviderPort,
+  BriefingEvidenceSelectorPort,
   BriefingJobRepositoryPort,
   BriefingModelBudget,
   BriefingModelEstimate,
@@ -39,6 +44,7 @@ class SequenceIdGenerator implements IdGenerator {
 class SelectedEvidenceSelector implements BriefingEvidenceSelectorPort {
   async select(): ReturnType<BriefingEvidenceSelectorPort['select']> {
     return {
+      rankingPolicyVersion: 'story_ranking_v1',
       sourceWindow: {
         windowId: 'workspace:selected',
         startedAt: new Date('2026-06-23T08:00:00.000Z'),
@@ -85,6 +91,7 @@ class SelectedEvidenceSelector implements BriefingEvidenceSelectorPort {
 class EmptyEvidenceSelector implements BriefingEvidenceSelectorPort {
   async select(): ReturnType<BriefingEvidenceSelectorPort['select']> {
     return {
+      rankingPolicyVersion: 'story_ranking_v1',
       sourceWindow: {
         windowId: 'workspace:empty',
         startedAt: new Date('2026-06-23T08:00:00.000Z'),
@@ -116,10 +123,14 @@ class ValidBriefingModel implements BriefingModelPort {
     };
   }
 
-  async generate(input: BriefingModelInput, route: BriefingModelRoute): Promise<ProviderBriefingAttempt> {
-    const draft = input.evidence.selectedEvidence.length === 0
-      ? noSignalDraft(route)
-      : selectedEvidenceDraft(route);
+  async generate(
+    input: BriefingModelInput,
+    route: BriefingModelRoute,
+  ): Promise<ProviderBriefingAttempt> {
+    const draft =
+      input.evidence.selectedEvidence.length === 0
+        ? noSignalDraft(route)
+        : selectedEvidenceDraft(route);
 
     return { route, draft };
   }
@@ -132,7 +143,9 @@ class ValidBriefingModel implements BriefingModelPort {
     const message = error instanceof Error ? error.message : 'Unknown error';
 
     return {
-      kind: message.toLowerCase().includes('citation') ? 'citation_validation_failed' : 'unknown',
+      kind: message.toLowerCase().includes('citation')
+        ? 'citation_validation_failed'
+        : 'unknown',
       retryable: false,
       message,
     };
@@ -157,14 +170,18 @@ class InvalidCitationBriefingModel implements BriefingModelPort {
     };
   }
 
-  async generate(input: BriefingModelInput, route: BriefingModelRoute): Promise<ProviderBriefingAttempt> {
+  async generate(
+    input: BriefingModelInput,
+    route: BriefingModelRoute,
+  ): Promise<ProviderBriefingAttempt> {
     void input;
 
     return {
       route,
       draft: {
         headline: 'Invalid citation briefing',
-        executiveSummary: 'This draft cites evidence outside the selected window.',
+        executiveSummary:
+          'This draft cites evidence outside the selected window.',
         topStories: [
           {
             storyClusterId: 'story:ai-tooling',
@@ -218,21 +235,27 @@ class InvalidCitationBriefingModel implements BriefingModelPort {
     const message = error instanceof Error ? error.message : 'Unknown error';
 
     return {
-      kind: message.toLowerCase().includes('citation') ? 'citation_validation_failed' : 'unknown',
+      kind: message.toLowerCase().includes('citation')
+        ? 'citation_validation_failed'
+        : 'unknown',
       retryable: false,
       message,
     };
   }
 }
 
-const selectedEvidenceDraft = (route: BriefingModelRoute): GeneratedBriefingDraft => ({
+const selectedEvidenceDraft = (
+  route: BriefingModelRoute,
+): GeneratedBriefingDraft => ({
   headline: 'Workspace AI tooling briefing',
-  executiveSummary: 'AI tooling discussion is repeating across monitored sources.',
+  executiveSummary:
+    'AI tooling discussion is repeating across monitored sources.',
   topStories: [
     {
       storyClusterId: 'story:ai-tooling',
       title: 'AI tooling library is trending',
-      summary: 'Developers are discussing a new AI tooling library across Reddit and GitHub.',
+      summary:
+        'Developers are discussing a new AI tooling library across Reddit and GitHub.',
       topicIds: ['topic-ai', 'topic-github'],
       providerKeys: ['reddit', 'github'],
       citationIds: ['c1'],
@@ -242,7 +265,8 @@ const selectedEvidenceDraft = (route: BriefingModelRoute): GeneratedBriefingDraf
     {
       topicId: 'topic-ai',
       title: 'Developer attention is rising',
-      summary: 'The selected Reddit evidence points to fresh AI tooling interest.',
+      summary:
+        'The selected Reddit evidence points to fresh AI tooling interest.',
       citationIds: ['c1'],
     },
   ],
@@ -287,7 +311,8 @@ const selectedEvidenceDraft = (route: BriefingModelRoute): GeneratedBriefingDraf
 
 const noSignalDraft = (route: BriefingModelRoute): GeneratedBriefingDraft => ({
   headline: 'No new workspace signals',
-  executiveSummary: 'No eligible evidence items were selected for this briefing scope.',
+  executiveSummary:
+    'No eligible evidence items were selected for this summary scope.',
   topStories: [],
   topicHighlights: [],
   repeatedSignals: [],
@@ -317,41 +342,44 @@ const noSignalDraft = (route: BriefingModelRoute): GeneratedBriefingDraft => ({
     outputTokens: 0,
     estimatedCostUsd: 0,
   },
-  noSignalReason: 'No eligible evidence items selected for this briefing scope.',
+  noSignalReason: 'No eligible evidence items selected for this summary scope.',
 });
 
 const tenant = tenantId('tenant-1');
 const workspace = workspaceId('workspace-1');
 
 const createRequestedJob = async (jobs: BriefingJobRepositoryPort) => {
-  await jobs.save(BriefingJob.request({
-    id: 'briefing-job-1',
-    tenantId: tenant,
-    workspaceId: workspace,
-    scope: { type: 'workspace' },
-    idempotencyKey: 'briefing-1',
-    requestedAt: new Date('2026-06-23T07:59:00.000Z'),
-  }));
+  await jobs.save(
+    BriefingJob.request({
+      id: 'briefing-job-1',
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: 'workspace' },
+      idempotencyKey: 'briefing-1',
+      requestedAt: new Date('2026-06-23T07:59:00.000Z'),
+    }),
+  );
 };
 
 const createUseCase = (params: {
   readonly jobs: BriefingJobRepositoryPort;
   readonly artifacts: BriefingArtifactRepositoryPort;
   readonly evidenceSelector: BriefingEvidenceSelectorPort;
-	  readonly model?: BriefingModelPort;
-	  readonly events?: FakeSummaryEventPublisher;
-	  readonly contextProvider?: BriefingContextProviderPort;
-	}) => new ExecuteBriefingJobUseCase(
-  params.jobs,
-  params.artifacts,
-  new FakeBriefingPolicyRepository(),
-  params.evidenceSelector,
-  params.model ?? new ValidBriefingModel(),
-	  params.events ?? new FakeSummaryEventPublisher(),
-	  new SequenceIdGenerator(),
-	  new FixedClock(new Date('2026-06-23T08:31:00.000Z')),
-	  params.contextProvider,
-	);
+  readonly model?: BriefingModelPort;
+  readonly events?: FakeSummaryEventPublisher;
+  readonly contextProvider?: BriefingContextProviderPort;
+}) =>
+  new ExecuteBriefingJobUseCase(
+    params.jobs,
+    params.artifacts,
+    new FakeBriefingPolicyRepository(),
+    params.evidenceSelector,
+    params.model ?? new ValidBriefingModel(),
+    params.events ?? new FakeSummaryEventPublisher(),
+    new SequenceIdGenerator(),
+    new FixedClock(new Date('2026-06-23T08:31:00.000Z')),
+    params.contextProvider,
+  );
 
 describe('ExecuteBriefingJobUseCase', () => {
   it('generates and stores a workspace briefing from selected evidence', async () => {
@@ -424,39 +452,40 @@ describe('ExecuteBriefingJobUseCase', () => {
         briefingId: 'briefing-id-1',
       },
     });
-	  expect(artifacts.all()[0]?.toSnapshot()).toMatchObject({
-	    qualityFlags: ['no_signal', 'limited_sources'],
-	    noSignalReason: 'No eligible evidence items selected for this briefing scope.',
-	  });
-	});
+    expect(artifacts.all()[0]?.toSnapshot()).toMatchObject({
+      qualityFlags: ['no_signal', 'limited_sources'],
+      noSignalReason:
+        'No eligible evidence items selected for this summary scope.',
+    });
+  });
 
-	it('marks the briefing degraded when optional context is unavailable', async () => {
-	  const jobs = new FakeBriefingJobRepository();
-	  const artifacts = new FakeBriefingArtifactRepository();
-	  await createRequestedJob(jobs);
-	  const useCase = createUseCase({
-	    jobs,
-	    artifacts,
-	    evidenceSelector: new SelectedEvidenceSelector(),
-	    contextProvider: new FailingBriefingContextProvider(),
-	  });
+  it('marks the briefing degraded when optional context is unavailable', async () => {
+    const jobs = new FakeBriefingJobRepository();
+    const artifacts = new FakeBriefingArtifactRepository();
+    await createRequestedJob(jobs);
+    const useCase = createUseCase({
+      jobs,
+      artifacts,
+      evidenceSelector: new SelectedEvidenceSelector(),
+      contextProvider: new FailingBriefingContextProvider(),
+    });
 
-	  const result = await useCase.execute({
-	    tenantId: tenant,
-	    workspaceId: workspace,
-	    briefingJobId: 'briefing-job-1',
-	  });
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      briefingJobId: 'briefing-job-1',
+    });
 
-	  expect(result.ok).toBe(true);
-	  expect(artifacts.all()[0]?.toSnapshot()).toMatchObject({
-	    qualityFlags: ['context_unavailable'],
-	    risksAndUnknowns: [
-	      expect.objectContaining({
-	        reason: 'provider_outage',
-	      }),
-	    ],
-	  });
-	});
+    expect(result.ok).toBe(true);
+    expect(artifacts.all()[0]?.toSnapshot()).toMatchObject({
+      qualityFlags: ['context_unavailable'],
+      risksAndUnknowns: [
+        expect.objectContaining({
+          reason: 'provider_outage',
+        }),
+      ],
+    });
+  });
 
   it('fails the job when the model cites outside selected feed evidence', async () => {
     const jobs = new FakeBriefingJobRepository();
@@ -485,13 +514,17 @@ describe('ExecuteBriefingJobUseCase', () => {
       }),
     });
     expect(artifacts.all()).toHaveLength(0);
-    await expect(jobs.findById({
-      tenantId: tenant,
-      workspaceId: workspace,
-      briefingJobId: 'briefing-job-1',
-    })).resolves.toEqual(expect.objectContaining({
-      toSnapshot: expect.any(Function),
-    }));
+    await expect(
+      jobs.findById({
+        tenantId: tenant,
+        workspaceId: workspace,
+        briefingJobId: 'briefing-job-1',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        toSnapshot: expect.any(Function),
+      }),
+    );
   });
 });
 
@@ -505,9 +538,12 @@ class FakeBriefingJobRepository implements BriefingJobRepositoryPort {
     this.jobsByIdempotencyKey.set(snapshot.idempotencyKey, job);
   }
 
-  async findById(params: Parameters<BriefingJobRepositoryPort['findById']>[0]): Promise<BriefingJob | null> {
+  async findById(
+    params: Parameters<BriefingJobRepositoryPort['findById']>[0],
+  ): Promise<BriefingJob | null> {
     const job = this.jobsById.get(params.briefingJobId);
-    return job?.toSnapshot().tenantId === params.tenantId && job.toSnapshot().workspaceId === params.workspaceId
+    return job?.toSnapshot().tenantId === params.tenantId &&
+      job.toSnapshot().workspaceId === params.workspaceId
       ? job
       : null;
   }
@@ -516,19 +552,24 @@ class FakeBriefingJobRepository implements BriefingJobRepositoryPort {
     params: Parameters<BriefingJobRepositoryPort['findByIdempotencyKey']>[0],
   ): Promise<BriefingJob | null> {
     const job = this.jobsByIdempotencyKey.get(params.idempotencyKey);
-    return job?.toSnapshot().tenantId === params.tenantId && job.toSnapshot().workspaceId === params.workspaceId
+    return job?.toSnapshot().tenantId === params.tenantId &&
+      job.toSnapshot().workspaceId === params.workspaceId
       ? job
       : null;
   }
 
-  async findRequested(params: Parameters<BriefingJobRepositoryPort['findRequested']>[0]): Promise<readonly BriefingJob[]> {
+  async findRequested(
+    params: Parameters<BriefingJobRepositoryPort['findRequested']>[0],
+  ): Promise<readonly BriefingJob[]> {
     return [...this.jobsById.values()]
       .filter((job) => {
         const snapshot = job.toSnapshot();
         return (
           snapshot.status === 'requested' &&
-          (params.tenantId === undefined || snapshot.tenantId === params.tenantId) &&
-          (params.workspaceId === undefined || snapshot.workspaceId === params.workspaceId)
+          (params.tenantId === undefined ||
+            snapshot.tenantId === params.tenantId) &&
+          (params.workspaceId === undefined ||
+            snapshot.workspaceId === params.workspaceId)
         );
       })
       .slice(0, params.limit);
@@ -547,9 +588,10 @@ class FakeBriefingJobRepository implements BriefingJobRepositoryPort {
       return null;
     }
 
-    const executableJob = snapshot.status === 'failed'
-      ? job.retry({ requestedAt: params.requestedAt })
-      : job;
+    const executableJob =
+      snapshot.status === 'failed'
+        ? job.retry({ requestedAt: params.requestedAt })
+        : job;
     const runningJob = executableJob.start({ startedAt: params.startedAt });
     await this.save(runningJob);
 
@@ -564,17 +606,24 @@ class FakeBriefingArtifactRepository implements BriefingArtifactRepositoryPort {
     this.artifactsById.set(artifact.toSnapshot().briefingId, artifact);
   }
 
-  async list(params: Parameters<BriefingArtifactRepositoryPort['list']>[0]): ReturnType<BriefingArtifactRepositoryPort['list']> {
+  async list(
+    params: Parameters<BriefingArtifactRepositoryPort['list']>[0],
+  ): ReturnType<BriefingArtifactRepositoryPort['list']> {
     const items = [...this.artifactsById.values()]
       .filter((artifact) => {
         const snapshot = artifact.toSnapshot();
-        return snapshot.tenantId === params.tenantId && snapshot.workspaceId === params.workspaceId;
+        return (
+          snapshot.tenantId === params.tenantId &&
+          snapshot.workspaceId === params.workspaceId
+        );
       })
       .slice(0, params.limit);
     return { items };
   }
 
-  async findById(params: Parameters<BriefingArtifactRepositoryPort['findById']>[0]): Promise<BriefingArtifact | null> {
+  async findById(
+    params: Parameters<BriefingArtifactRepositoryPort['findById']>[0],
+  ): Promise<BriefingArtifact | null> {
     const artifact = this.artifactsById.get(params.briefingId);
     return artifact?.toSnapshot().tenantId === params.tenantId &&
       artifact.toSnapshot().workspaceId === params.workspaceId
@@ -598,15 +647,20 @@ class FakeBriefingPolicyRepository implements BriefingPolicyRepositoryPort {
 }
 
 class FailingBriefingContextProvider implements BriefingContextProviderPort {
-  async buildContext(): ReturnType<BriefingContextProviderPort['buildContext']> {
+  async buildContext(): ReturnType<
+    BriefingContextProviderPort['buildContext']
+  > {
     throw new Error('context provider unavailable');
   }
 }
 
 class FakeSummaryEventPublisher implements SummaryEventPublisherPort {
-  private readonly events: EventEnvelope<Readonly<Record<string, unknown>>>[] = [];
+  private readonly events: EventEnvelope<Readonly<Record<string, unknown>>>[] =
+    [];
 
-  async publish(event: EventEnvelope<Readonly<Record<string, unknown>>>): Promise<void> {
+  async publish(
+    event: EventEnvelope<Readonly<Record<string, unknown>>>,
+  ): Promise<void> {
     this.events.push(event);
   }
 

@@ -1,10 +1,11 @@
-import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 
-import { PrismaClient } from './generated/client/client';
+import { PrismaClient } from "./generated/client/client";
 
 const connectionString =
-  process.env.DATABASE_URL ?? 'postgresql://social_monitor:social_monitor_local_password@localhost:5432/social_monitor';
+  process.env.DATABASE_URL ??
+  "postgresql://social_monitor:social_monitor_local_password@localhost:5432/social_monitor";
 const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
@@ -51,12 +52,12 @@ async function main(): Promise<void> {
 
 const sourceCatalogEntries = [
   {
-    id: '00000000-0000-7000-8000-000000000001',
-    profileId: '00000000-0000-7000-8000-000000000002',
-    providerKey: 'fake-source',
-    displayName: 'Fake Source',
-    acquisitionMode: 'fake',
-    readiness: 'mvp-certified',
+    id: "00000000-0000-7000-8000-000000000001",
+    profileId: "00000000-0000-7000-8000-000000000002",
+    providerKey: "fake-source",
+    displayName: "Fake Source",
+    acquisitionMode: "fake",
+    readiness: "mvp-certified",
     config: {
       supportsSearch: true,
       supportsCursor: true,
@@ -64,12 +65,12 @@ const sourceCatalogEntries = [
     },
   },
   {
-    id: '00000000-0000-7000-8000-000000000101',
-    profileId: '00000000-0000-7000-8000-000000000102',
-    providerKey: 'hacker-news',
-    displayName: 'Hacker News',
-    acquisitionMode: 'public-http',
-    readiness: 'mvp-certified',
+    id: "00000000-0000-7000-8000-000000000101",
+    profileId: "00000000-0000-7000-8000-000000000102",
+    providerKey: "hacker-news",
+    displayName: "Hacker News",
+    acquisitionMode: "public-http",
+    readiness: "mvp-certified",
     config: {
       supportsSearch: true,
       supportsListing: true,
@@ -79,12 +80,12 @@ const sourceCatalogEntries = [
     },
   },
   {
-    id: '00000000-0000-7000-8000-000000000201',
-    profileId: '00000000-0000-7000-8000-000000000202',
-    providerKey: 'rss',
-    displayName: 'RSS',
-    acquisitionMode: 'public-http',
-    readiness: 'mvp-certified',
+    id: "00000000-0000-7000-8000-000000000201",
+    profileId: "00000000-0000-7000-8000-000000000202",
+    providerKey: "rss",
+    displayName: "RSS",
+    acquisitionMode: "public-http",
+    readiness: "mvp-certified",
     config: {
       supportsUrl: true,
       supportsCursor: true,
@@ -93,12 +94,12 @@ const sourceCatalogEntries = [
     },
   },
   {
-    id: '00000000-0000-7000-8000-000000000301',
-    profileId: '00000000-0000-7000-8000-000000000302',
-    providerKey: 'github-issues',
-    displayName: 'GitHub Issues',
-    acquisitionMode: 'api',
-    readiness: 'mvp-certified',
+    id: "00000000-0000-7000-8000-000000000301",
+    profileId: "00000000-0000-7000-8000-000000000302",
+    providerKey: "github-issues",
+    displayName: "GitHub Issues",
+    acquisitionMode: "api",
+    readiness: "mvp-certified",
     config: {
       supportsSearch: true,
       supportsCursor: true,
@@ -108,12 +109,12 @@ const sourceCatalogEntries = [
     },
   },
   {
-    id: '00000000-0000-7000-8000-000000000321',
-    profileId: '00000000-0000-7000-8000-000000000322',
-    providerKey: 'github-repo-radar',
-    displayName: 'GitHub Repo Radar',
-    acquisitionMode: 'api',
-    readiness: 'mvp-certified',
+    id: "00000000-0000-7000-8000-000000000321",
+    profileId: "00000000-0000-7000-8000-000000000322",
+    providerKey: "github-repo-radar",
+    displayName: "GitHub Repo Radar",
+    acquisitionMode: "api",
+    readiness: "mvp-certified",
     config: {
       supportsSearch: true,
       supportsCursor: false,
@@ -121,16 +122,33 @@ const sourceCatalogEntries = [
       requiresCredentials: true,
       bigQueryRequired: true,
       githubTokenRecommended: true,
-      trendWindows: ['24h', '7d', '30d', '90d'],
+      trendWindows: ["24h", "7d", "30d", "90d"],
     },
   },
   {
-    id: '00000000-0000-7000-8000-000000000401',
-    profileId: '00000000-0000-7000-8000-000000000402',
-    providerKey: 'reddit',
-    displayName: 'Reddit',
-    acquisitionMode: 'oauth-api',
-    readiness: 'mvp-certified',
+    id: "00000000-0000-7000-8000-000000000341",
+    profileId: "00000000-0000-7000-8000-000000000342",
+    providerKey: "github-trending-page",
+    displayName: "GitHub Trending Page",
+    acquisitionMode: "public-page",
+    readiness: "mvp-certified",
+    config: {
+      supportsListing: true,
+      supportsCursor: false,
+      productionSafe: true,
+      requiresCredentials: false,
+      windows: ["daily", "weekly", "monthly"],
+      defaultWindow: "daily",
+      source: "github_trending_html",
+    },
+  },
+  {
+    id: "00000000-0000-7000-8000-000000000401",
+    profileId: "00000000-0000-7000-8000-000000000402",
+    providerKey: "reddit",
+    displayName: "Reddit",
+    acquisitionMode: "oauth-api",
+    readiness: "mvp-certified",
     config: {
       supportsSearch: true,
       supportsListing: true,

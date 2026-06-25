@@ -7,23 +7,42 @@ describe('DeterministicBriefingModelAdapter', () => {
   it('keeps first-page stories and citations provider-diverse', async () => {
     const adapter = new DeterministicBriefingModelAdapter();
     const input = briefingInput();
-    const route = adapter.route(input, {
-      preferredProvider: 'deterministic-local',
-      maxInputTokens: 24_000,
-      maxOutputTokens: 2_500,
-      maxEstimatedCostUsd: 1,
-    }, {
-      remainingTokens: 32_000,
-      remainingCostUsd: 2,
-    });
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: 'deterministic-local',
+        maxInputTokens: 24_000,
+        maxOutputTokens: 2_500,
+        maxEstimatedCostUsd: 1,
+      },
+      {
+        remainingTokens: 32_000,
+        remainingCostUsd: 2,
+      },
+    );
 
     const attempt = await adapter.generate(input, route);
-    const citationProviders = attempt.draft.citationMap.map((citation) => citation.providerKey);
+    const citationProviders = attempt.draft.citationMap.map(
+      (citation) => citation.providerKey,
+    );
 
     expect(citationProviders).toContain('github-issues');
-    expect(attempt.draft.topStories.some((story) => story.providerKeys.includes('github-issues'))).toBe(true);
+    expect(
+      attempt.draft.topStories.some((story) =>
+        story.providerKeys.includes('github-issues'),
+      ),
+    ).toBe(true);
     expect(attempt.draft.readerBrief).toBeDefined();
-    expect(attempt.draft.readerBrief?.topReads.map((item) => item.providerKey)).toContain('github-issues');
+    expect(
+      attempt.draft.readerBrief?.topReads.map((item) => item.providerKey),
+    ).toContain('github-issues');
+    expect(attempt.draft.executiveSummary).toContain(
+      'Current executive summary covers 12 selected stories for workspace in an analytical tone.',
+    );
+    expect(attempt.draft.executiveSummary).not.toContain('story/stories');
+    expect(attempt.draft.readerBrief?.bullets.join(' ')).not.toContain(
+      'Top links',
+    );
   });
 });
 
@@ -65,8 +84,12 @@ const briefingInput = (): BriefingModelInput => {
       rankingPolicyVersion: 'story_ranking_v1',
       sourceWindow: {
         windowId: 'workspace:deterministic-briefing',
-        startedAt: selectedEvidence[0]?.observedAt ?? new Date('2026-06-23T08:00:00.000Z'),
-        endedAt: selectedEvidence.at(-1)?.observedAt ?? new Date('2026-06-23T08:30:00.000Z'),
+        startedAt:
+          selectedEvidence[0]?.observedAt ??
+          new Date('2026-06-23T08:00:00.000Z'),
+        endedAt:
+          selectedEvidence.at(-1)?.observedAt ??
+          new Date('2026-06-23T08:30:00.000Z'),
         selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
         storyClusterIds: clusters.map((cluster) => cluster.id),
       },
@@ -101,9 +124,13 @@ const evidenceItem = (
   providerKey,
   canonicalUrl: `https://example.test/${providerKey}/${index}`,
   title: `${providerKey} story ${index}`,
-  bodyPreview: 'Useful source evidence for a workspace briefing.',
-  publishedAt: new Date(`2026-06-23T08:${String(index).padStart(2, '0')}:00.000Z`),
-  observedAt: new Date(`2026-06-23T08:${String(index).padStart(2, '0')}:30.000Z`),
+  bodyPreview: 'Useful source evidence for a workspace summary.',
+  publishedAt: new Date(
+    `2026-06-23T08:${String(index).padStart(2, '0')}:00.000Z`,
+  ),
+  observedAt: new Date(
+    `2026-06-23T08:${String(index).padStart(2, '0')}:30.000Z`,
+  ),
   score,
   whyImportant: ['Fresh item in the current monitoring window'],
 });

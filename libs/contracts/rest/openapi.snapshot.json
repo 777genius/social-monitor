@@ -399,6 +399,9 @@
           "providerVersion": {
             "type": "string"
           },
+          "rankingPolicyVersion": {
+            "type": "string"
+          },
           "rulesVersion": {
             "type": "string"
           },
@@ -560,12 +563,47 @@
         ],
         "type": "object"
       },
+      "BriefingReaderItemConfidenceDto": {
+        "properties": {
+          "level": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "score": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "level",
+          "score",
+          "rationale"
+        ],
+        "type": "object"
+      },
       "BriefingReaderItemDto": {
         "properties": {
           "canonicalUrl": {
             "type": "string"
           },
           "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/BriefingReaderItemConfidenceDto"
+          },
+          "confirmedProviderKeys": {
             "items": {
               "type": "string"
             },
@@ -618,6 +656,8 @@
           "matchedTopicIds",
           "matchedRules",
           "signalScore",
+          "confidence",
+          "confirmedProviderKeys",
           "providerMetrics",
           "whyImportant",
           "whyNow",
@@ -1002,11 +1042,17 @@
             },
             "type": "array"
           },
+          "rankingPolicyVersion": {
+            "type": "string"
+          },
           "representativeFeedItemId": {
             "type": "string"
           },
           "score": {
             "type": "number"
+          },
+          "signalBreakdown": {
+            "$ref": "#/components/schemas/BriefingStorySignalBreakdownDto"
           },
           "storyKey": {
             "type": "string"
@@ -1034,6 +1080,41 @@
           "score",
           "observedAtRange",
           "whyImportant"
+        ],
+        "type": "object"
+      },
+      "BriefingStorySignalBreakdownDto": {
+        "properties": {
+          "baseScore": {
+            "type": "number"
+          },
+          "crossProviderSupport": {
+            "type": "number"
+          },
+          "freshnessBoost": {
+            "type": "number"
+          },
+          "providerDiversityBoost": {
+            "type": "number"
+          },
+          "sameProviderSupport": {
+            "type": "number"
+          },
+          "topicDiversityBoost": {
+            "type": "number"
+          },
+          "totalScore": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "baseScore",
+          "crossProviderSupport",
+          "sameProviderSupport",
+          "providerDiversityBoost",
+          "topicDiversityBoost",
+          "freshnessBoost",
+          "totalScore"
         ],
         "type": "object"
       },
@@ -1315,6 +1396,7 @@
             "discriminator": {
               "mapping": {
                 "github_repository": "#/components/schemas/GitHubRepositoryProviderMetricsDto",
+                "github_trending_repository": "#/components/schemas/GitHubTrendingRepositoryProviderMetricsDto",
                 "hacker_news_story": "#/components/schemas/HackerNewsStoryProviderMetricsDto",
                 "reddit_post": "#/components/schemas/RedditPostProviderMetricsDto",
                 "x_post": "#/components/schemas/XPostProviderMetricsDto"
@@ -1327,6 +1409,9 @@
               },
               {
                 "$ref": "#/components/schemas/GitHubRepositoryProviderMetricsDto"
+              },
+              {
+                "$ref": "#/components/schemas/GitHubTrendingRepositoryProviderMetricsDto"
               },
               {
                 "$ref": "#/components/schemas/HackerNewsStoryProviderMetricsDto"
@@ -1511,6 +1596,7 @@
             "discriminator": {
               "mapping": {
                 "github_repository": "#/components/schemas/GitHubRepositoryProviderMetricsDto",
+                "github_trending_repository": "#/components/schemas/GitHubTrendingRepositoryProviderMetricsDto",
                 "hacker_news_story": "#/components/schemas/HackerNewsStoryProviderMetricsDto",
                 "reddit_post": "#/components/schemas/RedditPostProviderMetricsDto",
                 "x_post": "#/components/schemas/XPostProviderMetricsDto"
@@ -1523,6 +1609,9 @@
               },
               {
                 "$ref": "#/components/schemas/GitHubRepositoryProviderMetricsDto"
+              },
+              {
+                "$ref": "#/components/schemas/GitHubTrendingRepositoryProviderMetricsDto"
               },
               {
                 "$ref": "#/components/schemas/HackerNewsStoryProviderMetricsDto"
@@ -1610,9 +1699,24 @@
       },
       "GitHubRepositoryProviderMetricsDto": {
         "properties": {
+          "checkedAt": {
+            "description": "When the GH Archive trend window was computed.",
+            "format": "date-time",
+            "type": "string"
+          },
           "contentType": {
             "enum": [
               "repository"
+            ],
+            "type": "string"
+          },
+          "evidenceLabel": {
+            "description": "Human-readable source evidence label for Repo Radar freshness context.",
+            "type": "string"
+          },
+          "evidenceSource": {
+            "enum": [
+              "gh_archive_watch_event"
             ],
             "type": "string"
           },
@@ -1629,6 +1733,10 @@
             "enum": [
               "github-repo-radar"
             ],
+            "type": "string"
+          },
+          "source": {
+            "description": "Internal normalized source marker, for example gh_archive_bigquery_plus_github_live.",
             "type": "string"
           },
           "sourceKey": {
@@ -1652,10 +1760,69 @@
           "providerKey",
           "sourceKey",
           "contentType",
+          "evidenceSource",
+          "evidenceLabel",
           "stars",
           "forks",
           "trendingDelta",
           "trendDeltas"
+        ],
+        "type": "object"
+      },
+      "GitHubTrendingRepositoryProviderMetricsDto": {
+        "properties": {
+          "contentType": {
+            "enum": [
+              "repository"
+            ],
+            "type": "string"
+          },
+          "forks": {
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "github_trending_repository"
+            ],
+            "type": "string"
+          },
+          "providerKey": {
+            "enum": [
+              "github-trending-page"
+            ],
+            "type": "string"
+          },
+          "rank": {
+            "type": "number"
+          },
+          "sourceKey": {
+            "type": "string"
+          },
+          "stars": {
+            "type": "number"
+          },
+          "starsGained": {
+            "type": "number"
+          },
+          "window": {
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "providerKey",
+          "sourceKey",
+          "contentType",
+          "stars",
+          "forks",
+          "rank",
+          "starsGained",
+          "window"
         ],
         "type": "object"
       },
@@ -1978,6 +2145,15 @@
             "minimum": 1,
             "type": "number"
           },
+          "reason": {
+            "enum": [
+              "not_same_story",
+              "duplicate",
+              "low_quality_source",
+              "overrated_provider"
+            ],
+            "type": "string"
+          },
           "title": {
             "type": "string"
           },
@@ -2221,6 +2397,15 @@
       },
       "RelevanceFeedbackTargetDto": {
         "properties": {
+          "feedbackReason": {
+            "enum": [
+              "not_same_story",
+              "duplicate",
+              "low_quality_source",
+              "overrated_provider"
+            ],
+            "type": "string"
+          },
           "feedItemId": {
             "type": "string"
           },
@@ -4066,7 +4251,7 @@
             "description": ""
           }
         },
-        "summary": "List tenant/workspace briefings with cursor pagination.",
+        "summary": "List tenant/workspace summaries with cursor pagination.",
         "tags": [
           "briefings"
         ]
@@ -4131,7 +4316,7 @@
             "description": ""
           }
         },
-        "summary": "Get one tenant/workspace briefing by id.",
+        "summary": "Get one tenant/workspace summary by id.",
         "tags": [
           "briefings"
         ]

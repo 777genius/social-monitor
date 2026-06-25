@@ -90,21 +90,20 @@ export const buildBriefingReaderBrief = (
     ...input,
     topStories: readerTopStories,
   };
-  const topReads = readerTopStories
-    .map((story) =>
-      storyToReaderItem(
-        story,
-        citationById,
-        evidenceByFeedItemId,
-        clusterById,
-        evidenceByClusterId,
-      ),
-    );
+  const topReads = readerTopStories.map((story) =>
+    storyToReaderItem(
+      story,
+      citationById,
+      evidenceByFeedItemId,
+      clusterById,
+      evidenceByClusterId,
+    ),
+  );
   const sourceMix = buildSourceMix(input);
   const qualityState = buildQualityState(input.qualityFlags, sourceMix);
 
   return {
-    headline: nonEmpty(input.headline, 'Workspace briefing'),
+    headline: nonEmpty(input.headline, 'Workspace summary'),
     oneLineTakeaway:
       firstSentence(input.executiveSummary) ??
       topReads[0]?.reason ??
@@ -128,7 +127,7 @@ const buildNoSignalReaderBrief = (
 ): BriefingReaderBrief => {
   const reason =
     input.noSignalReason ??
-    'No eligible evidence was selected for this briefing window.';
+    'No eligible evidence was selected for this summary window.';
 
   return {
     headline: nonEmpty(input.headline, 'No reliable workspace signal yet'),
@@ -141,7 +140,7 @@ const buildNoSignalReaderBrief = (
         'no_signal',
       ]) as readonly BriefingQualityFlag[],
       warnings: [
-        'No cited source evidence passed the briefing selection policy.',
+        'No cited source evidence passed the summary selection policy.',
       ],
       isSingleSource: false,
     },
@@ -161,7 +160,7 @@ const buildNoSignalReaderBrief = (
         kind: 'ignore_low_confidence',
         label: 'Wait for more evidence',
         reason:
-          'The current briefing window does not contain enough cited material.',
+          'The current summary window does not contain enough cited material.',
         citationIds: [],
       },
     ],
@@ -183,9 +182,10 @@ const storyToReaderItem = (
     .filter((item): item is BriefingEvidenceItem => item !== undefined);
   const citation = citations[0];
   const cluster = clusterById.get(story.storyClusterId);
-  const clusterEvidence = cluster === undefined
-    ? citedEvidence
-    : evidenceByClusterId.get(cluster.id) ?? citedEvidence;
+  const clusterEvidence =
+    cluster === undefined
+      ? citedEvidence
+      : (evidenceByClusterId.get(cluster.id) ?? citedEvidence);
   const evidence = citedEvidence[0] ?? clusterEvidence[0];
   const providerKey =
     citation?.providerKey ??
@@ -203,7 +203,9 @@ const storyToReaderItem = (
     ...clusterEvidence.flatMap((item) => item.whyImportant),
     story.summary,
   ]);
-  const signalScore = normalizeSignalScore(cluster?.score ?? evidence?.score ?? 0);
+  const signalScore = normalizeSignalScore(
+    cluster?.score ?? evidence?.score ?? 0,
+  );
   const confirmedProviders = confirmedProviderKeys({
     cluster,
     evidence: clusterEvidence,
@@ -276,7 +278,7 @@ const buildBriefingBullets = (
       : `Best first read: ${topReads[0].title} - ${topReads[0].reason}`,
     followUpCount === 0
       ? undefined
-      : `${followUpCount} follow-up link${plural(followUpCount)} available in Top links.`,
+      : `${followUpCount} follow-up link${plural(followUpCount)} available in Top reads.`,
     ...input.repeatedSignals
       .slice(0, 2)
       .map((signal) => `Repeated signal: ${signal.title}`),
@@ -418,7 +420,7 @@ const buildNextActions = (
       kind: 'request_deeper_scan',
       label: 'Request deeper scan',
       reason:
-        'The briefing has limited confirmation and needs more provider coverage before strong conclusions.',
+        'The summary has limited confirmation and needs more provider coverage before strong conclusions.',
       citationIds: firstTopRead?.citationIds ?? [],
       canonicalUrl: firstTopRead?.canonicalUrl,
     });
@@ -441,14 +443,14 @@ const buildNextActions = (
         kind: 'mark_relevant',
         label: 'Mark relevant',
         reason:
-          'Use feedback to keep future briefings aligned with this signal.',
+          'Use feedback to keep future summaries aligned with this signal.',
         citationIds: firstTopRead.citationIds,
         canonicalUrl: firstTopRead.canonicalUrl,
       },
       {
         kind: 'mark_not_relevant',
         label: 'Not relevant',
-        reason: 'Use feedback to reduce similar signals in future briefings.',
+        reason: 'Use feedback to reduce similar signals in future summaries.',
         citationIds: firstTopRead.citationIds,
         canonicalUrl: firstTopRead.canonicalUrl,
       },

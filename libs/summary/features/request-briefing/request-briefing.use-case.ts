@@ -7,8 +7,17 @@ import {
   type Result,
 } from '@social-monitor/shared-kernel';
 
-import { assertBriefingScope, BriefingJob, briefingScopeKey, type BriefingJobProps } from '../../domain';
-import type { BriefingJobQueuePort, BriefingJobRepositoryPort, SummaryQuotaPort } from '../../ports';
+import {
+  assertBriefingScope,
+  BriefingJob,
+  briefingScopeKey,
+  type BriefingJobProps,
+} from '../../domain';
+import type {
+  BriefingJobQueuePort,
+  BriefingJobRepositoryPort,
+  SummaryQuotaPort,
+} from '../../ports';
 import type { RequestBriefingCommand } from './request-briefing.command';
 import type { RequestBriefingResult } from './request-briefing.result';
 
@@ -23,7 +32,9 @@ export class RequestBriefingUseCase {
     private readonly clock: Clock,
   ) {}
 
-  async execute(command: RequestBriefingCommand): Promise<Result<RequestBriefingResult, RequestBriefingFailure>> {
+  async execute(
+    command: RequestBriefingCommand,
+  ): Promise<Result<RequestBriefingResult, RequestBriefingFailure>> {
     const userId = normalizeOptionalText(command.userId);
     const subscriptionId = normalizeOptionalText(command.subscriptionId);
     const idempotencyKey = command.idempotencyKey.trim();
@@ -35,11 +46,21 @@ export class RequestBriefingUseCase {
     }
 
     if (idempotencyKey.length === 0) {
-      return err(new DomainError('validation.failed', 'Briefing idempotency key must be non-empty'));
+      return err(
+        new DomainError(
+          'validation.failed',
+          'Briefing idempotency key must be non-empty',
+        ),
+      );
     }
 
     if (subscriptionId !== undefined && userId === undefined) {
-      return err(new DomainError('validation.failed', 'Subscription-scoped briefing request must include userId'));
+      return err(
+        new DomainError(
+          'validation.failed',
+          'Subscription-scoped briefing request must include userId',
+        ),
+      );
     }
 
     const existing = await this.briefingJobs.findByIdempotencyKey({
@@ -51,16 +72,20 @@ export class RequestBriefingUseCase {
     if (existing !== null) {
       const snapshot = existing.toSnapshot();
 
-      if (!isSameIdempotentBriefingRequest(snapshot, {
-        scopeKey: briefingScopeKey(command.scope),
-        userId,
-        subscriptionId,
-      })) {
-        return err(new DomainError(
-          'operation.conflict',
-          'Briefing idempotency key was already used for a different request scope',
-          { idempotencyKey },
-        ));
+      if (
+        !isSameIdempotentBriefingRequest(snapshot, {
+          scopeKey: briefingScopeKey(command.scope),
+          userId,
+          subscriptionId,
+        })
+      ) {
+        return err(
+          new DomainError(
+            'operation.conflict',
+            'Briefing idempotency key was already used for a different request scope',
+            { idempotencyKey },
+          ),
+        );
       }
 
       return ok({
@@ -79,7 +104,12 @@ export class RequestBriefingUseCase {
       causationId: idempotencyKey,
     };
     if (!(await this.briefingJobQueue.canAccept(queueCommand))) {
-      return err(new DomainError('operation.backpressure', 'Briefing job queue backpressure limit reached'));
+      return err(
+        new DomainError(
+          'operation.backpressure',
+          'Briefing job queue backpressure limit reached',
+        ),
+      );
     }
 
     const quota = await this.summaryQuota.reserveSummaryJob({
@@ -114,10 +144,14 @@ export class RequestBriefingUseCase {
   }
 }
 
-const normalizeOptionalText = (value: string | undefined): string | undefined => {
+const normalizeOptionalText = (
+  value: string | undefined,
+): string | undefined => {
   const normalized = value?.trim();
 
-  return normalized === undefined || normalized.length === 0 ? undefined : normalized;
+  return normalized === undefined || normalized.length === 0
+    ? undefined
+    : normalized;
 };
 
 const isSameIdempotentBriefingRequest = (
@@ -133,4 +167,4 @@ const isSameIdempotentBriefingRequest = (
   snapshot.subscriptionId === request.subscriptionId;
 
 const safeErrorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : 'Invalid briefing scope';
+  error instanceof Error ? error.message : 'Invalid summary scope';
