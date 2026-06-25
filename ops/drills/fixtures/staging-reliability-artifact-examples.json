@@ -217,9 +217,7 @@
           "evidence": {
             "summary": "redacted migration identifiers matched release commit",
             "releaseCommitSha": "0000000000000000000000000000000000000000",
-            "appliedMigrationIds": [
-              "20260618002000_beta_release"
-            ],
+            "appliedMigrationIds": ["20260618002000_beta_release"],
             "schemaChecksumMatched": true
           }
         },
@@ -383,6 +381,13 @@
                 "scanId": "scan-github-example"
               },
               {
+                "providerKey": "github-trending-page",
+                "sourceBindingId": "source-binding-github-trending-page-example",
+                "feedItemCount": 2,
+                "feedProviderKeys": ["github-trending-page"],
+                "scanId": "scan-github-trending-page-example"
+              },
+              {
                 "providerKey": "hacker-news",
                 "sourceBindingId": "source-binding-hacker-news-example",
                 "feedItemCount": 2,
@@ -411,6 +416,7 @@
             "summaryId": "summary-e2e-example",
             "summaryCitationProviderKeys": [
               "github-issues",
+              "github-trending-page",
               "hacker-news",
               "reddit",
               "rss"
@@ -508,19 +514,51 @@
               "memoryBaseUrlOrigin": "https://memory.staging.social-monitor.invalid",
               "topicScopeExternalRef": "topic:topic-e2e-example:feedback",
               "providerScopeExternalRef": "topic:topic-e2e-example:provider:reddit:quality",
-              "sourceRefTypes": [
-                "social-monitor.summary-feedback"
-              ],
+              "sourceRefTypes": ["social-monitor.summary-feedback"],
               "sourceRefCount": 1,
               "renderedTextChars": 128,
               "factsUsed": 1,
               "itemsUsed": 1,
-              "retrievalSourcesUsed": [
-                "vector"
-              ],
+              "retrievalSourcesUsed": ["vector"],
               "memoryEffectMatched": true
             },
             "rawMemoryTextIncluded": false
+          }
+        },
+        {
+          "signalId": "backend-loop-reader-brief",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:10:45.000Z",
+          "evidence": {
+            "summary": "redacted reader briefing was generated from durable feed evidence with top reads, citations and source mix",
+            "readerBrief": {
+              "briefingJobId": "briefing-job-e2e-example",
+              "briefingId": "briefing-e2e-example",
+              "headline": "GitHub Trending and source signals are ready",
+              "topReadCount": 5,
+              "topReadTitles": [
+                "GitHub Trending project example",
+                "GitHub issue example",
+                "Hacker News story example",
+                "Reddit post example",
+                "RSS article example"
+              ],
+              "sourceMixProviderKeys": [
+                "github-issues",
+                "github-trending-page",
+                "hacker-news",
+                "reddit",
+                "rss"
+              ],
+              "citationProviderKeys": [
+                "github-issues",
+                "github-trending-page",
+                "hacker-news",
+                "reddit",
+                "rss"
+              ],
+              "qualityStatus": "ready"
+            }
           }
         },
         {

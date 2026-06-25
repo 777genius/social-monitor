@@ -189,6 +189,71 @@
       "page": false
     },
     {
+      "alertId": "summary-story-ranking-cross-provider-share-low",
+      "severity": "warning",
+      "metric": "summary_story_ranking_cross_provider_cluster_share",
+      "labels": {
+        "ranking_policy_version": "story_ranking_v1"
+      },
+      "condition": "latest_value <= 0.2 for 30m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "summary-story-ranking-cross-provider-share",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#summary-quality-triage",
+      "userVisibleState": "summary_quality_degraded",
+      "firstMitigation": "check_provider_coverage_before_tuning_ranking_weights",
+      "safeDiagnosticFields": ["ranking_policy_version", "tenant_id", "workspace_id", "correlation_id"],
+      "page": false
+    },
+    {
+      "alertId": "summary-story-ranking-title-only-clusters-high",
+      "severity": "warning",
+      "metric": "summary_story_ranking_title_only_cluster_share",
+      "labels": {
+        "ranking_policy_version": "story_ranking_v1"
+      },
+      "condition": "latest_value >= 0.35 for 30m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "summary-story-ranking-title-only-share",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#summary-quality-triage",
+      "userVisibleState": "summary_quality_degraded",
+      "firstMitigation": "inspect_canonical_urls_before_accepting_title_only_merges",
+      "safeDiagnosticFields": ["ranking_policy_version", "tenant_id", "workspace_id", "correlation_id"],
+      "page": false
+    },
+    {
+      "alertId": "summary-story-ranking-missing-provider-metrics",
+      "severity": "warning",
+      "metric": "summary_story_ranking_clusters_without_provider_metrics",
+      "labels": {
+        "ranking_policy_version": "story_ranking_v1"
+      },
+      "condition": "latest_value >= 1 for 30m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "summary-story-ranking-missing-provider-metrics",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#summary-quality-triage",
+      "userVisibleState": "summary_quality_degraded",
+      "firstMitigation": "check_provider_metric_mapping_before_shipping_reader_ranking",
+      "safeDiagnosticFields": ["ranking_policy_version", "tenant_id", "workspace_id", "correlation_id"],
+      "page": false
+    },
+    {
+      "alertId": "summary-story-ranking-provider-domination",
+      "severity": "warning",
+      "metric": "summary_story_ranking_top_provider_cluster_share",
+      "labels": {
+        "ranking_policy_version": "story_ranking_v1",
+        "top_provider_key": "unknown"
+      },
+      "condition": "latest_value >= 0.8 for 30m",
+      "dashboardId": "mvp-health",
+      "dashboardPanelId": "summary-story-ranking-provider-domination",
+      "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#summary-quality-triage",
+      "userVisibleState": "summary_quality_degraded",
+      "firstMitigation": "check_source_mix_before_boosting_single_provider_signals",
+      "safeDiagnosticFields": ["ranking_policy_version", "top_provider_key", "tenant_id", "workspace_id", "correlation_id"],
+      "page": false
+    },
+    {
       "alertId": "webhook-delivery-failures",
       "severity": "warning",
       "metric": "delivery_failures_total",

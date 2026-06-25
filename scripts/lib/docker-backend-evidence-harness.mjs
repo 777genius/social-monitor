@@ -1,8 +1,14 @@
-import { execFileSync, spawnSync } from 'node:child_process';
-import { generateKeyPairSync, randomInt } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, statfsSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { delimiter, join, resolve } from 'node:path';
+import { execFileSync, spawnSync } from "node:child_process";
+import { generateKeyPairSync, randomInt } from "node:crypto";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statfsSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join, resolve } from "node:path";
 
 const DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS = 5_000;
 const DEFAULT_DOCKER_SOCKET_PING_TIMEOUT_MS = 3_000;
@@ -10,11 +16,12 @@ const MAX_DOCKER_SOCKET_PING_TIMEOUT_MS = 30_000;
 const DEFAULT_DOCKER_VOLUME_PROBE_TIMEOUT_MS = 20_000;
 const DEFAULT_MIN_FREE_BYTES = 8 * 1024 ** 3;
 const DEFAULT_DOCKER_VOLUME_PROBE_BYTES = 256 * 1024 ** 2;
-const DOCKER_VOLUME_PROBE_IMAGE = 'postgres:18.4-alpine';
-const DOCKER_EVIDENCE_STORAGE_MODE_ENV = 'DOCKER_BACKEND_EVIDENCE_STORAGE_MODE';
-const DOCKER_EVIDENCE_STORAGE_DOCKER_VOLUME_MODE = 'docker-volume';
-const DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE = 'host-bind';
-const DOCKER_EVIDENCE_HOST_STORAGE_DIR_ENV = 'DOCKER_BACKEND_EVIDENCE_HOST_STORAGE_DIR';
+const DOCKER_VOLUME_PROBE_IMAGE = "postgres:18.4-alpine";
+const DOCKER_EVIDENCE_STORAGE_MODE_ENV = "DOCKER_BACKEND_EVIDENCE_STORAGE_MODE";
+const DOCKER_EVIDENCE_STORAGE_DOCKER_VOLUME_MODE = "docker-volume";
+const DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE = "host-bind";
+const DOCKER_EVIDENCE_HOST_STORAGE_DIR_ENV =
+  "DOCKER_BACKEND_EVIDENCE_HOST_STORAGE_DIR";
 
 export async function withDockerBackendEvidenceStack(options, callback) {
   const preflightCwd = options.preflightCwd ?? process.cwd();
@@ -22,49 +29,65 @@ export async function withDockerBackendEvidenceStack(options, callback) {
   assertDockerEvidencePrerequisites({ cwd: preflightCwd, storageMode });
 
   const runId = Date.now().toString(36);
-  const projectName = process.env[options.projectEnvName] ?? `${options.projectPrefix}-${runId}`;
+  const projectName =
+    process.env[options.projectEnvName] ?? `${options.projectPrefix}-${runId}`;
   const tempDir = mkdtempSync(join(tmpdir(), `${options.projectPrefix}-`));
-  const overridePath = join(tempDir, 'compose.override.yml');
-  const hostStorageRoot = storageMode === DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE
-    ? prepareHostBindStorageRoot({ tempDir, projectName })
-    : undefined;
+  const overridePath = join(tempDir, "compose.override.yml");
+  const hostStorageRoot =
+    storageMode === DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE
+      ? prepareHostBindStorageRoot({ tempDir, projectName })
+      : undefined;
   const apiPort = process.env.API_PORT ?? String(randomPort());
   const postgresPort = process.env.POSTGRES_PORT ?? String(randomPort());
   const rabbitMqPort = process.env.RABBITMQ_PORT ?? String(randomPort());
-  const rabbitMqManagementPort = process.env.RABBITMQ_MANAGEMENT_PORT ?? String(randomPort());
+  const rabbitMqManagementPort =
+    process.env.RABBITMQ_MANAGEMENT_PORT ?? String(randomPort());
   const redisPort = process.env.REDIS_PORT ?? String(randomPort());
-  const environmentId = process.env.STAGING_ENVIRONMENT_ID ?? 'docker-alpha-1';
-  const operator = process.env.STAGING_OPERATOR ?? 'backend-ops-1';
-  const issuer = process.env.SOCIAL_MONITOR_OIDC_ISSUER ?? 'https://auth.docker-alpha.internal/realms/main';
-  const audience = process.env.SOCIAL_MONITOR_OIDC_AUDIENCE ?? 'social-monitor-api';
+  const environmentId = process.env.STAGING_ENVIRONMENT_ID ?? "docker-alpha-1";
+  const operator = process.env.STAGING_OPERATOR ?? "backend-ops-1";
+  const issuer =
+    process.env.SOCIAL_MONITOR_OIDC_ISSUER ??
+    "https://auth.docker-alpha.internal/realms/main";
+  const audience =
+    process.env.SOCIAL_MONITOR_OIDC_AUDIENCE ?? "social-monitor-api";
   const keyId = `docker-alpha-${runId}`;
-  const keyPair = generateKeyPairSync('rsa', { modulusLength: 2048 });
-  const privateKeyPem = keyPair.privateKey.export({ format: 'pem', type: 'pkcs8' });
+  const keyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const privateKeyPem = keyPair.privateKey.export({
+    format: "pem",
+    type: "pkcs8",
+  });
   const publicJwk = {
-    ...keyPair.publicKey.export({ format: 'jwk' }),
+    ...keyPair.publicKey.export({ format: "jwk" }),
     kid: keyId,
-    alg: 'RS256',
-    use: 'sig',
+    alg: "RS256",
+    use: "sig",
   };
   const jwksJson = JSON.stringify({ keys: [publicJwk] });
   const sourceConfigEncryptionKey =
-    process.env.SOURCE_CONFIG_ENCRYPTION_KEY ?? 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    process.env.SOURCE_CONFIG_ENCRYPTION_KEY ??
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
   const sourceCredentialSecretEncryptionKey =
-    process.env.SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY ?? 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    process.env.SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY ??
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
   const webhookSecretEncryptionKey =
-    process.env.DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY ?? 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    process.env.DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY ??
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
-  writeFileSync(overridePath, buildComposeOverride({
-    issuer,
-    audience,
-    jwksJson,
-    sourceConfigEncryptionKey,
-    sourceCredentialSecretEncryptionKey,
-    webhookSecretEncryptionKey,
-    hostStorageRoot,
-  }), 'utf8');
+  writeFileSync(
+    overridePath,
+    buildComposeOverride({
+      issuer,
+      audience,
+      jwksJson,
+      sourceConfigEncryptionKey,
+      sourceCredentialSecretEncryptionKey,
+      webhookSecretEncryptionKey,
+      hostStorageRoot,
+    }),
+    "utf8",
+  );
 
-  const composeFile = ['docker-compose.yml', overridePath].join(delimiter);
+  const composeFile = ["docker-compose.yml", overridePath].join(delimiter);
   const composeEnv = {
     ...process.env,
     API_PORT: apiPort,
@@ -73,34 +96,54 @@ export async function withDockerBackendEvidenceStack(options, callback) {
     RABBITMQ_MANAGEMENT_PORT: rabbitMqManagementPort,
     REDIS_PORT: redisPort,
     SOURCE_CONFIG_ENCRYPTION_KEY: sourceConfigEncryptionKey,
-    SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY: sourceCredentialSecretEncryptionKey,
+    SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY:
+      sourceCredentialSecretEncryptionKey,
     DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY: webhookSecretEncryptionKey,
     COMPOSE_PROJECT_NAME: projectName,
     COMPOSE_FILE: composeFile,
   };
-  const composeBaseArgs = ['compose', '-p', projectName, '-f', 'docker-compose.yml', '-f', overridePath, '--profile', 'app'];
+  const composeBaseArgs = [
+    "compose",
+    "-p",
+    projectName,
+    "-f",
+    "docker-compose.yml",
+    "-f",
+    overridePath,
+    "--profile",
+    "app",
+  ];
 
-  const docker = (args, commandOptions = {}) => execFileSync('docker', args, {
-    ...commandOptions,
-    env: commandOptions.env ?? composeEnv,
-  });
+  const docker = (args, commandOptions = {}) =>
+    execFileSync("docker", args, {
+      ...commandOptions,
+      env: commandOptions.env ?? composeEnv,
+    });
 
   try {
     try {
-      docker([...composeBaseArgs, 'build', ...dockerComposeBuildCacheArgs()], { stdio: 'inherit' });
+      docker([...composeBaseArgs, "build", ...dockerComposeBuildCacheArgs()], {
+        stdio: "inherit",
+      });
     } catch (error) {
       throw new Error(dockerComposeBuildFailureMessage(error, storageMode));
     }
     assertDockerStorageAvailable({
       cwd: preflightCwd,
-      phase: 'after Docker image build',
+      phase: "after Docker image build",
       storageMode,
       hostStorageRoot,
     });
-    docker([...composeBaseArgs, 'up', '--no-build', '-d'], { stdio: 'inherit' });
+    docker([...composeBaseArgs, "up", "--no-build", "-d"], {
+      stdio: "inherit",
+    });
     const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
     waitForReady(apiBaseUrl);
-    const imageDigest = inspectApiImageDigest({ docker, composeBaseArgs, composeEnv });
+    const imageDigest = inspectApiImageDigest({
+      docker,
+      composeBaseArgs,
+      composeEnv,
+    });
     const runnerEnv = {
       ...process.env,
       API_BASE_URL: apiBaseUrl,
@@ -116,7 +159,8 @@ export async function withDockerBackendEvidenceStack(options, callback) {
       SOCIAL_MONITOR_OIDC_AUDIENCE: audience,
       DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY: webhookSecretEncryptionKey,
       SOURCE_CONFIG_ENCRYPTION_KEY: sourceConfigEncryptionKey,
-      SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY: sourceCredentialSecretEncryptionKey,
+      SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY:
+        sourceCredentialSecretEncryptionKey,
       COMPOSE_PROJECT_NAME: projectName,
       COMPOSE_FILE: composeFile,
       API_PORT: apiPort,
@@ -144,7 +188,9 @@ export async function withDockerBackendEvidenceStack(options, callback) {
       console.log(`Keeping Docker Compose project ${projectName}`);
     } else {
       try {
-        docker([...composeBaseArgs, 'down', '-v', '--remove-orphans'], { stdio: 'inherit' });
+        docker([...composeBaseArgs, "down", "-v", "--remove-orphans"], {
+          stdio: "inherit",
+        });
       } catch (error) {
         console.error(error instanceof Error ? error.message : String(error));
       }
@@ -154,21 +200,32 @@ export async function withDockerBackendEvidenceStack(options, callback) {
 }
 
 export function runNpmScript(scriptName, env) {
-  execFileSync('npm', ['run', scriptName], {
+  execFileSync("npm", ["run", scriptName], {
     env,
-    stdio: 'inherit',
+    stdio: "inherit",
   });
 }
 
 export function runNodeScript(scriptPath, env) {
   execFileSync(process.execPath, [scriptPath], {
     env,
-    stdio: 'inherit',
+    stdio: "inherit",
   });
 }
 
-export function restartBackendServices(context, services = ['api', 'event-relay', 'ingestion-worker', 'intelligence-worker', 'delivery-service']) {
-  context.docker([...context.composeBaseArgs, 'restart', ...services], { stdio: 'inherit' });
+export function restartBackendServices(
+  context,
+  services = [
+    "api",
+    "event-relay",
+    "ingestion-worker",
+    "intelligence-worker",
+    "delivery-service",
+  ],
+) {
+  context.docker([...context.composeBaseArgs, "restart", ...services], {
+    stdio: "inherit",
+  });
   context.waitForReady(context.apiBaseUrl);
 }
 
@@ -176,20 +233,34 @@ export function assertDockerEvidencePrerequisites(options = {}) {
   const cwd = options.cwd ?? process.cwd();
   const storageMode = options.storageMode ?? dockerEvidenceStorageMode();
   const dockerTimeoutMs =
-    options.dockerTimeoutMs ?? positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_DOCKER_TIMEOUT_MS', DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS);
+    options.dockerTimeoutMs ??
+    positiveIntegerEnv(
+      "DOCKER_BACKEND_EVIDENCE_DOCKER_TIMEOUT_MS",
+      DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS,
+    );
   const socketPingTimeoutMs =
-    options.socketPingTimeoutMs ?? boundedPositiveIntegerEnv(
-      'DOCKER_BACKEND_EVIDENCE_SOCKET_PING_TIMEOUT_MS',
+    options.socketPingTimeoutMs ??
+    boundedPositiveIntegerEnv(
+      "DOCKER_BACKEND_EVIDENCE_SOCKET_PING_TIMEOUT_MS",
       DEFAULT_DOCKER_SOCKET_PING_TIMEOUT_MS,
       MAX_DOCKER_SOCKET_PING_TIMEOUT_MS,
     );
   const minFreeBytes =
-    options.minFreeBytes ?? positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES', DEFAULT_MIN_FREE_BYTES);
+    options.minFreeBytes ??
+    positiveIntegerEnv(
+      "DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES",
+      DEFAULT_MIN_FREE_BYTES,
+    );
   const volumeProbeBytes =
-    options.volumeProbeBytes ?? positiveIntegerEnv('DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES', DEFAULT_DOCKER_VOLUME_PROBE_BYTES);
+    options.volumeProbeBytes ??
+    positiveIntegerEnv(
+      "DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES",
+      DEFAULT_DOCKER_VOLUME_PROBE_BYTES,
+    );
   const volumeProbeTimeoutMs =
-    options.volumeProbeTimeoutMs ?? positiveIntegerEnv(
-      'DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_TIMEOUT_MS',
+    options.volumeProbeTimeoutMs ??
+    positiveIntegerEnv(
+      "DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_TIMEOUT_MS",
       DEFAULT_DOCKER_VOLUME_PROBE_TIMEOUT_MS,
     );
   const failures = [];
@@ -210,21 +281,29 @@ export function assertDockerEvidencePrerequisites(options = {}) {
   }
 
   if (failures.length === 0) {
-    const dockerVersion = spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], {
-      cwd,
-      encoding: 'utf8',
-      timeout: dockerTimeoutMs,
-    });
+    const dockerVersion = spawnSync(
+      "docker",
+      ["version", "--format", "{{.Server.Version}}"],
+      {
+        cwd,
+        encoding: "utf8",
+        timeout: dockerTimeoutMs,
+      },
+    );
 
     if (dockerVersion.error) {
-      failures.push(dockerVersion.error.code === 'ETIMEDOUT'
-        ? `Docker daemon did not respond within ${dockerTimeoutMs}ms`
-        : `Docker daemon check failed: ${dockerVersion.error.message}`);
+      failures.push(
+        dockerVersion.error.code === "ETIMEDOUT"
+          ? `Docker daemon did not respond within ${dockerTimeoutMs}ms`
+          : `Docker daemon check failed: ${dockerVersion.error.message}`,
+      );
     } else if (dockerVersion.status !== 0) {
       const stderr = dockerVersion.stderr.trim();
-      failures.push(stderr.length > 0
-        ? `Docker daemon check failed: ${stderr}`
-        : `Docker daemon check exited with status ${dockerVersion.status ?? 'unknown'}`);
+      failures.push(
+        stderr.length > 0
+          ? `Docker daemon check failed: ${stderr}`
+          : `Docker daemon check exited with status ${dockerVersion.status ?? "unknown"}`,
+      );
     }
   }
 
@@ -233,7 +312,7 @@ export function assertDockerEvidencePrerequisites(options = {}) {
       cwd,
       bytes: volumeProbeBytes,
       timeoutMs: volumeProbeTimeoutMs,
-      phase: 'before Docker image build',
+      phase: "before Docker image build",
       storageMode,
     });
     if (storageFailure !== undefined) {
@@ -242,34 +321,43 @@ export function assertDockerEvidencePrerequisites(options = {}) {
   }
 
   if (failures.length > 0) {
-    throw new Error([
-      'Docker backend evidence preflight failed:',
-      ...failures.map((failure) => `- ${failure}`),
-      'Restart Docker Desktop, free disk space, prune unused Docker data, or set DOCKER_BACKEND_EVIDENCE_SOCKET_PING_TIMEOUT_MS / DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES / DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES for a controlled override.',
-    ].join('\n'));
+    throw new Error(
+      [
+        "Docker backend evidence preflight failed:",
+        ...failures.map((failure) => `- ${failure}`),
+        "Restart Docker Desktop, free disk space, prune unused Docker data, or set DOCKER_BACKEND_EVIDENCE_SOCKET_PING_TIMEOUT_MS / DOCKER_BACKEND_EVIDENCE_MIN_FREE_BYTES / DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES for a controlled override.",
+      ].join("\n"),
+    );
   }
 }
 
 export function assertDurableAutomaticLoopExternalEnv() {
   const missing = [
-    'REDDIT_APP_CLIENT_ID',
-    'REDDIT_APP_CLIENT_SECRET',
-    'INFINITY_CONTEXT_URL',
-    'INFINITY_CONTEXT_TOKEN',
+    "REDDIT_APP_CLIENT_ID",
+    "REDDIT_APP_CLIENT_SECRET",
+    "INFINITY_CONTEXT_URL",
+    "INFINITY_CONTEXT_TOKEN",
   ].filter((name) => nonEmptyEnvValue(name) === undefined);
 
   if (missing.length > 0) {
-    throw new Error(`${missing.join(', ')} must be set before Docker durable backend E2E because the loop must prove Reddit and memo-stack memory`);
+    throw new Error(
+      `${missing.join(", ")} must be set before Docker durable backend E2E because the loop must prove Reddit and memo-stack memory`,
+    );
   }
 }
 
-function assertDockerStorageAvailable({ cwd, phase, storageMode, hostStorageRoot }) {
+function assertDockerStorageAvailable({
+  cwd,
+  phase,
+  storageMode,
+  hostStorageRoot,
+}) {
   const volumeProbeBytes = positiveIntegerEnv(
-    'DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES',
+    "DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_BYTES",
     DEFAULT_DOCKER_VOLUME_PROBE_BYTES,
   );
   const volumeProbeTimeoutMs = positiveIntegerEnv(
-    'DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_TIMEOUT_MS',
+    "DOCKER_BACKEND_EVIDENCE_VOLUME_PROBE_TIMEOUT_MS",
     DEFAULT_DOCKER_VOLUME_PROBE_TIMEOUT_MS,
   );
   const storageFailure = dockerStorageFailure({
@@ -281,17 +369,26 @@ function assertDockerStorageAvailable({ cwd, phase, storageMode, hostStorageRoot
     hostStorageRoot,
   });
   if (storageFailure !== undefined) {
-    throw new Error([
-      'Docker backend evidence storage check failed:',
-      `- ${storageFailure}`,
-      storageMode === DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE
-        ? 'Free host disk space or choose another DOCKER_BACKEND_EVIDENCE_HOST_STORAGE_DIR before capturing backend staging evidence.'
-        : 'Free Docker Desktop storage or prune unused Docker data before capturing backend staging evidence.',
-    ].join('\n'));
+    throw new Error(
+      [
+        "Docker backend evidence storage check failed:",
+        `- ${storageFailure}`,
+        storageMode === DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE
+          ? "Free host disk space or choose another DOCKER_BACKEND_EVIDENCE_HOST_STORAGE_DIR before capturing backend staging evidence."
+          : "Free Docker Desktop storage or prune unused Docker data before capturing backend staging evidence.",
+      ].join("\n"),
+    );
   }
 }
 
-function dockerStorageFailure({ cwd, bytes, timeoutMs, phase, storageMode, hostStorageRoot }) {
+function dockerStorageFailure({
+  cwd,
+  bytes,
+  timeoutMs,
+  phase,
+  storageMode,
+  hostStorageRoot,
+}) {
   if (storageMode === DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE) {
     const hostBindProbe = probeDockerHostBindPostgresInitdbWritable({
       cwd,
@@ -325,59 +422,77 @@ function dockerStorageFailure({ cwd, bytes, timeoutMs, phase, storageMode, hostS
   return `Docker volume write probe failed ${phase}: ${volumeProbe.message}`;
 }
 
-function probeDockerHostBindPostgresInitdbWritable({ cwd, timeoutMs, hostStorageRoot }) {
-  const probeRoot = hostStorageRoot === undefined
-    ? mkdtempSync(join(tmpdir(), 'social-monitor-backend-evidence-host-bind-preflight-'))
-    : join(hostStorageRoot, `.preflight-${process.pid}-${Date.now().toString(36)}`);
-  const postgresRoot = join(probeRoot, 'postgres');
+function probeDockerHostBindPostgresInitdbWritable({
+  cwd,
+  timeoutMs,
+  hostStorageRoot,
+}) {
+  const probeRoot =
+    hostStorageRoot === undefined
+      ? mkdtempSync(
+          join(
+            tmpdir(),
+            "social-monitor-backend-evidence-host-bind-preflight-",
+          ),
+        )
+      : join(
+          hostStorageRoot,
+          `.preflight-${process.pid}-${Date.now().toString(36)}`,
+        );
+  const postgresRoot = join(probeRoot, "postgres");
   const containerName = `social-monitor-backend-evidence-host-bind-preflight-${process.pid}-${Date.now().toString(36)}`;
   const script = [
-    'set -eu',
+    "set -eu",
     'mkdir -p "$PGDATA"',
-    'chown -R postgres:postgres /var/lib/postgresql',
+    "chown -R postgres:postgres /var/lib/postgresql",
     'gosu postgres initdb -D "$PGDATA" --data-checksums',
-  ].join('\n');
+  ].join("\n");
 
   mkdirSync(postgresRoot, { recursive: true });
 
   try {
-    const probe = spawnSync('docker', [
-      'run',
-      '--rm',
-      '--name',
-      containerName,
-      '-v',
-      `${postgresRoot}:/var/lib/postgresql`,
-      '--entrypoint',
-      'sh',
-      DOCKER_VOLUME_PROBE_IMAGE,
-      '-ec',
-      script,
-    ], {
-      cwd,
-      encoding: 'utf8',
-      timeout: timeoutMs,
-    });
+    const probe = spawnSync(
+      "docker",
+      [
+        "run",
+        "--rm",
+        "--name",
+        containerName,
+        "-v",
+        `${postgresRoot}:/var/lib/postgresql`,
+        "--entrypoint",
+        "sh",
+        DOCKER_VOLUME_PROBE_IMAGE,
+        "-ec",
+        script,
+      ],
+      {
+        cwd,
+        encoding: "utf8",
+        timeout: timeoutMs,
+      },
+    );
     if (probe.error) {
       return {
         ok: false,
-        message: probe.error.code === 'ETIMEDOUT'
-          ? `Postgres initdb host-bind probe did not complete within ${timeoutMs}ms`
-          : probe.error.message,
+        message:
+          probe.error.code === "ETIMEDOUT"
+            ? `Postgres initdb host-bind probe did not complete within ${timeoutMs}ms`
+            : probe.error.message,
       };
     }
     if (probe.status !== 0) {
       return {
         ok: false,
-        message: `${commandFailureMessage(probe, 'Postgres initdb host-bind probe')}. Host bind storage reported this before compose startup; free host disk space or choose another ${DOCKER_EVIDENCE_HOST_STORAGE_DIR_ENV}.`,
+        message: `${commandFailureMessage(probe, "Postgres initdb host-bind probe")}. Host bind storage reported this before compose startup; free host disk space or choose another ${DOCKER_EVIDENCE_HOST_STORAGE_DIR_ENV}.`,
       };
     }
 
     return { ok: true };
   } finally {
-    spawnSync('docker', ['rm', '-f', containerName], {
+    spawnSync("docker", ["rm", "-f", containerName], {
       cwd,
-      encoding: 'utf8',
+      encoding: "utf8",
       timeout: timeoutMs,
     });
     rmSync(probeRoot, { recursive: true, force: true });
@@ -388,63 +503,69 @@ function probeDockerVolumeWritable({ cwd, bytes, timeoutMs }) {
   const volumeName = `social-monitor-backend-evidence-preflight-${process.pid}-${Date.now().toString(36)}`;
   const probeMiB = Math.max(1, Math.ceil(bytes / 1024 ** 2));
   const script = [
-    'set -eu',
-    'mkdir -p /probe/preflight',
+    "set -eu",
+    "mkdir -p /probe/preflight",
     `dd if=/dev/zero of=/probe/preflight/write-probe.bin bs=1M count=${probeMiB} conv=fsync`,
-    'rm -f /probe/preflight/write-probe.bin',
-    'rmdir /probe/preflight',
-  ].join('\n');
+    "rm -f /probe/preflight/write-probe.bin",
+    "rmdir /probe/preflight",
+  ].join("\n");
 
   const cleanup = () => {
-    spawnSync('docker', ['volume', 'rm', '-f', volumeName], {
+    spawnSync("docker", ["volume", "rm", "-f", volumeName], {
       cwd,
-      encoding: 'utf8',
+      encoding: "utf8",
       timeout: timeoutMs,
     });
   };
 
   try {
-    const created = spawnSync('docker', ['volume', 'create', volumeName], {
+    const created = spawnSync("docker", ["volume", "create", volumeName], {
       cwd,
-      encoding: 'utf8',
+      encoding: "utf8",
       timeout: timeoutMs,
     });
     if (created.error) {
       return {
         ok: false,
-        message: created.error.code === 'ETIMEDOUT'
-          ? `docker volume create did not respond within ${timeoutMs}ms`
-          : created.error.message,
+        message:
+          created.error.code === "ETIMEDOUT"
+            ? `docker volume create did not respond within ${timeoutMs}ms`
+            : created.error.message,
       };
     }
     if (created.status !== 0) {
       return {
         ok: false,
-        message: commandFailureMessage(created, 'docker volume create'),
+        message: commandFailureMessage(created, "docker volume create"),
       };
     }
 
-    const probe = spawnSync('docker', [
-      'run',
-      '--rm',
-      '-v',
-      `${volumeName}:/probe`,
-      '--entrypoint',
-      'sh',
-      DOCKER_VOLUME_PROBE_IMAGE,
-      '-ec',
-      script,
-    ], {
-      cwd,
-      encoding: 'utf8',
-      timeout: timeoutMs,
-    });
+    const probe = spawnSync(
+      "docker",
+      [
+        "run",
+        "--rm",
+        "-v",
+        `${volumeName}:/probe`,
+        "--entrypoint",
+        "sh",
+        DOCKER_VOLUME_PROBE_IMAGE,
+        "-ec",
+        script,
+      ],
+      {
+        cwd,
+        encoding: "utf8",
+        timeout: timeoutMs,
+      },
+    );
     if (probe.error) {
       return {
         ok: false,
-        message: probe.error.code === 'ETIMEDOUT'
-          ? `Docker volume write probe could not write ${formatBytes(bytes)} within ${timeoutMs}ms`
-          : probe.error.message,
+        message:
+          probe.error.code === "ETIMEDOUT"
+            ? `Docker volume write probe could not write ${formatBytes(bytes)} within ${timeoutMs}ms`
+            : probe.error.message,
       };
     }
     if (probe.status !== 0) {
@@ -464,75 +585,81 @@ function probeDockerPostgresInitdbWritable({ cwd, timeoutMs }) {
   const volumeName = `social-monitor-backend-evidence-postgres-preflight-${process.pid}-${Date.now().toString(36)}`;
   const containerName = `${volumeName}-initdb`;
   const script = [
-    'set -eu',
+    "set -eu",
     'mkdir -p "$PGDATA"',
-    'chown -R postgres:postgres /var/lib/postgresql',
+    "chown -R postgres:postgres /var/lib/postgresql",
     'gosu postgres initdb -D "$PGDATA" --data-checksums',
-  ].join('\n');
+  ].join("\n");
 
   const cleanup = () => {
-    spawnSync('docker', ['rm', '-f', containerName], {
+    spawnSync("docker", ["rm", "-f", containerName], {
       cwd,
-      encoding: 'utf8',
+      encoding: "utf8",
       timeout: timeoutMs,
     });
-    spawnSync('docker', ['volume', 'rm', '-f', volumeName], {
+    spawnSync("docker", ["volume", "rm", "-f", volumeName], {
       cwd,
-      encoding: 'utf8',
+      encoding: "utf8",
       timeout: timeoutMs,
     });
   };
 
   try {
-    const created = spawnSync('docker', ['volume', 'create', volumeName], {
+    const created = spawnSync("docker", ["volume", "create", volumeName], {
       cwd,
-      encoding: 'utf8',
+      encoding: "utf8",
       timeout: timeoutMs,
     });
     if (created.error) {
       return {
         ok: false,
-        message: created.error.code === 'ETIMEDOUT'
-          ? `docker volume create did not respond within ${timeoutMs}ms`
-          : created.error.message,
+        message:
+          created.error.code === "ETIMEDOUT"
+            ? `docker volume create did not respond within ${timeoutMs}ms`
+            : created.error.message,
       };
     }
     if (created.status !== 0) {
       return {
         ok: false,
-        message: commandFailureMessage(created, 'docker volume create'),
+        message: commandFailureMessage(created, "docker volume create"),
       };
     }
 
-    const probe = spawnSync('docker', [
-      'run',
-      '--rm',
-      '--name',
-      containerName,
-      '-v',
-      `${volumeName}:/var/lib/postgresql`,
-      '--entrypoint',
-      'sh',
-      DOCKER_VOLUME_PROBE_IMAGE,
-      '-ec',
-      script,
-    ], {
-      cwd,
-      encoding: 'utf8',
-      timeout: timeoutMs,
-    });
+    const probe = spawnSync(
+      "docker",
+      [
+        "run",
+        "--rm",
+        "--name",
+        containerName,
+        "-v",
+        `${volumeName}:/var/lib/postgresql`,
+        "--entrypoint",
+        "sh",
+        DOCKER_VOLUME_PROBE_IMAGE,
+        "-ec",
+        script,
+      ],
+      {
+        cwd,
+        encoding: "utf8",
+        timeout: timeoutMs,
+      },
+    );
     if (probe.error) {
       return {
         ok: false,
-        message: probe.error.code === 'ETIMEDOUT'
-          ? `Postgres initdb probe did not complete within ${timeoutMs}ms`
-          : probe.error.message,
+        message:
+          probe.error.code === "ETIMEDOUT"
+            ? `Postgres initdb probe did not complete within ${timeoutMs}ms`
+            : probe.error.message,
       };
     }
     if (probe.status !== 0) {
       return {
         ok: false,
-        message: `${commandFailureMessage(probe, 'Postgres initdb probe')}. Docker reported this before compose startup; free Docker Desktop storage or prune unused Docker volumes/images.`,
+        message: `${commandFailureMessage(probe, "Postgres initdb probe")}. Docker reported this before compose startup; free Docker Desktop storage or prune unused Docker volumes/images.`,
       };
     }
 
@@ -548,27 +675,33 @@ function probeDockerApiSocket({ cwd, timeoutMs }) {
     return undefined;
   }
 
-  const probe = spawnSync(process.execPath, ['-e', dockerSocketPingScript(), socketPath, String(timeoutMs)], {
-    cwd,
-    encoding: 'utf8',
-    timeout: timeoutMs + 1_000,
-  });
+  const probe = spawnSync(
+    process.execPath,
+    ["-e", dockerSocketPingScript(), socketPath, String(timeoutMs)],
+    {
+      cwd,
+      encoding: "utf8",
+      timeout: timeoutMs + 1_000,
+    },
+  );
 
   if (probe.error) {
     return {
       ok: false,
-      message: probe.error.code === 'ETIMEDOUT'
-        ? `Docker API socket ${socketPath} did not respond within ${timeoutMs}ms`
-        : probe.error.message,
+      message:
+        probe.error.code === "ETIMEDOUT"
+          ? `Docker API socket ${socketPath} did not respond within ${timeoutMs}ms`
+          : probe.error.message,
     };
   }
   if (probe.status !== 0) {
     const stderr = probe.stderr.trim();
     return {
       ok: false,
-      message: stderr.length > 0
-        ? stderr
-        : `Docker API socket probe exited with status ${probe.status ?? 'unknown'}`,
+      message:
+        stderr.length > 0
+          ? stderr
+          : `Docker API socket probe exited with status ${probe.status ?? "unknown"}`,
     };
   }
 
@@ -582,22 +715,23 @@ function probeDockerApiSocket({ cwd, timeoutMs }) {
     };
   }
 
-  if (typeof result.error === 'string' && result.error.length > 0) {
+  if (typeof result.error === "string" && result.error.length > 0) {
     return {
       ok: false,
       message: result.error,
     };
   }
   if (result.statusCode !== 200) {
-    const bodySummary = typeof result.body === 'string' && result.body.length > 0
-      ? ` with body ${JSON.stringify(result.body)}`
-      : '';
+    const bodySummary =
+      typeof result.body === "string" && result.body.length > 0
+        ? ` with body ${JSON.stringify(result.body)}`
+        : "";
     return {
       ok: false,
-      message: `GET /_ping returned HTTP ${result.statusCode ?? 'unknown'}${bodySummary}`,
+      message: `GET /_ping returned HTTP ${result.statusCode ?? "unknown"}${bodySummary}`,
     };
   }
-  if (result.body !== 'OK') {
+  if (result.body !== "OK") {
     return {
       ok: false,
       message: `GET /_ping returned ${JSON.stringify(result.body)}`,
@@ -612,20 +746,27 @@ function dockerEvidenceStorageMode() {
   if (raw === undefined || raw.length === 0) {
     return DOCKER_EVIDENCE_STORAGE_DOCKER_VOLUME_MODE;
   }
-  if (raw === DOCKER_EVIDENCE_STORAGE_DOCKER_VOLUME_MODE || raw === DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE) {
+  if (
+    raw === DOCKER_EVIDENCE_STORAGE_DOCKER_VOLUME_MODE ||
+    raw === DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE
+  ) {
     return raw;
   }
 
-  throw new Error(`${DOCKER_EVIDENCE_STORAGE_MODE_ENV} must be ${DOCKER_EVIDENCE_STORAGE_DOCKER_VOLUME_MODE} or ${DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE}`);
+  throw new Error(
+    `${DOCKER_EVIDENCE_STORAGE_MODE_ENV} must be ${DOCKER_EVIDENCE_STORAGE_DOCKER_VOLUME_MODE} or ${DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE}`,
+  );
 }
 
 function prepareHostBindStorageRoot({ tempDir, projectName }) {
   const baseRoot = process.env[DOCKER_EVIDENCE_HOST_STORAGE_DIR_ENV]?.trim();
-  const root = resolve(baseRoot && baseRoot.length > 0
-    ? join(baseRoot, projectName)
-    : join(tempDir, 'host-storage', projectName));
+  const root = resolve(
+    baseRoot && baseRoot.length > 0
+      ? join(baseRoot, projectName)
+      : join(tempDir, "host-storage", projectName),
+  );
 
-  for (const service of ['postgres', 'redis', 'rabbitmq']) {
+  for (const service of ["postgres", "redis", "rabbitmq"]) {
     mkdirSync(join(root, service), { recursive: true });
   }
 
@@ -634,14 +775,14 @@ function prepareHostBindStorageRoot({ tempDir, projectName }) {
 
 function dockerApiSocketPath() {
   const dockerHost = process.env.DOCKER_HOST?.trim();
-  if (dockerHost?.startsWith('unix://')) {
-    return dockerHost.slice('unix://'.length);
+  if (dockerHost?.startsWith("unix://")) {
+    return dockerHost.slice("unix://".length);
   }
   if (dockerHost !== undefined && dockerHost.length > 0) {
     return undefined;
   }
 
-  return '/var/run/docker.sock';
+  return "/var/run/docker.sock";
 }
 
 function dockerSocketPingScript() {
@@ -680,60 +821,82 @@ function dockerSocketPingScript() {
 
 function buildComposeOverride(values) {
   const commonEnvironment = [
-    ['SOCIAL_MONITOR_OIDC_ISSUER', values.issuer],
-    ['SOCIAL_MONITOR_OIDC_AUDIENCE', values.audience],
-    ['SOCIAL_MONITOR_OIDC_JWKS_JSON', values.jwksJson],
-    ['SOURCE_CONFIG_ENCRYPTION_KEY', values.sourceConfigEncryptionKey],
-    ['SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY', values.sourceCredentialSecretEncryptionKey],
-    ['DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY', values.webhookSecretEncryptionKey],
-    ['SUBSCRIPTIONS_PERSISTENCE', 'prisma'],
-    ['REDDIT_APP_CLIENT_ID', process.env.REDDIT_APP_CLIENT_ID],
-    ['REDDIT_APP_CLIENT_SECRET', process.env.REDDIT_APP_CLIENT_SECRET],
-    ['REDDIT_APP_USER_AGENT', process.env.REDDIT_APP_USER_AGENT],
+    ["SOCIAL_MONITOR_OIDC_ISSUER", values.issuer],
+    ["SOCIAL_MONITOR_OIDC_AUDIENCE", values.audience],
+    ["SOCIAL_MONITOR_OIDC_JWKS_JSON", values.jwksJson],
+    ["SOURCE_CONFIG_ENCRYPTION_KEY", values.sourceConfigEncryptionKey],
+    [
+      "SOURCE_CREDENTIAL_SECRET_ENCRYPTION_KEY",
+      values.sourceCredentialSecretEncryptionKey,
+    ],
+    [
+      "DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY",
+      values.webhookSecretEncryptionKey,
+    ],
+    [
+      "SOCIAL_MONITOR_CORS_ORIGINS",
+      process.env.SOCIAL_MONITOR_CORS_ORIGINS,
+    ],
+    ["SUBSCRIPTIONS_PERSISTENCE", "prisma"],
+    ["REDDIT_APP_CLIENT_ID", process.env.REDDIT_APP_CLIENT_ID],
+    ["REDDIT_APP_CLIENT_SECRET", process.env.REDDIT_APP_CLIENT_SECRET],
+    ["REDDIT_APP_USER_AGENT", process.env.REDDIT_APP_USER_AGENT],
     ...memoStackEnvironmentEntries(),
   ];
   const fastLoopEnvironment = [
     ...commonEnvironment,
-    ['INGESTION_SCAN_SCHEDULER_INTERVAL_MS', '1000'],
-    ['INGESTION_SCAN_QUEUE_DRAIN_INTERVAL_MS', '500'],
-    ['INTELLIGENCE_AUTO_SUMMARY_SCHEDULER', 'enabled'],
-    ['INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_INTERVAL_MS', '1000'],
-    ['INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_MIN_FEED_AGE_MS', '2000'],
-    ['INTELLIGENCE_SUMMARY_QUEUE_DRAIN_INTERVAL_MS', '500'],
-    ['DELIVERY_ATTEMPT_QUEUE_DRAIN_INTERVAL_MS', '500'],
-    ['DELIVERY_SUMMARY_READY_EVENT_DRAIN_INTERVAL_MS', '500'],
-    ['DELIVERY_DIGEST_SCHEDULER_INTERVAL_MS', '1000'],
-    ['DELIVERY_ATTEMPT_DISPATCH_INTERVAL_MS', '1000'],
-    ['EVENT_RELAY_INTERVAL_MS', '500'],
+    ["INGESTION_SCAN_SCHEDULER_INTERVAL_MS", "1000"],
+    ["INGESTION_SCAN_QUEUE_DRAIN_INTERVAL_MS", "500"],
+    ["INTELLIGENCE_AUTO_SUMMARY_SCHEDULER", "enabled"],
+    ["INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_INTERVAL_MS", "1000"],
+    ["INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_MIN_FEED_AGE_MS", "2000"],
+    ["INTELLIGENCE_SUMMARY_QUEUE_DRAIN_INTERVAL_MS", "500"],
+    ["DELIVERY_ATTEMPT_QUEUE_DRAIN_INTERVAL_MS", "500"],
+    ["DELIVERY_SUMMARY_READY_EVENT_DRAIN_INTERVAL_MS", "500"],
+    ["DELIVERY_DIGEST_SCHEDULER_INTERVAL_MS", "1000"],
+    ["DELIVERY_ATTEMPT_DISPATCH_INTERVAL_MS", "1000"],
+    ["EVENT_RELAY_INTERVAL_MS", "500"],
   ];
 
   return [
-    'services:',
+    "services:",
     ...hostBindStorageServiceSections(values.hostStorageRoot),
-    serviceEnvironment('api', commonEnvironment),
-    serviceEnvironment('ingestion-worker', fastLoopEnvironment),
-    serviceEnvironment('intelligence-worker', fastLoopEnvironment),
-    serviceEnvironment('delivery-service', fastLoopEnvironment),
-    serviceEnvironment('event-relay', fastLoopEnvironment),
-    '',
-  ].join('\n');
+    serviceEnvironment("api", commonEnvironment),
+    serviceEnvironment("ingestion-worker", fastLoopEnvironment),
+    serviceEnvironment("intelligence-worker", fastLoopEnvironment),
+    serviceEnvironment("delivery-service", fastLoopEnvironment),
+    serviceEnvironment("event-relay", fastLoopEnvironment),
+    "",
+  ].join("\n");
 }
 
 function memoStackEnvironmentEntries() {
-  const baseUrl = nonEmptyEnvValue('INFINITY_CONTEXT_URL');
-  const token = nonEmptyEnvValue('INFINITY_CONTEXT_TOKEN');
+  const baseUrl = nonEmptyEnvValue("INFINITY_CONTEXT_URL");
+  const token = nonEmptyEnvValue("INFINITY_CONTEXT_TOKEN");
   if (baseUrl === undefined && token === undefined) {
     return [];
   }
   if (baseUrl === undefined || token === undefined) {
-    throw new Error('INFINITY_CONTEXT_URL and INFINITY_CONTEXT_TOKEN must be set together for Docker backend evidence memory mode');
+    throw new Error(
+      "INFINITY_CONTEXT_URL and INFINITY_CONTEXT_TOKEN must be set together for Docker backend evidence memory mode",
+    );
   }
 
   return [
-    ['SUMMARY_MEMORY_MODE', 'memo-stack'],
-    ['INFINITY_CONTEXT_URL', dockerReachableHttpUrl(baseUrl, 'INFINITY_CONTEXT_URL')],
-    ['INFINITY_CONTEXT_TOKEN', token],
-    ['SUMMARY_MEMORY_TIMEOUT_MS', process.env.SUMMARY_MEMORY_TIMEOUT_MS ?? '30000'],
+    ["SUMMARY_MEMORY_MODE", "memo-stack"],
+    [
+      "SUMMARY_MEMORY_FAILURE_MODE",
+      process.env.SUMMARY_MEMORY_FAILURE_MODE ?? "fail",
+    ],
+    [
+      "INFINITY_CONTEXT_URL",
+      dockerReachableHttpUrl(baseUrl, "INFINITY_CONTEXT_URL"),
+    ],
+    ["INFINITY_CONTEXT_TOKEN", token],
+    [
+      "SUMMARY_MEMORY_TIMEOUT_MS",
+      process.env.SUMMARY_MEMORY_TIMEOUT_MS ?? "30000",
+    ],
   ];
 }
 
@@ -749,14 +912,14 @@ function dockerReachableHttpUrl(value, name) {
   } catch {
     throw new Error(`${name} must be an http(s) URL`);
   }
-  if (!['http:', 'https:'].includes(url.protocol)) {
+  if (!["http:", "https:"].includes(url.protocol)) {
     throw new Error(`${name} must be an http(s) URL`);
   }
-  if (['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) {
-    url.hostname = 'host.docker.internal';
+  if (["127.0.0.1", "localhost", "::1"].includes(url.hostname)) {
+    url.hostname = "host.docker.internal";
   }
 
-  return url.toString().replace(/\/$/u, '');
+  return url.toString().replace(/\/$/u, "");
 }
 
 function hostBindStorageServiceSections(hostStorageRoot) {
@@ -765,32 +928,40 @@ function hostBindStorageServiceSections(hostStorageRoot) {
   }
 
   return [
-    serviceVolumes('postgres', [[join(hostStorageRoot, 'postgres'), '/var/lib/postgresql']]),
-    serviceVolumes('redis', [[join(hostStorageRoot, 'redis'), '/data']]),
-    serviceVolumes('rabbitmq', [[join(hostStorageRoot, 'rabbitmq'), '/var/lib/rabbitmq']]),
+    serviceVolumes("postgres", [
+      [join(hostStorageRoot, "postgres"), "/var/lib/postgresql"],
+    ]),
+    serviceVolumes("redis", [[join(hostStorageRoot, "redis"), "/data"]]),
+    serviceVolumes("rabbitmq", [
+      [join(hostStorageRoot, "rabbitmq"), "/var/lib/rabbitmq"],
+    ]),
   ];
 }
 
 function serviceVolumes(service, entries) {
   return [
     `  ${service}:`,
-    '    volumes:',
+    "    volumes:",
     ...entries.flatMap(([source, target]) => [
-      '      - type: bind',
+      "      - type: bind",
       `        source: ${JSON.stringify(source)}`,
       `        target: ${JSON.stringify(target)}`,
     ]),
-  ].join('\n');
+  ].join("\n");
 }
 
 function serviceEnvironment(service, entries) {
-  const normalizedEntries = entries.filter(([, value]) => typeof value === 'string' && value.trim().length > 0);
+  const normalizedEntries = entries.filter(
+    ([, value]) => typeof value === "string" && value.trim().length > 0,
+  );
 
   return [
     `  ${service}:`,
-    '    environment:',
-    ...normalizedEntries.map(([name, value]) => `      ${name}: ${JSON.stringify(value)}`),
-  ].join('\n');
+    "    environment:",
+    ...normalizedEntries.map(
+      ([name, value]) => `      ${name}: ${JSON.stringify(value)}`,
+    ),
+  ].join("\n");
 }
 
 function waitForReady(apiBaseUrl) {
@@ -798,7 +969,11 @@ function waitForReady(apiBaseUrl) {
   let lastError;
   while (Date.now() < deadline) {
     try {
-      const response = execFileSync(process.execPath, ['-e', `
+      const response = execFileSync(
+        process.execPath,
+        [
+          "-e",
+          `
         try {
           const response = await fetch(${JSON.stringify(`${apiBaseUrl}/ready`)});
           const body = await response.json();
@@ -806,7 +981,10 @@ function waitForReady(apiBaseUrl) {
         } catch {
           process.exit(1);
         }
-      `], { encoding: 'utf8' });
+      `,
+        ],
+        { encoding: "utf8" },
+      );
       void response;
       return;
     } catch (error) {
@@ -815,71 +993,68 @@ function waitForReady(apiBaseUrl) {
     }
   }
 
-  throw lastError ?? new Error('API /ready did not become healthy');
+  throw lastError ?? new Error("API /ready did not become healthy");
 }
 
 function inspectApiImageDigest({ docker, composeBaseArgs, composeEnv }) {
-  const containerId = docker([...composeBaseArgs, 'ps', '-q', 'api'], {
+  const containerId = docker([...composeBaseArgs, "ps", "-q", "api"], {
     env: composeEnv,
-    encoding: 'utf8',
+    encoding: "utf8",
   }).trim();
   if (containerId.length === 0) {
-    throw new Error('api container id not found');
+    throw new Error("api container id not found");
   }
 
-  return docker(['inspect', containerId, '--format', '{{.Image}}'], {
+  return docker(["inspect", containerId, "--format", "{{.Image}}"], {
     env: composeEnv,
-    encoding: 'utf8',
+    encoding: "utf8",
   }).trim();
 }
 
 function shouldKeepStack(keepEnvNames) {
-  if (process.env.KEEP_DOCKER_BACKEND_EVIDENCE_STACK === '1') {
+  if (process.env.KEEP_DOCKER_BACKEND_EVIDENCE_STACK === "1") {
     return true;
   }
 
-  return keepEnvNames.some((name) => process.env[name] === '1');
+  return keepEnvNames.some((name) => process.env[name] === "1");
 }
 
 function dockerComposeBuildCacheArgs() {
-  return boolEnv('DOCKER_BACKEND_EVIDENCE_NO_CACHE') ? ['--no-cache'] : [];
+  return boolEnv("DOCKER_BACKEND_EVIDENCE_NO_CACHE") ? ["--no-cache"] : [];
 }
 
 function boolEnv(name) {
   const value = process.env[name]?.trim().toLowerCase();
 
-  return value === '1' || value === 'true' || value === 'yes';
+  return value === "1" || value === "true" || value === "yes";
 }
 
 function dockerComposeBuildFailureMessage(error, storageMode) {
   const reason = error instanceof Error ? error.message : String(error);
   return [
-    'Docker backend evidence image build failed.',
+    "Docker backend evidence image build failed.",
     `Storage mode: ${storageMode}.`,
     'If the build output above contains ENOSPC or "No space left on device", Docker Desktop image/build-layer storage is full.',
-    'Host-bind mode only moves Postgres/RabbitMQ/Redis service data to host storage; it cannot move Docker image layers or npm ci layers out of Docker Desktop storage.',
+    "Host-bind mode only moves Postgres/RabbitMQ/Redis service data to host storage; it cannot move Docker image layers or npm ci layers out of Docker Desktop storage.",
     dockerSystemDfSnapshot(),
     `Original failure: ${reason}`,
-  ].join('\n');
+  ].join("\n");
 }
 
 function dockerSystemDfSnapshot() {
-  const result = spawnSync('docker', ['system', 'df'], {
+  const result = spawnSync("docker", ["system", "df"], {
     cwd: process.cwd(),
-    encoding: 'utf8',
+    encoding: "utf8",
     timeout: DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS,
   });
   if (result.error !== undefined) {
     return `Docker storage snapshot unavailable: ${result.error.message}`;
   }
   if (result.status !== 0) {
-    return `Docker storage snapshot unavailable: docker system df exited with status ${result.status ?? 'unknown'}`;
+    return `Docker storage snapshot unavailable: docker system df exited with status ${result.status ?? "unknown"}`;
   }
 
-  return [
-    'Docker storage snapshot:',
-    result.stdout.trim(),
-  ].join('\n');
+  return ["Docker storage snapshot:", result.stdout.trim()].join("\n");
 }
 
 function randomPort() {
@@ -915,19 +1090,19 @@ function boundedPositiveIntegerEnv(name, fallback, max) {
 }
 
 function commandFailureMessage(result, label) {
-  const stderr = result.stderr?.trim() ?? '';
-  const stdout = result.stdout?.trim() ?? '';
+  const stderr = result.stderr?.trim() ?? "";
+  const stdout = result.stdout?.trim() ?? "";
   if (stderr.length > 0) {
     return `${label} failed: ${stderr}`;
   }
   if (stdout.length > 0) {
     return `${label} failed: ${stdout}`;
   }
-  return `${label} exited with status ${result.status ?? 'unknown'}`;
+  return `${label} exited with status ${result.status ?? "unknown"}`;
 }
 
 function formatBytes(bytes) {
-  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
   let value = bytes;
   let unitIndex = 0;
   while (value >= 1024 && unitIndex < units.length - 1) {

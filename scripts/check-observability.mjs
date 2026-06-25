@@ -24,6 +24,13 @@ const allowedMetrics = new Set([
   'summary_model_estimated_cost_usd',
   'summary_model_requests_total',
   'summary_model_tokens_total',
+  'summary_story_ranking_average_signal',
+  'summary_story_ranking_clusters_without_provider_metrics',
+  'summary_story_ranking_cross_provider_cluster_share',
+  'summary_story_ranking_same_provider_duplicate_max',
+  'summary_story_ranking_same_provider_duplicates_total',
+  'summary_story_ranking_title_only_cluster_share',
+  'summary_story_ranking_top_provider_cluster_share',
 ]);
 const forbiddenLabelKeys = new Set([
   'api_key',

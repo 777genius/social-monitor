@@ -46,10 +46,11 @@
       "owner": "summary-owner",
       "inMemoryStateAdapters": [
         "InMemoryUserRelevanceProfileRepository",
-        "InMemoryRelevanceFeedbackRepository"
+        "InMemoryRelevanceFeedbackRepository",
+        "InMemoryRelevanceMemoryProjectionRepository"
       ],
-      "risk": "per-user relevance weights, source/topic preferences, muted providers and feedback-learning signals are process-local unless relevance persistence is durable",
-      "durableReplacementPlan": "RelevanceRestModule can opt into Prisma user relevance profiles and feedback signals with RELEVANCE_PERSISTENCE=prisma; beta runtime must keep this selector durable so personalized ranking, digest selection and summary evidence weighting survive restarts"
+      "risk": "per-user relevance weights, source/topic preferences, muted providers, feedback-learning signals and memory projection retry state are process-local unless relevance persistence is durable",
+      "durableReplacementPlan": "RelevanceRestModule can opt into Prisma user relevance profiles, feedback signals and relevance memory projection state with RELEVANCE_PERSISTENCE=prisma; beta runtime must keep this selector durable so personalized ranking, digest selection, summary evidence weighting and memory projection retries survive restarts"
     },
     {
       "moduleFile": "libs/summary/interfaces/rest/summary-rest.module.ts",
@@ -152,6 +153,16 @@
       ],
       "risk": "worker scan attempts, source items, cursors, leases, failures, projected feed and default scan command reader are process-local",
       "durableReplacementPlan": "IngestionWorkerModule can opt into Prisma source item, cursor, feed projection, scan failure queue, scan attempt and scan lease persistence with INGESTION_WORKER_PERSISTENCE=prisma; scan command reading can opt into RabbitMQ with INGESTION_SCAN_QUEUE_READER=rabbitmq; platform inbox dedupe can use PrismaInboxStoreAdapter when event consumers are wired through it; check:cross-process-scheduler proves Prisma-backed scheduling into RabbitMQ command publication; remaining blocker is deployed shared-infra evidence"
+    },
+    {
+      "moduleFile": "apps/ingestion-worker/src/github-repo-radar.module.ts",
+      "context": "github-repo-radar-worker",
+      "owner": "ingestion-owner",
+      "inMemoryStateAdapters": [
+        "InMemoryGitHubRepositoryTrendHistoryRepository"
+      ],
+      "risk": "GitHub repository trend history is process-local unless the ingestion worker uses durable Prisma persistence",
+      "durableReplacementPlan": "GitHub repo radar trend history can opt into Prisma with INGESTION_WORKER_PERSISTENCE=prisma through PrismaGitHubRepositoryTrendHistoryRepository; beta runtime must use shared DATABASE_URL so trend baselines and source metadata projections survive restarts"
     },
     {
       "moduleFile": "apps/intelligence-worker/src/intelligence-worker.module.ts",

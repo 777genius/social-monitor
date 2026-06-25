@@ -13,7 +13,7 @@
     "maxWorkspacesPerTenant": 2,
     "maxUsers": 5,
     "maxTopicsPerWorkspace": 10,
-    "maxEnabledSourcesPerTopic": 4,
+    "maxEnabledSourcesPerTopic": 5,
     "minScheduledScanIntervalMinutes": 60,
     "maxManualScansPerWorkspacePerHour": 50,
     "maxSummaryRequestsPerWorkspacePerHour": 20,

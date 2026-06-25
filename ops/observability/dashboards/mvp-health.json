@@ -178,6 +178,47 @@
       "safeDiagnosticQuestion": "Are summary outputs larger than expected?"
     },
     {
+      "panelId": "summary-story-ranking-cross-provider-share",
+      "title": "Story Ranking Cross Provider Share",
+      "metric": "summary_story_ranking_cross_provider_cluster_share",
+      "labels": {
+        "ranking_policy_version": "story_ranking_v1"
+      },
+      "safeDiagnosticFields": ["ranking_policy_version", "tenant_id", "workspace_id", "correlation_id"],
+      "safeDiagnosticQuestion": "Are top summary stories confirmed by multiple providers?"
+    },
+    {
+      "panelId": "summary-story-ranking-title-only-share",
+      "title": "Story Ranking Title Only Share",
+      "metric": "summary_story_ranking_title_only_cluster_share",
+      "labels": {
+        "ranking_policy_version": "story_ranking_v1"
+      },
+      "safeDiagnosticFields": ["ranking_policy_version", "tenant_id", "workspace_id", "correlation_id"],
+      "safeDiagnosticQuestion": "Are summaries depending on title-only story keys?"
+    },
+    {
+      "panelId": "summary-story-ranking-missing-provider-metrics",
+      "title": "Story Ranking Missing Provider Metrics",
+      "metric": "summary_story_ranking_clusters_without_provider_metrics",
+      "labels": {
+        "ranking_policy_version": "story_ranking_v1"
+      },
+      "safeDiagnosticFields": ["ranking_policy_version", "tenant_id", "workspace_id", "correlation_id"],
+      "safeDiagnosticQuestion": "Are ranked story clusters missing raw provider metrics?"
+    },
+    {
+      "panelId": "summary-story-ranking-provider-domination",
+      "title": "Story Ranking Provider Domination",
+      "metric": "summary_story_ranking_top_provider_cluster_share",
+      "labels": {
+        "ranking_policy_version": "story_ranking_v1",
+        "top_provider_key": "unknown"
+      },
+      "safeDiagnosticFields": ["ranking_policy_version", "top_provider_key", "tenant_id", "workspace_id", "correlation_id"],
+      "safeDiagnosticQuestion": "Is one provider dominating ranked story clusters?"
+    },
+    {
       "panelId": "delivery-webhook-failures",
       "title": "Webhook Delivery Failures",
       "metric": "delivery_failures_total",

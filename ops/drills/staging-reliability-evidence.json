@@ -61,19 +61,13 @@
         "artifactId": "rabbitmq-staging-drill-output",
         "envVar": "RABBITMQ_STAGING_DRILL_ARTIFACT_PATH",
         "format": "staging-reliability-artifact-v1",
-        "requiredEnv": [
-          "STAGING_ENVIRONMENT_ID",
-          "BACKEND_IMAGE_DIGEST"
-        ]
+        "requiredEnv": ["STAGING_ENVIRONMENT_ID", "BACKEND_IMAGE_DIGEST"]
       },
       {
         "artifactId": "postgres-restore-drill-output",
         "envVar": "POSTGRES_RESTORE_DRILL_ARTIFACT_PATH",
         "format": "staging-reliability-artifact-v1",
-        "requiredEnv": [
-          "STAGING_ENVIRONMENT_ID",
-          "BACKEND_IMAGE_DIGEST"
-        ]
+        "requiredEnv": ["STAGING_ENVIRONMENT_ID", "BACKEND_IMAGE_DIGEST"]
       },
       {
         "artifactId": "durable-backend-e2e-output",
@@ -348,6 +342,17 @@
       "stagingArtifactId": "durable-backend-e2e-output",
       "requiredSignal": "summary feedback is projected into memo-stack and retrieved by topic/provider memory scopes during durable backend loop",
       "exitCondition": "staging artifact records memory scope refs, retrieval counters and redaction proof without raw memory text"
+    },
+    {
+      "signalId": "backend-loop-reader-brief",
+      "domain": "durable-backend-e2e",
+      "status": "pending_staging_evidence",
+      "requiredForExternalBeta": true,
+      "verificationCommand": "npm run capture:durable-backend-e2e-loop",
+      "contractArtifact": "scripts/capture-durable-backend-e2e-loop.ts",
+      "stagingArtifactId": "durable-backend-e2e-output",
+      "requiredSignal": "reader briefing is generated from durable feed evidence with top reads, citations and source mix across every enabled MVP provider",
+      "exitCondition": "staging artifact records briefing id, top read count, source mix providers and citation providers without raw provider payloads"
     },
     {
       "signalId": "backend-loop-tenant-isolation",

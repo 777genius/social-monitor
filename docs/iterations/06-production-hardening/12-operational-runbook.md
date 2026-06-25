@@ -104,6 +104,14 @@ Scan status API responses expose support-safe fields for beta triage:
 - Prefer reducing summary frequency, max evidence items or output budget before changing provider routing.
 - Do not add prompt text, source URLs or user emails to metric labels while diagnosing cost spikes.
 
+## Summary Quality Triage
+
+- `summary_story_ranking_cross_provider_cluster_share{ranking_policy_version}` shows how often selected story clusters are confirmed by more than one provider.
+- `summary_story_ranking_title_only_cluster_share{ranking_policy_version}` shows reliance on weak title fingerprints when canonical URLs or entity keys are missing.
+- `summary_story_ranking_clusters_without_provider_metrics{ranking_policy_version}` shows ranked clusters that cannot explain raw provider metrics to the user.
+- `summary_story_ranking_top_provider_cluster_share{ranking_policy_version,top_provider_key}` shows whether one provider dominates the ranked story set.
+- If quality alerts fire, inspect source coverage, canonical URL extraction and provider metric mapping before changing ranking weights or replaying summaries.
+
 ## Backup Restore Drill
 
 - Use `ops/recovery/backup-restore-contract.json` as the beta recovery contract for RPO/RTO and included tables.

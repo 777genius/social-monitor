@@ -35,7 +35,7 @@
     "maxWorkspacesPerTenant": 2,
     "maxUsers": 5,
     "maxTopicsPerWorkspace": 10,
-    "maxEnabledSourcesPerTopic": 4,
+    "maxEnabledSourcesPerTopic": 5,
     "minScheduledScanIntervalMinutes": 60,
     "maxManualScansPerWorkspacePerHour": 50,
     "maxSummaryRequestsPerWorkspacePerHour": 20,
@@ -50,8 +50,14 @@
       "owner": "release-owner",
       "status": "contract_ready",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:release-baseline", "npm run check:backend-safe-verify"],
-      "requiredArtifacts": ["ops/release/release-baseline-contract.json", "ops/release/backend-safe-verify-contract.json"],
+      "verificationCommands": [
+        "npm run check:release-baseline",
+        "npm run check:backend-safe-verify"
+      ],
+      "requiredArtifacts": [
+        "ops/release/release-baseline-contract.json",
+        "ops/release/backend-safe-verify-contract.json"
+      ],
       "exitCondition": "backend-safe verification chain is green for the release commit"
     },
     {
@@ -59,8 +65,14 @@
       "owner": "backend-lead",
       "status": "pending_staging_evidence",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:durable-runtime-proof", "npm run check:persistence-readiness"],
-      "requiredArtifacts": ["ops/release/durable-runtime-proof.json", "ops/release/persistence-readiness-contract.json"],
+      "verificationCommands": [
+        "npm run check:durable-runtime-proof",
+        "npm run check:persistence-readiness"
+      ],
+      "requiredArtifacts": [
+        "ops/release/durable-runtime-proof.json",
+        "ops/release/persistence-readiness-contract.json"
+      ],
       "exitCondition": "target environment uses Prisma/RabbitMQ/JWT selectors and no beta process uses in-memory or noop state"
     },
     {
@@ -242,8 +254,14 @@
       "owner": "release-owner",
       "status": "pending_image_digest_and_deploy_smoke",
       "blocksExternalBeta": true,
-      "verificationCommands": ["npm run check:release-artifact-evidence", "npm run check:release"],
-      "requiredArtifacts": ["ops/release/release-artifact-evidence.json", "ops/release/mvp-release-evidence-contract.json"],
+      "verificationCommands": [
+        "npm run check:release-artifact-evidence",
+        "npm run check:release"
+      ],
+      "requiredArtifacts": [
+        "ops/release/release-artifact-evidence.json",
+        "ops/release/mvp-release-evidence-contract.json"
+      ],
       "exitCondition": "release evidence includes commit SHA, immutable image digest, artifact hashes and deploy smoke output"
     },
     {

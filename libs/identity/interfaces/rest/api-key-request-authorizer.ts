@@ -55,8 +55,11 @@ export type AuthorizeUserWorkspaceRequestParams = {
 @Injectable()
 export class ApiKeyRequestAuthorizer {
   constructor(
+    @Inject(VerifyApiKeyUseCase)
     private readonly verifyApiKey: VerifyApiKeyUseCase,
+    @Inject(CheckPublicApiRateLimitUseCase)
     private readonly checkPublicApiRateLimit: CheckPublicApiRateLimitUseCase,
+    @Inject(RecordPublicApiAuditEventUseCase)
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
     @Inject(USER_ACCESS_TOKEN_VERIFIER)
     private readonly userAccessTokenVerifier: UserAccessTokenVerifierPort,
