@@ -48,8 +48,9 @@ extension SummariesReviewStoreReaderActionWorkflow on SummariesReviewStore {
 
   Future<void> submitReaderAction(
     GeneratedBriefing briefing,
-    BriefingNextAction action,
-  ) async {
+    BriefingNextAction action, [
+    BriefingReaderFeedbackReason? feedbackReason,
+  ]) async {
     final intent = readerActionIntentFor(briefing, action);
     if (!intent.isEnabled) {
       return;
@@ -92,6 +93,7 @@ extension SummariesReviewStoreReaderActionWorkflow on SummariesReviewStore {
         label: action.label,
         target: target,
         idempotencyKey: idempotencyKey,
+        feedbackReason: feedbackReason,
       ),
     );
     if (!_readerActionGenerationGuard.isCurrent(generation)) {

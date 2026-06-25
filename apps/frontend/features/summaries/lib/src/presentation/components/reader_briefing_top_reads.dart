@@ -6,8 +6,11 @@ import '../../domain/entities/summary_citation.dart';
 import 'github_mark.dart';
 import 'reader_briefing_provider_label.dart';
 import 'reader_briefing_sections.dart';
+import 'reader_briefing_top_read_details.dart';
 
-class ReaderBriefingTopReads extends StatelessWidget {
+const _initialVisibleTopReads = 3;
+
+class ReaderBriefingTopReads extends StatefulWidget {
   const ReaderBriefingTopReads({
     super.key,
     required this.items,
@@ -18,7 +21,18 @@ class ReaderBriefingTopReads extends StatelessWidget {
   final Map<String, SummaryCitation> citationsById;
 
   @override
+  State<ReaderBriefingTopReads> createState() => _ReaderBriefingTopReadsState();
+}
+
+class _ReaderBriefingTopReadsState extends State<ReaderBriefingTopReads> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final visibleCount = _visibleCount(widget.items.length);
+    final visibleItems = widget.items.take(visibleCount).toList();
+    final hiddenCount = widget.items.length - visibleCount;
+
     return ReaderBriefingSection(
       title: 'Top reads',
       icon: Icons.open_in_new_outlined,
@@ -29,7 +43,9 @@ class ReaderBriefingTopReads extends StatelessWidget {
             key: const ValueKey('reader-brief-top-read-count'),
             padding: const EdgeInsets.only(bottom: AppSpacing.sm),
             child: Text(
-              'Showing ${items.length} top reads',
+              widget.items.length <= _initialVisibleTopReads
+                  ? 'Showing ${widget.items.length} top reads'
+                  : 'Showing $visibleCount of ${widget.items.length} top reads',
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
@@ -37,19 +53,39 @@ class ReaderBriefingTopReads extends StatelessWidget {
               ),
             ),
           ),
-          ...items.indexed.map(
+          ...visibleItems.indexed.map(
             (entry) => _TopReadRow(
               index: entry.$1,
               item: entry.$2,
               citations: entry.$2.citationIds
-                  .map((citationId) => citationsById[citationId])
+                  .map((citationId) => widget.citationsById[citationId])
                   .whereType<SummaryCitation>()
                   .toList(growable: false),
             ),
           ),
+          if (widget.items.length > _initialVisibleTopReads) ...[
+            const SizedBox(height: AppSpacing.xs),
+            TextButton.icon(
+              key: const ValueKey('reader-brief-top-reads-toggle'),
+              onPressed: () => setState(() => _expanded = !_expanded),
+              icon: Icon(
+                _expanded
+                    ? Icons.expand_less_outlined
+                    : Icons.expand_more_outlined,
+              ),
+              label: Text(_expanded ? 'Show fewer' : 'Show $hiddenCount more'),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  int _visibleCount(int itemCount) {
+    if (_expanded || itemCount <= _initialVisibleTopReads) {
+      return itemCount;
+    }
+    return _initialVisibleTopReads;
   }
 }
 
@@ -113,9 +149,23 @@ class _TopReadRow extends StatelessWidget {
                             ),
                             AppStatusBadge(
                               label:
-                                  'Score ${item.signalScore.toStringAsFixed(2)}',
+                                  'Signal ${item.signalScore.toStringAsFixed(2)}',
                               tone: AppStatusTone.neutral,
                             ),
+                            AppStatusBadge(
+                              label: readerBriefingConfidenceLabel(
+                                item.confidence,
+                              ),
+                              tone: readerBriefingConfidenceTone(
+                                item.confidence,
+                              ),
+                            ),
+                            if (item.confirmedProviderKeys.length > 1)
+                              AppStatusBadge(
+                                label:
+                                    '${item.confirmedProviderKeys.length} providers',
+                                tone: AppStatusTone.success,
+                              ),
                             if (citations.length > 1)
                               AppStatusBadge(
                                 label: '${citations.length} citations',
@@ -142,10 +192,12 @@ class _TopReadRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-              if (!compact) ...[
-                const SizedBox(height: AppSpacing.xs),
-                _TopReadDetails(index: index, item: item, citations: citations),
-              ],
+              if (!compact)
+                _InlineDetailsDisclosure(
+                  index: index,
+                  item: item,
+                  citations: citations,
+                ),
               if (compact && item.canonicalUrl != null) ...[
                 const SizedBox(height: AppSpacing.xs),
                 Text(
@@ -179,7 +231,7 @@ class _TopReadRow extends StatelessWidget {
             AppSpacing.md,
           ),
           child: SingleChildScrollView(
-            child: _TopReadDetails(
+            child: ReaderBriefingTopReadDetails(
               index: index,
               item: item,
               citations: citations,
@@ -191,8 +243,8 @@ class _TopReadRow extends StatelessWidget {
   }
 }
 
-class _TopReadDetails extends StatelessWidget {
-  const _TopReadDetails({
+class _InlineDetailsDisclosure extends StatelessWidget {
+  const _InlineDetailsDisclosure({
     required this.index,
     required this.item,
     required this.citations,
@@ -204,179 +256,26 @@ class _TopReadDetails extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          item.whyNow,
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0,
-          ),
-        ),
-        if (item.whyImportant.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.xs),
-          _InlineLabelList(
-            label: 'Why this matters',
-            values: item.whyImportant.take(3).toList(),
-          ),
-        ],
-        if (item.providerMetrics.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.xs),
-          Wrap(
-            spacing: AppSpacing.xs,
-            runSpacing: AppSpacing.xs,
-            children: item.providerMetrics
-                .map(
-                  (metric) => AppStatusBadge(
-                    label: '${metric.label}: ${metric.value}',
-                    tone: AppStatusTone.neutral,
-                  ),
-                )
-                .toList(growable: false),
-          ),
-        ],
-        if (item.matchedTopicIds.isNotEmpty ||
-            item.matchedRules.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.xs),
-          Wrap(
-            spacing: AppSpacing.xs,
-            runSpacing: AppSpacing.xs,
-            children: [
-              ...item.matchedTopicIds
-                  .take(2)
-                  .map(
-                    (topicId) => AppStatusBadge(
-                      label: topicId,
-                      tone: AppStatusTone.neutral,
-                    ),
-                  ),
-              ...item.matchedRules
-                  .take(2)
-                  .map(
-                    (rule) => AppStatusBadge(
-                      label: rule,
-                      tone: AppStatusTone.neutral,
-                    ),
-                  ),
-            ],
-          ),
-        ],
-        if (item.canonicalUrl != null) ...[
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            item.canonicalUrl!,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0,
-            ),
-          ),
-        ],
-        if (citations.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.xs),
-          _CitationDisclosure(index: index, citations: citations),
-        ],
-      ],
-    );
-  }
-}
-
-class _InlineLabelList extends StatelessWidget {
-  const _InlineLabelList({required this.label, required this.values});
-
-  final String label;
-  final List<String> values;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0,
-          ),
-        ),
-        const SizedBox(height: 2),
-        ...values.map(
-          (value) => Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CitationDisclosure extends StatelessWidget {
-  const _CitationDisclosure({required this.index, required this.citations});
-
-  final int index;
-  final List<SummaryCitation> citations;
-
-  @override
-  Widget build(BuildContext context) {
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
-        key: ValueKey('reader-brief-top-read-$index-citations'),
+        key: ValueKey('reader-brief-top-read-$index-inline-details'),
         tilePadding: EdgeInsets.zero,
         childrenPadding: EdgeInsets.zero,
         title: Text(
-          'Citations (${citations.length})',
+          'Why this matters',
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
             fontWeight: FontWeight.w800,
             letterSpacing: 0,
           ),
         ),
-        children: citations
-            .map(
-              (citation) => Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      citation.sourceLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                    Text(
-                      citation.safeSnippet,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    if (citation.canonicalUrl != null)
-                      Text(
-                        citation.canonicalUrl!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            )
-            .toList(growable: false),
+        children: [
+          ReaderBriefingTopReadDetails(
+            index: index,
+            item: item,
+            citations: citations,
+          ),
+        ],
       ),
     );
   }

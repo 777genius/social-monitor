@@ -88,6 +88,30 @@ final class SummariesFeatureModule extends Module {
     );
   }
 
+  SummariesReviewStore createStore() {
+    final apiClient = _createApiClient();
+    final catalog = GeneratedSummaryReviewCatalog(apiClient: apiClient);
+    return SummariesReviewStore(
+      dependencies: SummariesReviewStoreDependencies(
+        listSummaries: ListSummariesUseCase(catalog),
+        loadWorkspaceBriefing: LoadWorkspaceBriefingUseCase(catalog),
+        requestWorkspaceBriefing: RequestWorkspaceBriefingUseCase(catalog),
+        loadWorkspaceBriefingJobStatus: LoadWorkspaceBriefingJobStatusUseCase(
+          catalog,
+        ),
+        loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
+        regenerateSummary: RegenerateSummaryUseCase(catalog),
+        submitFeedback: SubmitSummaryFeedbackUseCase(catalog),
+        submitBriefingReaderAction: SubmitBriefingReaderActionUseCase(catalog),
+        openBriefingReaderSource: OpenBriefingReaderSourceUseCase(
+          const UrlLauncherBriefingReaderSourceLauncher(),
+        ),
+      ),
+      scope: scope,
+      userId: userId,
+    );
+  }
+
   SummariesApiClient _createApiClient() {
     final runtime = generatedApiRuntime;
     if (runtime != null) {

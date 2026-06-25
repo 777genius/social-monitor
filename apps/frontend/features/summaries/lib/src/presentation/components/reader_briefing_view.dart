@@ -5,10 +5,10 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../domain/entities/generated_briefing.dart';
 import '../../domain/value_objects/briefing_reader_action_target.dart';
 import 'reader_briefing_coverage_summary.dart';
+import 'reader_briefing_next_actions.dart';
 import 'reader_briefing_provider_label.dart';
 import 'reader_briefing_quality_summary.dart';
 import 'reader_briefing_sections.dart';
-import 'reader_briefing_top_read_preview.dart';
 import 'reader_briefing_top_reads.dart';
 
 const _maxVisibleTopReads = 10;
@@ -33,7 +33,7 @@ class ReaderBriefingView extends StatelessWidget {
   final String? lastReaderActionIdempotencyKey;
   final VoidCallback onGenerate;
   final UserActionIntent Function(BriefingNextAction action) intentForAction;
-  final ValueChanged<BriefingNextAction> onAction;
+  final BriefingReaderActionSelected onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +53,7 @@ class ReaderBriefingView extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.sm),
         Text(
-          readerBrief.oneLineTakeaway,
+          _readerBriefingDisplayText(readerBrief.oneLineTakeaway),
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
             height: 1.45,
             fontWeight: FontWeight.w600,
@@ -62,22 +62,19 @@ class ReaderBriefingView extends StatelessWidget {
         ),
         if (readerBrief.bullets.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.md),
-          _BulletList(items: readerBrief.bullets.take(4).toList()),
+          _BulletList(
+            items: readerBrief.bullets
+                .take(4)
+                .map(_readerBriefingDisplayText)
+                .toList(),
+          ),
         ],
         const SizedBox(height: AppSpacing.md),
         _EvidenceStrip(
-          providerKeys: readerBrief.sourceMix
-              .map((entry) => entry.providerKey)
-              .toList(growable: false),
+          sourceMix: readerBrief.sourceMix,
           citationCount: briefing.citations.length,
           topReadCount: readerBrief.topReads.length,
         ),
-        if (readerBrief.topReads.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.sm),
-          ReaderBriefingTopReadPreview(
-            items: readerBrief.topReads.take(3).toList(),
-          ),
-        ],
         if (readerBrief.nextActions.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.md),
           ReaderBriefingNextActions(
@@ -96,36 +93,11 @@ class ReaderBriefingView extends StatelessWidget {
             citationsById: citationsById,
           ),
         ],
-        if (_hasQualitySignal(
-          readerBrief.qualityState,
-          briefing.isDegraded,
-        )) ...[
+        if (_hasEvidenceAndQuality(readerBrief, briefing.isDegraded)) ...[
           const SizedBox(height: AppSpacing.md),
-          ReaderBriefingQualitySummary(
-            qualityState: readerBrief.qualityState,
+          _EvidenceAndQualityDisclosure(
+            readerBrief: readerBrief,
             isDegraded: briefing.isDegraded,
-          ),
-        ],
-        if (readerBrief.sourceMix.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.md),
-          ReaderBriefingCoverageSummary(entries: readerBrief.sourceMix),
-        ],
-        if (readerBrief.topicSections.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.md),
-          ReaderBriefingTopicSections(
-            sections: readerBrief.topicSections.take(3).toList(),
-          ),
-        ],
-        if (_hasTrendDelta(readerBrief.trendDelta)) ...[
-          const SizedBox(height: AppSpacing.md),
-          ReaderBriefingTrendDelta(delta: readerBrief.trendDelta),
-        ],
-        if (readerBrief.openQuestions.isNotEmpty ||
-            readerBrief.risks.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.md),
-          ReaderBriefingWatchouts(
-            questions: readerBrief.openQuestions,
-            risks: readerBrief.risks,
           ),
         ],
         const SizedBox(height: AppSpacing.md),
@@ -163,60 +135,187 @@ class ReaderBriefingView extends StatelessWidget {
         qualityState.warnings.isNotEmpty ||
         qualityState.isSingleSource;
   }
+
+  bool _hasEvidenceAndQuality(
+    BriefingReaderBrief readerBrief,
+    bool isDegraded,
+  ) {
+    return _hasQualitySignal(readerBrief.qualityState, isDegraded) ||
+        readerBrief.sourceMix.isNotEmpty ||
+        readerBrief.topicSections.isNotEmpty ||
+        _hasTrendDelta(readerBrief.trendDelta) ||
+        readerBrief.openQuestions.isNotEmpty ||
+        readerBrief.risks.isNotEmpty;
+  }
+}
+
+class _EvidenceAndQualityDisclosure extends StatelessWidget {
+  const _EvidenceAndQualityDisclosure({
+    required this.readerBrief,
+    required this.isDegraded,
+  });
+
+  final BriefingReaderBrief readerBrief;
+  final bool isDegraded;
+
+  @override
+  Widget build(BuildContext context) {
+    return ReaderBriefingSection(
+      title: 'Evidence and quality',
+      icon: Icons.fact_check_outlined,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          key: const ValueKey('reader-brief-evidence-quality'),
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          title: Text(
+            'Review source mix, topic context and reliability checks',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
+          ),
+          children: [
+            if (_hasQualitySignal(readerBrief.qualityState, isDegraded)) ...[
+              ReaderBriefingQualitySummary(
+                qualityState: readerBrief.qualityState,
+                isDegraded: isDegraded,
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            if (readerBrief.sourceMix.isNotEmpty) ...[
+              ReaderBriefingCoverageSummary(entries: readerBrief.sourceMix),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            if (readerBrief.topicSections.isNotEmpty) ...[
+              ReaderBriefingTopicSections(
+                sections: readerBrief.topicSections.take(3).toList(),
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            if (_hasTrendDelta(readerBrief.trendDelta)) ...[
+              ReaderBriefingTrendDelta(delta: readerBrief.trendDelta),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            if (readerBrief.openQuestions.isNotEmpty ||
+                readerBrief.risks.isNotEmpty)
+              ReaderBriefingWatchouts(
+                questions: readerBrief.openQuestions,
+                risks: readerBrief.risks,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _hasTrendDelta(BriefingTrendDelta delta) {
+    return delta.newSignals.isNotEmpty ||
+        delta.growingSignals.isNotEmpty ||
+        delta.repeatedSignals.isNotEmpty ||
+        delta.fadingSignals.isNotEmpty;
+  }
+
+  bool _hasQualitySignal(
+    BriefingReaderQualityState qualityState,
+    bool isDegraded,
+  ) {
+    return isDegraded ||
+        qualityState.status != 'ready' ||
+        qualityState.warnings.isNotEmpty ||
+        qualityState.isSingleSource;
+  }
 }
 
 class _EvidenceStrip extends StatelessWidget {
   const _EvidenceStrip({
-    required this.providerKeys,
+    required this.sourceMix,
     required this.citationCount,
     required this.topReadCount,
   });
 
-  final List<String> providerKeys;
+  final List<BriefingSourceMixEntry> sourceMix;
   final int citationCount;
   final int topReadCount;
 
   @override
   Widget build(BuildContext context) {
-    final uniqueProviders = _uniqueStable(providerKeys);
+    final isSingleSource = sourceMix.length == 1;
 
-    return Wrap(
-      spacing: AppSpacing.xs,
-      runSpacing: AppSpacing.xs,
-      crossAxisAlignment: WrapCrossAlignment.center,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppStatusBadge(
-          label: '$topReadCount top reads',
-          tone: AppStatusTone.neutral,
+        Text(
+          _sourceMixText(sourceMix),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0,
+          ),
         ),
-        AppStatusBadge(
-          label: '$citationCount citations',
-          tone: AppStatusTone.neutral,
-        ),
-        ...uniqueProviders
-            .take(5)
-            .map(
-              (providerKey) => AppStatusBadge(
-                label: readerBriefingProviderLabel(providerKey),
+        const SizedBox(height: AppSpacing.xs),
+        Wrap(
+          spacing: AppSpacing.xs,
+          runSpacing: AppSpacing.xs,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            AppStatusBadge(
+              label: '$topReadCount top reads',
+              tone: AppStatusTone.neutral,
+            ),
+            AppStatusBadge(
+              label: '$citationCount citations',
+              tone: AppStatusTone.neutral,
+            ),
+            for (final entry in sourceMix.take(5))
+              AppStatusBadge(
+                label:
+                    '${readerBriefingProviderLabel(entry.providerKey)} ${entry.itemCount}',
                 tone: AppStatusTone.neutral,
               ),
-            ),
+            if (isSingleSource)
+              const AppStatusBadge(
+                label: 'single-source',
+                tone: AppStatusTone.warning,
+              ),
+          ],
+        ),
       ],
     );
   }
 }
 
-List<String> _uniqueStable(List<String> values) {
-  final seen = <String>{};
-  final result = <String>[];
-
-  for (final value in values) {
-    if (seen.add(value)) {
-      result.add(value);
-    }
+String _sourceMixText(List<BriefingSourceMixEntry> entries) {
+  if (entries.isEmpty) {
+    return 'No cited source mix is available yet.';
   }
 
-  return result;
+  if (entries.length == 1) {
+    return 'Only ${readerBriefingProviderLabel(entries.single.providerKey)} contributed cited evidence.';
+  }
+
+  final itemCount = entries.fold<int>(
+    0,
+    (count, entry) => count + entry.itemCount,
+  );
+  final labels = entries
+      .take(3)
+      .map((entry) => readerBriefingProviderLabel(entry.providerKey))
+      .join(', ');
+  final suffix = entries.length > 3 ? ' +${entries.length - 3} more' : '';
+
+  return 'Sources: $labels$suffix. $itemCount cited items.';
+}
+
+String _readerBriefingDisplayText(String value) {
+  return value
+      .trim()
+      .replaceAll('story/stories', 'stories')
+      .replaceAll('a analytical', 'an analytical')
+      .replaceAll('Top links', 'Top reads');
 }
 
 class _BriefingHeader extends StatelessWidget {

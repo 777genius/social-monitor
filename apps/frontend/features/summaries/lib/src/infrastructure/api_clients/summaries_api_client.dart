@@ -187,6 +187,7 @@ final class SubmitBriefingReaderActionApiRequest {
     required this.label,
     required this.target,
     required this.idempotencyKey,
+    this.feedbackReason,
   });
 
   factory SubmitBriefingReaderActionApiRequest.fromCommand(
@@ -200,6 +201,7 @@ final class SubmitBriefingReaderActionApiRequest {
       label: command.label,
       target: command.target,
       idempotencyKey: command.idempotencyKey,
+      feedbackReason: command.feedbackReason,
     );
   }
 
@@ -210,4 +212,5 @@ final class SubmitBriefingReaderActionApiRequest {
   final String label;
   final BriefingReaderActionTarget target;
   final String idempotencyKey;
+  final BriefingReaderFeedbackReason? feedbackReason;
 }

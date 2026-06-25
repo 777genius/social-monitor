@@ -120,6 +120,19 @@ final class SummaryMapper {
       matchedTopicIds: _safeTextList(dto.matchedTopicIds),
       matchedRules: _safeTextList(dto.matchedRules),
       signalScore: dto.signalScore < 0 ? 0 : dto.signalScore,
+      confidence: BriefingReaderItemConfidence(
+        level: _readerItemConfidenceLevel(dto.confidence.level),
+        score: dto.confidence.score < 0
+            ? 0
+            : dto.confidence.score > 1
+            ? 1
+            : dto.confidence.score,
+        rationale: _safeText(
+          dto.confidence.rationale,
+          fallback: 'Single-source story signal.',
+        ),
+      ),
+      confirmedProviderKeys: _safeTextList(dto.confirmedProviderKeys),
       providerMetrics: dto.providerMetrics
           .map(
             (metric) => BriefingProviderMetric(
@@ -136,6 +149,14 @@ final class SummaryMapper {
       citationIds: dto.citationIds,
       canonicalUrl: _safeUrl(dto.canonicalUrl),
     );
+  }
+
+  String _readerItemConfidenceLevel(String value) {
+    return switch (value.trim().toLowerCase()) {
+      'high' => 'high',
+      'medium' => 'medium',
+      _ => 'low',
+    };
   }
 
   BriefingSourceMixEntry _sourceMixToDomain(BriefingSourceMixEntryApiDto dto) {

@@ -219,6 +219,7 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
               title: request.target.title,
               bodyPreview: request.target.bodyPreview,
               canonicalUrl: request.target.canonicalUrl,
+              reason: _feedbackReason(request.feedbackReason),
             ),
           ),
         );
@@ -314,6 +315,26 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
       'mark_not_relevant' =>
         generated.RecordRelevanceFeedbackRequestDtoActionAction.lessLikeThis,
       _ => null,
+    };
+  }
+
+  generated.RecordRelevanceFeedbackRequestDtoReasonReason? _feedbackReason(
+    BriefingReaderFeedbackReason? reason,
+  ) {
+    return switch (reason) {
+      BriefingReaderFeedbackReason.notSameStory =>
+        generated.RecordRelevanceFeedbackRequestDtoReasonReason.notSameStory,
+      BriefingReaderFeedbackReason.duplicate =>
+        generated.RecordRelevanceFeedbackRequestDtoReasonReason.duplicate,
+      BriefingReaderFeedbackReason.lowQualitySource =>
+        generated
+            .RecordRelevanceFeedbackRequestDtoReasonReason
+            .lowQualitySource,
+      BriefingReaderFeedbackReason.overratedProvider =>
+        generated
+            .RecordRelevanceFeedbackRequestDtoReasonReason
+            .overratedProvider,
+      null => null,
     };
   }
 }

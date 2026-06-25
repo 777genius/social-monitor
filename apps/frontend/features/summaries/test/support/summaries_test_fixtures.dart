@@ -84,6 +84,10 @@ BriefingReaderBriefApiDto briefingReaderBriefApiDto({
   String headline = 'AI workspace summary',
   String oneLineTakeaway =
       'New AI coding tools are the clearest signal to inspect first.',
+  String sourceProviderKey = 'github-repo-radar',
+  List<String> newSignals = const ['1 Repo Radar item selected'],
+  BriefingReaderQualityStateApiDto? qualityState,
+  List<BriefingSourceMixEntryApiDto>? sourceMix,
   List<BriefingReaderItemApiDto> topReads = const [
     BriefingReaderItemApiDto(
       title: 'AI coding tools',
@@ -105,18 +109,25 @@ BriefingReaderBriefApiDto briefingReaderBriefApiDto({
     ),
   ],
 }) {
+  final primaryRead = topReads.isNotEmpty ? topReads.first : null;
+  final primaryTitle = primaryRead?.title ?? 'source';
+  final primaryUrl = primaryRead?.canonicalUrl;
+  final primaryCitationIds = primaryRead?.citationIds ?? const <String>[];
+
   return BriefingReaderBriefApiDto(
     headline: headline,
     oneLineTakeaway: oneLineTakeaway,
     bullets: const [
       'Best first read: AI coding tools because it is the strongest selected signal.',
     ],
-    qualityState: const BriefingReaderQualityStateApiDto(
-      status: 'limited_sources',
-      flags: ['limited_sources'],
-      warnings: ['Source coverage is limited or single-source.'],
-      isSingleSource: true,
-    ),
+    qualityState:
+        qualityState ??
+        const BriefingReaderQualityStateApiDto(
+          status: 'limited_sources',
+          flags: ['limited_sources'],
+          warnings: ['Source coverage is limited or single-source.'],
+          isSingleSource: true,
+        ),
     topicSections: [
       BriefingTopicSectionApiDto(
         title: 'Developer tooling',
@@ -125,57 +136,59 @@ BriefingReaderBriefApiDto briefingReaderBriefApiDto({
         citationIds: const ['bc-1'],
       ),
     ],
-    sourceMix: [
-      BriefingSourceMixEntryApiDto(
-        providerKey: 'github-repo-radar',
-        itemCount: topReads.length,
-        citationCount: topReads.fold<int>(
-          0,
-          (count, item) => count + item.citationIds.length,
-        ),
-        storyClusterCount: topReads.length,
-        crossSourceClusterCount: 0,
-        singleSourceOnly: true,
-        topicIds: const ['ai-developer-tools'],
-      ),
-    ],
+    sourceMix:
+        sourceMix ??
+        [
+          BriefingSourceMixEntryApiDto(
+            providerKey: sourceProviderKey,
+            itemCount: topReads.length,
+            citationCount: topReads.fold<int>(
+              0,
+              (count, item) => count + item.citationIds.length,
+            ),
+            storyClusterCount: topReads.length,
+            crossSourceClusterCount: 0,
+            singleSourceOnly: true,
+            topicIds: const ['ai-developer-tools'],
+          ),
+        ],
     topReads: topReads,
-    trendDelta: const BriefingTrendDeltaApiDto(
-      newSignals: ['1 Repo Radar item selected'],
-      growingSignals: ['Developer tooling'],
+    trendDelta: BriefingTrendDeltaApiDto(
+      newSignals: newSignals,
+      growingSignals: const ['Developer tooling'],
       repeatedSignals: [],
       fadingSignals: [],
     ),
     openQuestions: const [],
     risks: const [],
-    nextActions: const [
+    nextActions: [
       BriefingNextActionApiDto(
         kind: 'read_source',
         label: 'Read source',
         reason: 'Open the cited source behind this summary item.',
-        canonicalUrl: 'https://github.com/openai/codex',
-        citationIds: ['bc-1'],
+        canonicalUrl: primaryUrl,
+        citationIds: primaryCitationIds,
       ),
       BriefingNextActionApiDto(
         kind: 'watch_repository',
-        label: 'Watch AI coding tools',
+        label: 'Watch $primaryTitle',
         reason: 'Check whether the signal keeps growing.',
-        canonicalUrl: 'https://github.com/example/ai-coding-tools',
-        citationIds: ['bc-1'],
+        canonicalUrl: primaryUrl,
+        citationIds: primaryCitationIds,
       ),
       BriefingNextActionApiDto(
         kind: 'mark_relevant',
         label: 'Mark relevant',
         reason: 'Use feedback to keep future summaries aligned.',
-        canonicalUrl: 'https://github.com/example/ai-coding-tools',
-        citationIds: ['bc-1'],
+        canonicalUrl: primaryUrl,
+        citationIds: primaryCitationIds,
       ),
       BriefingNextActionApiDto(
         kind: 'mark_not_relevant',
         label: 'Not relevant',
         reason: 'Use feedback to reduce similar future signals.',
-        canonicalUrl: 'https://github.com/example/ai-coding-tools',
-        citationIds: ['bc-1'],
+        canonicalUrl: primaryUrl,
+        citationIds: primaryCitationIds,
       ),
     ],
   );
@@ -208,141 +221,171 @@ GeneratedSummary generatedSummary({
   );
 }
 
-SummaryApiDto repoRadarSummaryApiDto() {
+SummaryApiDto githubTrendingSummaryApiDto() {
   return summaryApiDto(
-    title: 'GitHub repo radar summary',
+    title: 'GitHub Trending daily summary',
     bodyText:
-        'Repo Radar found openai/codex, firecrawl/firecrawl and langchain-ai/langgraph as the strongest AI developer-tool signals today.',
+        'GitHub Trending surfaced calesthio/OpenMontage, apple/container and ZhuLinsen/daily_stock_analysis from github.com/trending today. Repo Radar remains the historical growth view for 7d, 30d and 90d follow-up.',
     citations: [
       summaryCitationApiDto(
         id: 'c-1',
-        sourceLabel: 'Repo Radar [1] openai/codex',
-        rawSnippet: '54.0k stars, +210 in 24h and +360 in 48h.',
-        canonicalUrl: 'https://github.com/openai/codex',
+        sourceLabel:
+            'GitHub Trending - github.com/trending page [1] calesthio/OpenMontage',
+        rawSnippet: '18.4k stars, #1 today and +3.7k stars today.',
+        canonicalUrl: 'https://github.com/calesthio/OpenMontage',
       ),
       summaryCitationApiDto(
         id: 'c-2',
-        sourceLabel: 'Repo Radar [2] firecrawl/firecrawl',
+        sourceLabel:
+            'GitHub Trending - github.com/trending page [2] apple/container',
         rawSnippet:
-            'Web data infrastructure project continues gaining developer attention.',
-        canonicalUrl: 'https://github.com/firecrawl/firecrawl',
+            'Apple container tooling is #2 today with +1.7k stars today.',
+        canonicalUrl: 'https://github.com/apple/container',
       ),
       summaryCitationApiDto(
         id: 'c-3',
-        sourceLabel: 'Repo Radar [3] langchain-ai/langgraph',
+        sourceLabel:
+            'GitHub Trending - github.com/trending page [3] ZhuLinsen/daily_stock_analysis',
         rawSnippet:
-            'Agent graph orchestration remains a repeated topic in AI tooling feeds.',
-        canonicalUrl: 'https://github.com/langchain-ai/langgraph',
+            'LLM-powered stock analysis is a high-rank daily GitHub Trending project.',
+        canonicalUrl: 'https://github.com/ZhuLinsen/daily_stock_analysis',
       ),
     ],
   );
 }
 
-BriefingApiDto repoRadarBriefingApiDto() {
+BriefingApiDto githubTrendingBriefingApiDto() {
   return briefingApiDto(
     title: 'AI signal summary',
     executiveSummary:
-        'GitHub Repo Radar found concrete AI developer-tool repositories worth reviewing today.',
+        'GitHub Trending page found concrete repositories worth reviewing today, while Repo Radar should be used for longer-window GH Archive growth checks.',
     readerBrief: briefingReaderBriefApiDto(
-      headline: 'AI repo radar',
+      headline: 'GitHub daily radar',
       oneLineTakeaway:
-          'Repo Radar found openai/codex as the strongest repository signal, without cross-source confirmation in this summary.',
+          'GitHub Trending is the daily radar for what is breaking out today; Repo Radar is the historical analytics layer for 7d, 30d and 90d growth.',
+      sourceProviderKey: 'github-trending-page',
+      newSignals: const ['3 GitHub Trending page items selected'],
       topReads: const [
         BriefingReaderItemApiDto(
-          title: 'openai/codex',
-          providerKey: 'github-repo-radar',
-          reason: '54.0k stars, +210 in 24h and +360 in 48h.',
+          title: 'calesthio/OpenMontage',
+          providerKey: 'github-trending-page',
+          reason:
+              '#1 repository on github.com/trending today with +3.7k stars today.',
           matchedTopicIds: ['ai-developer-tools'],
           matchedRules: [
             'topic:ai-developer-tools',
-            'provider:github-repo-radar',
+            'provider:github-trending-page',
           ],
           signalScore: 1,
+          confidence: BriefingReaderItemConfidenceApiDto(
+            level: 'medium',
+            score: 0.57,
+            rationale: 'Daily GitHub Trending signal with raw metrics.',
+          ),
+          confirmedProviderKeys: ['github-trending-page'],
           providerMetrics: [
-            BriefingProviderMetricApiDto(label: 'Stars', value: '54,000'),
-            BriefingProviderMetricApiDto(label: 'Trend', value: '+360 / 48h'),
+            BriefingProviderMetricApiDto(label: 'Story signal', value: '1'),
+            BriefingProviderMetricApiDto(
+              label: 'GitHub Trending today',
+              value: '#1, +3,703 stars today',
+            ),
+            BriefingProviderMetricApiDto(label: 'Stars', value: '18,398'),
           ],
-          whyImportant: ['Repository is gaining stars quickly.'],
-          whyNow: 'Current summary window has Repo Radar coverage.',
-          canonicalUrl: 'https://github.com/openai/codex',
+          whyImportant: [
+            'It is the clearest daily breakout on the public GitHub Trending page.',
+          ],
+          whyNow:
+              'Current summary window has github.com/trending page coverage.',
+          canonicalUrl: 'https://github.com/calesthio/OpenMontage',
           citationIds: ['bc-1'],
         ),
         BriefingReaderItemApiDto(
-          title: 'firecrawl/firecrawl',
-          providerKey: 'github-repo-radar',
+          title: 'apple/container',
+          providerKey: 'github-trending-page',
           reason:
-              'Web data infrastructure project continues gaining developer attention.',
+              'Useful infrastructure follow-up from today\'s Trending page.',
           matchedTopicIds: ['ai-developer-tools'],
           matchedRules: [
             'topic:ai-developer-tools',
-            'provider:github-repo-radar',
+            'provider:github-trending-page',
           ],
           signalScore: 0.9,
           providerMetrics: [
-            BriefingProviderMetricApiDto(label: 'Stars', value: '31,000'),
-            BriefingProviderMetricApiDto(label: 'Trend', value: '+190 / 48h'),
+            BriefingProviderMetricApiDto(
+              label: 'GitHub Trending today',
+              value: '#2, +1,746 stars today',
+            ),
+            BriefingProviderMetricApiDto(label: 'Stars', value: '41,719'),
           ],
-          whyImportant: [
-            'Web data infrastructure project continues gaining developer attention.',
-          ],
-          whyNow: 'Current summary window has Repo Radar coverage.',
-          canonicalUrl: 'https://github.com/firecrawl/firecrawl',
+          whyImportant: ['Useful infrastructure signal from Apple.'],
+          whyNow:
+              'Current summary window has github.com/trending page coverage.',
+          canonicalUrl: 'https://github.com/apple/container',
           citationIds: ['bc-2'],
         ),
         BriefingReaderItemApiDto(
-          title: 'langchain-ai/langgraph',
-          providerKey: 'github-repo-radar',
-          reason:
-              'Agent graph orchestration remains a repeated topic in AI tooling feeds.',
+          title: 'ZhuLinsen/daily_stock_analysis',
+          providerKey: 'github-trending-page',
+          reason: 'Useful follow-up for LLM-assisted analysis workflows.',
           matchedTopicIds: ['ai-developer-tools'],
           matchedRules: [
             'topic:ai-developer-tools',
-            'provider:github-repo-radar',
+            'provider:github-trending-page',
           ],
           signalScore: 0.82,
           providerMetrics: [
-            BriefingProviderMetricApiDto(label: 'Stars', value: '18,500'),
-            BriefingProviderMetricApiDto(label: 'Trend', value: '+120 / 48h'),
+            BriefingProviderMetricApiDto(
+              label: 'GitHub Trending today',
+              value: '#3 daily signal',
+            ),
+            BriefingProviderMetricApiDto(
+              label: 'Source',
+              value: 'github.com/trending',
+            ),
           ],
           whyImportant: [
-            'Agent graph orchestration remains a repeated topic in AI tooling feeds.',
+            'Shows LLM workflows breaking into daily GitHub attention.',
           ],
-          whyNow: 'Current summary window has Repo Radar coverage.',
-          canonicalUrl: 'https://github.com/langchain-ai/langgraph',
+          whyNow:
+              'Current summary window has github.com/trending page coverage.',
+          canonicalUrl: 'https://github.com/ZhuLinsen/daily_stock_analysis',
           citationIds: ['bc-3'],
         ),
       ],
     ),
     topStories: const [
       BriefingStoryApiDto(
-        title: 'openai/codex leads today\'s repo radar',
+        title: 'OpenMontage leads today\'s GitHub Trending page',
         summary:
-            'AI coding-agent tooling is the strongest repository signal in the monitored scope.',
+            'The daily radar is driven by the public github.com/trending page, not Repo Radar history.',
         topicCount: 3,
-        providerCount: 3,
+        providerCount: 1,
         citationIds: ['bc-1', 'bc-2', 'bc-3'],
       ),
     ],
     citations: [
       summaryCitationApiDto(
         id: 'bc-1',
-        sourceLabel: 'Repo Radar [1] openai/codex',
-        rawSnippet: '54.0k stars, +210 in 24h and +360 in 48h.',
-        canonicalUrl: 'https://github.com/openai/codex',
+        sourceLabel:
+            'GitHub Trending - github.com/trending page [1] calesthio/OpenMontage',
+        rawSnippet: '18.4k stars, #1 today and +3.7k stars today.',
+        canonicalUrl: 'https://github.com/calesthio/OpenMontage',
       ),
       summaryCitationApiDto(
         id: 'bc-2',
-        sourceLabel: 'Repo Radar [2] firecrawl/firecrawl',
+        sourceLabel:
+            'GitHub Trending - github.com/trending page [2] apple/container',
         rawSnippet:
-            'Web data infrastructure project continues gaining developer attention.',
-        canonicalUrl: 'https://github.com/firecrawl/firecrawl',
+            'Apple container tooling is #2 today with +1.7k stars today.',
+        canonicalUrl: 'https://github.com/apple/container',
       ),
       summaryCitationApiDto(
         id: 'bc-3',
-        sourceLabel: 'Repo Radar [3] langchain-ai/langgraph',
+        sourceLabel:
+            'GitHub Trending - github.com/trending page [3] ZhuLinsen/daily_stock_analysis',
         rawSnippet:
-            'Agent graph orchestration remains a repeated topic in AI tooling feeds.',
-        canonicalUrl: 'https://github.com/langchain-ai/langgraph',
+            'LLM-powered stock analysis is a high-rank daily GitHub Trending project.',
+        canonicalUrl: 'https://github.com/ZhuLinsen/daily_stock_analysis',
       ),
     ],
   );

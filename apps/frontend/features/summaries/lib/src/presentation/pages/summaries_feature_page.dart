@@ -48,7 +48,7 @@ class _SummariesFeaturePageState extends State<SummariesFeaturePage> {
                   eyebrow: 'Intelligence',
                   title: 'Summaries',
                   description:
-                      'Review generated summaries, citations and feedback signals with safe evidence boundaries.',
+                      'Review the workspace summary, source coverage and saved summary history.',
                 ),
               ),
               SliverToBoxAdapter(
@@ -84,6 +84,10 @@ class _SummariesBody extends StatelessWidget {
     final detailSummary = isCompact && !store.hasExplicitSelection
         ? null
         : selected;
+    final showSummaryHistory =
+        items.isNotEmpty ||
+        state is LoadingViewState<PageResult<GeneratedSummary>> ||
+        state is FailureViewState<PageResult<GeneratedSummary>>;
 
     final content = switch (state) {
       FailureViewState<PageResult<GeneratedSummary>>(:final failure) =>
@@ -96,7 +100,7 @@ class _SummariesBody extends StatelessWidget {
         ),
       EmptyViewState<PageResult<GeneratedSummary>>() => const AppInlineProblem(
         title: 'No summaries',
-        message: 'Generate a workspace summary from reviewed mentions.',
+        message: 'Generate a workspace summary after posts are collected.',
         tone: AppProblemTone.neutral,
       ),
       _ => AppResponsiveSplitView(
@@ -105,7 +109,8 @@ class _SummariesBody extends StatelessWidget {
           stableId: (summary) => summary.id.value,
           isLoading: state is LoadingViewState<PageResult<GeneratedSummary>>,
           emptyTitle: 'No summaries',
-          emptyMessage: 'Generate a workspace summary from reviewed mentions.',
+          emptyMessage:
+              'Generate a workspace summary after posts are collected.',
           itemBuilder: (context, summary, index) {
             return ListTile(
               selected: detailSummary?.id == summary.id,
@@ -147,11 +152,14 @@ class _SummariesBody extends StatelessWidget {
           onRetry: () => unawaited(store.loadWorkspaceBriefing()),
           onGenerate: () => unawaited(store.requestWorkspaceBriefing()),
           intentForAction: store.readerActionIntentFor,
-          onAction: (briefing, action) =>
-              unawaited(store.submitReaderAction(briefing, action)),
+          onAction: (briefing, action, [feedbackReason]) => unawaited(
+            store.submitReaderAction(briefing, action, feedbackReason),
+          ),
         ),
-        const SizedBox(height: AppSpacing.md),
-        content,
+        if (showSummaryHistory) ...[
+          const SizedBox(height: AppSpacing.md),
+          content,
+        ],
       ],
     );
   }

@@ -34,21 +34,24 @@ void main() {
 
     final briefing = mapper.briefing(_briefingArtifact());
 
-    expect(briefing.readerBrief.headline, 'AI repo radar');
-    expect(briefing.readerBrief.oneLineTakeaway, contains('openai/codex'));
+    expect(briefing.readerBrief.headline, 'GitHub daily radar');
+    expect(
+      briefing.readerBrief.oneLineTakeaway,
+      contains('calesthio/OpenMontage'),
+    );
     expect(briefing.readerBrief.qualityState.status, 'limited_sources');
     expect(
       briefing.readerBrief.topReads.single.canonicalUrl,
-      contains('github.com/openai/codex'),
+      contains('github.com/calesthio/OpenMontage'),
     );
     expect(briefing.readerBrief.topReads.single.matchedTopicIds, ['ai-tools']);
     expect(
       briefing.readerBrief.topReads.single.providerMetrics.single.value,
-      '54,000',
+      '#1, +3,703 stars today',
     );
     expect(
       briefing.readerBrief.sourceMix.single.providerKey,
-      'github-repo-radar',
+      'github-trending-page',
     );
     expect(briefing.readerBrief.sourceMix.single.storyClusterCount, 1);
     expect(briefing.readerBrief.nextActions.single.kind, 'watch_repository');
@@ -95,12 +98,12 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
     briefingId: 'briefing-1',
     citations: const [
       generated.BriefingCitationViewDto(
-        canonicalUrl: 'https://github.com/openai/codex',
+        canonicalUrl: 'https://github.com/calesthio/OpenMontage',
         citationId: 'bc-1',
         feedItemId: 'feed-1',
         field: generated.BriefingCitationViewDtoFieldField.title,
         label: '[1]',
-        providerKey: 'github-repo-radar',
+        providerKey: 'github-trending-page',
         sourceItemId: 'source-1',
       ),
     ],
@@ -111,7 +114,7 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
     ),
     contextArtifacts: const [],
     executiveSummary:
-        'Repo Radar found concrete AI developer-tool repositories.',
+        'GitHub Trending found concrete AI developer-tool repositories.',
     freshness: generated.BriefingFreshnessDto(
       checkedAt: now,
       status: generated.BriefingFreshnessDtoStatusStatus.fresh,
@@ -127,9 +130,10 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
     ),
     qualityFlags: const [],
     readerBrief: const generated.BriefingReaderBriefDto(
-      headline: 'AI repo radar',
-      oneLineTakeaway: 'openai/codex is the clearest repository signal.',
-      bullets: ['openai/codex is worth reading first.'],
+      headline: 'GitHub daily radar',
+      oneLineTakeaway:
+          'calesthio/OpenMontage is the clearest repository signal.',
+      bullets: ['calesthio/OpenMontage is worth reading first.'],
       qualityState: generated.BriefingReaderQualityStateDto(
         status:
             generated.BriefingReaderQualityStateDtoStatusStatus.limitedSources,
@@ -145,21 +149,29 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
           insight: 'Agent tooling repositories are gaining attention.',
           items: [
             generated.BriefingReaderItemDto(
-              title: 'openai/codex',
-              providerKey: 'github-repo-radar',
-              reason: 'Fast star growth.',
+              title: 'calesthio/OpenMontage',
+              providerKey: 'github-trending-page',
+              reason: '#1 on github.com/trending today.',
               matchedTopicIds: ['ai-tools'],
-              matchedRules: ['topic:ai-tools', 'provider:github-repo-radar'],
+              matchedRules: ['topic:ai-tools', 'provider:github-trending-page'],
               signalScore: 1,
+              confidence: generated.BriefingReaderItemConfidenceDto(
+                level:
+                    generated.BriefingReaderItemConfidenceDtoLevelLevel.medium,
+                score: 0.57,
+                rationale: 'Daily GitHub Trending signal with raw metrics.',
+              ),
+              confirmedProviderKeys: ['github-trending-page'],
               providerMetrics: [
                 generated.BriefingProviderMetricDto(
-                  label: 'Stars',
-                  value: '54,000',
+                  label: 'GitHub Trending today',
+                  value: '#1, +3,703 stars today',
                 ),
               ],
-              whyImportant: ['Fast star growth.'],
-              whyNow: 'Current briefing window has Repo Radar coverage.',
-              canonicalUrl: 'https://github.com/openai/codex',
+              whyImportant: ['It is #1 on GitHub Trending today.'],
+              whyNow:
+                  'Current summary window has github.com/trending page coverage.',
+              canonicalUrl: 'https://github.com/calesthio/OpenMontage',
               citationIds: ['bc-1'],
             ),
           ],
@@ -168,7 +180,7 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
       ],
       sourceMix: [
         generated.BriefingSourceMixEntryDto(
-          providerKey: 'github-repo-radar',
+          providerKey: 'github-trending-page',
           itemCount: 1,
           citationCount: 1,
           storyClusterCount: 1,
@@ -179,26 +191,33 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
       ],
       topReads: [
         generated.BriefingReaderItemDto(
-          title: 'openai/codex',
-          providerKey: 'github-repo-radar',
-          reason: 'Fast star growth.',
+          title: 'calesthio/OpenMontage',
+          providerKey: 'github-trending-page',
+          reason: '#1 on github.com/trending today.',
           matchedTopicIds: ['ai-tools'],
-          matchedRules: ['topic:ai-tools', 'provider:github-repo-radar'],
+          matchedRules: ['topic:ai-tools', 'provider:github-trending-page'],
           signalScore: 1,
+          confidence: generated.BriefingReaderItemConfidenceDto(
+            level: generated.BriefingReaderItemConfidenceDtoLevelLevel.medium,
+            score: 0.57,
+            rationale: 'Daily GitHub Trending signal with raw metrics.',
+          ),
+          confirmedProviderKeys: ['github-trending-page'],
           providerMetrics: [
             generated.BriefingProviderMetricDto(
-              label: 'Stars',
-              value: '54,000',
+              label: 'GitHub Trending today',
+              value: '#1, +3,703 stars today',
             ),
           ],
-          whyImportant: ['Fast star growth.'],
-          whyNow: 'Current briefing window has Repo Radar coverage.',
-          canonicalUrl: 'https://github.com/openai/codex',
+          whyImportant: ['It is #1 on GitHub Trending today.'],
+          whyNow:
+              'Current summary window has github.com/trending page coverage.',
+          canonicalUrl: 'https://github.com/calesthio/OpenMontage',
           citationIds: ['bc-1'],
         ),
       ],
       trendDelta: generated.BriefingTrendDeltaDto(
-        newSignals: ['openai/codex'],
+        newSignals: ['calesthio/OpenMontage'],
         growingSignals: [],
         repeatedSignals: [],
         fadingSignals: [],
@@ -208,9 +227,9 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
       nextActions: [
         generated.BriefingNextActionDto(
           kind: generated.BriefingNextActionDtoKindKind.watchRepository,
-          label: 'Watch openai/codex',
+          label: 'Watch calesthio/OpenMontage',
           reason: 'Track whether growth continues.',
-          canonicalUrl: 'https://github.com/openai/codex',
+          canonicalUrl: 'https://github.com/calesthio/OpenMontage',
           citationIds: ['bc-1'],
         ),
       ],
@@ -236,10 +255,10 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
           endedAt: now,
           startedAt: now.subtract(const Duration(minutes: 30)),
         ),
-        providerKeys: const ['github-repo-radar'],
+        providerKeys: const ['github-trending-page'],
         representativeFeedItemId: 'feed-1',
         score: 1,
-        storyKey: 'url:github.com/openai/codex',
+        storyKey: 'url:github.com/calesthio/OpenMontage',
         topicIds: const ['ai-tools'],
         whyImportant: const ['Fast star growth.'],
       ),
@@ -249,10 +268,10 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
     topStories: const [
       generated.BriefingTopStoryDto(
         citationIds: ['bc-1'],
-        providerKeys: ['github-repo-radar'],
+        providerKeys: ['github-trending-page'],
         storyClusterId: 'story-1',
-        summary: 'openai/codex is gaining attention.',
-        title: 'openai/codex',
+        summary: 'calesthio/OpenMontage is gaining attention.',
+        title: 'calesthio/OpenMontage',
         topicIds: ['ai-tools'],
       ),
     ],

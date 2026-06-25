@@ -2,11 +2,12 @@
 
 ## Owning Context
 
-- `summaries` owns briefing, digest and summary review language.
+- `summaries` owns workspace summary, digest and summary review language.
 
 ## Upstream Contexts
 
-- Backend summary APIs provide generated summaries, citations and feedback state.
+- Backend summary APIs provide generated summaries, workspace summary artifacts,
+  citations and feedback state.
 - Feed item ids arrive through backend/API contracts.
 
 ## Downstream Contexts
@@ -17,3 +18,5 @@
 
 - Do not import feed or settings feature packages directly.
 - Keep generated summary DTOs and provider-specific language in infrastructure.
+- Map backend/API Briefing terminology to Summary before it reaches
+  user-facing presentation copy.

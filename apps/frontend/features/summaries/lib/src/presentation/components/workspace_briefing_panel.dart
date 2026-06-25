@@ -33,7 +33,11 @@ class WorkspaceBriefingPanel extends StatelessWidget {
     BriefingNextAction action,
   )
   intentForAction;
-  final void Function(GeneratedBriefing briefing, BriefingNextAction action)
+  final void Function(
+    GeneratedBriefing briefing,
+    BriefingNextAction action, [
+    BriefingReaderFeedbackReason? feedbackReason,
+  ])
   onAction;
 
   @override
@@ -188,7 +192,11 @@ class _ReadyBriefing extends StatelessWidget {
     BriefingNextAction action,
   )
   intentForAction;
-  final void Function(GeneratedBriefing briefing, BriefingNextAction action)
+  final void Function(
+    GeneratedBriefing briefing,
+    BriefingNextAction action, [
+    BriefingReaderFeedbackReason? feedbackReason,
+  ])
   onAction;
   final bool isRefreshing;
 
@@ -212,7 +220,8 @@ class _ReadyBriefing extends StatelessWidget {
           lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
           onGenerate: onGenerate,
           intentForAction: (action) => intentForAction(briefing, action),
-          onAction: (action) => onAction(briefing, action),
+          onAction: (action, [feedbackReason]) =>
+              onAction(briefing, action, feedbackReason),
         ),
       ),
     );

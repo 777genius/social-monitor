@@ -57,6 +57,12 @@ final class BriefingReaderBriefRestMapper {
       matchedTopicIds: dto.matchedTopicIds,
       matchedRules: dto.matchedRules,
       signalScore: _safeScore(dto.signalScore),
+      confidence: BriefingReaderItemConfidenceApiDto(
+        level: dto.confidence.level.json ?? 'low',
+        score: _safeConfidenceScore(dto.confidence.score),
+        rationale: dto.confidence.rationale,
+      ),
+      confirmedProviderKeys: dto.confirmedProviderKeys,
       providerMetrics: dto.providerMetrics
           .map(
             (metric) => BriefingProviderMetricApiDto(
@@ -106,6 +112,16 @@ final class BriefingReaderBriefRestMapper {
   double _safeScore(num value) {
     if (!value.isFinite || value < 0) {
       return 0;
+    }
+    return value.toDouble();
+  }
+
+  double _safeConfidenceScore(num value) {
+    if (!value.isFinite || value < 0) {
+      return 0;
+    }
+    if (value > 1) {
+      return 1;
     }
     return value.toDouble();
   }

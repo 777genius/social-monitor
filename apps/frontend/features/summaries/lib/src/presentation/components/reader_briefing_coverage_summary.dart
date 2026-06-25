@@ -71,13 +71,14 @@ class ReaderBriefingCoverageSummary extends StatelessWidget {
     );
     if (entries.length == 1) {
       final provider = readerBriefingProviderLabel(entries.single.providerKey);
-      return 'Only $provider contributed cited evidence across $clusterCount story clusters. Other connected providers did not confirm this result.';
+      return 'Only $provider contributed cited evidence across $clusterCount story clusters. Other connected providers did not confirm this yet.';
     }
 
     final labels = entries
         .take(3)
         .map((entry) => readerBriefingProviderLabel(entry.providerKey))
         .join(', ');
-    return '$labels contributed $itemCount cited items across $clusterCount provider-cluster links, with $crossSourceCount cross-source confirmations.';
+    final suffix = entries.length > 3 ? ' +${entries.length - 3} more' : '';
+    return '$labels$suffix contributed $itemCount cited items across $clusterCount story clusters, with $crossSourceCount cross-source confirmations.';
   }
 }

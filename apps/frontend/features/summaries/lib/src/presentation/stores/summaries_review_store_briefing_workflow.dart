@@ -122,7 +122,7 @@ extension SummariesReviewStoreBriefingWorkflow on SummariesReviewStore {
 
     briefingJobState = const FailureViewState<BriefingJobSnapshot>(
       failure: UnexpectedFailure(
-        message: 'Briefing is still running. Try again shortly.',
+        message: 'Summary is still running. Try again shortly.',
         code: 'summaries.briefing_poll_timeout',
       ),
     );
@@ -157,9 +157,20 @@ Future<void> _loadWorkspaceBriefingForStore(
   );
   store._notifyStateChanged();
 
-  final result = await store._dependencies.loadWorkspaceBriefing(
-    LoadWorkspaceBriefingQuery(scope: store._scope),
-  );
+  Result<WorkspaceBriefingSnapshot> result;
+  try {
+    result = await store._dependencies
+        .loadWorkspaceBriefing(LoadWorkspaceBriefingQuery(scope: store._scope))
+        .timeout(store._workspaceBriefingLoadTimeout);
+  } on TimeoutException catch (error) {
+    result = Result.failure(
+      NetworkFailure(
+        message: 'Workspace summary took too long to load.',
+        code: 'summaries.workspace_briefing_timeout',
+        cause: error,
+      ),
+    );
+  }
   if (!store._briefingGenerationGuard.isCurrent(generation)) {
     return;
   }

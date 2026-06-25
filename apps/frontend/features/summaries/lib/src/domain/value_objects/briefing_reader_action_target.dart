@@ -5,6 +5,18 @@ const supportedBriefingReaderFeedbackActionKinds = {
   'mark_not_relevant',
 };
 
+enum BriefingReaderFeedbackReason {
+  notSameStory('not_same_story', 'Not same story'),
+  duplicate('duplicate', 'Duplicate'),
+  lowQualitySource('low_quality_source', 'Low quality source'),
+  overratedProvider('overrated_provider', 'Overrated provider');
+
+  const BriefingReaderFeedbackReason(this.apiValue, this.label);
+
+  final String apiValue;
+  final String label;
+}
+
 final class BriefingReaderActionTarget {
   const BriefingReaderActionTarget({
     required this.providerKey,

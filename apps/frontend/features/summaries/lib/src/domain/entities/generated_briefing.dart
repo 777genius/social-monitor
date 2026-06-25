@@ -68,6 +68,8 @@ final class BriefingReaderItem {
     required this.matchedTopicIds,
     required this.matchedRules,
     required this.signalScore,
+    required this.confidence,
+    required this.confirmedProviderKeys,
     required this.providerMetrics,
     required this.whyImportant,
     required this.whyNow,
@@ -81,11 +83,25 @@ final class BriefingReaderItem {
   final List<String> matchedTopicIds;
   final List<String> matchedRules;
   final double signalScore;
+  final BriefingReaderItemConfidence confidence;
+  final List<String> confirmedProviderKeys;
   final List<BriefingProviderMetric> providerMetrics;
   final List<String> whyImportant;
   final String whyNow;
   final List<String> citationIds;
   final String? canonicalUrl;
+}
+
+final class BriefingReaderItemConfidence {
+  const BriefingReaderItemConfidence({
+    required this.level,
+    required this.score,
+    required this.rationale,
+  });
+
+  final String level;
+  final double score;
+  final String rationale;
 }
 
 final class BriefingProviderMetric {

@@ -66,6 +66,17 @@ final class SubmitBriefingReaderActionUseCase {
         ),
       );
     }
+    if (command.kind == 'mark_not_relevant' && command.feedbackReason == null) {
+      return Future.value(
+        const Result.failure(
+          ValidationFailure(
+            message: 'Reader negative feedback reason is required',
+            code: 'summaries.reader_action_feedback_reason_required',
+            field: 'feedbackReason',
+          ),
+        ),
+      );
+    }
     if (command.idempotencyKey.trim().isEmpty) {
       return Future.value(
         const Result.failure(

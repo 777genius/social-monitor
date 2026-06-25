@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
@@ -39,6 +41,7 @@ final class SummariesReviewStore extends ChangeNotifier {
     OperationGenerationGuard? detailGenerationGuard,
     OperationGenerationGuard? mutationGenerationGuard,
     OperationGenerationGuard? readerActionGenerationGuard,
+    Duration workspaceBriefingLoadTimeout = const Duration(seconds: 20),
     BriefingReaderActionTargetResolver readerActionTargetResolver =
         const BriefingReaderActionTargetResolver(),
   }) : _dependencies = dependencies,
@@ -58,6 +61,7 @@ final class SummariesReviewStore extends ChangeNotifier {
            mutationGenerationGuard ?? OperationGenerationGuard(),
        _readerActionGenerationGuard =
            readerActionGenerationGuard ?? OperationGenerationGuard(),
+       _workspaceBriefingLoadTimeout = workspaceBriefingLoadTimeout,
        _readerActionTargetResolver = readerActionTargetResolver;
 
   final SummariesReviewStoreDependencies _dependencies;
@@ -71,12 +75,14 @@ final class SummariesReviewStore extends ChangeNotifier {
   final OperationGenerationGuard _detailGenerationGuard;
   final OperationGenerationGuard _mutationGenerationGuard;
   final OperationGenerationGuard _readerActionGenerationGuard;
+  final Duration _workspaceBriefingLoadTimeout;
 
   WorkspaceScope _scope;
   final String _userId;
   SummaryId? _selectedSummaryId;
   String? _activeReaderActionIdempotencyKey;
   String? _lastReaderActionIdempotencyKey;
+  bool _isDisposed = false;
 
   AsyncViewState<PageResult<GeneratedSummary>> listState =
       const InitialViewState<PageResult<GeneratedSummary>>();
@@ -123,7 +129,21 @@ final class SummariesReviewStore extends ChangeNotifier {
   }
 
   void _notifyStateChanged() {
+    if (_isDisposed) {
+      return;
+    }
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _listGenerationGuard.invalidate();
+    _briefingGenerationGuard.invalidate();
+    _detailGenerationGuard.invalidate();
+    _mutationGenerationGuard.invalidate();
+    _readerActionGenerationGuard.invalidate();
+    super.dispose();
   }
 
   void updateScope(WorkspaceScope nextScope) {
@@ -146,11 +166,11 @@ final class SummariesReviewStore extends ChangeNotifier {
     readerActionState = const InitialViewState<BriefingReaderActionResult>();
     _activeReaderActionIdempotencyKey = null;
     _lastReaderActionIdempotencyKey = null;
-    notifyListeners();
+    _notifyStateChanged();
   }
 
   Future<void> load() async {
-    await loadWorkspaceBriefing();
+    unawaited(loadWorkspaceBriefing());
 
     final generation = _listGenerationGuard.markOperationStarted();
     final previous = switch (listState) {
@@ -162,7 +182,7 @@ final class SummariesReviewStore extends ChangeNotifier {
     listState = LoadingViewState<PageResult<GeneratedSummary>>(
       previousValue: previous,
     );
-    notifyListeners();
+    _notifyStateChanged();
 
     final result = await _dependencies.listSummaries(
       ListSummariesQuery(scope: _scope),
@@ -193,7 +213,7 @@ final class SummariesReviewStore extends ChangeNotifier {
       onFailure: (failure) =>
           FailureViewState<PageResult<GeneratedSummary>>(failure: failure),
     );
-    notifyListeners();
+    _notifyStateChanged();
   }
 
   Future<void> loadWorkspaceBriefing() async {

@@ -11,6 +11,7 @@ final class SubmitBriefingReaderActionCommand {
     required this.label,
     required this.target,
     required this.idempotencyKey,
+    this.feedbackReason,
   });
 
   final WorkspaceScope scope;
@@ -20,4 +21,5 @@ final class SubmitBriefingReaderActionCommand {
   final String label;
   final BriefingReaderActionTarget target;
   final String idempotencyKey;
+  final BriefingReaderFeedbackReason? feedbackReason;
 }

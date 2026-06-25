@@ -133,6 +133,40 @@ void main() {
     expect(state.value.idempotencyKey, contains(':mark_relevant:'));
   });
 
+  test('submits reader negative feedback with an explicit reason', () async {
+    final apiClient = InMemorySummariesApiClient(
+      items: [summaryApiDto()],
+      workspaceBriefing: briefingApiDto(),
+    );
+    final catalog = GeneratedSummaryReviewCatalog(apiClient: apiClient);
+    final store = _storeFromCatalog(catalog);
+
+    await store.loadWorkspaceBriefing();
+
+    final briefing =
+        (store.briefingState as ReadyViewState<WorkspaceBriefingSnapshot>)
+            .value
+            .current!;
+    final notRelevant = briefing.readerBrief.nextActions.firstWhere(
+      (action) => action.kind == 'mark_not_relevant',
+    );
+
+    await store.submitReaderAction(
+      briefing,
+      notRelevant,
+      BriefingReaderFeedbackReason.notSameStory,
+    );
+
+    final state =
+        store.readerActionState as ReadyViewState<BriefingReaderActionResult>;
+    expect(state.value.kind, 'mark_not_relevant');
+    expect(state.value.learningDirection, 'negative');
+    expect(
+      apiClient.submittedReaderActionRequests.single.feedbackReason,
+      BriefingReaderFeedbackReason.notSameStory,
+    );
+  });
+
   test(
     'opens reader source action without relevance feedback target',
     () async {
@@ -157,7 +191,7 @@ void main() {
 
       expect(
         launcher.opened.single.toString(),
-        'https://github.com/openai/codex',
+        'https://github.com/example/ai-coding-tools',
       );
       final state =
           store.readerActionState as ReadyViewState<BriefingReaderActionResult>;
@@ -240,6 +274,44 @@ void main() {
     expect(store.detailState, isA<InitialViewState<GeneratedSummary>>());
     expect(store.hasExplicitSelection, isFalse);
   });
+
+  test('slow workspace briefing does not block summary list load', () async {
+    final catalog = _DeferredSummaryReviewCatalog([
+      generatedSummary(id: 's-1', title: 'Stored summary'),
+    ], hangWorkspaceBriefing: true);
+    final store = _storeFromCatalog(
+      catalog,
+      workspaceBriefingLoadTimeout: const Duration(milliseconds: 1),
+    );
+
+    await store.load();
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+
+    final listState =
+        store.listState as ReadyViewState<PageResult<GeneratedSummary>>;
+    expect(listState.value.items.single.title, 'Stored summary');
+    final briefingState =
+        store.briefingState as FailureViewState<WorkspaceBriefingSnapshot>;
+    expect(briefingState.failure.code, 'summaries.workspace_briefing_timeout');
+  });
+
+  test('dispose invalidates pending workspace briefing load', () async {
+    final catalog = _DeferredSummaryReviewCatalog([
+      generatedSummary(id: 's-1', title: 'Stored summary'),
+    ], deferWorkspaceBriefing: true);
+    final store = _storeFromCatalog(catalog);
+
+    await store.load();
+    expect(catalog.pendingWorkspaceBriefings, hasLength(1));
+
+    store.dispose();
+    catalog.pendingWorkspaceBriefings.single.complete(
+      const Result.success(WorkspaceBriefingSnapshot()),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(catalog.pendingWorkspaceBriefings.single.isCompleted, isTrue);
+  });
 }
 
 SummariesReviewStore _store(
@@ -259,6 +331,7 @@ SummariesReviewStore _store(
 SummariesReviewStore _storeFromCatalog(
   SummaryReviewCatalog catalog, {
   BriefingReaderSourceLauncher? sourceLauncher,
+  Duration workspaceBriefingLoadTimeout = const Duration(seconds: 20),
 }) {
   return SummariesReviewStore(
     dependencies: SummariesReviewStoreDependencies(
@@ -280,6 +353,7 @@ SummariesReviewStore _storeFromCatalog(
     userId: 'user-test',
     briefingRequestIdempotencyKeyFactory: (_) => 'briefing-test-key',
     briefingPollInterval: Duration.zero,
+    workspaceBriefingLoadTimeout: workspaceBriefingLoadTimeout,
   );
 }
 
@@ -295,10 +369,18 @@ final class _FakeBriefingReaderSourceLauncher
 }
 
 final class _DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
-  _DeferredSummaryReviewCatalog(this.items);
+  _DeferredSummaryReviewCatalog(
+    this.items, {
+    this.hangWorkspaceBriefing = false,
+    this.deferWorkspaceBriefing = false,
+  });
 
   final List<GeneratedSummary> items;
+  final bool hangWorkspaceBriefing;
+  final bool deferWorkspaceBriefing;
   final pendingDetails = <_PendingDetailRequest>[];
+  final pendingWorkspaceBriefings =
+      <Completer<Result<WorkspaceBriefingSnapshot>>>[];
 
   @override
   Future<Result<PageResult<GeneratedSummary>>> listSummaries(
@@ -349,6 +431,14 @@ final class _DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
   Future<Result<WorkspaceBriefingSnapshot>> loadWorkspaceBriefing(
     LoadWorkspaceBriefingQuery query,
   ) {
+    if (hangWorkspaceBriefing) {
+      return Completer<Result<WorkspaceBriefingSnapshot>>().future;
+    }
+    if (deferWorkspaceBriefing) {
+      final completer = Completer<Result<WorkspaceBriefingSnapshot>>();
+      pendingWorkspaceBriefings.add(completer);
+      return completer.future;
+    }
     return Future.value(const Result.success(WorkspaceBriefingSnapshot()));
   }
 

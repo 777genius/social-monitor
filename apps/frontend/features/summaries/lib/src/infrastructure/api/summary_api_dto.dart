@@ -76,6 +76,12 @@ final class BriefingReaderItemApiDto {
     this.matchedTopicIds = const [],
     this.matchedRules = const [],
     this.signalScore = 0,
+    this.confidence = const BriefingReaderItemConfidenceApiDto(
+      level: 'low',
+      score: 0.35,
+      rationale: 'Single-source story signal.',
+    ),
+    this.confirmedProviderKeys = const [],
     this.providerMetrics = const [],
     this.whyImportant = const [],
     this.whyNow = 'Selected in the current summary window',
@@ -88,11 +94,25 @@ final class BriefingReaderItemApiDto {
   final List<String> matchedTopicIds;
   final List<String> matchedRules;
   final double signalScore;
+  final BriefingReaderItemConfidenceApiDto confidence;
+  final List<String> confirmedProviderKeys;
   final List<BriefingProviderMetricApiDto> providerMetrics;
   final List<String> whyImportant;
   final String whyNow;
   final List<String> citationIds;
   final String? canonicalUrl;
+}
+
+final class BriefingReaderItemConfidenceApiDto {
+  const BriefingReaderItemConfidenceApiDto({
+    required this.level,
+    required this.score,
+    required this.rationale,
+  });
+
+  final String level;
+  final double score;
+  final String rationale;
 }
 
 final class BriefingProviderMetricApiDto {

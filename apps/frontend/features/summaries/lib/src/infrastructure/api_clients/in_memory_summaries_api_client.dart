@@ -15,6 +15,8 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
   final BriefingApiDto? _workspaceBriefing;
   final Map<String, BriefingJobApiDto> _briefingJobs = {};
   final List<BriefingReaderActionResult> submittedReaderActions = [];
+  final List<SubmitBriefingReaderActionApiRequest>
+  submittedReaderActionRequests = [];
 
   @override
   Future<Result<SummaryPageApiDto>> listSummaries(
@@ -164,6 +166,7 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
           ? 'positive'
           : 'negative',
     );
+    submittedReaderActionRequests.add(request);
     submittedReaderActions.add(result);
     return Result.success(result);
   }
