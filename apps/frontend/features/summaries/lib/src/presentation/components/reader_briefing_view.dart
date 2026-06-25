@@ -8,6 +8,7 @@ import 'reader_briefing_coverage_summary.dart';
 import 'reader_briefing_provider_label.dart';
 import 'reader_briefing_quality_summary.dart';
 import 'reader_briefing_sections.dart';
+import 'reader_briefing_top_read_preview.dart';
 import 'reader_briefing_top_reads.dart';
 
 const _maxVisibleTopReads = 10;
@@ -71,6 +72,12 @@ class ReaderBriefingView extends StatelessWidget {
           citationCount: briefing.citations.length,
           topReadCount: readerBrief.topReads.length,
         ),
+        if (readerBrief.topReads.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          ReaderBriefingTopReadPreview(
+            items: readerBrief.topReads.take(3).toList(),
+          ),
+        ],
         if (readerBrief.nextActions.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.md),
           ReaderBriefingNextActions(
