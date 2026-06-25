@@ -6,6 +6,7 @@ import 'package:json_annotation/json_annotation.dart';
 
 import 'source_profile_dto_readiness_state_readiness_state.dart';
 import 'source_profile_dto_runtime_readiness_runtime_readiness.dart';
+import 'source_profile_freshness_guard_dto.dart';
 
 part 'source_profile_dto.g.dart';
 
@@ -25,6 +26,7 @@ class SourceProfileDto {
     required this.supportedQueryModes,
     this.capabilityVersion,
     this.displayName,
+    this.freshnessGuard,
   });
 
   factory SourceProfileDto.fromJson(Map<String, Object?> json) =>
@@ -34,6 +36,7 @@ class SourceProfileDto {
   final num? capabilityVersion;
   final String cursorModel;
   final String? displayName;
+  final SourceProfileFreshnessGuardDto? freshnessGuard;
   final List<String> limitations;
   final List<String> liveBetaBlockers;
   final bool productionSafe;

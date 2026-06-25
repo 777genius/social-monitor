@@ -19,6 +19,32 @@ export const sourceRuntimeReadinessValues = [
   'deferred',
 ] as const satisfies readonly SourceRuntimeReadiness[];
 
+export class SourceProfileFreshnessGuardDto {
+  @ApiProperty()
+  declare readonly maxStalenessSeconds: number;
+
+  @ApiProperty()
+  declare readonly skipRecentlyScanned: boolean;
+
+  @ApiProperty()
+  declare readonly scanHistoryRequired: boolean;
+
+  @ApiProperty()
+  declare readonly cursorResumeRequired: boolean;
+
+  @ApiProperty()
+  declare readonly rateLimitBackoffRequired: boolean;
+
+  @ApiProperty({ enum: ['stale', 'degraded'] })
+  declare readonly staleReadModelState: 'stale' | 'degraded';
+
+  @ApiProperty({ enum: ['degraded', 'down'] })
+  declare readonly providerFailureHealthState: 'degraded' | 'down';
+
+  @ApiProperty({ type: [String] })
+  declare readonly signals: readonly string[];
+}
+
 export class SourceProfileDto implements SourceProfileEntry {
   @ApiProperty()
   declare readonly providerKey: string;
@@ -40,6 +66,9 @@ export class SourceProfileDto implements SourceProfileEntry {
 
   @ApiProperty({ type: [String] })
   declare readonly liveBetaBlockers: readonly string[];
+
+  @ApiPropertyOptional({ type: () => SourceProfileFreshnessGuardDto })
+  declare readonly freshnessGuard?: SourceProfileFreshnessGuardDto;
 
   @ApiProperty()
   declare readonly acquisitionMode: string;

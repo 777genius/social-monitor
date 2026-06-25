@@ -3269,6 +3269,9 @@
           "displayName": {
             "type": "string"
           },
+          "freshnessGuard": {
+            "$ref": "#/components/schemas/SourceProfileFreshnessGuardDto"
+          },
           "limitations": {
             "items": {
               "type": "string"
@@ -3335,6 +3338,56 @@
           "cursorModel",
           "quotaModel",
           "limitations"
+        ],
+        "type": "object"
+      },
+      "SourceProfileFreshnessGuardDto": {
+        "properties": {
+          "cursorResumeRequired": {
+            "type": "boolean"
+          },
+          "maxStalenessSeconds": {
+            "type": "number"
+          },
+          "providerFailureHealthState": {
+            "enum": [
+              "degraded",
+              "down"
+            ],
+            "type": "string"
+          },
+          "rateLimitBackoffRequired": {
+            "type": "boolean"
+          },
+          "scanHistoryRequired": {
+            "type": "boolean"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "skipRecentlyScanned": {
+            "type": "boolean"
+          },
+          "staleReadModelState": {
+            "enum": [
+              "stale",
+              "degraded"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "maxStalenessSeconds",
+          "skipRecentlyScanned",
+          "scanHistoryRequired",
+          "cursorResumeRequired",
+          "rateLimitBackoffRequired",
+          "staleReadModelState",
+          "providerFailureHealthState",
+          "signals"
         ],
         "type": "object"
       },

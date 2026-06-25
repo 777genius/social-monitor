@@ -13,6 +13,16 @@ type SourceProfile = {
   readonly readinessState: string;
   readonly runtimeReadiness: string;
   readonly liveBetaBlockers: readonly string[];
+  readonly freshnessGuard?: {
+    readonly maxStalenessSeconds: number;
+    readonly skipRecentlyScanned: boolean;
+    readonly scanHistoryRequired: boolean;
+    readonly cursorResumeRequired: boolean;
+    readonly rateLimitBackoffRequired: boolean;
+    readonly staleReadModelState: string;
+    readonly providerFailureHealthState: string;
+    readonly signals: readonly string[];
+  };
   readonly acquisitionMode: string;
   readonly supportedContentUnits: readonly string[];
   readonly supportedQueryModes: readonly string[];
@@ -38,6 +48,14 @@ const requireSource = (
   }
 
   return source;
+};
+
+const requireFreshnessGuard = (source: SourceProfile): NonNullable<SourceProfile['freshnessGuard']> => {
+  if (source.freshnessGuard === undefined) {
+    throw new Error(`Missing source freshness guard: ${source.providerKey}`);
+  }
+
+  return source.freshnessGuard;
 };
 
 async function main(): Promise<void> {
@@ -158,6 +176,19 @@ async function main(): Promise<void> {
       githubTrendingPage.cursorModel === 'time',
       'GitHub Trending page must expose time cursor model',
     );
+    const githubTrendingGuard = requireFreshnessGuard(githubTrendingPage);
+    assert(
+      githubTrendingGuard.maxStalenessSeconds === 3_600,
+      'GitHub Trending page must expose hourly freshness guard',
+    );
+    assert(
+      githubTrendingGuard.skipRecentlyScanned === true,
+      'GitHub Trending page must expose skip-recently-scanned guard',
+    );
+    assert(
+      githubTrendingGuard.signals.includes('github_trending_since_window'),
+      'GitHub Trending page must expose trend window freshness signal',
+    );
 
     const reddit = requireSource(sources, 'reddit');
 
@@ -202,6 +233,19 @@ async function main(): Promise<void> {
         limitation.toLowerCase().includes('oauth api'),
       ),
       'Reddit profile must document OAuth API limitation',
+    );
+    const redditFreshnessGuard = requireFreshnessGuard(reddit);
+    assert(
+      redditFreshnessGuard.maxStalenessSeconds === 900,
+      'Reddit profile must expose 15 minute freshness guard',
+    );
+    assert(
+      redditFreshnessGuard.scanHistoryRequired === true,
+      'Reddit profile must require scan history for freshness decisions',
+    );
+    assert(
+      redditFreshnessGuard.rateLimitBackoffRequired === true,
+      'Reddit profile must expose rate-limit backoff requirement',
     );
 
     assert(

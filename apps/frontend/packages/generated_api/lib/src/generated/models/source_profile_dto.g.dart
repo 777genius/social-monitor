@@ -34,6 +34,11 @@ SourceProfileDto _$SourceProfileDtoFromJson(Map<String, dynamic> json) =>
           .toList(),
       capabilityVersion: json['capabilityVersion'] as num?,
       displayName: json['displayName'] as String?,
+      freshnessGuard: json['freshnessGuard'] == null
+          ? null
+          : SourceProfileFreshnessGuardDto.fromJson(
+              json['freshnessGuard'] as Map<String, dynamic>,
+            ),
     );
 
 Map<String, dynamic> _$SourceProfileDtoToJson(SourceProfileDto instance) =>
@@ -42,6 +47,7 @@ Map<String, dynamic> _$SourceProfileDtoToJson(SourceProfileDto instance) =>
       'capabilityVersion': instance.capabilityVersion,
       'cursorModel': instance.cursorModel,
       'displayName': instance.displayName,
+      'freshnessGuard': instance.freshnessGuard,
       'limitations': instance.limitations,
       'liveBetaBlockers': instance.liveBetaBlockers,
       'productionSafe': instance.productionSafe,

@@ -97,6 +97,7 @@ export 'models/source_binding_health_scan_response_dto.dart';
 export 'models/source_binding_response_dto.dart';
 export 'models/source_content_safety_dto.dart';
 export 'models/source_profile_dto.dart';
+export 'models/source_profile_freshness_guard_dto.dart';
 export 'models/summary_artifact_response_dto.dart';
 export 'models/summary_citation_view_dto.dart';
 export 'models/summary_confidence_dto.dart';
@@ -185,6 +186,8 @@ export 'models/source_content_safety_dto_retention_policy_retention_policy.dart'
 export 'models/source_content_safety_dto_status_status.dart';
 export 'models/source_profile_dto_readiness_state_readiness_state.dart';
 export 'models/source_profile_dto_runtime_readiness_runtime_readiness.dart';
+export 'models/source_profile_freshness_guard_dto_provider_failure_health_state_provider_failure_health_state.dart';
+export 'models/source_profile_freshness_guard_dto_stale_read_model_state_stale_read_model_state.dart';
 export 'models/summary_artifact_response_dto_quality_flags_quality_flags.dart';
 export 'models/summary_citation_view_dto_field_field.dart';
 export 'models/summary_confidence_dto_level_level.dart';

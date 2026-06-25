@@ -188,7 +188,7 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'tags': [
       'briefings',
     ],
-    'summary': 'List tenant/workspace briefings with cursor pagination.',
+    'summary': 'List tenant/workspace summaries with cursor pagination.',
     'pathParameters': [],
     'queryParameters': [
       'cursor',
@@ -221,7 +221,7 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'tags': [
       'briefings',
     ],
-    'summary': 'Get one tenant/workspace briefing by id.',
+    'summary': 'Get one tenant/workspace summary by id.',
     'pathParameters': [
       'briefingId',
     ],
@@ -1100,6 +1100,39 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     ],
   },
   {
+    'operationId': 'ScanRequestController_list',
+    'clientName': 'ScanRequestController_list',
+    'method': 'GET',
+    'path': '/source-bindings/{sourceBindingId}/scan-requests',
+    'tags': [
+      'scan-requests',
+    ],
+    'summary': 'List scan requests for a source binding.',
+    'pathParameters': [
+      'sourceBindingId',
+    ],
+    'queryParameters': [
+      'cursor',
+      'limit',
+    ],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': null,
+    'successResponseSchemaRefs': [
+      '#/components/schemas/ListScanRequestsResponseDto',
+    ],
+  },
+  {
     'operationId': 'ScanRequestController_create',
     'clientName': 'ScanRequestController_create',
     'method': 'POST',
@@ -1129,6 +1162,38 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'requestBodySchemaRef': null,
     'successResponseSchemaRefs': [
       '#/components/schemas/RequestScanResponseDto',
+    ],
+  },
+  {
+    'operationId': 'ScanRequestController_daily',
+    'clientName': 'ScanRequestController_daily',
+    'method': 'GET',
+    'path': '/source-bindings/{sourceBindingId}/scan-requests/daily',
+    'tags': [
+      'scan-requests',
+    ],
+    'summary': 'List daily scan history for a source binding.',
+    'pathParameters': [
+      'sourceBindingId',
+    ],
+    'queryParameters': [
+      'days',
+    ],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': null,
+    'successResponseSchemaRefs': [
+      '#/components/schemas/ListSourceBindingDailyScanHistoryResponseDto',
     ],
   },
   {
@@ -1526,6 +1591,39 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'requestBodySchemaRef': '#/components/schemas/ChangeSourceBindingStatusRequestDto',
     'successResponseSchemaRefs': [
       '#/components/schemas/ChangeSourceBindingStatusResponseDto',
+    ],
+  },
+  {
+    'operationId': 'SourceBindingController_overview',
+    'clientName': 'SourceBindingController_overview',
+    'method': 'GET',
+    'path': '/topics/{topicId}/source-bindings/overview',
+    'tags': [
+      'source-bindings',
+    ],
+    'summary': 'List source bindings with operational health for a topic.',
+    'pathParameters': [
+      'topicId',
+    ],
+    'queryParameters': [
+      'cursor',
+      'limit',
+    ],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': null,
+    'successResponseSchemaRefs': [
+      '#/components/schemas/ListSourceBindingOverviewResponseDto',
     ],
   },
   {

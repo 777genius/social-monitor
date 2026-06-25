@@ -1,4 +1,8 @@
-import type { SourceReadinessState, SourceRuntimeReadiness } from '../../ports';
+import type {
+  SourceReadinessFreshnessGuard,
+  SourceReadinessState,
+  SourceRuntimeReadiness,
+} from '../../ports';
 
 export type SourceProfileEntry = {
   readonly providerKey: string;
@@ -8,6 +12,7 @@ export type SourceProfileEntry = {
   readonly readinessState: SourceReadinessState;
   readonly runtimeReadiness: SourceRuntimeReadiness;
   readonly liveBetaBlockers: readonly string[];
+  readonly freshnessGuard?: SourceReadinessFreshnessGuard;
   readonly acquisitionMode: string;
   readonly supportedContentUnits: readonly string[];
   readonly supportedQueryModes: readonly string[];
