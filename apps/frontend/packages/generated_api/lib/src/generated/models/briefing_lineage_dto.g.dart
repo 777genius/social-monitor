@@ -14,6 +14,7 @@ BriefingLineageDto _$BriefingLineageDtoFromJson(Map<String, dynamic> json) =>
       providerVersion: json['providerVersion'] as String,
       rulesVersion: json['rulesVersion'] as String,
       schemaVersion: json['schemaVersion'] as String,
+      rankingPolicyVersion: json['rankingPolicyVersion'] as String?,
     );
 
 Map<String, dynamic> _$BriefingLineageDtoToJson(BriefingLineageDto instance) =>
@@ -22,6 +23,7 @@ Map<String, dynamic> _$BriefingLineageDtoToJson(BriefingLineageDto instance) =>
       'modelVersion': instance.modelVersion,
       'promptVersion': instance.promptVersion,
       'providerVersion': instance.providerVersion,
+      'rankingPolicyVersion': instance.rankingPolicyVersion,
       'rulesVersion': instance.rulesVersion,
       'schemaVersion': instance.schemaVersion,
     };

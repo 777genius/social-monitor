@@ -5,9 +5,14 @@
 import 'package:json_annotation/json_annotation.dart';
 
 import 'git_hub_repository_provider_metrics_dto_content_type_content_type.dart';
+import 'git_hub_repository_provider_metrics_dto_evidence_source_evidence_source.dart';
 import 'git_hub_repository_provider_metrics_dto_kind_kind.dart';
 import 'git_hub_repository_provider_metrics_dto_provider_key_provider_key.dart';
 import 'feed_metric_delta_dto.dart';
+import 'git_hub_trending_repository_provider_metrics_dto_content_type_content_type.dart';
+import 'git_hub_trending_repository_provider_metrics_dto_kind_kind.dart';
+import 'git_hub_trending_repository_provider_metrics_dto_provider_key_provider_key.dart';
+import 'git_hub_trending_repository_provider_metrics_dto_window_window.dart';
 import 'hacker_news_story_provider_metrics_dto_content_type_content_type.dart';
 import 'hacker_news_story_provider_metrics_dto_kind_kind.dart';
 import 'hacker_news_story_provider_metrics_dto_provider_key_provider_key.dart';
@@ -44,6 +49,8 @@ extension FeedItemDtoProviderMetricsProviderMetricsUnionDeserializer
     final mappingFallback = const <Type, Object?>{
       FeedItemDtoProviderMetricsProviderMetricsGithubRepository:
           'github_repository',
+      FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepository:
+          'github_trending_repository',
       FeedItemDtoProviderMetricsProviderMetricsHackerNewsStory:
           'hacker_news_story',
       FeedItemDtoProviderMetricsProviderMetricsRedditPost: 'reddit_post',
@@ -56,6 +63,12 @@ extension FeedItemDtoProviderMetricsProviderMetricsUnionDeserializer
           when value ==
               effective[FeedItemDtoProviderMetricsProviderMetricsGithubRepository] =>
         FeedItemDtoProviderMetricsProviderMetricsGithubRepository.fromJson(
+          json,
+        ),
+      _
+          when value ==
+              effective[FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepository] =>
+        FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepository.fromJson(
           json,
         ),
       _
@@ -80,20 +93,29 @@ extension FeedItemDtoProviderMetricsProviderMetricsUnionDeserializer
 @JsonSerializable()
 class FeedItemDtoProviderMetricsProviderMetricsGithubRepository
     extends FeedItemDtoProviderMetricsProviderMetrics {
+  final DateTime? checkedAt;
   final GitHubRepositoryProviderMetricsDtoContentTypeContentType contentType;
+  final String evidenceLabel;
+  final GitHubRepositoryProviderMetricsDtoEvidenceSourceEvidenceSource
+  evidenceSource;
   final num forks;
   final GitHubRepositoryProviderMetricsDtoKindKind kind;
   final GitHubRepositoryProviderMetricsDtoProviderKeyProviderKey providerKey;
+  final String? source;
   final String sourceKey;
   final num stars;
   final List<FeedMetricDeltaDto> trendDeltas;
   final FeedMetricDeltaDto trendingDelta;
 
   const FeedItemDtoProviderMetricsProviderMetricsGithubRepository({
+    required this.checkedAt,
     required this.contentType,
+    required this.evidenceLabel,
+    required this.evidenceSource,
     required this.forks,
     required this.kind,
     required this.providerKey,
+    required this.source,
     required this.sourceKey,
     required this.stars,
     required this.trendDeltas,
@@ -108,6 +130,47 @@ class FeedItemDtoProviderMetricsProviderMetricsGithubRepository
   @override
   Map<String, dynamic> toJson() =>
       _$FeedItemDtoProviderMetricsProviderMetricsGithubRepositoryToJson(this);
+}
+
+@JsonSerializable()
+class FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepository
+    extends FeedItemDtoProviderMetricsProviderMetrics {
+  final GitHubTrendingRepositoryProviderMetricsDtoContentTypeContentType
+  contentType;
+  final num forks;
+  final GitHubTrendingRepositoryProviderMetricsDtoKindKind kind;
+  final GitHubTrendingRepositoryProviderMetricsDtoProviderKeyProviderKey
+  providerKey;
+  final num rank;
+  final String sourceKey;
+  final num stars;
+  final num starsGained;
+  final GitHubTrendingRepositoryProviderMetricsDtoWindowWindow window;
+
+  const FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepository({
+    required this.contentType,
+    required this.forks,
+    required this.kind,
+    required this.providerKey,
+    required this.rank,
+    required this.sourceKey,
+    required this.stars,
+    required this.starsGained,
+    required this.window,
+  });
+
+  factory FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepository.fromJson(
+    Map<String, dynamic> json,
+  ) =>
+      _$FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepositoryFromJson(
+        json,
+      );
+
+  @override
+  Map<String, dynamic> toJson() =>
+      _$FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepositoryToJson(
+        this,
+      );
 }
 
 @JsonSerializable()

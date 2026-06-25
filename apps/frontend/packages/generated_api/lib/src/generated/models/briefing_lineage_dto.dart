@@ -15,6 +15,7 @@ class BriefingLineageDto {
     required this.providerVersion,
     required this.rulesVersion,
     required this.schemaVersion,
+    this.rankingPolicyVersion,
   });
 
   factory BriefingLineageDto.fromJson(Map<String, Object?> json) =>
@@ -24,6 +25,7 @@ class BriefingLineageDto {
   final String modelVersion;
   final String promptVersion;
   final String providerVersion;
+  final String? rankingPolicyVersion;
   final String rulesVersion;
   final String schemaVersion;
 

@@ -28,6 +28,12 @@ BriefingStoryClusterDto _$BriefingStoryClusterDtoFromJson(
   whyImportant: (json['whyImportant'] as List<dynamic>)
       .map((e) => e as String)
       .toList(),
+  rankingPolicyVersion: json['rankingPolicyVersion'] as String?,
+  signalBreakdown: json['signalBreakdown'] == null
+      ? null
+      : BriefingStorySignalBreakdownDto.fromJson(
+          json['signalBreakdown'] as Map<String, dynamic>,
+        ),
 );
 
 Map<String, dynamic> _$BriefingStoryClusterDtoToJson(
@@ -37,8 +43,10 @@ Map<String, dynamic> _$BriefingStoryClusterDtoToJson(
   'id': instance.id,
   'observedAtRange': instance.observedAtRange,
   'providerKeys': instance.providerKeys,
+  'rankingPolicyVersion': instance.rankingPolicyVersion,
   'representativeFeedItemId': instance.representativeFeedItemId,
   'score': instance.score,
+  'signalBreakdown': instance.signalBreakdown,
   'storyKey': instance.storyKey,
   'topicIds': instance.topicIds,
   'whyImportant': instance.whyImportant,

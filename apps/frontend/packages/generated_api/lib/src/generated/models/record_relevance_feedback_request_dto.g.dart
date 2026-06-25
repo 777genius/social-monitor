@@ -20,6 +20,11 @@ RecordRelevanceFeedbackRequestDto _$RecordRelevanceFeedbackRequestDtoFromJson(
   canonicalUrl: json['canonicalUrl'] as String?,
   feedItemId: json['feedItemId'] as String?,
   rating: json['rating'] as num?,
+  reason: json['reason'] == null
+      ? null
+      : RecordRelevanceFeedbackRequestDtoReasonReason.fromJson(
+          json['reason'] as String,
+        ),
 );
 
 Map<String, dynamic> _$RecordRelevanceFeedbackRequestDtoToJson(
@@ -32,6 +37,7 @@ Map<String, dynamic> _$RecordRelevanceFeedbackRequestDtoToJson(
   'idempotencyKey': instance.idempotencyKey,
   'providerKey': instance.providerKey,
   'rating': instance.rating,
+  'reason': instance.reason,
   'title': instance.title,
   'topicId': instance.topicId,
 };

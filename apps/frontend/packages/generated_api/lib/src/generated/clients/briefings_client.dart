@@ -50,7 +50,7 @@ abstract class BriefingsClient {
     @Header('x-workspace-role') String? xWorkspaceRole,
   });
 
-  /// List tenant/workspace briefings with cursor pagination.
+  /// List tenant/workspace summaries with cursor pagination.
   ///
   /// [authorization] - Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.
   ///
@@ -67,7 +67,7 @@ abstract class BriefingsClient {
     @Header('x-workspace-role') String? xWorkspaceRole,
   });
 
-  /// Get one tenant/workspace briefing by id.
+  /// Get one tenant/workspace summary by id.
   ///
   /// [authorization] - Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.
   ///

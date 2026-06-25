@@ -14,9 +14,17 @@ FeedItemDtoProviderMetricsProviderMetricsGithubRepository
 _$FeedItemDtoProviderMetricsProviderMetricsGithubRepositoryFromJson(
   Map<String, dynamic> json,
 ) => FeedItemDtoProviderMetricsProviderMetricsGithubRepository(
+  checkedAt: json['checkedAt'] == null
+      ? null
+      : DateTime.parse(json['checkedAt'] as String),
   contentType:
       GitHubRepositoryProviderMetricsDtoContentTypeContentType.fromJson(
         json['contentType'] as String,
+      ),
+  evidenceLabel: json['evidenceLabel'] as String,
+  evidenceSource:
+      GitHubRepositoryProviderMetricsDtoEvidenceSourceEvidenceSource.fromJson(
+        json['evidenceSource'] as String,
       ),
   forks: json['forks'] as num,
   kind: GitHubRepositoryProviderMetricsDtoKindKind.fromJson(
@@ -26,6 +34,7 @@ _$FeedItemDtoProviderMetricsProviderMetricsGithubRepositoryFromJson(
       GitHubRepositoryProviderMetricsDtoProviderKeyProviderKey.fromJson(
         json['providerKey'] as String,
       ),
+  source: json['source'] as String?,
   sourceKey: json['sourceKey'] as String,
   stars: json['stars'] as num,
   trendDeltas: (json['trendDeltas'] as List<dynamic>)
@@ -40,14 +49,58 @@ Map<String, dynamic>
 _$FeedItemDtoProviderMetricsProviderMetricsGithubRepositoryToJson(
   FeedItemDtoProviderMetricsProviderMetricsGithubRepository instance,
 ) => <String, dynamic>{
+  'checkedAt': instance.checkedAt?.toIso8601String(),
   'contentType': instance.contentType,
+  'evidenceLabel': instance.evidenceLabel,
+  'evidenceSource': instance.evidenceSource,
   'forks': instance.forks,
   'kind': instance.kind,
   'providerKey': instance.providerKey,
+  'source': instance.source,
   'sourceKey': instance.sourceKey,
   'stars': instance.stars,
   'trendDeltas': instance.trendDeltas,
   'trendingDelta': instance.trendingDelta,
+};
+
+FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepository
+_$FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepositoryFromJson(
+  Map<String, dynamic> json,
+) => FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepository(
+  contentType:
+      GitHubTrendingRepositoryProviderMetricsDtoContentTypeContentType.fromJson(
+        json['contentType'] as String,
+      ),
+  forks: json['forks'] as num,
+  kind: GitHubTrendingRepositoryProviderMetricsDtoKindKind.fromJson(
+    json['kind'] as String,
+  ),
+  providerKey:
+      GitHubTrendingRepositoryProviderMetricsDtoProviderKeyProviderKey.fromJson(
+        json['providerKey'] as String,
+      ),
+  rank: json['rank'] as num,
+  sourceKey: json['sourceKey'] as String,
+  stars: json['stars'] as num,
+  starsGained: json['starsGained'] as num,
+  window: GitHubTrendingRepositoryProviderMetricsDtoWindowWindow.fromJson(
+    json['window'] as String,
+  ),
+);
+
+Map<String, dynamic>
+_$FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepositoryToJson(
+  FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepository instance,
+) => <String, dynamic>{
+  'contentType': instance.contentType,
+  'forks': instance.forks,
+  'kind': instance.kind,
+  'providerKey': instance.providerKey,
+  'rank': instance.rank,
+  'sourceKey': instance.sourceKey,
+  'stars': instance.stars,
+  'starsGained': instance.starsGained,
+  'window': instance.window,
 };
 
 FeedItemDtoProviderMetricsProviderMetricsHackerNewsStory

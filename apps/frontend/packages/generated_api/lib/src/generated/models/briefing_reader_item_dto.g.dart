@@ -12,6 +12,12 @@ BriefingReaderItemDto _$BriefingReaderItemDtoFromJson(
   citationIds: (json['citationIds'] as List<dynamic>)
       .map((e) => e as String)
       .toList(),
+  confidence: BriefingReaderItemConfidenceDto.fromJson(
+    json['confidence'] as Map<String, dynamic>,
+  ),
+  confirmedProviderKeys: (json['confirmedProviderKeys'] as List<dynamic>)
+      .map((e) => e as String)
+      .toList(),
   matchedRules: (json['matchedRules'] as List<dynamic>)
       .map((e) => e as String)
       .toList(),
@@ -37,6 +43,8 @@ Map<String, dynamic> _$BriefingReaderItemDtoToJson(
 ) => <String, dynamic>{
   'canonicalUrl': instance.canonicalUrl,
   'citationIds': instance.citationIds,
+  'confidence': instance.confidence,
+  'confirmedProviderKeys': instance.confirmedProviderKeys,
   'matchedRules': instance.matchedRules,
   'matchedTopicIds': instance.matchedTopicIds,
   'providerKey': instance.providerKey,

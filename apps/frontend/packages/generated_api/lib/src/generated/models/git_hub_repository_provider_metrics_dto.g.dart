@@ -13,6 +13,11 @@ GitHubRepositoryProviderMetricsDto _$GitHubRepositoryProviderMetricsDtoFromJson(
       GitHubRepositoryProviderMetricsDtoContentTypeContentType.fromJson(
         json['contentType'] as String,
       ),
+  evidenceLabel: json['evidenceLabel'] as String,
+  evidenceSource:
+      GitHubRepositoryProviderMetricsDtoEvidenceSourceEvidenceSource.fromJson(
+        json['evidenceSource'] as String,
+      ),
   forks: json['forks'] as num,
   kind: GitHubRepositoryProviderMetricsDtoKindKind.fromJson(
     json['kind'] as String,
@@ -29,15 +34,23 @@ GitHubRepositoryProviderMetricsDto _$GitHubRepositoryProviderMetricsDtoFromJson(
   trendingDelta: FeedMetricDeltaDto.fromJson(
     json['trendingDelta'] as Map<String, dynamic>,
   ),
+  checkedAt: json['checkedAt'] == null
+      ? null
+      : DateTime.parse(json['checkedAt'] as String),
+  source: json['source'] as String?,
 );
 
 Map<String, dynamic> _$GitHubRepositoryProviderMetricsDtoToJson(
   GitHubRepositoryProviderMetricsDto instance,
 ) => <String, dynamic>{
+  'checkedAt': instance.checkedAt?.toIso8601String(),
   'contentType': instance.contentType,
+  'evidenceLabel': instance.evidenceLabel,
+  'evidenceSource': instance.evidenceSource,
   'forks': instance.forks,
   'kind': instance.kind,
   'providerKey': instance.providerKey,
+  'source': instance.source,
   'sourceKey': instance.sourceKey,
   'stars': instance.stars,
   'trendDeltas': instance.trendDeltas,

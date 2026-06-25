@@ -4,6 +4,8 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'relevance_feedback_target_dto_feedback_reason_feedback_reason.dart';
+
 part 'relevance_feedback_target_dto.g.dart';
 
 @JsonSerializable()
@@ -11,12 +13,14 @@ class RelevanceFeedbackTargetDto {
   const RelevanceFeedbackTargetDto({
     required this.providerKey,
     required this.topicId,
+    this.feedbackReason,
     this.feedItemId,
   });
 
   factory RelevanceFeedbackTargetDto.fromJson(Map<String, Object?> json) =>
       _$RelevanceFeedbackTargetDtoFromJson(json);
 
+  final RelevanceFeedbackTargetDtoFeedbackReasonFeedbackReason? feedbackReason;
   final String? feedItemId;
   final String providerKey;
   final String topicId;

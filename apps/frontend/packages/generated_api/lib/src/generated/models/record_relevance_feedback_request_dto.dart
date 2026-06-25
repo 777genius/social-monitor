@@ -5,6 +5,7 @@
 import 'package:json_annotation/json_annotation.dart';
 
 import 'record_relevance_feedback_request_dto_action_action.dart';
+import 'record_relevance_feedback_request_dto_reason_reason.dart';
 
 part 'record_relevance_feedback_request_dto.g.dart';
 
@@ -20,6 +21,7 @@ class RecordRelevanceFeedbackRequestDto {
     this.canonicalUrl,
     this.feedItemId,
     this.rating,
+    this.reason,
   });
 
   factory RecordRelevanceFeedbackRequestDto.fromJson(
@@ -33,6 +35,7 @@ class RecordRelevanceFeedbackRequestDto {
   final String idempotencyKey;
   final String providerKey;
   final num? rating;
+  final RecordRelevanceFeedbackRequestDtoReasonReason? reason;
   final String title;
   final String topicId;
 

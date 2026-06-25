@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'dio_generated_api_client.dart';
 import 'generated/social_monitor_rest_client.dart';
 import 'generated_api_client.dart';
+import 'generated_api_platform.dart';
 
 typedef GeneratedApiHeaderProvider = FutureOr<String?> Function();
 
@@ -51,7 +52,7 @@ GeneratedApiRuntime createGeneratedApiRuntime(
     BaseOptions(
       baseUrl: configuration.baseUrl,
       connectTimeout: configuration.connectTimeout,
-      sendTimeout: configuration.sendTimeout,
+      sendTimeout: generatedApiIsWeb ? null : configuration.sendTimeout,
       receiveTimeout: configuration.receiveTimeout,
       responseType: ResponseType.json,
       contentType: Headers.jsonContentType,

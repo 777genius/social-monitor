@@ -5,6 +5,7 @@
 import 'package:json_annotation/json_annotation.dart';
 
 import 'briefing_provider_metric_dto.dart';
+import 'briefing_reader_item_confidence_dto.dart';
 
 part 'briefing_reader_item_dto.g.dart';
 
@@ -12,6 +13,8 @@ part 'briefing_reader_item_dto.g.dart';
 class BriefingReaderItemDto {
   const BriefingReaderItemDto({
     required this.citationIds,
+    required this.confidence,
+    required this.confirmedProviderKeys,
     required this.matchedRules,
     required this.matchedTopicIds,
     required this.providerKey,
@@ -29,6 +32,8 @@ class BriefingReaderItemDto {
 
   final String? canonicalUrl;
   final List<String> citationIds;
+  final BriefingReaderItemConfidenceDto confidence;
+  final List<String> confirmedProviderKeys;
   final List<String> matchedRules;
   final List<String> matchedTopicIds;
   final String providerKey;
