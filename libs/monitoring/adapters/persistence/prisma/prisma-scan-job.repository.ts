@@ -4,6 +4,7 @@ import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 import type { ScanJob } from '../../../domain';
 import type {
   ListScanJobsBySourceBindingResult,
+  ListScanJobsBySourceBindingWindowResult,
   ScanJobHistoryReadPort,
   ScanJobRepositoryPort,
 } from '../../../ports';
@@ -127,6 +128,38 @@ export class PrismaScanJobRepository implements ScanJobRepositoryPort, ScanJobHi
     return {
       scanJobs: page.map(scanJobFromPrisma),
       nextCursor: next?.id,
+    };
+  }
+
+  async listBySourceBindingWindow(params: {
+    tenantId: TenantId;
+    workspaceId: WorkspaceId;
+    sourceBindingId: string;
+    windowStartedAt: Date;
+    windowEndedAt: Date;
+    limit: number;
+  }): Promise<ListScanJobsBySourceBindingWindowResult> {
+    const records = await this.prisma.scanJob.findMany({
+      where: {
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        sourceBindingId: params.sourceBindingId,
+        requestedAt: {
+          gte: params.windowStartedAt,
+          lt: params.windowEndedAt,
+        },
+      },
+      orderBy: [
+        { requestedAt: 'desc' },
+        { id: 'desc' },
+      ],
+      take: params.limit + 1,
+    });
+    const page = records.slice(0, params.limit);
+
+    return {
+      scanJobs: page.map(scanJobFromPrisma),
+      truncated: records.length > params.limit,
     };
   }
 

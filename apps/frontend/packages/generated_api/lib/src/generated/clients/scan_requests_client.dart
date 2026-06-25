@@ -7,6 +7,7 @@ import 'package:retrofit/retrofit.dart';
 import 'package:retrofit/error_logger.dart';
 
 import '../models/list_scan_requests_response_dto.dart';
+import '../models/list_source_binding_daily_scan_history_response_dto.dart';
 import '../models/request_scan_response_dto.dart';
 import '../models/scan_status_response_dto.dart';
 
@@ -58,6 +59,22 @@ abstract class ScanRequestsClient {
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
     @Header('x-correlation-id') String? xCorrelationId,
+    @Header('authorization') String? authorization,
+    @Header('x-workspace-role') String? xWorkspaceRole,
+  });
+
+  /// List daily scan history for a source binding.
+  ///
+  /// [authorization] - Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.
+  ///
+  /// [xWorkspaceRole] - Comma-separated workspace roles. Daily scan history reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.
+  @GET('/source-bindings/{sourceBindingId}/scan-requests/daily')
+  Future<ListSourceBindingDailyScanHistoryResponseDto>
+  scanRequestControllerDaily({
+    @Path('sourceBindingId') required String sourceBindingId,
+    @Header('x-workspace-id') required String xWorkspaceId,
+    @Header('x-tenant-id') required String xTenantId,
+    @Query('days') num? days,
     @Header('authorization') String? authorization,
     @Header('x-workspace-role') String? xWorkspaceRole,
   });

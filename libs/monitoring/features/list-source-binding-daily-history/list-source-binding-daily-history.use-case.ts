@@ -1,0 +1,184 @@
+import { DomainError, err, ok, type Clock, type Result } from '@social-monitor/shared-kernel';
+
+import type { ScanJob } from '../../domain';
+import type {
+  ScanExecutionAttemptReadPort,
+  ScanExecutionAttemptSnapshot,
+  ScanJobHistoryReadPort,
+  SourceBindingRepositoryPort,
+} from '../../ports';
+import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
+import type { ListSourceBindingDailyHistoryQuery } from './list-source-binding-daily-history.query';
+import type {
+  ListSourceBindingDailyHistoryResult,
+  SourceBindingDailyHistoryDayView,
+} from './list-source-binding-daily-history.result';
+
+type ListSourceBindingDailyHistoryFailure = DomainError;
+
+const maxHistoryDays = 90;
+const maxScanJobsPerDay = 100;
+
+export class ListSourceBindingDailyHistoryUseCase {
+  constructor(
+    private readonly sourceBindings: SourceBindingRepositoryPort,
+    private readonly scanJobs: ScanJobHistoryReadPort,
+    private readonly scanExecutionAttempts: ScanExecutionAttemptReadPort,
+    private readonly clock: Clock,
+  ) {}
+
+  async execute(
+    query: ListSourceBindingDailyHistoryQuery,
+  ): Promise<Result<ListSourceBindingDailyHistoryResult, ListSourceBindingDailyHistoryFailure>> {
+    if (query.sourceBindingId.trim().length === 0) {
+      return err(new DomainError('validation.failed', 'Source binding id is required'));
+    }
+
+    if (!Number.isInteger(query.days) || query.days < 1 || query.days > maxHistoryDays) {
+      return err(new DomainError('validation.failed', `Scan history days must be between 1 and ${maxHistoryDays}`));
+    }
+
+    const binding = await this.sourceBindings.findById({
+      tenantId: query.tenantId,
+      workspaceId: query.workspaceId,
+      sourceBindingId: query.sourceBindingId,
+    });
+
+    if (binding === null) {
+      return err(new DomainError('resource.not_found', 'Source binding not found', {
+        sourceBindingId: query.sourceBindingId,
+      }));
+    }
+
+    const windows = buildUtcDayWindows({
+      now: this.clock.now(),
+      days: query.days,
+    });
+    const firstWindow = windows[0];
+    const lastWindow = windows[windows.length - 1];
+    if (firstWindow === undefined || lastWindow === undefined) {
+      return err(new DomainError('validation.failed', 'Scan history days must be between 1 and 90'));
+    }
+    const maxScanJobs = query.days * maxScanJobsPerDay;
+    const history = await this.scanJobs.listBySourceBindingWindow({
+      tenantId: query.tenantId,
+      workspaceId: query.workspaceId,
+      sourceBindingId: query.sourceBindingId,
+      windowStartedAt: firstWindow.startedAt,
+      windowEndedAt: lastWindow.endedAt,
+      limit: maxScanJobs,
+    });
+    const attempts = new Map(
+      await Promise.all(history.scanJobs.map(async (job) => {
+        const snapshot = job.toSnapshot();
+        const latestAttempt = await this.scanExecutionAttempts.findLatestByScanJob({
+          tenantId: query.tenantId,
+          workspaceId: query.workspaceId,
+          scanJobId: snapshot.id,
+        });
+
+        return [snapshot.id, latestAttempt] as const;
+      })),
+    );
+    const jobsByDay = new Map<string, readonly ScanJob[]>();
+    for (const window of windows) {
+      jobsByDay.set(window.date, []);
+    }
+    for (const job of history.scanJobs) {
+      const snapshot = job.toSnapshot();
+      const date = utcDateKey(snapshot.requestedAt);
+      const bucket = jobsByDay.get(date);
+
+      if (bucket !== undefined) {
+        jobsByDay.set(date, [...bucket, job]);
+      }
+    }
+
+    return ok({
+      sourceBindingId: query.sourceBindingId,
+      windowStartedAt: firstWindow.startedAt.toISOString(),
+      windowEndedAt: lastWindow.endedAt.toISOString(),
+      days: windows.map((window) => buildDayView({
+        window,
+        jobs: jobsByDay.get(window.date) ?? [],
+        attempts,
+      })),
+      truncated: history.truncated,
+      maxScanJobs,
+    });
+  }
+}
+
+const buildDayView = (params: {
+  readonly window: UtcDayWindow;
+  readonly jobs: readonly ScanJob[];
+  readonly attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>;
+}): SourceBindingDailyHistoryDayView => {
+  const snapshots = params.jobs.map((job) => job.toSnapshot());
+  const health = summarizeScanProviderHealth(snapshots);
+  const latestAttempts = snapshots
+    .map((snapshot) => params.attempts.get(snapshot.id))
+    .filter((attempt): attempt is NonNullable<typeof attempt> => attempt !== null && attempt !== undefined);
+
+  return {
+    date: params.window.date,
+    windowStartedAt: params.window.startedAt.toISOString(),
+    windowEndedAt: params.window.endedAt.toISOString(),
+    providerHealthState: health.providerHealthState,
+    totalScans: health.totalScans,
+    succeededScans: health.succeededScans,
+    failedScans: health.failedScans,
+    activeScans: health.activeScans,
+    rateLimitedScans: health.rateLimitedScans,
+    providerUnavailableScans: health.providerUnavailableScans,
+    consecutiveFailures: health.consecutiveFailures,
+    fetched: sumAttempts(latestAttempts, 'fetched'),
+    inserted: sumAttempts(latestAttempts, 'inserted'),
+    skippedDuplicates: sumAttempts(latestAttempts, 'skippedDuplicates'),
+    projected: sumAttempts(latestAttempts, 'projected'),
+    lastScanRequestedAt: snapshots[0]?.requestedAt.toISOString(),
+    lastCompletedAt: snapshots
+      .map((snapshot) => snapshot.completedAt)
+      .find((completedAt): completedAt is Date => completedAt !== undefined)
+      ?.toISOString(),
+    operatorAction: health.operatorAction,
+    signals: health.signals,
+  };
+};
+
+type UtcDayWindow = {
+  readonly date: string;
+  readonly startedAt: Date;
+  readonly endedAt: Date;
+};
+
+const buildUtcDayWindows = (params: {
+  readonly now: Date;
+  readonly days: number;
+}): readonly UtcDayWindow[] => {
+  const todayStart = Date.UTC(
+    params.now.getUTCFullYear(),
+    params.now.getUTCMonth(),
+    params.now.getUTCDate(),
+  );
+  const firstStart = todayStart - (params.days - 1) * 24 * 60 * 60 * 1000;
+
+  return Array.from({ length: params.days }, (_, index) => {
+    const startedAt = new Date(firstStart + index * 24 * 60 * 60 * 1000);
+    const endedAt = new Date(startedAt.getTime() + 24 * 60 * 60 * 1000);
+
+    return {
+      date: utcDateKey(startedAt),
+      startedAt,
+      endedAt,
+    };
+  });
+};
+
+const utcDateKey = (date: Date): string => date.toISOString().slice(0, 10);
+
+const sumAttempts = (
+  attempts: readonly ScanExecutionAttemptSnapshot[],
+  field: 'fetched' | 'inserted' | 'skippedDuplicates' | 'projected',
+): number =>
+  attempts.reduce((total, attempt) => total + attempt[field], 0);

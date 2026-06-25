@@ -15,8 +15,26 @@ export type ListScanJobsBySourceBindingResult = {
   readonly nextCursor?: string;
 };
 
+export type ListScanJobsBySourceBindingWindowQuery = {
+  readonly tenantId: TenantId;
+  readonly workspaceId: WorkspaceId;
+  readonly sourceBindingId: string;
+  readonly windowStartedAt: Date;
+  readonly windowEndedAt: Date;
+  readonly limit: number;
+};
+
+export type ListScanJobsBySourceBindingWindowResult = {
+  readonly scanJobs: readonly ScanJob[];
+  readonly truncated: boolean;
+};
+
 export interface ScanJobHistoryReadPort {
   listBySourceBinding(
     query: ListScanJobsBySourceBindingQuery,
   ): Promise<ListScanJobsBySourceBindingResult>;
+
+  listBySourceBindingWindow(
+    query: ListScanJobsBySourceBindingWindowQuery,
+  ): Promise<ListScanJobsBySourceBindingWindowResult>;
 }

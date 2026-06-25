@@ -5,6 +5,8 @@ import type {
   FindScanExecutionAttemptQuery,
   ListScanJobsBySourceBindingQuery,
   ListScanJobsBySourceBindingResult,
+  ListScanJobsBySourceBindingWindowQuery,
+  ListScanJobsBySourceBindingWindowResult,
   ListSourceBindingsQuery,
   ListSourceBindingsResult,
   ScanExecutionAttemptReadPort,
@@ -110,6 +112,21 @@ class FakeScanJobs implements ScanJobRepositoryPort, ScanJobHistoryReadPort {
   ): Promise<ListScanJobsBySourceBindingResult> {
     return {
       scanJobs: this.sortedBySourceBinding(query).slice(0, query.limit),
+    };
+  }
+
+  async listBySourceBindingWindow(
+    query: ListScanJobsBySourceBindingWindowQuery,
+  ): Promise<ListScanJobsBySourceBindingWindowResult> {
+    return {
+      scanJobs: this.sortedBySourceBinding(query)
+        .filter((job) => {
+          const requestedAt = job.toSnapshot().requestedAt.getTime();
+
+          return requestedAt >= query.windowStartedAt.getTime() && requestedAt < query.windowEndedAt.getTime();
+        })
+        .slice(0, query.limit),
+      truncated: false,
     };
   }
 

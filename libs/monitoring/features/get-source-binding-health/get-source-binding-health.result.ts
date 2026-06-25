@@ -1,5 +1,6 @@
 import type { ScanJobStatus } from '../../domain';
 import type { ScanExecutionAttemptStatus } from '../../ports';
+import type { ScanProviderHealthState } from '../shared/scan-provider-health-summary';
 import type { ScanPolicyView } from '../shared/scan-policy-presenter';
 import type { ScanStatusFailureClass, ScanStatusUserState } from '../shared/scan-status-view';
 import type { SourceBindingView } from '../shared/source-binding-presenter';
@@ -45,11 +46,7 @@ export type SourceBindingHealthFreshnessView = {
   readonly staleBySeconds?: number;
 };
 
-export type SourceBindingProviderHealthState =
-  | 'unknown'
-  | 'operational'
-  | 'degraded'
-  | 'down';
+export type SourceBindingProviderHealthState = ScanProviderHealthState;
 
 export type SourceBindingHealthRecentWindowView = {
   readonly providerHealthState: SourceBindingProviderHealthState;

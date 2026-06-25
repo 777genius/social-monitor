@@ -53,6 +53,7 @@ import { GetScanPolicyUseCase } from "@social-monitor/monitoring/features/get-sc
 import { GetScanStatusUseCase } from "@social-monitor/monitoring/features/get-scan-status/get-scan-status.use-case";
 import { GetSourceBindingHealthUseCase } from "@social-monitor/monitoring/features/get-source-binding-health/get-source-binding-health.use-case";
 import { ListSourceBindingsUseCase } from "@social-monitor/monitoring/features/list-source-bindings/list-source-bindings.use-case";
+import { ListSourceBindingDailyHistoryUseCase } from "@social-monitor/monitoring/features/list-source-binding-daily-history/list-source-binding-daily-history.use-case";
 import { ListSourceBindingScansUseCase } from "@social-monitor/monitoring/features/list-source-binding-scans/list-source-binding-scans.use-case";
 import { ListTopicsUseCase } from "@social-monitor/monitoring/features/list-topics/list-topics.use-case";
 import { RequestScanUseCase } from "@social-monitor/monitoring/features/request-scan/request-scan.use-case";
@@ -197,6 +198,7 @@ const useCaseProviders = [
   ListRealtimeEventsUseCase,
   ListScanDeadLettersUseCase,
   ListSourceBindingsUseCase,
+  ListSourceBindingDailyHistoryUseCase,
   ListSourceBindingScansUseCase,
   ListSourceProfilesUseCase,
   ListSummariesUseCase,

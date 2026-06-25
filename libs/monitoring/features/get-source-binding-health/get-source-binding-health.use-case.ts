@@ -1,9 +1,6 @@
 import { DomainError, err, ok, type Clock, type Result } from '@social-monitor/shared-kernel';
 
-import type {
-  ScanJob,
-  ScanJobStatus,
-} from '../../domain';
+import type { ScanJob } from '../../domain';
 import type {
   ScanExecutionAttemptReadPort,
   ScanJobHistoryReadPort,
@@ -12,6 +9,7 @@ import type {
   SourceBindingRepositoryPort,
 } from '../../ports';
 import { presentScanPolicy } from '../shared/scan-policy-presenter';
+import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
 import { buildScanStatusView } from '../shared/scan-status-view';
 import { presentSourceBinding } from '../shared/source-binding-presenter';
 import type { GetSourceBindingHealthQuery } from './get-source-binding-health.query';
@@ -20,7 +18,6 @@ import type {
   SourceBindingHealthFreshnessView,
   SourceBindingHealthRecentWindowView,
   SourceBindingHealthState,
-  SourceBindingProviderHealthState,
 } from './get-source-binding-health.result';
 
 type GetSourceBindingHealthFailure = DomainError;
@@ -208,72 +205,26 @@ const buildRecentWindow = (params: {
   const recentJobs = params.jobs
     .map((job) => job.toSnapshot())
     .filter((job) => job.requestedAt.getTime() >= windowStartedAt.getTime());
-  const failedJobs = recentJobs.filter((job) => job.status === 'failed');
   const succeededJobs = recentJobs.filter((job) => job.status === 'succeeded');
-  const activeJobs = recentJobs.filter((job) => job.status === 'requested' || job.status === 'enqueued');
-  const failureClasses = failedJobs.map((job) =>
-    buildScanStatusView({
-      status: job.status,
-      failureReason: job.failureReason,
-    }).failureClass,
-  );
-  const rateLimitedScans = failureClasses.filter((failureClass) => failureClass === 'provider_rate_limited').length;
-  const providerUnavailableScans =
-    failureClasses.filter((failureClass) => failureClass === 'provider_unavailable').length;
-  const consecutiveFailures = countConsecutiveCompletedFailures(recentJobs);
-  const providerHealthState = providerHealthStateFor({
-    totalScans: recentJobs.length,
-    failedScans: failedJobs.length,
-    succeededScans: succeededJobs.length,
-    activeScans: activeJobs.length,
-    consecutiveFailures,
-    providerUnavailableScans,
-  });
+  const failedJobs = recentJobs.filter((job) => job.status === 'failed');
+  const summary = summarizeScanProviderHealth(recentJobs);
 
   return {
-    providerHealthState,
+    providerHealthState: summary.providerHealthState,
     windowStartedAt: windowStartedAt.toISOString(),
     windowEndedAt: params.now.toISOString(),
-    totalScans: recentJobs.length,
-    succeededScans: succeededJobs.length,
-    failedScans: failedJobs.length,
-    activeScans: activeJobs.length,
-    rateLimitedScans,
-    providerUnavailableScans,
-    consecutiveFailures,
+    totalScans: summary.totalScans,
+    succeededScans: summary.succeededScans,
+    failedScans: summary.failedScans,
+    activeScans: summary.activeScans,
+    rateLimitedScans: summary.rateLimitedScans,
+    providerUnavailableScans: summary.providerUnavailableScans,
+    consecutiveFailures: summary.consecutiveFailures,
     lastSucceededAt: latestCompletedAt(succeededJobs),
     lastFailedAt: latestCompletedAt(failedJobs),
-    operatorAction: operatorActionForProviderHealth(providerHealthState),
-    signals: recentWindowSignals({
-      totalScans: recentJobs.length,
-      succeededScans: succeededJobs.length,
-      failedScans: failedJobs.length,
-      activeScans: activeJobs.length,
-      rateLimitedScans,
-      providerUnavailableScans,
-      consecutiveFailures,
-    }),
+    operatorAction: summary.operatorAction,
+    signals: summary.signals,
   };
-};
-
-const countConsecutiveCompletedFailures = (
-  jobs: readonly { readonly status: ScanJobStatus }[],
-): number => {
-  let count = 0;
-
-  for (const job of jobs) {
-    if (job.status === 'requested' || job.status === 'enqueued') {
-      continue;
-    }
-
-    if (job.status !== 'failed') {
-      break;
-    }
-
-    count += 1;
-  }
-
-  return count;
 };
 
 const latestCompletedAt = (
@@ -284,83 +235,6 @@ const latestCompletedAt = (
     .find((completedAt): completedAt is Date => completedAt !== undefined)
     ?.toISOString();
 
-const providerHealthStateFor = (params: {
-  readonly totalScans: number;
-  readonly failedScans: number;
-  readonly succeededScans: number;
-  readonly activeScans: number;
-  readonly consecutiveFailures: number;
-  readonly providerUnavailableScans: number;
-}): SourceBindingProviderHealthState => {
-  if (params.totalScans === 0) {
-    return 'unknown';
-  }
-
-  if (params.consecutiveFailures >= 3 || params.providerUnavailableScans >= 3) {
-    return 'down';
-  }
-
-  if (params.failedScans > 0) {
-    return 'degraded';
-  }
-
-  if (params.succeededScans > 0) {
-    return 'operational';
-  }
-
-  return params.activeScans > 0 ? 'unknown' : 'degraded';
-};
-
-const operatorActionForProviderHealth = (
-  state: SourceBindingProviderHealthState,
-): string => {
-  switch (state) {
-    case 'unknown':
-      return 'wait_for_next_scan_or_trigger_manual_scan';
-    case 'operational':
-      return 'no_action_required';
-    case 'degraded':
-      return 'inspect_recent_scan_failures_and_rate_limits';
-    case 'down':
-      return 'pause_or_backoff_provider_until_recovery';
-  }
-};
-
-const recentWindowSignals = (params: {
-  readonly totalScans: number;
-  readonly succeededScans: number;
-  readonly failedScans: number;
-  readonly activeScans: number;
-  readonly rateLimitedScans: number;
-  readonly providerUnavailableScans: number;
-  readonly consecutiveFailures: number;
-}): readonly string[] => {
-  const signals: string[] = [];
-
-  if (params.totalScans === 0) {
-    signals.push('no_recent_scans');
-  }
-  if (params.succeededScans > 0) {
-    signals.push('recent_success');
-  }
-  if (params.failedScans > 0) {
-    signals.push('recent_failure');
-  }
-  if (params.activeScans > 0) {
-    signals.push('active_scan_in_progress');
-  }
-  if (params.rateLimitedScans > 0) {
-    signals.push('rate_limited');
-  }
-  if (params.providerUnavailableScans > 0) {
-    signals.push('provider_unavailable');
-  }
-  if (params.consecutiveFailures >= 2) {
-    signals.push('consecutive_failures');
-  }
-
-  return signals;
-};
 
 const operatorActionForHealth = (state: SourceBindingHealthState): string => {
   switch (state) {

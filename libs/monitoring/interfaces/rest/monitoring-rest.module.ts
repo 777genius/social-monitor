@@ -57,6 +57,7 @@ import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-st
 import { GetSourceBindingHealthUseCase } from '../../features/get-source-binding-health/get-source-binding-health.use-case';
 import { ListSourceCredentialsUseCase } from '../../features/list-source-credentials/list-source-credentials.use-case';
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
+import { ListSourceBindingDailyHistoryUseCase } from '../../features/list-source-binding-daily-history/list-source-binding-daily-history.use-case';
 import { ListSourceBindingScansUseCase } from '../../features/list-source-binding-scans/list-source-binding-scans.use-case';
 import { ListTopicsUseCase } from '../../features/list-topics/list-topics.use-case';
 import { RecordScanExecutionUseCase } from '../../features/record-scan-execution/record-scan-execution.use-case';
@@ -563,6 +564,25 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
       ],
     },
     {
+      provide: ListSourceBindingDailyHistoryUseCase,
+      useFactory: (
+        sourceBindings: SourceBindingRepositoryPort,
+        scanJobs: ScanJobRepositoryPort & ScanJobHistoryReadPort,
+        scanExecutionAttempts: ScanExecutionAttemptReadPort,
+      ) =>
+        new ListSourceBindingDailyHistoryUseCase(
+          sourceBindings,
+          scanJobs,
+          scanExecutionAttempts,
+          new SystemClock(),
+        ),
+      inject: [
+        MONITORING_SOURCE_BINDING_REPOSITORY,
+        MONITORING_SCAN_JOB_REPOSITORY,
+        MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
+      ],
+    },
+    {
       provide: RecordScanExecutionUseCase,
       useFactory: (scanJobs: ScanJobRepositoryPort) => new RecordScanExecutionUseCase(scanJobs),
       inject: [MONITORING_SCAN_JOB_REPOSITORY],
@@ -571,6 +591,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
   exports: [
     ScheduleDueScansUseCase,
     GetScanStatusUseCase,
+    ListSourceBindingDailyHistoryUseCase,
     ListSourceBindingScansUseCase,
     RecordScanExecutionUseCase,
     InMemoryQueuePublisher,

@@ -1,0 +1,35 @@
+// coverage:ignore-file
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, unused_import, invalid_annotation_target, unnecessary_import
+
+import 'package:json_annotation/json_annotation.dart';
+
+import 'source_binding_daily_scan_history_day_response_dto.dart';
+
+part 'list_source_binding_daily_scan_history_response_dto.g.dart';
+
+@JsonSerializable()
+class ListSourceBindingDailyScanHistoryResponseDto {
+  const ListSourceBindingDailyScanHistoryResponseDto({
+    required this.days,
+    required this.maxScanJobs,
+    required this.sourceBindingId,
+    required this.truncated,
+    required this.windowEndedAt,
+    required this.windowStartedAt,
+  });
+
+  factory ListSourceBindingDailyScanHistoryResponseDto.fromJson(
+    Map<String, Object?> json,
+  ) => _$ListSourceBindingDailyScanHistoryResponseDtoFromJson(json);
+
+  final List<SourceBindingDailyScanHistoryDayResponseDto> days;
+  final num maxScanJobs;
+  final String sourceBindingId;
+  final bool truncated;
+  final DateTime windowEndedAt;
+  final DateTime windowStartedAt;
+
+  Map<String, Object?> toJson() =>
+      _$ListSourceBindingDailyScanHistoryResponseDtoToJson(this);
+}

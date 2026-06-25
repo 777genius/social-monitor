@@ -1,7 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import type { ScanJobStatus } from '../../domain';
+import type {
+  ListSourceBindingDailyHistoryResult,
+  SourceBindingDailyHistoryDayView,
+} from '../../features/list-source-binding-daily-history/list-source-binding-daily-history.result';
+import type { ScanProviderHealthState } from '../../features/shared/scan-provider-health-summary';
 import { scanJobStatusValues, ScanStatusResponseDto } from './scan-status.dto';
+
+const scanProviderHealthStateValues = [
+  'unknown',
+  'operational',
+  'degraded',
+  'down',
+] as const satisfies readonly ScanProviderHealthState[];
 
 export class RequestScanResponseDto {
   @ApiProperty()
@@ -20,4 +32,83 @@ export class ListScanRequestsResponseDto {
 
   @ApiPropertyOptional()
   declare readonly nextCursor?: string;
+}
+
+export class SourceBindingDailyScanHistoryDayResponseDto implements SourceBindingDailyHistoryDayView {
+  @ApiProperty()
+  declare readonly date: string;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly windowStartedAt: string;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly windowEndedAt: string;
+
+  @ApiProperty({ enum: scanProviderHealthStateValues })
+  declare readonly providerHealthState: ScanProviderHealthState;
+
+  @ApiProperty()
+  declare readonly totalScans: number;
+
+  @ApiProperty()
+  declare readonly succeededScans: number;
+
+  @ApiProperty()
+  declare readonly failedScans: number;
+
+  @ApiProperty()
+  declare readonly activeScans: number;
+
+  @ApiProperty()
+  declare readonly rateLimitedScans: number;
+
+  @ApiProperty()
+  declare readonly providerUnavailableScans: number;
+
+  @ApiProperty()
+  declare readonly consecutiveFailures: number;
+
+  @ApiProperty()
+  declare readonly fetched: number;
+
+  @ApiProperty()
+  declare readonly inserted: number;
+
+  @ApiProperty()
+  declare readonly skippedDuplicates: number;
+
+  @ApiProperty()
+  declare readonly projected: number;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly lastScanRequestedAt?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly lastCompletedAt?: string;
+
+  @ApiProperty()
+  declare readonly operatorAction: string;
+
+  @ApiProperty({ type: String, isArray: true })
+  declare readonly signals: readonly string[];
+}
+
+export class ListSourceBindingDailyScanHistoryResponseDto implements ListSourceBindingDailyHistoryResult {
+  @ApiProperty()
+  declare readonly sourceBindingId: string;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly windowStartedAt: string;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly windowEndedAt: string;
+
+  @ApiProperty({ type: () => SourceBindingDailyScanHistoryDayResponseDto, isArray: true })
+  declare readonly days: readonly SourceBindingDailyScanHistoryDayResponseDto[];
+
+  @ApiProperty()
+  declare readonly truncated: boolean;
+
+  @ApiProperty()
+  declare readonly maxScanJobs: number;
 }

@@ -243,6 +243,10 @@ export type PrismaMonitoringClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly sourceBindingId: string;
+        readonly requestedAt?: {
+          readonly gte: Date;
+          readonly lt: Date;
+        };
       };
       readonly orderBy: readonly [
         { readonly requestedAt: 'desc' },

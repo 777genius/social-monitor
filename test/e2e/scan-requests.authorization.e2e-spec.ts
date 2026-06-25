@@ -113,6 +113,51 @@ describe('Manual scan request workspace authorization (e2e)', () => {
       scanRequests: [],
     });
   });
+
+  it('allows viewer role to read daily scan history', async () => {
+    const tenant = tenantId('tenant-scan-request-daily-authorization-e2e');
+    const workspace = workspaceId('workspace-scan-request-daily-authorization-e2e');
+    const bindingId = await createReadyBinding({ app, tenant, workspace });
+
+    const missingRole = await request(app.getHttpServer())
+      .get(`/source-bindings/${bindingId}/scan-requests/daily`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .expect(403);
+
+    expect(missingRole.body).toMatchObject({
+      code: 'authorization.denied',
+      detail: 'Workspace role is required',
+      details: {
+        action: 'scan_jobs.read',
+      },
+    });
+
+    const viewer = await request(app.getHttpServer())
+      .get(`/source-bindings/${bindingId}/scan-requests/daily?days=2`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(viewer.body).toEqual({
+      sourceBindingId: bindingId,
+      windowStartedAt: expect.any(String),
+      windowEndedAt: expect.any(String),
+      truncated: false,
+      maxScanJobs: 200,
+      days: [
+        expect.objectContaining({
+          totalScans: 0,
+          providerHealthState: 'unknown',
+        }),
+        expect.objectContaining({
+          totalScans: 0,
+          providerHealthState: 'unknown',
+        }),
+      ],
+    });
+  });
 });
 
 const createReadyBinding = async (params: {

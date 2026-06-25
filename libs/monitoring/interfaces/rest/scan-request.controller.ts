@@ -15,10 +15,15 @@ import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-mon
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
 
+import { ListSourceBindingDailyHistoryUseCase } from '../../features/list-source-binding-daily-history/list-source-binding-daily-history.use-case';
 import { ListSourceBindingScansUseCase } from '../../features/list-source-binding-scans/list-source-binding-scans.use-case';
 import type { SourceBindingScanHistoryItemView } from '../../features/list-source-binding-scans/list-source-binding-scans.result';
 import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
-import { ListScanRequestsResponseDto, RequestScanResponseDto } from './request-scan.dto';
+import {
+  ListScanRequestsResponseDto,
+  ListSourceBindingDailyScanHistoryResponseDto,
+  RequestScanResponseDto,
+} from './request-scan.dto';
 import type { ScanStatusResponseDto } from './scan-status.dto';
 
 @ApiTags('scan-requests')
@@ -27,12 +32,61 @@ export class ScanRequestController {
   constructor(
     private readonly requestScan: RequestScanUseCase,
     private readonly listSourceBindingScans: ListSourceBindingScansUseCase,
+    private readonly listSourceBindingDailyHistory: ListSourceBindingDailyHistoryUseCase,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
     private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
   ) {}
+
+  @Get('daily')
+  @ApiOperation({ summary: 'List daily scan history for a source binding.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:topics',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Daily scan history reads allow owner, admin, member or viewer.',
+  })
+  @ApiQuery({ name: 'days', required: false, type: Number })
+  @ApiOkResponse({ type: ListSourceBindingDailyScanHistoryResponseDto })
+  async daily(
+    @Param('sourceBindingId') sourceBindingId: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
+    @Query('days') daysQuery: string | undefined,
+  ): Promise<ListSourceBindingDailyScanHistoryResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+    await this.authorizeScanRequestRead(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
+
+    const result = await this.listSourceBindingDailyHistory.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      sourceBindingId,
+      days: parsePaginationLimit(daysQuery, {
+        defaultLimit: 14,
+        maxLimit: 90,
+        fieldName: 'days',
+        invalidMessage: 'Scan history days must be between 1 and 90',
+      }),
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
 
   @Get()
   @ApiOperation({ summary: 'List scan requests for a source binding.' })

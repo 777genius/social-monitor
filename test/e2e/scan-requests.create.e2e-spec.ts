@@ -171,6 +171,32 @@ describe('Request scan flow (e2e)', () => {
       ],
     });
 
+    const daily = await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-requests/daily?days=1`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(daily.body).toEqual({
+      sourceBindingId: binding.body.sourceBindingId,
+      windowStartedAt: expect.any(String),
+      windowEndedAt: expect.any(String),
+      truncated: false,
+      maxScanJobs: 100,
+      days: [
+        expect.objectContaining({
+          date: expect.any(String),
+          providerHealthState: 'unknown',
+          totalScans: 1,
+          succeededScans: 0,
+          failedScans: 0,
+          activeScans: 1,
+          signals: ['active_scan_in_progress'],
+        }),
+      ],
+    });
+
     const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
       tenantId: tenant,
       workspaceId: workspace,

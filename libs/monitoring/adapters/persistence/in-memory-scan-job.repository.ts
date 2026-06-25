@@ -3,6 +3,7 @@ import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 import type { ScanJob } from '../../domain';
 import type {
   ListScanJobsBySourceBindingResult,
+  ListScanJobsBySourceBindingWindowResult,
   ScanJobHistoryReadPort,
   ScanJobRepositoryPort,
 } from '../../ports';
@@ -77,6 +78,31 @@ export class InMemoryScanJobRepository implements ScanJobRepositoryPort, ScanJob
     return {
       scanJobs: page,
       nextCursor: next?.toSnapshot().id,
+    };
+  }
+
+  async listBySourceBindingWindow(params: {
+    tenantId: TenantId;
+    workspaceId: WorkspaceId;
+    sourceBindingId: string;
+    windowStartedAt: Date;
+    windowEndedAt: Date;
+    limit: number;
+  }): Promise<ListScanJobsBySourceBindingWindowResult> {
+    const jobs = this.sortedJobsBySourceBinding(params)
+      .filter((job) => {
+        const requestedAt = job.toSnapshot().requestedAt.getTime();
+
+        return (
+          requestedAt >= params.windowStartedAt.getTime() &&
+          requestedAt < params.windowEndedAt.getTime()
+        );
+      });
+    const page = jobs.slice(0, params.limit);
+
+    return {
+      scanJobs: page,
+      truncated: jobs.length > params.limit,
     };
   }
 
