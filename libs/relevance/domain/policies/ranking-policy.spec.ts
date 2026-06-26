@@ -87,6 +87,48 @@ describe("RankingPolicy", () => {
       }),
     );
   });
+
+  it("applies memory guidance without requiring a persisted profile", () => {
+    const generatedAt = new Date("2026-06-22T10:00:00.000Z");
+    const policy = new RankingPolicy();
+
+    const result = policy.rank({
+      candidates: [
+        candidate({
+          id: "candidate-github",
+          providerKey: "github",
+          title: "Agent runtime release with orchestration benchmarks",
+          sourceSignalScore: 0.1,
+        }),
+        candidate({
+          id: "candidate-reddit",
+          providerKey: "reddit",
+          title: "Agent workflow discussion",
+          sourceSignalScore: 0.2,
+        }),
+        candidate({
+          id: "candidate-rss",
+          providerKey: "rss",
+          title: "Low quality agent roundup",
+          sourceSignalScore: 0.7,
+        }),
+      ],
+      profile: null,
+      memoryGuidance: {
+        providerPreferences: [{ key: "github", weight: 1 }],
+        keywordPreferences: [{ key: "orchestration", weight: 1 }],
+        blockedProviderKeys: ["rss"],
+      },
+      generatedAt,
+      limit: 10,
+    });
+
+    expect(result.map((item) => item.candidate.id)).toEqual([
+      "candidate-github",
+      "candidate-reddit",
+    ]);
+    expect(result[0]?.whyImportant).toContain("Matches memory preference");
+  });
 });
 
 const candidate = (

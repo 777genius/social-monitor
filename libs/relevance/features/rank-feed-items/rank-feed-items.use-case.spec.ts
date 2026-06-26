@@ -2,8 +2,17 @@ import { FeedItem } from '@social-monitor/feed/domain';
 import type { FeedItemReadRepositoryPort, ListFeedItemsQuery, ListFeedItemsResult } from '@social-monitor/feed/ports';
 import { FixedClock, tenantId, workspaceId, type JsonObject } from '@social-monitor/shared-kernel';
 
-import { UserRelevanceProfile, type UserRelevanceProfile as UserRelevanceProfileEntity } from '../../domain';
-import type { UserRelevanceProfileRepositoryPort } from '../../ports';
+import {
+  RankingPolicy,
+  UserRelevanceProfile,
+  type UserRelevanceProfile as UserRelevanceProfileEntity,
+} from '../../domain';
+import type {
+  BuildRelevanceMemoryGuidanceQuery,
+  RelevanceMemoryGuidanceReaderPort,
+  RelevanceMemoryGuidanceResult,
+  UserRelevanceProfileRepositoryPort,
+} from '../../ports';
 import { RankFeedItemsUseCase } from './rank-feed-items.use-case';
 
 describe('RankFeedItemsUseCase', () => {
@@ -194,6 +203,86 @@ describe('RankFeedItemsUseCase', () => {
     }));
     expect(result.value.items[0]?.whyImportant).toContain('Strong source engagement signal');
   });
+
+  it('uses memory guidance as a best-effort ranking overlay', async () => {
+    const tenant = tenantId('tenant-rank-memory');
+    const workspace = workspaceId('workspace-rank-memory');
+    const topicId = 'topic-memory-ranking';
+    const feedItems = new FakeFeedItemReadRepository();
+    const memory = new CapturingMemoryGuidanceReader({
+      status: 'available',
+      providerPreferences: [{ key: 'github', weight: 1 }],
+      keywordPreferences: [{ key: 'orchestration', weight: 1 }],
+      blockedProviderKeys: ['rss'],
+    });
+    const now = new Date('2026-06-22T10:00:00.000Z');
+
+    addFeedItem(feedItems, {
+      id: 'feed-memory-reddit',
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      providerKey: 'reddit',
+      title: 'Agent workflow discussion',
+      bodyPreview: 'Operators discuss agent orchestration.',
+      canonicalUrl: 'https://reddit.example/r/agents/comments/memory',
+      publishedAt: new Date('2026-06-22T09:58:00.000Z'),
+    });
+    addFeedItem(feedItems, {
+      id: 'feed-memory-github',
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      providerKey: 'github',
+      title: 'Agent orchestration runtime release',
+      bodyPreview: 'Maintainers describe durable agent execution.',
+      canonicalUrl: 'https://github.com/example/agents/releases/2',
+      publishedAt: new Date('2026-06-22T09:40:00.000Z'),
+    });
+    addFeedItem(feedItems, {
+      id: 'feed-memory-rss',
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      providerKey: 'rss',
+      title: 'Agent orchestration roundup',
+      bodyPreview: 'RSS item should be blocked by memory guidance.',
+      canonicalUrl: 'https://rss.example/agents',
+      publishedAt: new Date('2026-06-22T09:59:00.000Z'),
+    });
+
+    const result = await new RankFeedItemsUseCase(
+      feedItems,
+      new FakeUserRelevanceProfileRepository(),
+      new FixedClock(now),
+      new RankingPolicy(),
+      memory,
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      userId: 'user-rank-memory',
+      topicId,
+      limit: 10,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(memory.queries[0]).toEqual(expect.objectContaining({
+      tenantId: tenant,
+      workspaceId: workspace,
+      userId: 'user-rank-memory',
+      providerKeys: ['github', 'reddit', 'rss'],
+    }));
+    expect(JSON.stringify(memory.queries[0])).not.toContain('https://');
+    expect(result.value.items.map((item) => item.feedItemId)).toEqual([
+      'feed-memory-github',
+      'feed-memory-reddit',
+    ]);
+    expect(result.value.items[0]?.whyImportant).toContain('Matches memory preference');
+  });
 });
 
 const addFeedItem = (
@@ -264,5 +353,17 @@ class FakeUserRelevanceProfileRepository implements UserRelevanceProfileReposito
     readonly userId: string;
   }): Promise<UserRelevanceProfileEntity | null> {
     return this.profiles.get(`${params.tenantId}:${params.workspaceId}:${params.userId}`) ?? null;
+  }
+}
+
+class CapturingMemoryGuidanceReader implements RelevanceMemoryGuidanceReaderPort {
+  readonly queries: BuildRelevanceMemoryGuidanceQuery[] = [];
+
+  constructor(private readonly result: RelevanceMemoryGuidanceResult) {}
+
+  async buildGuidance(query: BuildRelevanceMemoryGuidanceQuery): Promise<RelevanceMemoryGuidanceResult> {
+    this.queries.push(query);
+
+    return this.result;
   }
 }

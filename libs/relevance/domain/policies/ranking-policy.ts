@@ -26,6 +26,18 @@ export type RankedRelevanceCandidate = {
   readonly clusterSize: number;
 };
 
+export type RankingMemoryPreference = {
+  readonly key: string;
+  readonly weight: number;
+};
+
+export type RankingMemoryGuidance = {
+  readonly providerPreferences?: readonly RankingMemoryPreference[];
+  readonly keywordPreferences?: readonly RankingMemoryPreference[];
+  readonly mutedKeywords?: readonly string[];
+  readonly blockedProviderKeys?: readonly string[];
+};
+
 type ScoredRelevanceCandidate = RankedRelevanceCandidate & {
   readonly titleTokens: readonly string[];
 };
@@ -38,12 +50,18 @@ export class RankingPolicy {
   rank(params: {
     readonly candidates: readonly RankingCandidate[];
     readonly profile: UserRelevanceProfile | null;
+    readonly memoryGuidance?: RankingMemoryGuidance;
     readonly generatedAt: Date;
     readonly limit: number;
   }): readonly RankedRelevanceCandidate[] {
     const scored = params.candidates
       .map((candidate) =>
-        this.scoreCandidate(candidate, params.profile, params.generatedAt),
+        this.scoreCandidate(
+          candidate,
+          params.profile,
+          params.memoryGuidance,
+          params.generatedAt,
+        ),
       )
       .filter(
         (candidate): candidate is ScoredRelevanceCandidate =>
@@ -57,6 +75,7 @@ export class RankingPolicy {
   private scoreCandidate(
     candidate: RankingCandidate,
     profile: UserRelevanceProfile | null,
+    memoryGuidance: RankingMemoryGuidance | undefined,
     now: Date,
   ): ScoredRelevanceCandidate | null {
     const safety = this.safetyPolicy.evaluate(candidate);
@@ -67,7 +86,9 @@ export class RankingPolicy {
     if (
       safety.status === "blocked" ||
       profile?.isProviderBlocked(candidate.providerKey) === true ||
-      profile?.hasMutedKeyword(searchText) === true
+      profile?.hasMutedKeyword(searchText) === true ||
+      memoryGuidanceBlocksProvider(memoryGuidance, candidate.providerKey) ||
+      memoryGuidanceMutesText(memoryGuidance, searchText)
     ) {
       return null;
     }
@@ -87,6 +108,11 @@ export class RankingPolicy {
     const sourceSignalScore = normalizeSourceSignalScore(
       candidate.sourceSignalScore,
     );
+    const memoryScore = memoryGuidanceScore({
+      guidance: memoryGuidance,
+      providerKey: candidate.providerKey,
+      keywords,
+    });
     const safetyPenalty = safety.status === "sanitized" ? -0.25 : 0;
     const score = roundScore(
       1 +
@@ -94,6 +120,7 @@ export class RankingPolicy {
         sourceWeight * 0.7 +
         keywordScore * 0.35 +
         sourceSignalScore +
+        memoryScore +
         recencyScore +
         safetyPenalty,
     );
@@ -109,6 +136,7 @@ export class RankingPolicy {
           (keyword) => (profile?.keywordWeight(keyword) ?? 0) > 0,
         ),
         sourceSignalScore,
+        memoryScore,
         recencyScore,
         safety,
       }),
@@ -184,6 +212,7 @@ const buildWhyImportant = (params: {
   readonly sourceWeight: number;
   readonly keywordMatches: readonly string[];
   readonly sourceSignalScore: number;
+  readonly memoryScore: number;
   readonly recencyScore: number;
   readonly safety: SourceContentSafetyVerdict;
 }): readonly string[] => {
@@ -205,6 +234,10 @@ const buildWhyImportant = (params: {
 
   if (params.sourceSignalScore >= 0.35) {
     reasons.push("Strong source engagement signal");
+  }
+
+  if (params.memoryScore > 0) {
+    reasons.push("Matches memory preference");
   }
 
   if (params.recencyScore > 0.25) {
@@ -270,5 +303,69 @@ const titleTokens = (value: string): readonly string[] =>
 
 const normalizeSourceSignalScore = (value: number): number =>
   Number.isFinite(value) ? value : 0;
+
+const memoryGuidanceBlocksProvider = (
+  guidance: RankingMemoryGuidance | undefined,
+  providerKey: string,
+): boolean =>
+  new Set((guidance?.blockedProviderKeys ?? []).map(normalizeKey)).has(
+    normalizeKey(providerKey),
+  );
+
+const memoryGuidanceMutesText = (
+  guidance: RankingMemoryGuidance | undefined,
+  searchText: string,
+): boolean => {
+  const normalizedText = searchText.toLocaleLowerCase("en-US");
+
+  return (guidance?.mutedKeywords ?? []).some((keyword) => {
+    const normalized = normalizeKey(keyword);
+
+    return normalized.length > 0 && normalizedText.includes(normalized);
+  });
+};
+
+const memoryGuidanceScore = (params: {
+  readonly guidance: RankingMemoryGuidance | undefined;
+  readonly providerKey: string;
+  readonly keywords: readonly string[];
+}): number => {
+  const guidance = params.guidance;
+  if (guidance === undefined) {
+    return 0;
+  }
+
+  const providerWeight = preferenceWeight(
+    guidance.providerPreferences,
+    params.providerKey,
+  );
+  const keywordWeights = params.keywords.reduce(
+    (total, keyword) =>
+      total + preferenceWeight(guidance.keywordPreferences, keyword),
+    0,
+  );
+
+  return clamp(providerWeight * 0.55 + keywordWeights * 0.2, -0.75, 0.75);
+};
+
+const preferenceWeight = (
+  preferences: readonly RankingMemoryPreference[] | undefined,
+  key: string,
+): number => {
+  const normalizedKey = normalizeKey(key);
+  const preference = preferences?.find(
+    (entry) => normalizeKey(entry.key) === normalizedKey,
+  );
+
+  return preference === undefined || !Number.isFinite(preference.weight)
+    ? 0
+    : preference.weight;
+};
+
+const normalizeKey = (value: string): string =>
+  value.trim().toLocaleLowerCase("en-US");
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, value));
 
 const roundScore = (value: number): number => Math.round(value * 1000) / 1000;

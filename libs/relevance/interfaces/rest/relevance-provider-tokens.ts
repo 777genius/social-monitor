@@ -3,6 +3,7 @@ import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config'
 
 import type {
   RelevanceMemoryProjectionRepositoryPort,
+  RelevanceMemoryGuidanceReaderPort,
   RelevanceMemoryProjectorPort,
   RelevanceFeedbackRepositoryPort,
   UserRelevanceProfileRepositoryPort,
@@ -23,6 +24,7 @@ export type RelevanceProviderTokenMap = {
   readonly relevanceFeedback: RelevanceFeedbackRepositoryPort;
   readonly relevanceMemoryProjections: RelevanceMemoryProjectionRepositoryPort;
   readonly relevanceMemoryProjector: RelevanceMemoryProjectorPort;
+  readonly relevanceMemoryGuidanceReader: RelevanceMemoryGuidanceReaderPort;
 };
 
 export const relevancePersistenceModeProvider: Provider<RelevancePersistenceMode> = {

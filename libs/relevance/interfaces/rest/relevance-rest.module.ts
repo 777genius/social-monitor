@@ -5,6 +5,10 @@ import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/ide
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import {
+  MemoStackRelevanceMemoryGuidanceReader,
+  resolveMemoStackRelevanceMemoryGuidanceReaderOptions,
+} from '../../adapters/memory/memo-stack-relevance-memory-guidance.reader';
+import {
   MemoStackRelevanceMemoryProjector,
   resolveMemoStackRelevanceMemoryProjectorOptions,
 } from '../../adapters/memory/memo-stack-relevance-memory.projector';
@@ -26,14 +30,17 @@ import { UpsertUserRelevanceProfileUseCase } from '../../features/upsert-user-re
 import type {
   RelevanceFeedbackLearningStorePort,
   RelevanceFeedbackRepositoryPort,
+  RelevanceMemoryGuidanceReaderPort,
   RelevanceMemoryProjectionRepositoryPort,
   RelevanceMemoryProjectorPort,
   UserRelevanceProfileRepositoryPort,
 } from '../../ports';
 import {
+  NOOP_RELEVANCE_MEMORY_GUIDANCE_READER,
   NOOP_RELEVANCE_MEMORY_PROJECTOR,
   RELEVANCE_FEEDBACK_LEARNING_STORE,
   RELEVANCE_FEEDBACK_REPOSITORY,
+  RELEVANCE_MEMORY_GUIDANCE_READER,
   RELEVANCE_MEMORY_PROJECTION_REPOSITORY,
   RELEVANCE_MEMORY_PROJECTOR,
   USER_RELEVANCE_PROFILE_REPOSITORY,
@@ -105,6 +112,16 @@ import {
       inject: [RELEVANCE_MEMORY_PROJECTION_MODE],
     },
     {
+      provide: RELEVANCE_MEMORY_GUIDANCE_READER,
+      useFactory: (mode: RelevanceMemoryProjectionMode): RelevanceMemoryGuidanceReaderPort =>
+        mode === 'memo-stack'
+          ? new MemoStackRelevanceMemoryGuidanceReader(
+              resolveMemoStackRelevanceMemoryGuidanceReaderOptions(process.env),
+            )
+          : NOOP_RELEVANCE_MEMORY_GUIDANCE_READER,
+      inject: [RELEVANCE_MEMORY_PROJECTION_MODE],
+    },
+    {
       provide: USER_RELEVANCE_PROFILE_REPOSITORY,
       useFactory: (
         mode: RelevancePersistenceMode,
@@ -139,8 +156,9 @@ import {
       useFactory: (
         feedItems: FeedItemReadRepositoryPort,
         profiles: UserRelevanceProfileRepositoryPort,
-      ) => new RankFeedItemsUseCase(feedItems, profiles, new SystemClock()),
-      inject: [FEED_ITEM_READ_REPOSITORY, USER_RELEVANCE_PROFILE_REPOSITORY],
+        memoryGuidance: RelevanceMemoryGuidanceReaderPort,
+      ) => new RankFeedItemsUseCase(feedItems, profiles, new SystemClock(), undefined, memoryGuidance),
+      inject: [FEED_ITEM_READ_REPOSITORY, USER_RELEVANCE_PROFILE_REPOSITORY, RELEVANCE_MEMORY_GUIDANCE_READER],
     },
     {
       provide: RecordRelevanceFeedbackUseCase,
@@ -173,6 +191,7 @@ import {
     RELEVANCE_FEEDBACK_LEARNING_STORE,
     RELEVANCE_MEMORY_PROJECTION_REPOSITORY,
     RELEVANCE_MEMORY_PROJECTOR,
+    RELEVANCE_MEMORY_GUIDANCE_READER,
     InMemoryUserRelevanceProfileRepository,
     InMemoryRelevanceFeedbackRepository,
     InMemoryRelevanceMemoryProjectionRepository,

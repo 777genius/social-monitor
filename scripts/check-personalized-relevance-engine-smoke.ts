@@ -8,6 +8,12 @@ import { BuildPersonalizedDigestUseCase } from '@social-monitor/relevance/featur
 import { RankFeedItemsUseCase } from '@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case';
 import { RecordRelevanceFeedbackUseCase } from '@social-monitor/relevance/features/record-relevance-feedback/record-relevance-feedback.use-case';
 import { UpsertUserRelevanceProfileUseCase } from '@social-monitor/relevance/features/upsert-user-relevance-profile/upsert-user-relevance-profile.use-case';
+import { RankingPolicy } from '@social-monitor/relevance/domain';
+import type {
+  BuildRelevanceMemoryGuidanceQuery,
+  RelevanceMemoryGuidanceReaderPort,
+  RelevanceMemoryGuidanceResult,
+} from '@social-monitor/relevance/ports';
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { RelevanceSummaryEvidenceSelector } from '../libs/summary/adapters/evidence/relevance-summary-evidence.selector';
@@ -37,11 +43,6 @@ const topicId = 'topic-ai-platforms';
 const now = new Date('2026-06-22T10:00:00.000Z');
 const summaryArtifacts = new InMemorySummaryArtifactRepository();
 
-void main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
-
 async function main(): Promise<void> {
   const ids = new SequenceIdGenerator();
   const clock = new FixedClock(now);
@@ -49,7 +50,18 @@ async function main(): Promise<void> {
   const profiles = new InMemoryUserRelevanceProfileRepository();
   const relevanceFeedback = new InMemoryRelevanceFeedbackRepository();
   const relevanceMemoryProjections = new InMemoryRelevanceMemoryProjectionRepository();
-  const rankFeedItems = new RankFeedItemsUseCase(feedItems, profiles, clock);
+  const memoryGuidance = new StaticRelevanceMemoryGuidanceReader({
+    status: 'available',
+    providerPreferences: [{ key: 'github', weight: 1 }],
+    keywordPreferences: [{ key: 'orchestration', weight: 1 }],
+  });
+  const rankFeedItems = new RankFeedItemsUseCase(
+    feedItems,
+    profiles,
+    clock,
+    new RankingPolicy(),
+    memoryGuidance,
+  );
 
   seedFeed(feedItems);
 
@@ -73,7 +85,9 @@ async function main(): Promise<void> {
     limit: 10,
   });
   assert(initialRank.ok, 'initial ranking should pass');
+  assert(memoryGuidance.queries.length === 1, 'initial ranking must request user memory guidance');
   assert(initialRank.value.items[0]?.feedItemId === 'feed-relevance-github-1', 'github agents item should rank first');
+  assert(initialRank.value.items[0]?.whyImportant.includes('Matches memory preference'), 'top ranked item must explain memory preference match');
   assert(initialRank.value.items[0]?.clusterSize === 2, 'top item should cluster similar Reddit item');
   assert(!initialRank.value.items.some((item) => item.feedItemId === 'feed-relevance-spam-1'), 'blocked/muted source should be excluded');
   const unsafe = initialRank.value.items.find((item) => item.feedItemId === 'feed-relevance-rss-unsafe');
@@ -88,6 +102,7 @@ async function main(): Promise<void> {
   assert(!summaryText.includes('source-leak'), 'summary must not echo sensitive source token');
   assert(!summaryText.includes('url-leak'), 'summary must not echo sensitive source URL token');
   assert(summary?.toSnapshot().sourceHighlights.some((highlight) => highlight.includes('Matches')), 'summary highlights should carry why-important context');
+  assert(summary?.toSnapshot().sourceHighlights.some((highlight) => highlight.includes('memory preference')), 'summary highlights should carry memory preference context');
 
   const feedbackResult = await new RecordRelevanceFeedbackUseCase(
     new InMemoryRelevanceFeedbackLearningStore(profiles, relevanceFeedback, relevanceMemoryProjections),
@@ -223,8 +238,25 @@ function addFeedItem(
   }));
 }
 
+class StaticRelevanceMemoryGuidanceReader implements RelevanceMemoryGuidanceReaderPort {
+  readonly queries: BuildRelevanceMemoryGuidanceQuery[] = [];
+
+  constructor(private readonly result: RelevanceMemoryGuidanceResult) {}
+
+  async buildGuidance(query: BuildRelevanceMemoryGuidanceQuery): Promise<RelevanceMemoryGuidanceResult> {
+    this.queries.push(query);
+
+    return this.result;
+  }
+}
+
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
 }
+
+void main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+});

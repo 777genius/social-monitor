@@ -9,15 +9,22 @@ import {
   DomainError,
   err,
   ok,
+  redactSensitiveText,
   type Result,
 } from "@social-monitor/shared-kernel";
 
 import {
+  extractSignalKeywords,
   RankingPolicy,
   type RankedRelevanceCandidate,
+  type RankingMemoryGuidance,
   type RankingCandidate,
 } from "../../domain";
-import type { UserRelevanceProfileRepositoryPort } from "../../ports";
+import type {
+  RelevanceMemoryGuidanceReaderPort,
+  UserRelevanceProfileRepositoryPort,
+} from "../../ports";
+import { NOOP_RELEVANCE_MEMORY_GUIDANCE_READER } from "../../ports";
 import {
   presentSourceContentSafety,
   presentUserRelevanceProfile,
@@ -39,6 +46,8 @@ export class RankFeedItemsUseCase {
     private readonly profiles: UserRelevanceProfileRepositoryPort,
     private readonly clock: Clock,
     private readonly rankingPolicy = new RankingPolicy(),
+    private readonly memoryGuidance: RelevanceMemoryGuidanceReaderPort =
+      NOOP_RELEVANCE_MEMORY_GUIDANCE_READER,
   ) {}
 
   async execute(
@@ -79,9 +88,18 @@ export class RankFeedItemsUseCase {
         return [snapshot.id, snapshot] as const;
       }),
     );
+    const rankingCandidates = candidates.items.map(toRankingCandidate);
+    const memoryGuidance = await this.buildMemoryGuidance({
+      userId,
+      candidates: rankingCandidates,
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      generatedAt,
+    });
     const ranked = this.rankingPolicy.rank({
-      candidates: candidates.items.map(toRankingCandidate),
+      candidates: rankingCandidates,
       profile,
+      memoryGuidance,
       generatedAt,
       limit,
     });
@@ -112,6 +130,35 @@ export class RankFeedItemsUseCase {
         profile === null ? undefined : presentUserRelevanceProfile(profile),
       items,
     });
+  }
+
+  private async buildMemoryGuidance(params: {
+    readonly userId: string | undefined;
+    readonly candidates: readonly RankingCandidate[];
+    readonly tenantId: RankFeedItemsCommand["tenantId"];
+    readonly workspaceId: RankFeedItemsCommand["workspaceId"];
+    readonly generatedAt: Date;
+  }): Promise<RankingMemoryGuidance | undefined> {
+    if (params.userId === undefined || params.candidates.length === 0) {
+      return undefined;
+    }
+
+    try {
+      const guidance = await this.memoryGuidance.buildGuidance({
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        userId: params.userId,
+        providerKeys: uniqueSorted(
+          params.candidates.map((candidate) => candidate.providerKey),
+        ),
+        keywords: memoryGuidanceKeywords(params.candidates),
+        requestedAt: params.generatedAt,
+      });
+
+      return guidance.status === "available" ? guidance : undefined;
+    } catch {
+      return undefined;
+    }
   }
 }
 
@@ -187,3 +234,20 @@ const normalizeOptional = (value: string | undefined): string | undefined => {
     ? undefined
     : normalized;
 };
+
+const memoryGuidanceKeywords = (
+  candidates: readonly RankingCandidate[],
+): readonly string[] =>
+  uniqueSorted(
+    candidates.flatMap((candidate) =>
+      extractSignalKeywords(
+        redactSensitiveText(`${candidate.title} ${candidate.bodyPreview ?? ""}`),
+      ),
+    ),
+  ).slice(0, 30);
+
+const uniqueSorted = (values: readonly string[]): readonly string[] =>
+  [...new Set(values
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0))]
+    .sort((left, right) => left.localeCompare(right));
