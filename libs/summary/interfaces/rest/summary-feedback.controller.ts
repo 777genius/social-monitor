@@ -40,6 +40,7 @@ import {
 
 import { ListSummaryFeedbackUseCase } from "../../features/list-summary-feedback/list-summary-feedback.use-case";
 import { RecordSummaryFeedbackUseCase } from "../../features/record-summary-feedback/record-summary-feedback.use-case";
+import { requireIdempotencyKeyHeader } from "./idempotency-key-header";
 import {
   ListSummaryFeedbackResponseDto,
   RecordSummaryFeedbackRequestDto,
@@ -138,7 +139,7 @@ export class SummaryFeedbackController {
     @Headers("x-workspace-role") workspaceRoleHeader: string | undefined,
     @Headers("authorization") authorizationHeader: string | undefined,
     @Headers("x-actor-id") actorHeader: string | undefined,
-    @Headers("idempotency-key") idempotencyKey: string,
+    @Headers("idempotency-key") idempotencyKey: string | undefined,
     @Headers("x-request-id") requestId: string | undefined,
     @Body() body: RecordSummaryFeedbackRequestDto,
   ): Promise<RecordSummaryFeedbackResponseDto> {
@@ -157,7 +158,7 @@ export class SummaryFeedbackController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       summaryId,
-      idempotencyKey,
+      idempotencyKey: requireIdempotencyKeyHeader(idempotencyKey),
       submittedBy: resolveSubmittedBy(actorHeader, authorization),
       rating: body.rating,
       category: body.category,

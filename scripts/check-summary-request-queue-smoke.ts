@@ -69,6 +69,14 @@ async function main(): Promise<void> {
       .expect(201);
     assert(queue.all().length === 1, 'idempotent summary request must not enqueue duplicate commands');
 
+    await request(app.getHttpServer())
+      .post('/topics/topic-summary-request-queue-smoke/summary-requests')
+      .set('x-tenant-id', 'tenant-summary-request-queue-smoke')
+      .set('x-workspace-id', 'workspace-summary-request-queue-smoke')
+      .set('x-workspace-role', 'member')
+      .set('x-request-id', 'correlation-summary-request-missing-idempotency')
+      .expect(400);
+
     console.log('Summary request queue smoke OK');
   } finally {
     await app.close();

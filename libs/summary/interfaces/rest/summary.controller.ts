@@ -38,6 +38,7 @@ import {
 import { GetSummaryUseCase } from "../../features/get-summary/get-summary.use-case";
 import { ListSummariesUseCase } from "../../features/list-summaries/list-summaries.use-case";
 import { RegenerateSummaryUseCase } from "../../features/regenerate-summary/regenerate-summary.use-case";
+import { requireIdempotencyKeyHeader } from "./idempotency-key-header";
 import { RegenerateSummaryResponseDto } from "./regenerate-summary.dto";
 import { ListSummariesResponseDto, SummaryResponseDto } from "./summary.dto";
 
@@ -166,7 +167,7 @@ export class SummaryController {
     @Headers("x-workspace-id") workspaceHeader: string | undefined,
     @Headers("x-workspace-role") workspaceRoleHeader: string | undefined,
     @Headers("authorization") authorizationHeader: string | undefined,
-    @Headers("idempotency-key") idempotencyKey: string,
+    @Headers("idempotency-key") idempotencyKey: string | undefined,
     @Headers("x-request-id") requestId: string | undefined,
   ): Promise<RegenerateSummaryResponseDto> {
     const scope = requireTenantScope({
@@ -185,7 +186,7 @@ export class SummaryController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       summaryId,
-      idempotencyKey,
+      idempotencyKey: requireIdempotencyKeyHeader(idempotencyKey),
       correlationId: this.requestCorrelationIds.fromRequestId(requestId),
     });
 

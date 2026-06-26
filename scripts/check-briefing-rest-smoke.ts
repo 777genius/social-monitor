@@ -245,6 +245,97 @@ async function main(): Promise<void> {
       briefingId,
     );
 
+    const briefingRequestHeaders = {
+      ...headers,
+      'x-workspace-role': 'member',
+      'idempotency-key': 'briefing-rest-smoke-request',
+    };
+    const requestResponse = await request(app.getHttpServer())
+      .post('/briefing-requests')
+      .set(briefingRequestHeaders)
+      .send({
+        scope: { type: 'workspace' },
+        userId,
+      })
+      .expect(201);
+    const requestBody = requestResponse.body as RequestBriefingResponseBody;
+    const briefingJobId = requireString(
+      requestBody.briefingJobId,
+      'briefing request REST must return a briefingJobId',
+    );
+
+    assert(
+      requestBody.created === true && requestBody.status === 'requested',
+      'briefing request REST must create a requested job',
+    );
+
+    const replayResponse = await request(app.getHttpServer())
+      .post('/briefing-requests')
+      .set(briefingRequestHeaders)
+      .send({
+        scope: { type: 'workspace' },
+        userId,
+      })
+      .expect(201);
+    const replayBody = replayResponse.body as RequestBriefingResponseBody;
+
+    assert(
+      replayBody.briefingJobId === briefingJobId &&
+        replayBody.created === false,
+      'briefing request REST must replay idempotent requests without creating another job',
+    );
+
+    await request(app.getHttpServer())
+      .post('/briefing-requests')
+      .set(briefingRequestHeaders)
+      .send({
+        scope: { type: 'topic', topicId: 'topic-briefing-rest-smoke' },
+        userId,
+      })
+      .expect(409);
+
+    const statusResponse = await request(app.getHttpServer())
+      .get(`/briefing-jobs/${briefingJobId}/status`)
+      .set(headers)
+      .expect(200);
+
+    assertBriefingJobStatus(
+      statusResponse.body as BriefingJobStatusResponseBody,
+      briefingJobId,
+    );
+
+    await request(app.getHttpServer())
+      .get(`/briefing-jobs/${briefingJobId}/status`)
+      .set({
+        ...headers,
+        'x-workspace-id': otherWorkspace,
+      })
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post('/briefing-requests')
+      .set({
+        ...headers,
+        'x-workspace-role': 'member',
+      })
+      .send({
+        scope: { type: 'workspace' },
+        userId,
+      })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post('/briefing-requests')
+      .set({
+        ...headers,
+        'idempotency-key': 'briefing-rest-smoke-viewer-denied',
+      })
+      .send({
+        scope: { type: 'workspace' },
+        userId,
+      })
+      .expect(403);
+
     const memoryNegative = await request(app.getHttpServer())
       .get('/briefings')
       .query({ memoryGuidanceApplied: 'false', limit: '5' })
@@ -420,6 +511,33 @@ type BriefingResponseBody = {
   };
 };
 
+type RequestBriefingResponseBody = {
+  readonly briefingJobId?: unknown;
+  readonly status?: unknown;
+  readonly created?: unknown;
+};
+
+type BriefingJobStatusResponseBody = {
+  readonly briefingJobId?: unknown;
+  readonly scope?: {
+    readonly type?: unknown;
+  };
+  readonly status?: unknown;
+  readonly requestedAt?: unknown;
+  readonly timeline?: readonly {
+    readonly status?: unknown;
+    readonly message?: unknown;
+  }[];
+};
+
+const requireString = (value: unknown, message: string): string => {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(message);
+  }
+
+  return value;
+};
+
 const assertBriefingResponse = (
   body: BriefingResponseBody,
   briefingId: string,
@@ -499,6 +617,35 @@ const assertBriefingResponse = (
   assert(
     citations[0]?.label === '[1]' && citations[1]?.label === '[2]',
     'briefings REST must expose stable citation labels',
+  );
+};
+
+const assertBriefingJobStatus = (
+  body: BriefingJobStatusResponseBody,
+  briefingJobId: string,
+): void => {
+  assert(
+    body.briefingJobId === briefingJobId,
+    'briefing job status REST must expose the requested job id',
+  );
+  assert(
+    body.scope?.type === 'workspace',
+    'briefing job status REST must expose the requested scope',
+  );
+  assert(
+    body.status === 'requested',
+    'briefing job status REST must expose requested status before worker drain',
+  );
+  assert(
+    typeof body.requestedAt === 'string' && body.requestedAt.length > 0,
+    'briefing job status REST must expose requestedAt',
+  );
+  assert(
+    body.timeline?.some(
+      (event) =>
+        event.status === 'requested' && event.message === 'Briefing requested',
+    ) === true,
+    'briefing job status REST must translate reader summary timeline to briefing language',
   );
 };
 

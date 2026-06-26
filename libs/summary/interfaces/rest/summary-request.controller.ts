@@ -27,6 +27,7 @@ import {
   RequestSummaryRequestDto,
   RequestSummaryResponseDto,
 } from "./request-summary.dto";
+import { requireIdempotencyKeyHeader } from "./idempotency-key-header";
 
 @ApiTags("summaries")
 @Controller("topics/:topicId/summary-requests")
@@ -57,7 +58,7 @@ export class SummaryRequestController {
     @Headers("x-workspace-id") workspaceHeader: string | undefined,
     @Headers("x-workspace-role") workspaceRoleHeader: string | undefined,
     @Headers("authorization") authorizationHeader: string | undefined,
-    @Headers("idempotency-key") idempotencyKey: string,
+    @Headers("idempotency-key") idempotencyKey: string | undefined,
     @Headers("x-request-id") requestId: string | undefined,
     @Body() body: RequestSummaryRequestDto | undefined,
   ): Promise<RequestSummaryResponseDto> {
@@ -79,7 +80,7 @@ export class SummaryRequestController {
       topicId,
       userId: body?.userId,
       subscriptionId: body?.subscriptionId,
-      idempotencyKey,
+      idempotencyKey: requireIdempotencyKeyHeader(idempotencyKey),
       correlationId: this.requestCorrelationIds.fromRequestId(requestId),
     });
 

@@ -118,6 +118,45 @@ async function main(): Promise<void> {
       .set('x-workspace-role', 'viewer')
       .expect(404);
 
+    await request(app.getHttpServer())
+      .post(`/summaries/${summaryId}/regenerations`)
+      .set(headers)
+      .set('x-workspace-role', 'member')
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post(`/summaries/${summaryId}/feedback`)
+      .set(headers)
+      .set('x-workspace-role', 'viewer')
+      .set('x-actor-id', 'actor-summary-feedback-rest-smoke')
+      .send({
+        rating: 4,
+        category: 'low_relevance',
+        citationId: 'c1',
+        comment: 'This was useful.',
+      })
+      .expect(400);
+
+    const createdFeedback = await request(app.getHttpServer())
+      .post(`/summaries/${summaryId}/feedback`)
+      .set(headers)
+      .set('x-workspace-role', 'viewer')
+      .set('x-actor-id', 'actor-summary-feedback-rest-smoke')
+      .set('idempotency-key', 'feedback-rest-create-idempotency')
+      .send({
+        rating: 4,
+        category: 'low_relevance',
+        citationId: 'c1',
+        comment: 'This was useful.',
+      })
+      .expect(201);
+
+    assert(
+      createdFeedback.body.created === true &&
+        createdFeedback.body.category === 'low_relevance',
+      'summary feedback REST create must accept a valid idempotency key',
+    );
+
     console.log('Summary feedback REST smoke OK');
   } finally {
     await app.close();

@@ -31,6 +31,7 @@ import {
   RequestBriefingRequestDto,
   RequestBriefingResponseDto,
 } from "./request-briefing.dto";
+import { requireIdempotencyKeyHeader } from "./idempotency-key-header";
 
 @ApiTags("briefings")
 @Controller("briefing-requests")
@@ -63,7 +64,7 @@ export class BriefingRequestController {
     @Headers("x-workspace-id") workspaceHeader: string | undefined,
     @Headers("x-workspace-role") workspaceRoleHeader: string | undefined,
     @Headers("authorization") authorizationHeader: string | undefined,
-    @Headers("idempotency-key") idempotencyKey: string,
+    @Headers("idempotency-key") idempotencyKey: string | undefined,
     @Headers("x-request-id") requestId: string | undefined,
     @Body() body: RequestBriefingRequestDto,
   ): Promise<RequestBriefingResponseDto> {
@@ -85,7 +86,7 @@ export class BriefingRequestController {
       scope: normalizeBriefingScope(body.scope),
       userId: body.userId,
       subscriptionId: body.subscriptionId,
-      idempotencyKey,
+      idempotencyKey: requireIdempotencyKeyHeader(idempotencyKey),
       correlationId: this.requestCorrelationIds.fromRequestId(requestId),
     });
 
