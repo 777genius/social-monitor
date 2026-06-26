@@ -1,3 +1,4 @@
+import { FeedItem } from "@social-monitor/feed/domain";
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
 import type { RankFeedItemsCommand } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.command";
 import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
@@ -230,6 +231,82 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(
       selection.selectedEvidence.map((item) => item.providerKey).sort(),
     ).toEqual(["github-trending-page", "hacker-news", "reddit", "rss"]);
+  });
+
+  it("expands duplicate feed items into reader evidence so cross-source story clusters stay visible", async () => {
+    const tenant = tenantId("tenant-cross-source");
+    const workspace = workspaceId("workspace-cross-source");
+    const rankedItems = [
+      rankedItem({
+        feedItemId: "feed-github-codex",
+        providerKey: "github-repo-radar",
+        rank: 1,
+        score: 3.0,
+        canonicalUrl: "https://github.com/openai/codex",
+        title: "openai/codex gains attention",
+        duplicateFeedItemIds: ["feed-reddit-codex"],
+      }),
+    ];
+    const rankFeedItems = {
+      execute: jest.fn(async (command: RankFeedItemsCommand) =>
+        ok({
+          generatedAt: clock.now().toISOString(),
+          profileApplied: true,
+          items: rankedItems.slice(0, command.limit),
+        }),
+      ),
+    } as unknown as RankFeedItemsUseCase;
+    const feedItems: FeedItemReadRepositoryPort = {
+      list: jest.fn(),
+      findById: jest.fn(async () =>
+        FeedItem.publish({
+          id: "feed-reddit-codex",
+          tenantId: tenant,
+          workspaceId: workspace,
+          topicId: "topic-ai",
+          sourceItemId: "source-reddit-codex",
+          sourceBindingId: "binding-reddit",
+          providerKey: "reddit",
+          canonicalUrl: "https://reddit.example/r/codex/comments/1",
+          title: "Reddit discusses openai/codex adoption",
+          bodyPreview:
+            "Operators compare https://github.com/openai/codex with other coding agents.",
+          publishedAt: new Date("2026-06-23T10:05:00.000Z"),
+          observedAt: new Date("2026-06-23T10:06:00.000Z"),
+        }),
+      ),
+    };
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      feedItems,
+      clock,
+      new FakeStoryRankingMetrics(),
+    );
+
+    const selection = await selector.select({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      maxItems: 3,
+    });
+
+    expect(feedItems.findById).toHaveBeenCalledWith({
+      tenantId: tenant,
+      workspaceId: workspace,
+      feedItemId: "feed-reddit-codex",
+    });
+    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
+      "feed-github-codex",
+      "feed-reddit-codex",
+    ]);
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]).toEqual(
+      expect.objectContaining({
+        representativeFeedItemId: "feed-github-codex",
+        duplicateFeedItemIds: ["feed-reddit-codex"],
+        providerKeys: expect.arrayContaining(["github-repo-radar", "reddit"]),
+      }),
+    );
   });
 });
 
