@@ -14,8 +14,12 @@ import { GitHubRepoRadarSourceProvider } from '../libs/ingestion/adapters/source
 import { GitHubRepositoryLiveVerifierAdapter } from '../libs/ingestion/adapters/source/github-repo-radar/github-repository-live-verifier.adapter';
 import {
   GITHUB_REPO_RADAR_PROVIDER_KEY,
+  GITHUB_TRENDING_PAGE_PROVIDER_KEY,
   parseGitHubRepositoryTrendMetadata,
+  parseGitHubTrendingPageRepositoryMetadata,
 } from '../libs/ingestion/domain';
+import { HttpGitHubTrendingPageClient } from '../libs/ingestion/adapters/source/github-trending-page/http-github-trending-page-client';
+import { GitHubTrendingPageSourceProvider } from '../libs/ingestion/adapters/source/github-trending-page/github-trending-page-source.provider';
 import { RedditSourceProvider } from '../libs/ingestion/adapters/source/reddit/reddit-source.provider';
 import { RedditRefreshTokenProvider } from '../libs/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider';
 import type { RedditClientPort } from '../libs/ingestion/adapters/source/reddit/reddit-client.port';
@@ -91,6 +95,17 @@ const requiredProviders = new Map([
     },
   ],
   [
+    GITHUB_TRENDING_PAGE_PROVIDER_KEY,
+    {
+      credentialMode: 'public_page_with_site_policy_respect',
+      signals: [
+        'github-trending-page-live-page-smoke',
+        'github-trending-page-parser-drift-alert',
+        'github-trending-page-rate-limit-evidence',
+      ],
+    },
+  ],
+  [
     'reddit',
     {
       credentialMode: 'app_only_or_permanent_refresh_token',
@@ -116,6 +131,7 @@ async function main(): Promise<void> {
   await verifyRedditPermanentOAuthRuntime();
   await verifyGitHubIssuesRuntimeModes();
   await verifyGitHubRepoRadarRuntimeModes();
+  await verifyGitHubTrendingPageRuntime();
   await verifyRssRuntimeGuards();
   await verifyHackerNewsRuntime();
 
@@ -745,6 +761,117 @@ async function verifyGitHubRepoRadarRuntimeModes(): Promise<void> {
   assertFailure(sourceProvider, 'GitHub API returned 503', 'unavailable', true);
 }
 
+async function verifyGitHubTrendingPageRuntime(): Promise<void> {
+  let observedTrendingPageFetch = false;
+  await withMockedFetch(
+    async (input, init) => {
+      observedTrendingPageFetch = true;
+      const url = new URL(String(input));
+      assert(
+        url.hostname === 'github.com',
+        'GitHub Trending page runtime must use github.com',
+      );
+      assert(
+        url.pathname === '/trending/TypeScript',
+        'GitHub Trending page runtime must encode language in the path',
+      );
+      assert(
+        url.searchParams.get('since') === 'daily',
+        'GitHub Trending page runtime must pass the since window',
+      );
+      assert(
+        url.searchParams.get('spoken_language_code') === 'en',
+        'GitHub Trending page runtime must pass spoken language when configured',
+      );
+      assert(
+        readHeader(init?.headers, 'accept') === 'text/html,application/xhtml+xml',
+        'GitHub Trending page runtime must request HTML',
+      );
+      assert(
+        readHeader(init?.headers, 'user-agent') ===
+          'social-monitor-runtime-contract',
+        'GitHub Trending page runtime must pass configured User-Agent',
+      );
+
+      return new Response(githubTrendingPageHtmlFixture(), {
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      });
+    },
+    async () => {
+      const provider = new GitHubTrendingPageSourceProvider(
+        new HttpGitHubTrendingPageClient(),
+        { now: () => new Date('2026-06-24T12:00:00.000Z') },
+      );
+      const context = contextFor(GITHUB_TRENDING_PAGE_PROVIDER_KEY, {
+        language: 'TypeScript',
+        spokenLanguage: 'en',
+        userAgent: 'social-monitor-runtime-contract',
+        maxItems: 1,
+      });
+      const result = await provider.scan(
+        provider.planScan({ mode: 'listing', query: 'daily' }, context),
+        context,
+      );
+      const metadata = parseGitHubTrendingPageRepositoryMetadata(
+        result.items[0]?.metadata,
+      );
+      assert(
+        result.items.length === 1,
+        'GitHub Trending page runtime must emit one repository item',
+      );
+      assert(
+        metadata !== null,
+        'GitHub Trending page runtime must emit repository metadata',
+      );
+      assert(
+        metadata.repository.fullName === 'openai/codex',
+        'GitHub Trending page metadata must keep repository full name',
+      );
+      assert(
+        metadata.repository.totalStars === 54000,
+        'GitHub Trending page metadata must keep total stars',
+      );
+      assert(
+        metadata.trending.starsGained === 210,
+        'GitHub Trending page metadata must keep stars gained for the selected window',
+      );
+      assert(
+        metadata.trending.source === 'github_trending_html',
+        'GitHub Trending page metadata must identify live HTML runtime source',
+      );
+    },
+  );
+
+  assert(
+    observedTrendingPageFetch,
+    'GitHub Trending page runtime contract must observe live page fetch',
+  );
+
+  const sourceProvider = new GitHubTrendingPageSourceProvider(
+    new HttpGitHubTrendingPageClient(),
+    { now: () => new Date('2026-06-24T12:00:00.000Z') },
+  );
+  assertFailure(
+    sourceProvider,
+    'GitHub Trending page returned HTTP 403',
+    'rate_limited',
+    true,
+  );
+  assertFailure(
+    sourceProvider,
+    'GitHub Trending page returned HTTP 429',
+    'rate_limited',
+    true,
+  );
+  assertFailure(
+    sourceProvider,
+    'GitHub Trending page returned HTTP 503',
+    'unavailable',
+    true,
+  );
+}
+
 async function verifyRssRuntimeGuards(): Promise<void> {
   for (const blockedUrl of [
     'http://127.0.0.1/feed.xml',
@@ -1051,6 +1178,23 @@ function jsonResponse(
       ...headers,
     },
   });
+}
+
+function githubTrendingPageHtmlFixture(): string {
+  return `
+    <main>
+      <article>
+        <h2>
+          <a href="/openai/codex">openai / codex</a>
+        </h2>
+        <p>AI coding agent CLI and developer workflow tooling.</p>
+        <span itemprop="programmingLanguage">TypeScript</span>
+        <a href="/openai/codex/stargazers">54,000</a>
+        <a href="/openai/codex/forks">5,100</a>
+        <span>210 stars today</span>
+      </article>
+    </main>
+  `;
 }
 
 function readUrlSearchParams(

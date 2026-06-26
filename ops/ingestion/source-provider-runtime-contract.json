@@ -56,6 +56,22 @@
       ]
     },
     {
+      "providerKey": "github-trending-page",
+      "credentialMode": "public_page_with_site_policy_respect",
+      "requiredRuntimeInvariants": [
+        "public GitHub Trending HTML is fetched from github.com/trending with explicit since window",
+        "language and spoken language filters are encoded into the GitHub Trending page request",
+        "HTML parser extracts repository full name, rank, language, total stars, forks and stars gained",
+        "normalized feed items include structured GitHub Trending page metadata without retaining raw HTML",
+        "403/429 responses are classified as retryable rate_limited and parser/runtime failures as retryable unavailable"
+      ],
+      "liveEvidenceSignals": [
+        "github-trending-page-live-page-smoke",
+        "github-trending-page-parser-drift-alert",
+        "github-trending-page-rate-limit-evidence"
+      ]
+    },
+    {
       "providerKey": "reddit",
       "credentialMode": "app_only_or_permanent_refresh_token",
       "requiredRuntimeInvariants": [
