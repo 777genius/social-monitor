@@ -7,7 +7,7 @@ import { InMemoryScanJobRepository } from '../libs/monitoring/adapters/persisten
 import { InMemoryScanPolicyRepository } from '../libs/monitoring/adapters/persistence/in-memory-scan-policy.repository';
 import { InMemorySourceBindingRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-binding.repository';
 import { InMemoryScanQueueAdapter } from '../libs/monitoring/adapters/queue/in-memory-scan-queue.adapter';
-import { ScanPolicy, SourceBinding } from '../libs/monitoring/domain';
+import { ScanJob, ScanPolicy, SourceBinding } from '../libs/monitoring/domain';
 import { ScheduleDueScansUseCase } from '../libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case';
 import { ScheduleDueScansCommandHandler } from '../libs/monitoring/interfaces/queue/schedule-due-scans-command.handler';
 
@@ -64,6 +64,43 @@ async function main(): Promise<void> {
     nextRunAt: new Date('2026-06-06T09:59:00.000Z'),
     createdAt: new Date('2026-06-06T09:00:00.000Z'),
   }));
+  await bindings.save(SourceBinding.create({
+    id: 'source-binding-scheduler-smoke-reddit-fresh',
+    tenantId: tenant,
+    workspaceId: workspace,
+    topicId: 'topic-scheduler-smoke-reddit',
+    providerKey: 'reddit',
+    capabilityProfileVersion: 1,
+    config: {
+      subreddit: 'programming',
+      listing: 'hot',
+    },
+    createdAt: new Date('2026-06-06T09:00:00.000Z'),
+  }));
+  await policies.save(ScanPolicy.create({
+    id: 'scan-policy-scheduler-smoke-reddit-fresh',
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: 'source-binding-scheduler-smoke-reddit-fresh',
+    intervalSeconds: 60,
+    freshnessSeconds: 60,
+    retryBudget: 2,
+    nextRunAt: new Date('2026-06-06T09:59:30.000Z'),
+    createdAt: new Date('2026-06-06T09:00:00.000Z'),
+  }));
+  await jobs.save(ScanJob.request({
+    id: 'reddit-fresh-completed-scan-job-scheduler-smoke',
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: 'source-binding-scheduler-smoke-reddit-fresh',
+    scanPolicyId: 'scan-policy-scheduler-smoke-reddit-fresh',
+    idempotencyKey: 'manual:reddit-fresh-completed-scan-job-scheduler-smoke',
+    requestedAt: new Date('2026-06-06T09:54:00.000Z'),
+  }).markEnqueued({
+    enqueuedAt: new Date('2026-06-06T09:54:01.000Z'),
+  }).markSucceeded({
+    completedAt: new Date('2026-06-06T09:55:00.000Z'),
+  }));
 
   const result = await new ScheduleDueScansCommandHandler(
     new ScheduleDueScansUseCase(
@@ -85,15 +122,22 @@ async function main(): Promise<void> {
       tenantId: tenant,
       workspaceId: workspace,
       limit: 10,
+      includeDecisions: true,
     },
   });
 
-  assert(result.evaluated === 1, `expected one evaluated policy, got ${result.evaluated}`);
+  assert(result.evaluated === 2, `expected two evaluated policies, got ${result.evaluated}`);
   assert(result.enqueued === 1, `expected one enqueued scan, got ${result.enqueued}`);
-  assert(result.skipped === 0, `expected zero skipped scans, got ${result.skipped}`);
+  assert(result.skipped === 1, `expected one skipped scan, got ${result.skipped}`);
   assert(
-    Object.values(result.skippedByReason).every((value) => value === 0),
-    `expected zero skip reasons, got ${JSON.stringify(result.skippedByReason)}`,
+    result.skippedByReason.fresh_success === 1,
+    `expected one fresh-success skip, got ${JSON.stringify(result.skippedByReason)}`,
+  );
+  assert(
+    Object.entries(result.skippedByReason)
+      .filter(([reason]) => reason !== 'fresh_success')
+      .every(([, value]) => value === 0),
+    `expected only fresh-success skip reason, got ${JSON.stringify(result.skippedByReason)}`,
   );
 
   const queued = queuePublisher.all();
@@ -114,6 +158,22 @@ async function main(): Promise<void> {
       sourceQuery.mode === 'listing',
     `expected listing source query, got ${JSON.stringify(sourceQuery)}`,
   );
+  const decisions = result.decisions;
+  assert(decisions !== undefined, 'scheduler command smoke must request decision evidence');
+  assert(decisions.length === 2, `expected two scheduler decisions, got ${JSON.stringify(decisions)}`);
+  const redditDecision = decisions.find(
+    (decision) => decision.sourceBindingId === 'source-binding-scheduler-smoke-reddit-fresh',
+  );
+  assert(redditDecision !== undefined, `expected reddit decision evidence, got ${JSON.stringify(decisions)}`);
+  assert(redditDecision.decision === 'skipped', `expected reddit skip decision, got ${JSON.stringify(redditDecision)}`);
+  assert(redditDecision.reason === 'fresh_success', `expected reddit fresh-success skip, got ${JSON.stringify(redditDecision)}`);
+  assert(
+    redditDecision.configuredIntervalSeconds === 60 &&
+      redditDecision.effectiveIntervalSeconds === 900 &&
+      redditDecision.freshnessSeconds === 900 &&
+      redditDecision.providerMinimumIntervalEnforced === true,
+    `expected reddit provider minimum cadence evidence, got ${JSON.stringify(redditDecision)}`,
+  );
 
   const latestJob = await jobs.findLatestBySourceBinding({
     tenantId: tenant,
@@ -131,6 +191,15 @@ async function main(): Promise<void> {
     advancedPolicy?.toSnapshot().nextRunAt.toISOString() === '2026-06-06T10:04:00.000Z',
     `scheduled policy must advance next run, got ${advancedPolicy?.toSnapshot().nextRunAt.toISOString()}`,
   );
+  const redditPolicy = await policies.findBySourceBinding({
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: 'source-binding-scheduler-smoke-reddit-fresh',
+  });
+  assert(
+    redditPolicy?.toSnapshot().nextRunAt.toISOString() === '2026-06-06T10:14:30.000Z',
+    `fresh reddit policy must advance by provider minimum interval, got ${redditPolicy?.toSnapshot().nextRunAt.toISOString()}`,
+  );
 
   assert(
     metrics.counterValue('monitoring_scan_scheduler_runs_total', {
@@ -145,10 +214,10 @@ async function main(): Promise<void> {
   );
   assert(
     metrics.latestGaugeValue('monitoring_scan_scheduler_last_skipped_by_reason', {
-      reason: 'rate_limit_backoff',
+      reason: 'fresh_success',
       worker: 'ingestion-worker',
-    }) === 0,
-    'scheduler handler must record skip reason gauges',
+    }) === 1,
+    'scheduler handler must record fresh-success skip reason gauge',
   );
 
   console.log('Scan scheduler command smoke OK');
