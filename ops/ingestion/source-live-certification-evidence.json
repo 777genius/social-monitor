@@ -118,6 +118,19 @@
         ]
       },
       {
+        "envVar": "GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH",
+        "format": "source-live-provider-evidence-v1",
+        "requiredProviders": [
+          "github-trending-page"
+        ],
+        "requiredEnv": [
+          "SOURCE_LIVE_ENVIRONMENT_ID",
+          "BACKEND_IMAGE_DIGEST",
+          "BACKEND_GIT_COMMIT_SHA",
+          "SOURCE_LIVE_OPERATOR"
+        ]
+      },
+      {
         "envVar": "REDDIT_LIVE_EVIDENCE_PATH",
         "format": "source-live-provider-evidence-v1",
         "requiredProviders": [

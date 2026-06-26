@@ -547,10 +547,27 @@ function validateLiveSmokeScripts() {
   if (!githubRepoRadarPrismaLiveE2eScript.includes(liveArtifactFormat)) {
     violations.push(`${githubRepoRadarPrismaLiveE2eScriptPath}: GitHub repo radar Prisma live e2e must emit ${liveArtifactFormat}`);
   }
+  if (!githubTrendingPageLiveScript.includes('GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH')) {
+    violations.push(`${githubTrendingPageLiveScriptPath}: GitHub Trending Page live smoke must support redacted evidence artifact output`);
+  }
+  if (!githubTrendingPageLiveScript.includes(liveArtifactFormat)) {
+    violations.push(`${githubTrendingPageLiveScriptPath}: GitHub Trending Page live smoke must emit ${liveArtifactFormat}`);
+  }
+  for (const marker of [
+    'SOURCE_LIVE_ENVIRONMENT_ID',
+    'BACKEND_IMAGE_DIGEST',
+    'BACKEND_GIT_COMMIT_SHA',
+    'SOURCE_LIVE_OPERATOR',
+  ]) {
+    if (!githubTrendingPageLiveScript.includes(marker)) {
+      violations.push(`${githubTrendingPageLiveScriptPath}: GitHub Trending Page live evidence output must include ${marker}`);
+    }
+  }
   for (const [scriptPath, scriptSource] of [
     [liveOpenScriptPath, liveOpenScript],
     [redditLiveScriptPath, redditLiveScript],
     [githubRepoRadarPrismaLiveE2eScriptPath, githubRepoRadarPrismaLiveE2eScript],
+    [githubTrendingPageLiveScriptPath, githubTrendingPageLiveScript],
   ]) {
     if (!scriptSource.includes('writeLiveEvidenceArtifactAtomically')) {
       violations.push(`${scriptPath}: live smoke script must use the shared private evidence artifact writer`);
@@ -1590,6 +1607,7 @@ function validateEnvArtifactValidation(validationRules) {
   const expectedRules = new Map([
     ['LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', new Set(['hacker-news', 'rss', 'github-issues'])],
     ['GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH', new Set(['github-repo-radar'])],
+    ['GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH', new Set(['github-trending-page'])],
     ['REDDIT_LIVE_EVIDENCE_PATH', new Set(['reddit'])],
   ]);
   const seenRules = new Set();

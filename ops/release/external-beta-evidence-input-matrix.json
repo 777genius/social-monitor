@@ -18,6 +18,8 @@
         "BACKEND_STAGING_EVIDENCE_BUNDLE_PATH",
         "DURABLE_BACKEND_E2E_ARTIFACT_PATH",
         "DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH",
+        "GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH",
+        "GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH",
         "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
         "LOG_EXPORT_PATH",
         "METRICS_EXPORT_PATH",
@@ -147,6 +149,9 @@
       "inputClass": "provider_option",
       "description": "Non-secret live provider request option.",
       "env": [
+        "GITHUB_REPO_RADAR_BIGQUERY_PROJECT_ID",
+        "GITHUB_REPO_RADAR_PRISMA_LIVE_E2E",
+        "GITHUB_TRENDING_PAGE_USER_AGENT",
         "REDDIT_CLIENT_ID",
         "REDDIT_LISTING",
         "REDDIT_SUBREDDIT",

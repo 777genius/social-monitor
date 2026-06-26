@@ -150,9 +150,34 @@ const requiredJobEnvNames = new Map([
       'API_BASE_URL',
     ],
   ],
+  [
+    'live-github-repo-radar',
+    [
+      'GITHUB_REPO_RADAR_PRISMA_LIVE_E2E',
+      'GITHUB_REPO_RADAR_BIGQUERY_PROJECT_ID',
+      'GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH',
+      'DATABASE_URL',
+      'SOURCE_LIVE_ENVIRONMENT_ID',
+      'BACKEND_IMAGE_DIGEST',
+      'BACKEND_GIT_COMMIT_SHA',
+      'SOURCE_LIVE_OPERATOR',
+    ],
+  ],
+  [
+    'live-github-trending-page',
+    [
+      'GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH',
+      'SOURCE_LIVE_ENVIRONMENT_ID',
+      'BACKEND_IMAGE_DIGEST',
+      'BACKEND_GIT_COMMIT_SHA',
+      'SOURCE_LIVE_OPERATOR',
+    ],
+  ],
 ]);
 const requiredJobOptionalEnvNames = new Map([
   ['live-open-connectors', ['GITHUB_ACCESS_TOKEN']],
+  ['live-github-repo-radar', ['GITHUB_ACCESS_TOKEN']],
+  ['live-github-trending-page', ['GITHUB_TRENDING_PAGE_USER_AGENT']],
   [
     'live-reddit-oauth',
     [
@@ -265,6 +290,30 @@ const requiredJobOutputArtifacts = new Map([
         format: 'source-live-provider-evidence-v1',
         expectedArtifactId: 'live-open-connectors-evidence-v1',
         expectedProviderKeys: ['hacker-news', 'rss', 'github-issues'],
+      },
+    ],
+  ],
+  [
+    'live-github-repo-radar',
+    [
+      {
+        kind: 'env',
+        ref: 'GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH',
+        format: 'source-live-provider-evidence-v1',
+        expectedArtifactId: 'github-repo-radar-live-evidence-v1',
+        expectedProviderKeys: ['github-repo-radar'],
+      },
+    ],
+  ],
+  [
+    'live-github-trending-page',
+    [
+      {
+        kind: 'env',
+        ref: 'GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH',
+        format: 'source-live-provider-evidence-v1',
+        expectedArtifactId: 'github-trending-page-live-evidence-v1',
+        expectedProviderKeys: ['github-trending-page'],
       },
     ],
   ],
@@ -2818,7 +2867,7 @@ function validateRunnerEnvFileSmokes() {
     const positiveResult = runRunnerOutputSmoke(['--summary', '--env-file', envFilePath], {});
     if (positiveResult.exitCode !== 0) {
       violations.push(`${contract.runnerFile}: runner env-file summary smoke must accept private env file: ${smokeOutputSnippet(positiveResult.output)}`);
-    } else if (!positiveResult.output.includes('External evidence env readiness: 10/10 live/manual jobs (100%)')) {
+    } else if (!positiveResult.output.includes('External evidence env readiness: 12/12 live/manual jobs (100%)')) {
       violations.push(`${contract.runnerFile}: runner env-file summary smoke must load required env values`);
     }
 
@@ -3096,6 +3145,10 @@ function completeExternalEvidencePreflightEnv(tempDirectory) {
     DATABASE_URL: 'postgresql://release:...@db.staging.social-monitor.invalid:5432/social_monitor',
     DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(tempDirectory, 'durable-backend-e2e.json'),
     DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: join(tempDirectory, 'durable-runtime-selector.json'),
+    GITHUB_REPO_RADAR_BIGQUERY_PROJECT_ID: 'github-repo-radar-prod-project',
+    GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH: join(tempDirectory, 'github-repo-radar-live-evidence.json'),
+    GITHUB_REPO_RADAR_PRISMA_LIVE_E2E: '1',
+    GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH: join(tempDirectory, 'github-trending-page-live-evidence.json'),
     INFINITY_CONTEXT_TOKEN: 'secret-ref:infinity-context-token',
     INFINITY_CONTEXT_URL: 'https://memory.staging.social-monitor.invalid',
     LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: join(tempDirectory, 'live-open-connectors.json'),

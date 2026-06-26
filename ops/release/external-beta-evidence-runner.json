@@ -255,6 +255,79 @@
       "exitCondition": "HN, RSS and GitHub live smoke, cache, SSRF and rate-limit evidence is attached for the promoted backend image."
     },
     {
+      "jobId": "live-github-repo-radar",
+      "evidenceGroupId": "source-provider-live-certification",
+      "requirementId": "source-provider-live-certification",
+      "mode": "live_network",
+      "runPolicy": "live_command",
+      "owner": "source-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": "npm run check:github-repo-radar-prisma-live-e2e",
+      "validationCommands": [
+        "npm run check:source-live-certification-evidence",
+        "npm run check:source-certification"
+      ],
+      "requiredEnv": [
+        "GITHUB_REPO_RADAR_PRISMA_LIVE_E2E",
+        "GITHUB_REPO_RADAR_BIGQUERY_PROJECT_ID",
+        "GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH",
+        "DATABASE_URL",
+        "SOURCE_LIVE_ENVIRONMENT_ID",
+        "BACKEND_IMAGE_DIGEST",
+        "BACKEND_GIT_COMMIT_SHA",
+        "SOURCE_LIVE_OPERATOR"
+      ],
+      "optionalEnv": [
+        "GITHUB_ACCESS_TOKEN"
+      ],
+      "outputArtifacts": [
+        {
+          "env": "GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH",
+          "format": "source-live-provider-evidence-v1",
+          "expectedArtifactId": "github-repo-radar-live-evidence-v1",
+          "expectedProviderKeys": [
+            "github-repo-radar"
+          ]
+        }
+      ],
+      "exitCondition": "GitHub Repo Radar BigQuery, GitHub REST verification and Prisma/Postgres persistence evidence is attached for the promoted backend image."
+    },
+    {
+      "jobId": "live-github-trending-page",
+      "evidenceGroupId": "source-provider-live-certification",
+      "requirementId": "source-provider-live-certification",
+      "mode": "live_network",
+      "runPolicy": "live_command",
+      "owner": "source-owner",
+      "blocksExternalBeta": true,
+      "runnerCommand": "npm run check:github-trending-page-live-smoke",
+      "validationCommands": [
+        "npm run check:source-live-certification-evidence",
+        "npm run check:source-certification"
+      ],
+      "requiredEnv": [
+        "GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH",
+        "SOURCE_LIVE_ENVIRONMENT_ID",
+        "BACKEND_IMAGE_DIGEST",
+        "BACKEND_GIT_COMMIT_SHA",
+        "SOURCE_LIVE_OPERATOR"
+      ],
+      "optionalEnv": [
+        "GITHUB_TRENDING_PAGE_USER_AGENT"
+      ],
+      "outputArtifacts": [
+        {
+          "env": "GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH",
+          "format": "source-live-provider-evidence-v1",
+          "expectedArtifactId": "github-trending-page-live-evidence-v1",
+          "expectedProviderKeys": [
+            "github-trending-page"
+          ]
+        }
+      ],
+      "exitCondition": "GitHub Trending Page live smoke, parser drift and public page budget evidence is attached for the promoted backend image."
+    },
+    {
       "jobId": "live-reddit-oauth",
       "evidenceGroupId": "source-provider-live-certification",
       "requirementId": "source-provider-live-certification",

@@ -3,6 +3,14 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { HttpGitHubTrendingPageClient } from '../libs/ingestion/adapters/source/github-trending-page/http-github-trending-page-client';
 import { GitHubTrendingPageSourceProvider } from '../libs/ingestion/adapters/source/github-trending-page/github-trending-page-source.provider';
 import { parseGitHubTrendingPageRepositoryMetadata } from '../libs/ingestion/domain';
+import { writeLiveEvidenceArtifactAtomically } from './lib/live-evidence-artifact';
+
+const liveArtifactFormat = 'source-live-provider-evidence-v1';
+const liveEvidencePathEnv = 'GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH';
+const environmentIdEnv = 'SOURCE_LIVE_ENVIRONMENT_ID';
+const imageDigestEnv = 'BACKEND_IMAGE_DIGEST';
+const commitShaEnv = 'BACKEND_GIT_COMMIT_SHA';
+const operatorEnv = 'SOURCE_LIVE_OPERATOR';
 
 void main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
@@ -22,7 +30,7 @@ async function main(): Promise<void> {
     correlationId: 'corr-github-trending-page-live-smoke',
     config: {
       maxItems: 5,
-      userAgent: 'social-monitor-github-trending-page-live-smoke/0.1',
+      userAgent: readOptionalEnv('GITHUB_TRENDING_PAGE_USER_AGENT') ?? 'social-monitor-github-trending-page-live-smoke/0.1',
     },
   };
   const plan = provider.planScan({ mode: 'listing', query: 'daily' }, context);
@@ -58,44 +66,64 @@ async function main(): Promise<void> {
     'GitHub Trending page item URL must be GitHub',
   );
 
+  const observedAt = new Date().toISOString();
+  const signalResults = [
+    {
+      signalId: 'github-trending-page-live-smoke',
+      status: 'passed' as const,
+      observedAt,
+      evidence: {
+        summary: 'GitHub Trending live page returned normalized repositories with canonical GitHub URLs.',
+        repositoryCount: result.items.length,
+        topRankIsOne: metadata.trending.rank === 1,
+        canonicalUrlsObserved: result.items.every((item) =>
+          item.canonicalUrl.startsWith('https://github.com/'),
+        ),
+        window: metadata.trending.window,
+      },
+    },
+    {
+      signalId: 'github-trending-page-parser-drift',
+      status: 'passed' as const,
+      observedAt,
+      evidence: {
+        summary: 'GitHub Trending parser observed rank, language, total stars and stars gained fields.',
+        rankObserved: metadata.trending.rank === 1,
+        languageObserved: metadata.repository.language !== undefined,
+        starsObserved: metadata.repository.totalStars > 0,
+        starsGainedObserved: metadata.trending.starsGained > 0,
+      },
+    },
+    {
+      signalId: 'github-trending-page-rate-limit-budget',
+      status: 'passed' as const,
+      observedAt,
+      evidence: {
+        summary: 'GitHub Trending live smoke uses a bounded timeout and maxItems limit for public page budget control.',
+        timeoutMs: 15_000,
+        maxItems: 5,
+        degradationSignalRecorded: true,
+      },
+    },
+  ];
+
+  writeEvidenceIfRequested({
+    sampledAt: observedAt,
+    providerResults: [
+      {
+        providerKey: provider.key(),
+        status: 'passed',
+        signalResults,
+      },
+    ],
+  });
+
   console.log(
     JSON.stringify(
       {
         ok: true,
         providerKey: provider.key(),
-        signals: [
-          {
-            signalId: 'github-trending-page-live-smoke',
-            evidence: {
-              summary: 'GitHub Trending live page returned normalized repositories with canonical GitHub URLs.',
-              repositoryCount: result.items.length,
-              topRankIsOne: metadata.trending.rank === 1,
-              canonicalUrlsObserved: result.items.every((item) =>
-                item.canonicalUrl.startsWith('https://github.com/'),
-              ),
-              window: metadata.trending.window,
-            },
-          },
-          {
-            signalId: 'github-trending-page-parser-drift',
-            evidence: {
-              summary: 'GitHub Trending parser observed rank, language, total stars and stars gained fields.',
-              rankObserved: metadata.trending.rank === 1,
-              languageObserved: metadata.repository.language !== undefined,
-              starsObserved: metadata.repository.totalStars > 0,
-              starsGainedObserved: metadata.trending.starsGained > 0,
-            },
-          },
-          {
-            signalId: 'github-trending-page-rate-limit-budget',
-            evidence: {
-              summary: 'GitHub Trending live smoke uses a bounded timeout and maxItems limit for public page budget control.',
-              timeoutMs: 15_000,
-              maxItems: 5,
-              degradationSignalRecorded: true,
-            },
-          },
-        ],
+        signals: signalResults,
         itemCount: result.items.length,
         topRepository: metadata.repository.fullName,
         topRank: metadata.trending.rank,
@@ -107,6 +135,69 @@ async function main(): Promise<void> {
       2,
     ),
   );
+}
+
+function writeEvidenceIfRequested(evidence: {
+  readonly sampledAt: string;
+  readonly providerResults: readonly unknown[];
+}): void {
+  const evidencePath = readOptionalEnv(liveEvidencePathEnv);
+  if (evidencePath === undefined) {
+    return;
+  }
+
+  const artifact = {
+    schemaVersion: 1,
+    format: liveArtifactFormat,
+    artifactId: 'github-trending-page-live-evidence-v1',
+    environmentId: readRequiredEnv(environmentIdEnv),
+    imageDigest: readRequiredImageDigest(),
+    commitSha: readRequiredCommitSha(),
+    operator: readRequiredEnv(operatorEnv),
+    sampledAt: evidence.sampledAt,
+    provenance: {
+      evidenceKind: 'live_network',
+      collectionMethod: 'Live GitHub Trending public page smoke executed for the promoted backend image.',
+      runner: 'scripts/check-github-trending-page-live-smoke.ts',
+      fixtureOnly: false,
+    },
+    redaction: {
+      secretsIncluded: false,
+      rawProviderPayloadsIncluded: false,
+      credentialValuesIncluded: false,
+      privateNetworkUrlsIncluded: false,
+    },
+    providerResults: evidence.providerResults,
+  };
+
+  writeLiveEvidenceArtifactAtomically(
+    evidencePath,
+    `${JSON.stringify(artifact, null, 2)}\n`,
+    liveEvidencePathEnv,
+  );
+}
+
+function readOptionalEnv(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value === undefined || value.length === 0 ? undefined : value;
+}
+
+function readRequiredEnv(name: string): string {
+  const value = readOptionalEnv(name);
+  assert(value !== undefined, `${liveEvidencePathEnv} requires ${name}`);
+  return value;
+}
+
+function readRequiredImageDigest(): string {
+  const imageDigest = readRequiredEnv(imageDigestEnv);
+  assert(/^sha256:[0-9a-f]{64}$/.test(imageDigest), `${imageDigestEnv} must be an immutable sha256 digest`);
+  return imageDigest;
+}
+
+function readRequiredCommitSha(): string {
+  const commitSha = readRequiredEnv(commitShaEnv);
+  assert(/^[0-9a-f]{40}$/.test(commitSha), `${commitShaEnv} must be a full 40-character lowercase git commit SHA`);
+  return commitSha;
 }
 
 function assert(condition: unknown, message: string): asserts condition {
