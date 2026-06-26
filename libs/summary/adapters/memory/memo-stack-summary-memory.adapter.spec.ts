@@ -534,14 +534,59 @@ describe('MemoStackSummaryMemoryAdapter', () => {
         },
         {
           data: {
-            rendered_text: '',
-            diagnostics: { scope_not_found: true },
+            rendered_text: 'Fallback provider quality memory.',
+            items: [
+              {
+                item_id: 'provider-quality-fact-1',
+                item_type: 'fact',
+                text: 'Provider quality prefers GitHub security evidence.',
+                source_refs: [
+                  {
+                    source_type: 'social-monitor.summary-feedback',
+                    source_id: 'feedback-provider-quality',
+                  },
+                ],
+              },
+            ],
+            answer_support: {
+              status: 'partial',
+              items_returned: 1,
+              warnings: ['provider-quality-only'],
+            },
+            diagnostics: {
+              vector_status: 'ok',
+              retrieval_sources_used: ['vector'],
+              retrieval_sources_total: 1,
+              retrieval_sources_returned: 1,
+              items_considered: 2,
+              items_used: 1,
+              facts_considered: 2,
+              facts_used: 1,
+              source_refs_total: 1,
+              source_refs_returned: 1,
+              stale_facts_considered: 1,
+              stale_facts_used: 1,
+            },
           },
         },
         {
           data: {
             rendered_text: 'Fallback topic feedback memory.',
-            diagnostics: { source: 'topic-feedback' },
+            answer_support: {
+              status: 'supported',
+              items_returned: 1,
+              warnings: ['topic-feedback-only'],
+            },
+            diagnostics: {
+              graph_status: 'ok',
+              retrieval_sources_used: ['graph'],
+              retrieval_sources_total: 1,
+              retrieval_sources_returned: 1,
+              items_considered: 3,
+              items_used: 1,
+              facts_considered: 3,
+              facts_used: 1,
+            },
           },
         },
       ], requests),
@@ -559,10 +604,38 @@ describe('MemoStackSummaryMemoryAdapter', () => {
 
     expect(result).toEqual({
       status: 'available',
-      renderedText: 'Fallback topic feedback memory.',
+      renderedText: 'Fallback provider quality memory.\nFallback topic feedback memory.',
+      sourceRefs: [
+        {
+          source_type: 'social-monitor.summary-feedback',
+          source_id: 'feedback-provider-quality',
+        },
+      ],
+      retrieval: {
+        vectorStatus: 'ok',
+        graphStatus: 'ok',
+        retrievalSourcesUsed: ['vector', 'graph'],
+        retrievalSourcesTotal: 2,
+        retrievalSourcesReturned: 2,
+        itemsConsidered: 5,
+        itemsUsed: 2,
+        factsConsidered: 5,
+        factsUsed: 2,
+        sourceRefsTotal: 1,
+        sourceRefsReturned: 1,
+      },
+      staleMarkers: {
+        staleFactsConsidered: 1,
+        staleFactsUsed: 1,
+      },
+      support: {
+        status: 'partial,supported',
+        itemsReturned: 2,
+        warnings: ['provider-quality-only', 'topic-feedback-only'],
+      },
       diagnostics: {
         fallbackFromScopeNotFound: true,
-        fallbackScopesUsed: 1,
+        fallbackScopesUsed: 2,
       },
       retrievedAt: new Date('2026-06-06T00:11:00.000Z'),
     });

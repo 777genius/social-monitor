@@ -95,6 +95,34 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
 
     expect(artifacts[0]?.freshness).toBe('stale');
   });
+
+  it('preserves fallback memory retrieval diagnostics in reader context text', async () => {
+    const memory = new CapturingSummaryMemory({
+      status: 'available',
+      renderedText: 'Fallback provider quality memory.\nFallback topic feedback memory.',
+      retrieval: {
+        retrievalSourcesUsed: ['vector', 'graph'],
+        factsUsed: 2,
+        itemsUsed: 2,
+      },
+      staleMarkers: { staleFactsUsed: 1 },
+      diagnostics: { fallbackFromScopeNotFound: true, fallbackScopesUsed: 2 },
+      retrievedAt: new Date('2026-06-26T08:00:00.000Z'),
+    });
+
+    const artifacts = await new SummaryMemoryReaderSummaryContextProvider(memory).buildContext({
+      tenantId: tenantId('tenant-memory-reader'),
+      workspaceId: workspaceId('workspace-memory-reader'),
+      scope: topicReaderSummaryScope('topic-ai'),
+      evidence: makeReaderEvidenceSelection(),
+      requestedAt: new Date('2026-06-26T08:01:00.000Z'),
+    });
+
+    expect(artifacts[0]).toEqual(expect.objectContaining({
+      summaryText: expect.stringContaining('Memory retrieval diagnostics: sources=vector, graph; facts_used=2; items_used=2'),
+      freshness: 'stale',
+    }));
+  });
 });
 
 class CapturingSummaryMemory implements SummaryMemoryPort {

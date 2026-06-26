@@ -36,6 +36,7 @@ import {
   providerQualitySignal,
   providerQualityTags,
 } from './memo-stack-summary-feedback-memory';
+import { mergeFallbackContexts } from './memo-stack-summary-memory-context-merge';
 
 type MemoStackSummaryMemoryClient = Pick<InfinityContextClient, 'context' | 'workflows'>;
 
@@ -327,41 +328,6 @@ const presentMemoryContext = (
     diagnostics,
     retrievedAt,
   };
-};
-
-const mergeFallbackContexts = (
-  contexts: readonly SummaryMemoryContext[],
-  retrievedAt: Date,
-): SummaryMemoryContext => {
-  const renderedText = [...new Set(contexts
-    .map((context) => context.renderedText?.trim())
-    .filter((text): text is string => text !== undefined && text.length > 0))]
-    .join('\n');
-  const sourceRefs = mergeSourceRefs(contexts);
-
-  return {
-    status: renderedText.length === 0 ? 'empty' : 'available',
-    renderedText: renderedText.length === 0 ? undefined : renderedText,
-    sourceRefs: sourceRefs.length === 0 ? undefined : sourceRefs,
-    diagnostics: {
-      fallbackFromScopeNotFound: true,
-      fallbackScopesUsed: contexts.length,
-    },
-    retrievedAt,
-  };
-};
-
-const mergeSourceRefs = (contexts: readonly SummaryMemoryContext[]): readonly SummaryMemorySourceRef[] => {
-  const refs = new Map<string, SummaryMemorySourceRef>();
-  for (const context of contexts) {
-    for (const ref of context.sourceRefs ?? []) {
-      const sourceType = typeof ref.source_type === 'string' ? ref.source_type : 'unknown';
-      const sourceId = typeof ref.source_id === 'string' ? ref.source_id : JSON.stringify(ref);
-      refs.set(`${sourceType}:${sourceId}`, ref);
-    }
-  }
-
-  return [...refs.values()];
 };
 
 const summaryMemorySourceRefs = (data: ContextBundleData | undefined): readonly SummaryMemorySourceRef[] | undefined => {
