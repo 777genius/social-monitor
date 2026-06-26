@@ -1596,6 +1596,38 @@ export const mobileApiOperations = [
     ]
   },
   {
+    "operationId": "SourceBindingController_dailyHistory",
+    "clientName": "SourceBindingController_dailyHistory",
+    "method": "GET",
+    "path": "/topics/{topicId}/source-bindings/daily-history",
+    "tags": [
+      "source-bindings"
+    ],
+    "summary": "List daily source scan history for a topic grouped by provider.",
+    "pathParameters": [
+      "topicId"
+    ],
+    "queryParameters": [
+      "days"
+    ],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ListTopicSourceDailyHistoryResponseDto"
+    ]
+  },
+  {
     "operationId": "SourceBindingController_overview",
     "clientName": "SourceBindingController_overview",
     "method": "GET",

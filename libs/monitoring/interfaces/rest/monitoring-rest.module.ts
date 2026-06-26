@@ -60,6 +60,7 @@ import { ListSourceBindingDailyHistoryUseCase } from '../../features/list-source
 import { ListSourceBindingOverviewUseCase } from '../../features/list-source-binding-overview/list-source-binding-overview.use-case';
 import { ListSourceBindingScansUseCase } from '../../features/list-source-binding-scans/list-source-binding-scans.use-case';
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
+import { ListTopicSourceDailyHistoryUseCase } from '../../features/list-topic-source-daily-history/list-topic-source-daily-history.use-case';
 import { ListTopicsUseCase } from '../../features/list-topics/list-topics.use-case';
 import { RecordScanExecutionUseCase } from '../../features/record-scan-execution/record-scan-execution.use-case';
 import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
@@ -453,8 +454,30 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
         new ListSourceBindingOverviewUseCase(
           listSourceBindings,
           getSourceBindingHealth,
-        ),
+      ),
       inject: [ListSourceBindingsUseCase, GetSourceBindingHealthUseCase],
+    },
+    {
+      provide: ListTopicSourceDailyHistoryUseCase,
+      useFactory: (
+        topics: TopicRepositoryPort,
+        bindings: SourceBindingRepositoryPort,
+        scanJobs: ScanJobRepositoryPort & ScanJobHistoryReadPort,
+        scanExecutionAttempts: ScanExecutionAttemptReadPort,
+      ) =>
+        new ListTopicSourceDailyHistoryUseCase(
+          topics,
+          bindings,
+          scanJobs,
+          scanExecutionAttempts,
+          new SystemClock(),
+        ),
+      inject: [
+        MONITORING_TOPIC_REPOSITORY,
+        MONITORING_SOURCE_BINDING_REPOSITORY,
+        MONITORING_SCAN_JOB_REPOSITORY,
+        MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
+      ],
     },
     {
       provide: SetScanPolicyUseCase,

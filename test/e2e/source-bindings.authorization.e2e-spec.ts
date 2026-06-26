@@ -117,6 +117,19 @@ describe('Source binding workspace authorization (e2e)', () => {
         action: 'source_bindings.read',
       },
     });
+    await request(app.getHttpServer())
+      .get(`/topics/${topic.body.topicId}/source-bindings/daily-history`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .expect(403)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'authorization.denied',
+          details: {
+            action: 'source_bindings.read',
+          },
+        });
+      });
 
     const overview = await request(app.getHttpServer())
       .get(`/topics/${topic.body.topicId}/source-bindings/overview`)
@@ -132,5 +145,32 @@ describe('Source binding workspace authorization (e2e)', () => {
         }),
       }),
     ]);
+
+    await request(app.getHttpServer())
+      .get(`/topics/${topic.body.topicId}/source-bindings/daily-history`)
+      .query({ days: 2 })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          topicId: topic.body.topicId,
+          summary: {
+            sourceBindingCount: 1,
+            totalScans: 0,
+            providerBreakdown: [
+              expect.objectContaining({
+                providerKey: 'fake-source',
+                sourceBindingCount: 1,
+              }),
+            ],
+          },
+          days: [
+            expect.objectContaining({ totalScans: 0 }),
+            expect.objectContaining({ totalScans: 0 }),
+          ],
+        });
+      });
   });
 });

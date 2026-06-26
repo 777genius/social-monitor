@@ -173,11 +173,15 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .set('idempotency-key', 'contract-scan')
       .expect(201);
 
-    expect(scan.body).toEqual({
+    expect(scan.body).toEqual(expect.objectContaining({
       scanJobId: expect.any(String),
       status: 'enqueued',
       created: true,
-    });
+      requestDecision: expect.objectContaining({
+        decision: 'created',
+        reason: 'manual_scan_enqueued',
+      }),
+    }));
     expect(queue.all()).toHaveLength(1);
     expect(queue.all()[0]?.payload).toEqual(expect.objectContaining({
       providerKey: 'fake-source',
@@ -249,7 +253,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .set('x-workspace-role', 'viewer')
       .expect(200)
       .expect((response) => {
-        expect(response.body).toEqual({
+        expect(response.body).toEqual(expect.objectContaining({
           items: [
             expect.objectContaining({
               sourceBindingId: binding.body.sourceBindingId,
@@ -260,7 +264,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
               title: 'Fake source post 1',
             }),
           ],
-        });
+        }));
       });
     await request(api.getHttpServer())
       .get(`/scan-requests/${scan.body.scanJobId}/status`)
@@ -274,6 +278,44 @@ describe('API to ingestion worker queue contract (e2e)', () => {
           status: 'succeeded',
           completedAt: expect.any(String),
         });
+      });
+    await request(api.getHttpServer())
+      .get(`/topics/${topic.body.topicId}/source-bindings/daily-history`)
+      .query({ days: 1 })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toEqual(expect.objectContaining({
+          topicId: topic.body.topicId,
+          summary: expect.objectContaining({
+            sourceBindingCount: 1,
+            totalScans: 1,
+            succeededScans: 1,
+            skippedDuplicates: 0,
+            lastCompletedAt: expect.any(String),
+            providerBreakdown: [
+              expect.objectContaining({
+                providerKey: 'fake-source',
+                sourceBindingCount: 1,
+                totalScans: 1,
+                succeededScans: 1,
+              }),
+            ],
+          }),
+          days: [
+            expect.objectContaining({
+              providerBreakdown: [
+                expect.objectContaining({
+                  providerKey: 'fake-source',
+                  totalScans: 1,
+                  succeededScans: 1,
+                }),
+              ],
+            }),
+          ],
+        }));
       });
 
     await workerModuleRef.close();
@@ -375,7 +417,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .set('x-workspace-role', 'viewer')
       .expect(200)
       .expect((response) => {
-        expect(response.body).toEqual({
+        expect(response.body).toEqual(expect.objectContaining({
           items: [
             expect.objectContaining({
               sourceBindingId: binding.body.sourceBindingId,
@@ -388,7 +430,19 @@ describe('API to ingestion worker queue contract (e2e)', () => {
               canonicalUrl: 'https://example.test/rss/item-1',
             }),
           ],
-        });
+          sourceBreakdown: expect.objectContaining({
+            providerCount: 1,
+            sourceCount: 1,
+            totalItems: 2,
+            sources: [
+              expect.objectContaining({
+                providerKey: 'rss',
+                itemCount: 2,
+                sourceBindingIds: [binding.body.sourceBindingId],
+              }),
+            ],
+          }),
+        }));
       });
 
     await request(api.getHttpServer())

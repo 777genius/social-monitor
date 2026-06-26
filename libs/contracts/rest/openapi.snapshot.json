@@ -2214,6 +2214,46 @@
         ],
         "type": "object"
       },
+      "ListTopicSourceDailyHistoryResponseDto": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/TopicSourceDailyHistoryDayResponseDto"
+            },
+            "type": "array"
+          },
+          "maxScanJobs": {
+            "type": "number"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/TopicSourceDailyHistorySummaryResponseDto"
+          },
+          "topicId": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "windowEndedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "windowStartedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "topicId",
+          "windowStartedAt",
+          "windowEndedAt",
+          "summary",
+          "days",
+          "truncated",
+          "maxScanJobs"
+        ],
+        "type": "object"
+      },
       "ListTopicsResponseDto": {
         "properties": {
           "nextCursor": {
@@ -4578,6 +4618,302 @@
           "name",
           "query",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "TopicSourceDailyHistoryDayResponseDto": {
+        "properties": {
+          "activeScans": {
+            "type": "number"
+          },
+          "consecutiveFailures": {
+            "type": "number"
+          },
+          "date": {
+            "type": "string"
+          },
+          "failedScans": {
+            "type": "number"
+          },
+          "fetched": {
+            "type": "number"
+          },
+          "inserted": {
+            "type": "number"
+          },
+          "lastCompletedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastScanRequestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "projected": {
+            "type": "number"
+          },
+          "providerBreakdown": {
+            "items": {
+              "$ref": "#/components/schemas/TopicSourceDailyHistoryProviderResponseDto"
+            },
+            "type": "array"
+          },
+          "providerHealthState": {
+            "enum": [
+              "unknown",
+              "operational",
+              "degraded",
+              "down"
+            ],
+            "type": "string"
+          },
+          "providerUnavailableScans": {
+            "type": "number"
+          },
+          "rateLimitedScans": {
+            "type": "number"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "skippedDuplicates": {
+            "type": "number"
+          },
+          "sourceBindingCount": {
+            "type": "number"
+          },
+          "succeededScans": {
+            "type": "number"
+          },
+          "totalScans": {
+            "type": "number"
+          },
+          "windowEndedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "windowStartedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "windowStartedAt",
+          "windowEndedAt",
+          "providerHealthState",
+          "sourceBindingCount",
+          "totalScans",
+          "succeededScans",
+          "failedScans",
+          "activeScans",
+          "rateLimitedScans",
+          "providerUnavailableScans",
+          "consecutiveFailures",
+          "fetched",
+          "inserted",
+          "skippedDuplicates",
+          "projected",
+          "operatorAction",
+          "signals",
+          "providerBreakdown"
+        ],
+        "type": "object"
+      },
+      "TopicSourceDailyHistoryProviderResponseDto": {
+        "properties": {
+          "activeScans": {
+            "type": "number"
+          },
+          "consecutiveFailures": {
+            "type": "number"
+          },
+          "failedScans": {
+            "type": "number"
+          },
+          "fetched": {
+            "type": "number"
+          },
+          "inserted": {
+            "type": "number"
+          },
+          "lastCompletedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastScanRequestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "projected": {
+            "type": "number"
+          },
+          "providerHealthState": {
+            "enum": [
+              "unknown",
+              "operational",
+              "degraded",
+              "down"
+            ],
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "providerUnavailableScans": {
+            "type": "number"
+          },
+          "rateLimitedScans": {
+            "type": "number"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "skippedDuplicates": {
+            "type": "number"
+          },
+          "sourceBindingCount": {
+            "type": "number"
+          },
+          "succeededScans": {
+            "type": "number"
+          },
+          "totalScans": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "providerKey",
+          "sourceBindingCount",
+          "providerHealthState",
+          "totalScans",
+          "succeededScans",
+          "failedScans",
+          "activeScans",
+          "rateLimitedScans",
+          "providerUnavailableScans",
+          "consecutiveFailures",
+          "fetched",
+          "inserted",
+          "skippedDuplicates",
+          "projected",
+          "operatorAction",
+          "signals"
+        ],
+        "type": "object"
+      },
+      "TopicSourceDailyHistorySummaryResponseDto": {
+        "properties": {
+          "activeScans": {
+            "type": "number"
+          },
+          "consecutiveFailures": {
+            "type": "number"
+          },
+          "daysWithFailures": {
+            "type": "number"
+          },
+          "daysWithRateLimits": {
+            "type": "number"
+          },
+          "daysWithScans": {
+            "type": "number"
+          },
+          "failedScans": {
+            "type": "number"
+          },
+          "fetched": {
+            "type": "number"
+          },
+          "inserted": {
+            "type": "number"
+          },
+          "lastCompletedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastScanRequestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "projected": {
+            "type": "number"
+          },
+          "providerBreakdown": {
+            "items": {
+              "$ref": "#/components/schemas/TopicSourceDailyHistoryProviderResponseDto"
+            },
+            "type": "array"
+          },
+          "providerHealthState": {
+            "enum": [
+              "unknown",
+              "operational",
+              "degraded",
+              "down"
+            ],
+            "type": "string"
+          },
+          "providerUnavailableScans": {
+            "type": "number"
+          },
+          "rateLimitedScans": {
+            "type": "number"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "skippedDuplicates": {
+            "type": "number"
+          },
+          "sourceBindingCount": {
+            "type": "number"
+          },
+          "succeededScans": {
+            "type": "number"
+          },
+          "totalScans": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "providerHealthState",
+          "sourceBindingCount",
+          "totalScans",
+          "succeededScans",
+          "failedScans",
+          "activeScans",
+          "rateLimitedScans",
+          "providerUnavailableScans",
+          "consecutiveFailures",
+          "fetched",
+          "inserted",
+          "skippedDuplicates",
+          "projected",
+          "daysWithScans",
+          "daysWithFailures",
+          "daysWithRateLimits",
+          "operatorAction",
+          "signals",
+          "providerBreakdown"
         ],
         "type": "object"
       },
@@ -8164,6 +8500,79 @@
           }
         },
         "summary": "Pause or resume a source binding.",
+        "tags": [
+          "source-bindings"
+        ]
+      }
+    },
+    "/topics/{topicId}/source-bindings/daily-history": {
+      "get": {
+        "operationId": "SourceBindingController_dailyHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topicId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Topic source history reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListTopicSourceDailyHistoryResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "List daily source scan history for a topic grouped by provider.",
         "tags": [
           "source-bindings"
         ]

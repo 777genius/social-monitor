@@ -56,6 +56,7 @@ import { ListSourceBindingDailyHistoryUseCase } from "@social-monitor/monitoring
 import { ListSourceBindingOverviewUseCase } from "@social-monitor/monitoring/features/list-source-binding-overview/list-source-binding-overview.use-case";
 import { ListSourceBindingScansUseCase } from "@social-monitor/monitoring/features/list-source-binding-scans/list-source-binding-scans.use-case";
 import { ListSourceBindingsUseCase } from "@social-monitor/monitoring/features/list-source-bindings/list-source-bindings.use-case";
+import { ListTopicSourceDailyHistoryUseCase } from "@social-monitor/monitoring/features/list-topic-source-daily-history/list-topic-source-daily-history.use-case";
 import { ListTopicsUseCase } from "@social-monitor/monitoring/features/list-topics/list-topics.use-case";
 import { RequestScanUseCase } from "@social-monitor/monitoring/features/request-scan/request-scan.use-case";
 import { SetScanPolicyUseCase } from "@social-monitor/monitoring/features/set-scan-policy/set-scan-policy.use-case";
@@ -202,6 +203,7 @@ const useCaseProviders = [
   ListSourceBindingDailyHistoryUseCase,
   ListSourceBindingOverviewUseCase,
   ListSourceBindingScansUseCase,
+  ListTopicSourceDailyHistoryUseCase,
   ListSourceProfilesUseCase,
   ListSummariesUseCase,
   ListSummaryFeedbackUseCase,

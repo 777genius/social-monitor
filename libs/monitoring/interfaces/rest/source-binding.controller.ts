@@ -20,6 +20,7 @@ import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-b
 import { GetSourceBindingHealthUseCase } from '../../features/get-source-binding-health/get-source-binding-health.use-case';
 import { ListSourceBindingOverviewUseCase } from '../../features/list-source-binding-overview/list-source-binding-overview.use-case';
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
+import { ListTopicSourceDailyHistoryUseCase } from '../../features/list-topic-source-daily-history/list-topic-source-daily-history.use-case';
 import { BindSourceRequestDto, BindSourceResponseDto, normalizeSourceBindingConfig } from './bind-source.dto';
 import { ListSourceBindingsResponseDto } from './list-source-bindings.dto';
 import { ListSourceBindingOverviewResponseDto } from './source-binding-overview.dto';
@@ -28,6 +29,7 @@ import {
   ChangeSourceBindingStatusResponseDto,
 } from './source-binding-status.dto';
 import { SourceBindingHealthResponseDto } from './source-binding-health.dto';
+import { ListTopicSourceDailyHistoryResponseDto } from './topic-source-daily-history.dto';
 
 @ApiTags('source-bindings')
 @Controller('topics/:topicId/source-bindings')
@@ -37,6 +39,7 @@ export class SourceBindingController {
     private readonly changeSourceBindingStatus: ChangeSourceBindingStatusUseCase,
     private readonly listSourceBindings: ListSourceBindingsUseCase,
     private readonly listSourceBindingOverview: ListSourceBindingOverviewUseCase,
+    private readonly listTopicSourceDailyHistory: ListTopicSourceDailyHistoryUseCase,
     private readonly getSourceBindingHealth: GetSourceBindingHealthUseCase,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
@@ -198,6 +201,54 @@ export class SourceBindingController {
         invalidMessage: 'Source binding overview limit must be between 1 and 100',
       }),
       cursor,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
+
+  @Get('daily-history')
+  @ApiOperation({ summary: 'List daily source scan history for a topic grouped by provider.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:topics',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Topic source history reads allow owner, admin, member or viewer.',
+  })
+  @ApiQuery({ name: 'days', required: false, type: Number })
+  @ApiOkResponse({ type: ListTopicSourceDailyHistoryResponseDto })
+  async dailyHistory(
+    @Param('topicId') topicId: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
+    @Query('days') daysQuery: string | undefined,
+  ): Promise<ListTopicSourceDailyHistoryResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+    await this.authorizeSourceBindingRead(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
+
+    const result = await this.listTopicSourceDailyHistory.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      topicId,
+      days: parsePaginationLimit(daysQuery, {
+        defaultLimit: 14,
+        maxLimit: 90,
+        fieldName: 'days',
+        invalidMessage: 'Topic source history days must be between 1 and 90',
+      }),
     });
 
     if (!result.ok) {
