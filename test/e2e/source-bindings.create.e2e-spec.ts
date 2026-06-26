@@ -89,6 +89,20 @@ describe('Bind source flow (e2e)', () => {
       .expect(200);
 
     expect(overview.body).toEqual({
+      summary: expect.objectContaining({
+        totalBindings: 1,
+        notConfiguredBindings: 1,
+        attentionRequiredBindings: 1,
+        operatorAction: 'create_scan_policy_for_source_binding',
+        signals: ['source_not_configured'],
+        providerBreakdown: [
+          expect.objectContaining({
+            providerKey: 'fake-source',
+            totalBindings: 1,
+            notConfiguredBindings: 1,
+          }),
+        ],
+      }),
       items: [
         expect.objectContaining({
           sourceBinding: expect.objectContaining({

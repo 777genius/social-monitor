@@ -2138,9 +2138,13 @@
           },
           "nextCursor": {
             "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SourceBindingOverviewSummaryResponseDto"
           }
         },
         "required": [
+          "summary",
           "items"
         ],
         "type": "object"
@@ -3542,6 +3546,157 @@
           "reason",
           "minimumIntervalSeconds",
           "signals"
+        ],
+        "type": "object"
+      },
+      "SourceBindingOverviewProviderBreakdownResponseDto": {
+        "properties": {
+          "canScanNowBindings": {
+            "type": "number"
+          },
+          "degradedBindings": {
+            "type": "number"
+          },
+          "freshSuccessSkips": {
+            "type": "number"
+          },
+          "healthyBindings": {
+            "type": "number"
+          },
+          "nextEligibleAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "notConfiguredBindings": {
+            "type": "number"
+          },
+          "pausedBindings": {
+            "type": "number"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "providerUnavailableScans": {
+            "type": "number"
+          },
+          "rateLimitBackoffSkips": {
+            "type": "number"
+          },
+          "scanningBindings": {
+            "type": "number"
+          },
+          "scheduledBindings": {
+            "type": "number"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "staleBindings": {
+            "type": "number"
+          },
+          "totalBindings": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "providerKey",
+          "totalBindings",
+          "healthyBindings",
+          "staleBindings",
+          "degradedBindings",
+          "scanningBindings",
+          "pausedBindings",
+          "notConfiguredBindings",
+          "scheduledBindings",
+          "canScanNowBindings",
+          "freshSuccessSkips",
+          "rateLimitBackoffSkips",
+          "providerUnavailableScans",
+          "signals"
+        ],
+        "type": "object"
+      },
+      "SourceBindingOverviewSummaryResponseDto": {
+        "properties": {
+          "attentionRequiredBindings": {
+            "type": "number"
+          },
+          "canScanNowBindings": {
+            "type": "number"
+          },
+          "degradedBindings": {
+            "type": "number"
+          },
+          "freshSuccessSkips": {
+            "type": "number"
+          },
+          "healthyBindings": {
+            "type": "number"
+          },
+          "nextEligibleAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "notConfiguredBindings": {
+            "type": "number"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "pausedBindings": {
+            "type": "number"
+          },
+          "providerBreakdown": {
+            "items": {
+              "$ref": "#/components/schemas/SourceBindingOverviewProviderBreakdownResponseDto"
+            },
+            "type": "array"
+          },
+          "providerUnavailableScans": {
+            "type": "number"
+          },
+          "rateLimitedBindings": {
+            "type": "number"
+          },
+          "scanningBindings": {
+            "type": "number"
+          },
+          "scheduledBindings": {
+            "type": "number"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "staleBindings": {
+            "type": "number"
+          },
+          "totalBindings": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "totalBindings",
+          "healthyBindings",
+          "staleBindings",
+          "degradedBindings",
+          "scanningBindings",
+          "pausedBindings",
+          "notConfiguredBindings",
+          "scheduledBindings",
+          "canScanNowBindings",
+          "freshSuccessSkips",
+          "rateLimitedBindings",
+          "providerUnavailableScans",
+          "attentionRequiredBindings",
+          "operatorAction",
+          "signals",
+          "providerBreakdown"
         ],
         "type": "object"
       },

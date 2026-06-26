@@ -42,6 +42,26 @@ describe('ListSourceBindingOverviewUseCase', () => {
     expect(result).toEqual({
       ok: true,
       value: {
+        summary: expect.objectContaining({
+          totalBindings: 2,
+          healthyBindings: 1,
+          scheduledBindings: 1,
+          attentionRequiredBindings: 0,
+          operatorAction: 'monitor_sources',
+          signals: ['scheduled_later'],
+          providerBreakdown: [
+            expect.objectContaining({
+              providerKey: 'github-trending-page',
+              totalBindings: 1,
+              scheduledBindings: 1,
+            }),
+            expect.objectContaining({
+              providerKey: 'reddit',
+              totalBindings: 1,
+              healthyBindings: 1,
+            }),
+          ],
+        }),
         items: [
           expect.objectContaining({
             sourceBinding: expect.objectContaining({ id: 'binding-reddit', providerKey: 'reddit' }),
@@ -69,6 +89,106 @@ describe('ListSourceBindingOverviewUseCase', () => {
       workspaceId: workspace,
       topicId: 'topic-overview',
       sourceBindingId: 'binding-github',
+    });
+  });
+
+  it('summarizes scheduler freshness, rate-limit and provider health signals by provider', async () => {
+    const listSourceBindings = {
+      execute: jest.fn().mockResolvedValue(ok({
+        sourceBindings: [
+          makeSourceBindingView({ id: 'binding-ready', providerKey: 'rss' }),
+          makeSourceBindingView({ id: 'binding-rate-limited', providerKey: 'reddit' }),
+          makeSourceBindingView({ id: 'binding-stale', providerKey: 'reddit' }),
+        ],
+      })),
+    };
+    const getSourceBindingHealth = {
+      execute: jest.fn()
+        .mockResolvedValueOnce(ok(makeHealthView({
+          sourceBinding: makeSourceBindingView({ id: 'binding-ready', providerKey: 'rss' }),
+          schedulerDecision: {
+            canScanNow: true,
+            decision: 'ready',
+            reason: 'scan_due',
+            minimumIntervalSeconds: 300,
+            signals: ['scan_due'],
+          },
+        })))
+        .mockResolvedValueOnce(ok(makeHealthView({
+          sourceBinding: makeSourceBindingView({ id: 'binding-rate-limited', providerKey: 'reddit' }),
+          healthState: 'degraded',
+          schedulerDecision: {
+            canScanNow: false,
+            decision: 'rate_limit_backoff',
+            reason: 'provider_rate_limited',
+            minimumIntervalSeconds: 900,
+            rateLimitBackoffUntil: '2026-06-26T00:30:00.000Z',
+            nextEligibleAt: '2026-06-26T00:30:00.000Z',
+            waitSeconds: 1800,
+            signals: ['rate_limit_backoff'],
+          },
+          recentWindow: {
+            providerHealthState: 'down',
+            windowStartedAt: '2026-06-25T00:00:00.000Z',
+            windowEndedAt: '2026-06-26T00:00:00.000Z',
+            totalScans: 2,
+            succeededScans: 0,
+            failedScans: 2,
+            activeScans: 0,
+            rateLimitedScans: 2,
+            providerUnavailableScans: 1,
+            consecutiveFailures: 2,
+            operatorAction: 'wait_for_provider_rate_limit_backoff',
+            signals: ['rate_limit_backoff', 'provider_unavailable'],
+          },
+        })))
+        .mockResolvedValueOnce(ok(makeHealthView({
+          sourceBinding: makeSourceBindingView({ id: 'binding-stale', providerKey: 'reddit' }),
+          healthState: 'stale',
+        }))),
+    };
+
+    const result = await new ListSourceBindingOverviewUseCase(
+      listSourceBindings,
+      getSourceBindingHealth,
+    ).execute({
+      tenantId: tenantId('tenant-overview'),
+      workspaceId: workspaceId('workspace-overview'),
+      topicId: 'topic-overview',
+      limit: 50,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        summary: expect.objectContaining({
+          totalBindings: 3,
+          canScanNowBindings: 1,
+          staleBindings: 1,
+          degradedBindings: 1,
+          rateLimitedBindings: 1,
+          providerUnavailableScans: 1,
+          attentionRequiredBindings: 2,
+          nextEligibleAt: '2026-06-26T00:05:00.000Z',
+          operatorAction: 'wait_for_provider_rate_limit_backoff',
+          signals: ['provider_unavailable', 'rate_limit_backoff', 'scan_ready', 'scheduled_later', 'stale_source_data'],
+          providerBreakdown: [
+            expect.objectContaining({
+              providerKey: 'reddit',
+              totalBindings: 2,
+              staleBindings: 1,
+              degradedBindings: 1,
+              rateLimitBackoffSkips: 1,
+              providerUnavailableScans: 1,
+            }),
+            expect.objectContaining({
+              providerKey: 'rss',
+              totalBindings: 1,
+              canScanNowBindings: 1,
+            }),
+          ],
+        }),
+      }),
     });
   });
 
