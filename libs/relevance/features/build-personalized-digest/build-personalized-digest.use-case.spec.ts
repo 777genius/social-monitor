@@ -58,6 +58,11 @@ describe('BuildPersonalizedDigestUseCase', () => {
 
     expect(result.ok && result.value).toEqual(expect.objectContaining({
       status: 'assembled',
+      memoryGuidance: expect.objectContaining({
+        status: 'disabled',
+        applied: false,
+        signals: ['memory_guidance_disabled'],
+      }),
       highSignalFeedItemIds: ['feed-digest-1'],
     }));
   });

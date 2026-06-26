@@ -65,6 +65,7 @@ export class BuildPersonalizedDigestUseCase {
         endedAt: command.windowEndedAt.toISOString(),
       },
       topicIds,
+      memoryGuidance: ranked.value.memoryGuidance,
       items,
       highSignalFeedItemIds: items
         .filter((item) => item.score >= 2)

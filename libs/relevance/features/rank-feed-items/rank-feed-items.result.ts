@@ -1,6 +1,17 @@
 import type { JsonObject } from '@social-monitor/shared-kernel';
 
 import type { SourceContentSafetyView, UserRelevanceProfileView } from '../shared/relevance-presenter';
+import type { RelevanceMemoryGuidanceStatus } from '../../ports';
+
+export type RelevanceMemoryGuidanceView = {
+  readonly status: RelevanceMemoryGuidanceStatus;
+  readonly applied: boolean;
+  readonly providerPreferenceCount: number;
+  readonly keywordPreferenceCount: number;
+  readonly mutedKeywordCount: number;
+  readonly blockedProviderCount: number;
+  readonly signals: readonly string[];
+};
 
 export type RankedFeedItemView = {
   readonly feedItemId: string;
@@ -28,5 +39,6 @@ export type RankFeedItemsResult = {
   readonly generatedAt: string;
   readonly profileApplied: boolean;
   readonly profile?: UserRelevanceProfileView;
+  readonly memoryGuidance?: RelevanceMemoryGuidanceView;
   readonly items: readonly RankedFeedItemView[];
 };

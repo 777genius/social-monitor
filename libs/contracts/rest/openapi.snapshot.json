@@ -1337,6 +1337,9 @@
             },
             "type": "array"
           },
+          "memoryGuidance": {
+            "$ref": "#/components/schemas/RelevanceMemoryGuidanceDto"
+          },
           "status": {
             "enum": [
               "assembled",
@@ -2391,6 +2394,9 @@
             },
             "type": "array"
           },
+          "memoryGuidance": {
+            "$ref": "#/components/schemas/RelevanceMemoryGuidanceDto"
+          },
           "profile": {
             "$ref": "#/components/schemas/UserRelevanceProfileDto"
           },
@@ -2711,6 +2717,50 @@
         "required": [
           "topicId",
           "providerKey"
+        ],
+        "type": "object"
+      },
+      "RelevanceMemoryGuidanceDto": {
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "blockedProviderCount": {
+            "type": "number"
+          },
+          "keywordPreferenceCount": {
+            "type": "number"
+          },
+          "mutedKeywordCount": {
+            "type": "number"
+          },
+          "providerPreferenceCount": {
+            "type": "number"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "disabled",
+              "available",
+              "empty",
+              "unavailable"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "applied",
+          "providerPreferenceCount",
+          "keywordPreferenceCount",
+          "mutedKeywordCount",
+          "blockedProviderCount",
+          "signals"
         ],
         "type": "object"
       },

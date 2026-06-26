@@ -29,6 +29,7 @@ const sourceContentSafetyCategories = [
 const sourceContentSafetyRetentionPolicies = ['normalized_preview_only'] as const;
 const relevanceLearningDirections = ['positive', 'negative', 'block_provider'] as const;
 const personalizedDigestStatuses = ['assembled', 'empty'] as const;
+const relevanceMemoryGuidanceStatuses = ['disabled', 'available', 'empty', 'unavailable'] as const;
 
 export class RelevanceWeightDto implements RelevanceWeight {
   @ApiProperty()
@@ -172,6 +173,29 @@ export class SourceContentSafetyDto {
   declare readonly retentionPolicy: string;
 }
 
+export class RelevanceMemoryGuidanceDto {
+  @ApiProperty({ enum: relevanceMemoryGuidanceStatuses })
+  declare readonly status: (typeof relevanceMemoryGuidanceStatuses)[number];
+
+  @ApiProperty()
+  declare readonly applied: boolean;
+
+  @ApiProperty()
+  declare readonly providerPreferenceCount: number;
+
+  @ApiProperty()
+  declare readonly keywordPreferenceCount: number;
+
+  @ApiProperty()
+  declare readonly mutedKeywordCount: number;
+
+  @ApiProperty()
+  declare readonly blockedProviderCount: number;
+
+  @ApiProperty({ type: [String] })
+  declare readonly signals: readonly string[];
+}
+
 export class RankedFeedItemDto {
   @ApiProperty()
   declare readonly feedItemId: string;
@@ -241,6 +265,9 @@ export class RankFeedItemsResponseDto {
   @ApiPropertyOptional({ type: () => UserRelevanceProfileDto })
   declare readonly profile?: UserRelevanceProfileDto;
 
+  @ApiPropertyOptional({ type: () => RelevanceMemoryGuidanceDto })
+  declare readonly memoryGuidance?: RelevanceMemoryGuidanceDto;
+
   @ApiProperty({ type: () => [RankedFeedItemDto] })
   declare readonly items: readonly RankedFeedItemDto[];
 }
@@ -265,6 +292,9 @@ export class BuildPersonalizedDigestResponseDto {
 
   @ApiProperty({ type: [String] })
   declare readonly topicIds: readonly string[];
+
+  @ApiPropertyOptional({ type: () => RelevanceMemoryGuidanceDto })
+  declare readonly memoryGuidance?: RelevanceMemoryGuidanceDto;
 
   @ApiProperty({ type: () => [RankedFeedItemDto] })
   declare readonly items: readonly RankedFeedItemDto[];

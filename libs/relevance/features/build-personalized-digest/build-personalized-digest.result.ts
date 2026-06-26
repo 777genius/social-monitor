@@ -1,4 +1,7 @@
-import type { RankedFeedItemView } from '../rank-feed-items/rank-feed-items.result';
+import type {
+  RankedFeedItemView,
+  RelevanceMemoryGuidanceView,
+} from '../rank-feed-items/rank-feed-items.result';
 
 export type BuildPersonalizedDigestResult = {
   readonly userId: string;
@@ -8,6 +11,7 @@ export type BuildPersonalizedDigestResult = {
     readonly endedAt: string;
   };
   readonly topicIds: readonly string[];
+  readonly memoryGuidance?: RelevanceMemoryGuidanceView;
   readonly items: readonly RankedFeedItemView[];
   readonly highSignalFeedItemIds: readonly string[];
 };

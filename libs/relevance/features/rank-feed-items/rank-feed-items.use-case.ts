@@ -33,6 +33,7 @@ import type { RankFeedItemsCommand } from "./rank-feed-items.command";
 import type {
   RankedFeedItemView,
   RankFeedItemsResult,
+  RelevanceMemoryGuidanceView,
 } from "./rank-feed-items.result";
 
 type RankFeedItemsFailure = DomainError | Error;
@@ -99,7 +100,7 @@ export class RankFeedItemsUseCase {
     const ranked = this.rankingPolicy.rank({
       candidates: rankingCandidates,
       profile,
-      memoryGuidance,
+      memoryGuidance: memoryGuidance.guidance,
       generatedAt,
       limit,
     });
@@ -128,6 +129,7 @@ export class RankFeedItemsUseCase {
       profileApplied: profile !== null,
       profile:
         profile === null ? undefined : presentUserRelevanceProfile(profile),
+      memoryGuidance: memoryGuidance.view,
       items,
     });
   }
@@ -138,9 +140,24 @@ export class RankFeedItemsUseCase {
     readonly tenantId: RankFeedItemsCommand["tenantId"];
     readonly workspaceId: RankFeedItemsCommand["workspaceId"];
     readonly generatedAt: Date;
-  }): Promise<RankingMemoryGuidance | undefined> {
+  }): Promise<{
+    readonly guidance?: RankingMemoryGuidance;
+    readonly view: RelevanceMemoryGuidanceView;
+  }> {
     if (params.userId === undefined || params.candidates.length === 0) {
-      return undefined;
+      return {
+        view: {
+          status: "disabled",
+          applied: false,
+          providerPreferenceCount: 0,
+          keywordPreferenceCount: 0,
+          mutedKeywordCount: 0,
+          blockedProviderCount: 0,
+          signals: params.userId === undefined
+            ? ["memory_guidance_requires_user"]
+            : ["memory_guidance_requires_candidates"],
+        },
+      };
     }
 
     try {
@@ -155,9 +172,22 @@ export class RankFeedItemsUseCase {
         requestedAt: params.generatedAt,
       });
 
-      return guidance.status === "available" ? guidance : undefined;
+      return {
+        guidance: guidance.status === "available" ? guidance : undefined,
+        view: presentMemoryGuidance(guidance),
+      };
     } catch {
-      return undefined;
+      return {
+        view: {
+          status: "unavailable",
+          applied: false,
+          providerPreferenceCount: 0,
+          keywordPreferenceCount: 0,
+          mutedKeywordCount: 0,
+          blockedProviderCount: 0,
+          signals: ["memory_guidance_unavailable"],
+        },
+      };
     }
   }
 }
@@ -251,3 +281,77 @@ const uniqueSorted = (values: readonly string[]): readonly string[] =>
     .map((value) => value.trim())
     .filter((value) => value.length > 0))]
     .sort((left, right) => left.localeCompare(right));
+
+const presentMemoryGuidance = (
+  guidance: Awaited<ReturnType<RelevanceMemoryGuidanceReaderPort["buildGuidance"]>>,
+): RelevanceMemoryGuidanceView => {
+  const providerPreferenceCount = guidance.providerPreferences?.length ?? 0;
+  const keywordPreferenceCount = guidance.keywordPreferences?.length ?? 0;
+  const mutedKeywordCount = guidance.mutedKeywords?.length ?? 0;
+  const blockedProviderCount = guidance.blockedProviderKeys?.length ?? 0;
+  const applied =
+    guidance.status === "available" &&
+    (
+      providerPreferenceCount > 0 ||
+      keywordPreferenceCount > 0 ||
+      mutedKeywordCount > 0 ||
+      blockedProviderCount > 0
+    );
+
+  return {
+    status: guidance.status,
+    applied,
+    providerPreferenceCount,
+    keywordPreferenceCount,
+    mutedKeywordCount,
+    blockedProviderCount,
+    signals: memoryGuidanceSignals({
+      status: guidance.status,
+      applied,
+      providerPreferenceCount,
+      keywordPreferenceCount,
+      mutedKeywordCount,
+      blockedProviderCount,
+    }),
+  };
+};
+
+const memoryGuidanceSignals = (params: {
+  readonly status: RelevanceMemoryGuidanceView["status"];
+  readonly applied: boolean;
+  readonly providerPreferenceCount: number;
+  readonly keywordPreferenceCount: number;
+  readonly mutedKeywordCount: number;
+  readonly blockedProviderCount: number;
+}): readonly string[] => {
+  if (params.status === "disabled") {
+    return ["memory_guidance_disabled"];
+  }
+
+  if (params.status === "unavailable") {
+    return ["memory_guidance_unavailable"];
+  }
+
+  if (params.status === "empty") {
+    return ["memory_guidance_empty"];
+  }
+
+  const signals = ["memory_guidance_available"];
+  if (params.providerPreferenceCount > 0) {
+    signals.push("memory_provider_preferences");
+  }
+  if (params.keywordPreferenceCount > 0) {
+    signals.push("memory_keyword_preferences");
+  }
+  if (params.mutedKeywordCount > 0) {
+    signals.push("memory_muted_keywords");
+  }
+  if (params.blockedProviderCount > 0) {
+    signals.push("memory_blocked_providers");
+  }
+  if (params.applied) {
+    signals.push("memory_guidance_applied");
+  }
+
+  return signals;
+};

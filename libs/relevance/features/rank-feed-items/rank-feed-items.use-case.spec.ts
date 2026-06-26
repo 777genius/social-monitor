@@ -277,6 +277,21 @@ describe('RankFeedItemsUseCase', () => {
       providerKeys: ['github', 'reddit', 'rss'],
     }));
     expect(JSON.stringify(memory.queries[0])).not.toContain('https://');
+    expect(result.value.memoryGuidance).toEqual({
+      status: 'available',
+      applied: true,
+      providerPreferenceCount: 1,
+      keywordPreferenceCount: 1,
+      mutedKeywordCount: 0,
+      blockedProviderCount: 1,
+      signals: [
+        'memory_guidance_available',
+        'memory_provider_preferences',
+        'memory_keyword_preferences',
+        'memory_blocked_providers',
+        'memory_guidance_applied',
+      ],
+    });
     expect(result.value.items.map((item) => item.feedItemId)).toEqual([
       'feed-memory-github',
       'feed-memory-reddit',
