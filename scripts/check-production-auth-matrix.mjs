@@ -38,6 +38,21 @@ const requiredNegativeCases = new Set([
   'write-scope-matrix',
   'reader-surface-tenant-isolation',
 ]);
+const allowedRoles = new Set(['owner', 'admin', 'member', 'viewer']);
+const allowedAuthModes = new Set(['bearer-oidc-jwt', 'workspace-role-dev-test']);
+const allowedApiKeyScopes = new Set([
+  'read:delivery_status',
+  'read:feed',
+  'read:summaries',
+  'read:topics',
+  'read:webhook_endpoints',
+  'write:delivery_status',
+  'write:scan_requests',
+  'write:source_bindings',
+  'write:summaries',
+  'write:topics',
+  'write:webhook_endpoints',
+]);
 
 if (matrix.schemaVersion !== 1) {
   violations.push(`${matrixPath}: schemaVersion must be 1`);
@@ -101,9 +116,23 @@ for (const surface of matrix.surfaces ?? []) {
     }
     if (!Array.isArray(operation.roles) || operation.roles.length === 0) {
       violations.push(`${matrixPath}: protected operation "${key}" must define allowed roles`);
+    } else {
+      for (const role of operation.roles) {
+        if (!allowedRoles.has(role)) {
+          violations.push(`${matrixPath}: protected operation "${key}" declares unsupported role "${role}"`);
+        }
+      }
+    }
+    if (operation.apiKeyScope !== undefined && !allowedApiKeyScopes.has(operation.apiKeyScope)) {
+      violations.push(`${matrixPath}: protected operation "${key}" declares unsupported apiKeyScope "${operation.apiKeyScope}"`);
     }
     if (operation.apiKeyScope === undefined) {
       const authModes = new Set(operation.authModes ?? []);
+      for (const authMode of authModes) {
+        if (!allowedAuthModes.has(authMode)) {
+          violations.push(`${matrixPath}: protected operation "${key}" declares unsupported authMode "${authMode}"`);
+        }
+      }
       if (!authModes.has('bearer-oidc-jwt') || !authModes.has('workspace-role-dev-test')) {
         violations.push(`${matrixPath}: protected operation "${key}" without apiKeyScope must declare JWT and dev role authModes`);
       }
