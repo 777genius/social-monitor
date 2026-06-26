@@ -55,9 +55,9 @@ describe('redaction helpers', () => {
 
   it('redacts inline credentials before text leaves the trust boundary', () => {
     expect(redactSensitiveText(
-      'See token=memory-leak, secret=another-leak and private_key=key-leak.',
+      'See token=memory-leak, secret=another-leak, private_key=key-leak and https://user:pass@example.test/feed.',
     )).toBe(
-      `See token=${REDACTED_VALUE}, secret=${REDACTED_VALUE} and private_key=${REDACTED_VALUE}`,
+      `See token=${REDACTED_VALUE}, secret=${REDACTED_VALUE}, private_key=${REDACTED_VALUE} and https://${REDACTED_VALUE}@example.test/feed.`,
     );
   });
 });

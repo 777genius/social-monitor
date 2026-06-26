@@ -1,3 +1,5 @@
+import { redactSensitiveText } from '@social-monitor/shared-kernel';
+
 import {
   GITHUB_REPO_RADAR_PROVIDER_KEY,
   githubRepositoryLiveTrendWindows,
@@ -136,10 +138,11 @@ export class GitHubRepoRadarSourceProvider implements SourceProviderPort {
   }
 
   classifyError(error: unknown): ProviderFailure {
-    const message = error instanceof Error ? error.message : 'Unknown GitHub repo radar provider error';
-    const lowerMessage = message.toLowerCase();
+    const rawMessage = error instanceof Error ? error.message : 'Unknown GitHub repo radar provider error';
+    const lowerMessage = rawMessage.toLowerCase();
+    const message = redactSensitiveText(rawMessage);
 
-    if (message.includes('401') || lowerMessage.includes('credential') || lowerMessage.includes('permission')) {
+    if (rawMessage.includes('401') || lowerMessage.includes('credential') || lowerMessage.includes('permission')) {
       return {
         kind: 'auth_failed',
         retryable: false,
@@ -147,7 +150,7 @@ export class GitHubRepoRadarSourceProvider implements SourceProviderPort {
       };
     }
 
-    if (message.includes('403') || message.includes('429') || lowerMessage.includes('rate limit') || lowerMessage.includes('quota')) {
+    if (rawMessage.includes('403') || rawMessage.includes('429') || lowerMessage.includes('rate limit') || lowerMessage.includes('quota')) {
       return {
         kind: 'rate_limited',
         retryable: true,

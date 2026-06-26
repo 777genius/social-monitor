@@ -1,3 +1,5 @@
+import { redactSensitiveText } from '@social-monitor/shared-kernel';
+
 import type {
   ProviderFailure,
   SourceCapabilityProfile,
@@ -86,8 +88,9 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
   }
 
   classifyError(error: unknown): ProviderFailure {
-    const message = error instanceof Error ? error.message : 'Unknown Hacker News provider error';
-    if (message.includes('429') || message.toLowerCase().includes('rate limit')) {
+    const rawMessage = error instanceof Error ? error.message : 'Unknown Hacker News provider error';
+    const message = redactSensitiveText(rawMessage);
+    if (rawMessage.includes('429') || rawMessage.toLowerCase().includes('rate limit')) {
       return {
         kind: 'rate_limited',
         retryable: true,

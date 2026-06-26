@@ -1,3 +1,5 @@
+import { redactSensitiveText } from '@social-monitor/shared-kernel';
+
 import type {
   ProviderFailure,
   SourceCapabilityProfile,
@@ -81,10 +83,12 @@ export class FakeSourceProvider implements SourceProviderPort {
   }
 
   classifyError(error: unknown): ProviderFailure {
+    const rawMessage = error instanceof Error ? error.message : 'Unknown provider error';
+
     return {
       kind: 'unknown',
       retryable: false,
-      message: error instanceof Error ? error.message : 'Unknown provider error',
+      message: redactSensitiveText(rawMessage),
     };
   }
 }

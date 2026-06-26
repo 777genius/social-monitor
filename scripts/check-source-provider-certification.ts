@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { REDACTED_VALUE, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { FakeSourceProvider } from '../libs/ingestion/adapters/source/fake-source.provider';
 import { FixtureGitHubClient } from '../libs/ingestion/adapters/source/github/fixture-github-client';
@@ -419,6 +419,21 @@ async function certifyProvider(
     typeof failure.retryable === 'boolean',
     `${providerCase.expectedProviderKey}: retryable flag is required`,
   );
+  const sensitiveFailure = provider.classifyError(
+    new Error(
+      'provider failed with Authorization Bearer source-secret access_token=source-secret client_secret=source-secret at https://user:pass@example.test/feed',
+    ),
+    context,
+  );
+  assert(
+    sensitiveFailure.message.includes(REDACTED_VALUE),
+    `${providerCase.expectedProviderKey}: sensitive failure message must include redaction marker`,
+  );
+  assert(
+    !sensitiveFailure.message.includes('source-secret') &&
+      !sensitiveFailure.message.includes('user:pass'),
+    `${providerCase.expectedProviderKey}: sensitive failure message leaked secret material`,
+  );
 
   return {
     providerKey: providerCase.expectedProviderKey,
@@ -444,6 +459,7 @@ async function certifyProvider(
       'cursor_contract_is_non_empty_for_cursor_models',
       'fixture_repeated_scan_is_deterministic',
       'provider_errors_are_classified',
+      'provider_failure_messages_are_redacted',
       'freshness_guard_declared',
       'minimum_scan_interval_declared',
       'scan_history_required_for_freshness',

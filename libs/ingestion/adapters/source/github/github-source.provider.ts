@@ -1,3 +1,5 @@
+import { redactSensitiveText } from '@social-monitor/shared-kernel';
+
 import type {
   ProviderFailure,
   SourceCapabilityProfile,
@@ -83,10 +85,11 @@ export class GitHubSourceProvider implements SourceProviderPort {
   }
 
   classifyError(error: unknown): ProviderFailure {
-    const message = error instanceof Error ? error.message : 'Unknown GitHub issues provider error';
-    const lowerMessage = message.toLowerCase();
+    const rawMessage = error instanceof Error ? error.message : 'Unknown GitHub issues provider error';
+    const lowerMessage = rawMessage.toLowerCase();
+    const message = redactSensitiveText(rawMessage);
 
-    if (message.includes('401') || lowerMessage.includes('bad credentials')) {
+    if (rawMessage.includes('401') || lowerMessage.includes('bad credentials')) {
       return {
         kind: 'auth_failed',
         retryable: false,
@@ -94,7 +97,7 @@ export class GitHubSourceProvider implements SourceProviderPort {
       };
     }
 
-    if (message.includes('403') || message.includes('429') || lowerMessage.includes('rate limit')) {
+    if (rawMessage.includes('403') || rawMessage.includes('429') || lowerMessage.includes('rate limit')) {
       return {
         kind: 'rate_limited',
         retryable: true,

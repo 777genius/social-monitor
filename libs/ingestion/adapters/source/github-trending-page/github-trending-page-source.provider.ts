@@ -1,3 +1,5 @@
+import { redactSensitiveText } from '@social-monitor/shared-kernel';
+
 import {
   GITHUB_TRENDING_PAGE_PROVIDER_KEY,
   githubTrendingPageRepositoryMetadata,
@@ -111,15 +113,16 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
   }
 
   classifyError(error: unknown): ProviderFailure {
-    const message =
+    const rawMessage =
       error instanceof Error
         ? error.message
         : 'Unknown GitHub Trending page provider error';
-    const lowerMessage = message.toLowerCase();
+    const lowerMessage = rawMessage.toLowerCase();
+    const message = redactSensitiveText(rawMessage);
 
     if (
-      message.includes('403') ||
-      message.includes('429') ||
+      rawMessage.includes('403') ||
+      rawMessage.includes('429') ||
       lowerMessage.includes('rate limit')
     ) {
       return {

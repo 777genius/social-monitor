@@ -1,3 +1,5 @@
+import { redactSensitiveText } from '@social-monitor/shared-kernel';
+
 import type {
   ProviderFailure,
   SourceCapabilityProfile,
@@ -115,12 +117,13 @@ export class RedditSourceProvider implements SourceProviderPort {
   }
 
   classifyError(error: unknown): ProviderFailure {
-    const message = error instanceof Error ? error.message : 'Unknown Reddit provider error';
-    const lowerMessage = message.toLowerCase();
+    const rawMessage = error instanceof Error ? error.message : 'Unknown Reddit provider error';
+    const lowerMessage = rawMessage.toLowerCase();
+    const message = redactSensitiveText(rawMessage);
 
     if (
-      message.includes('401')
-      || message.includes('403')
+      rawMessage.includes('401')
+      || rawMessage.includes('403')
       || lowerMessage.includes('token')
       || lowerMessage.includes('oauth')
       || lowerMessage.includes('credential')
@@ -132,7 +135,7 @@ export class RedditSourceProvider implements SourceProviderPort {
       };
     }
 
-    if (message.includes('429') || lowerMessage.includes('rate limit')) {
+    if (rawMessage.includes('429') || lowerMessage.includes('rate limit')) {
       return {
         kind: 'rate_limited',
         retryable: true,

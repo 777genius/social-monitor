@@ -1,3 +1,5 @@
+import { redactSensitiveText } from '@social-monitor/shared-kernel';
+
 import type {
   ProviderFailure,
   SourceCapabilityProfile,
@@ -78,10 +80,11 @@ export class RssSourceProvider implements SourceProviderPort {
   }
 
   classifyError(error: unknown): ProviderFailure {
-    const message = error instanceof Error ? error.message : 'Unknown RSS provider error';
-    const lowerMessage = message.toLowerCase();
+    const rawMessage = error instanceof Error ? error.message : 'Unknown RSS provider error';
+    const lowerMessage = rawMessage.toLowerCase();
+    const message = redactSensitiveText(rawMessage);
 
-    if (message.includes('429') || lowerMessage.includes('rate limit')) {
+    if (rawMessage.includes('429') || lowerMessage.includes('rate limit')) {
       return {
         kind: 'rate_limited',
         retryable: true,
@@ -90,8 +93,8 @@ export class RssSourceProvider implements SourceProviderPort {
     }
 
     return {
-      kind: message.includes('Feed URL') ? 'invalid_query' : 'unavailable',
-      retryable: !message.includes('Feed URL'),
+      kind: rawMessage.includes('Feed URL') ? 'invalid_query' : 'unavailable',
+      retryable: !rawMessage.includes('Feed URL'),
       message,
     };
   }
