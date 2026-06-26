@@ -57,7 +57,16 @@ class FakeScanHistory implements ScanJobHistoryReadPort {
   ): Promise<ListScanJobsBySourceBindingResult> {
     this.queries.push(query);
 
-    return this.result;
+    const scanJobs = query.statuses === undefined
+      ? this.result.scanJobs
+      : this.result.scanJobs.filter((job) =>
+          query.statuses?.includes(job.toSnapshot().status) === true,
+        );
+
+    return {
+      scanJobs,
+      nextCursor: this.result.nextCursor,
+    };
   }
 
   async listBySourceBindingWindow(
@@ -165,6 +174,52 @@ describe('ListSourceBindingScansUseCase', () => {
     ]);
   });
 
+  it('filters scan requests by status before returning history views', async () => {
+    const bindings = await readyBindings();
+    const history = new FakeScanHistory({
+      scanJobs: [
+        makeJob('scan-job-2', new Date('2026-06-20T10:05:00.000Z'))
+          .markEnqueued({
+            enqueuedAt: new Date('2026-06-20T10:05:01.000Z'),
+          })
+          .markSucceeded({
+            completedAt: new Date('2026-06-20T10:05:05.000Z'),
+          }),
+        makeJob('scan-job-1', new Date('2026-06-20T10:00:00.000Z')),
+      ],
+    });
+
+    const result = await new ListSourceBindingScansUseCase(
+      bindings,
+      history,
+      new FakeScanExecutionAttempts(),
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      sourceBindingId: 'binding-1',
+      limit: 10,
+      statuses: ['succeeded'],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scanRequests: [
+          expect.objectContaining({
+            scanJobId: 'scan-job-2',
+            status: 'succeeded',
+          }),
+        ],
+        nextCursor: undefined,
+      },
+    });
+    expect(history.queries).toEqual([
+      expect.objectContaining({
+        statuses: ['succeeded'],
+      }),
+    ]);
+  });
+
   it('returns not found before listing scans for another tenant binding', async () => {
     const result = await new ListSourceBindingScansUseCase(
       new FakeSourceBindings(),
@@ -193,6 +248,29 @@ describe('ListSourceBindingScansUseCase', () => {
     });
 
     expect(result.ok).toBe(false);
+  });
+
+  it('rejects unsupported status filters before listing scans', async () => {
+    const history = new FakeScanHistory({ scanJobs: [] });
+    const result = await new ListSourceBindingScansUseCase(
+      await readyBindings(),
+      history,
+      new FakeScanExecutionAttempts(),
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      sourceBindingId: 'binding-1',
+      limit: 20,
+      statuses: ['cancelled'],
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'validation.failed',
+      }),
+    });
+    expect(history.queries).toEqual([]);
   });
 });
 

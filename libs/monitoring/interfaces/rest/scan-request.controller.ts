@@ -24,7 +24,7 @@ import {
   ListSourceBindingDailyScanHistoryResponseDto,
   RequestScanResponseDto,
 } from './request-scan.dto';
-import type { ScanStatusResponseDto } from './scan-status.dto';
+import { scanJobStatusValues, type ScanStatusResponseDto } from './scan-status.dto';
 
 @ApiTags('scan-requests')
 @Controller('source-bindings/:sourceBindingId/scan-requests')
@@ -98,6 +98,7 @@ export class ScanRequestController {
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
+  @ApiQuery({ name: 'status', required: false, enum: scanJobStatusValues, isArray: true })
   @ApiOkResponse({ type: ListScanRequestsResponseDto })
   async list(
     @Param('sourceBindingId') sourceBindingId: string,
@@ -107,6 +108,7 @@ export class ScanRequestController {
     @Headers('authorization') authorizationHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
+    @Query('status') statusQuery: string | readonly string[] | undefined,
   ): Promise<ListScanRequestsResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
@@ -128,6 +130,7 @@ export class ScanRequestController {
         invalidMessage: 'Scan request list limit must be between 1 and 100',
       }),
       cursor,
+      statuses: parseScanStatusFilter(statusQuery),
     });
 
     if (!result.ok) {
@@ -315,3 +318,18 @@ const scanHistoryItemToResponse = (
         failureReason: item.latestAttempt.failureReason,
       },
 });
+
+const parseScanStatusFilter = (
+  statusQuery: string | readonly string[] | undefined,
+): readonly string[] | undefined => {
+  if (statusQuery === undefined) {
+    return undefined;
+  }
+
+  const values: readonly string[] =
+    typeof statusQuery === 'string'
+      ? statusQuery.split(',')
+      : statusQuery;
+
+  return values.map((value) => value.trim());
+};

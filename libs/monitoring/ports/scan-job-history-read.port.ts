@@ -1,6 +1,6 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
-import type { ScanJob } from '../domain';
+import type { ScanJob, ScanJobStatus } from '../domain';
 
 export type ListScanJobsBySourceBindingQuery = {
   readonly tenantId: TenantId;
@@ -8,6 +8,7 @@ export type ListScanJobsBySourceBindingQuery = {
   readonly sourceBindingId: string;
   readonly limit: number;
   readonly cursor?: string;
+  readonly statuses?: readonly ScanJobStatus[];
 };
 
 export type ListScanJobsBySourceBindingResult = {

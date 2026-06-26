@@ -7478,6 +7478,23 @@
           },
           {
             "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "items": {
+                "enum": [
+                  "requested",
+                  "enqueued",
+                  "succeeded",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {

@@ -1,7 +1,7 @@
 import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
-import type { ScanJob } from '../../../domain';
+import type { ScanJob, ScanJobStatus } from '../../../domain';
 import type {
   ListScanJobsBySourceBindingResult,
   ListScanJobsBySourceBindingWindowResult,
@@ -103,12 +103,16 @@ export class PrismaScanJobRepository implements ScanJobRepositoryPort, ScanJobHi
     sourceBindingId: string;
     limit: number;
     cursor?: string;
+    statuses?: readonly ScanJobStatus[];
   }): Promise<ListScanJobsBySourceBindingResult> {
     const records = await this.prisma.scanJob.findMany({
       where: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
         sourceBindingId: params.sourceBindingId,
+        ...(params.statuses === undefined
+          ? {}
+          : { status: { in: params.statuses.map(scanJobStatusToPrisma) } }),
       },
       orderBy: [
         { requestedAt: 'desc' },

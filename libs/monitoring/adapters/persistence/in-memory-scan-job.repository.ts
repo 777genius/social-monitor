@@ -1,6 +1,6 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
-import type { ScanJob } from '../../domain';
+import type { ScanJob, ScanJobStatus } from '../../domain';
 import type {
   ListScanJobsBySourceBindingResult,
   ListScanJobsBySourceBindingWindowResult,
@@ -64,8 +64,12 @@ export class InMemoryScanJobRepository implements ScanJobRepositoryPort, ScanJob
     sourceBindingId: string;
     limit: number;
     cursor?: string;
+    statuses?: readonly ScanJobStatus[];
   }): Promise<ListScanJobsBySourceBindingResult> {
-    const jobs = this.sortedJobsBySourceBinding(params);
+    const jobs = this.sortedJobsBySourceBinding(params).filter((job) =>
+      params.statuses === undefined ||
+      params.statuses.includes(job.toSnapshot().status),
+    );
     const startIndex = params.cursor === undefined
       ? 0
       : Math.max(

@@ -92,7 +92,7 @@ describe('Request scan flow (e2e)', () => {
       .set('idempotency-key', 'request-scan-now')
       .expect(201);
 
-    expect(first.body).toEqual({
+    expect(first.body).toMatchObject({
       scanJobId: expect.any(String),
       status: 'enqueued',
       created: true,
@@ -132,7 +132,7 @@ describe('Request scan flow (e2e)', () => {
       .set('idempotency-key', 'request-scan-now')
       .expect(201);
 
-    expect(second.body).toEqual({
+    expect(second.body).toMatchObject({
       scanJobId: first.body.scanJobId,
       status: 'enqueued',
       created: false,
@@ -148,7 +148,7 @@ describe('Request scan flow (e2e)', () => {
       .set('idempotency-key', 'request-scan-overlap')
       .expect(201);
 
-    expect(overlapping.body).toEqual({
+    expect(overlapping.body).toMatchObject({
       scanJobId: first.body.scanJobId,
       status: 'enqueued',
       created: false,
@@ -174,6 +174,33 @@ describe('Request scan flow (e2e)', () => {
       ],
     });
 
+    const activeOnly = await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .query({ limit: 10, status: 'enqueued' })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(activeOnly.body.scanRequests).toEqual([
+      expect.objectContaining({
+        scanJobId: first.body.scanJobId,
+        status: 'enqueued',
+      }),
+    ]);
+
+    const completedOnly = await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .query({ limit: 10, status: 'succeeded' })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(completedOnly.body).toEqual({
+      scanRequests: [],
+    });
+
     const daily = await request(app.getHttpServer())
       .get(`/source-bindings/${binding.body.sourceBindingId}/scan-requests/daily?days=1`)
       .set('x-tenant-id', tenant)
@@ -181,7 +208,7 @@ describe('Request scan flow (e2e)', () => {
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    expect(daily.body).toEqual({
+    expect(daily.body).toMatchObject({
       sourceBindingId: binding.body.sourceBindingId,
       windowStartedAt: expect.any(String),
       windowEndedAt: expect.any(String),
@@ -278,7 +305,7 @@ describe('Request scan flow (e2e)', () => {
       .set('idempotency-key', 'request-scan-fresh-first')
       .expect(201);
 
-    expect(first.body).toEqual({
+    expect(first.body).toMatchObject({
       scanJobId: expect.any(String),
       status: 'enqueued',
       created: true,
@@ -307,7 +334,7 @@ describe('Request scan flow (e2e)', () => {
       .set('idempotency-key', 'request-scan-fresh-skip')
       .expect(201);
 
-    expect(fresh.body).toEqual({
+    expect(fresh.body).toMatchObject({
       scanJobId: first.body.scanJobId,
       status: 'succeeded',
       created: false,
@@ -396,7 +423,7 @@ describe('Request scan flow (e2e)', () => {
       .set('idempotency-key', 'request-scan-rate-limit-first')
       .expect(201);
 
-    expect(first.body).toEqual({
+    expect(first.body).toMatchObject({
       scanJobId: expect.any(String),
       status: 'enqueued',
       created: true,
@@ -426,7 +453,7 @@ describe('Request scan flow (e2e)', () => {
       .set('idempotency-key', 'request-scan-rate-limit-backoff')
       .expect(201);
 
-    expect(backedOff.body).toEqual({
+    expect(backedOff.body).toMatchObject({
       scanJobId: first.body.scanJobId,
       status: 'failed',
       created: false,

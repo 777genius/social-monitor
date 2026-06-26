@@ -1115,7 +1115,8 @@ export const mobileApiOperations = [
     ],
     "queryParameters": [
       "cursor",
-      "limit"
+      "limit",
+      "status"
     ],
     "requiredHeaders": [
       "x-tenant-id",

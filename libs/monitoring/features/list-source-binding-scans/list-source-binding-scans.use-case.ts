@@ -1,5 +1,6 @@
 import { DomainError, err, ok, type Result } from '@social-monitor/shared-kernel';
 
+import type { ScanJobStatus } from '../../domain';
 import type {
   ScanExecutionAttemptReadPort,
   ScanJobHistoryReadPort,
@@ -29,6 +30,11 @@ export class ListSourceBindingScansUseCase {
       return err(new DomainError('validation.failed', 'Scan request list limit must be between 1 and 100'));
     }
 
+    const statuses = normalizeStatuses(query.statuses);
+    if (statuses instanceof DomainError) {
+      return err(statuses);
+    }
+
     const binding = await this.sourceBindings.findById({
       tenantId: query.tenantId,
       workspaceId: query.workspaceId,
@@ -47,6 +53,7 @@ export class ListSourceBindingScansUseCase {
       sourceBindingId: query.sourceBindingId,
       limit: query.limit,
       cursor: query.cursor,
+      ...(statuses === undefined ? {} : { statuses }),
     });
     const scanRequests = await Promise.all(result.scanJobs.map(async (job) => {
       const snapshot = job.toSnapshot();
@@ -94,3 +101,35 @@ export class ListSourceBindingScansUseCase {
     });
   }
 }
+
+const scanJobStatuses = new Set<ScanJobStatus>([
+  'requested',
+  'enqueued',
+  'succeeded',
+  'failed',
+]);
+
+const normalizeStatuses = (
+  statuses: readonly string[] | undefined,
+): readonly ScanJobStatus[] | undefined | DomainError => {
+  if (statuses === undefined) {
+    return undefined;
+  }
+
+  const normalized = Array.from(
+    new Set(statuses.map((status) => status.trim()).filter(Boolean)),
+  ).sort();
+
+  if (statuses.length > 0 && normalized.length === 0) {
+    return new DomainError('validation.failed', 'Scan request status filter must not be empty');
+  }
+
+  const invalidStatus = normalized.find((status) => !scanJobStatuses.has(status as ScanJobStatus));
+  if (invalidStatus !== undefined) {
+    return new DomainError('validation.failed', 'Unsupported scan request status filter', {
+      status: invalidStatus,
+    });
+  }
+
+  return normalized.length === 0 ? undefined : (normalized as ScanJobStatus[]);
+};

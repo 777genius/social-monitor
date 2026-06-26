@@ -6,4 +6,5 @@ export type ListSourceBindingScansQuery = {
   readonly sourceBindingId: string;
   readonly limit: number;
   readonly cursor?: string;
+  readonly statuses?: readonly string[];
 };
