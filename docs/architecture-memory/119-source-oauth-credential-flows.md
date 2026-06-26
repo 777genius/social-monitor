@@ -28,6 +28,19 @@ Flutter -> refreshes binding state
 
 For web admin, use the same backend-owned callback and state validation.
 
+## Reddit Product Follow-up
+
+Current Reddit live evidence can use the operator local callback helper to create a permanent refresh-token grant for controlled end-to-end checks.
+
+Before user-facing beta, replace this operator/dev handoff with a product flow:
+
+- frontend source settings exposes `Connect Reddit`;
+- backend creates a Reddit OAuth connection intent with state and PKCE metadata;
+- Reddit redirects to the backend callback, never to Flutter/mobile local storage;
+- backend exchanges the code, stores the refresh token through encrypted per-user/per-tenant source credentials, and returns source binding health;
+- UI shows connected account, scopes, credential health, reconnect and disconnect actions;
+- expired or revoked Reddit credentials move only affected bindings to `credential_attention_required` / `reauth_required`, fail closed, and do not retry invalid grants forever.
+
 ## Credential Storage
 
 Store:
@@ -52,4 +65,3 @@ Never store source credentials in Flutter local storage.
 ## Best-Fact Choice
 
 Source credentials are high-value tenant assets. Backend-controlled OAuth callbacks, PKCE, encrypted storage and explicit credential states are mandatory before multi-user scale.
-
