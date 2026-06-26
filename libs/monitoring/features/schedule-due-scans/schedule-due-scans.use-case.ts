@@ -90,6 +90,24 @@ export class ScheduleDueScansUseCase {
         bindingSnapshot === undefined ||
         bindingSnapshot.status !== 'enabled'
       ) {
+        const unavailableCadence =
+          bindingSnapshot === undefined
+            ? {
+                intervalSeconds: policySnapshot.intervalSeconds,
+                freshnessSeconds: policySnapshot.freshnessSeconds,
+                providerMinimumIntervalEnforced: false,
+              }
+            : effectiveProviderScanCadence({
+                providerKey: bindingSnapshot.providerKey,
+                intervalSeconds: policySnapshot.intervalSeconds,
+                freshnessSeconds: policySnapshot.freshnessSeconds,
+              });
+        const nextRunAt = nextRunAtAfterSchedulerDecision({
+          dueAt: policySnapshot.nextRunAt,
+          intervalSeconds: unavailableCadence.intervalSeconds,
+          now,
+          backoffUntil: null,
+        });
         recordSkipped(skippedByReason, 'source_unavailable');
         recordDecision(decisions, {
           scanPolicyId: policySnapshot.id,
@@ -98,9 +116,18 @@ export class ScheduleDueScansUseCase {
           decision: 'skipped',
           reason: 'source_unavailable',
           policyDueAt: policySnapshot.nextRunAt,
-          nextRunAt: policySnapshot.nextRunAt,
+          nextRunAt,
           configuredIntervalSeconds: policySnapshot.intervalSeconds,
+          effectiveIntervalSeconds: unavailableCadence.intervalSeconds,
+          freshnessSeconds: unavailableCadence.freshnessSeconds,
+          providerMinimumIntervalEnforced:
+            unavailableCadence.providerMinimumIntervalEnforced,
         });
+        await this.scanPolicies.save(
+          policy.scheduleNext({
+            nextRunAt,
+          }),
+        );
         continue;
       }
 

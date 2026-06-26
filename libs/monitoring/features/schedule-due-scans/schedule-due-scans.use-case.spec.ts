@@ -1032,9 +1032,9 @@ describe('ScheduleDueScansUseCase', () => {
     });
   });
 
-  it('skips due policy without advancing next run when source binding is paused', async () => {
+  it('skips due policy and advances next run when source binding is paused', async () => {
     const bindings = new FakeSourceBindings();
-    bindings.add(makeBinding().pause());
+    bindings.add(makeBinding('reddit').pause());
     const policies = new FakeScanPolicies();
     policies.add(makePolicy());
     const scanJobs = new FakeScanJobs();
@@ -1053,6 +1053,7 @@ describe('ScheduleDueScansUseCase', () => {
       workspaceId: workspaceId('workspace-1'),
       limit: 10,
       correlationId: 'scheduler-tick-paused-binding',
+      includeDecisions: true,
     });
 
     expect(result).toEqual({
@@ -1063,6 +1064,21 @@ describe('ScheduleDueScansUseCase', () => {
         enqueued: 0,
         skipped: 1,
         skippedByReason: skippedByReason('source_unavailable'),
+        decisions: [
+          {
+            scanPolicyId: 'policy-1',
+            sourceBindingId: 'binding-1',
+            providerKey: 'reddit',
+            decision: 'skipped',
+            reason: 'source_unavailable',
+            policyDueAt: new Date('2026-06-05T12:00:00.000Z'),
+            nextRunAt: new Date('2026-06-05T12:15:00.000Z'),
+            configuredIntervalSeconds: 300,
+            effectiveIntervalSeconds: 900,
+            freshnessSeconds: 900,
+            providerMinimumIntervalEnforced: true,
+          },
+        ],
       },
     });
     await expect(
@@ -1082,7 +1098,7 @@ describe('ScheduleDueScansUseCase', () => {
         })
       )?.toSnapshot(),
     ).toMatchObject({
-      nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
+      nextRunAt: new Date('2026-06-05T12:15:00.000Z'),
     });
   });
 

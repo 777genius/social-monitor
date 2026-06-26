@@ -199,8 +199,8 @@ async function main(): Promise<void> {
     sourceBindingId: 'paused-source-binding-scheduler-loop-smoke',
   });
   assert(
-    pausedPolicy?.toSnapshot().nextRunAt.toISOString() === '2026-06-06T09:59:30.000Z',
-    `paused source binding policy must not advance next run, got ${pausedPolicy?.toSnapshot().nextRunAt.toISOString()}`,
+    pausedPolicy?.toSnapshot().nextRunAt.toISOString() === '2026-06-06T10:04:30.000Z',
+    `paused source binding policy must advance next run without enqueueing, got ${pausedPolicy?.toSnapshot().nextRunAt.toISOString()}`,
   );
   const freshPolicy = await policies.findBySourceBinding({
     tenantId: tenant,
