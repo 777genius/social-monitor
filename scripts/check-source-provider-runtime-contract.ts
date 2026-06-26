@@ -196,6 +196,31 @@ function validateContract(): void {
     );
     providers.set(providerKey, provider as ContractProvider);
   }
+  const enabledBetaProviderKeys = sourceReadinessProfiles
+    .filter((profile) => profile.state === 'enabled_beta')
+    .map((profile) => profile.providerKey);
+  const requiredProviderKeys = Array.from(requiredProviders.keys());
+  const contractProviderKeys = Array.from(providers.keys());
+  assertIncludesAll(
+    requiredProviderKeys,
+    enabledBetaProviderKeys,
+    `${contractPath}: required provider registry`,
+  );
+  assertIncludesAll(
+    enabledBetaProviderKeys,
+    requiredProviderKeys,
+    `${contractPath}: enabled beta readiness profiles`,
+  );
+  assertIncludesAll(
+    contractProviderKeys,
+    enabledBetaProviderKeys,
+    `${contractPath}: provider list`,
+  );
+  assertIncludesAll(
+    enabledBetaProviderKeys,
+    contractProviderKeys,
+    `${contractPath}: enabled beta provider list`,
+  );
 
   for (const [providerKey, requirement] of requiredProviders) {
     const provider = providers.get(providerKey);
