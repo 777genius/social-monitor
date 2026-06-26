@@ -47,6 +47,8 @@ async function main(): Promise<void> {
     const clock: Clock = new FixedClock(fixedNow);
     const tenant = tenantId('tenant-source-credential-lifecycle-smoke');
     const workspace = workspaceId('workspace-source-credential-lifecycle-smoke');
+    const wrongTenant = tenantId('tenant-source-credential-lifecycle-smoke-wrong');
+    const wrongWorkspace = workspaceId('workspace-source-credential-lifecycle-smoke-wrong');
     const credentials = new InMemorySourceCredentialRepository();
     const vault = new InMemorySourceCredentialSecretVault();
     const ids = new SequenceIdGenerator();
@@ -87,6 +89,20 @@ async function main(): Promise<void> {
     assert(listed.sourceCredentials.length === 1, 'source credential list must include created credential');
     assertPublicCredentialViewIsRedacted(listed.sourceCredentials[0], 'list source credentials response');
 
+    const wrongTenantList = unwrap(await listCredentials.execute({
+      tenantId: wrongTenant,
+      workspaceId: workspace,
+      limit: 10,
+    }), 'list source credentials with wrong tenant');
+    assert(wrongTenantList.sourceCredentials.length === 0, 'wrong tenant must not list source credentials');
+
+    const wrongWorkspaceList = unwrap(await listCredentials.execute({
+      tenantId: tenant,
+      workspaceId: wrongWorkspace,
+      limit: 10,
+    }), 'list source credentials with wrong workspace');
+    assert(wrongWorkspaceList.sourceCredentials.length === 0, 'wrong workspace must not list source credentials');
+
     const sourceBindings = new InMemorySourceBindingRepository();
     const protector = new AesGcmSourceBindingConfigProtector(Buffer.alloc(32, 2), 'source-credential-smoke-key');
     const protectedConfig = await protector.protect({
@@ -119,6 +135,36 @@ async function main(): Promise<void> {
     assert(runtimeConfig.subreddit === 'LocalLLaMA', 'runtime config must preserve non-secret provider options');
     assert(runtimeConfig.credentialRef === undefined, 'runtime config must remove credentialRef before provider execution');
     assert(tokenEndpoint.requests === 1, 'expired credential must refresh exactly once');
+
+    const wrongTenantConfig = await configReader.readConfig({
+      tenantId: wrongTenant,
+      workspaceId: workspace,
+      sourceBindingId: 'source-binding-source-credential-lifecycle-smoke',
+    });
+    assert(wrongTenantConfig === null, 'wrong tenant must not read credentialRef source binding config');
+
+    const wrongWorkspaceConfig = await configReader.readConfig({
+      tenantId: tenant,
+      workspaceId: wrongWorkspace,
+      sourceBindingId: 'source-binding-source-credential-lifecycle-smoke',
+    });
+    assert(wrongWorkspaceConfig === null, 'wrong workspace must not read credentialRef source binding config');
+
+    const wrongTenantResolve = await resolver.resolve({
+      tenantId: wrongTenant,
+      workspaceId: workspace,
+      sourceCredentialId: created.sourceCredential.id,
+      providerKey: 'reddit',
+    });
+    assert(!wrongTenantResolve.ok, 'wrong tenant must not resolve source credential secret');
+
+    const wrongWorkspaceResolve = await resolver.resolve({
+      tenantId: tenant,
+      workspaceId: wrongWorkspace,
+      sourceCredentialId: created.sourceCredential.id,
+      providerKey: 'reddit',
+    });
+    assert(!wrongWorkspaceResolve.ok, 'wrong workspace must not resolve source credential secret');
 
     const refreshedCredential = await credentials.findById({
       tenantId: tenant,
@@ -182,6 +228,20 @@ async function main(): Promise<void> {
     assert(rotatedSecret.accessToken === 'manually-rotated-access-token', 'resolver must use rotated secret');
     assert(tokenEndpoint.requests === 1, 'fresh rotated credential must not refresh');
 
+    const wrongTenantRevoke = await revokeCredential.execute({
+      tenantId: wrongTenant,
+      workspaceId: workspace,
+      sourceCredentialId: created.sourceCredential.id,
+    });
+    assert(!wrongTenantRevoke.ok, 'wrong tenant must not revoke source credential');
+
+    const wrongWorkspaceRevoke = await revokeCredential.execute({
+      tenantId: tenant,
+      workspaceId: wrongWorkspace,
+      sourceCredentialId: created.sourceCredential.id,
+    });
+    assert(!wrongWorkspaceRevoke.ok, 'wrong workspace must not revoke source credential');
+
     const revoked = unwrap(await revokeCredential.execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -193,10 +253,10 @@ async function main(): Promise<void> {
     await assertRejects(
       async () => {
         const result = await resolver.resolve({
-        tenantId: tenant,
-        workspaceId: workspace,
-        sourceCredentialId: created.sourceCredential.id,
-        providerKey: 'reddit',
+          tenantId: tenant,
+          workspaceId: workspace,
+          sourceCredentialId: created.sourceCredential.id,
+          providerKey: 'reddit',
         });
         if (!result.ok) {
           throw result.error;
