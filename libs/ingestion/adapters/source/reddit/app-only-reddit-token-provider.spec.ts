@@ -51,6 +51,14 @@ describe('RedditAppOnlyTokenProvider', () => {
     })).toBeInstanceOf(RedditAppOnlyTokenProvider);
   });
 
+  it('rejects unsafe token URL overrides before runtime token requests', () => {
+    expect(() => new RedditAppOnlyTokenProvider({
+      clientId: 'reddit-client-id',
+      clientSecret: 'reddit-client-secret',
+      tokenUrl: 'http://127.0.0.1:8080/token',
+    })).toThrow('Reddit OAuth token URL rejected');
+  });
+
   it('redacts token-like fields from failed token responses', async () => {
     globalThis.fetch = jest.fn().mockResolvedValueOnce(new Response(
       '{"error":"invalid_client","access_token":"leaked","client_secret":"leaked"}',

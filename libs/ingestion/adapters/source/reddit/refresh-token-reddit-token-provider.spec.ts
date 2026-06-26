@@ -66,6 +66,12 @@ describe('RedditRefreshTokenProvider', () => {
     );
   });
 
+  it('rejects unsafe token URL overrides before runtime token requests', () => {
+    expect(() => new RedditRefreshTokenProvider({
+      tokenUrl: 'http://127.0.0.1:8080/token',
+    })).toThrow('Reddit OAuth token URL rejected');
+  });
+
   it('redacts token-like fields from failed token responses', async () => {
     globalThis.fetch = jest.fn().mockResolvedValueOnce(new Response(
       '{"error":"invalid_grant","access_token":"leaked-access","refresh_token":"leaked-refresh","client_secret":"leaked-secret"}',

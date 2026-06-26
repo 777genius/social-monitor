@@ -1,6 +1,8 @@
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
+import { validateRedditTokenUrl } from './reddit-token-url-policy';
+
 export type RedditRefreshTokenRequest = {
   readonly clientId: string;
   readonly clientSecret?: string;
@@ -38,7 +40,7 @@ export class RedditRefreshTokenProvider implements RedditRefreshTokenProviderPor
   private readonly pending = new Map<string, Promise<string>>();
 
   constructor(options: RedditRefreshTokenProviderOptions = {}) {
-    this.tokenUrl = options.tokenUrl ?? 'https://www.reddit.com/api/v1/access_token';
+    this.tokenUrl = validateRedditTokenUrl(options.tokenUrl ?? 'https://www.reddit.com/api/v1/access_token');
     this.timeoutMs = options.timeoutMs ?? 10_000;
     this.refreshSkewMs = options.refreshSkewMs ?? 60_000;
     this.now = options.now ?? Date.now;
