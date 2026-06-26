@@ -57,14 +57,16 @@ const createBindingWithPolicy = async (params: {
   readonly idempotencyKey: string;
   readonly intervalSeconds: number;
   readonly freshnessSeconds: number;
+  readonly providerKey?: string;
+  readonly config?: Record<string, unknown>;
 }): Promise<SourceBindingFixture> => {
   const binding = await request(params.httpServer)
     .post(`/topics/${params.topicId}/source-bindings`)
     .set(params.headers)
     .set('idempotency-key', `binding-${params.idempotencyKey}`)
     .send({
-      providerKey: 'fake-source',
-      config: { mode: 'search', query: `health ${params.idempotencyKey}` },
+      providerKey: params.providerKey ?? 'fake-source',
+      config: params.config ?? { mode: 'search', query: `health ${params.idempotencyKey}` },
     })
     .expect(201);
 
@@ -537,6 +539,178 @@ async function main(): Promise<void> {
     assert(
       scheduledLaterHealth.body.schedulerDecision.nextEligibleAt !== undefined,
       'scheduled-later scheduler decision must expose next eligible time',
+    );
+
+    const overviewTopicId = await createTopic({
+      httpServer: app.getHttpServer(),
+      headers: adminHeaders,
+      idempotencyKey: 'topic-overview',
+      name: 'Source overview health',
+      query: 'multi provider source overview health',
+    });
+    const overviewRss = await createBindingWithPolicy({
+      httpServer: app.getHttpServer(),
+      topicId: overviewTopicId,
+      headers: adminHeaders,
+      idempotencyKey: 'overview-rss',
+      intervalSeconds: 300,
+      freshnessSeconds: 900,
+      providerKey: 'rss',
+      config: { feedUrl: 'https://example.com/feed.xml' },
+    });
+    const overviewReddit = await createBindingWithPolicy({
+      httpServer: app.getHttpServer(),
+      topicId: overviewTopicId,
+      headers: adminHeaders,
+      idempotencyKey: 'overview-reddit',
+      intervalSeconds: 900,
+      freshnessSeconds: 900,
+      providerKey: 'reddit',
+      config: { mode: 'listing', subreddit: 'OpenAI', listing: 'hot' },
+    });
+    const overviewGithubIssues = await createBindingWithPolicy({
+      httpServer: app.getHttpServer(),
+      topicId: overviewTopicId,
+      headers: adminHeaders,
+      idempotencyKey: 'overview-github-issues',
+      intervalSeconds: 300,
+      freshnessSeconds: 900,
+      providerKey: 'github-issues',
+      config: { mode: 'search', query: 'repo:777genius/social-monitor provider health' },
+    });
+    const overviewHackerNews = await createBindingWithPolicy({
+      httpServer: app.getHttpServer(),
+      topicId: overviewTopicId,
+      headers: adminHeaders,
+      idempotencyKey: 'overview-hacker-news',
+      intervalSeconds: 300,
+      freshnessSeconds: 900,
+      providerKey: 'hacker-news',
+      config: { mode: 'listing', listing: 'top' },
+    });
+    await seedCompletedScan({
+      scanJobs,
+      tenant,
+      workspace,
+      sourceBindingId: overviewRss.sourceBindingId,
+      scanPolicyId: overviewRss.scanPolicyId,
+      scanJobId: 'overview-rss-fresh-success',
+      completedAt: new Date(Date.now() - 30_000),
+    });
+    await seedCompletedScan({
+      scanJobs,
+      tenant,
+      workspace,
+      sourceBindingId: overviewReddit.sourceBindingId,
+      scanPolicyId: overviewReddit.scanPolicyId,
+      scanJobId: 'overview-reddit-rate-limited',
+      completedAt: new Date(Date.now() - 30_000),
+      failureReason: 'Provider rate limit 429',
+    });
+    await seedCompletedScan({
+      scanJobs,
+      tenant,
+      workspace,
+      sourceBindingId: overviewGithubIssues.sourceBindingId,
+      scanPolicyId: overviewGithubIssues.scanPolicyId,
+      scanJobId: 'overview-github-provider-failure-1',
+      completedAt: new Date(Date.now() - 90_000),
+      failureReason: 'kind=auth_failed provider credential rejected',
+    });
+    await seedCompletedScan({
+      scanJobs,
+      tenant,
+      workspace,
+      sourceBindingId: overviewGithubIssues.sourceBindingId,
+      scanPolicyId: overviewGithubIssues.scanPolicyId,
+      scanJobId: 'overview-github-provider-failure-2',
+      completedAt: new Date(Date.now() - 30_000),
+      failureReason: 'kind=auth_failed provider credential rejected',
+    });
+    await movePolicyNextRunForward({
+      scanPolicies,
+      tenant,
+      workspace,
+      sourceBindingId: overviewHackerNews.sourceBindingId,
+      nextRunAt: new Date(Date.now() + 300_000),
+    });
+
+    const overview = await request(app.getHttpServer())
+      .get(`/topics/${overviewTopicId}/source-bindings/overview`)
+      .set(viewerHeaders)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`/topics/${overviewTopicId}/source-bindings/overview`)
+      .set(otherWorkspaceHeaders)
+      .expect(404);
+
+    assert(overview.body.items.length === 4, 'source overview must expose every provider binding health item');
+    assert(overview.body.summary.totalBindings === 4, 'source overview must count all bindings');
+    assert(overview.body.summary.healthyBindings === 1, 'source overview must count healthy bindings');
+    assert(overview.body.summary.degradedBindings === 2, 'source overview must count degraded bindings');
+    assert(overview.body.summary.scheduledBindings === 1, 'source overview must count scheduled bindings');
+    assert(overview.body.summary.freshSuccessSkips === 1, 'source overview must count fresh-success skips');
+    assert(overview.body.summary.rateLimitedBindings === 1, 'source overview must count rate-limited bindings');
+    assert(
+      overview.body.summary.providerFailureBackoffSkips === 1,
+      'source overview must count provider failure backoff skips',
+    );
+    assert(
+      overview.body.summary.providerUnavailableScans === 2,
+      'source overview must aggregate provider unavailable scans',
+    );
+    assert(
+      overview.body.summary.signals.includes('fresh_success_skip'),
+      'source overview must expose fresh-success signal',
+    );
+    assert(
+      overview.body.summary.signals.includes('rate_limit_backoff'),
+      'source overview must expose rate-limit signal',
+    );
+    assert(
+      overview.body.summary.signals.includes('provider_failure_backoff'),
+      'source overview must expose provider failure backoff signal',
+    );
+    assert(
+      overview.body.summary.signals.includes('provider_unavailable'),
+      'source overview must expose provider unavailable signal',
+    );
+    assert(
+      overview.body.summary.signals.includes('scheduled_later'),
+      'source overview must expose scheduled-later signal',
+    );
+    assert(
+      overview.body.summary.providerBreakdown.some(
+        (provider: { providerKey: string; healthyBindings: number }) =>
+          provider.providerKey === 'rss' && provider.healthyBindings === 1,
+      ),
+      'source overview must break down RSS healthy binding',
+    );
+    assert(
+      overview.body.summary.providerBreakdown.some(
+        (provider: {
+          providerKey: string;
+          degradedBindings: number;
+          rateLimitBackoffSkips: number;
+        }) =>
+          provider.providerKey === 'reddit' &&
+          provider.degradedBindings === 1 &&
+          provider.rateLimitBackoffSkips === 1,
+      ),
+      'source overview must break down Reddit rate-limit state',
+    );
+    assert(
+      overview.body.summary.providerBreakdown.some(
+        (provider: {
+          providerKey: string;
+          degradedBindings: number;
+          providerFailureBackoffSkips: number;
+        }) =>
+          provider.providerKey === 'github-issues' &&
+          provider.degradedBindings === 1 &&
+          provider.providerFailureBackoffSkips === 1,
+      ),
+      'source overview must break down GitHub provider failure state',
     );
 
     console.log('Source binding health REST smoke OK');
