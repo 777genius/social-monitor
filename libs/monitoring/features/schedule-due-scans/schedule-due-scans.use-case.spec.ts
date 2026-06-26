@@ -1257,6 +1257,153 @@ describe('ScheduleDueScansUseCase', () => {
     });
   });
 
+  it('keeps global scheduler decisions tenant-scoped across workspaces', async () => {
+    const firstTenant = tenantId('tenant-global-scheduler-a');
+    const firstWorkspace = workspaceId('workspace-global-scheduler-a');
+    const secondTenant = tenantId('tenant-global-scheduler-b');
+    const secondWorkspace = workspaceId('workspace-global-scheduler-b');
+    const bindings = new FakeSourceBindings();
+    bindings.add(
+      SourceBinding.create({
+        id: 'binding-global-a',
+        tenantId: firstTenant,
+        workspaceId: firstWorkspace,
+        topicId: 'topic-global-a',
+        providerKey: 'rss',
+        capabilityProfileVersion: 1,
+        config: { feedUrl: 'https://example.test/a.xml' },
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
+    bindings.add(
+      SourceBinding.create({
+        id: 'binding-global-b',
+        tenantId: secondTenant,
+        workspaceId: secondWorkspace,
+        topicId: 'topic-global-b',
+        providerKey: 'reddit',
+        capabilityProfileVersion: 1,
+        config: { subreddit: 'programming', listing: 'hot' },
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
+    const policies = new FakeScanPolicies();
+    policies.add(
+      ScanPolicy.create({
+        id: 'policy-global-a',
+        tenantId: firstTenant,
+        workspaceId: firstWorkspace,
+        sourceBindingId: 'binding-global-a',
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 2,
+        nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
+    policies.add(
+      ScanPolicy.create({
+        id: 'policy-global-b',
+        tenantId: secondTenant,
+        workspaceId: secondWorkspace,
+        sourceBindingId: 'binding-global-b',
+        intervalSeconds: 900,
+        freshnessSeconds: 900,
+        retryBudget: 1,
+        nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
+    const queue = new FakeScanQueue();
+    const schedulerDecisions = new FakeSchedulerDecisionHistory();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      new FakeScanJobs(),
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+      schedulerDecisions,
+    );
+
+    const result = await useCase.execute({
+      limit: 10,
+      correlationId: 'scheduler-global-tick',
+      includeDecisions: true,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        evaluated: 2,
+        enqueued: 2,
+        skipped: 0,
+        skippedByReason: noSkippedByReason(),
+        decisions: [
+          expect.objectContaining({
+            scanPolicyId: 'policy-global-a',
+            sourceBindingId: 'binding-global-a',
+            providerKey: 'rss',
+            decision: 'enqueued',
+            reason: 'scan_policy_due_now',
+          }),
+          expect.objectContaining({
+            scanPolicyId: 'policy-global-b',
+            sourceBindingId: 'binding-global-b',
+            providerKey: 'reddit',
+            decision: 'enqueued',
+            reason: 'scan_policy_due_now',
+            effectiveIntervalSeconds: 900,
+            providerMinimumIntervalEnforced: false,
+          }),
+        ],
+      }),
+    });
+    expect(queue.commands).toEqual([
+      expect.objectContaining({
+        tenantId: firstTenant,
+        workspaceId: firstWorkspace,
+        sourceBindingId: 'binding-global-a',
+        scanPolicyId: 'policy-global-a',
+        providerKey: 'rss',
+      }),
+      expect.objectContaining({
+        tenantId: secondTenant,
+        workspaceId: secondWorkspace,
+        sourceBindingId: 'binding-global-b',
+        scanPolicyId: 'policy-global-b',
+        providerKey: 'reddit',
+      }),
+    ]);
+    expect(schedulerDecisions.records).toEqual([
+      expect.objectContaining({
+        tenantId: firstTenant,
+        workspaceId: firstWorkspace,
+        decisionKey:
+          'scan-policy:policy-global-a:due-at:2026-06-05T12:00:00.000Z',
+        sourceBindingId: 'binding-global-a',
+        providerKey: 'rss',
+        correlationId: 'scheduler-global-tick',
+      }),
+      expect.objectContaining({
+        tenantId: secondTenant,
+        workspaceId: secondWorkspace,
+        decisionKey:
+          'scan-policy:policy-global-b:due-at:2026-06-05T12:00:00.000Z',
+        sourceBindingId: 'binding-global-b',
+        providerKey: 'reddit',
+        correlationId: 'scheduler-global-tick',
+      }),
+    ]);
+    await expect(
+      policies.findBySourceBinding({
+        tenantId: firstTenant,
+        workspaceId: firstWorkspace,
+        sourceBindingId: 'binding-global-b',
+      }),
+    ).resolves.toBeNull();
+  });
+
   it('rejects unsafe scheduler batch size', async () => {
     const useCase = new ScheduleDueScansUseCase(
       new FakeSourceBindings(),
