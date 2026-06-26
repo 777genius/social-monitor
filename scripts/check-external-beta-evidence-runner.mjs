@@ -32,6 +32,7 @@ const externalGroups = new Map((externalReadiness.requiredEvidenceGroups ?? []).
 const auditRequirements = new Map((audit.requirements ?? []).map((requirement) => [requirement.requirementId, requirement]));
 const violations = [];
 const artifactValidationSmokeTimeoutMs = 300_000;
+const runnerSmokeTimeoutMs = 30_000;
 
 const allowedModes = new Set([
   'local_contract',
@@ -2684,6 +2685,7 @@ function runRunnerPreflightNegativeSmoke(jobId, env) {
         },
         encoding: 'utf8',
         stdio: 'pipe',
+        timeout: runnerSmokeTimeoutMs,
       },
     );
     return { exitCode: 0, output: '' };
@@ -2968,6 +2970,7 @@ function runRunnerOutputSmoke(args, env) {
         },
         encoding: 'utf8',
         stdio: 'pipe',
+        timeout: runnerSmokeTimeoutMs,
       },
     );
     return { exitCode: 0, output };
@@ -2996,6 +2999,7 @@ function runRunnerTextHandoffSmoke(jobId, env) {
         },
         encoding: 'utf8',
         stdio: 'pipe',
+        timeout: runnerSmokeTimeoutMs,
       },
     );
     return { exitCode: 0, output };
@@ -3025,6 +3029,7 @@ function runRunnerJsonPlanSmoke(jobId, env) {
         },
         encoding: 'utf8',
         stdio: 'pipe',
+        timeout: runnerSmokeTimeoutMs,
       },
     );
     return { exitCode: 0, output, plan: JSON.parse(output) };
@@ -3144,6 +3149,7 @@ function runRunnerPreflightPositiveSmoke(env, jobId) {
         },
         encoding: 'utf8',
         stdio: 'pipe',
+        timeout: runnerSmokeTimeoutMs,
       },
     );
     return { exitCode: 0, output: '' };

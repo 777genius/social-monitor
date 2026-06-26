@@ -36,7 +36,12 @@ const rabbitHost = process.env.RABBITMQ_HOST ?? 'localhost';
 const rabbitUser = process.env.RABBITMQ_USER ?? 'social_monitor';
 const rabbitPassword = process.env.RABBITMQ_PASSWORD ?? 'social_monitor_local_password';
 const rabbitUrl = process.env.RABBITMQ_URL ??
-  `amqp://${encodeURIComponent(rabbitUser)}:${encodeURIComponent(rabbitPassword)}@${rabbitHost}:${rabbitPort}`;
+  buildRabbitMqUrl({
+    host: rabbitHost,
+    port: rabbitPort,
+    username: rabbitUser,
+    password: rabbitPassword,
+  });
 const envFilePath =
   process.env.STAGING_RELIABILITY_ENV_PATH ??
   join(artifactRoot, 'staging-reliability.env');
@@ -45,6 +50,14 @@ const runId = `docker-${Date.now().toString(36)}`;
 
 let rabbitArtifact;
 let postgresArtifact;
+
+function buildRabbitMqUrl(params) {
+  const url = new URL(`amqp://${params.host}:${params.port}`);
+  url.username = params.username;
+  url.password = params.password;
+
+  return url.toString();
+}
 
 try {
   rabbitArtifact = await captureRabbitMqArtifact();

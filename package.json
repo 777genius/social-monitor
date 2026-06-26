@@ -65,7 +65,7 @@
     "check:events": "node scripts/check-event-contracts.mjs",
     "check:evidence-env-file": "node scripts/check-evidence-env-file.mjs",
     "check:external-beta-readiness": "node scripts/check-external-beta-readiness.mjs",
-    "check:external-beta-evidence-runner": "node scripts/check-external-beta-evidence-runner.mjs",
+    "check:external-beta-evidence-runner": "node scripts/run-with-timeout.mjs --timeout-ms 300000 -- node scripts/check-external-beta-evidence-runner.mjs",
     "check:external-beta-evidence-dry-run": "node scripts/check-external-beta-evidence-dry-run.mjs",
     "check:external-beta-evidence-inputs": "node scripts/check-external-beta-evidence-inputs.mjs",
     "frontend:create-feature": "node scripts/create-frontend-feature.mjs",

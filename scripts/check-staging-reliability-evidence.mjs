@@ -1827,7 +1827,9 @@ function requireCaptureScriptWiring() {
     "'port', service, containerPort",
     "RABBITMQ_USER",
     "RABBITMQ_PASSWORD",
-    "encodeURIComponent(rabbitUser)",
+    "buildRabbitMqUrl",
+    "url.username = params.username",
+    "url.password = params.password",
   ]) {
     if (!captureSource.includes(marker)) {
       violations.push(
