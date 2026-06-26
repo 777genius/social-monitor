@@ -22,6 +22,7 @@ import type {
 } from '../../ports';
 import type { RequestScanCommand } from './request-scan.command';
 import type { RequestScanDecisionView, RequestScanResult } from './request-scan.result';
+import { effectiveProviderScanCadence } from '../shared/scan-cadence-policy';
 import { isFreshSuccessfulScan, rateLimitBackoffUntil } from '../shared/scan-freshness-guard';
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
@@ -130,15 +131,20 @@ export class RequestScanUseCase {
       workspaceId: command.workspaceId,
       sourceBindingId: command.sourceBindingId,
     });
+    const cadence = effectiveProviderScanCadence({
+      providerKey: bindingSnapshot.providerKey,
+      intervalSeconds: policySnapshot.intervalSeconds,
+      freshnessSeconds: policySnapshot.freshnessSeconds,
+    });
     if (latestJob !== null && isFreshSuccessfulScan({
       latestJob,
-      freshnessSeconds: policySnapshot.freshnessSeconds,
+      freshnessSeconds: cadence.freshnessSeconds,
       now,
     })) {
       const snapshot = latestJob.toSnapshot();
       const freshnessDeadlineAt = snapshot.completedAt === undefined
         ? undefined
-        : new Date(snapshot.completedAt.getTime() + policySnapshot.freshnessSeconds * 1000).toISOString();
+        : new Date(snapshot.completedAt.getTime() + cadence.freshnessSeconds * 1000).toISOString();
       const result = withRequestDecision({
         scanJobId: snapshot.id,
         status: snapshot.status,
@@ -150,7 +156,7 @@ export class RequestScanUseCase {
           nextEligibleAt: freshnessDeadlineAt,
           waitSeconds: secondsUntil(freshnessDeadlineAt, now),
           freshnessDeadlineAt,
-          signals: ['fresh_success'],
+          signals: cadenceSignals('fresh_success', cadence.providerMinimumIntervalEnforced),
         },
       });
       await this.cacheResult(command, result);
@@ -158,7 +164,7 @@ export class RequestScanUseCase {
     }
     const rateLimitBackoff = rateLimitBackoffUntil({
       latestJob,
-      backoffSeconds: policySnapshot.intervalSeconds,
+      backoffSeconds: cadence.intervalSeconds,
       now,
     });
     if (latestJob !== null && rateLimitBackoff !== null) {
@@ -175,7 +181,7 @@ export class RequestScanUseCase {
           nextEligibleAt: rateLimitBackoffUntil,
           waitSeconds: secondsUntil(rateLimitBackoffUntil, now),
           rateLimitBackoffUntil,
-          signals: ['rate_limit_backoff'],
+          signals: cadenceSignals('rate_limit_backoff', cadence.providerMinimumIntervalEnforced),
         },
       });
       await this.cacheResult(command, result);
@@ -290,3 +296,8 @@ const secondsUntil = (isoDate: string | undefined, now: Date): number | undefine
 
   return Math.max(0, Math.ceil((new Date(isoDate).getTime() - now.getTime()) / 1000));
 };
+
+const cadenceSignals = (primarySignal: string, providerMinimumIntervalEnforced: boolean): readonly string[] =>
+  providerMinimumIntervalEnforced
+    ? [primarySignal, 'provider_minimum_interval_enforced']
+    : [primarySignal];

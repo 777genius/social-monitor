@@ -313,6 +313,45 @@ describe('GetSourceBindingHealthUseCase', () => {
     });
   });
 
+  it('uses provider minimum cadence when projecting freshness for legacy policy', async () => {
+    const context = await setup(new FakeScanExecutionAttempts(), 'reddit');
+    await context.policies.save(makePolicy({
+      intervalSeconds: 60,
+      freshnessSeconds: 60,
+    }));
+    await context.jobs.save(
+      makeJob(new Date('2026-06-16T00:04:58.000Z'))
+        .markEnqueued({ enqueuedAt: new Date('2026-06-16T00:04:59.000Z') })
+        .markSucceeded({ completedAt: new Date('2026-06-16T00:05:00.000Z') }),
+    );
+
+    const result = await context.useCase.execute(baseQuery());
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      value: expect.objectContaining({
+        healthState: 'healthy',
+        freshness: {
+          isFresh: true,
+          ageSeconds: 300,
+          freshnessDeadlineAt: '2026-06-16T00:20:00.000Z',
+          staleBySeconds: undefined,
+        },
+        schedulerDecision: expect.objectContaining({
+          canScanNow: false,
+          decision: 'fresh_success',
+          reason: 'latest_success_still_fresh',
+          minimumIntervalSeconds: 900,
+          configuredIntervalSeconds: 60,
+          freshnessSeconds: 900,
+          nextEligibleAt: '2026-06-16T00:20:00.000Z',
+          waitSeconds: 600,
+          signals: ['fresh_success', 'provider_minimum_interval_enforced'],
+        }),
+      }),
+    }));
+  });
+
   it('summarizes recent provider health window from scan history', async () => {
     const { useCase, policies, jobs } = await setup();
     await policies.save(makePolicy());
@@ -395,11 +434,14 @@ describe('GetSourceBindingHealthUseCase', () => {
   });
 });
 
-const setup = async (attempts: ScanExecutionAttemptReadPort = new FakeScanExecutionAttempts()) => {
+const setup = async (
+  attempts: ScanExecutionAttemptReadPort = new FakeScanExecutionAttempts(),
+  providerKey = 'fake-source',
+) => {
   const bindings = new FakeSourceBindings();
   const policies = new FakeScanPolicies();
   const jobs = new FakeScanJobs();
-  await bindings.save(makeBinding());
+  await bindings.save(makeBinding(providerKey));
 
   return {
     bindings,
@@ -457,13 +499,13 @@ const baseQuery = () => ({
   sourceBindingId: 'binding-1',
 });
 
-const makeBinding = () =>
+const makeBinding = (providerKey = 'fake-source') =>
   SourceBinding.create({
     id: 'binding-1',
     tenantId: tenant,
     workspaceId: workspace,
     topicId: 'topic-1',
-    providerKey: 'fake-source',
+    providerKey,
     capabilityProfileVersion: 1,
     config: { mode: 'search', query: 'health' },
     createdAt: new Date('2026-06-16T00:00:00.000Z'),

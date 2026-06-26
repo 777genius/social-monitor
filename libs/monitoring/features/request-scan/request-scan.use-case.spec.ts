@@ -211,13 +211,13 @@ class DenyingScanRequestQuota implements ScanRequestQuotaPort {
   }
 }
 
-const makeBinding = () =>
+const makeBinding = (providerKey = 'fake-source') =>
   SourceBinding.create({
     id: 'binding-1',
     tenantId: tenantId('tenant-1'),
     workspaceId: workspaceId('workspace-1'),
     topicId: 'topic-1',
-    providerKey: 'fake-source',
+    providerKey,
     capabilityProfileVersion: 1,
     config: {},
     createdAt: new Date('2026-06-05T00:00:00.000Z'),
@@ -462,6 +462,80 @@ describe('RequestScanUseCase', () => {
       workspaceId: workspaceId('workspace-1'),
       idempotencyKey: 'manual-scan-fresh-skip',
     })).resolves.toBeNull();
+  });
+
+  it('uses provider minimum cadence when blocking duplicate manual scans for legacy policy', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding('reddit'));
+    const policies = new FakeScanPolicies();
+    policies.add(ScanPolicy.create({
+      id: 'policy-1',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      intervalSeconds: 60,
+      freshnessSeconds: 60,
+      retryBudget: 3,
+      nextRunAt: new Date('2026-06-05T00:00:00.000Z'),
+      createdAt: new Date('2026-06-05T00:00:00.000Z'),
+    }));
+    const scanJobs = new FakeScanJobs();
+    await scanJobs.save(ScanJob.request({
+      id: 'recent-reddit-successful-scan-job',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      scanPolicyId: 'policy-1',
+      idempotencyKey: 'recent-reddit-successful-scan',
+      requestedAt: new Date('2026-06-05T00:04:00.000Z'),
+    }).markEnqueued({
+      enqueuedAt: new Date('2026-06-05T00:04:01.000Z'),
+    }).markSucceeded({
+      completedAt: new Date('2026-06-05T00:05:00.000Z'),
+    }));
+    const queue = new FakeScanQueue();
+    const outbox = new FakeOutbox();
+    const quota = new AllowingScanRequestQuota();
+    const useCase = new RequestScanUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      outbox,
+      new FakeIdempotency(),
+      quota,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:10:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'manual-scan-provider-minimum-fresh-skip',
+      correlationId: 'correlation-provider-minimum-fresh-skip',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scanJobId: 'recent-reddit-successful-scan-job',
+        status: 'succeeded',
+        created: false,
+        requestDecision: {
+          decision: 'fresh_success',
+          reason: 'latest_success_still_fresh',
+          createdNewScan: false,
+          nextEligibleAt: '2026-06-05T00:20:00.000Z',
+          waitSeconds: 600,
+          freshnessDeadlineAt: '2026-06-05T00:20:00.000Z',
+          signals: ['fresh_success', 'provider_minimum_interval_enforced'],
+        },
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect(outbox.events).toHaveLength(0);
+    expect(quota.reservationCount).toBe(0);
   });
 
   it('returns latest rate-limited failed scan job while provider backoff is active', async () => {

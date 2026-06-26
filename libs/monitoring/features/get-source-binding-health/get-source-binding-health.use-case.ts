@@ -8,8 +8,12 @@ import type {
   ScanPolicyRepositoryPort,
   SourceBindingRepositoryPort,
 } from '../../ports';
+import {
+  effectiveProviderScanCadence,
+  minimumScanIntervalSecondsForProvider,
+  type EffectiveProviderScanCadence,
+} from '../shared/scan-cadence-policy';
 import { presentScanPolicy } from '../shared/scan-policy-presenter';
-import { minimumScanIntervalSecondsForProvider } from '../shared/scan-cadence-policy';
 import { isFreshSuccessfulScan, rateLimitBackoffUntil } from '../shared/scan-freshness-guard';
 import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
 import { buildScanStatusView } from '../shared/scan-status-view';
@@ -86,11 +90,18 @@ export class GetSourceBindingHealthUseCase {
     });
     const latestScanSnapshot = latestScanJob?.toSnapshot();
     const scanPolicySnapshot = scanPolicy?.toSnapshot();
+    const cadence = scanPolicySnapshot === undefined
+      ? undefined
+      : effectiveProviderScanCadence({
+          providerKey: bindingSnapshot.providerKey,
+          intervalSeconds: scanPolicySnapshot.intervalSeconds,
+          freshnessSeconds: scanPolicySnapshot.freshnessSeconds,
+        });
     const freshness = scanPolicySnapshot === undefined || latestScanSnapshot?.completedAt === undefined
       ? undefined
       : buildFreshness({
           completedAt: latestScanSnapshot.completedAt,
-          freshnessSeconds: scanPolicySnapshot.freshnessSeconds,
+          freshnessSeconds: cadence?.freshnessSeconds ?? scanPolicySnapshot.freshnessSeconds,
           now,
         });
     const latestAttempt = latestScanSnapshot === undefined
@@ -119,6 +130,7 @@ export class GetSourceBindingHealthUseCase {
         activeScanJob,
         latestScanJob,
         freshness,
+        cadence,
         now,
       }),
       scanPolicy: scanPolicy === null || scanPolicySnapshot === undefined
@@ -221,13 +233,15 @@ const buildSchedulerDecision = (params: {
   readonly activeScanJob: ScanJob | null;
   readonly latestScanJob: ScanJob | null;
   readonly freshness?: SourceBindingHealthFreshnessView;
+  readonly cadence?: EffectiveProviderScanCadence;
   readonly now: Date;
 }): SourceBindingHealthSchedulerDecisionView => {
-  const minimumIntervalSeconds = minimumScanIntervalSecondsForProvider(params.providerKey);
+  const minimumIntervalSeconds = params.cadence?.minimumIntervalSeconds ??
+    minimumScanIntervalSecondsForProvider(params.providerKey);
   const base = {
     minimumIntervalSeconds,
     configuredIntervalSeconds: params.scanPolicySnapshot?.intervalSeconds,
-    freshnessSeconds: params.scanPolicySnapshot?.freshnessSeconds,
+    freshnessSeconds: params.cadence?.freshnessSeconds ?? params.scanPolicySnapshot?.freshnessSeconds,
   };
 
   if (params.bindingStatus === 'paused') {
@@ -262,7 +276,7 @@ const buildSchedulerDecision = (params: {
 
   if (isFreshSuccessfulScan({
     latestJob: params.latestScanJob,
-    freshnessSeconds: params.scanPolicySnapshot.freshnessSeconds,
+    freshnessSeconds: params.cadence?.freshnessSeconds ?? params.scanPolicySnapshot.freshnessSeconds,
     now: params.now,
   })) {
     return {
@@ -272,13 +286,13 @@ const buildSchedulerDecision = (params: {
       reason: 'latest_success_still_fresh',
       nextEligibleAt: params.freshness?.freshnessDeadlineAt,
       waitSeconds: secondsUntil(params.freshness?.freshnessDeadlineAt, params.now),
-      signals: ['fresh_success'],
+      signals: cadenceSignals('fresh_success', params.cadence?.providerMinimumIntervalEnforced === true),
     };
   }
 
   const rateLimitBackoff = rateLimitBackoffUntil({
     latestJob: params.latestScanJob,
-    backoffSeconds: params.scanPolicySnapshot.intervalSeconds,
+    backoffSeconds: params.cadence?.intervalSeconds ?? params.scanPolicySnapshot.intervalSeconds,
     now: params.now,
   });
   if (rateLimitBackoff !== null) {
@@ -292,7 +306,7 @@ const buildSchedulerDecision = (params: {
       nextEligibleAt: backoffUntil,
       waitSeconds: secondsUntil(backoffUntil, params.now),
       rateLimitBackoffUntil: backoffUntil,
-      signals: ['rate_limit_backoff'],
+      signals: cadenceSignals('rate_limit_backoff', params.cadence?.providerMinimumIntervalEnforced === true),
     };
   }
 
@@ -318,7 +332,7 @@ const buildSchedulerDecision = (params: {
     reason: 'scan_policy_due_now',
     nextEligibleAt: params.now.toISOString(),
     waitSeconds: 0,
-    signals: ['scan_policy_due'],
+    signals: cadenceSignals('scan_policy_due', params.cadence?.providerMinimumIntervalEnforced === true),
   };
 };
 
@@ -329,6 +343,11 @@ const secondsUntil = (isoDate: string | undefined, now: Date): number | undefine
 
   return Math.max(0, Math.ceil((new Date(isoDate).getTime() - now.getTime()) / 1000));
 };
+
+const cadenceSignals = (primarySignal: string, providerMinimumIntervalEnforced: boolean): readonly string[] =>
+  providerMinimumIntervalEnforced
+    ? [primarySignal, 'provider_minimum_interval_enforced']
+    : [primarySignal];
 
 const buildRecentWindow = (params: {
   readonly jobs: readonly ScanJob[];

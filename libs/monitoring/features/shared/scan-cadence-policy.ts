@@ -14,6 +14,30 @@ const providerMinimumScanIntervalSeconds = new Map<string, number>([
 export const minimumScanIntervalSecondsForProvider = (providerKey: string): number =>
   providerMinimumScanIntervalSeconds.get(providerKey) ?? 900;
 
+export type EffectiveProviderScanCadence = {
+  readonly minimumIntervalSeconds: number;
+  readonly intervalSeconds: number;
+  readonly freshnessSeconds: number;
+  readonly providerMinimumIntervalEnforced: boolean;
+};
+
+export const effectiveProviderScanCadence = (params: {
+  readonly providerKey: string;
+  readonly intervalSeconds: number;
+  readonly freshnessSeconds: number;
+}): EffectiveProviderScanCadence => {
+  const minimumIntervalSeconds = minimumScanIntervalSecondsForProvider(params.providerKey);
+
+  return {
+    minimumIntervalSeconds,
+    intervalSeconds: Math.max(params.intervalSeconds, minimumIntervalSeconds),
+    freshnessSeconds: Math.max(params.freshnessSeconds, minimumIntervalSeconds),
+    providerMinimumIntervalEnforced:
+      params.intervalSeconds < minimumIntervalSeconds ||
+      params.freshnessSeconds < minimumIntervalSeconds,
+  };
+};
+
 export const validateProviderScanCadence = (params: {
   readonly providerKey: string;
   readonly intervalSeconds: number;

@@ -170,13 +170,13 @@ class BackpressuredScanQueue implements ScanQueuePort {
   }
 }
 
-const makeBinding = () =>
+const makeBinding = (providerKey = 'fake-source') =>
   SourceBinding.create({
     id: 'binding-1',
     tenantId: tenantId('tenant-1'),
     workspaceId: workspaceId('workspace-1'),
     topicId: 'topic-1',
-    providerKey: 'fake-source',
+    providerKey,
     capabilityProfileVersion: 1,
     config: {},
     createdAt: new Date('2026-06-05T00:00:00.000Z'),
@@ -314,6 +314,129 @@ describe('ScheduleDueScansUseCase', () => {
       sourceBindingId: 'binding-1',
     }))?.toSnapshot()).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
+    });
+  });
+
+  it('advances legacy too-aggressive policies by provider minimum cadence after enqueue', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding('reddit'));
+    const policies = new FakeScanPolicies();
+    policies.add(ScanPolicy.create({
+      id: 'policy-1',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      intervalSeconds: 60,
+      freshnessSeconds: 60,
+      retryBudget: 3,
+      nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
+      createdAt: new Date('2026-06-05T00:00:00.000Z'),
+    }));
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      new FakeScanJobs(),
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-provider-minimum-enqueue',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 1,
+        skipped: 0,
+        skippedByReason: noSkippedByReason(),
+      },
+    });
+    expect(queue.commands).toEqual([
+      expect.objectContaining({
+        providerKey: 'reddit',
+        causationId: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
+      }),
+    ]);
+    expect((await policies.findBySourceBinding({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+    }))?.toSnapshot()).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:15:00.000Z'),
+    });
+  });
+
+  it('uses provider minimum cadence when skipping recently scanned legacy policy', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding('reddit'));
+    const policies = new FakeScanPolicies();
+    policies.add(ScanPolicy.create({
+      id: 'policy-1',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      intervalSeconds: 60,
+      freshnessSeconds: 60,
+      retryBudget: 3,
+      nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
+      createdAt: new Date('2026-06-05T00:00:00.000Z'),
+    }));
+    const scanJobs = new FakeScanJobs();
+    await scanJobs.save(ScanJob.request({
+      id: 'recent-reddit-scan-job',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      scanPolicyId: 'policy-1',
+      idempotencyKey: 'manual-recent-reddit-scan',
+      requestedAt: new Date('2026-06-05T11:54:00.000Z'),
+    }).markEnqueued({
+      enqueuedAt: new Date('2026-06-05T11:54:01.000Z'),
+    }).markSucceeded({
+      completedAt: new Date('2026-06-05T11:55:00.000Z'),
+    }));
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-provider-minimum-fresh-skip',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 0,
+        skipped: 1,
+        skippedByReason: skippedByReason('fresh_success'),
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect((await policies.findBySourceBinding({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+    }))?.toSnapshot()).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:15:00.000Z'),
     });
   });
 

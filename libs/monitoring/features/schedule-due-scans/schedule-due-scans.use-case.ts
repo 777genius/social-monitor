@@ -20,6 +20,7 @@ import type {
   ScheduleDueScansSkipBreakdown,
   ScheduleDueScansSkipReason,
 } from './schedule-due-scans.result';
+import { effectiveProviderScanCadence } from '../shared/scan-cadence-policy';
 import { isFreshSuccessfulScan, rateLimitBackoffUntil } from '../shared/scan-freshness-guard';
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
@@ -80,14 +81,19 @@ export class ScheduleDueScansUseCase {
         workspaceId: policySnapshot.workspaceId,
         idempotencyKey,
       });
+      const cadence = effectiveProviderScanCadence({
+        providerKey: bindingSnapshot.providerKey,
+        intervalSeconds: policySnapshot.intervalSeconds,
+        freshnessSeconds: policySnapshot.freshnessSeconds,
+      });
       const rateLimitBackoff = rateLimitBackoffUntil({
         latestJob,
-        backoffSeconds: policySnapshot.intervalSeconds,
+        backoffSeconds: cadence.intervalSeconds,
         now,
       });
       const freshSuccess = isFreshSuccessfulScan({
         latestJob,
-        freshnessSeconds: policySnapshot.freshnessSeconds,
+        freshnessSeconds: cadence.freshnessSeconds,
         now,
       });
       const skipReason = schedulerSkipReason({
@@ -136,7 +142,7 @@ export class ScheduleDueScansUseCase {
       await this.scanPolicies.save(policy.scheduleNext({
         nextRunAt: nextRunAtAfterSchedulerDecision({
           dueAt: policySnapshot.nextRunAt,
-          intervalSeconds: policySnapshot.intervalSeconds,
+          intervalSeconds: cadence.intervalSeconds,
           now,
           rateLimitBackoff,
         }),
