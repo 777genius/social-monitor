@@ -6,6 +6,16 @@ export type TopicSourceDailyHistoryScanCoverageState =
   | 'partial'
   | 'complete';
 
+export type TopicSourceDailyHistorySchedulerSkipBreakdownView = {
+  readonly activeScan: number;
+  readonly duplicateWindow: number;
+  readonly freshSuccess: number;
+  readonly providerFailureBackoff: number;
+  readonly queueBackpressure: number;
+  readonly rateLimitBackoff: number;
+  readonly sourceUnavailable: number;
+};
+
 export type TopicSourceDailyHistoryCadenceSummaryView = {
   readonly sourceBindingCount: number;
   readonly minimumIntervalSeconds: number;
@@ -28,6 +38,11 @@ export type TopicSourceDailyHistoryProviderView = {
   readonly scannedSourceBindingCount: number;
   readonly unscannedSourceBindingCount: number;
   readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
+  readonly schedulerDecisionCount: number;
+  readonly schedulerEnqueuedCount: number;
+  readonly schedulerSkippedCount: number;
+  readonly schedulerSkippedByReason: TopicSourceDailyHistorySchedulerSkipBreakdownView;
+  readonly lastSchedulerEvaluatedAt?: string;
   readonly cadenceSummary?: TopicSourceDailyHistoryCadenceSummaryView;
   readonly providerHealthState: ScanProviderHealthState;
   readonly totalScans: number;
@@ -60,6 +75,11 @@ export type TopicSourceDailyHistoryDayView = {
   readonly scannedSourceBindingCount: number;
   readonly unscannedSourceBindingCount: number;
   readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
+  readonly schedulerDecisionCount: number;
+  readonly schedulerEnqueuedCount: number;
+  readonly schedulerSkippedCount: number;
+  readonly schedulerSkippedByReason: TopicSourceDailyHistorySchedulerSkipBreakdownView;
+  readonly lastSchedulerEvaluatedAt?: string;
   readonly totalScans: number;
   readonly succeededScans: number;
   readonly failedScans: number;
@@ -88,6 +108,11 @@ export type TopicSourceDailyHistorySummaryView = {
   readonly scannedSourceBindingCount: number;
   readonly unscannedSourceBindingCount: number;
   readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
+  readonly schedulerDecisionCount: number;
+  readonly schedulerEnqueuedCount: number;
+  readonly schedulerSkippedCount: number;
+  readonly schedulerSkippedByReason: TopicSourceDailyHistorySchedulerSkipBreakdownView;
+  readonly lastSchedulerEvaluatedAt?: string;
   readonly totalScans: number;
   readonly succeededScans: number;
   readonly failedScans: number;

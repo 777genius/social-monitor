@@ -5,6 +5,8 @@ import type {
   ScanExecutionAttemptReadPort,
   ScanJobHistoryReadPort,
   ScanPolicyRepositoryPort,
+  ScanSchedulerDecisionHistoryPort,
+  ScanSchedulerDecisionRecord,
   SourceBindingRepositoryPort,
   TopicRepositoryPort,
 } from '../../ports';
@@ -22,6 +24,7 @@ type ListTopicSourceDailyHistoryFailure = DomainError;
 const maxHistoryDays = 90;
 const maxSourceBindings = 100;
 const maxScanJobsPerBindingDay = 100;
+const maxSchedulerDecisionsPerBindingDay = 100;
 const maxProviderFilters = 20;
 
 export class ListTopicSourceDailyHistoryUseCase {
@@ -32,6 +35,7 @@ export class ListTopicSourceDailyHistoryUseCase {
     private readonly scanJobs: ScanJobHistoryReadPort,
     private readonly scanExecutionAttempts: ScanExecutionAttemptReadPort,
     private readonly clock: Clock,
+    private readonly schedulerDecisions?: ScanSchedulerDecisionHistoryPort,
   ) {}
 
   async execute(
@@ -85,22 +89,35 @@ export class ListTopicSourceDailyHistoryUseCase {
     const maxScanJobs = query.days * maxScanJobsPerBindingDay * visibleBindings.length;
     const historyEntries = await Promise.all(visibleBindings.map(async (binding) => {
       const snapshot = binding.toSnapshot();
-      const history = await this.scanJobs.listBySourceBindingWindow({
-        tenantId: query.tenantId,
-        workspaceId: query.workspaceId,
-        sourceBindingId: snapshot.id,
-        windowStartedAt: firstWindow.startedAt,
-        windowEndedAt: lastWindow.endedAt,
-        limit: query.days * maxScanJobsPerBindingDay,
-      });
+      const [history, schedulerHistory] = await Promise.all([
+        this.scanJobs.listBySourceBindingWindow({
+          tenantId: query.tenantId,
+          workspaceId: query.workspaceId,
+          sourceBindingId: snapshot.id,
+          windowStartedAt: firstWindow.startedAt,
+          windowEndedAt: lastWindow.endedAt,
+          limit: query.days * maxScanJobsPerBindingDay,
+        }),
+        this.schedulerDecisions?.listBySourceBindingWindow({
+          tenantId: query.tenantId,
+          workspaceId: query.workspaceId,
+          sourceBindingId: snapshot.id,
+          windowStartedAt: firstWindow.startedAt,
+          windowEndedAt: lastWindow.endedAt,
+          limit: query.days * maxSchedulerDecisionsPerBindingDay,
+        }) ?? Promise.resolve({ records: [], truncated: false }),
+      ]);
 
       return {
         binding,
         scanJobs: history.scanJobs,
+        schedulerDecisions: schedulerHistory.records,
         truncated: history.truncated,
+        schedulerDecisionHistoryTruncated: schedulerHistory.truncated,
       };
     }));
     const scanJobs = historyEntries.flatMap((entry) => entry.scanJobs);
+    const schedulerDecisions = historyEntries.flatMap((entry) => entry.schedulerDecisions);
     const attempts = new Map(
       await Promise.all(scanJobs.map(async (job) => {
         const snapshot = job.toSnapshot();
@@ -115,8 +132,10 @@ export class ListTopicSourceDailyHistoryUseCase {
     );
     const bindingById = new Map(visibleBindings.map((binding) => [binding.toSnapshot().id, binding]));
     const jobsByDay = new Map<string, readonly ScanJob[]>();
+    const schedulerDecisionsByDay = new Map<string, readonly ScanSchedulerDecisionRecord[]>();
     for (const window of windows) {
       jobsByDay.set(window.date, []);
+      schedulerDecisionsByDay.set(window.date, []);
     }
     for (const job of scanJobs) {
       const snapshot = job.toSnapshot();
@@ -127,9 +146,18 @@ export class ListTopicSourceDailyHistoryUseCase {
         jobsByDay.set(date, [...bucket, job]);
       }
     }
+    for (const decision of schedulerDecisions) {
+      const date = utcDateKey(decision.evaluatedAt);
+      const bucket = schedulerDecisionsByDay.get(date);
+
+      if (bucket !== undefined) {
+        schedulerDecisionsByDay.set(date, [...bucket, decision]);
+      }
+    }
     const days = windows.map((window) => buildTopicSourceDailyHistoryDayView({
       window,
       jobs: jobsByDay.get(window.date) ?? [],
+      schedulerDecisions: schedulerDecisionsByDay.get(window.date) ?? [],
       attempts,
       bindingById,
       bindings: visibleBindings,
@@ -143,13 +171,15 @@ export class ListTopicSourceDailyHistoryUseCase {
       summary: buildTopicSourceDailyHistorySummaryView({
         days,
         jobs: scanJobs,
+        schedulerDecisions,
         attempts,
         bindingById,
         bindings: visibleBindings,
         scanPoliciesByBindingId,
       }),
       days,
-      truncated: bindings.nextCursor !== undefined || historyEntries.some((entry) => entry.truncated),
+      truncated: bindings.nextCursor !== undefined ||
+        historyEntries.some((entry) => entry.truncated || entry.schedulerDecisionHistoryTruncated),
       maxScanJobs,
     });
   }

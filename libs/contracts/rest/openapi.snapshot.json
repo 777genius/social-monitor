@@ -4938,6 +4938,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "lastSchedulerEvaluatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "operatorAction": {
             "type": "string"
           },
@@ -4978,6 +4982,18 @@
             "type": "string"
           },
           "scannedSourceBindingCount": {
+            "type": "number"
+          },
+          "schedulerDecisionCount": {
+            "type": "number"
+          },
+          "schedulerEnqueuedCount": {
+            "type": "number"
+          },
+          "schedulerSkippedByReason": {
+            "$ref": "#/components/schemas/TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto"
+          },
+          "schedulerSkippedCount": {
             "type": "number"
           },
           "signals": {
@@ -5026,6 +5042,10 @@
           "scannedSourceBindingCount",
           "unscannedSourceBindingCount",
           "scanCoverageState",
+          "schedulerDecisionCount",
+          "schedulerEnqueuedCount",
+          "schedulerSkippedCount",
+          "schedulerSkippedByReason",
           "totalScans",
           "succeededScans",
           "failedScans",
@@ -5077,6 +5097,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "lastSchedulerEvaluatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "operatorAction": {
             "type": "string"
           },
@@ -5116,6 +5140,18 @@
           "scannedSourceBindingCount": {
             "type": "number"
           },
+          "schedulerDecisionCount": {
+            "type": "number"
+          },
+          "schedulerEnqueuedCount": {
+            "type": "number"
+          },
+          "schedulerSkippedByReason": {
+            "$ref": "#/components/schemas/TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto"
+          },
+          "schedulerSkippedCount": {
+            "type": "number"
+          },
           "signals": {
             "items": {
               "type": "string"
@@ -5151,6 +5187,10 @@
           "scannedSourceBindingCount",
           "unscannedSourceBindingCount",
           "scanCoverageState",
+          "schedulerDecisionCount",
+          "schedulerEnqueuedCount",
+          "schedulerSkippedCount",
+          "schedulerSkippedByReason",
           "providerHealthState",
           "totalScans",
           "succeededScans",
@@ -5165,6 +5205,41 @@
           "projected",
           "operatorAction",
           "signals"
+        ],
+        "type": "object"
+      },
+      "TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto": {
+        "properties": {
+          "activeScan": {
+            "type": "number"
+          },
+          "duplicateWindow": {
+            "type": "number"
+          },
+          "freshSuccess": {
+            "type": "number"
+          },
+          "providerFailureBackoff": {
+            "type": "number"
+          },
+          "queueBackpressure": {
+            "type": "number"
+          },
+          "rateLimitBackoff": {
+            "type": "number"
+          },
+          "sourceUnavailable": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "activeScan",
+          "duplicateWindow",
+          "freshSuccess",
+          "providerFailureBackoff",
+          "queueBackpressure",
+          "rateLimitBackoff",
+          "sourceUnavailable"
         ],
         "type": "object"
       },
@@ -5205,6 +5280,10 @@
             "type": "string"
           },
           "lastScanRequestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastSchedulerEvaluatedAt": {
             "format": "date-time",
             "type": "string"
           },
@@ -5250,6 +5329,18 @@
           "scannedSourceBindingCount": {
             "type": "number"
           },
+          "schedulerDecisionCount": {
+            "type": "number"
+          },
+          "schedulerEnqueuedCount": {
+            "type": "number"
+          },
+          "schedulerSkippedByReason": {
+            "$ref": "#/components/schemas/TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto"
+          },
+          "schedulerSkippedCount": {
+            "type": "number"
+          },
           "signals": {
             "items": {
               "type": "string"
@@ -5285,6 +5376,10 @@
           "scannedSourceBindingCount",
           "unscannedSourceBindingCount",
           "scanCoverageState",
+          "schedulerDecisionCount",
+          "schedulerEnqueuedCount",
+          "schedulerSkippedCount",
+          "schedulerSkippedByReason",
           "totalScans",
           "succeededScans",
           "failedScans",

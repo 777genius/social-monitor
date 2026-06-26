@@ -7,6 +7,7 @@ import type {
   ScanExecutionAttemptReadPort,
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
+  ScanSchedulerDecisionHistoryPort,
   ScanQueuePort,
   SourceBindingConfigProtectorPort,
   SourceBindingRepositoryPort,
@@ -28,6 +29,8 @@ export const MONITORING_TOPIC_REPOSITORY = Symbol('MONITORING_TOPIC_REPOSITORY')
 export const MONITORING_SOURCE_BINDING_REPOSITORY = Symbol('MONITORING_SOURCE_BINDING_REPOSITORY');
 export const MONITORING_SCAN_POLICY_REPOSITORY = Symbol('MONITORING_SCAN_POLICY_REPOSITORY');
 export const MONITORING_SCAN_JOB_REPOSITORY = Symbol('MONITORING_SCAN_JOB_REPOSITORY');
+export const MONITORING_SCAN_SCHEDULER_DECISION_HISTORY =
+  Symbol('MONITORING_SCAN_SCHEDULER_DECISION_HISTORY');
 export const MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL =
   Symbol('MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL');
 export const MONITORING_SCAN_QUEUE = Symbol('MONITORING_SCAN_QUEUE');
@@ -48,6 +51,7 @@ export type MonitoringProviderTokenMap = {
   readonly [MONITORING_SOURCE_BINDING_REPOSITORY]: SourceBindingRepositoryPort;
   readonly [MONITORING_SCAN_POLICY_REPOSITORY]: ScanPolicyRepositoryPort;
   readonly [MONITORING_SCAN_JOB_REPOSITORY]: ScanJobRepositoryPort;
+  readonly [MONITORING_SCAN_SCHEDULER_DECISION_HISTORY]: ScanSchedulerDecisionHistoryPort;
   readonly [MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL]: ScanExecutionAttemptReadPort;
   readonly [MONITORING_SCAN_QUEUE]: ScanQueuePort;
   readonly [MONITORING_OUTBOX]: OutboxPort;

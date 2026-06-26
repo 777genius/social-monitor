@@ -129,6 +129,7 @@ export 'models/topic_response_dto.dart';
 export 'models/topic_source_daily_history_cadence_summary_response_dto.dart';
 export 'models/topic_source_daily_history_day_response_dto.dart';
 export 'models/topic_source_daily_history_provider_response_dto.dart';
+export 'models/topic_source_daily_history_scheduler_skip_breakdown_response_dto.dart';
 export 'models/topic_source_daily_history_summary_response_dto.dart';
 export 'models/upsert_user_relevance_profile_request_dto.dart';
 export 'models/upsert_user_relevance_profile_response_dto.dart';

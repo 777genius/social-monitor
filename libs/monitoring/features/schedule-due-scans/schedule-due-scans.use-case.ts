@@ -2,6 +2,8 @@ import {
   type Clock,
   DomainError,
   type IdGenerator,
+  type TenantId,
+  type WorkspaceId,
   err,
   ok,
   type Result,
@@ -12,6 +14,8 @@ import type {
   ScanJobRepositoryPort,
   ScanJobHistoryReadPort,
   ScanPolicyRepositoryPort,
+  ScanSchedulerDecisionHistoryPort,
+  ScanSchedulerDecisionRecord,
   ScanQueuePort,
   SourceBindingRepositoryPort,
 } from '../../ports';
@@ -39,6 +43,12 @@ type ScanJobRecentHistoryReadPort = Pick<
   ScanJobHistoryReadPort,
   'listBySourceBinding'
 >;
+type RecordedScheduleDueScansDecision = {
+  readonly tenantId: TenantId;
+  readonly workspaceId: WorkspaceId;
+  readonly causationId?: string;
+  readonly decision: ScheduleDueScansDecision;
+};
 
 export class ScheduleDueScansUseCase {
   constructor(
@@ -49,6 +59,7 @@ export class ScheduleDueScansUseCase {
     private readonly scanQueue: ScanQueuePort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
+    private readonly schedulerDecisions?: ScanSchedulerDecisionHistoryPort,
   ) {}
 
   async execute(
@@ -80,6 +91,7 @@ export class ScheduleDueScansUseCase {
       command.includeDecisions === true
         ? ([] as ScheduleDueScansDecision[])
         : undefined;
+    const recordedDecisions: RecordedScheduleDueScansDecision[] = [];
 
     for (const policy of policies) {
       const policySnapshot = policy.toSnapshot();
@@ -113,19 +125,23 @@ export class ScheduleDueScansUseCase {
           backoffUntil: null,
         });
         recordSkipped(skippedByReason, 'source_unavailable');
-        recordDecision(decisions, {
-          scanPolicyId: policySnapshot.id,
-          sourceBindingId: policySnapshot.sourceBindingId,
-          providerKey: bindingSnapshot?.providerKey,
-          decision: 'skipped',
-          reason: 'source_unavailable',
-          policyDueAt: policySnapshot.nextRunAt,
-          nextRunAt,
-          configuredIntervalSeconds: policySnapshot.intervalSeconds,
-          effectiveIntervalSeconds: unavailableCadence.intervalSeconds,
-          freshnessSeconds: unavailableCadence.freshnessSeconds,
-          providerMinimumIntervalEnforced:
-            unavailableCadence.providerMinimumIntervalEnforced,
+        recordDecision(decisions, recordedDecisions, {
+          tenantId: policySnapshot.tenantId,
+          workspaceId: policySnapshot.workspaceId,
+          decision: {
+            scanPolicyId: policySnapshot.id,
+            sourceBindingId: policySnapshot.sourceBindingId,
+            providerKey: bindingSnapshot?.providerKey,
+            decision: 'skipped',
+            reason: 'source_unavailable',
+            policyDueAt: policySnapshot.nextRunAt,
+            nextRunAt,
+            configuredIntervalSeconds: policySnapshot.intervalSeconds,
+            effectiveIntervalSeconds: unavailableCadence.intervalSeconds,
+            freshnessSeconds: unavailableCadence.freshnessSeconds,
+            providerMinimumIntervalEnforced:
+              unavailableCadence.providerMinimumIntervalEnforced,
+          },
         });
         await this.scanPolicies.save(
           policy.scheduleNext({
@@ -210,19 +226,24 @@ export class ScheduleDueScansUseCase {
             backoffUntil: null,
           });
           recordSkipped(skippedByReason, 'queue_backpressure');
-          recordDecision(decisions, {
-            scanPolicyId: policySnapshot.id,
-            sourceBindingId: policySnapshot.sourceBindingId,
-            providerKey: bindingSnapshot.providerKey,
-            decision: 'skipped',
-            reason: 'queue_backpressure',
-            policyDueAt: policySnapshot.nextRunAt,
-            nextRunAt,
-            configuredIntervalSeconds: policySnapshot.intervalSeconds,
-            effectiveIntervalSeconds: cadence.intervalSeconds,
-            freshnessSeconds: cadence.freshnessSeconds,
-            providerMinimumIntervalEnforced:
-              cadence.providerMinimumIntervalEnforced,
+          recordDecision(decisions, recordedDecisions, {
+            tenantId: policySnapshot.tenantId,
+            workspaceId: policySnapshot.workspaceId,
+            causationId: idempotencyKey,
+            decision: {
+              scanPolicyId: policySnapshot.id,
+              sourceBindingId: policySnapshot.sourceBindingId,
+              providerKey: bindingSnapshot.providerKey,
+              decision: 'skipped',
+              reason: 'queue_backpressure',
+              policyDueAt: policySnapshot.nextRunAt,
+              nextRunAt,
+              configuredIntervalSeconds: policySnapshot.intervalSeconds,
+              effectiveIntervalSeconds: cadence.intervalSeconds,
+              freshnessSeconds: cadence.freshnessSeconds,
+              providerMinimumIntervalEnforced:
+                cadence.providerMinimumIntervalEnforced,
+            },
           });
           await this.scanPolicies.save(
             policy.scheduleNext({
@@ -245,49 +266,59 @@ export class ScheduleDueScansUseCase {
         await this.scanQueue.enqueue(queueCommand);
         await this.scanJobs.save(job.markEnqueued({ enqueuedAt: now }));
         enqueued += 1;
-        recordDecision(decisions, {
-          scanPolicyId: policySnapshot.id,
-          sourceBindingId: policySnapshot.sourceBindingId,
-          providerKey: bindingSnapshot.providerKey,
-          decision: 'enqueued',
-          reason: 'scan_policy_due_now',
-          scanJobId: queueCommand.scanJobId,
-          policyDueAt: policySnapshot.nextRunAt,
-          nextRunAt: nextScanPolicyRunAfterDecision({
-            dueAt: policySnapshot.nextRunAt,
-            intervalSeconds: cadence.intervalSeconds,
-            now,
-            backoffUntil: null,
-          }),
-          configuredIntervalSeconds: policySnapshot.intervalSeconds,
-          effectiveIntervalSeconds: cadence.intervalSeconds,
-          freshnessSeconds: cadence.freshnessSeconds,
-          providerMinimumIntervalEnforced:
-            cadence.providerMinimumIntervalEnforced,
+        recordDecision(decisions, recordedDecisions, {
+          tenantId: policySnapshot.tenantId,
+          workspaceId: policySnapshot.workspaceId,
+          causationId: idempotencyKey,
+          decision: {
+            scanPolicyId: policySnapshot.id,
+            sourceBindingId: policySnapshot.sourceBindingId,
+            providerKey: bindingSnapshot.providerKey,
+            decision: 'enqueued',
+            reason: 'scan_policy_due_now',
+            scanJobId: queueCommand.scanJobId,
+            policyDueAt: policySnapshot.nextRunAt,
+            nextRunAt: nextScanPolicyRunAfterDecision({
+              dueAt: policySnapshot.nextRunAt,
+              intervalSeconds: cadence.intervalSeconds,
+              now,
+              backoffUntil: null,
+            }),
+            configuredIntervalSeconds: policySnapshot.intervalSeconds,
+            effectiveIntervalSeconds: cadence.intervalSeconds,
+            freshnessSeconds: cadence.freshnessSeconds,
+            providerMinimumIntervalEnforced:
+              cadence.providerMinimumIntervalEnforced,
+          },
         });
       } else {
         recordSkipped(skippedByReason, skipReason);
         const backoffUntil =
           rateLimitBackoff ?? providerFailureBackoff ?? undefined;
-        recordDecision(decisions, {
-          scanPolicyId: policySnapshot.id,
-          sourceBindingId: policySnapshot.sourceBindingId,
-          providerKey: bindingSnapshot.providerKey,
-          decision: 'skipped',
-          reason: skipReason,
-          policyDueAt: policySnapshot.nextRunAt,
-          nextRunAt: nextScanPolicyRunAfterDecision({
-            dueAt: policySnapshot.nextRunAt,
-            intervalSeconds: cadence.intervalSeconds,
-            now,
-            backoffUntil: rateLimitBackoff ?? providerFailureBackoff,
-          }),
-          configuredIntervalSeconds: policySnapshot.intervalSeconds,
-          effectiveIntervalSeconds: cadence.intervalSeconds,
-          freshnessSeconds: cadence.freshnessSeconds,
-          providerMinimumIntervalEnforced:
-            cadence.providerMinimumIntervalEnforced,
-          backoffUntil,
+        recordDecision(decisions, recordedDecisions, {
+          tenantId: policySnapshot.tenantId,
+          workspaceId: policySnapshot.workspaceId,
+          causationId: idempotencyKey,
+          decision: {
+            scanPolicyId: policySnapshot.id,
+            sourceBindingId: policySnapshot.sourceBindingId,
+            providerKey: bindingSnapshot.providerKey,
+            decision: 'skipped',
+            reason: skipReason,
+            policyDueAt: policySnapshot.nextRunAt,
+            nextRunAt: nextScanPolicyRunAfterDecision({
+              dueAt: policySnapshot.nextRunAt,
+              intervalSeconds: cadence.intervalSeconds,
+              now,
+              backoffUntil: rateLimitBackoff ?? providerFailureBackoff,
+            }),
+            configuredIntervalSeconds: policySnapshot.intervalSeconds,
+            effectiveIntervalSeconds: cadence.intervalSeconds,
+            freshnessSeconds: cadence.freshnessSeconds,
+            providerMinimumIntervalEnforced:
+              cadence.providerMinimumIntervalEnforced,
+            backoffUntil,
+          },
         });
       }
 
@@ -303,6 +334,12 @@ export class ScheduleDueScansUseCase {
       );
     }
 
+    await this.recordSchedulerDecisions({
+      decisions: recordedDecisions,
+      evaluatedAt: now,
+      correlationId: command.correlationId,
+    });
+
     return ok({
       scannedAt: now,
       evaluated: policies.length,
@@ -312,14 +349,87 @@ export class ScheduleDueScansUseCase {
       ...(decisions === undefined ? {} : { decisions }),
     });
   }
+
+  private async recordSchedulerDecisions(params: {
+    readonly decisions: readonly RecordedScheduleDueScansDecision[];
+    readonly evaluatedAt: Date;
+    readonly correlationId: string;
+  }): Promise<void> {
+    if (this.schedulerDecisions === undefined || params.decisions.length === 0) {
+      return;
+    }
+
+    await this.schedulerDecisions.recordBatch({
+      records: params.decisions.map((decision) =>
+        schedulerDecisionRecordFromDecision({
+          id: this.ids.generate(),
+          decision,
+          evaluatedAt: params.evaluatedAt,
+          correlationId: params.correlationId,
+        }),
+      ),
+    });
+  }
 }
 
 const recordDecision = (
   decisions: ScheduleDueScansDecision[] | undefined,
-  decision: ScheduleDueScansDecision,
+  recordedDecisions: RecordedScheduleDueScansDecision[],
+  decision: RecordedScheduleDueScansDecision,
 ): void => {
-  decisions?.push(decision);
+  decisions?.push(decision.decision);
+  recordedDecisions.push(decision);
 };
+
+const schedulerDecisionRecordFromDecision = (params: {
+  readonly id: string;
+  readonly decision: RecordedScheduleDueScansDecision;
+  readonly evaluatedAt: Date;
+  readonly correlationId: string;
+}): ScanSchedulerDecisionRecord => {
+  const decision = params.decision.decision;
+
+  return {
+    id: params.id,
+    tenantId: params.decision.tenantId,
+    workspaceId: params.decision.workspaceId,
+    decisionKey: schedulerDecisionKey(decision),
+    scanPolicyId: decision.scanPolicyId,
+    sourceBindingId: decision.sourceBindingId,
+    ...(decision.providerKey === undefined
+      ? {}
+      : { providerKey: decision.providerKey }),
+    decision: decision.decision,
+    reason: decision.reason,
+    ...(decision.decision === 'enqueued' ? { scanJobId: decision.scanJobId } : {}),
+    policyDueAt: decision.policyDueAt,
+    evaluatedAt: params.evaluatedAt,
+    nextRunAt: decision.nextRunAt,
+    configuredIntervalSeconds: decision.configuredIntervalSeconds,
+    ...(decision.effectiveIntervalSeconds === undefined
+      ? {}
+      : { effectiveIntervalSeconds: decision.effectiveIntervalSeconds }),
+    ...(decision.freshnessSeconds === undefined
+      ? {}
+      : { freshnessSeconds: decision.freshnessSeconds }),
+    ...(decision.providerMinimumIntervalEnforced === undefined
+      ? {}
+      : {
+          providerMinimumIntervalEnforced:
+            decision.providerMinimumIntervalEnforced,
+        }),
+    ...(decision.decision === 'skipped' && decision.backoffUntil !== undefined
+      ? { backoffUntil: decision.backoffUntil }
+      : {}),
+    correlationId: params.correlationId,
+    ...(params.decision.causationId === undefined
+      ? {}
+      : { causationId: params.decision.causationId }),
+  };
+};
+
+const schedulerDecisionKey = (decision: ScheduleDueScansDecision): string =>
+  `scan-policy:${decision.scanPolicyId}:due-at:${decision.policyDueAt.toISOString()}`;
 
 const emptySkipBreakdown = (): Record<ScheduleDueScansSkipReason, number> => ({
   active_scan: 0,

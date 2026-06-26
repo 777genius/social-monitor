@@ -4,6 +4,7 @@ import type {
   PrismaOutboxEventRecord,
   PrismaScanAttemptRecord,
   PrismaScanPolicyRecord,
+  PrismaScanSchedulerDecisionRecord,
   PrismaSourceBindingRecord,
   PrismaSourceCatalogEntryRecord,
   PrismaSourceCredentialRecord,
@@ -11,6 +12,23 @@ import type {
   PrismaSourceCredentialSecretWriteData,
   PrismaTopicRecord,
 } from './prisma-monitoring-records';
+
+type PrismaScanSchedulerDecisionWriteData = {
+  readonly providerKey?: string | null;
+  readonly decision: PrismaScanSchedulerDecisionRecord['decision'];
+  readonly reason: string;
+  readonly scanJobId?: string | null;
+  readonly policyDueAt: Date;
+  readonly evaluatedAt: Date;
+  readonly nextRunAt: Date;
+  readonly configuredIntervalSeconds: number;
+  readonly effectiveIntervalSeconds?: number | null;
+  readonly freshnessSeconds?: number | null;
+  readonly providerMinimumIntervalEnforced?: boolean | null;
+  readonly backoffUntil?: Date | null;
+  readonly correlationId?: string | null;
+  readonly causationId?: string | null;
+};
 
 export type PrismaMonitoringClient = {
   readonly topic: {
@@ -256,6 +274,42 @@ export type PrismaMonitoringClient = {
       readonly cursor?: { readonly id: string };
       readonly skip?: number;
     }): Promise<readonly PrismaScanJobRecord[]>;
+  };
+  readonly scanSchedulerDecision: {
+    upsert(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_decisionKey: {
+          readonly tenantId: string;
+          readonly workspaceId: string;
+          readonly decisionKey: string;
+        };
+      };
+      readonly update: PrismaScanSchedulerDecisionWriteData;
+      readonly create: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly decisionKey: string;
+        readonly scanPolicyId: string;
+        readonly sourceBindingId: string;
+      } & PrismaScanSchedulerDecisionWriteData;
+    }): Promise<PrismaScanSchedulerDecisionRecord>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly sourceBindingId: string;
+        readonly evaluatedAt: {
+          readonly gte: Date;
+          readonly lt: Date;
+        };
+      };
+      readonly orderBy: readonly [
+        { readonly evaluatedAt: 'desc' },
+        { readonly id: 'desc' },
+      ];
+      readonly take: number;
+    }): Promise<readonly PrismaScanSchedulerDecisionRecord[]>;
   };
   readonly scanAttempt: {
     findFirst(args: {

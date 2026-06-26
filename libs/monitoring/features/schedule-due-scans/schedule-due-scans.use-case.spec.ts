@@ -14,6 +14,8 @@ import type {
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
   ScanQueuePort,
+  ScanSchedulerDecisionHistoryPort,
+  ScanSchedulerDecisionRecord,
   SourceBindingRepositoryPort,
 } from '../../ports';
 import { ScheduleDueScansUseCase } from './schedule-due-scans.use-case';
@@ -239,6 +241,22 @@ class BackpressuredScanQueue implements ScanQueuePort {
   }
 }
 
+class FakeSchedulerDecisionHistory implements ScanSchedulerDecisionHistoryPort {
+  readonly records: ScanSchedulerDecisionRecord[] = [];
+
+  async recordBatch(
+    command: Parameters<ScanSchedulerDecisionHistoryPort['recordBatch']>[0],
+  ): Promise<void> {
+    this.records.push(...command.records);
+  }
+
+  async listBySourceBindingWindow(): ReturnType<
+    ScanSchedulerDecisionHistoryPort['listBySourceBindingWindow']
+  > {
+    return { records: this.records, truncated: false };
+  }
+}
+
 const makeBinding = (providerKey = 'fake-source') =>
   SourceBinding.create({
     id: 'binding-1',
@@ -288,6 +306,7 @@ describe('ScheduleDueScansUseCase', () => {
     const policies = new FakeScanPolicies();
     policies.add(makePolicy());
     const queue = new FakeScanQueue();
+    const schedulerDecisions = new FakeSchedulerDecisionHistory();
     const useCase = new ScheduleDueScansUseCase(
       bindings,
       policies,
@@ -295,6 +314,7 @@ describe('ScheduleDueScansUseCase', () => {
       queue,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+      schedulerDecisions,
     );
 
     const result = await useCase.execute({
@@ -354,6 +374,29 @@ describe('ScheduleDueScansUseCase', () => {
     ).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
     });
+    expect(schedulerDecisions.records).toEqual([
+      expect.objectContaining({
+        id: 'scan-job-2',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        decisionKey: 'scan-policy:policy-1:due-at:2026-06-05T12:00:00.000Z',
+        scanPolicyId: 'policy-1',
+        sourceBindingId: 'binding-1',
+        providerKey: 'fake-source',
+        decision: 'enqueued',
+        reason: 'scan_policy_due_now',
+        scanJobId: 'scan-job-1',
+        policyDueAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluatedAt: new Date('2026-06-05T12:00:00.000Z'),
+        nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
+        configuredIntervalSeconds: 300,
+        effectiveIntervalSeconds: 300,
+        freshnessSeconds: 900,
+        providerMinimumIntervalEnforced: false,
+        correlationId: 'scheduler-tick-1',
+        causationId: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
+      }),
+    ]);
   });
 
   it('fast-forwards stale due policies after scheduler downtime', async () => {

@@ -1,6 +1,7 @@
 import type { ScanJob, ScanPolicy, SourceBinding } from '../../domain';
 import type {
   ScanExecutionAttemptSnapshot,
+  ScanSchedulerDecisionRecord,
 } from '../../ports';
 import { effectiveProviderScanCadence } from '../shared/scan-cadence-policy';
 import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
@@ -21,12 +22,20 @@ type TopicSourceDailyHistoryWindow = {
 export const buildTopicSourceDailyHistoryDayView = (params: {
   readonly window: TopicSourceDailyHistoryWindow;
   readonly jobs: readonly ScanJob[];
+  readonly schedulerDecisions: readonly ScanSchedulerDecisionRecord[];
   readonly attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>;
   readonly bindingById: ReadonlyMap<string, SourceBinding>;
   readonly bindings: readonly SourceBinding[];
   readonly scanPoliciesByBindingId: ReadonlyMap<string, ScanPolicy>;
 }): TopicSourceDailyHistoryDayView => {
-  const aggregate = buildProviderView('all', params.bindings, params.jobs, params.attempts, params.scanPoliciesByBindingId);
+  const aggregate = buildProviderView(
+    'all',
+    params.bindings,
+    params.jobs,
+    params.schedulerDecisions,
+    params.attempts,
+    params.scanPoliciesByBindingId,
+  );
 
   return {
     date: params.window.date,
@@ -41,6 +50,11 @@ export const buildTopicSourceDailyHistoryDayView = (params: {
     scannedSourceBindingCount: aggregate.scannedSourceBindingCount,
     unscannedSourceBindingCount: aggregate.unscannedSourceBindingCount,
     scanCoverageState: aggregate.scanCoverageState,
+    schedulerDecisionCount: aggregate.schedulerDecisionCount,
+    schedulerEnqueuedCount: aggregate.schedulerEnqueuedCount,
+    schedulerSkippedCount: aggregate.schedulerSkippedCount,
+    schedulerSkippedByReason: aggregate.schedulerSkippedByReason,
+    lastSchedulerEvaluatedAt: aggregate.lastSchedulerEvaluatedAt,
     totalScans: aggregate.totalScans,
     succeededScans: aggregate.succeededScans,
     failedScans: aggregate.failedScans,
@@ -58,6 +72,7 @@ export const buildTopicSourceDailyHistoryDayView = (params: {
     signals: aggregate.signals,
     providerBreakdown: buildProviderBreakdown(
       params.jobs,
+      params.schedulerDecisions,
       params.attempts,
       params.bindingById,
       params.bindings,
@@ -69,12 +84,20 @@ export const buildTopicSourceDailyHistoryDayView = (params: {
 export const buildTopicSourceDailyHistorySummaryView = (params: {
   readonly days: readonly TopicSourceDailyHistoryDayView[];
   readonly jobs: readonly ScanJob[];
+  readonly schedulerDecisions: readonly ScanSchedulerDecisionRecord[];
   readonly attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>;
   readonly bindingById: ReadonlyMap<string, SourceBinding>;
   readonly bindings: readonly SourceBinding[];
   readonly scanPoliciesByBindingId: ReadonlyMap<string, ScanPolicy>;
 }): TopicSourceDailyHistorySummaryView => {
-  const aggregate = buildProviderView('all', params.bindings, params.jobs, params.attempts, params.scanPoliciesByBindingId);
+  const aggregate = buildProviderView(
+    'all',
+    params.bindings,
+    params.jobs,
+    params.schedulerDecisions,
+    params.attempts,
+    params.scanPoliciesByBindingId,
+  );
 
   return {
     providerHealthState: aggregate.providerHealthState,
@@ -86,6 +109,11 @@ export const buildTopicSourceDailyHistorySummaryView = (params: {
     scannedSourceBindingCount: aggregate.scannedSourceBindingCount,
     unscannedSourceBindingCount: aggregate.unscannedSourceBindingCount,
     scanCoverageState: aggregate.scanCoverageState,
+    schedulerDecisionCount: aggregate.schedulerDecisionCount,
+    schedulerEnqueuedCount: aggregate.schedulerEnqueuedCount,
+    schedulerSkippedCount: aggregate.schedulerSkippedCount,
+    schedulerSkippedByReason: aggregate.schedulerSkippedByReason,
+    lastSchedulerEvaluatedAt: aggregate.lastSchedulerEvaluatedAt,
     totalScans: aggregate.totalScans,
     succeededScans: aggregate.succeededScans,
     failedScans: aggregate.failedScans,
@@ -106,6 +134,7 @@ export const buildTopicSourceDailyHistorySummaryView = (params: {
     signals: aggregate.signals,
     providerBreakdown: buildProviderBreakdown(
       params.jobs,
+      params.schedulerDecisions,
       params.attempts,
       params.bindingById,
       params.bindings,
@@ -116,6 +145,7 @@ export const buildTopicSourceDailyHistorySummaryView = (params: {
 
 const buildProviderBreakdown = (
   jobs: readonly ScanJob[],
+  schedulerDecisions: readonly ScanSchedulerDecisionRecord[],
   attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>,
   bindingById: ReadonlyMap<string, SourceBinding>,
   bindings: readonly SourceBinding[],
@@ -138,6 +168,9 @@ const buildProviderBreakdown = (
         providerKey,
         providerBindings,
         jobs.filter((job) => bindingById.get(job.toSnapshot().sourceBindingId)?.toSnapshot().providerKey === providerKey),
+        schedulerDecisions.filter((decision) =>
+          bindingById.get(decision.sourceBindingId)?.toSnapshot().providerKey === providerKey,
+        ),
         attempts,
         scanPoliciesByBindingId,
       ),
@@ -149,6 +182,7 @@ const buildProviderView = (
   providerKey: string,
   bindings: readonly SourceBinding[],
   jobs: readonly ScanJob[],
+  schedulerDecisions: readonly ScanSchedulerDecisionRecord[],
   attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>,
   scanPoliciesByBindingId: ReadonlyMap<string, ScanPolicy>,
 ): TopicSourceDailyHistoryProviderView => {
@@ -167,6 +201,11 @@ const buildProviderView = (
       return right.id.localeCompare(left.id);
     });
   const health = summarizeScanProviderHealth(snapshots);
+  const sortedSchedulerDecisions = [...schedulerDecisions].sort((left, right) => {
+    const evaluatedDiff = right.evaluatedAt.getTime() - left.evaluatedAt.getTime();
+
+    return evaluatedDiff === 0 ? right.id.localeCompare(left.id) : evaluatedDiff;
+  });
   const latestAttempts = snapshots
     .map((snapshot) => attempts.get(snapshot.id))
     .filter((attempt): attempt is NonNullable<typeof attempt> => attempt !== null && attempt !== undefined);
@@ -184,6 +223,11 @@ const buildProviderView = (
       sourceBindingCount: bindings.length,
       scannedSourceBindingCount,
     }),
+    schedulerDecisionCount: sortedSchedulerDecisions.length,
+    schedulerEnqueuedCount: sortedSchedulerDecisions.filter((decision) => decision.decision === 'enqueued').length,
+    schedulerSkippedCount: sortedSchedulerDecisions.filter((decision) => decision.decision === 'skipped').length,
+    schedulerSkippedByReason: schedulerSkipBreakdown(sortedSchedulerDecisions),
+    lastSchedulerEvaluatedAt: sortedSchedulerDecisions[0]?.evaluatedAt.toISOString(),
     cadenceSummary: summarizeProviderCadence(bindings, scanPoliciesByBindingId),
     providerHealthState: health.providerHealthState,
     totalScans: health.totalScans,
@@ -250,6 +294,22 @@ const scanCoverageState = (params: {
   }
 
   return 'partial';
+};
+
+const schedulerSkipBreakdown = (
+  decisions: readonly ScanSchedulerDecisionRecord[],
+) => {
+  const skipped = decisions.filter((decision) => decision.decision === 'skipped');
+
+  return {
+    activeScan: skipped.filter((decision) => decision.reason === 'active_scan').length,
+    duplicateWindow: skipped.filter((decision) => decision.reason === 'duplicate_window').length,
+    freshSuccess: skipped.filter((decision) => decision.reason === 'fresh_success').length,
+    providerFailureBackoff: skipped.filter((decision) => decision.reason === 'provider_failure_backoff').length,
+    queueBackpressure: skipped.filter((decision) => decision.reason === 'queue_backpressure').length,
+    rateLimitBackoff: skipped.filter((decision) => decision.reason === 'rate_limit_backoff').length,
+    sourceUnavailable: skipped.filter((decision) => decision.reason === 'source_unavailable').length,
+  };
 };
 
 const summarizeProviderCadence = (

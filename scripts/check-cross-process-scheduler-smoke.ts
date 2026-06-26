@@ -24,6 +24,7 @@ import type {
   PrismaScanAttemptRecord,
   PrismaScanJobRecord,
   PrismaScanPolicyRecord,
+  PrismaScanSchedulerDecisionRecord,
   PrismaSourceBindingRecord,
   PrismaSourceCatalogEntryRecord,
   PrismaTopicRecord,
@@ -170,6 +171,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   readonly sourceBindings = new Map<string, PrismaSourceBindingRecord>();
   readonly scanPolicies = new Map<string, PrismaScanPolicyRecord>();
   readonly scanJobs = new Map<string, PrismaScanJobRecord>();
+  readonly scanSchedulerDecisions = new Map<string, PrismaScanSchedulerDecisionRecord>();
   readonly scanAttempts = new Map<string, PrismaScanAttemptRecord>();
   readonly outboxEvents = new Map<string, PrismaOutboxEventRecord>();
   readonly idempotencyKeys = new Map<string, PrismaIdempotencyKeyRecord>();
@@ -328,6 +330,55 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
     },
   };
 
+  readonly scanSchedulerDecision: PrismaMonitoringClient['scanSchedulerDecision'] = {
+    upsert: async (args) => {
+      const storageKey = schedulerDecisionStorageKey(args.where.tenantId_workspaceId_decisionKey);
+      const existing = this.scanSchedulerDecisions.get(storageKey);
+      const record: PrismaScanSchedulerDecisionRecord = {
+        id: existing?.id ?? args.create.id,
+        tenantId: existing?.tenantId ?? args.create.tenantId,
+        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
+        decisionKey: existing?.decisionKey ?? args.create.decisionKey,
+        scanPolicyId: existing?.scanPolicyId ?? args.create.scanPolicyId,
+        sourceBindingId: existing?.sourceBindingId ?? args.create.sourceBindingId,
+        providerKey: args.update.providerKey ?? null,
+        decision: args.update.decision,
+        reason: args.update.reason,
+        scanJobId: args.update.scanJobId ?? null,
+        policyDueAt: args.update.policyDueAt,
+        evaluatedAt: args.update.evaluatedAt,
+        nextRunAt: args.update.nextRunAt,
+        configuredIntervalSeconds: args.update.configuredIntervalSeconds,
+        effectiveIntervalSeconds: args.update.effectiveIntervalSeconds ?? null,
+        freshnessSeconds: args.update.freshnessSeconds ?? null,
+        providerMinimumIntervalEnforced: args.update.providerMinimumIntervalEnforced ?? null,
+        backoffUntil: args.update.backoffUntil ?? null,
+        correlationId: args.update.correlationId ?? null,
+        causationId: args.update.causationId ?? null,
+        createdAt: existing?.createdAt ?? new Date('2026-06-16T03:00:00.000Z'),
+        updatedAt: new Date('2026-06-16T03:00:00.000Z'),
+      };
+      this.scanSchedulerDecisions.set(storageKey, record);
+
+      return record;
+    },
+    findMany: async (args) =>
+      [...this.scanSchedulerDecisions.values()]
+        .filter((record) => (
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          record.sourceBindingId === args.where.sourceBindingId &&
+          record.evaluatedAt.getTime() >= args.where.evaluatedAt.gte.getTime() &&
+          record.evaluatedAt.getTime() < args.where.evaluatedAt.lt.getTime()
+        ))
+        .sort((left, right) => {
+          const evaluatedDiff = right.evaluatedAt.getTime() - left.evaluatedAt.getTime();
+
+          return evaluatedDiff === 0 ? right.id.localeCompare(left.id) : evaluatedDiff;
+        })
+        .slice(0, args.take),
+  };
+
   readonly scanAttempt: PrismaMonitoringClient['scanAttempt'] = {
     findFirst: async () => null,
   };
@@ -388,6 +439,14 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
 
 function unsupported(operation: string): never {
   throw new Error(`Unsupported fake Prisma operation: ${operation}`);
+}
+
+function schedulerDecisionStorageKey(params: {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly decisionKey: string;
+}): string {
+  return `${params.tenantId}:${params.workspaceId}:${params.decisionKey}`;
 }
 
 void main().catch((error) => {

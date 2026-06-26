@@ -347,6 +347,37 @@ model ScanJob {
   @@map("scan_jobs")
 }
 
+model ScanSchedulerDecision {
+  id                              String    @id @db.Uuid
+  tenantId                        String    @map("tenant_id") @db.Uuid
+  workspaceId                     String    @map("workspace_id") @db.Uuid
+  decisionKey                     String    @map("decision_key")
+  scanPolicyId                    String    @map("scan_policy_id") @db.Uuid
+  sourceBindingId                 String    @map("source_binding_id") @db.Uuid
+  providerKey                     String?   @map("provider_key")
+  decision                        String
+  reason                          String
+  scanJobId                       String?   @map("scan_job_id") @db.Uuid
+  policyDueAt                     DateTime  @map("policy_due_at") @db.Timestamptz(6)
+  evaluatedAt                     DateTime  @map("evaluated_at") @db.Timestamptz(6)
+  nextRunAt                       DateTime  @map("next_run_at") @db.Timestamptz(6)
+  configuredIntervalSeconds       Int       @map("configured_interval_seconds")
+  effectiveIntervalSeconds        Int?      @map("effective_interval_seconds")
+  freshnessSeconds                Int?      @map("freshness_seconds")
+  providerMinimumIntervalEnforced Boolean?  @map("provider_minimum_interval_enforced")
+  backoffUntil                    DateTime? @map("backoff_until") @db.Timestamptz(6)
+  correlationId                   String?   @map("correlation_id")
+  causationId                     String?   @map("causation_id")
+  createdAt                       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, decisionKey])
+  @@index([tenantId, workspaceId, sourceBindingId, evaluatedAt])
+  @@index([tenantId, workspaceId, providerKey, evaluatedAt])
+  @@index([tenantId, workspaceId, decision, reason, evaluatedAt])
+  @@map("scan_scheduler_decisions")
+}
+
 model CursorCheckpoint {
   id              String   @id @db.Uuid
   tenantId        String   @map("tenant_id") @db.Uuid

@@ -258,6 +258,34 @@ CREATE TABLE "scan_jobs" (
 );
 
 -- CreateTable
+CREATE TABLE "scan_scheduler_decisions" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "decision_key" TEXT NOT NULL,
+    "scan_policy_id" UUID NOT NULL,
+    "source_binding_id" UUID NOT NULL,
+    "provider_key" TEXT,
+    "decision" TEXT NOT NULL,
+    "reason" TEXT NOT NULL,
+    "scan_job_id" UUID,
+    "policy_due_at" TIMESTAMPTZ(6) NOT NULL,
+    "evaluated_at" TIMESTAMPTZ(6) NOT NULL,
+    "next_run_at" TIMESTAMPTZ(6) NOT NULL,
+    "configured_interval_seconds" INTEGER NOT NULL,
+    "effective_interval_seconds" INTEGER,
+    "freshness_seconds" INTEGER,
+    "provider_minimum_interval_enforced" BOOLEAN,
+    "backoff_until" TIMESTAMPTZ(6),
+    "correlation_id" TEXT,
+    "causation_id" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "scan_scheduler_decisions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "cursor_checkpoints" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
@@ -1062,6 +1090,18 @@ CREATE INDEX "scan_jobs_tenant_id_workspace_id_status_created_at_idx" ON "scan_j
 
 -- CreateIndex
 CREATE UNIQUE INDEX "scan_jobs_tenant_id_idempotency_key_key" ON "scan_jobs"("tenant_id", "idempotency_key");
+
+-- CreateIndex
+CREATE INDEX "scan_scheduler_decisions_tenant_id_workspace_id_source_bind_idx" ON "scan_scheduler_decisions"("tenant_id", "workspace_id", "source_binding_id", "evaluated_at");
+
+-- CreateIndex
+CREATE INDEX "scan_scheduler_decisions_tenant_id_workspace_id_provider_ke_idx" ON "scan_scheduler_decisions"("tenant_id", "workspace_id", "provider_key", "evaluated_at");
+
+-- CreateIndex
+CREATE INDEX "scan_scheduler_decisions_tenant_id_workspace_id_decision_re_idx" ON "scan_scheduler_decisions"("tenant_id", "workspace_id", "decision", "reason", "evaluated_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "scan_scheduler_decisions_tenant_id_workspace_id_decision_ke_key" ON "scan_scheduler_decisions"("tenant_id", "workspace_id", "decision_key");
 
 -- CreateIndex
 CREATE INDEX "cursor_checkpoints_tenant_id_workspace_id_idx" ON "cursor_checkpoints"("tenant_id", "workspace_id");

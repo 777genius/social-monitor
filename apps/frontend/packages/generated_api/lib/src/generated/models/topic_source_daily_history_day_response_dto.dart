@@ -7,6 +7,7 @@ import 'package:json_annotation/json_annotation.dart';
 import 'topic_source_daily_history_day_response_dto_provider_health_state_provider_health_state.dart';
 import 'topic_source_daily_history_day_response_dto_scan_coverage_state_scan_coverage_state.dart';
 import 'topic_source_daily_history_provider_response_dto.dart';
+import 'topic_source_daily_history_scheduler_skip_breakdown_response_dto.dart';
 
 part 'topic_source_daily_history_day_response_dto.g.dart';
 
@@ -30,6 +31,10 @@ class TopicSourceDailyHistoryDayResponseDto {
     required this.rateLimitedScans,
     required this.scanCoverageState,
     required this.scannedSourceBindingCount,
+    required this.schedulerDecisionCount,
+    required this.schedulerEnqueuedCount,
+    required this.schedulerSkippedByReason,
+    required this.schedulerSkippedCount,
     required this.signals,
     required this.skippedDuplicates,
     required this.sourceBindingCount,
@@ -41,6 +46,7 @@ class TopicSourceDailyHistoryDayResponseDto {
     required this.windowStartedAt,
     this.lastCompletedAt,
     this.lastScanRequestedAt,
+    this.lastSchedulerEvaluatedAt,
   });
 
   factory TopicSourceDailyHistoryDayResponseDto.fromJson(
@@ -57,6 +63,7 @@ class TopicSourceDailyHistoryDayResponseDto {
   final num inserted;
   final DateTime? lastCompletedAt;
   final DateTime? lastScanRequestedAt;
+  final DateTime? lastSchedulerEvaluatedAt;
   final String operatorAction;
   final num pausedSourceBindingCount;
   final num projected;
@@ -68,6 +75,11 @@ class TopicSourceDailyHistoryDayResponseDto {
   final TopicSourceDailyHistoryDayResponseDtoScanCoverageStateScanCoverageState
   scanCoverageState;
   final num scannedSourceBindingCount;
+  final num schedulerDecisionCount;
+  final num schedulerEnqueuedCount;
+  final TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto
+  schedulerSkippedByReason;
+  final num schedulerSkippedCount;
   final List<String> signals;
   final num skippedDuplicates;
   final num sourceBindingCount;

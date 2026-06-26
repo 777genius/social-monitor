@@ -20,6 +20,7 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
   readonly sourceCredentialSecret: PrismaMonitoringClient['sourceCredentialSecret'];
   readonly scanPolicy: PrismaMonitoringClient['scanPolicy'];
   readonly scanJob: PrismaMonitoringClient['scanJob'];
+  readonly scanSchedulerDecision: PrismaMonitoringClient['scanSchedulerDecision'];
   readonly scanAttempt: PrismaMonitoringClient['scanAttempt'];
   readonly outboxEvent: PrismaMonitoringClient['outboxEvent'];
   readonly idempotencyKey: PrismaMonitoringClient['idempotencyKey'];
@@ -43,6 +44,7 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
     this.sourceCredentialSecret = this.client.sourceCredentialSecret;
     this.scanPolicy = this.client.scanPolicy;
     this.scanJob = this.client.scanJob;
+    this.scanSchedulerDecision = this.client.scanSchedulerDecision;
     this.scanAttempt = this.client.scanAttempt;
     this.outboxEvent = this.client.outboxEvent;
     this.idempotencyKey = this.client.idempotencyKey;

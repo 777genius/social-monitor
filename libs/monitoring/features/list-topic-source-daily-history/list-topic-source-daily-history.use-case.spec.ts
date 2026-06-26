@@ -19,6 +19,8 @@ import type {
   ScanExecutionAttemptSnapshot,
   ScanJobHistoryReadPort,
   ScanPolicyRepositoryPort,
+  ScanSchedulerDecisionHistoryPort,
+  ScanSchedulerDecisionRecord,
   SourceBindingRepositoryPort,
   TopicRepositoryPort,
 } from "../../ports";
@@ -211,6 +213,43 @@ class FakeScanExecutionAttempts implements ScanExecutionAttemptReadPort {
         `${query.tenantId}:${query.workspaceId}:${query.scanJobId}`,
       ) ?? null
     );
+  }
+}
+
+class FakeSchedulerDecisionHistory implements ScanSchedulerDecisionHistoryPort {
+  private readonly records: ScanSchedulerDecisionRecord[] = [];
+
+  async recordBatch(
+    command: Parameters<ScanSchedulerDecisionHistoryPort["recordBatch"]>[0],
+  ): Promise<void> {
+    this.records.push(...command.records);
+  }
+
+  async listBySourceBindingWindow(
+    query: Parameters<
+      ScanSchedulerDecisionHistoryPort["listBySourceBindingWindow"]
+    >[0],
+  ): ReturnType<ScanSchedulerDecisionHistoryPort["listBySourceBindingWindow"]> {
+    return Promise.resolve({
+      records: this.records
+        .filter((record) => (
+          record.tenantId === query.tenantId &&
+          record.workspaceId === query.workspaceId &&
+          record.sourceBindingId === query.sourceBindingId &&
+          record.evaluatedAt.getTime() >= query.windowStartedAt.getTime() &&
+          record.evaluatedAt.getTime() < query.windowEndedAt.getTime()
+        ))
+        .sort((left, right) => {
+          const evaluatedDiff =
+            right.evaluatedAt.getTime() - left.evaluatedAt.getTime();
+
+          return evaluatedDiff === 0
+            ? right.id.localeCompare(left.id)
+            : evaluatedDiff;
+        })
+        .slice(0, query.limit),
+      truncated: false,
+    });
   }
 }
 
@@ -591,6 +630,132 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
     });
   });
 
+  it("includes scheduler decision history in daily provider freshness", async () => {
+    const fixture = await makeFixture();
+    const reddit = makeBinding("binding-reddit", "reddit");
+    const github = makeBinding("binding-github", "github-trending-page");
+    await fixture.bindings.save(reddit);
+    await fixture.bindings.save(github);
+    await fixture.policies.save(makePolicy(reddit));
+    await fixture.policies.save(makePolicy(github));
+    await fixture.saveSchedulerDecision({
+      id: "scheduler-decision-reddit-fresh",
+      decisionKey:
+        "scan-policy:scan-policy-binding-reddit:due-at:2026-06-26T08:00:00.000Z",
+      scanPolicyId: "scan-policy-binding-reddit",
+      sourceBindingId: "binding-reddit",
+      providerKey: "reddit",
+      decision: "skipped",
+      reason: "fresh_success",
+      policyDueAt: new Date("2026-06-26T08:00:00.000Z"),
+      evaluatedAt: new Date("2026-06-26T08:00:00.000Z"),
+      nextRunAt: new Date("2026-06-26T08:15:00.000Z"),
+      configuredIntervalSeconds: 900,
+      effectiveIntervalSeconds: 900,
+      freshnessSeconds: 900,
+      providerMinimumIntervalEnforced: false,
+      correlationId: "scheduler-history-test",
+      causationId: "scheduled:scan-policy-binding-reddit",
+    });
+    await fixture.saveSchedulerDecision({
+      id: "scheduler-decision-github-enqueued",
+      decisionKey:
+        "scan-policy:scan-policy-binding-github:due-at:2026-06-26T09:00:00.000Z",
+      scanPolicyId: "scan-policy-binding-github",
+      sourceBindingId: "binding-github",
+      providerKey: "github-trending-page",
+      decision: "enqueued",
+      reason: "scan_policy_due_now",
+      scanJobId: "scan-github-today",
+      policyDueAt: new Date("2026-06-26T09:00:00.000Z"),
+      evaluatedAt: new Date("2026-06-26T09:00:00.000Z"),
+      nextRunAt: new Date("2026-06-26T10:00:00.000Z"),
+      configuredIntervalSeconds: 300,
+      effectiveIntervalSeconds: 3600,
+      freshnessSeconds: 3600,
+      providerMinimumIntervalEnforced: true,
+      correlationId: "scheduler-history-test",
+      causationId: "scheduled:scan-policy-binding-github",
+    });
+    await fixture.saveSchedulerDecision({
+      id: "scheduler-decision-github-backpressure",
+      decisionKey:
+        "scan-policy:scan-policy-binding-github:due-at:2026-06-26T10:00:00.000Z",
+      scanPolicyId: "scan-policy-binding-github",
+      sourceBindingId: "binding-github",
+      providerKey: "github-trending-page",
+      decision: "skipped",
+      reason: "queue_backpressure",
+      policyDueAt: new Date("2026-06-26T10:00:00.000Z"),
+      evaluatedAt: new Date("2026-06-26T10:00:00.000Z"),
+      nextRunAt: new Date("2026-06-26T11:00:00.000Z"),
+      configuredIntervalSeconds: 300,
+      effectiveIntervalSeconds: 3600,
+      freshnessSeconds: 3600,
+      providerMinimumIntervalEnforced: true,
+      correlationId: "scheduler-history-test",
+      causationId: "scheduled:scan-policy-binding-github",
+    });
+
+    const result = await fixture.useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: "topic-source-history",
+      days: 1,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        summary: expect.objectContaining({
+          schedulerDecisionCount: 3,
+          schedulerEnqueuedCount: 1,
+          schedulerSkippedCount: 2,
+          schedulerSkippedByReason: expect.objectContaining({
+            freshSuccess: 1,
+            queueBackpressure: 1,
+          }),
+          lastSchedulerEvaluatedAt: "2026-06-26T10:00:00.000Z",
+          providerBreakdown: [
+            expect.objectContaining({
+              providerKey: "github-trending-page",
+              schedulerDecisionCount: 2,
+              schedulerEnqueuedCount: 1,
+              schedulerSkippedCount: 1,
+              schedulerSkippedByReason: expect.objectContaining({
+                queueBackpressure: 1,
+              }),
+              lastSchedulerEvaluatedAt: "2026-06-26T10:00:00.000Z",
+            }),
+            expect.objectContaining({
+              providerKey: "reddit",
+              schedulerDecisionCount: 1,
+              schedulerEnqueuedCount: 0,
+              schedulerSkippedCount: 1,
+              schedulerSkippedByReason: expect.objectContaining({
+                freshSuccess: 1,
+              }),
+              lastSchedulerEvaluatedAt: "2026-06-26T08:00:00.000Z",
+            }),
+          ],
+        }),
+        days: [
+          expect.objectContaining({
+            date: "2026-06-26",
+            schedulerDecisionCount: 3,
+            schedulerEnqueuedCount: 1,
+            schedulerSkippedCount: 2,
+            schedulerSkippedByReason: expect.objectContaining({
+              freshSuccess: 1,
+              queueBackpressure: 1,
+            }),
+            lastSchedulerEvaluatedAt: "2026-06-26T10:00:00.000Z",
+          }),
+        ],
+      }),
+    });
+  });
+
   it("returns scoped topic errors before reading scan history", async () => {
     const fixture = await makeFixture();
 
@@ -630,6 +795,7 @@ const makeFixture = async () => {
   const policies = new FakeScanPolicies();
   const scanJobs = new FakeScanHistory();
   const attempts = new FakeScanExecutionAttempts();
+  const schedulerDecisions = new FakeSchedulerDecisionHistory();
   const useCase = new ListTopicSourceDailyHistoryUseCase(
     topics,
     bindings,
@@ -637,6 +803,7 @@ const makeFixture = async () => {
     scanJobs,
     attempts,
     new FixedClock(now),
+    schedulerDecisions,
   );
   await topics.save(
     Topic.create({
@@ -652,7 +819,22 @@ const makeFixture = async () => {
   return {
     bindings,
     policies,
+    schedulerDecisions,
     useCase,
+    saveSchedulerDecision: async (
+      record: Omit<
+        ScanSchedulerDecisionRecord,
+        "tenantId" | "workspaceId"
+      >,
+    ) => {
+      await schedulerDecisions.recordBatch({
+        records: [{
+          ...record,
+          tenantId: tenant,
+          workspaceId: workspace,
+        }],
+      });
+    },
     saveCompletedScan: async (params: {
       readonly id: string;
       readonly binding: SourceBinding;

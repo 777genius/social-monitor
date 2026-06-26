@@ -7,6 +7,7 @@ import 'package:json_annotation/json_annotation.dart';
 import 'topic_source_daily_history_cadence_summary_response_dto.dart';
 import 'topic_source_daily_history_provider_response_dto_provider_health_state_provider_health_state.dart';
 import 'topic_source_daily_history_provider_response_dto_scan_coverage_state_scan_coverage_state.dart';
+import 'topic_source_daily_history_scheduler_skip_breakdown_response_dto.dart';
 
 part 'topic_source_daily_history_provider_response_dto.g.dart';
 
@@ -29,6 +30,10 @@ class TopicSourceDailyHistoryProviderResponseDto {
     required this.rateLimitedScans,
     required this.scanCoverageState,
     required this.scannedSourceBindingCount,
+    required this.schedulerDecisionCount,
+    required this.schedulerEnqueuedCount,
+    required this.schedulerSkippedByReason,
+    required this.schedulerSkippedCount,
     required this.signals,
     required this.skippedDuplicates,
     required this.sourceBindingCount,
@@ -39,6 +44,7 @@ class TopicSourceDailyHistoryProviderResponseDto {
     this.cadenceSummary,
     this.lastCompletedAt,
     this.lastScanRequestedAt,
+    this.lastSchedulerEvaluatedAt,
   });
 
   factory TopicSourceDailyHistoryProviderResponseDto.fromJson(
@@ -55,6 +61,7 @@ class TopicSourceDailyHistoryProviderResponseDto {
   final num inserted;
   final DateTime? lastCompletedAt;
   final DateTime? lastScanRequestedAt;
+  final DateTime? lastSchedulerEvaluatedAt;
   final String operatorAction;
   final num pausedSourceBindingCount;
   final num projected;
@@ -66,6 +73,11 @@ class TopicSourceDailyHistoryProviderResponseDto {
   final TopicSourceDailyHistoryProviderResponseDtoScanCoverageStateScanCoverageState
   scanCoverageState;
   final num scannedSourceBindingCount;
+  final num schedulerDecisionCount;
+  final num schedulerEnqueuedCount;
+  final TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto
+  schedulerSkippedByReason;
+  final num schedulerSkippedCount;
   final List<String> signals;
   final num skippedDuplicates;
   final num sourceBindingCount;

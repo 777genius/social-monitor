@@ -60,7 +60,6 @@ import { ListSourceBindingDailyHistoryUseCase } from '../../features/list-source
 import { ListSourceBindingOverviewUseCase } from '../../features/list-source-binding-overview/list-source-binding-overview.use-case';
 import { ListSourceBindingScansUseCase } from '../../features/list-source-binding-scans/list-source-binding-scans.use-case';
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
-import { ListTopicSourceDailyHistoryUseCase } from '../../features/list-topic-source-daily-history/list-topic-source-daily-history.use-case';
 import { ListTopicsUseCase } from '../../features/list-topics/list-topics.use-case';
 import { RecordScanExecutionUseCase } from '../../features/record-scan-execution/record-scan-execution.use-case';
 import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
@@ -115,6 +114,7 @@ import {
   monitoringScanQueueModeProvider,
   resolveManualScanRequestQuotaPerHour,
 } from './monitoring-provider-tokens';
+import { monitoringSchedulerProviders } from './monitoring-scheduler.providers';
 import { ScanPolicyController } from './scan-policy.controller';
 import { ScanRequestController } from './scan-request.controller';
 import { ScanStatusController } from './scan-status.controller';
@@ -237,6 +237,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
           : new InMemoryScanJobRepository(),
       inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
     },
+    ...monitoringSchedulerProviders,
     {
       provide: MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
       useFactory: (
@@ -458,31 +459,6 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
       inject: [ListSourceBindingsUseCase, GetSourceBindingHealthUseCase],
     },
     {
-      provide: ListTopicSourceDailyHistoryUseCase,
-      useFactory: (
-        topics: TopicRepositoryPort,
-        bindings: SourceBindingRepositoryPort,
-        scanPolicies: ScanPolicyRepositoryPort,
-        scanJobs: ScanJobRepositoryPort & ScanJobHistoryReadPort,
-        scanExecutionAttempts: ScanExecutionAttemptReadPort,
-      ) =>
-        new ListTopicSourceDailyHistoryUseCase(
-          topics,
-          bindings,
-          scanPolicies,
-          scanJobs,
-          scanExecutionAttempts,
-          new SystemClock(),
-        ),
-      inject: [
-        MONITORING_TOPIC_REPOSITORY,
-        MONITORING_SOURCE_BINDING_REPOSITORY,
-        MONITORING_SCAN_POLICY_REPOSITORY,
-        MONITORING_SCAN_JOB_REPOSITORY,
-        MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
-      ],
-    },
-    {
       provide: SetScanPolicyUseCase,
       useFactory: (
         bindings: SourceBindingRepositoryPort,
@@ -559,29 +535,6 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
         MONITORING_OUTBOX,
         MONITORING_IDEMPOTENCY,
         UsageScanRequestQuotaAdapter,
-      ],
-    },
-    {
-      provide: ScheduleDueScansUseCase,
-      useFactory: (
-        bindings: SourceBindingRepositoryPort,
-        scanPolicies: ScanPolicyRepositoryPort,
-        scanJobs: MonitoringScanJobStorePort,
-        scanQueue: ScanQueuePort,
-      ) =>
-        new ScheduleDueScansUseCase(
-          bindings,
-          scanPolicies,
-          scanJobs,
-          scanQueue,
-          new CryptoIdGenerator(),
-          new SystemClock(),
-        ),
-      inject: [
-        MONITORING_SOURCE_BINDING_REPOSITORY,
-        MONITORING_SCAN_POLICY_REPOSITORY,
-        MONITORING_SCAN_JOB_REPOSITORY,
-        MONITORING_SCAN_QUEUE,
       ],
     },
     {

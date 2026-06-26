@@ -1,11 +1,9 @@
+import type {
+  ScanSchedulerDecisionReason,
+} from '../../ports';
+
 export type ScheduleDueScansSkipReason =
-  | 'active_scan'
-  | 'duplicate_window'
-  | 'fresh_success'
-  | 'provider_failure_backoff'
-  | 'queue_backpressure'
-  | 'rate_limit_backoff'
-  | 'source_unavailable';
+  Exclude<ScanSchedulerDecisionReason, 'scan_policy_due_now'>;
 
 export type ScheduleDueScansSkipBreakdown = Readonly<
   Record<ScheduleDueScansSkipReason, number>

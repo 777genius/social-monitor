@@ -16,6 +16,10 @@ import {
   Topic,
   type TopicProps,
 } from '../../../domain';
+import type {
+  ScanSchedulerDecisionReason,
+  ScanSchedulerDecisionRecord,
+} from '../../../ports';
 
 export type PrismaTopicRecord = {
   readonly id: string;
@@ -102,6 +106,31 @@ export type PrismaScanJobRecord = {
   readonly completedAt: Date | null;
   readonly failureReason: string | null;
   readonly createdAt: Date;
+};
+
+export type PrismaScanSchedulerDecisionRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly decisionKey: string;
+  readonly scanPolicyId: string;
+  readonly sourceBindingId: string;
+  readonly providerKey: string | null;
+  readonly decision: 'enqueued' | 'skipped';
+  readonly reason: string;
+  readonly scanJobId: string | null;
+  readonly policyDueAt: Date;
+  readonly evaluatedAt: Date;
+  readonly nextRunAt: Date;
+  readonly configuredIntervalSeconds: number;
+  readonly effectiveIntervalSeconds: number | null;
+  readonly freshnessSeconds: number | null;
+  readonly providerMinimumIntervalEnforced: boolean | null;
+  readonly backoffUntil: Date | null;
+  readonly correlationId: string | null;
+  readonly causationId: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
 };
 
 export type PrismaScanAttemptRecord = {
@@ -218,6 +247,33 @@ export const scanJobFromPrisma = (record: PrismaScanJobRecord): ScanJob =>
     failureReason: record.failureReason ?? undefined,
   } satisfies ScanJobProps);
 
+export const scanSchedulerDecisionFromPrisma = (
+  record: PrismaScanSchedulerDecisionRecord,
+): ScanSchedulerDecisionRecord => ({
+  id: record.id,
+  tenantId: tenantId(record.tenantId),
+  workspaceId: workspaceId(record.workspaceId),
+  decisionKey: record.decisionKey,
+  scanPolicyId: record.scanPolicyId,
+  sourceBindingId: record.sourceBindingId,
+  ...(record.providerKey === null ? {} : { providerKey: record.providerKey }),
+  decision: record.decision,
+  reason: scanSchedulerDecisionReasonFromPrisma(record.reason),
+  ...(record.scanJobId === null ? {} : { scanJobId: record.scanJobId }),
+  policyDueAt: record.policyDueAt,
+  evaluatedAt: record.evaluatedAt,
+  nextRunAt: record.nextRunAt,
+  configuredIntervalSeconds: record.configuredIntervalSeconds,
+  ...(record.effectiveIntervalSeconds === null ? {} : { effectiveIntervalSeconds: record.effectiveIntervalSeconds }),
+  ...(record.freshnessSeconds === null ? {} : { freshnessSeconds: record.freshnessSeconds }),
+  ...(record.providerMinimumIntervalEnforced === null
+    ? {}
+    : { providerMinimumIntervalEnforced: record.providerMinimumIntervalEnforced }),
+  ...(record.backoffUntil === null ? {} : { backoffUntil: record.backoffUntil }),
+  ...(record.correlationId === null ? {} : { correlationId: record.correlationId }),
+  ...(record.causationId === null ? {} : { causationId: record.causationId }),
+});
+
 export const sourceBindingStatusToPrisma = (status: SourceBindingStatus): 'ENABLED' | 'PAUSED' =>
   status === 'enabled' ? 'ENABLED' : 'PAUSED';
 
@@ -325,6 +381,23 @@ const scanJobStatusFromPrisma = (status: PrismaScanJobRecord['status']): ScanJob
   }
 
   throw new Error(`Cannot rehydrate unsupported scan job status "${status}"`);
+};
+
+const scanSchedulerDecisionReasonFromPrisma = (reason: string): ScanSchedulerDecisionReason => {
+  if (
+    reason === 'scan_policy_due_now' ||
+    reason === 'active_scan' ||
+    reason === 'duplicate_window' ||
+    reason === 'fresh_success' ||
+    reason === 'provider_failure_backoff' ||
+    reason === 'queue_backpressure' ||
+    reason === 'rate_limit_backoff' ||
+    reason === 'source_unavailable'
+  ) {
+    return reason;
+  }
+
+  throw new Error(`Cannot rehydrate unsupported scan scheduler decision reason "${reason}"`);
 };
 
 const normalizeRecordObject = (value: unknown): Readonly<Record<string, unknown>> => {

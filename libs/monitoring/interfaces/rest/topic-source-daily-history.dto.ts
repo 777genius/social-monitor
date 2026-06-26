@@ -6,6 +6,7 @@ import type {
   TopicSourceDailyHistoryDayView,
   TopicSourceDailyHistoryProviderView,
   TopicSourceDailyHistoryScanCoverageState,
+  TopicSourceDailyHistorySchedulerSkipBreakdownView,
   TopicSourceDailyHistorySummaryView,
 } from '../../features/list-topic-source-daily-history/list-topic-source-daily-history.result';
 import type { ScanProviderHealthState } from '../../features/shared/scan-provider-health-summary';
@@ -53,6 +54,30 @@ export class TopicSourceDailyHistoryCadenceSummaryResponseDto implements TopicSo
   declare readonly providerMinimumIntervalEnforced: boolean;
 }
 
+export class TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto
+  implements TopicSourceDailyHistorySchedulerSkipBreakdownView {
+  @ApiProperty()
+  declare readonly activeScan: number;
+
+  @ApiProperty()
+  declare readonly duplicateWindow: number;
+
+  @ApiProperty()
+  declare readonly freshSuccess: number;
+
+  @ApiProperty()
+  declare readonly providerFailureBackoff: number;
+
+  @ApiProperty()
+  declare readonly queueBackpressure: number;
+
+  @ApiProperty()
+  declare readonly rateLimitBackoff: number;
+
+  @ApiProperty()
+  declare readonly sourceUnavailable: number;
+}
+
 export class TopicSourceDailyHistoryProviderResponseDto implements TopicSourceDailyHistoryProviderView {
   @ApiProperty()
   declare readonly providerKey: string;
@@ -80,6 +105,21 @@ export class TopicSourceDailyHistoryProviderResponseDto implements TopicSourceDa
 
   @ApiProperty({ enum: sourceHistoryScanCoverageStateValues })
   declare readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
+
+  @ApiProperty()
+  declare readonly schedulerDecisionCount: number;
+
+  @ApiProperty()
+  declare readonly schedulerEnqueuedCount: number;
+
+  @ApiProperty()
+  declare readonly schedulerSkippedCount: number;
+
+  @ApiProperty({ type: () => TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto })
+  declare readonly schedulerSkippedByReason: TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly lastSchedulerEvaluatedAt?: string;
 
   @ApiPropertyOptional({ type: () => TopicSourceDailyHistoryCadenceSummaryResponseDto })
   declare readonly cadenceSummary?: TopicSourceDailyHistoryCadenceSummaryResponseDto;
@@ -171,6 +211,21 @@ export class TopicSourceDailyHistoryDayResponseDto implements TopicSourceDailyHi
   declare readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
 
   @ApiProperty()
+  declare readonly schedulerDecisionCount: number;
+
+  @ApiProperty()
+  declare readonly schedulerEnqueuedCount: number;
+
+  @ApiProperty()
+  declare readonly schedulerSkippedCount: number;
+
+  @ApiProperty({ type: () => TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto })
+  declare readonly schedulerSkippedByReason: TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly lastSchedulerEvaluatedAt?: string;
+
+  @ApiProperty()
   declare readonly totalScans: number;
 
   @ApiProperty()
@@ -246,6 +301,21 @@ export class TopicSourceDailyHistorySummaryResponseDto implements TopicSourceDai
 
   @ApiProperty({ enum: sourceHistoryScanCoverageStateValues })
   declare readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
+
+  @ApiProperty()
+  declare readonly schedulerDecisionCount: number;
+
+  @ApiProperty()
+  declare readonly schedulerEnqueuedCount: number;
+
+  @ApiProperty()
+  declare readonly schedulerSkippedCount: number;
+
+  @ApiProperty({ type: () => TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto })
+  declare readonly schedulerSkippedByReason: TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly lastSchedulerEvaluatedAt?: string;
 
   @ApiProperty()
   declare readonly totalScans: number;

@@ -12,6 +12,7 @@ import { resolveIngestionScanReporterMode } from '../apps/ingestion-worker/src/i
 import { PrismaIdempotencyAdapter } from '../libs/monitoring/adapters/idempotency/prisma/prisma-idempotency.adapter';
 import { ScanJob, ScanPolicy, SourceBinding, SourceCredential, Topic } from '../libs/monitoring/domain';
 import { PrismaScanJobRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-job.repository';
+import { PrismaScanSchedulerDecisionHistoryRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-scheduler-decision-history.repository';
 import { PrismaScanPolicyRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-policy.repository';
 import { PrismaSourceBindingRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-source-binding.repository';
 import { PrismaSourceCredentialRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-source-credential.repository';
@@ -29,6 +30,7 @@ import type {
   PrismaOutboxEventRecord,
   PrismaScanAttemptRecord,
   PrismaScanPolicyRecord,
+  PrismaScanSchedulerDecisionRecord,
   PrismaSourceBindingRecord,
   PrismaSourceCatalogEntryRecord,
   PrismaSourceCredentialRecord,
@@ -105,6 +107,7 @@ async function main(): Promise<void> {
   const bindings = new PrismaSourceBindingRepository(prisma);
   const policies = new PrismaScanPolicyRepository(prisma);
   const scanJobs = new PrismaScanJobRepository(prisma);
+  const schedulerDecisions = new PrismaScanSchedulerDecisionHistoryRepository(prisma);
   const outbox = new PrismaMonitoringOutboxAdapter(prisma);
   const sourceCredentials = new PrismaSourceCredentialRepository(prisma);
   const sourceCredentialVault = new PrismaSourceCredentialVault(prisma, Buffer.alloc(32, 3));
@@ -259,6 +262,38 @@ async function main(): Promise<void> {
   });
   assert(completedById?.toSnapshot().status === 'succeeded', 'scan job completion state must persist');
 
+  await schedulerDecisions.recordBatch({
+    records: [{
+      id: '00000000-0000-7000-8000-000000000055',
+      tenantId: tenant,
+      workspaceId: workspace,
+      decisionKey: 'scan-policy:00000000-0000-7000-8000-000000000040:due-at:2026-06-06T00:15:00.000Z',
+      scanPolicyId: scanPolicy.toSnapshot().id,
+      sourceBindingId: sourceBinding.toSnapshot().id,
+      providerKey: 'fake-source',
+      decision: 'skipped',
+      reason: 'fresh_success',
+      policyDueAt: new Date('2026-06-06T00:15:00.000Z'),
+      evaluatedAt: new Date('2026-06-06T00:15:00.000Z'),
+      nextRunAt: new Date('2026-06-06T00:30:00.000Z'),
+      configuredIntervalSeconds: 900,
+      effectiveIntervalSeconds: 900,
+      freshnessSeconds: 3600,
+      providerMinimumIntervalEnforced: false,
+      correlationId: 'scheduler-decision-prisma-smoke',
+    }],
+  });
+  const schedulerHistory = await schedulerDecisions.listBySourceBindingWindow({
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: sourceBinding.toSnapshot().id,
+    windowStartedAt: new Date('2026-06-06T00:00:00.000Z'),
+    windowEndedAt: new Date('2026-06-07T00:00:00.000Z'),
+    limit: 10,
+  });
+  assert(schedulerHistory.records.length === 1, 'scheduler decision history must round-trip through Prisma');
+  assert(schedulerHistory.records[0]?.reason === 'fresh_success', 'scheduler decision reason must persist');
+
   await outbox.append({
     eventId: eventId('00000000-0000-7000-8000-000000000060'),
     eventType: 'monitoring.topic.created',
@@ -385,6 +420,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   private readonly sourceCredentialSecrets = new Map<string, PrismaSourceCredentialSecretRecord>();
   private readonly scanPolicies = new Map<string, PrismaScanPolicyRecord>();
   private readonly scanJobs = new Map<string, PrismaScanJobRecord>();
+  private readonly scanSchedulerDecisions = new Map<string, PrismaScanSchedulerDecisionRecord>();
   private readonly scanAttempts = new Map<string, PrismaScanAttemptRecord>();
   readonly idempotencyKeys = new Map<string, PrismaIdempotencyKeyRecord>();
   readonly outboxEvents = new Map<string, PrismaOutboxEventRecord>();
@@ -644,6 +680,55 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
     },
   };
 
+  readonly scanSchedulerDecision: PrismaMonitoringClient['scanSchedulerDecision'] = {
+    upsert: async (args) => {
+      const storageKey = schedulerDecisionStorageKey(args.where.tenantId_workspaceId_decisionKey);
+      const existing = this.scanSchedulerDecisions.get(storageKey);
+      const record: PrismaScanSchedulerDecisionRecord = {
+        id: existing?.id ?? args.create.id,
+        tenantId: existing?.tenantId ?? args.create.tenantId,
+        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
+        decisionKey: existing?.decisionKey ?? args.create.decisionKey,
+        scanPolicyId: existing?.scanPolicyId ?? args.create.scanPolicyId,
+        sourceBindingId: existing?.sourceBindingId ?? args.create.sourceBindingId,
+        providerKey: args.update.providerKey ?? null,
+        decision: args.update.decision,
+        reason: args.update.reason,
+        scanJobId: args.update.scanJobId ?? null,
+        policyDueAt: args.update.policyDueAt,
+        evaluatedAt: args.update.evaluatedAt,
+        nextRunAt: args.update.nextRunAt,
+        configuredIntervalSeconds: args.update.configuredIntervalSeconds,
+        effectiveIntervalSeconds: args.update.effectiveIntervalSeconds ?? null,
+        freshnessSeconds: args.update.freshnessSeconds ?? null,
+        providerMinimumIntervalEnforced: args.update.providerMinimumIntervalEnforced ?? null,
+        backoffUntil: args.update.backoffUntil ?? null,
+        correlationId: args.update.correlationId ?? null,
+        causationId: args.update.causationId ?? null,
+        createdAt: existing?.createdAt ?? clock.now(),
+        updatedAt: clock.now(),
+      };
+      this.scanSchedulerDecisions.set(storageKey, record);
+
+      return record;
+    },
+    findMany: async (args) =>
+      [...this.scanSchedulerDecisions.values()]
+        .filter((record) => (
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          record.sourceBindingId === args.where.sourceBindingId &&
+          record.evaluatedAt.getTime() >= args.where.evaluatedAt.gte.getTime() &&
+          record.evaluatedAt.getTime() < args.where.evaluatedAt.lt.getTime()
+        ))
+        .sort((left, right) => {
+          const evaluatedDiff = right.evaluatedAt.getTime() - left.evaluatedAt.getTime();
+
+          return evaluatedDiff === 0 ? right.id.localeCompare(left.id) : evaluatedDiff;
+        })
+        .slice(0, args.take),
+  };
+
   readonly scanAttempt: PrismaMonitoringClient['scanAttempt'] = {
     findFirst: async (args) =>
       [...this.scanAttempts.values()].find((record) => (
@@ -730,6 +815,12 @@ const idempotencyStorageKey = (params: {
   readonly scope: string;
   readonly key: string;
 }): string => `${params.tenantId}:${params.workspaceId}:${params.scope}:${params.key}`;
+
+const schedulerDecisionStorageKey = (params: {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly decisionKey: string;
+}): string => `${params.tenantId}:${params.workspaceId}:${params.decisionKey}`;
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
