@@ -14,7 +14,11 @@ import {
   type EffectiveProviderScanCadence,
 } from '../shared/scan-cadence-policy';
 import { presentScanPolicy } from '../shared/scan-policy-presenter';
-import { isFreshSuccessfulScan, rateLimitBackoffUntil } from '../shared/scan-freshness-guard';
+import {
+  isFreshSuccessfulScan,
+  providerFailureBackoffUntil,
+  rateLimitBackoffUntil,
+} from '../shared/scan-freshness-guard';
 import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
 import { buildScanStatusView } from '../shared/scan-status-view';
 import { presentSourceBinding } from '../shared/source-binding-presenter';
@@ -104,6 +108,13 @@ export class GetSourceBindingHealthUseCase {
           freshnessSeconds: cadence?.freshnessSeconds ?? scanPolicySnapshot.freshnessSeconds,
           now,
         });
+    const providerFailureBackoff = cadence === undefined
+      ? null
+      : providerFailureBackoffUntil({
+          recentJobs: recentScanJobs.scanJobs,
+          backoffSeconds: cadence.intervalSeconds,
+          now,
+        });
     const latestAttempt = latestScanSnapshot === undefined
       ? null
       : await this.scanExecutionAttempts.findLatestByScanJob({
@@ -131,6 +142,7 @@ export class GetSourceBindingHealthUseCase {
         latestScanJob,
         freshness,
         cadence,
+        providerFailureBackoff,
         now,
       }),
       scanPolicy: scanPolicy === null || scanPolicySnapshot === undefined
@@ -234,6 +246,7 @@ const buildSchedulerDecision = (params: {
   readonly latestScanJob: ScanJob | null;
   readonly freshness?: SourceBindingHealthFreshnessView;
   readonly cadence?: EffectiveProviderScanCadence;
+  readonly providerFailureBackoff: Date | null;
   readonly now: Date;
 }): SourceBindingHealthSchedulerDecisionView => {
   const minimumIntervalSeconds = params.cadence?.minimumIntervalSeconds ??
@@ -307,6 +320,20 @@ const buildSchedulerDecision = (params: {
       waitSeconds: secondsUntil(backoffUntil, params.now),
       rateLimitBackoffUntil: backoffUntil,
       signals: cadenceSignals('rate_limit_backoff', params.cadence?.providerMinimumIntervalEnforced === true),
+    };
+  }
+
+  if (params.providerFailureBackoff !== null) {
+    const backoffUntil = params.providerFailureBackoff.toISOString();
+
+    return {
+      ...base,
+      canScanNow: false,
+      decision: 'rate_limit_backoff',
+      reason: 'provider_failure_backoff_active',
+      nextEligibleAt: backoffUntil,
+      waitSeconds: secondsUntil(backoffUntil, params.now),
+      signals: cadenceSignals('provider_failure_backoff', params.cadence?.providerMinimumIntervalEnforced === true),
     };
   }
 

@@ -2,6 +2,7 @@ export type ScheduleDueScansSkipReason =
   | 'active_scan'
   | 'duplicate_window'
   | 'fresh_success'
+  | 'provider_failure_backoff'
   | 'queue_backpressure'
   | 'rate_limit_backoff'
   | 'source_unavailable';

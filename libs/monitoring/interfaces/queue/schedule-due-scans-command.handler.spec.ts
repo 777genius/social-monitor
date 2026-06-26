@@ -23,6 +23,7 @@ class FakeScheduleDueScansUseCase {
           active_scan: 0,
           duplicate_window: 0,
           fresh_success: 0,
+          provider_failure_backoff: 0,
           queue_backpressure: 0,
           rate_limit_backoff: 0,
           source_unavailable: 0,

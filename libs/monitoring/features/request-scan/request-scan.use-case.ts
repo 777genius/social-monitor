@@ -14,6 +14,7 @@ import { ScanJob, type ScanRequestedEvent } from '../../domain';
 import type {
   IdempotencyPort,
   OutboxPort,
+  ScanJobHistoryReadPort,
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
   ScanRequestQuotaPort,
@@ -23,16 +24,21 @@ import type {
 import type { RequestScanCommand } from './request-scan.command';
 import type { RequestScanDecisionView, RequestScanResult } from './request-scan.result';
 import { effectiveProviderScanCadence } from '../shared/scan-cadence-policy';
-import { isFreshSuccessfulScan, rateLimitBackoffUntil } from '../shared/scan-freshness-guard';
+import {
+  isFreshSuccessfulScan,
+  providerFailureBackoffUntil,
+  rateLimitBackoffUntil,
+} from '../shared/scan-freshness-guard';
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
 type RequestScanFailure = DomainError | Error;
+type ScanJobRecentHistoryReadPort = Pick<ScanJobHistoryReadPort, 'listBySourceBinding'>;
 
 export class RequestScanUseCase {
   constructor(
     private readonly sourceBindings: SourceBindingRepositoryPort,
     private readonly scanPolicies: ScanPolicyRepositoryPort,
-    private readonly scanJobs: ScanJobRepositoryPort,
+    private readonly scanJobs: ScanJobRepositoryPort & ScanJobRecentHistoryReadPort,
     private readonly scanQueue: ScanQueuePort,
     private readonly outbox: OutboxPort,
     private readonly idempotency: IdempotencyPort,
@@ -131,6 +137,12 @@ export class RequestScanUseCase {
       workspaceId: command.workspaceId,
       sourceBindingId: command.sourceBindingId,
     });
+    const recentJobs = await this.scanJobs.listBySourceBinding({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      sourceBindingId: command.sourceBindingId,
+      limit: 5,
+    });
     const cadence = effectiveProviderScanCadence({
       providerKey: bindingSnapshot.providerKey,
       intervalSeconds: policySnapshot.intervalSeconds,
@@ -182,6 +194,30 @@ export class RequestScanUseCase {
           waitSeconds: secondsUntil(rateLimitBackoffUntil, now),
           rateLimitBackoffUntil,
           signals: cadenceSignals('rate_limit_backoff', cadence.providerMinimumIntervalEnforced),
+        },
+      });
+      await this.cacheResult(command, result);
+      return ok(result);
+    }
+    const providerFailureBackoff = providerFailureBackoffUntil({
+      recentJobs: recentJobs.scanJobs,
+      backoffSeconds: cadence.intervalSeconds,
+      now,
+    });
+    if (latestJob !== null && providerFailureBackoff !== null) {
+      const snapshot = latestJob.toSnapshot();
+      const providerFailureBackoffUntilIso = providerFailureBackoff.toISOString();
+      const result = withRequestDecision({
+        scanJobId: snapshot.id,
+        status: snapshot.status,
+        created: false,
+        requestDecision: {
+          decision: 'rate_limit_backoff',
+          reason: 'provider_failure_backoff_active',
+          createdNewScan: false,
+          nextEligibleAt: providerFailureBackoffUntilIso,
+          waitSeconds: secondsUntil(providerFailureBackoffUntilIso, now),
+          signals: cadenceSignals('provider_failure_backoff', cadence.providerMinimumIntervalEnforced),
         },
       });
       await this.cacheResult(command, result);

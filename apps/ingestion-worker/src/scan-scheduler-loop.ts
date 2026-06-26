@@ -94,6 +94,7 @@ export class ScanSchedulerLoop implements OnModuleInit, OnApplicationShutdown {
         skippedActiveScan: result.skippedByReason.active_scan,
         skippedDuplicateWindow: result.skippedByReason.duplicate_window,
         skippedFreshSuccess: result.skippedByReason.fresh_success,
+        skippedProviderFailureBackoff: result.skippedByReason.provider_failure_backoff,
         skippedQueueBackpressure: result.skippedByReason.queue_backpressure,
         skippedRateLimitBackoff: result.skippedByReason.rate_limit_backoff,
         skippedSourceUnavailable: result.skippedByReason.source_unavailable,

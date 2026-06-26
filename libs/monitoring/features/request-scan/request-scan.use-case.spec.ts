@@ -3,6 +3,8 @@ import { DomainError, FixedClock, type IdGenerator, ok, tenantId, workspaceId } 
 import { ScanJob, ScanPolicy, SourceBinding } from '../../domain';
 import type {
   IdempotencyPort,
+  ListScanJobsBySourceBindingQuery,
+  ListScanJobsBySourceBindingResult,
   ListSourceBindingsQuery,
   ListSourceBindingsResult,
   OutboxPort,
@@ -118,7 +120,31 @@ class FakeScanJobs implements ScanJobRepositoryPort {
   async findLatestBySourceBinding(
     params: Parameters<ScanJobRepositoryPort['findLatestBySourceBinding']>[0],
   ): Promise<ScanJob | null> {
-    const jobs = [...this.jobsById.values()]
+    const jobs = this.sortedBySourceBinding(params);
+
+    return jobs[0] ?? null;
+  }
+
+  async listBySourceBinding(
+    query: ListScanJobsBySourceBindingQuery,
+  ): Promise<ListScanJobsBySourceBindingResult> {
+    return {
+      scanJobs: this.sortedBySourceBinding(query).slice(0, query.limit),
+    };
+  }
+
+  async findByIdempotencyKey(
+    params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0],
+  ): Promise<ScanJob | null> {
+    return this.jobs.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
+  }
+
+  private sortedBySourceBinding(params: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly sourceBindingId: string;
+  }): readonly ScanJob[] {
+    return [...this.jobsById.values()]
       .filter((job) => {
         const snapshot = job.toSnapshot();
 
@@ -129,14 +155,6 @@ class FakeScanJobs implements ScanJobRepositoryPort {
         );
       })
       .sort((left, right) => right.toSnapshot().requestedAt.getTime() - left.toSnapshot().requestedAt.getTime());
-
-    return jobs[0] ?? null;
-  }
-
-  async findByIdempotencyKey(
-    params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0],
-  ): Promise<ScanJob | null> {
-    return this.jobs.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
   }
 }
 
@@ -605,6 +623,80 @@ describe('RequestScanUseCase', () => {
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
       idempotencyKey: 'manual-scan-rate-limit-backoff',
+    })).resolves.toBeNull();
+  });
+
+  it('returns latest provider failure while repeated auth-failure backoff is active', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding('reddit'));
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    for (const [id, requestedAt, completedAt] of [
+      ['auth-failed-scan-job-2', '2026-06-05T00:05:00.000Z', '2026-06-05T00:06:00.000Z'],
+      ['auth-failed-scan-job-1', '2026-06-05T00:04:00.000Z', '2026-06-05T00:05:00.000Z'],
+    ] as const) {
+      await scanJobs.save(ScanJob.request({
+        id,
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: `manual-${id}`,
+        requestedAt: new Date(requestedAt),
+      }).markEnqueued({
+        enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000),
+      }).markFailed({
+        completedAt: new Date(completedAt),
+        failureReason: 'kind=auth_failed provider credential rejected',
+      }));
+    }
+    const queue = new FakeScanQueue();
+    const outbox = new FakeOutbox();
+    const quota = new AllowingScanRequestQuota();
+    const useCase = new RequestScanUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      outbox,
+      new FakeIdempotency(),
+      quota,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:10:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'manual-scan-provider-failure-backoff',
+      correlationId: 'correlation-provider-failure-backoff',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scanJobId: 'auth-failed-scan-job-2',
+        status: 'failed',
+        created: false,
+        requestDecision: {
+          decision: 'rate_limit_backoff',
+          reason: 'provider_failure_backoff_active',
+          createdNewScan: false,
+          nextEligibleAt: '2026-06-05T00:36:00.000Z',
+          waitSeconds: 1560,
+          signals: ['provider_failure_backoff', 'provider_minimum_interval_enforced'],
+        },
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect(outbox.events).toHaveLength(0);
+    expect(quota.reservationCount).toBe(0);
+    await expect(scanJobs.findByIdempotencyKey({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      idempotencyKey: 'manual-scan-provider-failure-backoff',
     })).resolves.toBeNull();
   });
 

@@ -89,6 +89,7 @@ import type {
   SourceCatalogPort,
   TopicRepositoryPort,
 } from '../../ports';
+
 import {
   MONITORING_CONFIG_PROTECTOR,
   MONITORING_IDEMPOTENCY,
@@ -119,6 +120,8 @@ import { ScanStatusController } from './scan-status.controller';
 import { SourceBindingController } from './source-binding.controller';
 import { SourceCredentialController } from './source-credential.controller';
 import { TopicController } from './topic.controller';
+
+type MonitoringScanJobStorePort = ScanJobRepositoryPort & ScanJobHistoryReadPort;
 
 const MONITORING_RABBITMQ_CHANNEL = Symbol('MONITORING_RABBITMQ_CHANNEL');
 const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
@@ -227,7 +230,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
       useFactory: (
         mode: MonitoringPersistenceMode,
         prisma: PrismaMonitoringClient | null,
-      ): ScanJobRepositoryPort =>
+      ): MonitoringScanJobStorePort =>
         mode === 'prisma'
           ? new PrismaScanJobRepository(requirePrismaMonitoringClient(prisma))
           : new InMemoryScanJobRepository(),
@@ -505,7 +508,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
       useFactory: (
         bindings: SourceBindingRepositoryPort,
         scanPolicies: ScanPolicyRepositoryPort,
-        scanJobs: ScanJobRepositoryPort,
+        scanJobs: MonitoringScanJobStorePort,
         scanQueue: ScanQueuePort,
         outbox: OutboxPort,
         idempotency: IdempotencyPort,
@@ -537,7 +540,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
       useFactory: (
         bindings: SourceBindingRepositoryPort,
         scanPolicies: ScanPolicyRepositoryPort,
-        scanJobs: ScanJobRepositoryPort,
+        scanJobs: MonitoringScanJobStorePort,
         scanQueue: ScanQueuePort,
       ) =>
         new ScheduleDueScansUseCase(

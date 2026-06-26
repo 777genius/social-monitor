@@ -37,3 +37,51 @@ export const rateLimitBackoffUntil = (params: {
 
   return backoffUntil.getTime() > params.now.getTime() ? backoffUntil : null;
 };
+
+export const providerFailureBackoffUntil = (params: {
+  readonly recentJobs: readonly ScanJob[];
+  readonly backoffSeconds: number;
+  readonly now: Date;
+  readonly failureThreshold?: number;
+  readonly maxBackoffMultiplier?: number;
+}): Date | null => {
+  const failureThreshold = params.failureThreshold ?? 2;
+  const maxBackoffMultiplier = params.maxBackoffMultiplier ?? 4;
+  let consecutiveProviderFailures = 0;
+  let latestProviderFailureCompletedAt: Date | undefined;
+
+  for (const job of params.recentJobs) {
+    const snapshot = job.toSnapshot();
+
+    if (snapshot.status === 'requested' || snapshot.status === 'enqueued') {
+      continue;
+    }
+
+    if (snapshot.status !== 'failed' || snapshot.completedAt === undefined) {
+      break;
+    }
+
+    const view = buildScanStatusView({
+      status: snapshot.status,
+      failureReason: snapshot.failureReason,
+    });
+    if (view.failureClass !== 'provider_unavailable') {
+      break;
+    }
+
+    latestProviderFailureCompletedAt ??= snapshot.completedAt;
+    consecutiveProviderFailures += 1;
+  }
+
+  if (
+    consecutiveProviderFailures < failureThreshold ||
+    latestProviderFailureCompletedAt === undefined
+  ) {
+    return null;
+  }
+
+  const multiplier = Math.min(consecutiveProviderFailures, maxBackoffMultiplier);
+  const backoffUntil = new Date(latestProviderFailureCompletedAt.getTime() + params.backoffSeconds * multiplier * 1000);
+
+  return backoffUntil.getTime() > params.now.getTime() ? backoffUntil : null;
+};

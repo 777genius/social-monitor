@@ -59,7 +59,16 @@ const classifyFailure = (failureReason: string | undefined): ScanStatusFailureCl
     return 'provider_rate_limited';
   }
 
-  if (normalized.includes('provider') || normalized.includes('unavailable')) {
+  if (
+    normalized.includes('provider') ||
+    normalized.includes('unavailable') ||
+    normalized.includes('auth_failed') ||
+    normalized.includes('unauthorized') ||
+    normalized.includes('forbidden') ||
+    normalized.includes('credential') ||
+    normalized.includes('401') ||
+    normalized.includes('403')
+  ) {
     return 'provider_unavailable';
   }
 

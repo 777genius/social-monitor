@@ -10,6 +10,7 @@ import {
 import { ScanJob } from '../../domain';
 import type {
   ScanJobRepositoryPort,
+  ScanJobHistoryReadPort,
   ScanPolicyRepositoryPort,
   ScanQueuePort,
   SourceBindingRepositoryPort,
@@ -21,16 +22,21 @@ import type {
   ScheduleDueScansSkipReason,
 } from './schedule-due-scans.result';
 import { effectiveProviderScanCadence } from '../shared/scan-cadence-policy';
-import { isFreshSuccessfulScan, rateLimitBackoffUntil } from '../shared/scan-freshness-guard';
+import {
+  isFreshSuccessfulScan,
+  providerFailureBackoffUntil,
+  rateLimitBackoffUntil,
+} from '../shared/scan-freshness-guard';
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
 type ScheduleDueScansFailure = DomainError | Error;
+type ScanJobRecentHistoryReadPort = Pick<ScanJobHistoryReadPort, 'listBySourceBinding'>;
 
 export class ScheduleDueScansUseCase {
   constructor(
     private readonly sourceBindings: SourceBindingRepositoryPort,
     private readonly scanPolicies: ScanPolicyRepositoryPort,
-    private readonly scanJobs: ScanJobRepositoryPort,
+    private readonly scanJobs: ScanJobRepositoryPort & ScanJobRecentHistoryReadPort,
     private readonly scanQueue: ScanQueuePort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
@@ -75,6 +81,12 @@ export class ScheduleDueScansUseCase {
         workspaceId: policySnapshot.workspaceId,
         sourceBindingId: policySnapshot.sourceBindingId,
       });
+      const recentJobs = await this.scanJobs.listBySourceBinding({
+        tenantId: policySnapshot.tenantId,
+        workspaceId: policySnapshot.workspaceId,
+        sourceBindingId: policySnapshot.sourceBindingId,
+        limit: 5,
+      });
       const idempotencyKey = scheduledIdempotencyKey(policySnapshot.id, policySnapshot.nextRunAt);
       const existingJob = await this.scanJobs.findByIdempotencyKey({
         tenantId: policySnapshot.tenantId,
@@ -96,11 +108,17 @@ export class ScheduleDueScansUseCase {
         freshnessSeconds: cadence.freshnessSeconds,
         now,
       });
+      const providerFailureBackoff = providerFailureBackoffUntil({
+        recentJobs: recentJobs.scanJobs,
+        backoffSeconds: cadence.intervalSeconds,
+        now,
+      });
       const skipReason = schedulerSkipReason({
         activeJob,
         existingJob,
         freshSuccess,
         rateLimitBackoff,
+        providerFailureBackoff,
       });
 
       if (skipReason === null) {
@@ -144,7 +162,7 @@ export class ScheduleDueScansUseCase {
           dueAt: policySnapshot.nextRunAt,
           intervalSeconds: cadence.intervalSeconds,
           now,
-          rateLimitBackoff,
+          backoffUntil: rateLimitBackoff ?? providerFailureBackoff,
         }),
       }));
     }
@@ -163,6 +181,7 @@ const emptySkipBreakdown = (): Record<ScheduleDueScansSkipReason, number> => ({
   active_scan: 0,
   duplicate_window: 0,
   fresh_success: 0,
+  provider_failure_backoff: 0,
   queue_backpressure: 0,
   rate_limit_backoff: 0,
   source_unavailable: 0,
@@ -183,6 +202,7 @@ const schedulerSkipReason = (params: {
   readonly existingJob: ScanJob | null;
   readonly freshSuccess: boolean;
   readonly rateLimitBackoff: Date | null;
+  readonly providerFailureBackoff: Date | null;
 }): ScheduleDueScansSkipReason | null => {
   if (params.activeJob !== null) {
     return 'active_scan';
@@ -200,6 +220,10 @@ const schedulerSkipReason = (params: {
     return 'rate_limit_backoff';
   }
 
+  if (params.providerFailureBackoff !== null) {
+    return 'provider_failure_backoff';
+  }
+
   return null;
 };
 
@@ -210,14 +234,14 @@ const nextRunAtAfterSchedulerDecision = (params: {
   readonly dueAt: Date;
   readonly intervalSeconds: number;
   readonly now: Date;
-  readonly rateLimitBackoff: Date | null;
+  readonly backoffUntil: Date | null;
 }): Date => {
   const intervalMs = params.intervalSeconds * 1000;
   const intervalNextRunAt = new Date(params.dueAt.getTime() + intervalMs);
 
-  if (params.rateLimitBackoff !== null) {
-    const backoffNextRunAt = params.rateLimitBackoff.getTime() > intervalNextRunAt.getTime()
-      ? params.rateLimitBackoff
+  if (params.backoffUntil !== null) {
+    const backoffNextRunAt = params.backoffUntil.getTime() > intervalNextRunAt.getTime()
+      ? params.backoffUntil
       : intervalNextRunAt;
 
     if (backoffNextRunAt.getTime() > params.now.getTime()) {

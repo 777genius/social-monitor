@@ -352,6 +352,53 @@ describe('GetSourceBindingHealthUseCase', () => {
     }));
   });
 
+  it('projects provider failure backoff after repeated auth failures', async () => {
+    const { useCase, policies, jobs } = await setup(new FakeScanExecutionAttempts(), 'reddit');
+    await policies.save(makePolicy({
+      intervalSeconds: 900,
+      freshnessSeconds: 900,
+    }));
+    for (const [id, requestedAt, completedAt] of [
+      ['auth-failed-scan-job-2', '2026-06-16T00:08:00.000Z', '2026-06-16T00:08:05.000Z'],
+      ['auth-failed-scan-job-1', '2026-06-16T00:07:00.000Z', '2026-06-16T00:07:05.000Z'],
+    ] as const) {
+      await jobs.save(
+        makeJob(new Date(requestedAt), id)
+          .markEnqueued({ enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000) })
+          .markFailed({
+            completedAt: new Date(completedAt),
+            failureReason: 'kind=auth_failed provider credential rejected',
+          }),
+      );
+    }
+
+    const result = await useCase.execute(baseQuery());
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      value: expect.objectContaining({
+        healthState: 'degraded',
+        schedulerDecision: expect.objectContaining({
+          canScanNow: false,
+          decision: 'rate_limit_backoff',
+          reason: 'provider_failure_backoff_active',
+          minimumIntervalSeconds: 900,
+          configuredIntervalSeconds: 900,
+          freshnessSeconds: 900,
+          nextEligibleAt: '2026-06-16T00:38:05.000Z',
+          waitSeconds: 1685,
+          signals: ['provider_failure_backoff'],
+        }),
+        recentWindow: expect.objectContaining({
+          providerHealthState: 'degraded',
+          providerUnavailableScans: 2,
+          consecutiveFailures: 2,
+          signals: ['recent_failure', 'provider_unavailable', 'consecutive_failures'],
+        }),
+      }),
+    }));
+  });
+
   it('summarizes recent provider health window from scan history', async () => {
     const { useCase, policies, jobs } = await setup();
     await policies.save(makePolicy());

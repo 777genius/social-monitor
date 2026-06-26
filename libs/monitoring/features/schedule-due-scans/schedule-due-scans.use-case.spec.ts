@@ -2,6 +2,8 @@ import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-mon
 
 import { ScanJob, ScanPolicy, SourceBinding } from '../../domain';
 import type {
+  ListScanJobsBySourceBindingQuery,
+  ListScanJobsBySourceBindingResult,
   ListSourceBindingsQuery,
   ListSourceBindingsResult,
   ScanJobRepositoryPort,
@@ -124,7 +126,31 @@ class FakeScanJobs implements ScanJobRepositoryPort {
   async findLatestBySourceBinding(
     params: Parameters<ScanJobRepositoryPort['findLatestBySourceBinding']>[0],
   ): Promise<ScanJob | null> {
-    const jobs = [...this.jobsById.values()]
+    const jobs = this.sortedBySourceBinding(params);
+
+    return jobs[0] ?? null;
+  }
+
+  async listBySourceBinding(
+    query: ListScanJobsBySourceBindingQuery,
+  ): Promise<ListScanJobsBySourceBindingResult> {
+    const jobs = this.sortedBySourceBinding(query).slice(0, query.limit);
+
+    return { scanJobs: jobs };
+  }
+
+  async findByIdempotencyKey(
+    params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0],
+  ): Promise<ScanJob | null> {
+    return this.jobsByIdempotencyKey.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
+  }
+
+  private sortedBySourceBinding(params: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly sourceBindingId: string;
+  }): readonly ScanJob[] {
+    return [...this.jobsById.values()]
       .filter((job) => {
         const snapshot = job.toSnapshot();
 
@@ -135,14 +161,6 @@ class FakeScanJobs implements ScanJobRepositoryPort {
         );
       })
       .sort((left, right) => right.toSnapshot().requestedAt.getTime() - left.toSnapshot().requestedAt.getTime());
-
-    return jobs[0] ?? null;
-  }
-
-  async findByIdempotencyKey(
-    params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0],
-  ): Promise<ScanJob | null> {
-    return this.jobsByIdempotencyKey.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
   }
 }
 
@@ -199,6 +217,7 @@ const noSkippedByReason = () => ({
   active_scan: 0,
   duplicate_window: 0,
   fresh_success: 0,
+  provider_failure_backoff: 0,
   queue_backpressure: 0,
   rate_limit_backoff: 0,
   source_unavailable: 0,
@@ -772,6 +791,78 @@ describe('ScheduleDueScansUseCase', () => {
       sourceBindingId: 'binding-1',
     }))?.toSnapshot()).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:03:00.000Z'),
+    });
+  });
+
+  it('backs off due policy after repeated provider auth failures', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding('reddit'));
+    const policies = new FakeScanPolicies();
+    policies.add(ScanPolicy.create({
+      id: 'policy-1',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      intervalSeconds: 300,
+      freshnessSeconds: 900,
+      retryBudget: 3,
+      nextRunAt: new Date('2026-06-05T11:55:00.000Z'),
+      createdAt: new Date('2026-06-05T00:00:00.000Z'),
+    }));
+    const scanJobs = new FakeScanJobs();
+    for (const [id, requestedAt, completedAt] of [
+      ['auth-failed-scan-job-2', '2026-06-05T11:57:00.000Z', '2026-06-05T11:58:00.000Z'],
+      ['auth-failed-scan-job-1', '2026-06-05T11:56:00.000Z', '2026-06-05T11:57:00.000Z'],
+    ] as const) {
+      await scanJobs.save(ScanJob.request({
+        id,
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: `manual-${id}`,
+        requestedAt: new Date(requestedAt),
+      }).markEnqueued({
+        enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000),
+      }).markFailed({
+        completedAt: new Date(completedAt),
+        failureReason: 'kind=auth_failed provider credential rejected',
+      }));
+    }
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-provider-failure-backoff',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 0,
+        skipped: 1,
+        skippedByReason: skippedByReason('provider_failure_backoff'),
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect((await policies.findBySourceBinding({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+    }))?.toSnapshot()).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:28:00.000Z'),
     });
   });
 
