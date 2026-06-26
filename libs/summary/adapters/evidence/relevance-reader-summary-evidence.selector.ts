@@ -56,9 +56,27 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       items,
       limit: params.maxItems,
     });
-    this.storyRankingMetrics.recordStoryRanking(selection);
+    const personalizedSelection = {
+      ...selection,
+      personalization:
+        ranked.value.memoryGuidance === undefined
+          ? undefined
+          : {
+              memoryGuidanceStatus: ranked.value.memoryGuidance.status,
+              memoryGuidanceApplied: ranked.value.memoryGuidance.applied,
+              providerPreferenceCount:
+                ranked.value.memoryGuidance.providerPreferenceCount,
+              keywordPreferenceCount:
+                ranked.value.memoryGuidance.keywordPreferenceCount,
+              mutedKeywordCount: ranked.value.memoryGuidance.mutedKeywordCount,
+              blockedProviderCount:
+                ranked.value.memoryGuidance.blockedProviderCount,
+              signals: ranked.value.memoryGuidance.signals,
+            },
+    };
+    this.storyRankingMetrics.recordStoryRanking(personalizedSelection);
 
-    return selection;
+    return personalizedSelection;
   }
 
   private async expandRankedItems(

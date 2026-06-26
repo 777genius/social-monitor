@@ -33,6 +33,7 @@ export const buildOpenAiReaderSummaryPromptPayload = (
     scope: input.scope,
     requestedAt: input.requestedAt.toISOString(),
     policy: input.policy,
+    personalization: input.evidence.personalization,
     sourceWindow: {
       windowId: input.evidence.sourceWindow.windowId,
       startedAt: input.evidence.sourceWindow.startedAt.toISOString(),

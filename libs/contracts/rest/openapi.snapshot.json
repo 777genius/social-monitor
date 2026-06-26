@@ -70,6 +70,9 @@
           "noSignalReason": {
             "type": "string"
           },
+          "personalization": {
+            "$ref": "#/components/schemas/BriefingPersonalizationDto"
+          },
           "qualityFlags": {
             "items": {
               "enum": [
@@ -558,6 +561,50 @@
         ],
         "type": "object"
       },
+      "BriefingPersonalizationDto": {
+        "properties": {
+          "blockedProviderCount": {
+            "type": "number"
+          },
+          "keywordPreferenceCount": {
+            "type": "number"
+          },
+          "memoryGuidanceApplied": {
+            "type": "boolean"
+          },
+          "memoryGuidanceStatus": {
+            "enum": [
+              "disabled",
+              "available",
+              "empty",
+              "unavailable"
+            ],
+            "type": "string"
+          },
+          "mutedKeywordCount": {
+            "type": "number"
+          },
+          "providerPreferenceCount": {
+            "type": "number"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "memoryGuidanceStatus",
+          "memoryGuidanceApplied",
+          "providerPreferenceCount",
+          "keywordPreferenceCount",
+          "mutedKeywordCount",
+          "blockedProviderCount",
+          "signals"
+        ],
+        "type": "object"
+      },
       "BriefingProviderMetricDto": {
         "properties": {
           "label": {
@@ -891,6 +938,9 @@
           },
           "noSignalReason": {
             "type": "string"
+          },
+          "personalization": {
+            "$ref": "#/components/schemas/BriefingPersonalizationDto"
           },
           "qualityFlags": {
             "items": {

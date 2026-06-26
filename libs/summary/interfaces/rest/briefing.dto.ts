@@ -202,6 +202,33 @@ export class BriefingContextArtifactDto {
   declare readonly freshness: "fresh" | "stale" | "unknown";
 }
 
+export class BriefingPersonalizationDto {
+  @ApiProperty({ enum: ["disabled", "available", "empty", "unavailable"] })
+  declare readonly memoryGuidanceStatus:
+    | "disabled"
+    | "available"
+    | "empty"
+    | "unavailable";
+
+  @ApiProperty()
+  declare readonly memoryGuidanceApplied: boolean;
+
+  @ApiProperty()
+  declare readonly providerPreferenceCount: number;
+
+  @ApiProperty()
+  declare readonly keywordPreferenceCount: number;
+
+  @ApiProperty()
+  declare readonly mutedKeywordCount: number;
+
+  @ApiProperty()
+  declare readonly blockedProviderCount: number;
+
+  @ApiProperty({ type: [String] })
+  declare readonly signals: readonly string[];
+}
+
 export class BriefingConfidenceDto {
   @ApiProperty({ enum: briefingConfidenceLevels })
   declare readonly level: (typeof briefingConfidenceLevels)[number];
@@ -355,6 +382,9 @@ export class BriefingArtifactResponseDto {
 
   @ApiProperty({ type: () => [BriefingContextArtifactDto] })
   declare readonly contextArtifacts: readonly BriefingContextArtifactDto[];
+
+  @ApiPropertyOptional({ type: () => BriefingPersonalizationDto })
+  declare readonly personalization?: BriefingPersonalizationDto;
 
   @ApiProperty()
   declare readonly headline: string;

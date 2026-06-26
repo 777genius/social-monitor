@@ -55,9 +55,24 @@ export type StorySignalBreakdown = {
 
 export type SummaryEvidenceSelection = {
   readonly rankingPolicyVersion: string;
+  readonly personalization?: SummaryEvidencePersonalization;
   readonly sourceWindow: SummarySourceWindow;
   readonly clusters: readonly StoryCluster[];
   readonly selectedEvidence: readonly SummaryEvidenceItem[];
+};
+
+export type SummaryEvidencePersonalization = {
+  readonly memoryGuidanceStatus:
+    | "disabled"
+    | "available"
+    | "empty"
+    | "unavailable";
+  readonly memoryGuidanceApplied: boolean;
+  readonly providerPreferenceCount: number;
+  readonly keywordPreferenceCount: number;
+  readonly mutedKeywordCount: number;
+  readonly blockedProviderCount: number;
+  readonly signals: readonly string[];
 };
 
 export type SummarySourceWindow = {

@@ -240,15 +240,16 @@ export class ExecuteReaderSummaryJobUseCase {
       workspaceId: snapshot.workspaceId,
       scope: snapshot.scope,
     });
-    const userPreference = snapshot.userId === undefined
-      ? null
-      : await this.userSummaryPreferences.findEffectivePreference({
-          tenantId: snapshot.tenantId,
-          workspaceId: snapshot.workspaceId,
-          userId: snapshot.userId,
-          subscriptionId: snapshot.subscriptionId,
-          topicId: readerSummaryPreferenceTopicId(snapshot, evidence),
-        });
+    const userPreference =
+      snapshot.userId === undefined
+        ? null
+        : await this.userSummaryPreferences.findEffectivePreference({
+            tenantId: snapshot.tenantId,
+            workspaceId: snapshot.workspaceId,
+            userId: snapshot.userId,
+            subscriptionId: snapshot.subscriptionId,
+            topicId: readerSummaryPreferenceTopicId(snapshot, evidence),
+          });
     const context = await this.safeBuildContext(snapshot, evidence);
     const basePolicy =
       policy?.toGenerationPolicy() ?? defaultReaderSummaryGenerationPolicy();
@@ -296,6 +297,7 @@ export class ExecuteReaderSummaryJobUseCase {
       sourceWindow: evidence.sourceWindow,
       storyClusters: evidence.clusters,
       contextArtifacts: context.artifacts,
+      personalization: evidence.personalization,
       ...draft,
     });
 
@@ -376,4 +378,4 @@ const readerSummaryPreferenceTopicId = (
 ): string =>
   snapshot.scope.type === "topic"
     ? snapshot.scope.topicId
-    : evidence.selectedEvidence[0]?.topicId ?? "workspace";
+    : (evidence.selectedEvidence[0]?.topicId ?? "workspace");

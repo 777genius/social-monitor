@@ -29,6 +29,7 @@ export type {
   StoryCluster,
   StorySignalBreakdown,
   SummaryEvidenceItem,
+  SummaryEvidencePersonalization,
   SummaryEvidenceSelection,
   SummarySourceWindow as ReaderSummarySourceWindow,
 } from "./value-objects/summary-evidence-item";

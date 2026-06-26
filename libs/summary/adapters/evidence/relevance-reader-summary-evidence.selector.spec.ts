@@ -99,6 +99,15 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
+          memoryGuidance: {
+            status: "available",
+            applied: true,
+            providerPreferenceCount: 1,
+            keywordPreferenceCount: 2,
+            mutedKeywordCount: 0,
+            blockedProviderCount: 0,
+            signals: ["provider:reddit", "keyword:agent"],
+          },
           items: rankedItems.slice(0, command.limit),
         }),
       ),
@@ -137,6 +146,18 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(selection.sourceWindow.selectedFeedItemIds).toContain("feed-issues");
     expect(storyRankingMetrics.recorded[0]?.rankingPolicyVersion).toBe(
       "story_ranking_v1",
+    );
+    expect(selection.personalization).toEqual({
+      memoryGuidanceStatus: "available",
+      memoryGuidanceApplied: true,
+      providerPreferenceCount: 1,
+      keywordPreferenceCount: 2,
+      mutedKeywordCount: 0,
+      blockedProviderCount: 0,
+      signals: ["provider:reddit", "keyword:agent"],
+    });
+    expect(storyRankingMetrics.recorded[0]?.personalization).toEqual(
+      selection.personalization,
     );
   });
 

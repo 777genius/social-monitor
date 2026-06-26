@@ -36,6 +36,15 @@ describe("briefingArtifactViewFromReaderSummaryView", () => {
         },
       ],
       contextArtifacts: [],
+      personalization: {
+        memoryGuidanceStatus: "available",
+        memoryGuidanceApplied: true,
+        providerPreferenceCount: 1,
+        keywordPreferenceCount: 2,
+        mutedKeywordCount: 0,
+        blockedProviderCount: 0,
+        signals: ["provider:github-repo-radar", "keyword:agent"],
+      },
       headline: "Repo radar briefing",
       executiveSummary: "OpenAI Codex is the strongest repository signal.",
       topStories: [
@@ -99,6 +108,15 @@ describe("briefingArtifactViewFromReaderSummaryView", () => {
           canonicalUrl: "https://github.com/openai/codex",
         },
       ],
+      personalization: {
+        memoryGuidanceStatus: "available",
+        memoryGuidanceApplied: true,
+        providerPreferenceCount: 1,
+        keywordPreferenceCount: 2,
+        mutedKeywordCount: 0,
+        blockedProviderCount: 0,
+        signals: ["provider:github-repo-radar", "keyword:agent"],
+      },
     });
   });
 });

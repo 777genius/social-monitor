@@ -21,6 +21,7 @@ import type {
 } from "../value-objects/summary-quality";
 import type {
   StoryCluster,
+  SummaryEvidencePersonalization,
   SummarySourceWindow,
 } from "../value-objects/summary-evidence-item";
 import {
@@ -84,6 +85,7 @@ export type ReaderSummaryArtifactProps = {
   readonly sourceWindow: SummarySourceWindow;
   readonly storyClusters: readonly StoryCluster[];
   readonly contextArtifacts: readonly ReaderSummaryContextArtifact[];
+  readonly personalization?: SummaryEvidencePersonalization;
   readonly headline: string;
   readonly executiveSummary: string;
   readonly content?: ReaderSummaryContent;
@@ -111,6 +113,7 @@ export type GeneratedReaderSummaryDraft = Omit<
   | "sourceWindow"
   | "storyClusters"
   | "contextArtifacts"
+  | "personalization"
 > & {
   readonly lineage: ReaderSummaryLineage;
   readonly usage: ReaderSummaryUsage;

@@ -14,6 +14,7 @@ import type {
   ReaderSummaryTopicHighlight,
   ReaderSummaryTopStory,
   ReaderSummaryUsage,
+  SummaryEvidencePersonalization,
   StoryCluster,
 } from "../../../domain";
 
@@ -114,6 +115,9 @@ export const normalizeReaderSummaryArtifactPayload = (
       value.contextArtifacts,
       "Reader summary context artifacts",
     ).map(normalizeReaderSummaryContextArtifact),
+    personalization: normalizeReaderSummaryPersonalization(
+      value.personalization,
+    ),
     headline: requireString(
       value.headline ?? fallback.headline,
       "Reader summary headline",
@@ -191,6 +195,47 @@ const normalizeReaderSummaryContextArtifact = (
     "Reader summary context artifact generated date",
   ),
 });
+
+const normalizeReaderSummaryPersonalization = (
+  value: unknown,
+): SummaryEvidencePersonalization | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  const personalization = requireObject<SummaryEvidencePersonalization>(
+    value,
+    "Reader summary personalization",
+  );
+  const status = personalization.memoryGuidanceStatus;
+
+  if (
+    status !== "disabled" &&
+    status !== "available" &&
+    status !== "empty" &&
+    status !== "unavailable"
+  ) {
+    return undefined;
+  }
+
+  return {
+    memoryGuidanceStatus: status,
+    memoryGuidanceApplied: personalization.memoryGuidanceApplied === true,
+    providerPreferenceCount: nonNegativeNumber(
+      personalization.providerPreferenceCount,
+    ),
+    keywordPreferenceCount: nonNegativeNumber(
+      personalization.keywordPreferenceCount,
+    ),
+    mutedKeywordCount: nonNegativeNumber(personalization.mutedKeywordCount),
+    blockedProviderCount: nonNegativeNumber(
+      personalization.blockedProviderCount,
+    ),
+    signals: requireStringArray(
+      personalization.signals,
+      "Reader summary personalization signals",
+    ),
+  };
+};
 
 const normalizeReaderSummaryContent = (
   value: unknown,
@@ -271,6 +316,9 @@ const normalizeReaderSummaryLineage = (
 const normalizeOptionalString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0 ? value : undefined;
 
+const nonNegativeNumber = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+
 type SerializedReaderSummarySourceWindow = {
   readonly windowId?: unknown;
   readonly startedAt?: unknown;
@@ -303,6 +351,7 @@ type SerializedReaderSummaryArtifactPayload = {
   readonly sourceWindow?: SerializedReaderSummarySourceWindow | unknown;
   readonly storyClusters?: unknown;
   readonly contextArtifacts?: unknown;
+  readonly personalization?: unknown;
   readonly headline?: unknown;
   readonly executiveSummary?: unknown;
   readonly readerBrief?: unknown;

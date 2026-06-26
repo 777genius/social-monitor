@@ -10,6 +10,7 @@ import {
   type ReaderSummaryArtifact,
   ReaderSummaryJob,
   type ReaderSummaryPolicy,
+  type SummaryEvidenceSelection,
   topicReaderSummaryScope,
 } from "../../domain";
 import type {
@@ -72,16 +73,18 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     const events = new CapturingSummaryEventPublisher();
     const requestedAt = new Date("2026-06-26T08:00:00.000Z");
 
-    await jobs.save(ReaderSummaryJob.request({
-      id: "reader-job-1",
-      tenantId: tenant,
-      workspaceId: workspace,
-      scope: topicReaderSummaryScope("topic-reader-ai"),
-      userId: "user-1",
-      subscriptionId: "subscription-1",
-      idempotencyKey: "reader-job-key-1",
-      requestedAt,
-    }));
+    await jobs.save(
+      ReaderSummaryJob.request({
+        id: "reader-job-1",
+        tenantId: tenant,
+        workspaceId: workspace,
+        scope: topicReaderSummaryScope("topic-reader-ai"),
+        userId: "user-1",
+        subscriptionId: "subscription-1",
+        idempotencyKey: "reader-job-key-1",
+        requestedAt,
+      }),
+    );
 
     const result = await new ExecuteReaderSummaryJobUseCase(
       jobs,
@@ -102,7 +105,8 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
             {
               artifactId: "summary-memory:topic:topic-reader-ai",
               scope: topicReaderSummaryScope("topic-reader-ai"),
-              summaryText: "User prefers risk-first summaries for runtime regressions.",
+              summaryText:
+                "User prefers risk-first summaries for runtime regressions.",
               generatedAt: requestedAt,
               freshness: "fresh",
             },
@@ -139,28 +143,43 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     expect(snapshot).toMatchObject({
       userId: "user-1",
       subscriptionId: "subscription-1",
-      executiveSummary: expect.stringContaining("Focus on runtime regressions."),
+      executiveSummary: expect.stringContaining(
+        "Focus on runtime regressions.",
+      ),
       risksAndUnknowns: [],
       lineage: expect.objectContaining({
-        rulesVersion: "reader_summary.rules.policy.v1+summary.rules.user-preference.v1",
+        rulesVersion:
+          "reader_summary.rules.policy.v1+summary.rules.user-preference.v1",
       }),
       contextArtifacts: [
         expect.objectContaining({
           artifactId: "summary-memory:topic:topic-reader-ai",
-          summaryText: "User prefers risk-first summaries for runtime regressions.",
+          summaryText:
+            "User prefers risk-first summaries for runtime regressions.",
         }),
       ],
+      personalization: {
+        memoryGuidanceStatus: "available",
+        memoryGuidanceApplied: true,
+        providerPreferenceCount: 1,
+        keywordPreferenceCount: 2,
+        mutedKeywordCount: 0,
+        blockedProviderCount: 0,
+        signals: ["provider:reddit", "keyword:runtime-regression"],
+      },
     });
     expect(snapshot?.topStories).toHaveLength(1);
-    expect(events.all()).toContainEqual(expect.objectContaining({
-      eventType: "reader_summary.ready",
-      payload: expect.objectContaining({
-        readerSummaryJobId: "reader-job-1",
-        readerSummaryId: "reader-summary-id-1",
-        userId: "user-1",
-        subscriptionId: "subscription-1",
+    expect(events.all()).toContainEqual(
+      expect.objectContaining({
+        eventType: "reader_summary.ready",
+        payload: expect.objectContaining({
+          readerSummaryJobId: "reader-job-1",
+          readerSummaryId: "reader-summary-id-1",
+          userId: "user-1",
+          subscriptionId: "subscription-1",
+        }),
       }),
-    }));
+    );
   });
 });
 
@@ -171,13 +190,20 @@ class FakeReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
 
   async save(job: ReaderSummaryJob): Promise<void> {
     const snapshot = job.toSnapshot();
-    this.jobsById.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, job);
+    this.jobsById.set(
+      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`,
+      job,
+    );
   }
 
   async findById(
     params: Parameters<ReaderSummaryJobRepositoryPort["findById"]>[0],
   ): Promise<ReaderSummaryJob | null> {
-    return this.jobsById.get(`${params.tenantId}:${params.workspaceId}:${params.readerSummaryJobId}`) ?? null;
+    return (
+      this.jobsById.get(
+        `${params.tenantId}:${params.workspaceId}:${params.readerSummaryJobId}`,
+      ) ?? null
+    );
   }
 
   async findByIdempotencyKey(): Promise<ReaderSummaryJob | null> {
@@ -210,7 +236,9 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
     this.artifacts.push(artifact);
   }
 
-  async list(): Promise<Awaited<ReturnType<ReaderSummaryArtifactRepositoryPort["list"]>>> {
+  async list(): Promise<
+    Awaited<ReturnType<ReaderSummaryArtifactRepositoryPort["list"]>>
+  > {
     return { items: this.artifacts };
   }
 
@@ -232,9 +260,12 @@ class EmptyReaderSummaryPolicyRepository implements ReaderSummaryPolicyRepositor
 }
 
 class CapturingSummaryEventPublisher implements SummaryEventPublisherPort {
-  private readonly events: EventEnvelope<Readonly<Record<string, unknown>>>[] = [];
+  private readonly events: EventEnvelope<Readonly<Record<string, unknown>>>[] =
+    [];
 
-  async publish(event: EventEnvelope<Readonly<Record<string, unknown>>>): Promise<void> {
+  async publish(
+    event: EventEnvelope<Readonly<Record<string, unknown>>>,
+  ): Promise<void> {
     this.events.push(event);
   }
 
@@ -346,8 +377,17 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
   }
 }
 
-const makeReaderEvidenceSelection = () => ({
+const makeReaderEvidenceSelection = (): SummaryEvidenceSelection => ({
   rankingPolicyVersion: "story-ranking.v1",
+  personalization: {
+    memoryGuidanceStatus: "available",
+    memoryGuidanceApplied: true,
+    providerPreferenceCount: 1,
+    keywordPreferenceCount: 2,
+    mutedKeywordCount: 0,
+    blockedProviderCount: 0,
+    signals: ["provider:reddit", "keyword:runtime-regression"],
+  },
   sourceWindow: {
     windowId: "window-1",
     startedAt: new Date("2026-06-26T07:00:00.000Z"),
