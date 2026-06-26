@@ -84,6 +84,8 @@ const requiredGateIds = new Set([
   'digest-scheduler-loop',
   'digest-schedule-rest',
   'notification-preference-rest',
+  'personalized-relevance-engine',
+  'relevance-prisma-persistence',
   'load-cost-guardrail',
   'source-provider-certification',
   'source-provider-runtime-contract',

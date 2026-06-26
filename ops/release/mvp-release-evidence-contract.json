@@ -375,6 +375,16 @@
       "blocksRelease": true
     },
     {
+      "gateId": "personalized-relevance-engine",
+      "command": "npm run check:personalized-relevance-engine",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "relevance-prisma-persistence",
+      "command": "npm run check:relevance-persistence",
+      "blocksRelease": true
+    },
+    {
       "gateId": "load-cost-guardrail",
       "command": "npm run check:load-cost",
       "blocksRelease": true
