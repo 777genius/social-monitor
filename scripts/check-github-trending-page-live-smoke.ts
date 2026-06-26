@@ -14,6 +14,8 @@ const environmentIdEnv = 'SOURCE_LIVE_ENVIRONMENT_ID';
 const imageDigestEnv = 'BACKEND_IMAGE_DIGEST';
 const commitShaEnv = 'BACKEND_GIT_COMMIT_SHA';
 const operatorEnv = 'SOURCE_LIVE_OPERATOR';
+const liveMaxItemsEnv = 'GITHUB_TRENDING_PAGE_LIVE_MAX_ITEMS';
+const defaultLiveMaxItems = 10;
 
 void main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
@@ -21,6 +23,7 @@ void main().catch((error) => {
 });
 
 async function main(): Promise<void> {
+  const maxItems = readBoundedIntegerEnv(liveMaxItemsEnv, defaultLiveMaxItems, 1, 25);
   const provider = new GitHubTrendingPageSourceProvider(
     new HttpGitHubTrendingPageClient(15_000),
     { now: () => new Date() },
@@ -32,7 +35,7 @@ async function main(): Promise<void> {
     scanJobId: 'scan-github-trending-page-live-smoke',
     correlationId: 'corr-github-trending-page-live-smoke',
     config: {
-      maxItems: 5,
+      maxItems,
       userAgent: readOptionalEnv('GITHUB_TRENDING_PAGE_USER_AGENT') ?? 'social-monitor-github-trending-page-live-smoke/0.1',
     },
   };
@@ -44,16 +47,30 @@ async function main(): Promise<void> {
     'GitHub Trending page live smoke returned no items',
   );
   assert(
-    result.items.length <= 5,
+    result.items.length <= maxItems,
     'GitHub Trending page live smoke ignored maxItems',
+  );
+  assert(
+    result.items.length >= Math.min(3, maxItems),
+    'GitHub Trending page live smoke must expose at least top-3 repositories',
   );
 
   const first = result.items[0];
-  const metadata = parseGitHubTrendingPageRepositoryMetadata(first?.metadata);
+  const parsedRepositories = result.items.map((item) => {
+    const metadata = parseGitHubTrendingPageRepositoryMetadata(item.metadata);
+    assert(metadata !== null, 'GitHub Trending page item metadata is invalid');
+
+    return {
+      item,
+      metadata,
+    };
+  });
+  const firstParsed = parsedRepositories[0];
+  const metadata = firstParsed?.metadata;
 
   assert(first !== undefined, 'GitHub Trending page first item is missing');
   assert(
-    metadata !== null,
+    metadata !== undefined,
     'GitHub Trending page first item metadata is invalid',
   );
   assert(
@@ -68,8 +85,30 @@ async function main(): Promise<void> {
     first.canonicalUrl.startsWith('https://github.com/'),
     'GitHub Trending page item URL must be GitHub',
   );
+  assert(
+    hasUniqueCanonicalUrls(parsedRepositories),
+    'GitHub Trending page live smoke returned duplicate canonical URLs',
+  );
+  assert(
+    hasSequentialRanks(parsedRepositories),
+    'GitHub Trending page live smoke ranks must be sequential from 1',
+  );
+  assert(
+    parsedRepositories
+      .slice(0, Math.min(3, parsedRepositories.length))
+      .every((repository) => repository.metadata.trending.starsGained > 0),
+    'GitHub Trending page top-3 repositories must expose stars gained',
+  );
 
   const observedAt = new Date().toISOString();
+  const topRepositories = parsedRepositories.slice(0, 10).map((repository) => ({
+    rank: repository.metadata.trending.rank,
+    fullName: repository.metadata.repository.fullName,
+    canonicalUrl: repository.item.canonicalUrl,
+    language: repository.metadata.repository.language,
+    totalStars: repository.metadata.repository.totalStars,
+    starsGained: repository.metadata.trending.starsGained,
+  }));
   const signalResults = [
     {
       signalId: 'github-trending-page-live-smoke',
@@ -82,6 +121,13 @@ async function main(): Promise<void> {
         canonicalUrlsObserved: result.items.every((item) =>
           item.canonicalUrl.startsWith('https://github.com/'),
         ),
+        uniqueCanonicalUrlsObserved: hasUniqueCanonicalUrls(parsedRepositories),
+        rankSequenceObserved: hasSequentialRanks(parsedRepositories),
+        topThreeRepositoriesObserved: parsedRepositories.length >= Math.min(3, maxItems),
+        topThreeStarsGainedObserved: parsedRepositories
+          .slice(0, Math.min(3, parsedRepositories.length))
+          .every((repository) => repository.metadata.trending.starsGained > 0),
+        sampledRepositories: topRepositories,
         window: metadata.trending.window,
       },
     },
@@ -95,6 +141,7 @@ async function main(): Promise<void> {
         languageObserved: metadata.repository.language !== undefined,
         starsObserved: metadata.repository.totalStars > 0,
         starsGainedObserved: metadata.trending.starsGained > 0,
+        topSampleSize: topRepositories.length,
       },
     },
     {
@@ -104,7 +151,7 @@ async function main(): Promise<void> {
       evidence: {
         summary: 'GitHub Trending live smoke uses a bounded timeout and maxItems limit for public page budget control.',
         timeoutMs: 15_000,
-        maxItems: 5,
+        maxItems,
         degradationSignalRecorded: true,
       },
     },
@@ -153,6 +200,7 @@ async function main(): Promise<void> {
         topStarsGained: metadata.trending.starsGained,
         window: metadata.trending.window,
         canonicalUrl: first.canonicalUrl,
+        repositories: topRepositories,
       },
       null,
       2,
@@ -203,6 +251,50 @@ function writeEvidenceIfRequested(evidence: {
 function readOptionalEnv(name: string): string | undefined {
   const value = process.env[name]?.trim();
   return value === undefined || value.length === 0 ? undefined : value;
+}
+
+function readBoundedIntegerEnv(
+  name: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const value = readOptionalEnv(name);
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  assert(
+    Number.isInteger(parsed) && parsed >= min && parsed <= max,
+    `${name} must be an integer between ${min} and ${max}`,
+  );
+
+  return parsed;
+}
+
+type ParsedGitHubTrendingRepository = {
+  readonly item: {
+    readonly canonicalUrl: string;
+  };
+  readonly metadata: NonNullable<
+    ReturnType<typeof parseGitHubTrendingPageRepositoryMetadata>
+  >;
+};
+
+function hasUniqueCanonicalUrls(
+  repositories: readonly ParsedGitHubTrendingRepository[],
+): boolean {
+  return new Set(repositories.map((repository) => repository.item.canonicalUrl))
+    .size === repositories.length;
+}
+
+function hasSequentialRanks(
+  repositories: readonly ParsedGitHubTrendingRepository[],
+): boolean {
+  return repositories.every(
+    (repository, index) => repository.metadata.trending.rank === index + 1,
+  );
 }
 
 function freshnessGuardForProvider(providerKey: string): SourceReadinessFreshnessGuard {
