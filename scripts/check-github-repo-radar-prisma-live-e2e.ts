@@ -34,9 +34,16 @@ import type {
 import { FeedSummaryEvidenceSelector } from '../libs/summary/adapters/evidence/feed-summary-evidence.selector';
 import { DeterministicSummaryModelAdapter } from '../libs/summary/adapters/model/deterministic-summary-model.adapter';
 import type { SummaryModelBudget, SummaryModelInput, SummaryModelPolicy } from '../libs/summary/ports';
+import { writeLiveEvidenceArtifactAtomically } from './lib/live-evidence-artifact';
 
 const enabledEnv = 'GITHUB_REPO_RADAR_PRISMA_LIVE_E2E';
 const defaultDatabaseUrl = 'postgresql://social_monitor:social_monitor_local_password@127.0.0.1:5432/social_monitor';
+const liveArtifactFormat = 'source-live-provider-evidence-v1';
+const liveEvidencePathEnv = 'GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH';
+const environmentIdEnv = 'SOURCE_LIVE_ENVIRONMENT_ID';
+const imageDigestEnv = 'BACKEND_IMAGE_DIGEST';
+const commitShaEnv = 'BACKEND_GIT_COMMIT_SHA';
+const operatorEnv = 'SOURCE_LIVE_OPERATOR';
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) {
@@ -265,16 +272,87 @@ const main = async (): Promise<void> => {
     const route = summaryModel.route(summaryInput, modelPolicy, budget);
     const attempt = await summaryModel.summarize(summaryInput, route);
     const expectedHighlight = `${metadata.repository.fullName}: ${metadata.trend.totalStars} stars, +${metadata.trend.stars48h} in 48h`;
+    const summaryHighlightObserved = attempt.draft.sourceHighlights.some((highlight) => highlight.includes(expectedHighlight));
 
     assert(
-      attempt.draft.sourceHighlights.some((highlight) => highlight.includes(expectedHighlight)),
+      summaryHighlightObserved,
       `summary source highlights must include persisted repo trend evidence: ${JSON.stringify(attempt.draft.sourceHighlights)}`,
     );
 
-    console.log(JSON.stringify({
+    const observedAt = clock.now().toISOString();
+    const signals = [
+      {
+        signalId: 'github-repo-radar-gh-archive-query',
+        status: 'passed',
+        observedAt,
+        evidence: {
+          summary: 'GH Archive BigQuery query returned bounded repository trend candidates.',
+          repositoryCount: sumScanResults(scanResults, 'fetched'),
+          windowsObserved: config.windows,
+          maxBytesBilledConfigured: readOptionalEnv('GITHUB_REPO_RADAR_BIGQUERY_MAX_BYTES') ?? '5000000000',
+          queryBounded: true,
+        },
+        metrics: {
+          fetched: sumScanResults(scanResults, 'fetched'),
+          maxCandidates: config.maxCandidates,
+        },
+      },
+      {
+        signalId: 'github-repo-radar-live-verification',
+        status: 'passed',
+        observedAt,
+        evidence: {
+          summary: 'GitHub REST live verification returned canonical repository metadata.',
+          verifiedRepositoryCount: sumScanResults(scanResults, 'fetched'),
+          canonicalUrlsObserved: feed.items.every((item) => item.toSnapshot().canonicalUrl.startsWith('https://github.com/')),
+          repositoryMetadataObserved: metadata.repository.fullName.length > 0 && metadata.trend.totalStars > 0,
+        },
+        metrics: {
+          verifiedRepositoryCount: sumScanResults(scanResults, 'fetched'),
+        },
+      },
+      {
+        signalId: 'github-repo-radar-live-smoke',
+        status: 'passed',
+        observedAt,
+        evidence: {
+          summary: 'Live repo radar scan fetched, inserted, projected and summarized repository trend evidence.',
+          fetched: sumScanResults(scanResults, 'fetched'),
+          inserted: sumScanResults(scanResults, 'inserted'),
+          projected: sumScanResults(scanResults, 'projected'),
+          sourceNotFixture: metadata.trend.source === 'gh_archive_bigquery_plus_github_live',
+          summaryHighlightObserved,
+        },
+        metrics: {
+          summaryHighlights: attempt.draft.sourceHighlights.length,
+        },
+      },
+      {
+        signalId: 'github-repo-radar-prisma-live-e2e',
+        status: 'passed',
+        observedAt,
+        evidence: {
+          summary: 'Postgres persisted repo radar source items, feed items, trend history and cursor state across repeated scans.',
+          scanRuns,
+          sourceItemCount: sqlEvidence.sourceItemCount,
+          feedItemCount: sqlEvidence.feedItemCount,
+          trendResultCount: sqlEvidence.trendResultCount,
+          cursorCount: sqlEvidence.cursorCount,
+          noDuplicateCursor: sqlEvidence.cursorCount === 1,
+        },
+        metrics: {
+          trendCandidates: sqlEvidence.trendCandidateCount,
+          trendSnapshots: sqlEvidence.trendSnapshotCount,
+          trendResults: sqlEvidence.trendResultCount,
+          scanAttempts: sqlEvidence.scanAttemptCount,
+        },
+      },
+    ] as const;
+    const output = {
       status: 'passed',
       providerKey: GITHUB_REPO_RADAR_PROVIDER_KEY,
       e2e: 'live_bigquery_github_to_prisma_postgres_to_feed_to_summary_repeated_scans',
+      signals,
       database: databaseKind(databaseUrl),
       scanRuns,
       tenantId: tenant,
@@ -297,7 +375,14 @@ const main = async (): Promise<void> => {
       trendResults: sqlEvidence.trendResultCount,
       scanAttempts: sqlEvidence.scanAttemptCount,
       summaryHighlights: attempt.draft.sourceHighlights.length,
-    }));
+    };
+
+    writeGitHubRepoRadarLiveEvidenceArtifactIfRequested({
+      sampledAt: new Date().toISOString(),
+      signals,
+    });
+
+    console.log(JSON.stringify(output));
   } finally {
     await connection.close();
     await pool.end();
@@ -412,6 +497,76 @@ const databaseKind = (databaseUrl: string): string => {
   } catch {
     return 'postgresql:unparseable';
   }
+};
+
+const writeGitHubRepoRadarLiveEvidenceArtifactIfRequested = (input: {
+  readonly sampledAt: string;
+  readonly signals: ReadonlyArray<{
+    readonly signalId: string;
+    readonly status: 'passed';
+    readonly observedAt: string;
+    readonly evidence: Record<string, unknown>;
+    readonly metrics: Record<string, unknown>;
+  }>;
+}): void => {
+  const evidencePath = readOptionalEnv(liveEvidencePathEnv);
+  if (evidencePath === undefined) {
+    return;
+  }
+
+  const artifact = {
+    schemaVersion: 1,
+    format: liveArtifactFormat,
+    artifactId: 'github-repo-radar-live-evidence-v1',
+    environmentId: requiredEvidenceEnv(environmentIdEnv),
+    imageDigest: requiredEvidenceEnv(imageDigestEnv),
+    commitSha: requiredCommitShaEvidenceEnv(commitShaEnv),
+    operator: requiredEvidenceEnv(operatorEnv),
+    sampledAt: input.sampledAt,
+    provenance: {
+      evidenceKind: 'live_network',
+      collectionMethod: 'Live GitHub repo radar provider scan with GH Archive BigQuery, GitHub REST verifier and Postgres persistence.',
+      runner: 'scripts/check-github-repo-radar-prisma-live-e2e.ts',
+      fixtureOnly: false,
+    },
+    redaction: {
+      secretsIncluded: false,
+      rawProviderPayloadsIncluded: false,
+      credentialValuesIncluded: false,
+      privateNetworkUrlsIncluded: false,
+    },
+    providerResults: [
+      {
+        providerKey: GITHUB_REPO_RADAR_PROVIDER_KEY,
+        status: 'passed',
+        signalResults: input.signals,
+      },
+    ],
+  };
+
+  writeLiveEvidenceArtifactAtomically(
+    evidencePath,
+    `${JSON.stringify(artifact, null, 2)}\n`,
+    liveEvidencePathEnv,
+  );
+};
+
+const requiredEvidenceEnv = (key: string): string => {
+  const value = readOptionalEnv(key);
+  if (value === undefined) {
+    throw new Error(`${key} is required when ${liveEvidencePathEnv} is set`);
+  }
+
+  return value;
+};
+
+const requiredCommitShaEvidenceEnv = (key: string): string => {
+  const value = requiredEvidenceEnv(key);
+  if (!/^[0-9a-f]{40}$/.test(value)) {
+    throw new Error(`${key} must be a full 40-character lowercase git commit SHA`);
+  }
+
+  return value;
 };
 
 const readOptionalEnv = (key: string): string | undefined => {

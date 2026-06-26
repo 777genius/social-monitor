@@ -22,6 +22,8 @@ const liveOpenCaptureScriptPath = 'scripts/capture-live-open-connectors.mjs';
 const redditLiveScriptPath = 'scripts/check-live-reddit-oauth.ts';
 const redditLiveCaptureScriptPath = 'scripts/capture-live-reddit-oauth.mjs';
 const redditOAuthLocalCallbackScriptPath = 'scripts/reddit-oauth-local-callback.mjs';
+const githubRepoRadarLiveScriptPath = 'scripts/check-github-repo-radar-live-smoke.ts';
+const githubRepoRadarPrismaLiveE2eScriptPath = 'scripts/check-github-repo-radar-prisma-live-e2e.ts';
 const githubTrendingPageLiveScriptPath = 'scripts/check-github-trending-page-live-smoke.ts';
 const redditSourceProviderPath = 'libs/ingestion/adapters/source/reddit/reddit-source.provider.ts';
 const redditRefreshTokenProviderPath = 'libs/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider.ts';
@@ -51,6 +53,15 @@ const requiredProviderSignals = new Map([
   ['hacker-news', new Set(['hn-live-http-smoke', 'hn-rate-limit-evidence'])],
   ['rss', new Set(['rss-allowlisted-live-feeds', 'rss-http-cache-evidence', 'rss-ssrf-proof'])],
   ['github-issues', new Set(['github-live-api-smoke', 'github-rate-limit-budget'])],
+  [
+    'github-repo-radar',
+    new Set([
+      'github-repo-radar-gh-archive-query',
+      'github-repo-radar-live-verification',
+      'github-repo-radar-live-smoke',
+      'github-repo-radar-prisma-live-e2e',
+    ]),
+  ],
   [
     'github-trending-page',
     new Set([
@@ -138,6 +149,48 @@ const requiredEvidenceShapeBySignalId = new Map([
     ],
   ],
   [
+    'github-repo-radar-gh-archive-query',
+    [
+      ['summary', 'non_empty_string'],
+      ['repositoryCount', 'positive_integer'],
+      ['windowsObserved', 'non_empty_string_array'],
+      ['maxBytesBilledConfigured', 'non_empty_string'],
+      ['queryBounded', 'boolean_true'],
+    ],
+  ],
+  [
+    'github-repo-radar-live-verification',
+    [
+      ['summary', 'non_empty_string'],
+      ['verifiedRepositoryCount', 'positive_integer'],
+      ['canonicalUrlsObserved', 'boolean_true'],
+      ['repositoryMetadataObserved', 'boolean_true'],
+    ],
+  ],
+  [
+    'github-repo-radar-live-smoke',
+    [
+      ['summary', 'non_empty_string'],
+      ['fetched', 'positive_integer'],
+      ['inserted', 'positive_integer'],
+      ['projected', 'positive_integer'],
+      ['sourceNotFixture', 'boolean_true'],
+      ['summaryHighlightObserved', 'boolean_true'],
+    ],
+  ],
+  [
+    'github-repo-radar-prisma-live-e2e',
+    [
+      ['summary', 'non_empty_string'],
+      ['scanRuns', 'positive_integer'],
+      ['sourceItemCount', 'positive_integer'],
+      ['feedItemCount', 'positive_integer'],
+      ['trendResultCount', 'positive_integer'],
+      ['cursorCount', 'positive_integer'],
+      ['noDuplicateCursor', 'boolean_true'],
+    ],
+  ],
+  [
     'github-trending-page-live-smoke',
     [
       ['summary', 'non_empty_string'],
@@ -213,6 +266,7 @@ const expectedLiveCommands = new Map([
   ['hacker-news', 'npm run check:live-open-connectors'],
   ['rss', 'npm run check:live-open-connectors'],
   ['github-issues', 'npm run check:live-open-connectors'],
+  ['github-repo-radar', 'npm run check:github-repo-radar-prisma-live-e2e'],
   ['github-trending-page', 'npm run check:github-trending-page-live-smoke'],
   ['reddit', 'npm run capture:live-reddit-oauth'],
 ]);
@@ -320,6 +374,19 @@ function validateSourceCertification() {
     }
   }
 
+  for (const provider of sourceCertification.certifiedProviders ?? []) {
+    if (
+      provider.readinessState === 'enabled_beta' &&
+      provider.runtimeReadiness !== 'deferred' &&
+      !fixtureOnlyProviders.has(provider.providerKey) &&
+      !requiredProviderSignals.has(provider.providerKey)
+    ) {
+      violations.push(
+        `${sourceCertificationPath}: enabled_beta provider "${provider.providerKey}" must be covered by source live certification evidence`,
+      );
+    }
+  }
+
   const fakeSource = certified.get('fake-source');
   if (fakeSource !== undefined && fakeSource.liveBetaReady !== false) {
     violations.push(`${sourceCertificationPath}: fake-source must never claim live beta readiness`);
@@ -342,6 +409,8 @@ function validateLiveSmokeScripts() {
   const redditLiveScript = readFileSync(redditLiveScriptPath, 'utf8');
   const redditLiveCaptureScript = readFileSync(redditLiveCaptureScriptPath, 'utf8');
   const redditOAuthLocalCallbackScript = readFileSync(redditOAuthLocalCallbackScriptPath, 'utf8');
+  const githubRepoRadarLiveScript = readFileSync(githubRepoRadarLiveScriptPath, 'utf8');
+  const githubRepoRadarPrismaLiveE2eScript = readFileSync(githubRepoRadarPrismaLiveE2eScriptPath, 'utf8');
   const githubTrendingPageLiveScript = readFileSync(githubTrendingPageLiveScriptPath, 'utf8');
   const redditSourceProviderScript = readFileSync(redditSourceProviderPath, 'utf8');
   const redditRefreshTokenProviderScript = readFileSync(redditRefreshTokenProviderPath, 'utf8');
@@ -352,6 +421,20 @@ function validateLiveSmokeScripts() {
     ...requiredProviderSignals.get('rss'),
     ...requiredProviderSignals.get('github-issues'),
   ]);
+  requireScriptSignals(
+    githubRepoRadarLiveScriptPath,
+    githubRepoRadarLiveScript,
+    [
+      'github-repo-radar-gh-archive-query',
+      'github-repo-radar-live-verification',
+      'github-repo-radar-live-smoke',
+    ],
+  );
+  requireScriptSignals(
+    githubRepoRadarPrismaLiveE2eScriptPath,
+    githubRepoRadarPrismaLiveE2eScript,
+    [...requiredProviderSignals.get('github-repo-radar')],
+  );
   requireScriptSignals(
     githubTrendingPageLiveScriptPath,
     githubTrendingPageLiveScript,
@@ -452,9 +535,16 @@ function validateLiveSmokeScripts() {
   if (!redditLiveScript.includes(liveArtifactFormat)) {
     violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must emit ${liveArtifactFormat}`);
   }
+  if (!githubRepoRadarPrismaLiveE2eScript.includes('GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH')) {
+    violations.push(`${githubRepoRadarPrismaLiveE2eScriptPath}: GitHub repo radar Prisma live e2e must support redacted evidence artifact output`);
+  }
+  if (!githubRepoRadarPrismaLiveE2eScript.includes(liveArtifactFormat)) {
+    violations.push(`${githubRepoRadarPrismaLiveE2eScriptPath}: GitHub repo radar Prisma live e2e must emit ${liveArtifactFormat}`);
+  }
   for (const [scriptPath, scriptSource] of [
     [liveOpenScriptPath, liveOpenScript],
     [redditLiveScriptPath, redditLiveScript],
+    [githubRepoRadarPrismaLiveE2eScriptPath, githubRepoRadarPrismaLiveE2eScript],
   ]) {
     if (!scriptSource.includes('writeLiveEvidenceArtifactAtomically')) {
       violations.push(`${scriptPath}: live smoke script must use the shared private evidence artifact writer`);
@@ -898,6 +988,7 @@ function validateExampleArtifacts() {
 
 function validateEnvironmentArtifacts() {
   validateLiveEvidenceEnvArtifact('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', new Set(['hacker-news', 'rss', 'github-issues']));
+  validateLiveEvidenceEnvArtifact('GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH', new Set(['github-repo-radar']));
   validateLiveEvidenceEnvArtifact('REDDIT_LIVE_EVIDENCE_PATH', new Set(['reddit']));
   validateRedditCredentialLifecycleEnvArtifact();
 }
@@ -1492,6 +1583,7 @@ function validateEnvArtifactValidation(validationRules) {
 
   const expectedRules = new Map([
     ['LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', new Set(['hacker-news', 'rss', 'github-issues'])],
+    ['GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH', new Set(['github-repo-radar'])],
     ['REDDIT_LIVE_EVIDENCE_PATH', new Set(['reddit'])],
   ]);
   const seenRules = new Set();

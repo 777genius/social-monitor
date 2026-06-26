@@ -207,17 +207,52 @@ const main = async (): Promise<void> => {
   const route = summaryModel.route(summaryInput, modelPolicy, budget);
   const attempt = await summaryModel.summarize(summaryInput, route);
   const expectedHighlight = `${metadata.repository.fullName}: ${metadata.trend.totalStars} stars, +${metadata.trend.stars48h} in 48h`;
+  const summaryHighlightObserved = attempt.draft.sourceHighlights.some((highlight) => highlight.includes(expectedHighlight));
 
   assert(
-    attempt.draft.sourceHighlights.some((highlight) => highlight.includes(expectedHighlight)),
+    summaryHighlightObserved,
     `summary source highlights must include live repo trend evidence: ${JSON.stringify(attempt.draft.sourceHighlights)}`,
   );
+
+  const signals = [
+    {
+      signalId: 'github-repo-radar-gh-archive-query',
+      evidence: {
+        summary: 'GH Archive BigQuery query returned bounded repository trend candidates.',
+        repositoryCount: result.value.fetched,
+        windowsObserved: config.windows,
+        maxBytesBilledConfigured: readOptionalEnv('GITHUB_REPO_RADAR_BIGQUERY_MAX_BYTES') ?? '5000000000',
+        queryBounded: true,
+      },
+    },
+    {
+      signalId: 'github-repo-radar-live-verification',
+      evidence: {
+        summary: 'GitHub REST live verification returned canonical repository metadata.',
+        verifiedRepositoryCount: result.value.fetched,
+        canonicalUrlsObserved: feed.items.every((item) => item.toSnapshot().canonicalUrl.startsWith('https://github.com/')),
+        repositoryMetadataObserved: metadata.repository.fullName.length > 0 && metadata.trend.totalStars > 0,
+      },
+    },
+    {
+      signalId: 'github-repo-radar-live-smoke',
+      evidence: {
+        summary: 'Live repo radar scan fetched, persisted, projected and summarized repository trend evidence.',
+        fetched: result.value.fetched,
+        inserted: result.value.inserted,
+        projected: result.value.projected,
+        sourceNotFixture: metadata.trend.source === 'gh_archive_bigquery_plus_github_live',
+        summaryHighlightObserved,
+      },
+    },
+  ] as const;
 
   console.log(
     JSON.stringify({
       status: 'passed',
       providerKey: GITHUB_REPO_RADAR_PROVIDER_KEY,
       e2e: 'scan_to_feed_to_history_to_summary',
+      signals,
       repository: metadata.repository.fullName,
       totalStars: metadata.trend.totalStars,
       stars24h: metadata.trend.stars24h,

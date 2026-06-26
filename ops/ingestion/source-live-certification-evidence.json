@@ -11,6 +11,7 @@
       "hacker-news",
       "rss",
       "github-issues",
+      "github-repo-radar",
       "github-trending-page",
       "reddit"
     ],
@@ -23,7 +24,7 @@
       "fake-source"
     ],
     "matchingRules": [
-      "external beta live provider evidence must only cover Hacker News, RSS, GitHub Issues, GitHub Trending Page and Reddit",
+      "external beta live provider evidence must only cover Hacker News, RSS, GitHub Issues, GitHub Repo Radar, GitHub Trending Page and Reddit",
       "fake-source remains fixture-only and cannot be bound in beta runtime",
       "Telegram and X/Twitter remain deferred and cannot be bound until their provider contracts are approved"
     ]
@@ -95,6 +96,19 @@
           "hacker-news",
           "rss",
           "github-issues"
+        ],
+        "requiredEnv": [
+          "SOURCE_LIVE_ENVIRONMENT_ID",
+          "BACKEND_IMAGE_DIGEST",
+          "BACKEND_GIT_COMMIT_SHA",
+          "SOURCE_LIVE_OPERATOR"
+        ]
+      },
+      {
+        "envVar": "GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH",
+        "format": "source-live-provider-evidence-v1",
+        "requiredProviders": [
+          "github-repo-radar"
         ],
         "requiredEnv": [
           "SOURCE_LIVE_ENVIRONMENT_ID",
@@ -263,6 +277,41 @@
       "exitCondition": "Attach live API smoke and rate-limit budget evidence for GitHub before external beta."
     },
     {
+      "providerKey": "github-repo-radar",
+      "status": "pending_live_evidence",
+      "requiredForExternalBeta": true,
+      "owner": "source-owner",
+      "liveSmokeCommand": "npm run check:github-repo-radar-prisma-live-e2e",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "commitSha": null,
+      "sampledAt": null,
+      "signals": [
+        {
+          "signalId": "github-repo-radar-gh-archive-query",
+          "status": "pending_live_evidence",
+          "requiredSignal": "GH Archive BigQuery query is bounded and returns repository trend candidates for the configured windows"
+        },
+        {
+          "signalId": "github-repo-radar-live-verification",
+          "status": "pending_live_evidence",
+          "requiredSignal": "GitHub REST live verification returns canonical repository metadata for trend candidates"
+        },
+        {
+          "signalId": "github-repo-radar-live-smoke",
+          "status": "pending_live_evidence",
+          "requiredSignal": "repo radar scan fetches, inserts, projects and summarizes live repository trend evidence"
+        },
+        {
+          "signalId": "github-repo-radar-prisma-live-e2e",
+          "status": "pending_live_evidence",
+          "requiredSignal": "Postgres persistence proves source items, feed items, trend history, scan attempts and cursor state across repeated scans"
+        }
+      ],
+      "exitCondition": "Attach BigQuery GH Archive, GitHub REST verification, live smoke and Prisma/Postgres evidence for GitHub Repo Radar before external beta."
+    },
+    {
       "providerKey": "github-trending-page",
       "status": "pending_live_evidence",
       "requiredForExternalBeta": true,
@@ -343,7 +392,7 @@
     }
   ],
   "externalBetaExitCriteria": [
-    "HN, RSS, GitHub Issues, GitHub Trending Page and Reddit live evidence artifacts are attached for the promoted backend image.",
+    "HN, RSS, GitHub Issues, GitHub Repo Radar, GitHub Trending Page and Reddit live evidence artifacts are attached for the promoted backend image.",
     "RSS SSRF proof and HTTP cache evidence are attached before any external beta feed binding is enabled.",
     "Reddit tenant OAuth lifecycle evidence proves create, rotate, revoke and redacted preview behavior.",
     "Fake-source remains fixture-only, while Telegram and X/Twitter remain deferred and cannot appear in enabled beta provider bindings."

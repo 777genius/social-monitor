@@ -160,6 +160,81 @@
           ]
         },
         {
+          "providerKey": "github-repo-radar",
+          "status": "passed",
+          "signalResults": [
+            {
+              "signalId": "github-repo-radar-gh-archive-query",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:08.000Z",
+              "evidence": {
+                "summary": "GH Archive BigQuery query returned bounded repository trend candidates.",
+                "repositoryCount": 2,
+                "windowsObserved": [
+                  "24h",
+                  "48h"
+                ],
+                "maxBytesBilledConfigured": "5000000000",
+                "queryBounded": true
+              },
+              "metrics": {
+                "fetched": 2,
+                "maxCandidates": 25
+              }
+            },
+            {
+              "signalId": "github-repo-radar-live-verification",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:09.000Z",
+              "evidence": {
+                "summary": "GitHub REST live verification returned canonical repository metadata.",
+                "verifiedRepositoryCount": 2,
+                "canonicalUrlsObserved": true,
+                "repositoryMetadataObserved": true
+              },
+              "metrics": {
+                "verifiedRepositoryCount": 2
+              }
+            },
+            {
+              "signalId": "github-repo-radar-live-smoke",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:10.000Z",
+              "evidence": {
+                "summary": "Live repo radar scan fetched, inserted, projected and summarized repository trend evidence.",
+                "fetched": 2,
+                "inserted": 2,
+                "projected": 2,
+                "sourceNotFixture": true,
+                "summaryHighlightObserved": true
+              },
+              "metrics": {
+                "summaryHighlights": 2
+              }
+            },
+            {
+              "signalId": "github-repo-radar-prisma-live-e2e",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:11.000Z",
+              "evidence": {
+                "summary": "Postgres persisted repo radar source items, feed items, trend history and cursor state across repeated scans.",
+                "scanRuns": 2,
+                "sourceItemCount": 2,
+                "feedItemCount": 2,
+                "trendResultCount": 2,
+                "cursorCount": 1,
+                "noDuplicateCursor": true
+              },
+              "metrics": {
+                "trendCandidates": 2,
+                "trendSnapshots": 2,
+                "trendResults": 2,
+                "scanAttempts": 2
+              }
+            }
+          ]
+        },
+        {
           "providerKey": "github-trending-page",
           "status": "passed",
           "signalResults": [
