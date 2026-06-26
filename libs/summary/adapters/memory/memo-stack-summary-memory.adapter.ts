@@ -1,9 +1,9 @@
-import {
+import type {
   InfinityContextClient,
-  type ContextBundleData,
-  type ContextEnvelope,
-  type JsonObject,
-  type SourceRef,
+  ContextBundleData,
+  ContextEnvelope,
+  JsonObject,
+  SourceRef,
 } from '@infinity-context/sdk';
 import { redactSensitiveText } from '@social-monitor/shared-kernel';
 

@@ -98,12 +98,12 @@ export class InMemoryReaderSummaryJobQueueAdapter implements ReaderSummaryJobQue
 
   constructor(private readonly maxDepth = 1000) {}
 
-  async canAccept(_command?: EnqueueReaderSummaryJobCommand): Promise<boolean> {
+  async canAccept(): Promise<boolean> {
     return this.commands.length < this.maxDepth;
   }
 
   async enqueue(command: EnqueueReaderSummaryJobCommand): Promise<void> {
-    if (!(await this.canAccept(command))) {
+    if (!(await this.canAccept())) {
       throw new Error("Reader summary job queue backpressure limit reached");
     }
 

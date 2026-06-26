@@ -25,11 +25,11 @@ import { CreateTopicUseCase } from '@social-monitor/monitoring/features/create-t
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import {
-  DomainError,
   FixedClock,
+  type DomainError,
   type IdGenerator,
-  ok,
   type Result,
+  ok,
   tenantId,
   workspaceId,
 } from '@social-monitor/shared-kernel';

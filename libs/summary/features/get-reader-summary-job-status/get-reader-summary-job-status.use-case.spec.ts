@@ -86,7 +86,8 @@ const workspace = workspaceId("workspace-reader-summary-job-status");
 class FakeReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
   constructor(private readonly jobs: readonly ReaderSummaryJob[]) {}
 
-  async save(_job: ReaderSummaryJob): Promise<void> {
+  async save(job: ReaderSummaryJob): Promise<void> {
+    void job;
     return undefined;
   }
 

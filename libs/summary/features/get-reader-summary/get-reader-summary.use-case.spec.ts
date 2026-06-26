@@ -163,13 +163,15 @@ const readerSummaryArtifact = (
 class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactRepositoryPort {
   constructor(private readonly artifacts: readonly ReaderSummaryArtifact[]) {}
 
-  async save(_artifact: ReaderSummaryArtifact): Promise<void> {
+  async save(artifact: ReaderSummaryArtifact): Promise<void> {
+    void artifact;
     return undefined;
   }
 
   async list(
-    _query: ListReaderSummaryArtifactsQuery,
+    query: ListReaderSummaryArtifactsQuery,
   ): Promise<ListReaderSummaryArtifactsResult> {
+    void query;
     return { items: this.artifacts };
   }
 

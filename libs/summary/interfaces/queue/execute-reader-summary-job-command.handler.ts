@@ -187,21 +187,6 @@ const readStringFallback = (
   );
 };
 
-const readString = (
-  payload: Readonly<Record<string, unknown>>,
-  field: string,
-): string => {
-  const value = payload[field];
-
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error(
-      `Invalid execute reader summary job command payload field: ${field}`,
-    );
-  }
-
-  return value.trim();
-};
-
 const readTenantScopeString = (
   payload: Readonly<Record<string, unknown>>,
   field: string,

@@ -155,7 +155,8 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
 
   constructor(private readonly artifacts: readonly ReaderSummaryArtifact[]) {}
 
-  async save(_artifact: ReaderSummaryArtifact): Promise<void> {
+  async save(artifact: ReaderSummaryArtifact): Promise<void> {
+    void artifact;
     return undefined;
   }
 

@@ -452,7 +452,9 @@ function resultErrorMessage(result: unknown): string {
 }
 
 class SequenceIdGenerator implements IdGenerator {
-  constructor(_prefix: string) {}
+  constructor(prefix: string) {
+    void prefix;
+  }
 
   generate(): string {
     return randomUUID();

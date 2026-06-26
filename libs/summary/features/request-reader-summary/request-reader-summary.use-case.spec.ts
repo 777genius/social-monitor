@@ -7,7 +7,7 @@ import {
   workspaceId,
 } from "@social-monitor/shared-kernel";
 
-import { ReaderSummaryJob } from "../../domain";
+import type { ReaderSummaryJob } from "../../domain";
 import type {
   EnqueueReaderSummaryJobCommand,
   ReaderSummaryJobQueuePort,

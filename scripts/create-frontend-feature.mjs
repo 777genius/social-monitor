@@ -316,7 +316,7 @@ function updateWorkspacePubspec(name) {
     return;
   }
 
-  const workspaceMatch = pubspec.match(/workspace:\n(?<items>(?:  - .+\n)+)/);
+  const workspaceMatch = pubspec.match(/workspace:\n(?<items>(?: {2}- .+\n)+)/);
   if (!workspaceMatch?.groups?.items) {
     fail('Could not find workspace list in apps/frontend/pubspec.yaml');
   }

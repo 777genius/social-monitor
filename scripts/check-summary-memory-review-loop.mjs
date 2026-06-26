@@ -1,3 +1,4 @@
+/* global Headers */
 import assert from 'node:assert/strict';
 
 import {

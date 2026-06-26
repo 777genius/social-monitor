@@ -1,5 +1,4 @@
 import type { ReaderSummaryCitation } from "../entities/citation";
-import type { ReaderAction } from "../entities/reader-action";
 import type { ReaderSummarySnapshot } from "../entities/reader-summary-snapshot";
 import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type {
@@ -22,10 +21,7 @@ import type {
   SummaryEvidenceItem,
 } from "../value-objects/summary-evidence-item";
 import { normalizeSignalScore } from "../value-objects/signal-score";
-import type {
-  ReaderSummaryQualityFlag,
-  ReaderSummaryQualityState,
-} from "../value-objects/summary-quality";
+import type { ReaderSummaryQualityFlag } from "../value-objects/summary-quality";
 import {
   compactUnique,
   firstSentence,

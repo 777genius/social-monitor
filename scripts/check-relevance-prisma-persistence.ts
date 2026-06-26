@@ -233,8 +233,9 @@ class FakePrismaRelevanceClient implements PrismaRelevanceClient {
 
   async $transaction<TValue>(
     operation: (client: PrismaRelevanceTransactionClient) => Promise<TValue>,
-    _options?: PrismaRelevanceTransactionOptions,
+    options?: PrismaRelevanceTransactionOptions,
   ): Promise<TValue> {
+    void options;
     return operation(this);
   }
 }

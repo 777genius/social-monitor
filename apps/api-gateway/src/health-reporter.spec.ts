@@ -1,4 +1,4 @@
-import type { SourceReadinessProfile } from '@social-monitor/ingestion/ports';
+import type { SourceReadinessFreshnessGuard, SourceReadinessProfile } from '@social-monitor/ingestion/ports';
 import { FixedClock } from '@social-monitor/shared-kernel';
 
 import { ApiGatewayHealthReporter } from './health-reporter';
@@ -9,6 +9,11 @@ const readinessProfiles: readonly SourceReadinessProfile[] = [
     state: 'enabled_beta',
     runtimeReadiness: 'fixture_ready',
     liveBetaBlockers: ['live credentials pending'],
+    freshnessGuard: makeFreshnessGuard({
+      maxStalenessSeconds: 900,
+      minimumScanIntervalSeconds: 900,
+      skipRecentlyScanned: true,
+    }),
     acquisitionMode: 'api',
     approvalOwner: 'source-owner',
     termsNotes: 'fixture only',
@@ -28,6 +33,11 @@ const readinessProfiles: readonly SourceReadinessProfile[] = [
     state: 'profiled',
     runtimeReadiness: 'deferred',
     liveBetaBlockers: ['scope pending'],
+    freshnessGuard: makeFreshnessGuard({
+      maxStalenessSeconds: 86_400,
+      minimumScanIntervalSeconds: 3_600,
+      skipRecentlyScanned: false,
+    }),
     acquisitionMode: 'api',
     approvalOwner: 'source-owner',
     termsNotes: 'not enabled',
@@ -43,6 +53,23 @@ const readinessProfiles: readonly SourceReadinessProfile[] = [
     rollbackPlan: 'keep deferred',
   },
 ];
+
+function makeFreshnessGuard(
+  overrides: Pick<
+    SourceReadinessFreshnessGuard,
+    'maxStalenessSeconds' | 'minimumScanIntervalSeconds' | 'skipRecentlyScanned'
+  >,
+): SourceReadinessFreshnessGuard {
+  return {
+    ...overrides,
+    scanHistoryRequired: true,
+    cursorResumeRequired: true,
+    rateLimitBackoffRequired: true,
+    staleReadModelState: 'stale',
+    providerFailureHealthState: 'degraded',
+    signals: ['fixture_freshness_guard'],
+  };
+}
 
 const betaDurableEnv: NodeJS.ProcessEnv = {
   NODE_ENV: 'production',

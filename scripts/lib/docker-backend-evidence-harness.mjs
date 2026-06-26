@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
+import { URL } from "node:url";
 
 const DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS = 5_000;
 const DEFAULT_DOCKER_SOCKET_PING_TIMEOUT_MS = 3_000;

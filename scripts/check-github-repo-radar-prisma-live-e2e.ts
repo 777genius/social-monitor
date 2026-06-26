@@ -427,17 +427,24 @@ type SqlEvidenceScope = {
   readonly scanJobIds: readonly string[];
 };
 
+type SqlMetadata = Record<string, unknown> & {
+  readonly kind?: unknown;
+  readonly trend?: {
+    readonly stars48h?: unknown;
+  };
+};
+
 type SqlEvidence = {
   readonly sourceItemCount: number;
   readonly sourceProviderItemIds: readonly string[];
   readonly feedItemCount: number;
-  readonly feedProviderMetadata: Record<string, any> | undefined;
+  readonly feedProviderMetadata: SqlMetadata | undefined;
   readonly trendCandidateCount: number;
   readonly trendCandidateStars48hValues: readonly number[];
   readonly trendSnapshotCount: number;
   readonly trendSnapshotStars48hValues: readonly number[];
   readonly trendResultCount: number;
-  readonly trendResultMetadataList: readonly Record<string, any>[];
+  readonly trendResultMetadataList: readonly SqlMetadata[];
   readonly cursorCount: number;
   readonly scanAttemptCount: number;
   readonly scanAttemptStatuses: readonly string[];
@@ -446,7 +453,7 @@ type SqlEvidence = {
 const readSqlEvidence = async (pool: Pool, scope: SqlEvidenceScope): Promise<SqlEvidence> => {
   const sourceItems = await pool.query<{
     readonly provider_item_id: string;
-    readonly metadata: Record<string, any>;
+    readonly metadata: SqlMetadata;
   }>(
     `SELECT provider_item_id, metadata
      FROM source_items
@@ -455,7 +462,7 @@ const readSqlEvidence = async (pool: Pool, scope: SqlEvidenceScope): Promise<Sql
     [scope.tenantId, scope.workspaceId, scope.sourceBindingId, GITHUB_REPO_RADAR_PROVIDER_KEY],
   );
   const feedItems = await pool.query<{
-    readonly provider_metadata: Record<string, any>;
+    readonly provider_metadata: SqlMetadata;
   }>(
     `SELECT provider_metadata
      FROM feed_items
@@ -477,7 +484,7 @@ const readSqlEvidence = async (pool: Pool, scope: SqlEvidenceScope): Promise<Sql
      ORDER BY checked_at DESC`,
     [scope.tenantId, scope.workspaceId],
   );
-  const results = await pool.query<{ readonly metadata: Record<string, any> }>(
+  const results = await pool.query<{ readonly metadata: SqlMetadata }>(
     `SELECT metadata
      FROM github_repository_trend_results
      WHERE tenant_id = $1 AND workspace_id = $2 AND source_binding_id = $3

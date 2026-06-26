@@ -1,3 +1,4 @@
+/* global AbortController, fetch */
 import assert from 'node:assert/strict';
 
 const baseUrl = requiredEnv('INFINITY_CONTEXT_URL').replace(/\/+$/u, '');

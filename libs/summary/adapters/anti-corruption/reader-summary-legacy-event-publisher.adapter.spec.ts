@@ -18,11 +18,9 @@ import type {
   ReaderSummaryContextProviderPort,
   ReaderSummaryEvidenceSelectorPort,
   ReaderSummaryJobRepositoryPort,
-  ReaderSummaryModelBudget,
   ReaderSummaryModelEstimate,
   ReaderSummaryModelFailure,
   ReaderSummaryModelInput,
-  ReaderSummaryModelPolicy,
   ReaderSummaryModelPort,
   ReaderSummaryModelRoute,
   ReaderSummaryModelValidationResult,
@@ -648,7 +646,8 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
 }
 
 class FakeReaderSummaryPolicyRepository implements ReaderSummaryPolicyRepositoryPort {
-  async save(_policy: ReaderSummaryPolicy): Promise<void> {
+  async save(policy: ReaderSummaryPolicy): Promise<void> {
+    void policy;
     return undefined;
   }
 
