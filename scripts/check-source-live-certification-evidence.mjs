@@ -331,6 +331,22 @@ const expectedLiveCommands = new Map([
   ['github-trending-page', 'npm run check:github-trending-page-live-smoke'],
   ['reddit', 'npm run capture:live-reddit-oauth'],
 ]);
+const expectedCertificationRequirementCommands = new Map([
+  ['hacker-news', 'npm run capture:live-open-connectors'],
+  ['rss', 'npm run capture:live-open-connectors'],
+  ['github-issues', 'npm run capture:live-open-connectors'],
+  ['github-repo-radar', 'npm run check:github-repo-radar-prisma-live-e2e'],
+  ['github-trending-page', 'npm run check:github-trending-page-live-smoke'],
+  ['reddit', 'npm run capture:live-reddit-oauth'],
+]);
+const expectedCertificationArtifactEnvs = new Map([
+  ['hacker-news', 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH'],
+  ['rss', 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH'],
+  ['github-issues', 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH'],
+  ['github-repo-radar', 'GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH'],
+  ['github-trending-page', 'GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH'],
+  ['reddit', 'REDDIT_LIVE_EVIDENCE_PATH'],
+]);
 const forbiddenEvidenceFragments = [
   'bearer ',
   'basic ',
@@ -468,6 +484,8 @@ function validateSourceCertification() {
 
 function validateSourceCertificationLiveEvidenceRequirements(providerKey, provider) {
   const expectedSignals = requiredProviderSignals.get(providerKey) ?? new Set();
+  const expectedCommand = expectedCertificationRequirementCommands.get(providerKey);
+  const expectedArtifactEnv = expectedCertificationArtifactEnvs.get(providerKey);
   const requirements = provider.liveEvidenceRequirements;
 
   if (!Array.isArray(requirements) || requirements.length === 0) {
@@ -496,8 +514,14 @@ function validateSourceCertificationLiveEvidenceRequirements(providerKey, provid
       requirement.verificationCommand,
       `provider "${providerKey}" requirement "${requirement.signalId}" verificationCommand`,
     );
+    if (requirement.verificationCommand !== expectedCommand) {
+      violations.push(`${sourceCertificationPath}: provider "${providerKey}" requirement "${requirement.signalId}" must use expected certification command`);
+    }
     if (requirement.requiredFor !== 'external_beta') {
       violations.push(`${sourceCertificationPath}: provider "${providerKey}" requirement "${requirement.signalId}" must be requiredFor=external_beta`);
+    }
+    if (requirement.artifactEnv !== expectedArtifactEnv) {
+      violations.push(`${sourceCertificationPath}: provider "${providerKey}" requirement "${requirement.signalId}" must use expected artifactEnv`);
     }
     if (
       requirement.artifactEnv !== undefined &&
