@@ -1,7 +1,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
-import { PrismaClient } from "./generated/client/client";
+import { Prisma, PrismaClient } from "./generated/client/client";
 
 const connectionString =
   process.env.DATABASE_URL ??
@@ -12,21 +12,7 @@ const prisma = new PrismaClient({ adapter });
 
 async function main(): Promise<void> {
   for (const entry of sourceCatalogEntries) {
-    const source = await prisma.sourceCatalogEntry.upsert({
-      where: { providerKey: entry.providerKey },
-      update: {
-        displayName: entry.displayName,
-        acquisitionMode: entry.acquisitionMode,
-        readiness: entry.readiness,
-      },
-      create: {
-        id: entry.id,
-        providerKey: entry.providerKey,
-        displayName: entry.displayName,
-        acquisitionMode: entry.acquisitionMode,
-        readiness: entry.readiness,
-      },
-    });
+    const source = await upsertSourceCatalogEntry(entry);
 
     await prisma.capabilityProfile.upsert({
       where: {
@@ -50,7 +36,52 @@ async function main(): Promise<void> {
   }
 }
 
-const sourceCatalogEntries = [
+async function upsertSourceCatalogEntry(entry: SourceCatalogSeedEntry) {
+  const data = {
+    providerKey: entry.providerKey,
+    displayName: entry.displayName,
+    acquisitionMode: entry.acquisitionMode,
+    readiness: entry.readiness,
+  };
+  const existingByProviderKey = await prisma.sourceCatalogEntry.findUnique({
+    where: { providerKey: entry.providerKey },
+  });
+  if (existingByProviderKey !== null) {
+    return prisma.sourceCatalogEntry.update({
+      where: { providerKey: entry.providerKey },
+      data,
+    });
+  }
+
+  const existingById = await prisma.sourceCatalogEntry.findUnique({
+    where: { id: entry.id },
+  });
+  if (existingById !== null) {
+    return prisma.sourceCatalogEntry.update({
+      where: { id: entry.id },
+      data,
+    });
+  }
+
+  return prisma.sourceCatalogEntry.create({
+    data: {
+      id: entry.id,
+      ...data,
+    },
+  });
+}
+
+type SourceCatalogSeedEntry = {
+  readonly id: string;
+  readonly profileId: string;
+  readonly providerKey: string;
+  readonly displayName: string;
+  readonly acquisitionMode: string;
+  readonly readiness: string;
+  readonly config: Prisma.InputJsonValue;
+};
+
+const sourceCatalogEntries: readonly SourceCatalogSeedEntry[] = [
   {
     id: "00000000-0000-7000-8000-000000000001",
     profileId: "00000000-0000-7000-8000-000000000002",
