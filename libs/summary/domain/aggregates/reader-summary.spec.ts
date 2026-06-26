@@ -265,6 +265,54 @@ describe("buildReaderSummary", () => {
     ]);
   });
 
+  it("deduplicates top reads by normalized canonical repository URLs", () => {
+    const input = readerTopReadFixture(3);
+    const firstStory = input.topStories[0];
+    const duplicateStory = input.topStories[1];
+    const nextStory = input.topStories[2];
+    const firstCitation = input.citationMap[0];
+    const duplicateCitation = input.citationMap[1];
+    const nextCitation = input.citationMap[2];
+
+    if (
+      firstStory === undefined ||
+      duplicateStory === undefined ||
+      nextStory === undefined ||
+      firstCitation === undefined ||
+      duplicateCitation === undefined ||
+      nextCitation === undefined
+    ) {
+      throw new Error("Reader top read fixture must contain three stories");
+    }
+
+    const readerSummary = buildReaderSummary({
+      ...input,
+      topStories: [
+        firstStory,
+        {
+          ...duplicateStory,
+          title: "repo-radar/project-1 with tracking parameters",
+          summary: "The model emitted the same repository with a tracked URL.",
+        },
+        nextStory,
+      ],
+      citationMap: [
+        firstCitation,
+        {
+          ...duplicateCitation,
+          canonicalUrl:
+            "https://github.com/Repo-Radar/Project-1/?utm_source=reddit#readme",
+        },
+        nextCitation,
+      ],
+    });
+
+    expect(readerSummary.topReads.map((item) => item.title)).toEqual([
+      "repo-radar/project-1",
+      "repo-radar/project-3",
+    ]);
+  });
+
   it("keeps GitHub Trending page summaries distinct from Repo Radar", () => {
     const readerSummary = buildReaderSummary({
       headline: "GitHub Trending today",
