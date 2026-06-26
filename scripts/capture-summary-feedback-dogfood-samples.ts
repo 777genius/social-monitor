@@ -8,6 +8,10 @@ import { PrismaSummaryConnection } from '../libs/summary/adapters/persistence/pr
 import { PrismaSummaryFeedbackRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-feedback.repository';
 import { SummaryFeedback, type SummaryFeedbackCategory } from '../libs/summary/domain';
 import { ExportSummaryFeedbackSamplesUseCase } from '../libs/summary/features/export-summary-feedback-samples/export-summary-feedback-samples.use-case';
+import {
+  formatSummaryFeedbackRuntimeFailure,
+  requiredSummaryFeedbackEnv,
+} from './lib/summary-feedback-runtime';
 
 const artifactDir = resolve(
   readOptionalEnv('SUMMARY_FEEDBACK_EVIDENCE_ARTIFACT_DIR')
@@ -174,11 +178,7 @@ function toSummaryFeedback(sample: DogfoodFeedbackSample, index: number): Summar
 }
 
 function requiredEnv(name: string): string {
-  const value = readOptionalEnv(name);
-  if (value === undefined) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
+  return requiredSummaryFeedbackEnv(name, readOptionalEnv(name));
 }
 
 function metadataEnv(name: string, fallback: string): string {
@@ -267,6 +267,6 @@ function compactTimestamp(date: Date): string {
 }
 
 void main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  console.error(formatSummaryFeedbackRuntimeFailure(error));
   process.exit(1);
 });

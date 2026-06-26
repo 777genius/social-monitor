@@ -5,6 +5,10 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { PrismaSummaryConnection } from '../libs/summary/adapters/persistence/prisma/prisma-summary-connection';
 import { PrismaSummaryFeedbackRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-feedback.repository';
 import { ExportSummaryFeedbackSamplesUseCase } from '../libs/summary/features/export-summary-feedback-samples/export-summary-feedback-samples.use-case';
+import {
+  formatSummaryFeedbackRuntimeFailure,
+  requiredSummaryFeedbackEnv,
+} from './lib/summary-feedback-runtime';
 
 const outputPathEnv = 'SUMMARY_FEEDBACK_REDACTED_INPUT_PATH';
 const envFilePathEnv = 'SUMMARY_FEEDBACK_EXPORT_ENV_PATH';
@@ -61,11 +65,7 @@ async function main(): Promise<void> {
 }
 
 function requiredEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (value === undefined || value.length === 0) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
+  return requiredSummaryFeedbackEnv(name);
 }
 
 function optionalEnv(name: string): string | undefined {
@@ -179,6 +179,6 @@ function shellQuote(value: string): string {
 }
 
 void main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  console.error(formatSummaryFeedbackRuntimeFailure(error));
   process.exit(1);
 });
