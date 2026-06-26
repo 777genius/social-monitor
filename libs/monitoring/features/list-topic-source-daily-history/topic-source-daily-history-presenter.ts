@@ -4,7 +4,10 @@ import type {
   ScanSchedulerDecisionRecord,
 } from '../../ports';
 import { effectiveProviderScanCadence } from '../shared/scan-cadence-policy';
-import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
+import {
+  summarizeScanProviderHealth,
+  type ScanProviderHealthSummary,
+} from '../shared/scan-provider-health-summary';
 import type {
   TopicSourceDailyHistoryCadenceSummaryView,
   TopicSourceDailyHistoryDayView,
@@ -200,12 +203,16 @@ const buildProviderView = (
 
       return right.id.localeCompare(left.id);
     });
-  const health = summarizeScanProviderHealth(snapshots);
   const sortedSchedulerDecisions = [...schedulerDecisions].sort((left, right) => {
     const evaluatedDiff = right.evaluatedAt.getTime() - left.evaluatedAt.getTime();
 
     return evaluatedDiff === 0 ? right.id.localeCompare(left.id) : evaluatedDiff;
   });
+  const schedulerSkippedByReason = schedulerSkipBreakdown(sortedSchedulerDecisions);
+  const health = providerHealthWithSchedulerBackoff(
+    summarizeScanProviderHealth(snapshots),
+    schedulerSkippedByReason,
+  );
   const latestAttempts = snapshots
     .map((snapshot) => attempts.get(snapshot.id))
     .filter((attempt): attempt is NonNullable<typeof attempt> => attempt !== null && attempt !== undefined);
@@ -226,7 +233,7 @@ const buildProviderView = (
     schedulerDecisionCount: sortedSchedulerDecisions.length,
     schedulerEnqueuedCount: sortedSchedulerDecisions.filter((decision) => decision.decision === 'enqueued').length,
     schedulerSkippedCount: sortedSchedulerDecisions.filter((decision) => decision.decision === 'skipped').length,
-    schedulerSkippedByReason: schedulerSkipBreakdown(sortedSchedulerDecisions),
+    schedulerSkippedByReason,
     lastSchedulerEvaluatedAt: sortedSchedulerDecisions[0]?.evaluatedAt.toISOString(),
     cadenceSummary: summarizeProviderCadence(bindings, scanPoliciesByBindingId),
     providerHealthState: health.providerHealthState,
@@ -249,6 +256,40 @@ const buildProviderView = (
     operatorAction: health.operatorAction,
     signals: health.signals,
   };
+};
+
+const providerHealthWithSchedulerBackoff = (
+  health: ScanProviderHealthSummary,
+  skippedByReason: ReturnType<typeof schedulerSkipBreakdown>,
+): ScanProviderHealthSummary => {
+  if (skippedByReason.providerFailureBackoff > 0) {
+    return {
+      ...health,
+      providerHealthState: 'down',
+      operatorAction: 'pause_or_backoff_provider_until_recovery',
+      signals: uniqueStable([
+        ...health.signals,
+        'provider_failure_backoff',
+      ]),
+    };
+  }
+
+  if (
+    skippedByReason.rateLimitBackoff > 0 &&
+    health.providerHealthState !== 'down'
+  ) {
+    return {
+      ...health,
+      providerHealthState: 'degraded',
+      operatorAction: 'inspect_recent_scan_failures_and_rate_limits',
+      signals: uniqueStable([
+        ...health.signals,
+        'rate_limit_backoff',
+      ]),
+    };
+  }
+
+  return health;
 };
 
 const countBindingsByStatus = (
@@ -364,3 +405,19 @@ const sumAttempts = (
   field: 'fetched' | 'inserted' | 'skippedDuplicates' | 'projected',
 ): number =>
   attempts.reduce((total, attempt) => total + attempt[field], 0);
+
+const uniqueStable = <TValue>(values: readonly TValue[]): readonly TValue[] => {
+  const seen = new Set<TValue>();
+  const result: TValue[] = [];
+
+  for (const value of values) {
+    if (seen.has(value)) {
+      continue;
+    }
+
+    seen.add(value);
+    result.push(value);
+  }
+
+  return result;
+};

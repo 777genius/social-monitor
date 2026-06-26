@@ -756,6 +756,87 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
     });
   });
 
+  it("uses scheduler backoff decisions when provider health has no scan jobs yet", async () => {
+    const fixture = await makeFixture();
+    const reddit = makeBinding("binding-reddit", "reddit");
+    await fixture.bindings.save(reddit);
+    await fixture.policies.save(makePolicy(reddit));
+    await fixture.saveSchedulerDecision({
+      id: "scheduler-decision-reddit-provider-backoff",
+      decisionKey:
+        "scan-policy:scan-policy-binding-reddit:due-at:2026-06-26T09:00:00.000Z",
+      scanPolicyId: "scan-policy-binding-reddit",
+      sourceBindingId: "binding-reddit",
+      providerKey: "reddit",
+      decision: "skipped",
+      reason: "provider_failure_backoff",
+      policyDueAt: new Date("2026-06-26T09:00:00.000Z"),
+      evaluatedAt: new Date("2026-06-26T09:00:00.000Z"),
+      nextRunAt: new Date("2026-06-26T09:15:00.000Z"),
+      configuredIntervalSeconds: 300,
+      effectiveIntervalSeconds: 900,
+      freshnessSeconds: 900,
+      providerMinimumIntervalEnforced: true,
+      backoffUntil: new Date("2026-06-26T09:15:00.000Z"),
+      correlationId: "scheduler-history-provider-backoff",
+      causationId: "scheduled:scan-policy-binding-reddit",
+    });
+
+    const result = await fixture.useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: "topic-source-history",
+      days: 1,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        summary: expect.objectContaining({
+          providerHealthState: "down",
+          totalScans: 0,
+          schedulerSkippedByReason: expect.objectContaining({
+            providerFailureBackoff: 1,
+          }),
+          operatorAction: "pause_or_backoff_provider_until_recovery",
+          signals: expect.arrayContaining([
+            "no_recent_scans",
+            "provider_failure_backoff",
+          ]),
+          providerBreakdown: [
+            expect.objectContaining({
+              providerKey: "reddit",
+              providerHealthState: "down",
+              totalScans: 0,
+              schedulerSkippedByReason: expect.objectContaining({
+                providerFailureBackoff: 1,
+              }),
+              operatorAction: "pause_or_backoff_provider_until_recovery",
+              signals: expect.arrayContaining([
+                "no_recent_scans",
+                "provider_failure_backoff",
+              ]),
+            }),
+          ],
+        }),
+        days: [
+          expect.objectContaining({
+            date: "2026-06-26",
+            providerHealthState: "down",
+            schedulerSkippedByReason: expect.objectContaining({
+              providerFailureBackoff: 1,
+            }),
+            operatorAction: "pause_or_backoff_provider_until_recovery",
+            signals: expect.arrayContaining([
+              "no_recent_scans",
+              "provider_failure_backoff",
+            ]),
+          }),
+        ],
+      }),
+    });
+  });
+
   it("returns scoped topic errors before reading scan history", async () => {
     const fixture = await makeFixture();
 
