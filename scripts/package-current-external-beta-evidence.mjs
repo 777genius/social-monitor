@@ -361,7 +361,9 @@ function defaultInputSpecs() {
   const dockerOverridePath = process.env.DOCKER_BACKEND_STAGING_IMPORTED_ENV_PATH?.trim();
   const liveOpenOverridePath = process.env.LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH?.trim();
   const redditOverridePath = process.env.REDDIT_LIVE_EVIDENCE_ENV_PATH?.trim();
-  const githubOverridePath = process.env.GITHUB_LIVE_SUMMARY_EVIDENCE_ENV_PATH?.trim();
+  const githubRepoRadarOverridePath = process.env.GITHUB_REPO_RADAR_LIVE_EVIDENCE_ENV_PATH?.trim();
+  const githubTrendingPageOverridePath = process.env.GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_ENV_PATH?.trim();
+  const githubSummaryOverridePath = process.env.GITHUB_LIVE_SUMMARY_EVIDENCE_ENV_PATH?.trim();
   const feedbackOverridePath = process.env.SUMMARY_FEEDBACK_SAMPLES_ENV_PATH?.trim();
   const resolvedArtifactDir = resolve(artifactDir);
 
@@ -381,9 +383,23 @@ function defaultInputSpecs() {
         : 'default_live_open_connectors_env',
     },
     {
-      path: githubOverridePath,
-      staleCommitPolicy: githubOverridePath ? 'reject' : 'skip',
-      source: 'github_live_summary_env',
+      path: githubRepoRadarOverridePath || join(resolvedArtifactDir, 'live-github-repo-radar.env'),
+      staleCommitPolicy: githubRepoRadarOverridePath ? 'reject' : 'skip',
+      source: githubRepoRadarOverridePath
+        ? 'github_repo_radar_live_evidence_env_override'
+        : 'default_github_repo_radar_live_evidence_env',
+    },
+    {
+      path: githubTrendingPageOverridePath || join(resolvedArtifactDir, 'live-github-trending-page.env'),
+      staleCommitPolicy: githubTrendingPageOverridePath ? 'reject' : 'skip',
+      source: githubTrendingPageOverridePath
+        ? 'github_trending_page_live_evidence_env_override'
+        : 'default_github_trending_page_live_evidence_env',
+    },
+    {
+      path: githubSummaryOverridePath,
+      staleCommitPolicy: githubSummaryOverridePath ? 'reject' : 'skip',
+      source: 'legacy_github_live_summary_env',
     },
     {
       path: redditOverridePath || join(resolvedArtifactDir, 'live-reddit-oauth.env'),

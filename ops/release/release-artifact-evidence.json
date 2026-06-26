@@ -100,7 +100,7 @@
       "artifactId": "openapi-snapshot",
       "path": "libs/contracts/rest/openapi.snapshot.json",
       "algorithm": "sha256",
-      "value": "1a767e8344b9663e81d1c91328f323f27f713791c6255afd3ce60cf70714f38b"
+      "value": "ec347bf52b5307728f8a9bcdc2463189c3c5d30eb9dda4aa34f9b287932de166"
     },
     {
       "artifactId": "event-catalog",

@@ -135,6 +135,8 @@ function validatePrivateEnvRead() {
 function validateCurrentEvidencePackage() {
   const dockerEnvPath = join(tempDirectory, 'docker-import.env');
   const liveOpenEnvPath = join(tempDirectory, 'live-open.env');
+  const githubRepoRadarEnvPath = join(tempDirectory, 'live-github-repo-radar.env');
+  const githubTrendingPageEnvPath = join(tempDirectory, 'live-github-trending-page.env');
   const redditEnvPath = join(tempDirectory, 'live-reddit-oauth.env');
   const outputEnvPath = join(tempDirectory, 'current-package.env');
   const outputReportPath = join(tempDirectory, 'current-package-report.json');
@@ -176,6 +178,22 @@ function validateCurrentEvidencePackage() {
     ['BACKEND_GIT_COMMIT_SHA', commitSha],
     ['BACKEND_IMAGE_DIGEST', imageDigest],
   ]);
+  writeEvidenceEnvFile(githubRepoRadarEnvPath, [
+    ['GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH', artifactPath('github-repo-radar-live')],
+    ['GITHUB_REPO_RADAR_PRISMA_LIVE_E2E', '1'],
+    ['GITHUB_REPO_RADAR_BIGQUERY_PROJECT_ID', 'social-monitor-prod-bq'],
+    ['SOURCE_LIVE_ENVIRONMENT_ID', 'dogfood-public-network-20260621'],
+    ['SOURCE_LIVE_OPERATOR', 'codex'],
+    ['BACKEND_GIT_COMMIT_SHA', commitSha],
+    ['BACKEND_IMAGE_DIGEST', imageDigest],
+  ]);
+  writeEvidenceEnvFile(githubTrendingPageEnvPath, [
+    ['GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH', artifactPath('github-trending-page-live')],
+    ['SOURCE_LIVE_ENVIRONMENT_ID', 'dogfood-public-network-20260621'],
+    ['SOURCE_LIVE_OPERATOR', 'codex'],
+    ['BACKEND_GIT_COMMIT_SHA', commitSha],
+    ['BACKEND_IMAGE_DIGEST', imageDigest],
+  ]);
 
   const output = execFileSync('node', ['scripts/package-current-external-beta-evidence.mjs'], {
     cwd: process.cwd(),
@@ -184,6 +202,8 @@ function validateCurrentEvidencePackage() {
       ...process.env,
       DOCKER_BACKEND_STAGING_IMPORTED_ENV_PATH: dockerEnvPath,
       LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH: liveOpenEnvPath,
+      GITHUB_REPO_RADAR_LIVE_EVIDENCE_ENV_PATH: githubRepoRadarEnvPath,
+      GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_ENV_PATH: githubTrendingPageEnvPath,
       REDDIT_LIVE_EVIDENCE_ENV_PATH: redditEnvPath,
       EXTERNAL_BETA_CURRENT_ENV_PATH: outputEnvPath,
       EXTERNAL_BETA_CURRENT_REPORT_PATH: outputReportPath,
@@ -198,6 +218,12 @@ function validateCurrentEvidencePackage() {
   if (!packagedEnv.includes('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH=')) {
     violations.push('current evidence package must merge live-open evidence env');
   }
+  if (!packagedEnv.includes('GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH=')) {
+    violations.push('current evidence package must merge GitHub Repo Radar evidence env');
+  }
+  if (!packagedEnv.includes('GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH=')) {
+    violations.push('current evidence package must merge GitHub Trending Page evidence env');
+  }
   if (packagedEnv.includes('DATABASE_URL=') || packagedEnv.includes('RABBITMQ_URL=')) {
     violations.push('current evidence package must not write secret DB/RabbitMQ URL values');
   }
@@ -211,7 +237,7 @@ function validateCurrentEvidencePackage() {
   if (report.commitPolicy?.expectedCommitSha !== commitSha || report.commitPolicy?.packagedCommitSha !== commitSha) {
     violations.push('current evidence package report must expose the expected and packaged commit SHA');
   }
-  if (!Array.isArray(report.artifactIntegrity?.inputEnvFiles) || report.artifactIntegrity.inputEnvFiles.length !== 2) {
+  if (!Array.isArray(report.artifactIntegrity?.inputEnvFiles) || report.artifactIntegrity.inputEnvFiles.length !== 4) {
     violations.push('current evidence package report must include input env file integrity records');
   }
   if (!Array.isArray(report.artifactIntegrity?.packagedEvidenceArtifacts) || report.artifactIntegrity.packagedEvidenceArtifacts.length === 0) {
@@ -232,6 +258,12 @@ function validateCurrentEvidencePackage() {
   );
   if (!artifactIntegrityEnvNames.has('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH')) {
     violations.push('current evidence package report must hash live-open evidence artifact');
+  }
+  if (!artifactIntegrityEnvNames.has('GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH')) {
+    violations.push('current evidence package report must hash GitHub Repo Radar evidence artifact');
+  }
+  if (!artifactIntegrityEnvNames.has('GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH')) {
+    violations.push('current evidence package report must hash GitHub Trending Page evidence artifact');
   }
   if (!report.inputPolicy?.secretEnvNamesWithheld?.includes('DATABASE_URL')) {
     violations.push('current evidence package report must list withheld DATABASE_URL');
@@ -299,6 +331,8 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
   const outputEnvPath = join(artifactDir, 'current-package.env');
   const outputReportPath = join(artifactDir, 'current-package-report.json');
   const liveOpenDefaultEnvPath = join(artifactDir, 'live-open-connectors.env');
+  const githubRepoRadarDefaultEnvPath = join(artifactDir, 'live-github-repo-radar.env');
+  const githubTrendingPageDefaultEnvPath = join(artifactDir, 'live-github-trending-page.env');
   const redditDefaultEnvPath = join(artifactDir, 'live-reddit-oauth.env');
   const artifactPath = (name) => {
     const path = join(artifactDir, `${name}.json`);
@@ -321,6 +355,16 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
     ['BACKEND_GIT_COMMIT_SHA', staleCommitSha],
     ['BACKEND_IMAGE_DIGEST', staleImageDigest],
   ]);
+  writeEvidenceEnvFile(githubRepoRadarDefaultEnvPath, [
+    ['GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH', artifactPath('github-repo-radar-stale')],
+    ['BACKEND_GIT_COMMIT_SHA', staleCommitSha],
+    ['BACKEND_IMAGE_DIGEST', staleImageDigest],
+  ]);
+  writeEvidenceEnvFile(githubTrendingPageDefaultEnvPath, [
+    ['GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH', artifactPath('github-trending-page-stale')],
+    ['BACKEND_GIT_COMMIT_SHA', staleCommitSha],
+    ['BACKEND_IMAGE_DIGEST', staleImageDigest],
+  ]);
   writeEvidenceEnvFile(redditDefaultEnvPath, [
     ['REDDIT_LIVE_EVIDENCE_PATH', artifactPath('reddit-live-stale')],
     ['BACKEND_GIT_COMMIT_SHA', staleCommitSha],
@@ -334,6 +378,8 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
       ...process.env,
       DOCKER_BACKEND_STAGING_IMPORTED_ENV_PATH: dockerEnvPath,
       LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH: '',
+      GITHUB_REPO_RADAR_LIVE_EVIDENCE_ENV_PATH: '',
+      GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_ENV_PATH: '',
       GITHUB_LIVE_SUMMARY_EVIDENCE_ENV_PATH: '',
       REDDIT_LIVE_EVIDENCE_ENV_PATH: '',
       SUMMARY_FEEDBACK_SAMPLES_ENV_PATH: '',
@@ -347,12 +393,17 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
 
   const packagedEnv = readFileSync(outputEnvPath, 'utf8');
   if (packagedEnv.includes('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH=')
+    || packagedEnv.includes('GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH=')
+    || packagedEnv.includes('GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH=')
     || packagedEnv.includes('REDDIT_LIVE_EVIDENCE_PATH=')) {
     violations.push('current evidence package must not merge stale default evidence env files');
   }
   const report = JSON.parse(readFileSync(outputReportPath, 'utf8'));
   const skippedStalePaths = new Set((report.skippedStaleEnvFiles ?? []).map((record) => record.path));
-  if (!skippedStalePaths.has(liveOpenDefaultEnvPath) || !skippedStalePaths.has(redditDefaultEnvPath)) {
+  if (!skippedStalePaths.has(liveOpenDefaultEnvPath)
+    || !skippedStalePaths.has(githubRepoRadarDefaultEnvPath)
+    || !skippedStalePaths.has(githubTrendingPageDefaultEnvPath)
+    || !skippedStalePaths.has(redditDefaultEnvPath)) {
     violations.push('current evidence package report must list skipped stale default evidence env files');
   }
   if (!Array.isArray(report.artifactIntegrity?.inputEnvFiles) || report.artifactIntegrity.inputEnvFiles.length !== 1) {

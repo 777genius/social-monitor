@@ -392,6 +392,12 @@ const requiredJobOutputArtifacts = new Map([
     ],
   ],
 ]);
+const requiredSourceLiveCertificationJobIds = [
+  'live-open-connectors',
+  'live-github-repo-radar',
+  'live-github-trending-page',
+  'live-reddit-oauth',
+];
 
 if (contract.schemaVersion !== 1) {
   violations.push(`${contractPath}: schemaVersion must be 1`);
@@ -3547,7 +3553,7 @@ function validateJobs() {
       violations.push(`${contractPath}: jobs must cover backend MVP requirement "${requirementId}"`);
     }
   }
-  for (const requiredSourceJob of ['live-open-connectors', 'live-reddit-oauth']) {
+  for (const requiredSourceJob of requiredSourceLiveCertificationJobIds) {
     if (!sourceJobs.has(requiredSourceJob)) {
       violations.push(`${contractPath}: source live certification must include ${requiredSourceJob}`);
     }
