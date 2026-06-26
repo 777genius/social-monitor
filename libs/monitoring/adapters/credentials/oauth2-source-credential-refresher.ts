@@ -1,14 +1,23 @@
 import { Buffer } from 'node:buffer';
 
+import { validateOutboundUrl } from '@social-monitor/shared-kernel';
+
 import type {
   SourceCredentialRefreshPort,
   SourceCredentialRefreshResult,
   SourceCredentialSecret,
 } from '../../ports';
 
+export type OAuth2TokenUrlPolicyResult =
+  | { readonly ok: true; readonly url: URL }
+  | { readonly ok: false; readonly reason: string };
+
+export type OAuth2TokenUrlPolicy = (value: string) => OAuth2TokenUrlPolicyResult;
+
 export type OAuth2SourceCredentialRefresherOptions = {
   readonly timeoutMs?: number;
   readonly refreshSkewMs?: number;
+  readonly tokenUrlPolicy?: OAuth2TokenUrlPolicy;
 };
 
 type OAuth2TokenResponse = {
@@ -22,10 +31,12 @@ type OAuth2TokenResponse = {
 export class OAuth2SourceCredentialRefresher implements SourceCredentialRefreshPort {
   private readonly timeoutMs: number;
   private readonly refreshSkewMs: number;
+  private readonly tokenUrlPolicy: OAuth2TokenUrlPolicy;
 
   constructor(options: OAuth2SourceCredentialRefresherOptions = {}) {
     this.timeoutMs = options.timeoutMs ?? 10_000;
     this.refreshSkewMs = options.refreshSkewMs ?? 60_000;
+    this.tokenUrlPolicy = options.tokenUrlPolicy ?? validateOAuth2TokenUrl;
   }
 
   async refreshIfNeeded(
@@ -71,7 +82,12 @@ export class OAuth2SourceCredentialRefresher implements SourceCredentialRefreshP
       appendOptional(body, 'client_secret', clientSecret);
     }
 
-    const response = await fetch(tokenUrl, {
+    const tokenUrlResult = this.tokenUrlPolicy(tokenUrl);
+    if (!tokenUrlResult.ok) {
+      throw new Error(`OAuth2 source credential token URL rejected: ${tokenUrlResult.reason}`);
+    }
+
+    const response = await fetch(tokenUrlResult.url, {
       method: 'POST',
       headers,
       body,
@@ -113,6 +129,12 @@ const appendOptional = (body: URLSearchParams, key: string, value: string | unde
     body.set(key, value);
   }
 };
+
+const validateOAuth2TokenUrl = (value: string): OAuth2TokenUrlPolicyResult =>
+  validateOutboundUrl(value, {
+    label: 'OAuth2 token URL',
+    allowedProtocols: ['https:'],
+  });
 
 const readString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;

@@ -11,7 +11,10 @@ import {
 } from '@social-monitor/shared-kernel';
 
 import { MonitoringSourceConfigReaderAdapter } from '../apps/ingestion-worker/src/adapters/source/monitoring-source-config-reader.adapter';
-import { OAuth2SourceCredentialRefresher } from '../libs/monitoring/adapters/credentials/oauth2-source-credential-refresher';
+import {
+  OAuth2SourceCredentialRefresher,
+  type OAuth2TokenUrlPolicyResult,
+} from '../libs/monitoring/adapters/credentials/oauth2-source-credential-refresher';
 import { InMemorySourceBindingRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-binding.repository';
 import { InMemorySourceCredentialRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-credential.repository';
 import { InMemorySourceCredentialSecretVault } from '../libs/monitoring/adapters/secrets/in-memory-source-credential.vault';
@@ -59,7 +62,11 @@ async function main(): Promise<void> {
     const resolver = new ResolveSourceCredentialUseCase(
       credentials,
       vault,
-      new OAuth2SourceCredentialRefresher({ refreshSkewMs: 60_000, timeoutMs: 10_000 }),
+      new OAuth2SourceCredentialRefresher({
+        refreshSkewMs: 60_000,
+        timeoutMs: 10_000,
+        tokenUrlPolicy: allowLocalTokenUrlForSmoke,
+      }),
       clock,
     );
 
@@ -359,6 +366,14 @@ const assertPublicCredentialViewIsRedacted = (value: unknown, label: string): vo
   assert(!serialized.includes('permanent-refresh-token'), `${label} must not include raw refresh token`);
   assert(!serialized.includes('reddit-client-secret'), `${label} must not include OAuth client secret`);
   assert(!serialized.includes('secretKeyId'), `${label} must not include vault secret key id`);
+};
+
+const allowLocalTokenUrlForSmoke = (value: string): OAuth2TokenUrlPolicyResult => {
+  try {
+    return { ok: true, url: new URL(value) };
+  } catch {
+    return { ok: false, reason: 'Smoke OAuth2 token URL must be absolute.' };
+  }
 };
 
 const assertRejects = async (fn: () => Promise<unknown>, message: string): Promise<void> => {
