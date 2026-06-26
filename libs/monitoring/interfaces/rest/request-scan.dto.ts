@@ -6,6 +6,10 @@ import type {
   SourceBindingDailyHistoryDayView,
   SourceBindingDailyHistorySummaryView,
 } from '../../features/list-source-binding-daily-history/list-source-binding-daily-history.result';
+import type {
+  RequestScanDecision,
+  RequestScanDecisionView,
+} from '../../features/request-scan/request-scan.result';
 import type { ScanProviderHealthState } from '../../features/shared/scan-provider-health-summary';
 import { scanJobStatusValues, ScanStatusResponseDto } from './scan-status.dto';
 
@@ -15,6 +19,39 @@ const scanProviderHealthStateValues = [
   'degraded',
   'down',
 ] as const satisfies readonly ScanProviderHealthState[];
+const requestScanDecisionValues = [
+  'created',
+  'idempotent_replay',
+  'active_scan',
+  'fresh_success',
+  'rate_limit_backoff',
+] as const satisfies readonly RequestScanDecision[];
+
+export class RequestScanDecisionResponseDto implements RequestScanDecisionView {
+  @ApiProperty({ enum: requestScanDecisionValues })
+  declare readonly decision: RequestScanDecision;
+
+  @ApiProperty()
+  declare readonly reason: string;
+
+  @ApiProperty()
+  declare readonly createdNewScan: boolean;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly nextEligibleAt?: string;
+
+  @ApiPropertyOptional()
+  declare readonly waitSeconds?: number;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly freshnessDeadlineAt?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly rateLimitBackoffUntil?: string;
+
+  @ApiProperty({ type: String, isArray: true })
+  declare readonly signals: readonly string[];
+}
 
 export class RequestScanResponseDto {
   @ApiProperty()
@@ -25,6 +62,9 @@ export class RequestScanResponseDto {
 
   @ApiProperty()
   declare readonly created: boolean;
+
+  @ApiProperty({ type: () => RequestScanDecisionResponseDto })
+  declare readonly requestDecision: RequestScanDecisionResponseDto;
 }
 
 export class ListScanRequestsResponseDto {

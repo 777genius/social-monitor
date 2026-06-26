@@ -127,6 +127,10 @@ async function main(): Promise<void> {
       .set(adminHeaders)
       .set('idempotency-key', 'scan')
       .expect(201);
+    assert(
+      scan.body.requestDecision.decision === 'created',
+      'scan request must expose created request decision',
+    );
 
     const healthDuringScan = await request(app.getHttpServer())
       .get(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)

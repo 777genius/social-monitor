@@ -2640,10 +2640,61 @@
         ],
         "type": "object"
       },
+      "RequestScanDecisionResponseDto": {
+        "properties": {
+          "createdNewScan": {
+            "type": "boolean"
+          },
+          "decision": {
+            "enum": [
+              "created",
+              "idempotent_replay",
+              "active_scan",
+              "fresh_success",
+              "rate_limit_backoff"
+            ],
+            "type": "string"
+          },
+          "freshnessDeadlineAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "nextEligibleAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "rateLimitBackoffUntil": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "waitSeconds": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "decision",
+          "reason",
+          "createdNewScan",
+          "signals"
+        ],
+        "type": "object"
+      },
       "RequestScanResponseDto": {
         "properties": {
           "created": {
             "type": "boolean"
+          },
+          "requestDecision": {
+            "$ref": "#/components/schemas/RequestScanDecisionResponseDto"
           },
           "scanJobId": {
             "type": "string"
@@ -2661,7 +2712,8 @@
         "required": [
           "scanJobId",
           "status",
-          "created"
+          "created",
+          "requestDecision"
         ],
         "type": "object"
       },

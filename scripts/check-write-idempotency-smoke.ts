@@ -172,6 +172,11 @@ async function proveMonitoringWriteIdempotency(): Promise<void> {
   assert(firstScan.created, 'first scan request must create');
   assert(!duplicateScan.created, 'duplicate scan request must not create');
   assert(firstScan.scanJobId === duplicateScan.scanJobId, 'duplicate scan request must return same scan job id');
+  assert(firstScan.requestDecision.decision === 'created', 'first scan request must report created decision');
+  assert(
+    duplicateScan.requestDecision.decision === 'idempotent_replay',
+    'duplicate scan request must report idempotent replay decision',
+  );
   assert(queuePublisher.all().length === 1, 'duplicate scan request must not enqueue another scan command');
   assert(quota.reservations === 1, 'duplicate scan request must not reserve quota twice');
   assert(outbox.all().length === 4, 'duplicate scan request must not append another outbox event');

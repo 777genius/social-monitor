@@ -21,7 +21,7 @@ import type {
   SourceBindingRepositoryPort,
 } from '../../ports';
 import type { RequestScanCommand } from './request-scan.command';
-import type { RequestScanResult } from './request-scan.result';
+import type { RequestScanDecisionView, RequestScanResult } from './request-scan.result';
 import { isFreshSuccessfulScan, rateLimitBackoffUntil } from '../shared/scan-freshness-guard';
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
@@ -48,7 +48,12 @@ export class RequestScanUseCase {
       key: command.idempotencyKey,
     });
     if (cached) {
-      return ok({ ...cached.value, created: false });
+      return ok(withRequestDecision({
+        scanJobId: cached.value.scanJobId,
+        status: cached.value.status,
+        created: false,
+        requestDecision: idempotentReplayDecision(),
+      }));
     }
 
     const existingJob = await this.scanJobs.findByIdempotencyKey({
@@ -58,7 +63,12 @@ export class RequestScanUseCase {
     });
     if (existingJob) {
       const snapshot = existingJob.toSnapshot();
-      const result = { scanJobId: snapshot.id, status: snapshot.status, created: false };
+      const result = withRequestDecision({
+        scanJobId: snapshot.id,
+        status: snapshot.status,
+        created: false,
+        requestDecision: idempotentReplayDecision(),
+      });
       await this.cacheResult(command, result);
       return ok(result);
     }
@@ -98,7 +108,17 @@ export class RequestScanUseCase {
     });
     if (activeJob !== null) {
       const snapshot = activeJob.toSnapshot();
-      const result = { scanJobId: snapshot.id, status: snapshot.status, created: false };
+      const result = withRequestDecision({
+        scanJobId: snapshot.id,
+        status: snapshot.status,
+        created: false,
+        requestDecision: {
+          decision: 'active_scan',
+          reason: 'scan_already_in_progress',
+          createdNewScan: false,
+          signals: ['active_scan_in_progress'],
+        },
+      });
       await this.cacheResult(command, result);
       return ok(result);
     }
@@ -116,7 +136,23 @@ export class RequestScanUseCase {
       now,
     })) {
       const snapshot = latestJob.toSnapshot();
-      const result = { scanJobId: snapshot.id, status: snapshot.status, created: false };
+      const freshnessDeadlineAt = snapshot.completedAt === undefined
+        ? undefined
+        : new Date(snapshot.completedAt.getTime() + policySnapshot.freshnessSeconds * 1000).toISOString();
+      const result = withRequestDecision({
+        scanJobId: snapshot.id,
+        status: snapshot.status,
+        created: false,
+        requestDecision: {
+          decision: 'fresh_success',
+          reason: 'latest_success_still_fresh',
+          createdNewScan: false,
+          nextEligibleAt: freshnessDeadlineAt,
+          waitSeconds: secondsUntil(freshnessDeadlineAt, now),
+          freshnessDeadlineAt,
+          signals: ['fresh_success'],
+        },
+      });
       await this.cacheResult(command, result);
       return ok(result);
     }
@@ -127,7 +163,21 @@ export class RequestScanUseCase {
     });
     if (latestJob !== null && rateLimitBackoff !== null) {
       const snapshot = latestJob.toSnapshot();
-      const result = { scanJobId: snapshot.id, status: snapshot.status, created: false };
+      const rateLimitBackoffUntil = rateLimitBackoff.toISOString();
+      const result = withRequestDecision({
+        scanJobId: snapshot.id,
+        status: snapshot.status,
+        created: false,
+        requestDecision: {
+          decision: 'rate_limit_backoff',
+          reason: 'provider_rate_limit_backoff_active',
+          createdNewScan: false,
+          nextEligibleAt: rateLimitBackoffUntil,
+          waitSeconds: secondsUntil(rateLimitBackoffUntil, now),
+          rateLimitBackoffUntil,
+          signals: ['rate_limit_backoff'],
+        },
+      });
       await this.cacheResult(command, result);
       return ok(result);
     }
@@ -198,7 +248,17 @@ export class RequestScanUseCase {
     const enqueuedJob = job.markEnqueued({ enqueuedAt: now });
     await this.scanJobs.save(enqueuedJob);
 
-    const result = { scanJobId: snapshot.id, status: enqueuedJob.toSnapshot().status, created: true };
+    const result = withRequestDecision({
+      scanJobId: snapshot.id,
+      status: enqueuedJob.toSnapshot().status,
+      created: true,
+      requestDecision: {
+        decision: 'created',
+        reason: 'manual_scan_enqueued',
+        createdNewScan: true,
+        signals: ['manual_scan_enqueued'],
+      },
+    });
     await this.cacheResult(command, result);
     return ok(result);
   }
@@ -213,3 +273,20 @@ export class RequestScanUseCase {
     });
   }
 }
+
+const withRequestDecision = (result: RequestScanResult): RequestScanResult => result;
+
+const idempotentReplayDecision = (): RequestScanDecisionView => ({
+  decision: 'idempotent_replay',
+  reason: 'idempotency_key_reused',
+  createdNewScan: false,
+  signals: ['idempotent_replay'],
+});
+
+const secondsUntil = (isoDate: string | undefined, now: Date): number | undefined => {
+  if (isoDate === undefined) {
+    return undefined;
+  }
+
+  return Math.max(0, Math.ceil((new Date(isoDate).getTime() - now.getTime()) / 1000));
+};

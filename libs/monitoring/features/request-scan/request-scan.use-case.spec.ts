@@ -267,6 +267,12 @@ describe('RequestScanUseCase', () => {
     expect(result.ok).toBe(true);
     expect(result.ok && result.value.created).toBe(true);
     expect(result.ok && result.value.status).toBe('enqueued');
+    expect(result.ok && result.value.requestDecision).toEqual({
+      decision: 'created',
+      reason: 'manual_scan_enqueued',
+      createdNewScan: true,
+      signals: ['manual_scan_enqueued'],
+    });
     expect(outbox.events).toHaveLength(1);
     expect(queue.commands).toEqual([
       expect.objectContaining({
@@ -323,6 +329,67 @@ describe('RequestScanUseCase', () => {
         scanJobId: first.value.scanJobId,
         status: 'enqueued',
         created: false,
+        requestDecision: {
+          decision: 'active_scan',
+          reason: 'scan_already_in_progress',
+          createdNewScan: false,
+          signals: ['active_scan_in_progress'],
+        },
+      },
+    });
+    expect(queue.commands).toHaveLength(1);
+  });
+
+  it('marks repeated idempotency key as replay without enqueueing another scan', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    const queue = new FakeScanQueue();
+    const useCase = new RequestScanUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new FakeOutbox(),
+      new FakeIdempotency(),
+      new AllowingScanRequestQuota(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+    );
+
+    const first = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'manual-scan-replay',
+      correlationId: 'correlation-1',
+    });
+    const second = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'manual-scan-replay',
+      correlationId: 'correlation-2',
+    });
+
+    if (!first.ok) {
+      throw first.error;
+    }
+
+    expect(second).toEqual({
+      ok: true,
+      value: {
+        scanJobId: first.value.scanJobId,
+        status: 'enqueued',
+        created: false,
+        requestDecision: {
+          decision: 'idempotent_replay',
+          reason: 'idempotency_key_reused',
+          createdNewScan: false,
+          signals: ['idempotent_replay'],
+        },
       },
     });
     expect(queue.commands).toHaveLength(1);
@@ -376,6 +443,15 @@ describe('RequestScanUseCase', () => {
         scanJobId: 'fresh-successful-scan-job',
         status: 'succeeded',
         created: false,
+        requestDecision: {
+          decision: 'fresh_success',
+          reason: 'latest_success_still_fresh',
+          createdNewScan: false,
+          nextEligibleAt: '2026-06-05T00:21:00.000Z',
+          waitSeconds: 660,
+          freshnessDeadlineAt: '2026-06-05T00:21:00.000Z',
+          signals: ['fresh_success'],
+        },
       },
     });
     expect(queue.commands).toHaveLength(0);
@@ -437,6 +513,15 @@ describe('RequestScanUseCase', () => {
         scanJobId: 'rate-limited-scan-job',
         status: 'failed',
         created: false,
+        requestDecision: {
+          decision: 'rate_limit_backoff',
+          reason: 'provider_rate_limit_backoff_active',
+          createdNewScan: false,
+          nextEligibleAt: '2026-06-05T00:11:00.000Z',
+          waitSeconds: 60,
+          rateLimitBackoffUntil: '2026-06-05T00:11:00.000Z',
+          signals: ['rate_limit_backoff'],
+        },
       },
     });
     expect(queue.commands).toHaveLength(0);
