@@ -153,8 +153,8 @@ function credentialLifecycleMatches(identity) {
 }
 
 async function exchangeRedditRefreshToken(refreshToken) {
-  const clientId = requiredEnv('REDDIT_CLIENT_ID');
-  const clientSecret = readOptionalEnv('REDDIT_CLIENT_SECRET') ?? '';
+  const clientId = requiredFirstEnv('REDDIT_CLIENT_ID', 'REDDIT_APP_CLIENT_ID');
+  const clientSecret = readFirstOptionalEnv('REDDIT_CLIENT_SECRET', 'REDDIT_APP_CLIENT_SECRET') ?? '';
   const userAgent = readOptionalEnv('REDDIT_USER_AGENT') ?? 'social-monitor-mvp/0.1 live-smoke';
   const timeoutMs = positiveIntegerEnv('REDDIT_TOKEN_EXCHANGE_TIMEOUT_MS', 10_000);
   const response = await globalThis.fetch('https://www.reddit.com/api/v1/access_token', {
@@ -194,8 +194,8 @@ async function exchangeRedditRefreshToken(refreshToken) {
 }
 
 async function revokeRedditAccessToken(accessToken) {
-  const clientId = requiredEnv('REDDIT_CLIENT_ID');
-  const clientSecret = readOptionalEnv('REDDIT_CLIENT_SECRET') ?? '';
+  const clientId = requiredFirstEnv('REDDIT_CLIENT_ID', 'REDDIT_APP_CLIENT_ID');
+  const clientSecret = readFirstOptionalEnv('REDDIT_CLIENT_SECRET', 'REDDIT_APP_CLIENT_SECRET') ?? '';
   const userAgent = readOptionalEnv('REDDIT_USER_AGENT') ?? 'social-monitor-mvp/0.1 live-smoke';
   const timeoutMs = positiveIntegerEnv('REDDIT_TOKEN_EXCHANGE_TIMEOUT_MS', 10_000);
   const response = await globalThis.fetch('https://www.reddit.com/api/v1/revoke_token', {
@@ -287,6 +287,15 @@ function requiredEnv(name) {
   return value;
 }
 
+function requiredFirstEnv(...names) {
+  const value = readFirstOptionalEnv(...names);
+  if (value === undefined) {
+    throw new Error(`${names.join(' or ')} is required to capture live Reddit OAuth evidence`);
+  }
+
+  return value;
+}
+
 function requiredCommitShaEnv(name) {
   const value = requiredEnv(name);
   if (!/^[0-9a-f]{40}$/.test(value)) {
@@ -294,6 +303,17 @@ function requiredCommitShaEnv(name) {
   }
 
   return value;
+}
+
+function readFirstOptionalEnv(...names) {
+  for (const name of names) {
+    const value = readOptionalEnv(name);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 function readOptionalEnv(name) {

@@ -611,7 +611,9 @@ function validateLiveSmokeScripts() {
   for (const marker of [
     "grant_type: 'refresh_token'",
     'REDDIT_REFRESH_TOKEN',
-    "readOptionalEnv('REDDIT_CLIENT_SECRET') ?? ''",
+    'requiredFirstEnv',
+    "'REDDIT_CLIENT_ID', 'REDDIT_APP_CLIENT_ID'",
+    "'REDDIT_CLIENT_SECRET', 'REDDIT_APP_CLIENT_SECRET'",
   ]) {
     if (!redditLiveCaptureScript.includes(marker)) {
       violations.push(`${redditLiveCaptureScriptPath}: live Reddit OAuth capture must support permanent refresh-token credentials through ${marker}`);
