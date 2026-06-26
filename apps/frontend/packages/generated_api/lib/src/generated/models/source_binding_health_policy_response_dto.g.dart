@@ -19,11 +19,17 @@ _$SourceBindingHealthPolicyResponseDtoFromJson(Map<String, dynamic> json) =>
       sourceBindingId: json['sourceBindingId'] as String,
       tenantId: json['tenantId'],
       workspaceId: json['workspaceId'],
+      cadence: json['cadence'] == null
+          ? null
+          : ScanPolicyCadenceResponseDto.fromJson(
+              json['cadence'] as Map<String, dynamic>,
+            ),
     );
 
 Map<String, dynamic> _$SourceBindingHealthPolicyResponseDtoToJson(
   SourceBindingHealthPolicyResponseDto instance,
 ) => <String, dynamic>{
+  'cadence': instance.cadence,
   'createdAt': instance.createdAt.toIso8601String(),
   'freshnessSeconds': instance.freshnessSeconds,
   'id': instance.id,

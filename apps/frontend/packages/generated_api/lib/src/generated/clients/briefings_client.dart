@@ -8,6 +8,7 @@ import 'package:retrofit/error_logger.dart';
 
 import '../models/briefing_job_status_response_dto.dart';
 import '../models/briefing_response_dto.dart';
+import '../models/freshness_status.dart';
 import '../models/list_briefings_response_dto.dart';
 import '../models/request_briefing_request_dto.dart';
 import '../models/request_briefing_response_dto.dart';
@@ -61,6 +62,11 @@ abstract class BriefingsClient {
     @Header('x-tenant-id') required String xTenantId,
     @Query('cursor') String? cursor,
     @Query('limit') num? limit,
+    @Query('memoryGuidanceApplied') bool? memoryGuidanceApplied,
+    @Query('freshnessStatus') FreshnessStatus? freshnessStatus,
+    @Query('subscriptionId') String? subscriptionId,
+    @Query('userId') String? userId,
+    @Query('providerKey') String? providerKey,
     @Query('topicId') String? topicId,
     @Query('scopeType') ScopeType? scopeType,
     @Header('authorization') String? authorization,

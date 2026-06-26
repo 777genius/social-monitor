@@ -7,6 +7,7 @@ import 'package:json_annotation/json_annotation.dart';
 import 'build_personalized_digest_response_dto_status_status.dart';
 import 'personalized_digest_window_dto.dart';
 import 'ranked_feed_item_dto.dart';
+import 'relevance_memory_guidance_dto.dart';
 
 part 'build_personalized_digest_response_dto.g.dart';
 
@@ -19,6 +20,7 @@ class BuildPersonalizedDigestResponseDto {
     required this.topicIds,
     required this.userId,
     required this.window,
+    this.memoryGuidance,
   });
 
   factory BuildPersonalizedDigestResponseDto.fromJson(
@@ -27,6 +29,7 @@ class BuildPersonalizedDigestResponseDto {
 
   final List<String> highSignalFeedItemIds;
   final List<RankedFeedItemDto> items;
+  final RelevanceMemoryGuidanceDto? memoryGuidance;
   final BuildPersonalizedDigestResponseDtoStatusStatus status;
   final List<String> topicIds;
   final String userId;

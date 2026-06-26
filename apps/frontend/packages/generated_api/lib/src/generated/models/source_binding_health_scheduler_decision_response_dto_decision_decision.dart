@@ -14,10 +14,14 @@ enum SourceBindingHealthSchedulerDecisionResponseDtoDecisionDecision {
   notConfigured('not_configured'),
   @JsonValue('active_scan')
   activeScan('active_scan'),
+  @JsonValue('duplicate_window')
+  duplicateWindow('duplicate_window'),
   @JsonValue('fresh_success')
   freshSuccess('fresh_success'),
   @JsonValue('rate_limit_backoff')
   rateLimitBackoff('rate_limit_backoff'),
+  @JsonValue('provider_failure_backoff')
+  providerFailureBackoff('provider_failure_backoff'),
   @JsonValue('scheduled_later')
   scheduledLater('scheduled_later'),
 

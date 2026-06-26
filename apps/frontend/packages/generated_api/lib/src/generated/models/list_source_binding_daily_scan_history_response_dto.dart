@@ -4,6 +4,8 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'list_source_binding_daily_scan_history_response_dto_source_binding_status_source_binding_status.dart';
+import 'scan_policy_cadence_response_dto.dart';
 import 'source_binding_daily_scan_history_day_response_dto.dart';
 import 'source_binding_daily_scan_history_summary_response_dto.dart';
 
@@ -14,10 +16,14 @@ class ListSourceBindingDailyScanHistoryResponseDto {
   const ListSourceBindingDailyScanHistoryResponseDto({
     required this.days,
     required this.maxScanJobs,
+    required this.providerKey,
     required this.sourceBindingId,
+    required this.sourceBindingStatus,
+    required this.topicId,
     required this.truncated,
     required this.windowEndedAt,
     required this.windowStartedAt,
+    this.cadence,
     this.summary,
   });
 
@@ -25,10 +31,15 @@ class ListSourceBindingDailyScanHistoryResponseDto {
     Map<String, Object?> json,
   ) => _$ListSourceBindingDailyScanHistoryResponseDtoFromJson(json);
 
+  final ScanPolicyCadenceResponseDto? cadence;
   final List<SourceBindingDailyScanHistoryDayResponseDto> days;
   final num maxScanJobs;
+  final String providerKey;
   final String sourceBindingId;
+  final ListSourceBindingDailyScanHistoryResponseDtoSourceBindingStatusSourceBindingStatus
+  sourceBindingStatus;
   final SourceBindingDailyScanHistorySummaryResponseDto? summary;
+  final String topicId;
   final bool truncated;
   final DateTime windowEndedAt;
   final DateTime windowStartedAt;

@@ -25,6 +25,11 @@ BuildPersonalizedDigestResponseDto _$BuildPersonalizedDigestResponseDtoFromJson(
   window: PersonalizedDigestWindowDto.fromJson(
     json['window'] as Map<String, dynamic>,
   ),
+  memoryGuidance: json['memoryGuidance'] == null
+      ? null
+      : RelevanceMemoryGuidanceDto.fromJson(
+          json['memoryGuidance'] as Map<String, dynamic>,
+        ),
 );
 
 Map<String, dynamic> _$BuildPersonalizedDigestResponseDtoToJson(
@@ -32,6 +37,7 @@ Map<String, dynamic> _$BuildPersonalizedDigestResponseDtoToJson(
 ) => <String, dynamic>{
   'highSignalFeedItemIds': instance.highSignalFeedItemIds,
   'items': instance.items,
+  'memoryGuidance': instance.memoryGuidance,
   'status': instance.status,
   'topicIds': instance.topicIds,
   'userId': instance.userId,

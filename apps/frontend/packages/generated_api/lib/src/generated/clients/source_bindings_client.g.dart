@@ -24,6 +24,8 @@ class _SourceBindingsClient implements SourceBindingsClient {
     required String topicId,
     required String xWorkspaceId,
     required String xTenantId,
+    List<Status2>? status,
+    List<String>? providerKey,
     String? cursor,
     num? limit,
     String? authorization,
@@ -31,6 +33,8 @@ class _SourceBindingsClient implements SourceBindingsClient {
   }) async {
     final _extra = <String, dynamic>{};
     final queryParameters = <String, dynamic>{
+      r'status': status,
+      r'providerKey': providerKey,
       r'cursor': cursor,
       r'limit': limit,
     };
@@ -196,10 +200,58 @@ class _SourceBindingsClient implements SourceBindingsClient {
   }
 
   @override
+  Future<ListTopicSourceDailyHistoryResponseDto>
+  sourceBindingControllerDailyHistory({
+    required String topicId,
+    required String xWorkspaceId,
+    required String xTenantId,
+    List<String>? providerKey,
+    num? days,
+    String? authorization,
+    String? xWorkspaceRole,
+  }) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{
+      r'providerKey': providerKey,
+      r'days': days,
+    };
+    queryParameters.removeWhere((k, v) => v == null);
+    final _headers = <String, dynamic>{
+      r'x-workspace-id': xWorkspaceId,
+      r'x-tenant-id': xTenantId,
+      r'authorization': authorization,
+      r'x-workspace-role': xWorkspaceRole,
+    };
+    _headers.removeWhere((k, v) => v == null);
+    const Map<String, dynamic>? _data = null;
+    final _options = _setStreamType<ListTopicSourceDailyHistoryResponseDto>(
+      Options(method: 'GET', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            '/topics/${topicId}/source-bindings/daily-history',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, Object?>>(_options);
+    late ListTopicSourceDailyHistoryResponseDto _value;
+    try {
+      _value = ListTopicSourceDailyHistoryResponseDto.fromJson(_result.data!);
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options, response: _result);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
   Future<ListSourceBindingOverviewResponseDto> sourceBindingControllerOverview({
     required String topicId,
     required String xWorkspaceId,
     required String xTenantId,
+    List<Status2>? status,
+    List<String>? providerKey,
     String? cursor,
     num? limit,
     String? authorization,
@@ -207,6 +259,8 @@ class _SourceBindingsClient implements SourceBindingsClient {
   }) async {
     final _extra = <String, dynamic>{};
     final queryParameters = <String, dynamic>{
+      r'status': status,
+      r'providerKey': providerKey,
       r'cursor': cursor,
       r'limit': limit,
     };

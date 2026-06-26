@@ -10,6 +10,7 @@ import '../models/list_scan_requests_response_dto.dart';
 import '../models/list_source_binding_daily_scan_history_response_dto.dart';
 import '../models/request_scan_response_dto.dart';
 import '../models/scan_status_response_dto.dart';
+import '../models/status.dart';
 
 part 'scan_requests_client.g.dart';
 
@@ -41,6 +42,7 @@ abstract class ScanRequestsClient {
     @Path('sourceBindingId') required String sourceBindingId,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
+    @Query('status') List<Status>? status,
     @Query('cursor') String? cursor,
     @Query('limit') num? limit,
     @Header('authorization') String? authorization,

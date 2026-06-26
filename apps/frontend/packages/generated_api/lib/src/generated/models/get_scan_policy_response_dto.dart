@@ -4,6 +4,8 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'scan_policy_cadence_response_dto.dart';
+
 part 'get_scan_policy_response_dto.g.dart';
 
 @JsonSerializable()
@@ -18,11 +20,13 @@ class GetScanPolicyResponseDto {
     required this.sourceBindingId,
     required this.tenantId,
     required this.workspaceId,
+    this.cadence,
   });
 
   factory GetScanPolicyResponseDto.fromJson(Map<String, Object?> json) =>
       _$GetScanPolicyResponseDtoFromJson(json);
 
+  final ScanPolicyCadenceResponseDto? cadence;
   final DateTime createdAt;
   final num freshnessSeconds;
   final String id;

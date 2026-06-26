@@ -14,6 +14,11 @@ RankFeedItemsResponseDto _$RankFeedItemsResponseDtoFromJson(
       .map((e) => RankedFeedItemDto.fromJson(e as Map<String, dynamic>))
       .toList(),
   profileApplied: json['profileApplied'] as bool,
+  memoryGuidance: json['memoryGuidance'] == null
+      ? null
+      : RelevanceMemoryGuidanceDto.fromJson(
+          json['memoryGuidance'] as Map<String, dynamic>,
+        ),
   profile: json['profile'] == null
       ? null
       : UserRelevanceProfileDto.fromJson(
@@ -26,6 +31,7 @@ Map<String, dynamic> _$RankFeedItemsResponseDtoToJson(
 ) => <String, dynamic>{
   'generatedAt': instance.generatedAt.toIso8601String(),
   'items': instance.items,
+  'memoryGuidance': instance.memoryGuidance,
   'profile': instance.profile,
   'profileApplied': instance.profileApplied,
 };

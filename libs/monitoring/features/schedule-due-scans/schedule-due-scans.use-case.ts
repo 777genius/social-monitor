@@ -28,6 +28,10 @@ import {
   providerFailureBackoffUntil,
   rateLimitBackoffUntil,
 } from '../shared/scan-freshness-guard';
+import {
+  nextScanPolicyRunAfterDecision,
+  scheduledScanIdempotencyKey,
+} from '../shared/scan-scheduler-decision-policy';
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
 type ScheduleDueScansFailure = DomainError | Error;
@@ -102,7 +106,7 @@ export class ScheduleDueScansUseCase {
                 intervalSeconds: policySnapshot.intervalSeconds,
                 freshnessSeconds: policySnapshot.freshnessSeconds,
               });
-        const nextRunAt = nextRunAtAfterSchedulerDecision({
+        const nextRunAt = nextScanPolicyRunAfterDecision({
           dueAt: policySnapshot.nextRunAt,
           intervalSeconds: unavailableCadence.intervalSeconds,
           now,
@@ -147,7 +151,7 @@ export class ScheduleDueScansUseCase {
         sourceBindingId: policySnapshot.sourceBindingId,
         limit: 5,
       });
-      const idempotencyKey = scheduledIdempotencyKey(
+      const idempotencyKey = scheduledScanIdempotencyKey(
         policySnapshot.id,
         policySnapshot.nextRunAt,
       );
@@ -199,7 +203,7 @@ export class ScheduleDueScansUseCase {
           causationId: idempotencyKey,
         };
         if (!(await this.scanQueue.canAccept(queueCommand))) {
-          const nextRunAt = nextRunAtAfterSchedulerDecision({
+          const nextRunAt = nextScanPolicyRunAfterDecision({
             dueAt: policySnapshot.nextRunAt,
             intervalSeconds: cadence.intervalSeconds,
             now,
@@ -249,7 +253,7 @@ export class ScheduleDueScansUseCase {
           reason: 'scan_policy_due_now',
           scanJobId: queueCommand.scanJobId,
           policyDueAt: policySnapshot.nextRunAt,
-          nextRunAt: nextRunAtAfterSchedulerDecision({
+          nextRunAt: nextScanPolicyRunAfterDecision({
             dueAt: policySnapshot.nextRunAt,
             intervalSeconds: cadence.intervalSeconds,
             now,
@@ -272,7 +276,7 @@ export class ScheduleDueScansUseCase {
           decision: 'skipped',
           reason: skipReason,
           policyDueAt: policySnapshot.nextRunAt,
-          nextRunAt: nextRunAtAfterSchedulerDecision({
+          nextRunAt: nextScanPolicyRunAfterDecision({
             dueAt: policySnapshot.nextRunAt,
             intervalSeconds: cadence.intervalSeconds,
             now,
@@ -289,7 +293,7 @@ export class ScheduleDueScansUseCase {
 
       await this.scanPolicies.save(
         policy.scheduleNext({
-          nextRunAt: nextRunAtAfterSchedulerDecision({
+          nextRunAt: nextScanPolicyRunAfterDecision({
             dueAt: policySnapshot.nextRunAt,
             intervalSeconds: cadence.intervalSeconds,
             now,
@@ -365,33 +369,4 @@ const schedulerSkipReason = (params: {
   }
 
   return null;
-};
-
-const scheduledIdempotencyKey = (scanPolicyId: string, dueAt: Date): string =>
-  `scheduled:${scanPolicyId}:${dueAt.toISOString()}`;
-
-const nextRunAtAfterSchedulerDecision = (params: {
-  readonly dueAt: Date;
-  readonly intervalSeconds: number;
-  readonly now: Date;
-  readonly backoffUntil: Date | null;
-}): Date => {
-  const intervalMs = params.intervalSeconds * 1000;
-  const intervalNextRunAt = new Date(params.dueAt.getTime() + intervalMs);
-
-  if (params.backoffUntil !== null) {
-    const backoffNextRunAt =
-      params.backoffUntil.getTime() > intervalNextRunAt.getTime()
-        ? params.backoffUntil
-        : intervalNextRunAt;
-
-    if (backoffNextRunAt.getTime() > params.now.getTime()) {
-      return backoffNextRunAt;
-    }
-  }
-
-  const elapsedMs = Math.max(0, params.now.getTime() - params.dueAt.getTime());
-  const elapsedIntervals = Math.floor(elapsedMs / intervalMs) + 1;
-
-  return new Date(params.dueAt.getTime() + elapsedIntervals * intervalMs);
 };

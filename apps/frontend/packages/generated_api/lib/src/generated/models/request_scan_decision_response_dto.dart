@@ -15,8 +15,14 @@ class RequestScanDecisionResponseDto {
     required this.decision,
     required this.reason,
     required this.signals,
+    this.configuredIntervalSeconds,
+    this.effectiveIntervalSeconds,
     this.freshnessDeadlineAt,
+    this.freshnessSeconds,
+    this.minimumIntervalSeconds,
     this.nextEligibleAt,
+    this.providerFailureBackoffUntil,
+    this.providerMinimumIntervalEnforced,
     this.rateLimitBackoffUntil,
     this.waitSeconds,
   });
@@ -24,10 +30,16 @@ class RequestScanDecisionResponseDto {
   factory RequestScanDecisionResponseDto.fromJson(Map<String, Object?> json) =>
       _$RequestScanDecisionResponseDtoFromJson(json);
 
+  final num? configuredIntervalSeconds;
   final bool createdNewScan;
   final RequestScanDecisionResponseDtoDecisionDecision decision;
+  final num? effectiveIntervalSeconds;
   final DateTime? freshnessDeadlineAt;
+  final num? freshnessSeconds;
+  final num? minimumIntervalSeconds;
   final DateTime? nextEligibleAt;
+  final DateTime? providerFailureBackoffUntil;
+  final bool? providerMinimumIntervalEnforced;
   final DateTime? rateLimitBackoffUntil;
   final String reason;
   final List<String> signals;

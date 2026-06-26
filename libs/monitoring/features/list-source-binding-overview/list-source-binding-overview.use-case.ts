@@ -178,6 +178,10 @@ const overviewOperatorAction = (
     return 'check_provider_health_or_credentials';
   }
 
+  if (items.some((item) => item.schedulerDecision.decision === 'duplicate_window')) {
+    return 'wait_for_existing_scheduled_scan_window';
+  }
+
   if (items.some((item) =>
     (item.recentWindow?.providerUnavailableScans ?? 0) > 0 ||
     item.healthState === 'degraded',
@@ -222,6 +226,9 @@ const overviewSignals = (
   }
   if (items.some((item) => item.schedulerDecision.decision === 'provider_failure_backoff')) {
     signals.add('provider_failure_backoff');
+  }
+  if (items.some((item) => item.schedulerDecision.decision === 'duplicate_window')) {
+    signals.add('duplicate_window');
   }
   if (items.some((item) => (item.recentWindow?.providerUnavailableScans ?? 0) > 0)) {
     signals.add('provider_unavailable');

@@ -66,6 +66,11 @@ BriefingArtifactResponseDto _$BriefingArtifactResponseDtoFromJson(
           json['coverage'] as Map<String, dynamic>,
         ),
   noSignalReason: json['noSignalReason'] as String?,
+  personalization: json['personalization'] == null
+      ? null
+      : BriefingPersonalizationDto.fromJson(
+          json['personalization'] as Map<String, dynamic>,
+        ),
   subscriptionId: json['subscriptionId'] as String?,
   userId: json['userId'] as String?,
 );
@@ -83,6 +88,7 @@ Map<String, dynamic> _$BriefingArtifactResponseDtoToJson(
   'headline': instance.headline,
   'lineage': instance.lineage,
   'noSignalReason': instance.noSignalReason,
+  'personalization': instance.personalization,
   'qualityFlags': instance.qualityFlags,
   'readerBrief': instance.readerBrief,
   'repeatedSignals': instance.repeatedSignals,

@@ -19,6 +19,10 @@ import {
   providerFailureBackoffUntil,
   rateLimitBackoffUntil,
 } from '../shared/scan-freshness-guard';
+import {
+  nextScanPolicyRunAfterDecision,
+  scheduledScanIdempotencyKey,
+} from '../shared/scan-scheduler-decision-policy';
 import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
 import { buildScanStatusView } from '../shared/scan-status-view';
 import { presentSourceBinding } from '../shared/source-binding-presenter';
@@ -108,6 +112,16 @@ export class GetSourceBindingHealthUseCase {
           freshnessSeconds: cadence?.freshnessSeconds ?? scanPolicySnapshot.freshnessSeconds,
           now,
         });
+    const duplicateScheduledScan = scanPolicySnapshot === undefined
+      ? null
+      : await this.scanJobs.findByIdempotencyKey({
+          tenantId: query.tenantId,
+          workspaceId: query.workspaceId,
+          idempotencyKey: scheduledScanIdempotencyKey(
+            scanPolicySnapshot.id,
+            scanPolicySnapshot.nextRunAt,
+          ),
+        });
     const providerFailureBackoff = cadence === undefined
       ? null
       : providerFailureBackoffUntil({
@@ -139,6 +153,7 @@ export class GetSourceBindingHealthUseCase {
         providerKey: bindingSnapshot.providerKey,
         scanPolicySnapshot,
         activeScanJob,
+        duplicateScheduledScan,
         latestScanJob,
         freshness,
         cadence,
@@ -240,9 +255,11 @@ const buildSchedulerDecision = (params: {
   readonly scanPolicySnapshot?: {
     readonly intervalSeconds: number;
     readonly freshnessSeconds: number;
+    readonly id: string;
     readonly nextRunAt: Date;
   };
   readonly activeScanJob: ScanJob | null;
+  readonly duplicateScheduledScan: ScanJob | null;
   readonly latestScanJob: ScanJob | null;
   readonly freshness?: SourceBindingHealthFreshnessView;
   readonly cadence?: EffectiveProviderScanCadence;
@@ -286,6 +303,28 @@ const buildSchedulerDecision = (params: {
       decision: 'active_scan',
       reason: 'scan_already_in_progress',
       signals: ['active_scan_in_progress'],
+    };
+  }
+
+  if (
+    params.duplicateScheduledScan !== null &&
+    params.scanPolicySnapshot.nextRunAt.getTime() <= params.now.getTime()
+  ) {
+    const nextEligibleAt = nextScanPolicyRunAfterDecision({
+      dueAt: params.scanPolicySnapshot.nextRunAt,
+      intervalSeconds: params.cadence?.intervalSeconds ?? params.scanPolicySnapshot.intervalSeconds,
+      now: params.now,
+      backoffUntil: null,
+    }).toISOString();
+
+    return {
+      ...base,
+      canScanNow: false,
+      decision: 'duplicate_window',
+      reason: 'scheduled_scan_window_already_recorded',
+      nextEligibleAt,
+      waitSeconds: secondsUntil(nextEligibleAt, params.now),
+      signals: cadenceSignals('duplicate_window', params.cadence?.providerMinimumIntervalEnforced === true),
     };
   }
 

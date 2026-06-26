@@ -64,6 +64,7 @@ class _ScanRequestsClient implements ScanRequestsClient {
     required String sourceBindingId,
     required String xWorkspaceId,
     required String xTenantId,
+    List<Status>? status,
     String? cursor,
     num? limit,
     String? authorization,
@@ -71,6 +72,7 @@ class _ScanRequestsClient implements ScanRequestsClient {
   }) async {
     final _extra = <String, dynamic>{};
     final queryParameters = <String, dynamic>{
+      r'status': status,
       r'cursor': cursor,
       r'limit': limit,
     };

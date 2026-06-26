@@ -215,7 +215,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
     expect(queue.all()).toHaveLength(initialQueueLength + 1);
   });
 
-  it('skips due scheduled scan for a paused source binding without advancing cadence', async () => {
+  it('skips due scheduled scan for a paused source binding and advances cadence', async () => {
     const tenant = 'tenant-scheduled-paused-e2e';
     const workspace = 'workspace-scheduled-paused-e2e';
     const initialQueueLength = queue.all().length;
@@ -291,17 +291,19 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
     });
     expect(queue.all()).toHaveLength(initialQueueLength);
 
-    const unchangedPolicy = await request(app.getHttpServer())
+    const advancedPolicy = await request(app.getHttpServer())
       .get(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    expect(unchangedPolicy.body).toMatchObject({
+    expect(advancedPolicy.body).toMatchObject({
       id: policy.body.id,
       sourceBindingId: binding.body.sourceBindingId,
-      nextRunAt: policy.body.nextRunAt,
+      nextRunAt: new Date(
+        Date.parse(policy.body.nextRunAt) + 300_000,
+      ).toISOString(),
     });
   });
 });

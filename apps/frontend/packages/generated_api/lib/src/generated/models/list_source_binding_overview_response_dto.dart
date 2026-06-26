@@ -5,6 +5,7 @@
 import 'package:json_annotation/json_annotation.dart';
 
 import 'source_binding_health_response_dto.dart';
+import 'source_binding_overview_summary_response_dto.dart';
 
 part 'list_source_binding_overview_response_dto.g.dart';
 
@@ -12,6 +13,7 @@ part 'list_source_binding_overview_response_dto.g.dart';
 class ListSourceBindingOverviewResponseDto {
   const ListSourceBindingOverviewResponseDto({
     required this.items,
+    required this.summary,
     this.nextCursor,
   });
 
@@ -21,6 +23,7 @@ class ListSourceBindingOverviewResponseDto {
 
   final List<SourceBindingHealthResponseDto> items;
   final String? nextCursor;
+  final SourceBindingOverviewSummaryResponseDto summary;
 
   Map<String, Object?> toJson() =>
       _$ListSourceBindingOverviewResponseDtoToJson(this);

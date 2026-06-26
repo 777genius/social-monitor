@@ -16,6 +16,8 @@ enum RequestScanDecisionResponseDtoDecisionDecision {
   freshSuccess('fresh_success'),
   @JsonValue('rate_limit_backoff')
   rateLimitBackoff('rate_limit_backoff'),
+  @JsonValue('provider_failure_backoff')
+  providerFailureBackoff('provider_failure_backoff'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);

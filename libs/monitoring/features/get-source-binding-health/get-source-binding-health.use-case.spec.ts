@@ -16,6 +16,7 @@ import type {
   ScanPolicyRepositoryPort,
   SourceBindingRepositoryPort,
 } from '../../ports';
+import { scheduledScanIdempotencyKey } from '../shared/scan-scheduler-decision-policy';
 import { GetSourceBindingHealthUseCase } from './get-source-binding-health.use-case';
 
 class FakeSourceBindings implements SourceBindingRepositoryPort {
@@ -271,6 +272,48 @@ describe('GetSourceBindingHealthUseCase', () => {
           reason: 'scan_policy_next_run_in_future',
           nextEligibleAt: '2026-06-16T00:15:00.000Z',
           waitSeconds: 300,
+        }),
+      }),
+    }));
+  });
+
+  it('explains duplicate scheduled scan windows without reporting ready', async () => {
+    const { useCase, policies, jobs } = await setup();
+    const policy = makePolicy();
+    await policies.save(policy);
+    const policySnapshot = policy.toSnapshot();
+    await jobs.save(
+      ScanJob.request({
+        id: 'scheduled-window-job',
+        tenantId: tenant,
+        workspaceId: workspace,
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: scheduledScanIdempotencyKey(
+          policySnapshot.id,
+          policySnapshot.nextRunAt,
+        ),
+        requestedAt: new Date('2026-06-16T00:05:00.000Z'),
+      })
+        .markEnqueued({ enqueuedAt: new Date('2026-06-16T00:05:01.000Z') })
+        .markFailed({
+          completedAt: new Date('2026-06-16T00:06:00.000Z'),
+          failureReason: 'Worker conflict while processing scheduled scan',
+        }),
+    );
+
+    const result = await useCase.execute(baseQuery());
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      value: expect.objectContaining({
+        schedulerDecision: expect.objectContaining({
+          canScanNow: false,
+          decision: 'duplicate_window',
+          reason: 'scheduled_scan_window_already_recorded',
+          nextEligibleAt: '2026-06-16T00:15:00.000Z',
+          waitSeconds: 300,
+          signals: ['duplicate_window'],
         }),
       }),
     }));

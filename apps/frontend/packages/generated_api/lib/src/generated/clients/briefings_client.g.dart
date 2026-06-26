@@ -108,6 +108,11 @@ class _BriefingsClient implements BriefingsClient {
     required String xTenantId,
     String? cursor,
     num? limit,
+    bool? memoryGuidanceApplied,
+    FreshnessStatus? freshnessStatus,
+    String? subscriptionId,
+    String? userId,
+    String? providerKey,
     String? topicId,
     ScopeType? scopeType,
     String? authorization,
@@ -117,6 +122,11 @@ class _BriefingsClient implements BriefingsClient {
     final queryParameters = <String, dynamic>{
       r'cursor': cursor,
       r'limit': limit,
+      r'memoryGuidanceApplied': memoryGuidanceApplied,
+      r'freshnessStatus': freshnessStatus?.toJson(),
+      r'subscriptionId': subscriptionId,
+      r'userId': userId,
+      r'providerKey': providerKey,
       r'topicId': topicId,
       r'scopeType': scopeType?.toJson(),
     };

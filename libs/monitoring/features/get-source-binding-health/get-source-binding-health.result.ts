@@ -74,6 +74,7 @@ export type SourceBindingHealthSchedulerDecision =
   | 'paused'
   | 'not_configured'
   | 'active_scan'
+  | 'duplicate_window'
   | 'fresh_success'
   | 'rate_limit_backoff'
   | 'provider_failure_backoff'

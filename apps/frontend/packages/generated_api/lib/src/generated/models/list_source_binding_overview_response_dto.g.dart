@@ -16,6 +16,9 @@ _$ListSourceBindingOverviewResponseDtoFromJson(Map<String, dynamic> json) =>
             ),
           )
           .toList(),
+      summary: SourceBindingOverviewSummaryResponseDto.fromJson(
+        json['summary'] as Map<String, dynamic>,
+      ),
       nextCursor: json['nextCursor'] as String?,
     );
 
@@ -24,4 +27,5 @@ Map<String, dynamic> _$ListSourceBindingOverviewResponseDtoToJson(
 ) => <String, dynamic>{
   'items': instance.items,
   'nextCursor': instance.nextCursor,
+  'summary': instance.summary,
 };

@@ -7,6 +7,7 @@ import 'package:json_annotation/json_annotation.dart';
 import 'source_profile_dto_readiness_state_readiness_state.dart';
 import 'source_profile_dto_runtime_readiness_runtime_readiness.dart';
 import 'source_profile_freshness_guard_dto.dart';
+import 'source_profile_live_evidence_requirement_dto.dart';
 
 part 'source_profile_dto.g.dart';
 
@@ -17,6 +18,7 @@ class SourceProfileDto {
     required this.cursorModel,
     required this.limitations,
     required this.liveBetaBlockers,
+    required this.liveEvidenceRequirements,
     required this.productionSafe,
     required this.providerKey,
     required this.quotaModel,
@@ -39,6 +41,7 @@ class SourceProfileDto {
   final SourceProfileFreshnessGuardDto? freshnessGuard;
   final List<String> limitations;
   final List<String> liveBetaBlockers;
+  final List<SourceProfileLiveEvidenceRequirementDto> liveEvidenceRequirements;
   final bool productionSafe;
   final String providerKey;
   final String quotaModel;

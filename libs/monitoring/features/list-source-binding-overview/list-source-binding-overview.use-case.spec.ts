@@ -246,6 +246,50 @@ describe('ListSourceBindingOverviewUseCase', () => {
     expect(getSourceBindingHealth.execute).not.toHaveBeenCalled();
   });
 
+  it('surfaces duplicate scheduled windows in overview actions and signals', async () => {
+    const listSourceBindings = {
+      execute: jest.fn().mockResolvedValue(ok({
+        sourceBindings: [makeSourceBindingView({ id: 'binding-duplicate' })],
+      })),
+    };
+    const getSourceBindingHealth = {
+      execute: jest.fn().mockResolvedValue(ok(makeHealthView({
+        sourceBinding: makeSourceBindingView({ id: 'binding-duplicate' }),
+        schedulerDecision: {
+          canScanNow: false,
+          decision: 'duplicate_window',
+          reason: 'scheduled_scan_window_already_recorded',
+          minimumIntervalSeconds: 300,
+          nextEligibleAt: '2026-06-26T00:10:00.000Z',
+          waitSeconds: 600,
+          signals: ['duplicate_window'],
+        },
+      }))),
+    };
+
+    const result = await new ListSourceBindingOverviewUseCase(
+      listSourceBindings,
+      getSourceBindingHealth,
+    ).execute({
+      tenantId: tenantId('tenant-overview'),
+      workspaceId: workspaceId('workspace-overview'),
+      topicId: 'topic-overview',
+      limit: 50,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        summary: expect.objectContaining({
+          canScanNowBindings: 0,
+          nextEligibleAt: '2026-06-26T00:10:00.000Z',
+          operatorAction: 'wait_for_existing_scheduled_scan_window',
+          signals: ['duplicate_window'],
+        }),
+      }),
+    });
+  });
+
   it('fails closed if a listed binding cannot be resolved through health scope', async () => {
     const listSourceBindings = {
       execute: jest.fn().mockResolvedValue(ok({

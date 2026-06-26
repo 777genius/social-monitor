@@ -12,7 +12,9 @@ import '../models/change_source_binding_status_request_dto.dart';
 import '../models/change_source_binding_status_response_dto.dart';
 import '../models/list_source_binding_overview_response_dto.dart';
 import '../models/list_source_bindings_response_dto.dart';
+import '../models/list_topic_source_daily_history_response_dto.dart';
 import '../models/source_binding_health_response_dto.dart';
+import '../models/status2.dart';
 
 part 'source_bindings_client.g.dart';
 
@@ -31,6 +33,8 @@ abstract class SourceBindingsClient {
     @Path('topicId') required String topicId,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
+    @Query('status') List<Status2>? status,
+    @Query('providerKey') List<String>? providerKey,
     @Query('cursor') String? cursor,
     @Query('limit') num? limit,
     @Header('authorization') String? authorization,
@@ -90,6 +94,23 @@ abstract class SourceBindingsClient {
     @Header('x-workspace-role') String? xWorkspaceRole,
   });
 
+  /// List daily source scan history for a topic grouped by provider.
+  ///
+  /// [authorization] - Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.
+  ///
+  /// [xWorkspaceRole] - Comma-separated workspace roles. Topic source history reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.
+  @GET('/topics/{topicId}/source-bindings/daily-history')
+  Future<ListTopicSourceDailyHistoryResponseDto>
+  sourceBindingControllerDailyHistory({
+    @Path('topicId') required String topicId,
+    @Header('x-workspace-id') required String xWorkspaceId,
+    @Header('x-tenant-id') required String xTenantId,
+    @Query('providerKey') List<String>? providerKey,
+    @Query('days') num? days,
+    @Header('authorization') String? authorization,
+    @Header('x-workspace-role') String? xWorkspaceRole,
+  });
+
   /// List source bindings with operational health for a topic.
   ///
   /// [authorization] - Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.
@@ -100,6 +121,8 @@ abstract class SourceBindingsClient {
     @Path('topicId') required String topicId,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
+    @Query('status') List<Status2>? status,
+    @Query('providerKey') List<String>? providerKey,
     @Query('cursor') String? cursor,
     @Query('limit') num? limit,
     @Header('authorization') String? authorization,

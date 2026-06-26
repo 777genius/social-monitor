@@ -17,8 +17,11 @@ class SourceBindingHealthSchedulerDecisionResponseDto {
     required this.reason,
     required this.signals,
     this.configuredIntervalSeconds,
+    this.effectiveIntervalSeconds,
     this.freshnessSeconds,
     this.nextEligibleAt,
+    this.providerFailureBackoffUntil,
+    this.providerMinimumIntervalEnforced,
     this.rateLimitBackoffUntil,
     this.waitSeconds,
   });
@@ -31,9 +34,12 @@ class SourceBindingHealthSchedulerDecisionResponseDto {
   final num? configuredIntervalSeconds;
   final SourceBindingHealthSchedulerDecisionResponseDtoDecisionDecision
   decision;
+  final num? effectiveIntervalSeconds;
   final num? freshnessSeconds;
   final num minimumIntervalSeconds;
   final DateTime? nextEligibleAt;
+  final DateTime? providerFailureBackoffUntil;
+  final bool? providerMinimumIntervalEnforced;
   final DateTime? rateLimitBackoffUntil;
   final String reason;
   final List<String> signals;

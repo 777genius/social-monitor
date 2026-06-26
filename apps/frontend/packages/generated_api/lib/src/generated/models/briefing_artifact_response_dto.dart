@@ -11,6 +11,7 @@ import 'briefing_context_artifact_dto.dart';
 import 'briefing_coverage_summary_dto.dart';
 import 'briefing_freshness_dto.dart';
 import 'briefing_lineage_dto.dart';
+import 'briefing_personalization_dto.dart';
 import 'briefing_reader_brief_dto.dart';
 import 'briefing_repeated_signal_dto.dart';
 import 'briefing_risk_dto.dart';
@@ -49,6 +50,7 @@ class BriefingArtifactResponseDto {
     required this.workspaceId,
     this.coverage,
     this.noSignalReason,
+    this.personalization,
     this.subscriptionId,
     this.userId,
   });
@@ -66,6 +68,7 @@ class BriefingArtifactResponseDto {
   final String headline;
   final BriefingLineageDto lineage;
   final String? noSignalReason;
+  final BriefingPersonalizationDto? personalization;
   final List<BriefingArtifactResponseDtoQualityFlagsQualityFlags> qualityFlags;
   final BriefingReaderBriefDto readerBrief;
   final List<BriefingRepeatedSignalDto> repeatedSignals;
