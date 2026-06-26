@@ -734,6 +734,95 @@ describe('Feed items list (e2e)', () => {
     });
   });
 
+  it('filters GitHub repo radar feed by long trend windows', async () => {
+    const tenant = 'tenant-feed-repo-window-e2e';
+    const workspace = 'workspace-feed-repo-window-e2e';
+    const topicId = 'topic-feed-repo-window-e2e';
+    const publishedAt = new Date(Date.now() - 30 * 60 * 1000);
+
+    seedFeedItem({
+      id: 'feed-repo-window-24h',
+      sourceItemId: 'source-repo-window-24h',
+      tenant,
+      workspace,
+      topicId,
+      providerKey: 'github-repo-radar',
+      canonicalUrl: 'https://github.test/openai/codex',
+      publishedAt,
+      providerMetadata: githubRepositoryTrendMetadata({
+        stars: 54000,
+        forks: 6100,
+        stars24h: 210,
+        stars7d: 1200,
+        stars30d: 4800,
+        stars90d: 11000,
+        primaryWindow: '24h',
+      }),
+    });
+    seedFeedItem({
+      id: 'feed-repo-window-30d',
+      sourceItemId: 'source-repo-window-30d',
+      tenant,
+      workspace,
+      topicId,
+      providerKey: 'github-repo-radar',
+      canonicalUrl: 'https://github.test/langchain-ai/langgraph',
+      publishedAt,
+      providerMetadata: githubRepositoryTrendMetadata({
+        stars: 42000,
+        forks: 5200,
+        stars24h: 75,
+        stars7d: 900,
+        stars30d: 6200,
+        stars90d: 14000,
+        primaryWindow: '30d',
+      }),
+    });
+
+    const response = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({
+        limit: 10,
+        topicId,
+        providerKey: 'github-repo-radar',
+        repositoryTrendWindow: '30d',
+      })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(response.body.items.map((item: { readonly id: string }) => item.id)).toEqual([
+      'feed-repo-window-30d',
+    ]);
+    expect(response.body.items[0]).toMatchObject({
+      providerMetrics: {
+        kind: 'github_repository',
+        trendingDelta: {
+          window: '30d',
+          value: 6200,
+        },
+        trendDeltas: expect.arrayContaining([
+          { window: '7d', value: 900 },
+          { window: '30d', value: 6200 },
+          { window: '90d', value: 14000 },
+        ]),
+      },
+    });
+    expect(response.body.sourceBreakdown).toMatchObject({
+      totalItems: 1,
+      providerCount: 1,
+      sourceCount: 1,
+      sources: [
+        expect.objectContaining({
+          providerKey: 'github-repo-radar',
+          contentType: 'repository',
+          sampleItemIds: ['feed-repo-window-30d'],
+        }),
+      ],
+    });
+  });
+
   it('omits normalized signal when a provider has no comparable raw metrics', async () => {
     const tenant = 'tenant-feed-no-signal-e2e';
     const workspace = 'workspace-feed-no-signal-e2e';
@@ -1001,7 +1090,7 @@ describe('Feed items list (e2e)', () => {
     readonly stars7d: number;
     readonly stars30d: number;
     readonly stars90d: number;
-    readonly primaryWindow: '24h' | '48h';
+    readonly primaryWindow: '24h' | '48h' | '7d' | '30d' | '90d';
   }): JsonObject => ({
     kind: 'github_repository_trend',
     repository: {

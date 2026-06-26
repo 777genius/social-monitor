@@ -232,6 +232,29 @@ describe('ListFeedItemsUseCase', () => {
     expect(baseline.queries).toEqual([]);
   });
 
+  it('accepts long repository trend windows used by repo radar scans', async () => {
+    const repository = new FakeFeedItemReadRepository({ items: [] });
+    const baseline = new FakeFeedSignalBaselineRepository();
+    const useCase = new ListFeedItemsUseCase(repository, baseline, fixedClock);
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 20,
+      providerKey: 'github-repo-radar',
+      repositoryTrendWindow: '90d',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(repository.queries).toEqual([
+      expect.objectContaining({
+        providerKey: 'github-repo-radar',
+        repositoryTrendWindow: '90d',
+      }),
+    ]);
+    expect(baseline.queries).toEqual([]);
+  });
+
   it('loads an exact source baseline cohort for visible items with comparable metrics', async () => {
     const item = makeRedditItem('reddit-1', 'TinySaaS');
     const repository = new FakeFeedItemReadRepository({ items: [item] });

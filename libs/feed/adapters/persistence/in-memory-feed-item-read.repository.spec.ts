@@ -224,6 +224,56 @@ describe('InMemoryFeedItemReadRepository', () => {
     expect(result.items.map((item) => item.toSnapshot().id)).toEqual(['feed-codex']);
   });
 
+  it('filters repository radar items by long trend windows', async () => {
+    const repository = new InMemoryFeedItemReadRepository();
+    repository.upsert(makeItem({
+      id: 'feed-codex',
+      sourceItemId: 'source-codex',
+      providerKey: 'github-repo-radar',
+      canonicalUrl: 'https://github.com/openai/codex',
+      providerMetadata: {
+        kind: 'github_repository_trend',
+        repository: {
+          fullName: 'openai/codex',
+          url: 'https://github.com/openai/codex',
+          language: 'TypeScript',
+          topics: ['ai', 'agents'],
+        },
+        trend: {
+          primaryWindow: '24h',
+        },
+      },
+    }));
+    repository.upsert(makeItem({
+      id: 'feed-uv',
+      sourceItemId: 'source-uv',
+      providerKey: 'github-repo-radar',
+      canonicalUrl: 'https://github.com/astral-sh/uv',
+      providerMetadata: {
+        kind: 'github_repository_trend',
+        repository: {
+          fullName: 'astral-sh/uv',
+          url: 'https://github.com/astral-sh/uv',
+          language: 'Rust',
+          topics: ['python'],
+        },
+        trend: {
+          primaryWindow: '7d',
+        },
+      },
+    }));
+
+    const result = await repository.list({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      providerKey: 'github-repo-radar',
+      repositoryTrendWindow: '7d',
+      limit: 10,
+    });
+
+    expect(result.items.map((item) => item.toSnapshot().id)).toEqual(['feed-uv']);
+  });
+
   it('lists lightweight signal baseline samples scoped by topic and observed window', async () => {
     const repository = new InMemoryFeedItemReadRepository();
     repository.upsert(makeItem({

@@ -19,7 +19,7 @@ type ListFeedItemsFailure = DomainError | Error;
 const MAX_LIMIT = 100;
 const MAX_SEARCH_QUERY_LENGTH = 200;
 const MAX_FILTER_VALUE_LENGTH = 80;
-const REPOSITORY_TREND_WINDOWS = new Set(['24h', '48h']);
+const REPOSITORY_TREND_WINDOWS = new Set(['24h', '48h', '7d', '30d', '90d']);
 
 export class ListFeedItemsUseCase {
   constructor(
