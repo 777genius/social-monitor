@@ -1823,6 +1823,11 @@ function requireCaptureScriptWiring() {
     "BACKEND_IMAGE_DIGEST",
     "mode: 0o600",
     "chmodSync",
+    "composePublishedPort",
+    "'port', service, containerPort",
+    "RABBITMQ_USER",
+    "RABBITMQ_PASSWORD",
+    "encodeURIComponent(rabbitUser)",
   ]) {
     if (!captureSource.includes(marker)) {
       violations.push(

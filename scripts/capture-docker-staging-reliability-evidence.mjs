@@ -31,9 +31,12 @@ const postgresTarget = validateEvidenceJsonFilePath(
 const environmentId = process.env.STAGING_ENVIRONMENT_ID ?? 'docker-alpha-1';
 const operator = process.env.STAGING_OPERATOR ?? 'backend-ops-1';
 const imageDigest = process.env.BACKEND_IMAGE_DIGEST ?? inspectImageDigest('social-monitor-local-api');
-const rabbitPort = process.env.RABBITMQ_PORT ?? '5672';
+const rabbitPort = process.env.RABBITMQ_PORT ?? composePublishedPort('rabbitmq', '5672') ?? '5672';
 const rabbitHost = process.env.RABBITMQ_HOST ?? 'localhost';
-const rabbitUrl = process.env.RABBITMQ_URL ?? `amqp://social_monitor:social_monitor_local_password@${rabbitHost}:${rabbitPort}`;
+const rabbitUser = process.env.RABBITMQ_USER ?? 'social_monitor';
+const rabbitPassword = process.env.RABBITMQ_PASSWORD ?? 'social_monitor_local_password';
+const rabbitUrl = process.env.RABBITMQ_URL ??
+  `amqp://${encodeURIComponent(rabbitUser)}:${encodeURIComponent(rabbitPassword)}@${rabbitHost}:${rabbitPort}`;
 const envFilePath =
   process.env.STAGING_RELIABILITY_ENV_PATH ??
   join(artifactRoot, 'staging-reliability.env');
@@ -779,6 +782,24 @@ function composeContainerId(service) {
   }
 
   return containerId;
+}
+
+function composePublishedPort(service, containerPort) {
+  try {
+    const raw = execFileSync('docker', ['compose', '--profile', 'app', 'port', service, containerPort], {
+      encoding: 'utf8',
+    }).trim();
+    const lastColonIndex = raw.lastIndexOf(':');
+
+    if (lastColonIndex === -1) {
+      return undefined;
+    }
+
+    const port = raw.slice(lastColonIndex + 1).trim();
+    return /^\d+$/.test(port) ? port : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function waitForComposeService(service, options = {}) {
