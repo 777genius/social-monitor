@@ -4,6 +4,7 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'source_binding_daily_history_scheduler_skip_breakdown_response_dto.dart';
 import 'source_binding_daily_scan_history_day_response_dto_provider_health_state_provider_health_state.dart';
 
 part 'source_binding_daily_scan_history_day_response_dto.g.dart';
@@ -22,6 +23,10 @@ class SourceBindingDailyScanHistoryDayResponseDto {
     required this.providerHealthState,
     required this.providerUnavailableScans,
     required this.rateLimitedScans,
+    required this.schedulerDecisionCount,
+    required this.schedulerEnqueuedCount,
+    required this.schedulerSkippedByReason,
+    required this.schedulerSkippedCount,
     required this.signals,
     required this.skippedDuplicates,
     required this.succeededScans,
@@ -30,6 +35,7 @@ class SourceBindingDailyScanHistoryDayResponseDto {
     required this.windowStartedAt,
     this.lastCompletedAt,
     this.lastScanRequestedAt,
+    this.lastSchedulerEvaluatedAt,
   });
 
   factory SourceBindingDailyScanHistoryDayResponseDto.fromJson(
@@ -44,12 +50,18 @@ class SourceBindingDailyScanHistoryDayResponseDto {
   final num inserted;
   final DateTime? lastCompletedAt;
   final DateTime? lastScanRequestedAt;
+  final DateTime? lastSchedulerEvaluatedAt;
   final String operatorAction;
   final num projected;
   final SourceBindingDailyScanHistoryDayResponseDtoProviderHealthStateProviderHealthState
   providerHealthState;
   final num providerUnavailableScans;
   final num rateLimitedScans;
+  final num schedulerDecisionCount;
+  final num schedulerEnqueuedCount;
+  final SourceBindingDailyHistorySchedulerSkipBreakdownResponseDto
+  schedulerSkippedByReason;
+  final num schedulerSkippedCount;
   final List<String> signals;
   final num skippedDuplicates;
   final num succeededScans;

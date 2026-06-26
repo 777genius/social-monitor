@@ -95,6 +95,7 @@ export 'models/scan_policy_cadence_response_dto.dart';
 export 'models/scan_status_response_dto.dart';
 export 'models/set_scan_policy_request_dto.dart';
 export 'models/set_scan_policy_response_dto.dart';
+export 'models/source_binding_daily_history_scheduler_skip_breakdown_response_dto.dart';
 export 'models/source_binding_daily_scan_history_day_response_dto.dart';
 export 'models/source_binding_daily_scan_history_summary_response_dto.dart';
 export 'models/source_binding_health_attempt_response_dto.dart';

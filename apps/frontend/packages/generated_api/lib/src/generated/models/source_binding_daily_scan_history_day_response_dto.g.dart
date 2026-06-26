@@ -24,6 +24,13 @@ _$SourceBindingDailyScanHistoryDayResponseDtoFromJson(
       ),
   providerUnavailableScans: json['providerUnavailableScans'] as num,
   rateLimitedScans: json['rateLimitedScans'] as num,
+  schedulerDecisionCount: json['schedulerDecisionCount'] as num,
+  schedulerEnqueuedCount: json['schedulerEnqueuedCount'] as num,
+  schedulerSkippedByReason:
+      SourceBindingDailyHistorySchedulerSkipBreakdownResponseDto.fromJson(
+        json['schedulerSkippedByReason'] as Map<String, dynamic>,
+      ),
+  schedulerSkippedCount: json['schedulerSkippedCount'] as num,
   signals: (json['signals'] as List<dynamic>).map((e) => e as String).toList(),
   skippedDuplicates: json['skippedDuplicates'] as num,
   succeededScans: json['succeededScans'] as num,
@@ -36,6 +43,9 @@ _$SourceBindingDailyScanHistoryDayResponseDtoFromJson(
   lastScanRequestedAt: json['lastScanRequestedAt'] == null
       ? null
       : DateTime.parse(json['lastScanRequestedAt'] as String),
+  lastSchedulerEvaluatedAt: json['lastSchedulerEvaluatedAt'] == null
+      ? null
+      : DateTime.parse(json['lastSchedulerEvaluatedAt'] as String),
 );
 
 Map<String, dynamic> _$SourceBindingDailyScanHistoryDayResponseDtoToJson(
@@ -49,11 +59,17 @@ Map<String, dynamic> _$SourceBindingDailyScanHistoryDayResponseDtoToJson(
   'inserted': instance.inserted,
   'lastCompletedAt': instance.lastCompletedAt?.toIso8601String(),
   'lastScanRequestedAt': instance.lastScanRequestedAt?.toIso8601String(),
+  'lastSchedulerEvaluatedAt': instance.lastSchedulerEvaluatedAt
+      ?.toIso8601String(),
   'operatorAction': instance.operatorAction,
   'projected': instance.projected,
   'providerHealthState': instance.providerHealthState,
   'providerUnavailableScans': instance.providerUnavailableScans,
   'rateLimitedScans': instance.rateLimitedScans,
+  'schedulerDecisionCount': instance.schedulerDecisionCount,
+  'schedulerEnqueuedCount': instance.schedulerEnqueuedCount,
+  'schedulerSkippedByReason': instance.schedulerSkippedByReason,
+  'schedulerSkippedCount': instance.schedulerSkippedCount,
   'signals': instance.signals,
   'skippedDuplicates': instance.skippedDuplicates,
   'succeededScans': instance.succeededScans,

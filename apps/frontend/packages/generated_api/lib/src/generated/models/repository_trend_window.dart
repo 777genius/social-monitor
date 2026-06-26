@@ -10,6 +10,12 @@ enum RepositoryTrendWindow {
   value24h('24h'),
   @JsonValue('48h')
   value48h('48h'),
+  @JsonValue('7d')
+  value7d('7d'),
+  @JsonValue('30d')
+  value30d('30d'),
+  @JsonValue('90d')
+  value90d('90d'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);
