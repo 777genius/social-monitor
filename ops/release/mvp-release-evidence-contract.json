@@ -270,6 +270,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "briefing-workflow",
+      "command": "npm run check:briefing-workflow",
+      "blocksRelease": true
+    },
+    {
       "gateId": "summary-worker-command",
       "command": "npm run check:summary-worker-command",
       "blocksRelease": true
