@@ -117,6 +117,9 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
     if (result.ok) {
       expect(result.value).toEqual({
         sourceBindingId: 'binding-1',
+        topicId: 'topic-1',
+        providerKey: 'fake-source',
+        sourceBindingStatus: 'enabled',
         windowStartedAt: '2026-06-23T00:00:00.000Z',
         windowEndedAt: '2026-06-26T00:00:00.000Z',
         summary: {

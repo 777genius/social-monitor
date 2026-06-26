@@ -201,6 +201,15 @@ export class ListSourceBindingDailyScanHistoryResponseDto implements ListSourceB
   @ApiProperty()
   declare readonly sourceBindingId: string;
 
+  @ApiProperty()
+  declare readonly topicId: string;
+
+  @ApiProperty()
+  declare readonly providerKey: string;
+
+  @ApiProperty({ enum: ['enabled', 'paused'] })
+  declare readonly sourceBindingStatus: 'enabled' | 'paused';
+
   @ApiProperty({ format: 'date-time' })
   declare readonly windowStartedAt: string;
 

@@ -46,6 +46,9 @@ export type SourceBindingDailyHistorySummaryView = {
 
 export type ListSourceBindingDailyHistoryResult = {
   readonly sourceBindingId: string;
+  readonly topicId: string;
+  readonly providerKey: string;
+  readonly sourceBindingStatus: 'enabled' | 'paused';
   readonly windowStartedAt: string;
   readonly windowEndedAt: string;
   readonly summary?: SourceBindingDailyHistorySummaryView;

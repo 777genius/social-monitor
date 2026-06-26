@@ -2160,11 +2160,24 @@
           "maxScanJobs": {
             "type": "number"
           },
+          "providerKey": {
+            "type": "string"
+          },
           "sourceBindingId": {
+            "type": "string"
+          },
+          "sourceBindingStatus": {
+            "enum": [
+              "enabled",
+              "paused"
+            ],
             "type": "string"
           },
           "summary": {
             "$ref": "#/components/schemas/SourceBindingDailyScanHistorySummaryResponseDto"
+          },
+          "topicId": {
+            "type": "string"
           },
           "truncated": {
             "type": "boolean"
@@ -2180,6 +2193,9 @@
         },
         "required": [
           "sourceBindingId",
+          "topicId",
+          "providerKey",
+          "sourceBindingStatus",
           "windowStartedAt",
           "windowEndedAt",
           "days",

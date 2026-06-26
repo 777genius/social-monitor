@@ -181,6 +181,30 @@ async function main(): Promise<void> {
     );
     assert(fetchedScanPolicy.body.intervalSeconds === 300, 'scan policy REST get must preserve interval');
 
+    const dailyHistory = await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-requests/daily`)
+      .set(headers)
+      .set('x-workspace-role', 'viewer')
+      .query({ days: 1 })
+      .expect(200);
+
+    assert(
+      dailyHistory.body.sourceBindingId === binding.body.sourceBindingId,
+      'source binding daily history must preserve source binding id',
+    );
+    assert(
+      dailyHistory.body.topicId === newTopic.body.topicId,
+      'source binding daily history must expose topic id for frontend routing',
+    );
+    assert(
+      dailyHistory.body.providerKey === 'fake-source',
+      'source binding daily history must expose provider key for frontend grouping',
+    );
+    assert(
+      dailyHistory.body.sourceBindingStatus === 'enabled',
+      'source binding daily history must expose source binding status',
+    );
+
     await request(app.getHttpServer())
       .get('/topics/missing-topic/source-bindings')
       .set(headers)

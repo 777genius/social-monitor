@@ -50,6 +50,7 @@ export class ListSourceBindingDailyHistoryUseCase {
         sourceBindingId: query.sourceBindingId,
       }));
     }
+    const bindingSnapshot = binding.toSnapshot();
 
     const windows = buildUtcDayWindows({
       now: this.clock.now(),
@@ -102,6 +103,9 @@ export class ListSourceBindingDailyHistoryUseCase {
 
     return ok({
       sourceBindingId: query.sourceBindingId,
+      topicId: bindingSnapshot.topicId,
+      providerKey: bindingSnapshot.providerKey,
+      sourceBindingStatus: bindingSnapshot.status,
       windowStartedAt: firstWindow.startedAt.toISOString(),
       windowEndedAt: lastWindow.endedAt.toISOString(),
       summary: buildSummaryView({
