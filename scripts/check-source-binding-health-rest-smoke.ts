@@ -47,6 +47,11 @@ async function main(): Promise<void> {
       ...adminHeaders,
       'x-workspace-role': 'viewer',
     };
+    const otherWorkspaceHeaders = {
+      'x-tenant-id': tenant,
+      'x-workspace-id': workspaceId('workspace-source-health-rest-smoke-other'),
+      'x-workspace-role': 'admin',
+    };
 
     const topic = await request(app.getHttpServer())
       .post('/topics')
@@ -72,6 +77,11 @@ async function main(): Promise<void> {
       .get(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)
       .set(viewerHeaders)
       .expect(200);
+
+    await request(app.getHttpServer())
+      .get(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)
+      .set(otherWorkspaceHeaders)
+      .expect(404);
 
     assert(
       healthBeforePolicy.body.healthState === 'not_configured',
@@ -131,6 +141,11 @@ async function main(): Promise<void> {
       scan.body.requestDecision.decision === 'created',
       'scan request must expose created request decision',
     );
+    await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .set(otherWorkspaceHeaders)
+      .set('idempotency-key', 'scan-other-workspace')
+      .expect(404);
 
     const healthDuringScan = await request(app.getHttpServer())
       .get(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)

@@ -79,6 +79,11 @@ async function main(): Promise<void> {
       'x-workspace-id': workspace,
       'x-workspace-role': 'admin',
     };
+    const otherWorkspaceHeaders = {
+      'x-tenant-id': tenant,
+      'x-workspace-id': workspaceId('workspace-scan-status-attempt-rest-smoke-other'),
+      'x-workspace-role': 'admin',
+    };
 
     const topic = await request(app.getHttpServer())
       .post('/topics')
@@ -143,6 +148,11 @@ async function main(): Promise<void> {
       status.body.latestAttempt.startedAt === '2026-06-16T00:00:01.000Z',
       'scan status must serialize attempt timestamps',
     );
+
+    await request(app.getHttpServer())
+      .get(`/scan-requests/${scan.body.scanJobId}/status`)
+      .set(otherWorkspaceHeaders)
+      .expect(404);
 
     console.log('Scan status attempt REST smoke OK');
   } finally {
