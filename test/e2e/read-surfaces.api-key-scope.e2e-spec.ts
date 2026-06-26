@@ -398,6 +398,15 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
           label: expect.stringMatching(/^\[\d+\]$/),
         }),
       ],
+      personalization: {
+        memoryGuidanceStatus: 'disabled',
+        memoryGuidanceApplied: false,
+        providerPreferenceCount: 0,
+        keywordPreferenceCount: 0,
+        mutedKeywordCount: 0,
+        blockedProviderCount: 0,
+        signals: ['memory_guidance_disabled'],
+      },
     });
     expect(briefingDetail.body.readerBrief.topReads[0].whyNow.trim()).not.toHaveLength(0);
     expect(briefingDetail.body.readerBrief.oneLineTakeaway.trim()).not.toHaveLength(0);
