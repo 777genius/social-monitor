@@ -4909,11 +4909,17 @@
           "activeScans": {
             "type": "number"
           },
+          "configuredSourceBindingCount": {
+            "type": "number"
+          },
           "consecutiveFailures": {
             "type": "number"
           },
           "date": {
             "type": "string"
+          },
+          "enabledSourceBindingCount": {
+            "type": "number"
           },
           "failedScans": {
             "type": "number"
@@ -4934,6 +4940,9 @@
           },
           "operatorAction": {
             "type": "string"
+          },
+          "pausedSourceBindingCount": {
+            "type": "number"
           },
           "projected": {
             "type": "number"
@@ -4977,6 +4986,9 @@
           "totalScans": {
             "type": "number"
           },
+          "unconfiguredSourceBindingCount": {
+            "type": "number"
+          },
           "windowEndedAt": {
             "format": "date-time",
             "type": "string"
@@ -4992,6 +5004,10 @@
           "windowEndedAt",
           "providerHealthState",
           "sourceBindingCount",
+          "enabledSourceBindingCount",
+          "pausedSourceBindingCount",
+          "configuredSourceBindingCount",
+          "unconfiguredSourceBindingCount",
           "totalScans",
           "succeededScans",
           "failedScans",
@@ -5017,7 +5033,13 @@
           "cadenceSummary": {
             "$ref": "#/components/schemas/TopicSourceDailyHistoryCadenceSummaryResponseDto"
           },
+          "configuredSourceBindingCount": {
+            "type": "number"
+          },
           "consecutiveFailures": {
+            "type": "number"
+          },
+          "enabledSourceBindingCount": {
             "type": "number"
           },
           "failedScans": {
@@ -5039,6 +5061,9 @@
           },
           "operatorAction": {
             "type": "string"
+          },
+          "pausedSourceBindingCount": {
+            "type": "number"
           },
           "projected": {
             "type": "number"
@@ -5078,11 +5103,18 @@
           },
           "totalScans": {
             "type": "number"
+          },
+          "unconfiguredSourceBindingCount": {
+            "type": "number"
           }
         },
         "required": [
           "providerKey",
           "sourceBindingCount",
+          "enabledSourceBindingCount",
+          "pausedSourceBindingCount",
+          "configuredSourceBindingCount",
+          "unconfiguredSourceBindingCount",
           "providerHealthState",
           "totalScans",
           "succeededScans",
@@ -5105,6 +5137,9 @@
           "activeScans": {
             "type": "number"
           },
+          "configuredSourceBindingCount": {
+            "type": "number"
+          },
           "consecutiveFailures": {
             "type": "number"
           },
@@ -5115,6 +5150,9 @@
             "type": "number"
           },
           "daysWithScans": {
+            "type": "number"
+          },
+          "enabledSourceBindingCount": {
             "type": "number"
           },
           "failedScans": {
@@ -5136,6 +5174,9 @@
           },
           "operatorAction": {
             "type": "string"
+          },
+          "pausedSourceBindingCount": {
+            "type": "number"
           },
           "projected": {
             "type": "number"
@@ -5178,11 +5219,18 @@
           },
           "totalScans": {
             "type": "number"
+          },
+          "unconfiguredSourceBindingCount": {
+            "type": "number"
           }
         },
         "required": [
           "providerHealthState",
           "sourceBindingCount",
+          "enabledSourceBindingCount",
+          "pausedSourceBindingCount",
+          "configuredSourceBindingCount",
+          "unconfiguredSourceBindingCount",
           "totalScans",
           "succeededScans",
           "failedScans",

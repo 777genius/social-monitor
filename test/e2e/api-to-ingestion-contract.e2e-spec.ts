@@ -291,6 +291,10 @@ describe('API to ingestion worker queue contract (e2e)', () => {
           topicId: topic.body.topicId,
           summary: expect.objectContaining({
             sourceBindingCount: 1,
+            enabledSourceBindingCount: 1,
+            pausedSourceBindingCount: 0,
+            configuredSourceBindingCount: 1,
+            unconfiguredSourceBindingCount: 0,
             totalScans: 1,
             succeededScans: 1,
             skippedDuplicates: 0,
@@ -299,6 +303,10 @@ describe('API to ingestion worker queue contract (e2e)', () => {
               expect.objectContaining({
                 providerKey: 'fake-source',
                 sourceBindingCount: 1,
+                enabledSourceBindingCount: 1,
+                pausedSourceBindingCount: 0,
+                configuredSourceBindingCount: 1,
+                unconfiguredSourceBindingCount: 0,
                 cadenceSummary: expect.objectContaining({
                   minimumIntervalSeconds: 60,
                   minConfiguredIntervalSeconds: 300,
@@ -312,9 +320,15 @@ describe('API to ingestion worker queue contract (e2e)', () => {
           }),
           days: [
             expect.objectContaining({
+              enabledSourceBindingCount: 1,
+              pausedSourceBindingCount: 0,
+              configuredSourceBindingCount: 1,
+              unconfiguredSourceBindingCount: 0,
               providerBreakdown: [
                 expect.objectContaining({
                   providerKey: 'fake-source',
+                  enabledSourceBindingCount: 1,
+                  configuredSourceBindingCount: 1,
                   totalScans: 1,
                   succeededScans: 1,
                 }),

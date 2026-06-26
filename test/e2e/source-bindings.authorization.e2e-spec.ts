@@ -158,11 +158,19 @@ describe('Source binding workspace authorization (e2e)', () => {
           topicId: topic.body.topicId,
           summary: {
             sourceBindingCount: 1,
+            enabledSourceBindingCount: 1,
+            pausedSourceBindingCount: 0,
+            configuredSourceBindingCount: 0,
+            unconfiguredSourceBindingCount: 1,
             totalScans: 0,
             providerBreakdown: [
               expect.objectContaining({
                 providerKey: 'fake-source',
                 sourceBindingCount: 1,
+                enabledSourceBindingCount: 1,
+                pausedSourceBindingCount: 0,
+                configuredSourceBindingCount: 0,
+                unconfiguredSourceBindingCount: 1,
               }),
             ],
           },
@@ -185,6 +193,10 @@ describe('Source binding workspace authorization (e2e)', () => {
           topicId: topic.body.topicId,
           summary: {
             sourceBindingCount: 0,
+            enabledSourceBindingCount: 0,
+            pausedSourceBindingCount: 0,
+            configuredSourceBindingCount: 0,
+            unconfiguredSourceBindingCount: 0,
             totalScans: 0,
             providerBreakdown: [],
           },

@@ -11,11 +11,14 @@ _$TopicSourceDailyHistoryProviderResponseDtoFromJson(
   Map<String, dynamic> json,
 ) => TopicSourceDailyHistoryProviderResponseDto(
   activeScans: json['activeScans'] as num,
+  configuredSourceBindingCount: json['configuredSourceBindingCount'] as num,
   consecutiveFailures: json['consecutiveFailures'] as num,
+  enabledSourceBindingCount: json['enabledSourceBindingCount'] as num,
   failedScans: json['failedScans'] as num,
   fetched: json['fetched'] as num,
   inserted: json['inserted'] as num,
   operatorAction: json['operatorAction'] as String,
+  pausedSourceBindingCount: json['pausedSourceBindingCount'] as num,
   projected: json['projected'] as num,
   providerHealthState:
       TopicSourceDailyHistoryProviderResponseDtoProviderHealthStateProviderHealthState.fromJson(
@@ -29,6 +32,7 @@ _$TopicSourceDailyHistoryProviderResponseDtoFromJson(
   sourceBindingCount: json['sourceBindingCount'] as num,
   succeededScans: json['succeededScans'] as num,
   totalScans: json['totalScans'] as num,
+  unconfiguredSourceBindingCount: json['unconfiguredSourceBindingCount'] as num,
   cadenceSummary: json['cadenceSummary'] == null
       ? null
       : TopicSourceDailyHistoryCadenceSummaryResponseDto.fromJson(
@@ -47,13 +51,16 @@ Map<String, dynamic> _$TopicSourceDailyHistoryProviderResponseDtoToJson(
 ) => <String, dynamic>{
   'activeScans': instance.activeScans,
   'cadenceSummary': instance.cadenceSummary,
+  'configuredSourceBindingCount': instance.configuredSourceBindingCount,
   'consecutiveFailures': instance.consecutiveFailures,
+  'enabledSourceBindingCount': instance.enabledSourceBindingCount,
   'failedScans': instance.failedScans,
   'fetched': instance.fetched,
   'inserted': instance.inserted,
   'lastCompletedAt': instance.lastCompletedAt?.toIso8601String(),
   'lastScanRequestedAt': instance.lastScanRequestedAt?.toIso8601String(),
   'operatorAction': instance.operatorAction,
+  'pausedSourceBindingCount': instance.pausedSourceBindingCount,
   'projected': instance.projected,
   'providerHealthState': instance.providerHealthState,
   'providerKey': instance.providerKey,
@@ -64,4 +71,5 @@ Map<String, dynamic> _$TopicSourceDailyHistoryProviderResponseDtoToJson(
   'sourceBindingCount': instance.sourceBindingCount,
   'succeededScans': instance.succeededScans,
   'totalScans': instance.totalScans,
+  'unconfiguredSourceBindingCount': instance.unconfiguredSourceBindingCount,
 };

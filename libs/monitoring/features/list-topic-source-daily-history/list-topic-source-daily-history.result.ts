@@ -15,6 +15,10 @@ export type TopicSourceDailyHistoryCadenceSummaryView = {
 export type TopicSourceDailyHistoryProviderView = {
   readonly providerKey: string;
   readonly sourceBindingCount: number;
+  readonly enabledSourceBindingCount: number;
+  readonly pausedSourceBindingCount: number;
+  readonly configuredSourceBindingCount: number;
+  readonly unconfiguredSourceBindingCount: number;
   readonly cadenceSummary?: TopicSourceDailyHistoryCadenceSummaryView;
   readonly providerHealthState: ScanProviderHealthState;
   readonly totalScans: number;
@@ -40,6 +44,10 @@ export type TopicSourceDailyHistoryDayView = {
   readonly windowEndedAt: string;
   readonly providerHealthState: ScanProviderHealthState;
   readonly sourceBindingCount: number;
+  readonly enabledSourceBindingCount: number;
+  readonly pausedSourceBindingCount: number;
+  readonly configuredSourceBindingCount: number;
+  readonly unconfiguredSourceBindingCount: number;
   readonly totalScans: number;
   readonly succeededScans: number;
   readonly failedScans: number;
@@ -61,6 +69,10 @@ export type TopicSourceDailyHistoryDayView = {
 export type TopicSourceDailyHistorySummaryView = {
   readonly providerHealthState: ScanProviderHealthState;
   readonly sourceBindingCount: number;
+  readonly enabledSourceBindingCount: number;
+  readonly pausedSourceBindingCount: number;
+  readonly configuredSourceBindingCount: number;
+  readonly unconfiguredSourceBindingCount: number;
   readonly totalScans: number;
   readonly succeededScans: number;
   readonly failedScans: number;

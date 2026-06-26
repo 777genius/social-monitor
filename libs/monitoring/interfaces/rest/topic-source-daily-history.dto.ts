@@ -52,6 +52,18 @@ export class TopicSourceDailyHistoryProviderResponseDto implements TopicSourceDa
   @ApiProperty()
   declare readonly sourceBindingCount: number;
 
+  @ApiProperty()
+  declare readonly enabledSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly pausedSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly configuredSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly unconfiguredSourceBindingCount: number;
+
   @ApiPropertyOptional({ type: () => TopicSourceDailyHistoryCadenceSummaryResponseDto })
   declare readonly cadenceSummary?: TopicSourceDailyHistoryCadenceSummaryResponseDto;
 
@@ -121,6 +133,18 @@ export class TopicSourceDailyHistoryDayResponseDto implements TopicSourceDailyHi
   declare readonly sourceBindingCount: number;
 
   @ApiProperty()
+  declare readonly enabledSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly pausedSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly configuredSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly unconfiguredSourceBindingCount: number;
+
+  @ApiProperty()
   declare readonly totalScans: number;
 
   @ApiProperty()
@@ -175,6 +199,18 @@ export class TopicSourceDailyHistorySummaryResponseDto implements TopicSourceDai
 
   @ApiProperty()
   declare readonly sourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly enabledSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly pausedSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly configuredSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly unconfiguredSourceBindingCount: number;
 
   @ApiProperty()
   declare readonly totalScans: number;

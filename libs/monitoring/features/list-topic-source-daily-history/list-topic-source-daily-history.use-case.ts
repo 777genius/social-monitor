@@ -174,6 +174,10 @@ const buildDayView = (params: {
     windowEndedAt: params.window.endedAt.toISOString(),
     providerHealthState: aggregate.providerHealthState,
     sourceBindingCount: aggregate.sourceBindingCount,
+    enabledSourceBindingCount: aggregate.enabledSourceBindingCount,
+    pausedSourceBindingCount: aggregate.pausedSourceBindingCount,
+    configuredSourceBindingCount: aggregate.configuredSourceBindingCount,
+    unconfiguredSourceBindingCount: aggregate.unconfiguredSourceBindingCount,
     totalScans: aggregate.totalScans,
     succeededScans: aggregate.succeededScans,
     failedScans: aggregate.failedScans,
@@ -212,6 +216,10 @@ const buildSummaryView = (params: {
   return {
     providerHealthState: aggregate.providerHealthState,
     sourceBindingCount: aggregate.sourceBindingCount,
+    enabledSourceBindingCount: aggregate.enabledSourceBindingCount,
+    pausedSourceBindingCount: aggregate.pausedSourceBindingCount,
+    configuredSourceBindingCount: aggregate.configuredSourceBindingCount,
+    unconfiguredSourceBindingCount: aggregate.unconfiguredSourceBindingCount,
     totalScans: aggregate.totalScans,
     succeededScans: aggregate.succeededScans,
     failedScans: aggregate.failedScans,
@@ -278,6 +286,7 @@ const buildProviderView = (
   attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>,
   scanPoliciesByBindingId: ReadonlyMap<string, ScanPolicy>,
 ): TopicSourceDailyHistoryProviderView => {
+  const configuredSourceBindingCount = countConfiguredBindings(bindings, scanPoliciesByBindingId);
   const snapshots = jobs
     .map((job) => job.toSnapshot())
     .sort((left, right) => {
@@ -297,6 +306,10 @@ const buildProviderView = (
   return {
     providerKey,
     sourceBindingCount: bindings.length,
+    enabledSourceBindingCount: countBindingsByStatus(bindings, 'enabled'),
+    pausedSourceBindingCount: countBindingsByStatus(bindings, 'paused'),
+    configuredSourceBindingCount,
+    unconfiguredSourceBindingCount: bindings.length - configuredSourceBindingCount,
     cadenceSummary: summarizeProviderCadence(bindings, scanPoliciesByBindingId),
     providerHealthState: health.providerHealthState,
     totalScans: health.totalScans,
@@ -319,6 +332,18 @@ const buildProviderView = (
     signals: health.signals,
   };
 };
+
+const countBindingsByStatus = (
+  bindings: readonly SourceBinding[],
+  status: 'enabled' | 'paused',
+): number =>
+  bindings.filter((binding) => binding.toSnapshot().status === status).length;
+
+const countConfiguredBindings = (
+  bindings: readonly SourceBinding[],
+  scanPoliciesByBindingId: ReadonlyMap<string, ScanPolicy>,
+): number =>
+  bindings.filter((binding) => scanPoliciesByBindingId.has(binding.toSnapshot().id)).length;
 
 const scanPoliciesBySourceBindingId = async (params: {
   readonly scanPolicies: ScanPolicyRepositoryPort;

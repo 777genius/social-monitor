@@ -11,14 +11,17 @@ _$TopicSourceDailyHistorySummaryResponseDtoFromJson(
   Map<String, dynamic> json,
 ) => TopicSourceDailyHistorySummaryResponseDto(
   activeScans: json['activeScans'] as num,
+  configuredSourceBindingCount: json['configuredSourceBindingCount'] as num,
   consecutiveFailures: json['consecutiveFailures'] as num,
   daysWithFailures: json['daysWithFailures'] as num,
   daysWithRateLimits: json['daysWithRateLimits'] as num,
   daysWithScans: json['daysWithScans'] as num,
+  enabledSourceBindingCount: json['enabledSourceBindingCount'] as num,
   failedScans: json['failedScans'] as num,
   fetched: json['fetched'] as num,
   inserted: json['inserted'] as num,
   operatorAction: json['operatorAction'] as String,
+  pausedSourceBindingCount: json['pausedSourceBindingCount'] as num,
   projected: json['projected'] as num,
   providerBreakdown: (json['providerBreakdown'] as List<dynamic>)
       .map(
@@ -38,6 +41,7 @@ _$TopicSourceDailyHistorySummaryResponseDtoFromJson(
   sourceBindingCount: json['sourceBindingCount'] as num,
   succeededScans: json['succeededScans'] as num,
   totalScans: json['totalScans'] as num,
+  unconfiguredSourceBindingCount: json['unconfiguredSourceBindingCount'] as num,
   lastCompletedAt: json['lastCompletedAt'] == null
       ? null
       : DateTime.parse(json['lastCompletedAt'] as String),
@@ -50,16 +54,19 @@ Map<String, dynamic> _$TopicSourceDailyHistorySummaryResponseDtoToJson(
   TopicSourceDailyHistorySummaryResponseDto instance,
 ) => <String, dynamic>{
   'activeScans': instance.activeScans,
+  'configuredSourceBindingCount': instance.configuredSourceBindingCount,
   'consecutiveFailures': instance.consecutiveFailures,
   'daysWithFailures': instance.daysWithFailures,
   'daysWithRateLimits': instance.daysWithRateLimits,
   'daysWithScans': instance.daysWithScans,
+  'enabledSourceBindingCount': instance.enabledSourceBindingCount,
   'failedScans': instance.failedScans,
   'fetched': instance.fetched,
   'inserted': instance.inserted,
   'lastCompletedAt': instance.lastCompletedAt?.toIso8601String(),
   'lastScanRequestedAt': instance.lastScanRequestedAt?.toIso8601String(),
   'operatorAction': instance.operatorAction,
+  'pausedSourceBindingCount': instance.pausedSourceBindingCount,
   'projected': instance.projected,
   'providerBreakdown': instance.providerBreakdown,
   'providerHealthState': instance.providerHealthState,
@@ -70,4 +77,5 @@ Map<String, dynamic> _$TopicSourceDailyHistorySummaryResponseDtoToJson(
   'sourceBindingCount': instance.sourceBindingCount,
   'succeededScans': instance.succeededScans,
   'totalScans': instance.totalScans,
+  'unconfiguredSourceBindingCount': instance.unconfiguredSourceBindingCount,
 };

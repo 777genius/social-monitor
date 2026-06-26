@@ -13,11 +13,14 @@ part 'topic_source_daily_history_provider_response_dto.g.dart';
 class TopicSourceDailyHistoryProviderResponseDto {
   const TopicSourceDailyHistoryProviderResponseDto({
     required this.activeScans,
+    required this.configuredSourceBindingCount,
     required this.consecutiveFailures,
+    required this.enabledSourceBindingCount,
     required this.failedScans,
     required this.fetched,
     required this.inserted,
     required this.operatorAction,
+    required this.pausedSourceBindingCount,
     required this.projected,
     required this.providerHealthState,
     required this.providerKey,
@@ -28,6 +31,7 @@ class TopicSourceDailyHistoryProviderResponseDto {
     required this.sourceBindingCount,
     required this.succeededScans,
     required this.totalScans,
+    required this.unconfiguredSourceBindingCount,
     this.cadenceSummary,
     this.lastCompletedAt,
     this.lastScanRequestedAt,
@@ -39,13 +43,16 @@ class TopicSourceDailyHistoryProviderResponseDto {
 
   final num activeScans;
   final TopicSourceDailyHistoryCadenceSummaryResponseDto? cadenceSummary;
+  final num configuredSourceBindingCount;
   final num consecutiveFailures;
+  final num enabledSourceBindingCount;
   final num failedScans;
   final num fetched;
   final num inserted;
   final DateTime? lastCompletedAt;
   final DateTime? lastScanRequestedAt;
   final String operatorAction;
+  final num pausedSourceBindingCount;
   final num projected;
   final TopicSourceDailyHistoryProviderResponseDtoProviderHealthStateProviderHealthState
   providerHealthState;
@@ -57,6 +64,7 @@ class TopicSourceDailyHistoryProviderResponseDto {
   final num sourceBindingCount;
   final num succeededScans;
   final num totalScans;
+  final num unconfiguredSourceBindingCount;
 
   Map<String, Object?> toJson() =>
       _$TopicSourceDailyHistoryProviderResponseDtoToJson(this);

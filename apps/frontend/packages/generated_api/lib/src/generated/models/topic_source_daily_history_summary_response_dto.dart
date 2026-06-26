@@ -13,14 +13,17 @@ part 'topic_source_daily_history_summary_response_dto.g.dart';
 class TopicSourceDailyHistorySummaryResponseDto {
   const TopicSourceDailyHistorySummaryResponseDto({
     required this.activeScans,
+    required this.configuredSourceBindingCount,
     required this.consecutiveFailures,
     required this.daysWithFailures,
     required this.daysWithRateLimits,
     required this.daysWithScans,
+    required this.enabledSourceBindingCount,
     required this.failedScans,
     required this.fetched,
     required this.inserted,
     required this.operatorAction,
+    required this.pausedSourceBindingCount,
     required this.projected,
     required this.providerBreakdown,
     required this.providerHealthState,
@@ -31,6 +34,7 @@ class TopicSourceDailyHistorySummaryResponseDto {
     required this.sourceBindingCount,
     required this.succeededScans,
     required this.totalScans,
+    required this.unconfiguredSourceBindingCount,
     this.lastCompletedAt,
     this.lastScanRequestedAt,
   });
@@ -40,16 +44,19 @@ class TopicSourceDailyHistorySummaryResponseDto {
   ) => _$TopicSourceDailyHistorySummaryResponseDtoFromJson(json);
 
   final num activeScans;
+  final num configuredSourceBindingCount;
   final num consecutiveFailures;
   final num daysWithFailures;
   final num daysWithRateLimits;
   final num daysWithScans;
+  final num enabledSourceBindingCount;
   final num failedScans;
   final num fetched;
   final num inserted;
   final DateTime? lastCompletedAt;
   final DateTime? lastScanRequestedAt;
   final String operatorAction;
+  final num pausedSourceBindingCount;
   final num projected;
   final List<TopicSourceDailyHistoryProviderResponseDto> providerBreakdown;
   final TopicSourceDailyHistorySummaryResponseDtoProviderHealthStateProviderHealthState
@@ -61,6 +68,7 @@ class TopicSourceDailyHistorySummaryResponseDto {
   final num sourceBindingCount;
   final num succeededScans;
   final num totalScans;
+  final num unconfiguredSourceBindingCount;
 
   Map<String, Object?> toJson() =>
       _$TopicSourceDailyHistorySummaryResponseDtoToJson(this);

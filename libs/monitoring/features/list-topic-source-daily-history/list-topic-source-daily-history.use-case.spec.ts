@@ -434,6 +434,94 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
     });
   });
 
+  it("summarizes source binding readiness counts by topic and provider", async () => {
+    const fixture = await makeFixture();
+    const reddit = makeBinding("binding-reddit", "reddit");
+    const github = makeBinding("binding-github", "github-trending-page").pause();
+    await fixture.bindings.save(reddit);
+    await fixture.bindings.save(github);
+    await fixture.policies.save(makePolicy(reddit, {
+      intervalSeconds: 900,
+      freshnessSeconds: 900,
+    }));
+    await fixture.saveCompletedScan({
+      id: "scan-reddit-today",
+      binding: reddit,
+      requestedAt: "2026-06-26T08:00:00.000Z",
+      status: "succeeded",
+      fetched: 20,
+      inserted: 12,
+      skippedDuplicates: 8,
+      projected: 12,
+    });
+
+    const result = await fixture.useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: "topic-source-history",
+      days: 1,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        summary: expect.objectContaining({
+          sourceBindingCount: 2,
+          enabledSourceBindingCount: 1,
+          pausedSourceBindingCount: 1,
+          configuredSourceBindingCount: 1,
+          unconfiguredSourceBindingCount: 1,
+          providerBreakdown: [
+            expect.objectContaining({
+              providerKey: "github-trending-page",
+              sourceBindingCount: 1,
+              enabledSourceBindingCount: 0,
+              pausedSourceBindingCount: 1,
+              configuredSourceBindingCount: 0,
+              unconfiguredSourceBindingCount: 1,
+              cadenceSummary: undefined,
+              totalScans: 0,
+            }),
+            expect.objectContaining({
+              providerKey: "reddit",
+              sourceBindingCount: 1,
+              enabledSourceBindingCount: 1,
+              pausedSourceBindingCount: 0,
+              configuredSourceBindingCount: 1,
+              unconfiguredSourceBindingCount: 0,
+              cadenceSummary: expect.objectContaining({
+                sourceBindingCount: 1,
+              }),
+              succeededScans: 1,
+            }),
+          ],
+        }),
+        days: [
+          expect.objectContaining({
+            date: "2026-06-26",
+            sourceBindingCount: 2,
+            enabledSourceBindingCount: 1,
+            pausedSourceBindingCount: 1,
+            configuredSourceBindingCount: 1,
+            unconfiguredSourceBindingCount: 1,
+            providerBreakdown: [
+              expect.objectContaining({
+                providerKey: "github-trending-page",
+                pausedSourceBindingCount: 1,
+                unconfiguredSourceBindingCount: 1,
+              }),
+              expect.objectContaining({
+                providerKey: "reddit",
+                enabledSourceBindingCount: 1,
+                configuredSourceBindingCount: 1,
+              }),
+            ],
+          }),
+        ],
+      }),
+    });
+  });
+
   it("returns scoped topic errors before reading scan history", async () => {
     const fixture = await makeFixture();
 

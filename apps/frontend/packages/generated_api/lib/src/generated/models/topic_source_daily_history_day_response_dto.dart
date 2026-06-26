@@ -13,12 +13,15 @@ part 'topic_source_daily_history_day_response_dto.g.dart';
 class TopicSourceDailyHistoryDayResponseDto {
   const TopicSourceDailyHistoryDayResponseDto({
     required this.activeScans,
+    required this.configuredSourceBindingCount,
     required this.consecutiveFailures,
     required this.date,
+    required this.enabledSourceBindingCount,
     required this.failedScans,
     required this.fetched,
     required this.inserted,
     required this.operatorAction,
+    required this.pausedSourceBindingCount,
     required this.projected,
     required this.providerBreakdown,
     required this.providerHealthState,
@@ -29,6 +32,7 @@ class TopicSourceDailyHistoryDayResponseDto {
     required this.sourceBindingCount,
     required this.succeededScans,
     required this.totalScans,
+    required this.unconfiguredSourceBindingCount,
     required this.windowEndedAt,
     required this.windowStartedAt,
     this.lastCompletedAt,
@@ -40,14 +44,17 @@ class TopicSourceDailyHistoryDayResponseDto {
   ) => _$TopicSourceDailyHistoryDayResponseDtoFromJson(json);
 
   final num activeScans;
+  final num configuredSourceBindingCount;
   final num consecutiveFailures;
   final String date;
+  final num enabledSourceBindingCount;
   final num failedScans;
   final num fetched;
   final num inserted;
   final DateTime? lastCompletedAt;
   final DateTime? lastScanRequestedAt;
   final String operatorAction;
+  final num pausedSourceBindingCount;
   final num projected;
   final List<TopicSourceDailyHistoryProviderResponseDto> providerBreakdown;
   final TopicSourceDailyHistoryDayResponseDtoProviderHealthStateProviderHealthState
@@ -59,6 +66,7 @@ class TopicSourceDailyHistoryDayResponseDto {
   final num sourceBindingCount;
   final num succeededScans;
   final num totalScans;
+  final num unconfiguredSourceBindingCount;
   final DateTime windowEndedAt;
   final DateTime windowStartedAt;
 
