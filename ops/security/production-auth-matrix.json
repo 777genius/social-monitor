@@ -33,10 +33,12 @@
       "evidenceFiles": [
         "test/e2e/source-bindings.authorization.e2e-spec.ts",
         "test/e2e/source-bindings.status.e2e-spec.ts",
-        "test/e2e/source-bindings.create.e2e-spec.ts"
+        "test/e2e/source-bindings.create.e2e-spec.ts",
+        "test/e2e/api-to-ingestion-contract.e2e-spec.ts"
       ],
       "operations": [
         { "method": "GET", "path": "/topics/{topicId}/source-bindings", "action": "source_bindings.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/topics/{topicId}/source-bindings/daily-history", "action": "source_bindings.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/topics/{topicId}/source-bindings/overview", "action": "source_bindings.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/topics/{topicId}/source-bindings", "action": "source_bindings.create", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] },
         { "method": "GET", "path": "/topics/{topicId}/source-bindings/{sourceBindingId}/health", "action": "source_bindings.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
@@ -108,10 +110,17 @@
       "evidenceFiles": [
         "test/e2e/summary-feedback.submit.e2e-spec.ts",
         "test/e2e/summary-ready-to-realtime.e2e-spec.ts",
+        "test/e2e/user-jwt-auth-boundary.e2e-spec.ts",
+        "test/e2e/user-subscriptions.personalized-summary.e2e-spec.ts",
         "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts",
         "scripts/check-personalized-relevance-engine-smoke.ts"
       ],
       "operations": [
+        { "method": "GET", "path": "/topics/{topicId}/user-summary-preference", "action": "user_summary_preferences.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "PUT", "path": "/topics/{topicId}/user-summary-preference", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
+        { "method": "GET", "path": "/user-subscriptions", "action": "user_subscriptions.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/user-subscriptions", "action": "user_subscriptions.create", "apiKeyScope": "write:topics", "roles": ["owner", "admin", "member"] },
+        { "method": "PUT", "path": "/user-subscriptions/{subscriptionId}/summary-preference", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
         { "method": "PUT", "path": "/relevance/users/{userId}/profile", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
         { "method": "POST", "path": "/relevance/users/{userId}/feedback", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
         { "method": "GET", "path": "/summaries/{summaryId}/feedback", "action": "summary_feedback.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
