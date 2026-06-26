@@ -29,6 +29,7 @@ import type {
   ReportScanSucceededCommand,
   ScanExecutionReporterPort,
   SourceConfigReaderPort,
+  SourceReadinessFreshnessGuard,
   SourceRuntimeConfig,
 } from '../libs/ingestion/ports';
 import { FeedSummaryEvidenceSelector } from '../libs/summary/adapters/evidence/feed-summary-evidence.selector';
@@ -539,6 +540,7 @@ const writeGitHubRepoRadarLiveEvidenceArtifactIfRequested = (input: {
       {
         providerKey: GITHUB_REPO_RADAR_PROVIDER_KEY,
         status: 'passed',
+        freshnessGuard: freshnessGuardForProvider(GITHUB_REPO_RADAR_PROVIDER_KEY),
         signalResults: input.signals,
       },
     ],
@@ -584,6 +586,12 @@ const firstEnv = (...keys: readonly string[]): string | undefined => {
   }
 
   return undefined;
+};
+
+const freshnessGuardForProvider = (providerKey: string): SourceReadinessFreshnessGuard => {
+  const profile = sourceReadinessProfiles.find((candidate) => candidate.providerKey === providerKey);
+  assert(profile !== undefined, `${providerKey}: missing source readiness profile`);
+  return profile.freshnessGuard;
 };
 
 const readCsvEnv = (key: string, fallback: readonly string[]): readonly string[] => {

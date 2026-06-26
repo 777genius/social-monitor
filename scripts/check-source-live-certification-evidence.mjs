@@ -1434,6 +1434,7 @@ function validateProviderResults(artifact, options) {
     if (result.status !== 'passed') {
       violations.push(`${options.label}: providerResult "${result.providerKey}" must have status=passed`);
     }
+    validateArtifactProviderFreshnessGuard(result, options.label);
     validateArtifactSignalResults(result, options.label);
   }
 
@@ -1483,6 +1484,53 @@ function validateArtifactSignalResults(providerResult, label) {
       violations.push(`${label}: provider "${providerResult.providerKey}" missing signalResult "${signalId}"`);
     }
   }
+}
+
+function validateArtifactProviderFreshnessGuard(providerResult, label) {
+  const expectedGuard = sourceFreshnessGuardForProvider(providerResult.providerKey);
+  const guardLabel = `${label}: providerResult "${providerResult.providerKey}".freshnessGuard`;
+  if (!isRecord(providerResult.freshnessGuard)) {
+    violations.push(`${guardLabel} must be an object matching source provider certification`);
+    return;
+  }
+
+  for (const field of [
+    'maxStalenessSeconds',
+    'minimumScanIntervalSeconds',
+    'skipRecentlyScanned',
+    'scanHistoryRequired',
+    'cursorResumeRequired',
+    'rateLimitBackoffRequired',
+    'staleReadModelState',
+    'providerFailureHealthState',
+  ]) {
+    if (providerResult.freshnessGuard[field] !== expectedGuard?.[field]) {
+      violations.push(`${guardLabel}.${field} must match ${sourceCertificationPath}`);
+    }
+  }
+
+  if (!Array.isArray(providerResult.freshnessGuard.signals) || providerResult.freshnessGuard.signals.length === 0) {
+    violations.push(`${guardLabel}.signals must be a non-empty array`);
+    return;
+  }
+  requireExactStringSet(
+    providerResult.freshnessGuard.signals,
+    expectedGuard?.signals ?? [],
+    `${guardLabel}.signals`,
+  );
+}
+
+function sourceFreshnessGuardForProvider(providerKey) {
+  const provider = [
+    ...(sourceCertification.certifiedProviders ?? []),
+    ...(sourceCertification.deferredProviders ?? []),
+  ].find((candidate) => candidate.providerKey === providerKey);
+  if (!isRecord(provider?.freshnessGuard)) {
+    violations.push(`${sourceCertificationPath}: provider "${providerKey}" must define freshnessGuard`);
+    return undefined;
+  }
+
+  return provider.freshnessGuard;
 }
 
 function validateDeferredProviders() {

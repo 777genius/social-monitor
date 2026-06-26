@@ -2,7 +2,9 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { HttpGitHubTrendingPageClient } from '../libs/ingestion/adapters/source/github-trending-page/http-github-trending-page-client';
 import { GitHubTrendingPageSourceProvider } from '../libs/ingestion/adapters/source/github-trending-page/github-trending-page-source.provider';
+import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
 import { parseGitHubTrendingPageRepositoryMetadata } from '../libs/ingestion/domain';
+import type { SourceReadinessFreshnessGuard } from '../libs/ingestion/ports';
 import { writeLiveEvidenceArtifactAtomically } from './lib/live-evidence-artifact';
 
 const liveArtifactFormat = 'source-live-provider-evidence-v1';
@@ -113,6 +115,7 @@ async function main(): Promise<void> {
       {
         providerKey: provider.key(),
         status: 'passed',
+        freshnessGuard: freshnessGuardForProvider(provider.key()),
         signalResults,
       },
     ],
@@ -180,6 +183,12 @@ function writeEvidenceIfRequested(evidence: {
 function readOptionalEnv(name: string): string | undefined {
   const value = process.env[name]?.trim();
   return value === undefined || value.length === 0 ? undefined : value;
+}
+
+function freshnessGuardForProvider(providerKey: string): SourceReadinessFreshnessGuard {
+  const profile = sourceReadinessProfiles.find((candidate) => candidate.providerKey === providerKey);
+  assert(profile !== undefined, `${providerKey}: missing source readiness profile`);
+  return profile.freshnessGuard;
 }
 
 function readRequiredEnv(name: string): string {

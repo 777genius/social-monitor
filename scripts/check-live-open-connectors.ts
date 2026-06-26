@@ -2,6 +2,8 @@ import { HttpGitHubClient } from '../libs/ingestion/adapters/source/github/http-
 import { HttpHackerNewsClient } from '../libs/ingestion/adapters/source/hacker-news/http-hacker-news-client';
 import { validateFeedUrl } from '../libs/ingestion/adapters/source/rss/feed-url-policy';
 import { HttpRssClient } from '../libs/ingestion/adapters/source/rss/http-rss-client';
+import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
+import type { SourceReadinessFreshnessGuard } from '../libs/ingestion/ports';
 import { writeLiveEvidenceArtifactAtomically } from './lib/live-evidence-artifact';
 
 type LiveOpenSignalId =
@@ -86,6 +88,7 @@ async function main(): Promise<void> {
     {
       providerKey: 'hacker-news',
       status: 'passed',
+      freshnessGuard: freshnessGuardForProvider('hacker-news'),
       signalResults: [
         {
           signalId: 'hn-live-http-smoke' satisfies LiveOpenSignalId,
@@ -125,6 +128,7 @@ async function main(): Promise<void> {
     {
       providerKey: 'rss',
       status: 'passed',
+      freshnessGuard: freshnessGuardForProvider('rss'),
       signalResults: [
         {
           signalId: 'rss-allowlisted-live-feeds' satisfies LiveOpenSignalId,
@@ -175,6 +179,7 @@ async function main(): Promise<void> {
     {
       providerKey: 'github-issues',
       status: 'passed',
+      freshnessGuard: freshnessGuardForProvider('github-issues'),
       signalResults: [
         {
           signalId: 'github-live-api-smoke' satisfies LiveOpenSignalId,
@@ -390,6 +395,12 @@ const assertNoForbiddenGitHubOauthScopes = (scopes: readonly string[]): void => 
     forbiddenScope === undefined,
     'GITHUB_ACCESS_TOKEN must be anonymous, fine-grained read-only, or classic token without repo/write/admin scopes',
   );
+};
+
+const freshnessGuardForProvider = (providerKey: string): SourceReadinessFreshnessGuard => {
+  const profile = sourceReadinessProfiles.find((candidate) => candidate.providerKey === providerKey);
+  assert(profile !== undefined, `${providerKey}: missing source readiness profile`);
+  return profile.freshnessGuard;
 };
 
 const readOptionalEnv = (name: string): string | undefined => {

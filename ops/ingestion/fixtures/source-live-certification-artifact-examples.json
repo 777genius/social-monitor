@@ -28,6 +28,21 @@
         {
           "providerKey": "hacker-news",
           "status": "passed",
+          "freshnessGuard": {
+            "maxStalenessSeconds": 900,
+            "minimumScanIntervalSeconds": 300,
+            "skipRecentlyScanned": true,
+            "scanHistoryRequired": true,
+            "cursorResumeRequired": true,
+            "rateLimitBackoffRequired": true,
+            "staleReadModelState": "stale",
+            "providerFailureHealthState": "down",
+            "signals": [
+              "hn_story_timestamp",
+              "scan_history_window",
+              "rate_limit_backoff"
+            ]
+          },
           "signalResults": [
             {
               "signalId": "hn-live-http-smoke",
@@ -67,6 +82,21 @@
         {
           "providerKey": "rss",
           "status": "passed",
+          "freshnessGuard": {
+            "maxStalenessSeconds": 3600,
+            "minimumScanIntervalSeconds": 300,
+            "skipRecentlyScanned": true,
+            "scanHistoryRequired": true,
+            "cursorResumeRequired": true,
+            "rateLimitBackoffRequired": true,
+            "staleReadModelState": "stale",
+            "providerFailureHealthState": "degraded",
+            "signals": [
+              "rss_etag_last_modified",
+              "scan_history_window",
+              "rate_limit_backoff"
+            ]
+          },
           "signalResults": [
             {
               "signalId": "rss-allowlisted-live-feeds",
@@ -125,6 +155,21 @@
         {
           "providerKey": "github-issues",
           "status": "passed",
+          "freshnessGuard": {
+            "maxStalenessSeconds": 1800,
+            "minimumScanIntervalSeconds": 300,
+            "skipRecentlyScanned": true,
+            "scanHistoryRequired": true,
+            "cursorResumeRequired": true,
+            "rateLimitBackoffRequired": true,
+            "staleReadModelState": "stale",
+            "providerFailureHealthState": "down",
+            "signals": [
+              "github_search_updated_at",
+              "scan_history_window",
+              "rate_limit_backoff"
+            ]
+          },
           "signalResults": [
             {
               "signalId": "github-live-api-smoke",
@@ -162,6 +207,21 @@
         {
           "providerKey": "github-repo-radar",
           "status": "passed",
+          "freshnessGuard": {
+            "maxStalenessSeconds": 21600,
+            "minimumScanIntervalSeconds": 21600,
+            "skipRecentlyScanned": true,
+            "scanHistoryRequired": true,
+            "cursorResumeRequired": true,
+            "rateLimitBackoffRequired": true,
+            "staleReadModelState": "stale",
+            "providerFailureHealthState": "down",
+            "signals": [
+              "gh_archive_window_end",
+              "repository_snapshot_checked_at",
+              "rate_limit_backoff"
+            ]
+          },
           "signalResults": [
             {
               "signalId": "github-repo-radar-gh-archive-query",
@@ -237,6 +297,21 @@
         {
           "providerKey": "github-trending-page",
           "status": "passed",
+          "freshnessGuard": {
+            "maxStalenessSeconds": 3600,
+            "minimumScanIntervalSeconds": 3600,
+            "skipRecentlyScanned": true,
+            "scanHistoryRequired": true,
+            "cursorResumeRequired": true,
+            "rateLimitBackoffRequired": true,
+            "staleReadModelState": "stale",
+            "providerFailureHealthState": "degraded",
+            "signals": [
+              "github_trending_since_window",
+              "repository_rank_checked_at",
+              "rate_limit_backoff"
+            ]
+          },
           "signalResults": [
             {
               "signalId": "github-trending-page-live-smoke",
@@ -313,6 +388,21 @@
         {
           "providerKey": "reddit",
           "status": "passed",
+          "freshnessGuard": {
+            "maxStalenessSeconds": 900,
+            "minimumScanIntervalSeconds": 900,
+            "skipRecentlyScanned": true,
+            "scanHistoryRequired": true,
+            "cursorResumeRequired": true,
+            "rateLimitBackoffRequired": true,
+            "staleReadModelState": "stale",
+            "providerFailureHealthState": "down",
+            "signals": [
+              "reddit_listing_after_cursor",
+              "scan_history_window",
+              "rate_limit_backoff"
+            ]
+          },
           "signalResults": [
             {
               "signalId": "reddit-tenant-oauth-smoke",

@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 
 import { HttpRedditClient } from '../libs/ingestion/adapters/source/reddit/http-reddit-client';
 import { RedditSourceProvider } from '../libs/ingestion/adapters/source/reddit/reddit-source.provider';
+import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
-import type { SourceProviderScanContext, SourceQuery } from '../libs/ingestion/ports';
+import type { SourceProviderScanContext, SourceQuery, SourceReadinessFreshnessGuard } from '../libs/ingestion/ports';
 import { readLiveEvidenceArtifactFile, writeLiveEvidenceArtifactAtomically } from './lib/live-evidence-artifact';
 
 type RedditLiveSignalId =
@@ -107,6 +108,7 @@ async function main(): Promise<void> {
       {
         providerKey: 'reddit',
         status: 'passed',
+        freshnessGuard: freshnessGuardForProvider('reddit'),
         signalResults: [
           {
             signalId: 'reddit-tenant-oauth-smoke' satisfies RedditLiveSignalId,
@@ -381,6 +383,12 @@ const readString = (record: Record<string, unknown>, field: string): string => {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const freshnessGuardForProvider = (providerKey: string): SourceReadinessFreshnessGuard => {
+  const profile = sourceReadinessProfiles.find((candidate) => candidate.providerKey === providerKey);
+  assert(profile !== undefined, `${providerKey}: missing source readiness profile`);
+  return profile.freshnessGuard;
+};
 
 const readOptionalEnv = (name: string): string | undefined => {
   const value = process.env[name]?.trim();

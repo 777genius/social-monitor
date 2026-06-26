@@ -83,6 +83,7 @@
       "matchingRules": [
         "providerResults.providerKey must match the passed liveProviderEvidence providerKey",
         "signalResults must include exactly every required signal for the provider",
+        "providerResults.freshnessGuard must match source-provider certification freshness guard",
         "signalResults.evidence must be a signal-specific redacted object with required fields",
         "environmentId, imageDigest, commitSha and sampledAt must match the liveProviderEvidence entry",
         "artifact JSON must not include tokens, credential values, private network URLs or raw provider payloads"
