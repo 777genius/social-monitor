@@ -78,7 +78,7 @@ describe('Feed items list (e2e)', () => {
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    expect(firstPage.body).toEqual({
+    expect(firstPage.body).toMatchObject({
       items: [
         expect.objectContaining({
           id: 'feed-2',
@@ -88,6 +88,23 @@ describe('Feed items list (e2e)', () => {
         }),
       ],
       nextCursor: expect.any(String),
+      sourceBreakdown: {
+        totalItems: 1,
+        providerCount: 1,
+        sourceCount: 1,
+        sources: [
+          expect.objectContaining({
+            providerKey: 'rss',
+            sourceKey: 'binding:binding-feed-e2e',
+            contentType: 'item',
+            sourceBindingIds: ['binding-feed-e2e'],
+            itemCount: 1,
+            latestObservedAt: '2026-06-05T12:00:00.000Z',
+            latestPublishedAt: '2026-06-05T11:00:00.000Z',
+            sampleItemIds: ['feed-2'],
+          }),
+        ],
+      },
     });
 
     const secondPage = await request(app.getHttpServer())
@@ -98,13 +115,25 @@ describe('Feed items list (e2e)', () => {
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    expect(secondPage.body).toEqual({
+    expect(secondPage.body).toMatchObject({
       items: [
         expect.objectContaining({
           id: 'feed-1',
           sourceItemId: 'source-1',
         }),
       ],
+      sourceBreakdown: {
+        totalItems: 1,
+        providerCount: 1,
+        sourceCount: 1,
+        sources: [
+          expect.objectContaining({
+            sourceKey: 'binding:binding-feed-e2e',
+            itemCount: 1,
+            sampleItemIds: ['feed-1'],
+          }),
+        ],
+      },
     });
 
     const search = await request(app.getHttpServer())
@@ -115,13 +144,23 @@ describe('Feed items list (e2e)', () => {
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    expect(search.body).toEqual({
+    expect(search.body).toMatchObject({
       items: [
         expect.objectContaining({
           id: 'feed-1',
           sourceItemId: 'source-1',
         }),
       ],
+      sourceBreakdown: {
+        totalItems: 1,
+        sourceCount: 1,
+        sources: [
+          expect.objectContaining({
+            sourceKey: 'binding:binding-feed-e2e',
+            sampleItemIds: ['feed-1'],
+          }),
+        ],
+      },
     });
 
     const crossTenantSearch = await request(app.getHttpServer())
@@ -134,6 +173,12 @@ describe('Feed items list (e2e)', () => {
 
     expect(crossTenantSearch.body).toEqual({
       items: [],
+      sourceBreakdown: {
+        totalItems: 0,
+        providerCount: 0,
+        sourceCount: 0,
+        sources: [],
+      },
     });
 
     seedFeedItem({
@@ -156,6 +201,24 @@ describe('Feed items list (e2e)', () => {
       expect.objectContaining({ id: 'feed-2', topicId: 'topic-feed-e2e' }),
       expect.objectContaining({ id: 'feed-1', topicId: 'topic-feed-e2e' }),
     ]);
+    expect(topicFiltered.body.sourceBreakdown).toEqual({
+      totalItems: 2,
+      providerCount: 1,
+      sourceCount: 1,
+      sources: [
+        expect.objectContaining({
+          providerKey: 'rss',
+          sourceKey: 'binding:binding-feed-e2e',
+          contentType: 'item',
+          sourceBindingIds: ['binding-feed-e2e'],
+          itemCount: 2,
+          latestObservedAt: '2026-06-05T12:00:00.000Z',
+          latestPublishedAt: '2026-06-05T11:00:00.000Z',
+          sampleItemIds: ['feed-2', 'feed-1'],
+        }),
+      ],
+    });
+    expect(JSON.stringify(topicFiltered.body.sourceBreakdown)).not.toContain('feed-other-topic');
 
     const detail = await request(app.getHttpServer())
       .get('/feed/items/feed-1')
@@ -234,13 +297,25 @@ describe('Feed items list (e2e)', () => {
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    expect(response.body).toEqual({
+    expect(response.body).toMatchObject({
       items: [
         expect.objectContaining({
           id: 'feed-dedupe-1',
           canonicalUrl: 'https://Example.test/articles/story?utm_source=newsletter&b=2&a=1#comments',
         }),
       ],
+      sourceBreakdown: {
+        totalItems: 1,
+        providerCount: 1,
+        sourceCount: 1,
+        sources: [
+          expect.objectContaining({
+            sourceKey: 'binding:binding-feed-e2e',
+            itemCount: 1,
+            sampleItemIds: ['feed-dedupe-1'],
+          }),
+        ],
+      },
     });
   });
 
@@ -339,6 +414,27 @@ describe('Feed items list (e2e)', () => {
     expect(tinyTarget.normalizedSignal.score).toBeGreaterThan(programmingTarget.normalizedSignal.score);
     expect(tinyTarget.normalizedSignal.confidence).toBeGreaterThan(0);
     expect(tinyTarget.normalizedSignal.confidence).toBeLessThanOrEqual(0.98);
+    expect(response.body.sourceBreakdown).toMatchObject({
+      totalItems: 12,
+      providerCount: 1,
+      sourceCount: 2,
+      sources: expect.arrayContaining([
+        expect.objectContaining({
+          providerKey: 'reddit',
+          sourceKey: 'r/programming',
+          contentType: 'post',
+          sourceBindingIds: ['reddit-programming'],
+          itemCount: 6,
+        }),
+        expect.objectContaining({
+          providerKey: 'reddit',
+          sourceKey: 'r/tiny-saas',
+          contentType: 'post',
+          sourceBindingIds: ['reddit-tiny-saas'],
+          itemCount: 6,
+        }),
+      ]),
+    });
 
     const detail = await request(app.getHttpServer())
       .get('/feed/items/feed-signal-tiny-target')
@@ -558,8 +654,8 @@ describe('Feed items list (e2e)', () => {
         basis: 'cohort_baseline_v1',
         cohort: {
           providerKey: 'github-repo-radar',
-            sourceKey:
-              'repo-trending:24h:query:any:language:typescript:topic:agents+ai',
+          sourceKey:
+            'repo-trending:24h:query:any:language:typescript:topic:agents+ai',
           contentType: 'repository',
           baselineWindow: '30d',
         },
@@ -607,6 +703,35 @@ describe('Feed items list (e2e)', () => {
         },
       },
     });
+    expect(response.body.sourceBreakdown).toMatchObject({
+      totalItems: 3,
+      providerCount: 3,
+      sourceCount: 3,
+      sources: expect.arrayContaining([
+        expect.objectContaining({
+          providerKey: 'github-repo-radar',
+          sourceKey:
+            'repo-trending:24h:query:any:language:typescript:topic:agents+ai',
+          contentType: 'repository',
+          itemCount: 1,
+          sampleItemIds: ['feed-provider-github'],
+        }),
+        expect.objectContaining({
+          providerKey: 'hacker-news',
+          sourceKey: 'hn:front_page',
+          contentType: 'story',
+          itemCount: 1,
+          sampleItemIds: ['feed-provider-hn'],
+        }),
+        expect.objectContaining({
+          providerKey: 'x-twitter',
+          sourceKey: 'account:openai',
+          contentType: 'post',
+          itemCount: 1,
+          sampleItemIds: ['feed-provider-x'],
+        }),
+      ]),
+    });
   });
 
   it('omits normalized signal when a provider has no comparable raw metrics', async () => {
@@ -646,6 +771,21 @@ describe('Feed items list (e2e)', () => {
     ]);
     expect(response.body.items[0].providerMetrics).toBeUndefined();
     expect(response.body.items[0].normalizedSignal).toBeUndefined();
+    expect(response.body.sourceBreakdown).toEqual({
+      totalItems: 1,
+      providerCount: 1,
+      sourceCount: 1,
+      sources: [
+        expect.objectContaining({
+          providerKey: 'rss',
+          sourceKey: 'binding:binding-feed-e2e',
+          contentType: 'item',
+          sourceBindingIds: ['binding-feed-e2e'],
+          itemCount: 1,
+          sampleItemIds: ['feed-no-signal-rss'],
+        }),
+      ],
+    });
   });
 
   it('keeps cohorts topic-scoped and lowers confidence when exact baseline is too small', async () => {
@@ -743,6 +883,25 @@ describe('Feed items list (e2e)', () => {
     expect(target.normalizedSignal.confidence).toBeLessThan(0.5);
     expect(response.body.items.some((item: { readonly topicId: string }) =>
       item.topicId === otherTopicId)).toBe(false);
+    expect(response.body.sourceBreakdown).toEqual({
+      totalItems: 5,
+      providerCount: 1,
+      sourceCount: 1,
+      sources: [
+        expect.objectContaining({
+          providerKey: 'hacker-news',
+          sourceKey: 'hn:front_page',
+          contentType: 'story',
+          itemCount: 5,
+          sampleItemIds: [
+            'feed-signal-hn-target',
+            'feed-signal-hn-same-age',
+            'feed-signal-hn-older-1',
+          ],
+        }),
+      ],
+    });
+    expect(JSON.stringify(response.body.sourceBreakdown)).not.toContain(otherTopicId);
   });
 
   const seedFeedItem = (params: {
