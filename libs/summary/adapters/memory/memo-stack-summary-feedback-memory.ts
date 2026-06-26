@@ -18,6 +18,13 @@ export type ProviderQualitySignal = {
   readonly tags: readonly string[];
 };
 
+export type UserPreferenceSignal = {
+  readonly action: string;
+  readonly factCategory: string;
+  readonly guidance: string;
+  readonly tags: readonly string[];
+};
+
 export const feedbackMemoryText = (
   command: RecordSummaryFeedbackMemoryCommand,
   mapping: FeedbackMemoryMapping,
@@ -53,6 +60,69 @@ export const providerQualityTags = (
   ...providerQuality.tags,
   ...(command.providerKey === undefined ? [] : [`provider-${command.providerKey}`]),
 ];
+
+export const userPreferenceMemoryText = (
+  command: RecordSummaryFeedbackMemoryCommand,
+  userPreference: UserPreferenceSignal,
+): string =>
+  redactSensitiveText([
+    `User summary preference for topic ${command.topicId}: rating ${command.rating}/5, category ${command.category}.`,
+    `Guidance: ${userPreference.guidance}.`,
+    command.comment === undefined ? '' : `User note: ${command.comment}`,
+  ].filter((line) => line.length > 0).join(' '));
+
+export const userPreferenceTags = (
+  command: RecordSummaryFeedbackMemoryCommand,
+  userPreference: UserPreferenceSignal,
+): readonly string[] => [
+  'summary-feedback',
+  'user-preference',
+  `rating-${command.rating}`,
+  `category-${command.category}`,
+  ...userPreference.tags,
+  ...(command.providerKey === undefined ? [] : [`provider-${command.providerKey}`]),
+];
+
+export const userPreferenceSignal = (
+  command: RecordSummaryFeedbackMemoryCommand,
+  mapping: FeedbackMemoryMapping,
+  providerQuality: ProviderQualitySignal | undefined,
+): UserPreferenceSignal | undefined => {
+  const providerKey = command.providerKey;
+  if (providerKey !== undefined) {
+    if (providerQuality?.action === 'prefer_requested_provider_coverage') {
+      return {
+        action: 'prefer_similar_provider_evidence',
+        factCategory: 'relevance_quality',
+        guidance: `prefer similar ${providerKey} evidence when it matches the user's requested coverage`,
+        tags: ['relevance-quality', 'ranking-prefer-provider'],
+      };
+    }
+
+    if (providerQuality !== undefined) {
+      return {
+        action: 'downrank_similar_provider_evidence',
+        factCategory: 'relevance_quality',
+        guidance: `down-rank similar ${providerKey} evidence unless stronger corroboration exists`,
+        tags: ['relevance-quality', 'ranking-downrank-provider'],
+      };
+    }
+  }
+
+  switch (command.category) {
+    case 'too_verbose':
+    case 'too_terse':
+    case 'ux_confusing':
+      return {
+        action: mapping.action,
+        factCategory: mapping.factCategory,
+        guidance: mapping.guidance,
+        tags: mapping.tags,
+      };
+    default:
+      return undefined;
+  }
+};
 
 export const providerQualitySignal = (
   command: RecordSummaryFeedbackMemoryCommand,

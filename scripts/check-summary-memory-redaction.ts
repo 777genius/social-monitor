@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
-import { MemoStackSummaryMemoryAdapter } from '@social-monitor/summary/adapters/memory/memo-stack-summary-memory.adapter';
+import {
+  MemoStackSummaryMemoryAdapter,
+  userPreferenceScope,
+} from '@social-monitor/summary/adapters/memory/memo-stack-summary-memory.adapter';
 import { MemoStackUserSummaryPreferenceMemoryProjector } from '@social-monitor/summary/adapters/memory/memo-stack-user-summary-preference-memory.projector';
 
 type RecordedRequest = {
@@ -134,9 +137,11 @@ async function main(): Promise<void> {
     updatedAt: new Date('2026-06-06T00:04:00.000Z'),
   });
 
-  assert.equal(requests.length, 7, 'summary memory redaction check must exercise context, feedback, provider quality and preference writes');
+  assert.equal(requests.length, 9, 'summary memory redaction check must exercise context, feedback, provider quality, user feedback preference and explicit preference writes');
   assert.deepEqual(requests.map((request) => new URL(request.url).pathname), [
     '/api/v1/context',
+    '/api/v1/captures',
+    '/api/v1/facts',
     '/api/v1/captures',
     '/api/v1/facts',
     '/api/v1/captures',
@@ -160,6 +165,24 @@ async function main(): Promise<void> {
   assert(
     serializedBodies.includes('provider distribution: github=1, reddit=1'),
     'memory query must include provider distribution without leaking raw source secrets',
+  );
+  assert.equal(
+    requests[5]?.body.memory_scope_external_ref,
+    userPreferenceScope('user-redaction'),
+    'summary feedback must write user-scope preference memory for later ranking guidance',
+  );
+  assert.equal(
+    requests[6]?.body.memory_scope_external_ref,
+    userPreferenceScope('user-redaction'),
+    'summary feedback user-scope fact must be durable preference memory',
+  );
+  assert(
+    JSON.stringify(requests[6]?.body).includes('down-rank similar github evidence'),
+    'summary feedback user-scope fact must use relevance-readable downrank wording',
+  );
+  assert(
+    !JSON.stringify(requests[6]?.body).includes('Provider github was involved'),
+    'summary feedback user-scope fact must not accidentally boost low-quality provider evidence',
   );
 
   console.log('Summary memory redaction OK');

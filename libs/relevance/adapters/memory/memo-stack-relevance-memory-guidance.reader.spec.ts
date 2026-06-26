@@ -68,6 +68,43 @@ describe('MemoStackRelevanceMemoryGuidanceReader', () => {
       status: 'unavailable',
     }));
   });
+
+  it('uses summary feedback user-preference facts as provider downrank guidance', async () => {
+    const client = new CapturingMemoStackContextClient({
+      data: {
+        rendered_text: [
+          'User summary preference for topic topic-ai: rating 2/5, category bad_citation.',
+          'Guidance: down-rank similar github evidence unless stronger corroboration exists.',
+        ].join(' '),
+        diagnostics: {
+          facts_used: 1,
+        },
+      },
+    });
+    const reader = new MemoStackRelevanceMemoryGuidanceReader({
+      baseUrl: 'https://memory.example',
+      token: 'memory-token',
+      client,
+    });
+
+    const result = await reader.buildGuidance({
+      tenantId: tenantId('tenant-summary-feedback-guidance'),
+      workspaceId: workspaceId('workspace-summary-feedback-guidance'),
+      userId: 'user-summary-feedback-guidance',
+      providerKeys: ['github', 'reddit'],
+      keywords: ['corroboration', 'github'],
+      requestedAt: new Date('2026-06-22T10:00:00.000Z'),
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      status: 'available',
+      providerPreferences: [{ key: 'github', weight: -1 }],
+      blockedProviderKeys: [],
+    }));
+    expect(result.keywordPreferences).toEqual(expect.arrayContaining([
+      { key: 'corroboration', weight: 0.5 },
+    ]));
+  });
 });
 
 class CapturingMemoStackContextClient {

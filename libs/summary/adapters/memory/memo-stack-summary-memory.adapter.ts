@@ -35,6 +35,9 @@ import {
   feedbackTags,
   providerQualitySignal,
   providerQualityTags,
+  userPreferenceMemoryText,
+  userPreferenceSignal,
+  userPreferenceTags,
 } from './memo-stack-summary-feedback-memory';
 import { mergeFallbackContexts } from './memo-stack-summary-memory-context-merge';
 
@@ -121,6 +124,7 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
     );
     const mapping = feedbackMemoryMapping(command.category);
     const providerQuality = providerQualitySignal(command);
+    const userPreference = userPreferenceSignal(command, mapping, providerQuality);
     const memoryText = feedbackMemoryText(command, mapping, providerQuality);
     const providerScope = providerQuality === undefined || command.providerKey === undefined
       ? undefined
@@ -160,10 +164,13 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
     const providerQualityResponse = providerQuality === undefined || command.providerKey === undefined
       ? undefined
       : await this.recordProviderQualityFeedback(command, providerQuality, memoryText);
+    const userPreferenceResponse = userPreference === undefined
+      ? undefined
+      : await this.recordUserPreferenceFeedback(command, userPreference);
 
     return {
       status: 'written',
-      diagnostics: {
+      diagnostics: withoutUndefined({
         provider: 'memo-stack',
         workflow: 'recordFeedback',
         captureId: nestedString(response.capture, ['data', 'id']),
@@ -173,7 +180,11 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
         providerQualityCaptureId: nestedString(providerQualityResponse?.capture, ['data', 'id']),
         providerQualityFactId: nestedString(providerQualityResponse?.fact, ['data', 'id']),
         providerQualityScopeExternalRef: providerScope,
-      },
+        userPreferenceCaptureId: nestedString(userPreferenceResponse?.capture, ['data', 'id']),
+        userPreferenceFactId: nestedString(userPreferenceResponse?.fact, ['data', 'id']),
+        userPreferenceScopeExternalRef:
+          userPreference === undefined ? undefined : userPreferenceScope(command.submittedBy),
+      }),
     };
   }
 
@@ -222,6 +233,53 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
       factTags: providerQualityTags(command, providerQuality),
       factTtlPolicy: 'durable',
       factMemoryScopeExternalRef: providerScope,
+    });
+  }
+
+  private async recordUserPreferenceFeedback(
+    command: RecordSummaryFeedbackMemoryCommand,
+    userPreference: NonNullable<ReturnType<typeof userPreferenceSignal>>,
+  ): Promise<Awaited<ReturnType<MemoStackSummaryMemoryClient['workflows']['recordFeedback']>>> {
+    const userScope = userPreferenceScope(command.submittedBy);
+    const memoryText = userPreferenceMemoryText(command, userPreference);
+
+    return this.client.workflows.recordFeedback({
+      spaceSlug: spaceSlug(command.tenantId, command.workspaceId),
+      memoryScopeExternalRef: userScope,
+      sourceAgent: 'social-monitor.summary-feedback-user-preference',
+      text: memoryText,
+      idempotencyKey: memoStackWorkflowIdempotencyKey(
+        'social-monitor',
+        'summary-user-preference',
+        command.tenantId,
+        command.workspaceId,
+        command.idempotencyKey,
+      ),
+      sourceId: `${command.feedbackId}:user-preference`,
+      sourceRefs: feedbackSourceRefs(command),
+      eventType: 'social-monitor.summary_feedback.user_preference_recorded',
+      actorRole: 'user',
+      sourceActorExternalRef: command.submittedBy,
+      occurredAt: command.createdAt.toISOString(),
+      metadata: withoutUndefined({
+        parent_feedback_id: command.feedbackId,
+        summary_id: command.summaryId,
+        topic_id: command.topicId,
+        rating: command.rating,
+        category: command.category,
+        provider_key: command.providerKey,
+        citation_id: command.citationId,
+        memory_action: userPreference.action,
+        memory_fact_category: userPreference.factCategory,
+        memory_scope_external_ref: userScope,
+      }),
+      rememberAsFact: true,
+      factText: memoryText,
+      factKind: 'user_preference',
+      factCategory: userPreference.factCategory,
+      factTags: userPreferenceTags(command, userPreference),
+      factTtlPolicy: 'durable',
+      factMemoryScopeExternalRef: userScope,
     });
   }
 

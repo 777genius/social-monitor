@@ -7,6 +7,7 @@ import {
   providerQualityScope,
   spaceSlug,
   topicFeedbackScope,
+  userPreferenceScope,
 } from './memo-stack-summary-memory.adapter';
 import { feedbackMemoryMapping } from './memo-stack-summary-feedback-memory';
 
@@ -104,6 +105,8 @@ describe('MemoStackSummaryMemoryAdapter', () => {
         { data: { id: 'fact-1', indexing_status: 'queued' } },
         { data: { id: 'provider-capture-1' } },
         { data: { id: 'provider-fact-1', indexing_status: 'queued' } },
+        { data: { id: 'user-preference-capture-1' } },
+        { data: { id: 'user-preference-fact-1', indexing_status: 'queued' } },
       ], requests),
     });
 
@@ -137,9 +140,12 @@ describe('MemoStackSummaryMemoryAdapter', () => {
         providerQualityCaptureId: 'provider-capture-1',
         providerQualityFactId: 'provider-fact-1',
         providerQualityScopeExternalRef: providerQualityScope('topic-1', 'github'),
+        userPreferenceCaptureId: 'user-preference-capture-1',
+        userPreferenceFactId: 'user-preference-fact-1',
+        userPreferenceScopeExternalRef: userPreferenceScope('user-1'),
       },
     });
-    expect(requests).toHaveLength(4);
+    expect(requests).toHaveLength(6);
     expect(requests[0]?.url).toBe('https://memory.example.test/api/v1/captures');
     expect(headerValue(requests[0]?.init.headers, 'authorization')).toBe('Bearer token-value');
     expect(headerValue(requests[0]?.init.headers, 'content-type')).toBe('application/json');
@@ -299,6 +305,46 @@ describe('MemoStackSummaryMemoryAdapter', () => {
         source_id: 'citation-1',
       },
     ]));
+    expect(requests[4]?.url).toBe('https://memory.example.test/api/v1/captures');
+    expect(requests[4]?.body).toMatchObject({
+      space_slug: spaceSlug('tenant-1', 'workspace-1'),
+      memory_scope_external_ref: userPreferenceScope('user-1'),
+      source_agent: 'social-monitor.summary-feedback-user-preference',
+      event_type: 'social-monitor.summary_feedback.user_preference_recorded',
+      source_event_id: 'feedback-1:user-preference',
+      metadata: {
+        parent_feedback_id: 'feedback-1',
+        summary_id: 'summary-1',
+        topic_id: 'topic-1',
+        rating: 2,
+        category: 'bad_citation',
+        provider_key: 'github',
+        citation_id: 'citation-1',
+        memory_action: 'downrank_similar_provider_evidence',
+        memory_fact_category: 'relevance_quality',
+        memory_scope_external_ref: userPreferenceScope('user-1'),
+      },
+    });
+    expect(requests[4]?.body.text).toEqual(expect.stringContaining('down-rank similar github evidence'));
+    expect(requests[4]?.body.text).not.toEqual(expect.stringContaining('Provider github was involved'));
+    expect(requests[5]?.url).toBe('https://memory.example.test/api/v1/facts');
+    expect(requests[5]?.body).toMatchObject({
+      space_slug: spaceSlug('tenant-1', 'workspace-1'),
+      memory_scope_external_ref: userPreferenceScope('user-1'),
+      kind: 'user_preference',
+      category: 'relevance_quality',
+      ttl_policy: 'durable',
+      tags: [
+        'summary-feedback',
+        'user-preference',
+        'rating-2',
+        'category-bad_citation',
+        'relevance-quality',
+        'ranking-downrank-provider',
+        'provider-github',
+      ],
+    });
+    expect(requests[5]?.body.text).toEqual(expect.stringContaining('down-rank similar github evidence'));
   });
 
   it('skips low-signal positive generic feedback without calling memo-stack', async () => {
@@ -339,6 +385,8 @@ describe('MemoStackSummaryMemoryAdapter', () => {
         { data: { id: 'fact-1' } },
         { data: { id: 'provider-capture-1' } },
         { data: { id: 'provider-fact-1' } },
+        { data: { id: 'user-preference-capture-1' } },
+        { data: { id: 'user-preference-fact-1' } },
       ], requests),
     });
 
@@ -379,6 +427,14 @@ describe('MemoStackSummaryMemoryAdapter', () => {
       'provider-reddit',
     ]));
     expect(requests[3]?.body.text).toEqual(expect.stringContaining('down-rank low-signal reddit evidence'));
+    expect(requests[5]?.body.memory_scope_external_ref).toBe(userPreferenceScope('user-1'));
+    expect(requests[5]?.body.tags).toEqual(expect.arrayContaining([
+      'user-preference',
+      'ranking-downrank-provider',
+      'provider-reddit',
+    ]));
+    expect(requests[5]?.body.text).toEqual(expect.stringContaining('down-rank similar reddit evidence'));
+    expect(requests[5]?.body.text).not.toEqual(expect.stringContaining('Provider reddit was involved'));
   });
 
   it('builds summary memory context with retrieval diagnostics passthrough', async () => {
