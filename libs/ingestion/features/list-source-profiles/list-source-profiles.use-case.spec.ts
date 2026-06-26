@@ -34,6 +34,7 @@ class FakeSourceProfileRegistry implements SourceProviderRegistryPort {
         state: 'enabled_beta',
         runtimeReadiness: 'fixture_ready',
         liveBetaBlockers: ['local fixtures only'],
+        freshnessGuard: makeFreshnessGuard(60, 86_400, false),
         acquisitionMode: 'deterministic_local_adapter',
         approvalOwner: 'engineering',
         termsNotes: 'local only',
@@ -53,6 +54,7 @@ class FakeSourceProfileRegistry implements SourceProviderRegistryPort {
         state: 'profiled',
         runtimeReadiness: 'deferred',
         liveBetaBlockers: ['approval'],
+        freshnessGuard: makeFreshnessGuard(900, 900, true),
         acquisitionMode: 'official_api_or_approved_vendor',
         approvalOwner: 'product_and_legal',
         termsNotes: 'readiness only',
@@ -72,6 +74,7 @@ class FakeSourceProfileRegistry implements SourceProviderRegistryPort {
         state: 'provider_only',
         runtimeReadiness: 'deferred',
         liveBetaBlockers: ['approval'],
+        freshnessGuard: makeFreshnessGuard(900, 900, true),
         acquisitionMode: 'approved_paid_api_or_vendor',
         approvalOwner: 'product_and_legal',
         termsNotes: 'readiness only',
@@ -119,4 +122,20 @@ describe('ListSourceProfilesUseCase', () => {
       ]),
     );
   });
+});
+
+const makeFreshnessGuard = (
+  minimumScanIntervalSeconds: number,
+  maxStalenessSeconds: number,
+  rateLimitBackoffRequired: boolean,
+): SourceReadinessProfile['freshnessGuard'] => ({
+  maxStalenessSeconds,
+  minimumScanIntervalSeconds,
+  skipRecentlyScanned: true,
+  scanHistoryRequired: true,
+  cursorResumeRequired: true,
+  rateLimitBackoffRequired,
+  staleReadModelState: 'stale',
+  providerFailureHealthState: rateLimitBackoffRequired ? 'down' : 'degraded',
+  signals: ['scan_history_window'],
 });

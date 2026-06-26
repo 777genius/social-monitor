@@ -15,6 +15,7 @@
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 86400,
+        "minimumScanIntervalSeconds": 60,
         "skipRecentlyScanned": true,
         "scanHistoryRequired": true,
         "cursorResumeRequired": true,
@@ -43,6 +44,7 @@
         "fixture_repeated_scan_is_deterministic",
         "provider_errors_are_classified",
         "freshness_guard_declared",
+        "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models"
       ]
@@ -57,6 +59,7 @@
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 1800,
+        "minimumScanIntervalSeconds": 300,
         "skipRecentlyScanned": true,
         "scanHistoryRequired": true,
         "cursorResumeRequired": true,
@@ -86,6 +89,7 @@
         "fixture_repeated_scan_is_deterministic",
         "provider_errors_are_classified",
         "freshness_guard_declared",
+        "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models"
       ]
@@ -100,6 +104,7 @@
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 21600,
+        "minimumScanIntervalSeconds": 21600,
         "skipRecentlyScanned": true,
         "scanHistoryRequired": true,
         "cursorResumeRequired": true,
@@ -129,6 +134,7 @@
         "fixture_repeated_scan_is_deterministic",
         "provider_errors_are_classified",
         "freshness_guard_declared",
+        "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models"
       ]
@@ -143,6 +149,7 @@
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 3600,
+        "minimumScanIntervalSeconds": 3600,
         "skipRecentlyScanned": true,
         "scanHistoryRequired": true,
         "cursorResumeRequired": true,
@@ -172,6 +179,7 @@
         "fixture_repeated_scan_is_deterministic",
         "provider_errors_are_classified",
         "freshness_guard_declared",
+        "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models"
       ]
@@ -186,6 +194,7 @@
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 900,
+        "minimumScanIntervalSeconds": 300,
         "skipRecentlyScanned": true,
         "scanHistoryRequired": true,
         "cursorResumeRequired": true,
@@ -215,6 +224,7 @@
         "fixture_repeated_scan_is_deterministic",
         "provider_errors_are_classified",
         "freshness_guard_declared",
+        "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models"
       ]
@@ -229,6 +239,7 @@
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 900,
+        "minimumScanIntervalSeconds": 900,
         "skipRecentlyScanned": true,
         "scanHistoryRequired": true,
         "cursorResumeRequired": true,
@@ -258,6 +269,7 @@
         "fixture_repeated_scan_is_deterministic",
         "provider_errors_are_classified",
         "freshness_guard_declared",
+        "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models"
       ]
@@ -272,6 +284,7 @@
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 3600,
+        "minimumScanIntervalSeconds": 300,
         "skipRecentlyScanned": true,
         "scanHistoryRequired": true,
         "cursorResumeRequired": true,
@@ -301,6 +314,7 @@
         "fixture_repeated_scan_is_deterministic",
         "provider_errors_are_classified",
         "freshness_guard_declared",
+        "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models"
       ]
@@ -316,6 +330,7 @@
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 3600,
+        "minimumScanIntervalSeconds": 3600,
         "skipRecentlyScanned": true,
         "scanHistoryRequired": true,
         "cursorResumeRequired": true,
@@ -340,6 +355,7 @@
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 900,
+        "minimumScanIntervalSeconds": 900,
         "skipRecentlyScanned": true,
         "scanHistoryRequired": true,
         "cursorResumeRequired": true,

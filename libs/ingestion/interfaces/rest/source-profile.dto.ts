@@ -24,6 +24,9 @@ export class SourceProfileFreshnessGuardDto {
   declare readonly maxStalenessSeconds: number;
 
   @ApiProperty()
+  declare readonly minimumScanIntervalSeconds: number;
+
+  @ApiProperty()
   declare readonly skipRecentlyScanned: boolean;
 
   @ApiProperty()

@@ -13,6 +13,7 @@ export type SourceRuntimeReadiness = 'fixture_ready' | 'live_beta_ready' | 'defe
 
 export type SourceReadinessFreshnessGuard = {
   readonly maxStalenessSeconds: number;
+  readonly minimumScanIntervalSeconds: number;
   readonly skipRecentlyScanned: boolean;
   readonly scanHistoryRequired: boolean;
   readonly cursorResumeRequired: boolean;

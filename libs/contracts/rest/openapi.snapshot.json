@@ -3349,6 +3349,9 @@
           "maxStalenessSeconds": {
             "type": "number"
           },
+          "minimumScanIntervalSeconds": {
+            "type": "number"
+          },
           "providerFailureHealthState": {
             "enum": [
               "degraded",
@@ -3381,6 +3384,7 @@
         },
         "required": [
           "maxStalenessSeconds",
+          "minimumScanIntervalSeconds",
           "skipRecentlyScanned",
           "scanHistoryRequired",
           "cursorResumeRequired",

@@ -15,6 +15,7 @@ type SourceProfile = {
   readonly liveBetaBlockers: readonly string[];
   readonly freshnessGuard?: {
     readonly maxStalenessSeconds: number;
+    readonly minimumScanIntervalSeconds: number;
     readonly skipRecentlyScanned: boolean;
     readonly scanHistoryRequired: boolean;
     readonly cursorResumeRequired: boolean;
@@ -182,6 +183,10 @@ async function main(): Promise<void> {
       'GitHub Trending page must expose hourly freshness guard',
     );
     assert(
+      githubTrendingGuard.minimumScanIntervalSeconds === 3_600,
+      'GitHub Trending page must expose hourly minimum scan interval',
+    );
+    assert(
       githubTrendingGuard.skipRecentlyScanned === true,
       'GitHub Trending page must expose skip-recently-scanned guard',
     );
@@ -238,6 +243,10 @@ async function main(): Promise<void> {
     assert(
       redditFreshnessGuard.maxStalenessSeconds === 900,
       'Reddit profile must expose 15 minute freshness guard',
+    );
+    assert(
+      redditFreshnessGuard.minimumScanIntervalSeconds === 900,
+      'Reddit profile must expose 15 minute minimum scan interval',
     );
     assert(
       redditFreshnessGuard.scanHistoryRequired === true,

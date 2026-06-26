@@ -8,6 +8,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: ['Synthetic provider is not a real external source.'],
     freshnessGuard: {
       maxStalenessSeconds: 86_400,
+      minimumScanIntervalSeconds: 60,
       skipRecentlyScanned: true,
       scanHistoryRequired: true,
       cursorResumeRequired: true,
@@ -42,6 +43,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     ],
     freshnessGuard: {
       maxStalenessSeconds: 900,
+      minimumScanIntervalSeconds: 300,
       skipRecentlyScanned: true,
       scanHistoryRequired: true,
       cursorResumeRequired: true,
@@ -80,6 +82,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     ],
     freshnessGuard: {
       maxStalenessSeconds: 3_600,
+      minimumScanIntervalSeconds: 300,
       skipRecentlyScanned: true,
       scanHistoryRequired: true,
       cursorResumeRequired: true,
@@ -122,6 +125,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     ],
     freshnessGuard: {
       maxStalenessSeconds: 1_800,
+      minimumScanIntervalSeconds: 300,
       skipRecentlyScanned: true,
       scanHistoryRequired: true,
       cursorResumeRequired: true,
@@ -164,6 +168,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     ],
     freshnessGuard: {
       maxStalenessSeconds: 21_600,
+      minimumScanIntervalSeconds: 21_600,
       skipRecentlyScanned: true,
       scanHistoryRequired: true,
       cursorResumeRequired: true,
@@ -215,6 +220,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     ],
     freshnessGuard: {
       maxStalenessSeconds: 3_600,
+      minimumScanIntervalSeconds: 3_600,
       skipRecentlyScanned: true,
       scanHistoryRequired: true,
       cursorResumeRequired: true,
@@ -270,6 +276,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     ],
     freshnessGuard: {
       maxStalenessSeconds: 900,
+      minimumScanIntervalSeconds: 900,
       skipRecentlyScanned: true,
       scanHistoryRequired: true,
       cursorResumeRequired: true,
@@ -314,6 +321,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     ],
     freshnessGuard: {
       maxStalenessSeconds: 900,
+      minimumScanIntervalSeconds: 900,
       skipRecentlyScanned: true,
       scanHistoryRequired: true,
       cursorResumeRequired: true,
@@ -354,6 +362,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     ],
     freshnessGuard: {
       maxStalenessSeconds: 3_600,
+      minimumScanIntervalSeconds: 3_600,
       skipRecentlyScanned: true,
       scanHistoryRequired: true,
       cursorResumeRequired: true,

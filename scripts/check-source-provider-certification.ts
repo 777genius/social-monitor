@@ -22,6 +22,7 @@ import { StaticRedditTokenProvider } from '../libs/ingestion/adapters/source/red
 import { FixtureRssClient } from '../libs/ingestion/adapters/source/rss/fixture-rss-client';
 import { RssSourceProvider } from '../libs/ingestion/adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
+import { minimumScanIntervalSecondsForProvider } from '../libs/monitoring/features/shared/scan-cadence-policy';
 import type {
   FetchedSourceItem,
   ProviderFailureKind,
@@ -439,6 +440,7 @@ async function certifyProvider(
       'fixture_repeated_scan_is_deterministic',
       'provider_errors_are_classified',
       'freshness_guard_declared',
+      'minimum_scan_interval_declared',
       'scan_history_required_for_freshness',
       'rate_limit_backoff_declared_for_quota_models',
     ],
@@ -455,6 +457,16 @@ function assertFreshnessGuard(
       guard.maxStalenessSeconds >= 60 &&
       guard.maxStalenessSeconds <= 86_400,
     `${providerKey}: freshness guard maxStalenessSeconds must be 60..86400`,
+  );
+  assert(
+    Number.isInteger(guard.minimumScanIntervalSeconds) &&
+      guard.minimumScanIntervalSeconds >= 60 &&
+      guard.minimumScanIntervalSeconds <= guard.maxStalenessSeconds,
+    `${providerKey}: freshness guard minimumScanIntervalSeconds must be 60..maxStalenessSeconds`,
+  );
+  assert(
+    guard.minimumScanIntervalSeconds === minimumScanIntervalSecondsForProvider(providerKey),
+    `${providerKey}: freshness guard minimumScanIntervalSeconds must match scan cadence enforcement`,
   );
   assert(
     guard.skipRecentlyScanned === true,
