@@ -1608,7 +1608,8 @@ export const mobileApiOperations = [
       "topicId"
     ],
     "queryParameters": [
-      "days"
+      "days",
+      "providerKey"
     ],
     "requiredHeaders": [
       "x-tenant-id",

@@ -8660,6 +8660,17 @@
           },
           {
             "in": "query",
+            "name": "providerKey",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
             "name": "days",
             "required": false,
             "schema": {

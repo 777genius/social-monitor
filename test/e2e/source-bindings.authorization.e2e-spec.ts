@@ -148,7 +148,7 @@ describe('Source binding workspace authorization (e2e)', () => {
 
     await request(app.getHttpServer())
       .get(`/topics/${topic.body.topicId}/source-bindings/daily-history`)
-      .query({ days: 2 })
+      .query({ days: 2, providerKey: 'fake-source' })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -170,6 +170,29 @@ describe('Source binding workspace authorization (e2e)', () => {
             expect.objectContaining({ totalScans: 0 }),
             expect.objectContaining({ totalScans: 0 }),
           ],
+        });
+      });
+
+    await request(app.getHttpServer())
+      .get(`/topics/${topic.body.topicId}/source-bindings/daily-history`)
+      .query({ days: 2, providerKey: 'rss' })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          topicId: topic.body.topicId,
+          summary: {
+            sourceBindingCount: 0,
+            totalScans: 0,
+            providerBreakdown: [],
+          },
+          days: [
+            expect.objectContaining({ totalScans: 0, providerBreakdown: [] }),
+            expect.objectContaining({ totalScans: 0, providerBreakdown: [] }),
+          ],
+          maxScanJobs: 0,
         });
       });
   });

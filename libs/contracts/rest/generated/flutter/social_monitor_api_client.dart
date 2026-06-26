@@ -1610,6 +1610,7 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     ],
     'queryParameters': [
       'days',
+      'providerKey',
     ],
     'requiredHeaders': [
       'x-tenant-id',

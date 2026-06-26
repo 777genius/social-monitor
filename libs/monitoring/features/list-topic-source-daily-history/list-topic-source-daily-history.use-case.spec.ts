@@ -295,6 +295,87 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
     });
   });
 
+  it("filters topic scan history by provider key", async () => {
+    const fixture = await makeFixture();
+    const reddit = makeBinding("binding-reddit", "reddit");
+    const github = makeBinding("binding-github", "github-trending-page");
+    await fixture.bindings.save(reddit);
+    await fixture.bindings.save(github);
+    await fixture.saveCompletedScan({
+      id: "scan-reddit-today",
+      binding: reddit,
+      requestedAt: "2026-06-26T08:00:00.000Z",
+      status: "succeeded",
+      fetched: 20,
+      inserted: 12,
+      skippedDuplicates: 8,
+      projected: 12,
+    });
+    await fixture.saveCompletedScan({
+      id: "scan-github-yesterday",
+      binding: github,
+      requestedAt: "2026-06-25T09:00:00.000Z",
+      status: "failed",
+      failureReason: "provider_rate_limited: github trending page returned 429",
+      fetched: 0,
+      inserted: 0,
+      skippedDuplicates: 0,
+      projected: 0,
+    });
+
+    const result = await fixture.useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: "topic-source-history",
+      days: 2,
+      providerKeys: ["reddit"],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        summary: expect.objectContaining({
+          sourceBindingCount: 1,
+          totalScans: 1,
+          succeededScans: 1,
+          failedScans: 0,
+          rateLimitedScans: 0,
+          daysWithScans: 1,
+          daysWithFailures: 0,
+          daysWithRateLimits: 0,
+          providerBreakdown: [
+            expect.objectContaining({
+              providerKey: "reddit",
+              sourceBindingCount: 1,
+              succeededScans: 1,
+            }),
+          ],
+        }),
+        days: [
+          expect.objectContaining({
+            date: "2026-06-25",
+            totalScans: 0,
+            providerBreakdown: [
+              expect.objectContaining({ providerKey: "reddit", totalScans: 0 }),
+            ],
+          }),
+          expect.objectContaining({
+            date: "2026-06-26",
+            totalScans: 1,
+            providerBreakdown: [
+              expect.objectContaining({
+                providerKey: "reddit",
+                succeededScans: 1,
+              }),
+            ],
+          }),
+        ],
+        truncated: false,
+        maxScanJobs: 200,
+      }),
+    });
+  });
+
   it("returns scoped topic errors before reading scan history", async () => {
     const fixture = await makeFixture();
 

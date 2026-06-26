@@ -5,4 +5,5 @@ export type ListTopicSourceDailyHistoryQuery = {
   readonly workspaceId: WorkspaceId;
   readonly topicId: string;
   readonly days: number;
+  readonly providerKeys?: readonly string[];
 };

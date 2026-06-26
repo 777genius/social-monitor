@@ -22,6 +22,7 @@ type ListTopicSourceDailyHistoryFailure = DomainError;
 const maxHistoryDays = 90;
 const maxSourceBindings = 100;
 const maxScanJobsPerBindingDay = 100;
+const maxProviderFilters = 20;
 
 export class ListTopicSourceDailyHistoryUseCase {
   constructor(
@@ -43,6 +44,11 @@ export class ListTopicSourceDailyHistoryUseCase {
       return err(new DomainError('validation.failed', `Topic source history days must be between 1 and ${maxHistoryDays}`));
     }
 
+    const providerKeys = normalizeProviderKeys(query.providerKeys);
+    if (providerKeys instanceof DomainError) {
+      return err(providerKeys);
+    }
+
     const topic = await this.topics.findById({
       tenantId: query.tenantId,
       workspaceId: query.workspaceId,
@@ -58,6 +64,7 @@ export class ListTopicSourceDailyHistoryUseCase {
       topicId: query.topicId,
       limit: maxSourceBindings,
     });
+    const visibleBindings = filterBindingsByProvider(bindings.sourceBindings, providerKeys);
     const windows = buildUtcDayWindows({
       now: this.clock.now(),
       days: query.days,
@@ -68,8 +75,8 @@ export class ListTopicSourceDailyHistoryUseCase {
       return err(new DomainError('validation.failed', 'Topic source history days must be between 1 and 90'));
     }
 
-    const maxScanJobs = query.days * maxScanJobsPerBindingDay * bindings.sourceBindings.length;
-    const historyEntries = await Promise.all(bindings.sourceBindings.map(async (binding) => {
+    const maxScanJobs = query.days * maxScanJobsPerBindingDay * visibleBindings.length;
+    const historyEntries = await Promise.all(visibleBindings.map(async (binding) => {
       const snapshot = binding.toSnapshot();
       const history = await this.scanJobs.listBySourceBindingWindow({
         tenantId: query.tenantId,
@@ -99,7 +106,7 @@ export class ListTopicSourceDailyHistoryUseCase {
         return [snapshot.id, latestAttempt] as const;
       })),
     );
-    const bindingById = new Map(bindings.sourceBindings.map((binding) => [binding.toSnapshot().id, binding]));
+    const bindingById = new Map(visibleBindings.map((binding) => [binding.toSnapshot().id, binding]));
     const jobsByDay = new Map<string, readonly ScanJob[]>();
     for (const window of windows) {
       jobsByDay.set(window.date, []);
@@ -118,7 +125,7 @@ export class ListTopicSourceDailyHistoryUseCase {
       jobs: jobsByDay.get(window.date) ?? [],
       attempts,
       bindingById,
-      bindings: bindings.sourceBindings,
+      bindings: visibleBindings,
     }));
 
     return ok({
@@ -130,7 +137,7 @@ export class ListTopicSourceDailyHistoryUseCase {
         jobs: scanJobs,
         attempts,
         bindingById,
-        bindings: bindings.sourceBindings,
+        bindings: visibleBindings,
       }),
       days,
       truncated: bindings.nextCursor !== undefined || historyEntries.some((entry) => entry.truncated),
@@ -281,6 +288,41 @@ const buildProviderView = (
     operatorAction: health.operatorAction,
     signals: health.signals,
   };
+};
+
+const normalizeProviderKeys = (
+  providerKeys: readonly string[] | undefined,
+): readonly string[] | DomainError => {
+  if (providerKeys === undefined) {
+    return [];
+  }
+
+  const normalized = Array.from(new Set(providerKeys.map((providerKey) => providerKey.trim()).filter(Boolean))).sort();
+  if (providerKeys.length > 0 && normalized.length === 0) {
+    return new DomainError('validation.failed', 'Topic source history providerKey filter must not be empty');
+  }
+
+  if (normalized.length > maxProviderFilters) {
+    return new DomainError(
+      'validation.failed',
+      `Topic source history providerKey filter must include at most ${maxProviderFilters} providers`,
+    );
+  }
+
+  return normalized;
+};
+
+const filterBindingsByProvider = (
+  bindings: readonly SourceBinding[],
+  providerKeys: readonly string[],
+): readonly SourceBinding[] => {
+  if (providerKeys.length === 0) {
+    return bindings;
+  }
+
+  const providerFilter = new Set(providerKeys);
+
+  return bindings.filter((binding) => providerFilter.has(binding.toSnapshot().providerKey));
 };
 
 type UtcDayWindow = {

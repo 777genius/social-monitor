@@ -219,6 +219,7 @@ export class SourceBindingController {
     workspaceRoleDescription: 'Comma-separated workspace roles. Topic source history reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'days', required: false, type: Number })
+  @ApiQuery({ name: 'providerKey', required: false, type: String, isArray: true })
   @ApiOkResponse({ type: ListTopicSourceDailyHistoryResponseDto })
   async dailyHistory(
     @Param('topicId') topicId: string,
@@ -227,6 +228,7 @@ export class SourceBindingController {
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
     @Query('days') daysQuery: string | undefined,
+    @Query('providerKey') providerKeyQuery: string | readonly string[] | undefined,
   ): Promise<ListTopicSourceDailyHistoryResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
@@ -249,6 +251,7 @@ export class SourceBindingController {
         fieldName: 'days',
         invalidMessage: 'Topic source history days must be between 1 and 90',
       }),
+      providerKeys: parseProviderKeyFilter(providerKeyQuery),
     });
 
     if (!result.ok) {
@@ -446,3 +449,18 @@ export class SourceBindingController {
     }
   }
 }
+
+const parseProviderKeyFilter = (
+  providerKeyQuery: string | readonly string[] | undefined,
+): readonly string[] | undefined => {
+  if (providerKeyQuery === undefined) {
+    return undefined;
+  }
+
+  const values: readonly string[] =
+    typeof providerKeyQuery === 'string'
+      ? providerKeyQuery.split(',')
+      : providerKeyQuery;
+
+  return values.map((value) => value.trim());
+};
