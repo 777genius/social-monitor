@@ -1,8 +1,21 @@
 import type { ScanProviderHealthState } from '../shared/scan-provider-health-summary';
 
+export type TopicSourceDailyHistoryCadenceSummaryView = {
+  readonly sourceBindingCount: number;
+  readonly minimumIntervalSeconds: number;
+  readonly minConfiguredIntervalSeconds: number;
+  readonly maxConfiguredIntervalSeconds: number;
+  readonly minEffectiveIntervalSeconds: number;
+  readonly maxEffectiveIntervalSeconds: number;
+  readonly minEffectiveFreshnessSeconds: number;
+  readonly maxEffectiveFreshnessSeconds: number;
+  readonly providerMinimumIntervalEnforced: boolean;
+};
+
 export type TopicSourceDailyHistoryProviderView = {
   readonly providerKey: string;
   readonly sourceBindingCount: number;
+  readonly cadenceSummary?: TopicSourceDailyHistoryCadenceSummaryView;
   readonly providerHealthState: ScanProviderHealthState;
   readonly totalScans: number;
   readonly succeededScans: number;

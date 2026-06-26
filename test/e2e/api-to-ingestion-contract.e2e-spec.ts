@@ -299,6 +299,12 @@ describe('API to ingestion worker queue contract (e2e)', () => {
               expect.objectContaining({
                 providerKey: 'fake-source',
                 sourceBindingCount: 1,
+                cadenceSummary: expect.objectContaining({
+                  minimumIntervalSeconds: 60,
+                  minConfiguredIntervalSeconds: 300,
+                  maxEffectiveIntervalSeconds: 300,
+                  providerMinimumIntervalEnforced: false,
+                }),
                 totalScans: 1,
                 succeededScans: 1,
               }),

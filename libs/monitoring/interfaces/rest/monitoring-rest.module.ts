@@ -462,12 +462,14 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
       useFactory: (
         topics: TopicRepositoryPort,
         bindings: SourceBindingRepositoryPort,
+        scanPolicies: ScanPolicyRepositoryPort,
         scanJobs: ScanJobRepositoryPort & ScanJobHistoryReadPort,
         scanExecutionAttempts: ScanExecutionAttemptReadPort,
       ) =>
         new ListTopicSourceDailyHistoryUseCase(
           topics,
           bindings,
+          scanPolicies,
           scanJobs,
           scanExecutionAttempts,
           new SystemClock(),
@@ -475,6 +477,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
       inject: [
         MONITORING_TOPIC_REPOSITORY,
         MONITORING_SOURCE_BINDING_REPOSITORY,
+        MONITORING_SCAN_POLICY_REPOSITORY,
         MONITORING_SCAN_JOB_REPOSITORY,
         MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
       ],

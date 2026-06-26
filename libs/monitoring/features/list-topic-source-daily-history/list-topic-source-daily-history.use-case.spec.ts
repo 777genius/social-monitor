@@ -4,7 +4,7 @@ import {
   workspaceId,
 } from "@social-monitor/shared-kernel";
 
-import { ScanJob, SourceBinding, Topic } from "../../domain";
+import { ScanJob, ScanPolicy, SourceBinding, Topic } from "../../domain";
 import type {
   FindScanExecutionAttemptQuery,
   ListScanJobsBySourceBindingQuery,
@@ -18,6 +18,7 @@ import type {
   ScanExecutionAttemptReadPort,
   ScanExecutionAttemptSnapshot,
   ScanJobHistoryReadPort,
+  ScanPolicyRepositoryPort,
   SourceBindingRepositoryPort,
   TopicRepositoryPort,
 } from "../../ports";
@@ -166,6 +167,32 @@ class FakeScanHistory implements ScanJobHistoryReadPort {
   }
 }
 
+class FakeScanPolicies implements ScanPolicyRepositoryPort {
+  private readonly policies = new Map<string, ScanPolicy>();
+
+  async save(policy: ScanPolicy): Promise<void> {
+    const snapshot = policy.toSnapshot();
+    this.policies.set(
+      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.sourceBindingId}`,
+      policy,
+    );
+  }
+
+  async findDue(): Promise<readonly ScanPolicy[]> {
+    return [];
+  }
+
+  async findBySourceBinding(
+    params: Parameters<ScanPolicyRepositoryPort["findBySourceBinding"]>[0],
+  ): Promise<ScanPolicy | null> {
+    return (
+      this.policies.get(
+        `${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`,
+      ) ?? null
+    );
+  }
+}
+
 class FakeScanExecutionAttempts implements ScanExecutionAttemptReadPort {
   private readonly attempts = new Map<string, ScanExecutionAttemptSnapshot>();
 
@@ -194,6 +221,14 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
     const github = makeBinding("binding-github", "github-trending-page");
     await fixture.bindings.save(reddit);
     await fixture.bindings.save(github);
+    await fixture.policies.save(makePolicy(reddit, {
+      intervalSeconds: 60,
+      freshnessSeconds: 60,
+    }));
+    await fixture.policies.save(makePolicy(github, {
+      intervalSeconds: 300,
+      freshnessSeconds: 300,
+    }));
     await fixture.saveCompletedScan({
       id: "scan-reddit-today",
       binding: reddit,
@@ -247,12 +282,24 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
             expect.objectContaining({
               providerKey: "github-trending-page",
               sourceBindingCount: 1,
+              cadenceSummary: expect.objectContaining({
+                minimumIntervalSeconds: 3600,
+                minConfiguredIntervalSeconds: 300,
+                maxEffectiveIntervalSeconds: 3600,
+                providerMinimumIntervalEnforced: true,
+              }),
               failedScans: 1,
               rateLimitedScans: 1,
             }),
             expect.objectContaining({
               providerKey: "reddit",
               sourceBindingCount: 1,
+              cadenceSummary: expect.objectContaining({
+                minimumIntervalSeconds: 900,
+                minConfiguredIntervalSeconds: 60,
+                maxEffectiveIntervalSeconds: 900,
+                providerMinimumIntervalEnforced: true,
+              }),
               succeededScans: 1,
               fetched: 20,
             }),
@@ -301,6 +348,11 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
     const github = makeBinding("binding-github", "github-trending-page");
     await fixture.bindings.save(reddit);
     await fixture.bindings.save(github);
+    await fixture.policies.save(makePolicy(reddit, {
+      intervalSeconds: 900,
+      freshnessSeconds: 900,
+    }));
+    await fixture.policies.save(makePolicy(github));
     await fixture.saveCompletedScan({
       id: "scan-reddit-today",
       binding: reddit,
@@ -347,6 +399,12 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
             expect.objectContaining({
               providerKey: "reddit",
               sourceBindingCount: 1,
+              cadenceSummary: expect.objectContaining({
+                minimumIntervalSeconds: 900,
+                minConfiguredIntervalSeconds: 900,
+                maxEffectiveIntervalSeconds: 900,
+                providerMinimumIntervalEnforced: false,
+              }),
               succeededScans: 1,
             }),
           ],
@@ -412,11 +470,13 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
 const makeFixture = async () => {
   const topics = new FakeTopicRepository();
   const bindings = new FakeSourceBindings();
+  const policies = new FakeScanPolicies();
   const scanJobs = new FakeScanHistory();
   const attempts = new FakeScanExecutionAttempts();
   const useCase = new ListTopicSourceDailyHistoryUseCase(
     topics,
     bindings,
+    policies,
     scanJobs,
     attempts,
     new FixedClock(now),
@@ -434,6 +494,7 @@ const makeFixture = async () => {
 
   return {
     bindings,
+    policies,
     useCase,
     saveCompletedScan: async (params: {
       readonly id: string;
@@ -498,3 +559,25 @@ const makeBinding = (id: string, providerKey: string): SourceBinding =>
     config: { query: providerKey },
     createdAt: new Date("2026-06-24T00:00:00.000Z"),
   });
+
+const makePolicy = (
+  binding: SourceBinding,
+  params: {
+    readonly intervalSeconds?: number;
+    readonly freshnessSeconds?: number;
+  } = {},
+): ScanPolicy => {
+  const snapshot = binding.toSnapshot();
+
+  return ScanPolicy.create({
+    id: `scan-policy-${snapshot.id}`,
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: snapshot.id,
+    intervalSeconds: params.intervalSeconds ?? 300,
+    freshnessSeconds: params.freshnessSeconds ?? 900,
+    retryBudget: 3,
+    nextRunAt: new Date("2026-06-26T10:00:00.000Z"),
+    createdAt: new Date("2026-06-24T00:00:00.000Z"),
+  });
+};

@@ -4860,6 +4860,49 @@
         ],
         "type": "object"
       },
+      "TopicSourceDailyHistoryCadenceSummaryResponseDto": {
+        "properties": {
+          "maxConfiguredIntervalSeconds": {
+            "type": "number"
+          },
+          "maxEffectiveFreshnessSeconds": {
+            "type": "number"
+          },
+          "maxEffectiveIntervalSeconds": {
+            "type": "number"
+          },
+          "minConfiguredIntervalSeconds": {
+            "type": "number"
+          },
+          "minEffectiveFreshnessSeconds": {
+            "type": "number"
+          },
+          "minEffectiveIntervalSeconds": {
+            "type": "number"
+          },
+          "minimumIntervalSeconds": {
+            "type": "number"
+          },
+          "providerMinimumIntervalEnforced": {
+            "type": "boolean"
+          },
+          "sourceBindingCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "sourceBindingCount",
+          "minimumIntervalSeconds",
+          "minConfiguredIntervalSeconds",
+          "maxConfiguredIntervalSeconds",
+          "minEffectiveIntervalSeconds",
+          "maxEffectiveIntervalSeconds",
+          "minEffectiveFreshnessSeconds",
+          "maxEffectiveFreshnessSeconds",
+          "providerMinimumIntervalEnforced"
+        ],
+        "type": "object"
+      },
       "TopicSourceDailyHistoryDayResponseDto": {
         "properties": {
           "activeScans": {
@@ -4969,6 +5012,9 @@
         "properties": {
           "activeScans": {
             "type": "number"
+          },
+          "cadenceSummary": {
+            "$ref": "#/components/schemas/TopicSourceDailyHistoryCadenceSummaryResponseDto"
           },
           "consecutiveFailures": {
             "type": "number"

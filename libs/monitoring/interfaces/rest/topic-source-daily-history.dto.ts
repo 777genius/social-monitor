@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import type {
   ListTopicSourceDailyHistoryResult,
+  TopicSourceDailyHistoryCadenceSummaryView,
   TopicSourceDailyHistoryDayView,
   TopicSourceDailyHistoryProviderView,
   TopicSourceDailyHistorySummaryView,
@@ -15,12 +16,44 @@ const sourceHistoryProviderHealthStateValues = [
   'down',
 ] as const satisfies readonly ScanProviderHealthState[];
 
+export class TopicSourceDailyHistoryCadenceSummaryResponseDto implements TopicSourceDailyHistoryCadenceSummaryView {
+  @ApiProperty()
+  declare readonly sourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly minimumIntervalSeconds: number;
+
+  @ApiProperty()
+  declare readonly minConfiguredIntervalSeconds: number;
+
+  @ApiProperty()
+  declare readonly maxConfiguredIntervalSeconds: number;
+
+  @ApiProperty()
+  declare readonly minEffectiveIntervalSeconds: number;
+
+  @ApiProperty()
+  declare readonly maxEffectiveIntervalSeconds: number;
+
+  @ApiProperty()
+  declare readonly minEffectiveFreshnessSeconds: number;
+
+  @ApiProperty()
+  declare readonly maxEffectiveFreshnessSeconds: number;
+
+  @ApiProperty()
+  declare readonly providerMinimumIntervalEnforced: boolean;
+}
+
 export class TopicSourceDailyHistoryProviderResponseDto implements TopicSourceDailyHistoryProviderView {
   @ApiProperty()
   declare readonly providerKey: string;
 
   @ApiProperty()
   declare readonly sourceBindingCount: number;
+
+  @ApiPropertyOptional({ type: () => TopicSourceDailyHistoryCadenceSummaryResponseDto })
+  declare readonly cadenceSummary?: TopicSourceDailyHistoryCadenceSummaryResponseDto;
 
   @ApiProperty({ enum: sourceHistoryProviderHealthStateValues })
   declare readonly providerHealthState: ScanProviderHealthState;

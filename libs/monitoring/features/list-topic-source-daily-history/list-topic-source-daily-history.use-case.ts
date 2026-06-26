@@ -1,17 +1,20 @@
 import { DomainError, err, ok, type Clock, type Result } from '@social-monitor/shared-kernel';
 
-import type { ScanJob, SourceBinding } from '../../domain';
+import type { ScanJob, ScanPolicy, SourceBinding } from '../../domain';
 import type {
   ScanExecutionAttemptReadPort,
   ScanExecutionAttemptSnapshot,
   ScanJobHistoryReadPort,
+  ScanPolicyRepositoryPort,
   SourceBindingRepositoryPort,
   TopicRepositoryPort,
 } from '../../ports';
 import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
+import { effectiveProviderScanCadence } from '../shared/scan-cadence-policy';
 import type { ListTopicSourceDailyHistoryQuery } from './list-topic-source-daily-history.query';
 import type {
   ListTopicSourceDailyHistoryResult,
+  TopicSourceDailyHistoryCadenceSummaryView,
   TopicSourceDailyHistoryDayView,
   TopicSourceDailyHistoryProviderView,
   TopicSourceDailyHistorySummaryView,
@@ -28,6 +31,7 @@ export class ListTopicSourceDailyHistoryUseCase {
   constructor(
     private readonly topics: TopicRepositoryPort,
     private readonly sourceBindings: SourceBindingRepositoryPort,
+    private readonly scanPolicies: ScanPolicyRepositoryPort,
     private readonly scanJobs: ScanJobHistoryReadPort,
     private readonly scanExecutionAttempts: ScanExecutionAttemptReadPort,
     private readonly clock: Clock,
@@ -65,6 +69,12 @@ export class ListTopicSourceDailyHistoryUseCase {
       limit: maxSourceBindings,
     });
     const visibleBindings = filterBindingsByProvider(bindings.sourceBindings, providerKeys);
+    const scanPoliciesByBindingId = await scanPoliciesBySourceBindingId({
+      scanPolicies: this.scanPolicies,
+      tenantId: query.tenantId,
+      workspaceId: query.workspaceId,
+      bindings: visibleBindings,
+    });
     const windows = buildUtcDayWindows({
       now: this.clock.now(),
       days: query.days,
@@ -126,6 +136,7 @@ export class ListTopicSourceDailyHistoryUseCase {
       attempts,
       bindingById,
       bindings: visibleBindings,
+      scanPoliciesByBindingId,
     }));
 
     return ok({
@@ -138,6 +149,7 @@ export class ListTopicSourceDailyHistoryUseCase {
         attempts,
         bindingById,
         bindings: visibleBindings,
+        scanPoliciesByBindingId,
       }),
       days,
       truncated: bindings.nextCursor !== undefined || historyEntries.some((entry) => entry.truncated),
@@ -152,8 +164,9 @@ const buildDayView = (params: {
   readonly attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>;
   readonly bindingById: ReadonlyMap<string, SourceBinding>;
   readonly bindings: readonly SourceBinding[];
+  readonly scanPoliciesByBindingId: ReadonlyMap<string, ScanPolicy>;
 }): TopicSourceDailyHistoryDayView => {
-  const aggregate = buildProviderView('all', params.bindings, params.jobs, params.attempts);
+  const aggregate = buildProviderView('all', params.bindings, params.jobs, params.attempts, params.scanPoliciesByBindingId);
 
   return {
     date: params.window.date,
@@ -176,7 +189,13 @@ const buildDayView = (params: {
     lastCompletedAt: aggregate.lastCompletedAt,
     operatorAction: aggregate.operatorAction,
     signals: aggregate.signals,
-    providerBreakdown: buildProviderBreakdown(params.jobs, params.attempts, params.bindingById, params.bindings),
+    providerBreakdown: buildProviderBreakdown(
+      params.jobs,
+      params.attempts,
+      params.bindingById,
+      params.bindings,
+      params.scanPoliciesByBindingId,
+    ),
   };
 };
 
@@ -186,8 +205,9 @@ const buildSummaryView = (params: {
   readonly attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>;
   readonly bindingById: ReadonlyMap<string, SourceBinding>;
   readonly bindings: readonly SourceBinding[];
+  readonly scanPoliciesByBindingId: ReadonlyMap<string, ScanPolicy>;
 }): TopicSourceDailyHistorySummaryView => {
-  const aggregate = buildProviderView('all', params.bindings, params.jobs, params.attempts);
+  const aggregate = buildProviderView('all', params.bindings, params.jobs, params.attempts, params.scanPoliciesByBindingId);
 
   return {
     providerHealthState: aggregate.providerHealthState,
@@ -210,7 +230,13 @@ const buildSummaryView = (params: {
     lastCompletedAt: aggregate.lastCompletedAt,
     operatorAction: aggregate.operatorAction,
     signals: aggregate.signals,
-    providerBreakdown: buildProviderBreakdown(params.jobs, params.attempts, params.bindingById, params.bindings),
+    providerBreakdown: buildProviderBreakdown(
+      params.jobs,
+      params.attempts,
+      params.bindingById,
+      params.bindings,
+      params.scanPoliciesByBindingId,
+    ),
   };
 };
 
@@ -219,6 +245,7 @@ const buildProviderBreakdown = (
   attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>,
   bindingById: ReadonlyMap<string, SourceBinding>,
   bindings: readonly SourceBinding[],
+  scanPoliciesByBindingId: ReadonlyMap<string, ScanPolicy>,
 ): readonly TopicSourceDailyHistoryProviderView[] => {
   const bindingsByProvider = new Map<string, SourceBinding[]>();
   for (const binding of bindings) {
@@ -238,6 +265,7 @@ const buildProviderBreakdown = (
         providerBindings,
         jobs.filter((job) => bindingById.get(job.toSnapshot().sourceBindingId)?.toSnapshot().providerKey === providerKey),
         attempts,
+        scanPoliciesByBindingId,
       ),
     )
     .sort((left, right) => left.providerKey.localeCompare(right.providerKey));
@@ -248,6 +276,7 @@ const buildProviderView = (
   bindings: readonly SourceBinding[],
   jobs: readonly ScanJob[],
   attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>,
+  scanPoliciesByBindingId: ReadonlyMap<string, ScanPolicy>,
 ): TopicSourceDailyHistoryProviderView => {
   const snapshots = jobs
     .map((job) => job.toSnapshot())
@@ -268,6 +297,7 @@ const buildProviderView = (
   return {
     providerKey,
     sourceBindingCount: bindings.length,
+    cadenceSummary: summarizeProviderCadence(bindings, scanPoliciesByBindingId),
     providerHealthState: health.providerHealthState,
     totalScans: health.totalScans,
     succeededScans: health.succeededScans,
@@ -287,6 +317,75 @@ const buildProviderView = (
       ?.toISOString(),
     operatorAction: health.operatorAction,
     signals: health.signals,
+  };
+};
+
+const scanPoliciesBySourceBindingId = async (params: {
+  readonly scanPolicies: ScanPolicyRepositoryPort;
+  readonly tenantId: ListTopicSourceDailyHistoryQuery['tenantId'];
+  readonly workspaceId: ListTopicSourceDailyHistoryQuery['workspaceId'];
+  readonly bindings: readonly SourceBinding[];
+}): Promise<ReadonlyMap<string, ScanPolicy>> => {
+  const entries = await Promise.all(params.bindings.map(async (binding) => {
+    const snapshot = binding.toSnapshot();
+    const policy = await params.scanPolicies.findBySourceBinding({
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      sourceBindingId: snapshot.id,
+    });
+
+    return [snapshot.id, policy] as const;
+  }));
+
+  return new Map(
+    entries.filter((entry): entry is readonly [string, ScanPolicy] => entry[1] !== null),
+  );
+};
+
+const summarizeProviderCadence = (
+  bindings: readonly SourceBinding[],
+  scanPoliciesByBindingId: ReadonlyMap<string, ScanPolicy>,
+): TopicSourceDailyHistoryCadenceSummaryView | undefined => {
+  const cadenceViews = bindings
+    .map((binding) => {
+      const bindingSnapshot = binding.toSnapshot();
+      const policy = scanPoliciesByBindingId.get(bindingSnapshot.id);
+
+      if (policy === undefined) {
+        return undefined;
+      }
+
+      const policySnapshot = policy.toSnapshot();
+      const cadence = effectiveProviderScanCadence({
+        providerKey: bindingSnapshot.providerKey,
+        intervalSeconds: policySnapshot.intervalSeconds,
+        freshnessSeconds: policySnapshot.freshnessSeconds,
+      });
+
+      return {
+        minimumIntervalSeconds: cadence.minimumIntervalSeconds,
+        configuredIntervalSeconds: policySnapshot.intervalSeconds,
+        effectiveIntervalSeconds: cadence.intervalSeconds,
+        effectiveFreshnessSeconds: cadence.freshnessSeconds,
+        providerMinimumIntervalEnforced: cadence.providerMinimumIntervalEnforced,
+      };
+    })
+    .filter((cadence): cadence is NonNullable<typeof cadence> => cadence !== undefined);
+
+  if (cadenceViews.length === 0) {
+    return undefined;
+  }
+
+  return {
+    sourceBindingCount: cadenceViews.length,
+    minimumIntervalSeconds: Math.max(...cadenceViews.map((cadence) => cadence.minimumIntervalSeconds)),
+    minConfiguredIntervalSeconds: Math.min(...cadenceViews.map((cadence) => cadence.configuredIntervalSeconds)),
+    maxConfiguredIntervalSeconds: Math.max(...cadenceViews.map((cadence) => cadence.configuredIntervalSeconds)),
+    minEffectiveIntervalSeconds: Math.min(...cadenceViews.map((cadence) => cadence.effectiveIntervalSeconds)),
+    maxEffectiveIntervalSeconds: Math.max(...cadenceViews.map((cadence) => cadence.effectiveIntervalSeconds)),
+    minEffectiveFreshnessSeconds: Math.min(...cadenceViews.map((cadence) => cadence.effectiveFreshnessSeconds)),
+    maxEffectiveFreshnessSeconds: Math.max(...cadenceViews.map((cadence) => cadence.effectiveFreshnessSeconds)),
+    providerMinimumIntervalEnforced: cadenceViews.some((cadence) => cadence.providerMinimumIntervalEnforced),
   };
 };
 
