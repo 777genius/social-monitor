@@ -12,6 +12,7 @@ import type { ListSourceBindingDailyHistoryQuery } from './list-source-binding-d
 import type {
   ListSourceBindingDailyHistoryResult,
   SourceBindingDailyHistoryDayView,
+  SourceBindingDailyHistorySummaryView,
 } from './list-source-binding-daily-history.result';
 
 type ListSourceBindingDailyHistoryFailure = DomainError;
@@ -93,16 +94,22 @@ export class ListSourceBindingDailyHistoryUseCase {
         jobsByDay.set(date, [...bucket, job]);
       }
     }
+    const days = windows.map((window) => buildDayView({
+      window,
+      jobs: jobsByDay.get(window.date) ?? [],
+      attempts,
+    }));
 
     return ok({
       sourceBindingId: query.sourceBindingId,
       windowStartedAt: firstWindow.startedAt.toISOString(),
       windowEndedAt: lastWindow.endedAt.toISOString(),
-      days: windows.map((window) => buildDayView({
-        window,
-        jobs: jobsByDay.get(window.date) ?? [],
+      summary: buildSummaryView({
+        days,
+        jobs: history.scanJobs,
         attempts,
-      })),
+      }),
+      days,
       truncated: history.truncated,
       maxScanJobs,
     });
@@ -136,6 +143,43 @@ const buildDayView = (params: {
     inserted: sumAttempts(latestAttempts, 'inserted'),
     skippedDuplicates: sumAttempts(latestAttempts, 'skippedDuplicates'),
     projected: sumAttempts(latestAttempts, 'projected'),
+    lastScanRequestedAt: snapshots[0]?.requestedAt.toISOString(),
+    lastCompletedAt: snapshots
+      .map((snapshot) => snapshot.completedAt)
+      .find((completedAt): completedAt is Date => completedAt !== undefined)
+      ?.toISOString(),
+    operatorAction: health.operatorAction,
+    signals: health.signals,
+  };
+};
+
+const buildSummaryView = (params: {
+  readonly days: readonly SourceBindingDailyHistoryDayView[];
+  readonly jobs: readonly ScanJob[];
+  readonly attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>;
+}): SourceBindingDailyHistorySummaryView => {
+  const snapshots = params.jobs.map((job) => job.toSnapshot());
+  const health = summarizeScanProviderHealth(snapshots);
+  const latestAttempts = snapshots
+    .map((snapshot) => params.attempts.get(snapshot.id))
+    .filter((attempt): attempt is NonNullable<typeof attempt> => attempt !== null && attempt !== undefined);
+
+  return {
+    providerHealthState: health.providerHealthState,
+    totalScans: health.totalScans,
+    succeededScans: health.succeededScans,
+    failedScans: health.failedScans,
+    activeScans: health.activeScans,
+    rateLimitedScans: health.rateLimitedScans,
+    providerUnavailableScans: health.providerUnavailableScans,
+    consecutiveFailures: health.consecutiveFailures,
+    fetched: sumAttempts(latestAttempts, 'fetched'),
+    inserted: sumAttempts(latestAttempts, 'inserted'),
+    skippedDuplicates: sumAttempts(latestAttempts, 'skippedDuplicates'),
+    projected: sumAttempts(latestAttempts, 'projected'),
+    daysWithScans: params.days.filter((day) => day.totalScans > 0).length,
+    daysWithFailures: params.days.filter((day) => day.failedScans > 0).length,
+    daysWithRateLimits: params.days.filter((day) => day.rateLimitedScans > 0).length,
     lastScanRequestedAt: snapshots[0]?.requestedAt.toISOString(),
     lastCompletedAt: snapshots
       .map((snapshot) => snapshot.completedAt)

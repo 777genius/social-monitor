@@ -2016,6 +2016,9 @@
           "sourceBindingId": {
             "type": "string"
           },
+          "summary": {
+            "$ref": "#/components/schemas/SourceBindingDailyScanHistorySummaryResponseDto"
+          },
           "truncated": {
             "type": "boolean"
           },
@@ -2946,6 +2949,98 @@
           "inserted",
           "skippedDuplicates",
           "projected",
+          "operatorAction",
+          "signals"
+        ],
+        "type": "object"
+      },
+      "SourceBindingDailyScanHistorySummaryResponseDto": {
+        "properties": {
+          "activeScans": {
+            "type": "number"
+          },
+          "consecutiveFailures": {
+            "type": "number"
+          },
+          "daysWithFailures": {
+            "type": "number"
+          },
+          "daysWithRateLimits": {
+            "type": "number"
+          },
+          "daysWithScans": {
+            "type": "number"
+          },
+          "failedScans": {
+            "type": "number"
+          },
+          "fetched": {
+            "type": "number"
+          },
+          "inserted": {
+            "type": "number"
+          },
+          "lastCompletedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastScanRequestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "projected": {
+            "type": "number"
+          },
+          "providerHealthState": {
+            "enum": [
+              "unknown",
+              "operational",
+              "degraded",
+              "down"
+            ],
+            "type": "string"
+          },
+          "providerUnavailableScans": {
+            "type": "number"
+          },
+          "rateLimitedScans": {
+            "type": "number"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "skippedDuplicates": {
+            "type": "number"
+          },
+          "succeededScans": {
+            "type": "number"
+          },
+          "totalScans": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "providerHealthState",
+          "totalScans",
+          "succeededScans",
+          "failedScans",
+          "activeScans",
+          "rateLimitedScans",
+          "providerUnavailableScans",
+          "consecutiveFailures",
+          "fetched",
+          "inserted",
+          "skippedDuplicates",
+          "projected",
+          "daysWithScans",
+          "daysWithFailures",
+          "daysWithRateLimits",
           "operatorAction",
           "signals"
         ],

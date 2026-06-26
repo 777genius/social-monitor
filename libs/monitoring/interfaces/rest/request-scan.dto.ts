@@ -4,6 +4,7 @@ import type { ScanJobStatus } from '../../domain';
 import type {
   ListSourceBindingDailyHistoryResult,
   SourceBindingDailyHistoryDayView,
+  SourceBindingDailyHistorySummaryView,
 } from '../../features/list-source-binding-daily-history/list-source-binding-daily-history.result';
 import type { ScanProviderHealthState } from '../../features/shared/scan-provider-health-summary';
 import { scanJobStatusValues, ScanStatusResponseDto } from './scan-status.dto';
@@ -93,6 +94,65 @@ export class SourceBindingDailyScanHistoryDayResponseDto implements SourceBindin
   declare readonly signals: readonly string[];
 }
 
+export class SourceBindingDailyScanHistorySummaryResponseDto implements SourceBindingDailyHistorySummaryView {
+  @ApiProperty({ enum: scanProviderHealthStateValues })
+  declare readonly providerHealthState: ScanProviderHealthState;
+
+  @ApiProperty()
+  declare readonly totalScans: number;
+
+  @ApiProperty()
+  declare readonly succeededScans: number;
+
+  @ApiProperty()
+  declare readonly failedScans: number;
+
+  @ApiProperty()
+  declare readonly activeScans: number;
+
+  @ApiProperty()
+  declare readonly rateLimitedScans: number;
+
+  @ApiProperty()
+  declare readonly providerUnavailableScans: number;
+
+  @ApiProperty()
+  declare readonly consecutiveFailures: number;
+
+  @ApiProperty()
+  declare readonly fetched: number;
+
+  @ApiProperty()
+  declare readonly inserted: number;
+
+  @ApiProperty()
+  declare readonly skippedDuplicates: number;
+
+  @ApiProperty()
+  declare readonly projected: number;
+
+  @ApiProperty()
+  declare readonly daysWithScans: number;
+
+  @ApiProperty()
+  declare readonly daysWithFailures: number;
+
+  @ApiProperty()
+  declare readonly daysWithRateLimits: number;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly lastScanRequestedAt?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly lastCompletedAt?: string;
+
+  @ApiProperty()
+  declare readonly operatorAction: string;
+
+  @ApiProperty({ type: String, isArray: true })
+  declare readonly signals: readonly string[];
+}
+
 export class ListSourceBindingDailyScanHistoryResponseDto implements ListSourceBindingDailyHistoryResult {
   @ApiProperty()
   declare readonly sourceBindingId: string;
@@ -102,6 +162,9 @@ export class ListSourceBindingDailyScanHistoryResponseDto implements ListSourceB
 
   @ApiProperty({ format: 'date-time' })
   declare readonly windowEndedAt: string;
+
+  @ApiPropertyOptional({ type: () => SourceBindingDailyScanHistorySummaryResponseDto })
+  declare readonly summary?: SourceBindingDailyScanHistorySummaryResponseDto;
 
   @ApiProperty({ type: () => SourceBindingDailyScanHistoryDayResponseDto, isArray: true })
   declare readonly days: readonly SourceBindingDailyScanHistoryDayResponseDto[];

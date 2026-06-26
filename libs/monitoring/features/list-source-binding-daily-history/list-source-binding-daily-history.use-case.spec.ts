@@ -119,6 +119,25 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
         sourceBindingId: 'binding-1',
         windowStartedAt: '2026-06-23T00:00:00.000Z',
         windowEndedAt: '2026-06-26T00:00:00.000Z',
+        summary: {
+          providerHealthState: 'unknown',
+          totalScans: 0,
+          succeededScans: 0,
+          failedScans: 0,
+          activeScans: 0,
+          rateLimitedScans: 0,
+          providerUnavailableScans: 0,
+          consecutiveFailures: 0,
+          fetched: 0,
+          inserted: 0,
+          skippedDuplicates: 0,
+          projected: 0,
+          daysWithScans: 0,
+          daysWithFailures: 0,
+          daysWithRateLimits: 0,
+          operatorAction: 'wait_for_next_scan_or_trigger_manual_scan',
+          signals: ['no_recent_scans'],
+        },
         truncated: false,
         maxScanJobs: 300,
         days: [
@@ -191,6 +210,27 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
+      expect(result.value.summary).toEqual({
+        providerHealthState: 'degraded',
+        totalScans: 3,
+        succeededScans: 1,
+        failedScans: 1,
+        activeScans: 1,
+        rateLimitedScans: 1,
+        providerUnavailableScans: 0,
+        consecutiveFailures: 1,
+        fetched: 12,
+        inserted: 7,
+        skippedDuplicates: 3,
+        projected: 7,
+        daysWithScans: 2,
+        daysWithFailures: 1,
+        daysWithRateLimits: 1,
+        lastScanRequestedAt: '2026-06-25T17:00:00.000Z',
+        lastCompletedAt: '2026-06-25T16:00:05.000Z',
+        operatorAction: 'inspect_recent_scan_failures_and_rate_limits',
+        signals: ['recent_success', 'recent_failure', 'active_scan_in_progress', 'rate_limited'],
+      });
       expect(result.value.days).toEqual([
         expect.objectContaining({
           date: '2026-06-24',
