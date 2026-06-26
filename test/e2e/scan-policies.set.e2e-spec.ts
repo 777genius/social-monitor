@@ -159,6 +159,7 @@ describe('Set scan policy flow (e2e)', () => {
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
       .set('x-request-id', 'request-policy-cadence-set')
+      .set('x-correlation-id', 'correlation-policy-cadence-set')
       .set('idempotency-key', 'set-policy-cadence-too-fast')
       .send({
         intervalSeconds: 300,
@@ -167,8 +168,12 @@ describe('Set scan policy flow (e2e)', () => {
       })
       .expect(400);
 
+    expect(rejected.headers['x-request-id']).toBe('request-policy-cadence-set');
+    expect(rejected.headers['x-correlation-id']).toBe('correlation-policy-cadence-set');
     expect(rejected.body).toMatchObject({
       code: 'validation.failed',
+      requestId: 'request-policy-cadence-set',
+      correlationId: 'correlation-policy-cadence-set',
       details: {
         providerKey: 'github-repo-radar',
         intervalSeconds: 300,

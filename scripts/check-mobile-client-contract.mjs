@@ -257,6 +257,9 @@ function problemDetailsErrorModel() {
       status: 'number',
       detail: 'string',
       code: 'DomainErrorCode',
+      requestId: 'string',
+      correlationId: 'string',
+      causationId: 'string optional',
       details: 'object',
     },
     problemCodes: [

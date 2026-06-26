@@ -4,6 +4,12 @@ import {
   ExceptionFilter,
   HttpStatus,
 } from '@nestjs/common';
+import {
+  CAUSATION_ID_HEADER,
+  CORRELATION_ID_HEADER,
+  REQUEST_ID_HEADER,
+  buildRequestContext,
+} from '@social-monitor/platform-request-context';
 import { DomainError, redactSensitiveRecord, type DomainErrorCode } from '@social-monitor/shared-kernel';
 
 type ProblemDetails = {
@@ -12,18 +18,40 @@ type ProblemDetails = {
   readonly status: number;
   readonly detail: string;
   readonly code: DomainErrorCode;
+  readonly requestId: string;
+  readonly correlationId: string;
+  readonly causationId?: string;
   readonly details: Readonly<Record<string, unknown>>;
+};
+
+type HeaderValue = number | string | readonly string[] | undefined;
+
+type ProblemHttpRequest = {
+  header(name: string): string | undefined;
+};
+
+type ProblemHttpResponse = {
+  getHeader(name: string): HeaderValue;
+  setHeader(name: string, value: string): void;
+  status(statusCode: number): {
+    json(body: ProblemDetails): void;
+  };
 };
 
 @Catch(DomainError)
 export class DomainErrorFilter implements ExceptionFilter<DomainError> {
   catch(exception: DomainError, host: ArgumentsHost): void {
-    const response = host.switchToHttp().getResponse<{
-      status(statusCode: number): {
-        json(body: ProblemDetails): void;
-      };
-    }>();
+    const http = host.switchToHttp();
+    const request = http.getRequest<ProblemHttpRequest>();
+    const response = http.getResponse<ProblemHttpResponse>();
     const status = statusForDomainError(exception.code);
+    const requestContext = buildProblemRequestContext(request, response);
+
+    response.setHeader(REQUEST_ID_HEADER, requestContext.requestId);
+    response.setHeader(CORRELATION_ID_HEADER, requestContext.correlationId);
+    if (requestContext.causationId) {
+      response.setHeader(CAUSATION_ID_HEADER, requestContext.causationId);
+    }
 
     response.status(status).json({
       type: `https://social-monitor.local/problems/${exception.code}`,
@@ -31,6 +59,9 @@ export class DomainErrorFilter implements ExceptionFilter<DomainError> {
       status,
       detail: exception.message,
       code: exception.code,
+      requestId: requestContext.requestId,
+      correlationId: requestContext.correlationId,
+      ...(requestContext.causationId ? { causationId: requestContext.causationId } : {}),
       details: redactProblemDetails(exception.details),
     });
   }
@@ -39,6 +70,27 @@ export class DomainErrorFilter implements ExceptionFilter<DomainError> {
 export const redactProblemDetails = (
   details: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> => redactSensitiveRecord(details);
+
+export const buildProblemRequestContext = (
+  request: ProblemHttpRequest,
+  response: Pick<ProblemHttpResponse, 'getHeader'>,
+) => buildRequestContext({
+  requestId: readHeaderValue(response.getHeader(REQUEST_ID_HEADER)) ?? request.header(REQUEST_ID_HEADER),
+  correlationId: readHeaderValue(response.getHeader(CORRELATION_ID_HEADER)) ?? request.header(CORRELATION_ID_HEADER),
+  causationId: readHeaderValue(response.getHeader(CAUSATION_ID_HEADER)) ?? request.header(CAUSATION_ID_HEADER),
+});
+
+const readHeaderValue = (value: HeaderValue): string | undefined => {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return String(value);
+  }
+
+  return value?.find((entry) => typeof entry === 'string');
+};
 
 const statusForDomainError = (code: DomainErrorCode): number => {
   switch (code) {
