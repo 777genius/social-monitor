@@ -204,6 +204,46 @@
       "purgeTrigger": "feed_item_age_expired_or_topic_deleted"
     },
     {
+      "table": "feed_signal_baseline_samples",
+      "dataClass": "derived_relevance_signal",
+      "owner": "feed-owner",
+      "retentionDays": 180,
+      "deleteMode": "hard_delete_after_feed_item_or_topic_retention",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "feed_item_age_expired_or_topic_deleted"
+    },
+    {
+      "table": "github_repository_trend_candidates",
+      "dataClass": "third_party_public_trend_signal",
+      "owner": "ingestion-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_trend_history_window",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "trend_history_window_expired_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "github_repository_trend_snapshots",
+      "dataClass": "third_party_public_trend_snapshot",
+      "owner": "ingestion-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_trend_history_window",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "trend_history_window_expired_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "github_repository_trend_results",
+      "dataClass": "third_party_public_trend_result",
+      "owner": "ingestion-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_trend_history_window",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "trend_history_window_expired_or_topic_deleted"
+    },
+    {
       "table": "summary_artifacts",
       "dataClass": "ai_generated_content",
       "owner": "summary-owner",
@@ -234,6 +274,36 @@
       "purgeTrigger": "topic_deleted_or_workspace_offboarding_completed"
     },
     {
+      "table": "briefing_artifacts",
+      "dataClass": "ai_generated_content",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_retention",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "briefing_retention_expired_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "briefing_jobs",
+      "dataClass": "operational_summary_state",
+      "owner": "summary-owner",
+      "retentionDays": 90,
+      "deleteMode": "hard_delete_after_replay_window",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "briefing_job_terminal_and_replay_window_expired"
+    },
+    {
+      "table": "briefing_policies",
+      "dataClass": "user_summary_configuration",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_scope_deleted",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "topic_subscription_or_workspace_offboarding_completed"
+    },
+    {
       "table": "user_summary_preferences",
       "dataClass": "user_summary_configuration",
       "owner": "summary-owner",
@@ -262,6 +332,16 @@
       "exportable": true,
       "legalHoldAware": true,
       "purgeTrigger": "feedback_retention_expired_or_user_deleted"
+    },
+    {
+      "table": "relevance_memory_projections",
+      "dataClass": "operational_personalization_projection_state",
+      "owner": "summary-owner",
+      "retentionDays": 90,
+      "deleteMode": "hard_delete_after_projection_replay_window",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "projection_terminal_and_replay_window_expired_or_user_deleted"
     },
     {
       "table": "summary_feedback",
