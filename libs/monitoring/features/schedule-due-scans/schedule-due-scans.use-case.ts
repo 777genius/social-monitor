@@ -34,6 +34,7 @@ import {
 } from '../shared/scan-freshness-guard';
 import {
   nextScanPolicyRunAfterDecision,
+  nextScanPolicyRunAfterQueueBackpressure,
   scheduledScanIdempotencyKey,
 } from '../shared/scan-scheduler-decision-policy';
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
@@ -219,11 +220,9 @@ export class ScheduleDueScansUseCase {
           causationId: idempotencyKey,
         };
         if (!(await this.scanQueue.canAccept(queueCommand))) {
-          const nextRunAt = nextScanPolicyRunAfterDecision({
-            dueAt: policySnapshot.nextRunAt,
+          const nextRunAt = nextScanPolicyRunAfterQueueBackpressure({
             intervalSeconds: cadence.intervalSeconds,
             now,
-            backoffUntil: null,
           });
           recordSkipped(skippedByReason, 'queue_backpressure');
           recordDecision(decisions, recordedDecisions, {

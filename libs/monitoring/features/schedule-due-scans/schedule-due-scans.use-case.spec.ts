@@ -1227,7 +1227,7 @@ describe('ScheduleDueScansUseCase', () => {
             decision: 'skipped',
             reason: 'queue_backpressure',
             policyDueAt: new Date('2026-06-05T12:00:00.000Z'),
-            nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
+            nextRunAt: new Date('2026-06-05T12:01:00.000Z'),
             configuredIntervalSeconds: 300,
             effectiveIntervalSeconds: 300,
             freshnessSeconds: 900,
@@ -1253,7 +1253,70 @@ describe('ScheduleDueScansUseCase', () => {
         })
       )?.toSnapshot(),
     ).toMatchObject({
-      nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
+      nextRunAt: new Date('2026-06-05T12:01:00.000Z'),
+    });
+  });
+
+  it('retries queue backpressure quickly even for high-cadence providers', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding('github-repo-radar'));
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    const queue = new BackpressuredScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-backpressure-repo-radar',
+      includeDecisions: true,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 0,
+        skipped: 1,
+        skippedByReason: skippedByReason('queue_backpressure'),
+        decisions: [
+          expect.objectContaining({
+            scanPolicyId: 'policy-1',
+            sourceBindingId: 'binding-1',
+            providerKey: 'github-repo-radar',
+            decision: 'skipped',
+            reason: 'queue_backpressure',
+            policyDueAt: new Date('2026-06-05T12:00:00.000Z'),
+            nextRunAt: new Date('2026-06-05T12:01:00.000Z'),
+            configuredIntervalSeconds: 300,
+            effectiveIntervalSeconds: 21_600,
+            freshnessSeconds: 21_600,
+            providerMinimumIntervalEnforced: true,
+          }),
+        ],
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:01:00.000Z'),
     });
   });
 

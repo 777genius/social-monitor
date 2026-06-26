@@ -28,3 +28,12 @@ export const nextScanPolicyRunAfterDecision = (params: {
 
   return new Date(params.dueAt.getTime() + elapsedIntervals * intervalMs);
 };
+
+export const nextScanPolicyRunAfterQueueBackpressure = (params: {
+  readonly now: Date;
+  readonly intervalSeconds: number;
+}): Date => {
+  const retrySeconds = Math.max(1, Math.min(params.intervalSeconds, 60));
+
+  return new Date(params.now.getTime() + retrySeconds * 1000);
+};
