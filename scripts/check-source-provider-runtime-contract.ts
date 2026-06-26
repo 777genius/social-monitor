@@ -26,6 +26,7 @@ import type { RedditClientPort } from '../libs/ingestion/adapters/source/reddit/
 import type { RedditRefreshTokenProviderPort } from '../libs/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider';
 import { validateFeedUrl } from '../libs/ingestion/adapters/source/rss/feed-url-policy';
 import { HttpRssClient } from '../libs/ingestion/adapters/source/rss/http-rss-client';
+import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
 import type {
   RssClientPort,
   RssReadFeedOptions,
@@ -61,7 +62,11 @@ const requiredProviders = new Map([
     'hacker-news',
     {
       credentialMode: 'public_no_secret',
-      signals: ['hn-live-http-smoke', 'hn-rate-limit-evidence'],
+      signals: [
+        'hn-live-http-smoke',
+        'hn-rate-limit-evidence',
+        'hn-provider-failure-classification',
+      ],
     },
   ],
   [
@@ -72,6 +77,7 @@ const requiredProviders = new Map([
         'rss-allowlisted-live-feeds',
         'rss-http-cache-evidence',
         'rss-ssrf-proof',
+        'rss-provider-failure-classification',
       ],
     },
   ],
@@ -79,7 +85,11 @@ const requiredProviders = new Map([
     GITHUB_ISSUES_PROVIDER_KEY,
     {
       credentialMode: 'anonymous_or_read_only_token',
-      signals: ['github-live-api-smoke', 'github-rate-limit-budget'],
+      signals: [
+        'github-live-api-smoke',
+        'github-rate-limit-budget',
+        'github-provider-failure-classification',
+      ],
     },
   ],
   [
@@ -91,6 +101,7 @@ const requiredProviders = new Map([
         'github-repo-radar-live-verification',
         'github-repo-radar-live-smoke',
         'github-repo-radar-prisma-live-e2e',
+        'github-repo-radar-provider-failure-classification',
       ],
     },
   ],
@@ -99,9 +110,10 @@ const requiredProviders = new Map([
     {
       credentialMode: 'public_page_with_site_policy_respect',
       signals: [
-        'github-trending-page-live-page-smoke',
-        'github-trending-page-parser-drift-alert',
-        'github-trending-page-rate-limit-evidence',
+        'github-trending-page-live-smoke',
+        'github-trending-page-parser-drift',
+        'github-trending-page-rate-limit-budget',
+        'github-trending-page-provider-failure-classification',
       ],
     },
   ],
@@ -203,6 +215,40 @@ function validateContract(): void {
       provider.liveEvidenceSignals,
       requirement.signals,
       `${contractPath}: ${providerKey}.liveEvidenceSignals`,
+    );
+    assertLiveEvidenceSignalsMatchReadiness(providerKey, provider);
+  }
+}
+
+function assertLiveEvidenceSignalsMatchReadiness(
+  providerKey: string,
+  provider: ContractProvider,
+): void {
+  const readiness = sourceReadinessProfiles.find(
+    (profile) => profile.providerKey === providerKey,
+  );
+  assert(
+    readiness !== undefined,
+    `${contractPath}: ${providerKey} must have a source readiness profile`,
+  );
+  const actualSignals = provider.liveEvidenceSignals;
+  assert(
+    Array.isArray(actualSignals),
+    `${contractPath}: ${providerKey}.liveEvidenceSignals must be an array`,
+  );
+  const expectedSignals = readiness.liveEvidenceRequirements.map(
+    (requirement) => requirement.signalId,
+  );
+
+  assertIncludesAll(
+    actualSignals,
+    expectedSignals,
+    `${contractPath}: ${providerKey}.liveEvidenceSignals readiness alignment`,
+  );
+  for (const signal of actualSignals) {
+    assert(
+      typeof signal === 'string' && expectedSignals.includes(signal),
+      `${contractPath}: ${providerKey}.liveEvidenceSignals has stale or undeclared signal ${String(signal)}`,
     );
   }
 }

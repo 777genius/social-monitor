@@ -14,7 +14,11 @@
         "HTTP 429 is classified as retryable rate_limited",
         "HTTP 5xx and transport failures are classified as retryable unavailable"
       ],
-      "liveEvidenceSignals": ["hn-live-http-smoke", "hn-rate-limit-evidence"]
+      "liveEvidenceSignals": [
+        "hn-live-http-smoke",
+        "hn-rate-limit-evidence",
+        "hn-provider-failure-classification"
+      ]
     },
     {
       "providerKey": "rss",
@@ -25,7 +29,12 @@
         "HTTP 304 produces notModified without parsing a feed body",
         "HTTP 429 is classified as retryable rate_limited"
       ],
-      "liveEvidenceSignals": ["rss-allowlisted-live-feeds", "rss-http-cache-evidence", "rss-ssrf-proof"]
+      "liveEvidenceSignals": [
+        "rss-allowlisted-live-feeds",
+        "rss-http-cache-evidence",
+        "rss-ssrf-proof",
+        "rss-provider-failure-classification"
+      ]
     },
     {
       "providerKey": "github-issues",
@@ -36,7 +45,11 @@
         "REST API version and User-Agent headers are sent",
         "401 is classified as non-retryable auth_failed and 403/429 as retryable rate_limited"
       ],
-      "liveEvidenceSignals": ["github-live-api-smoke", "github-rate-limit-budget"]
+      "liveEvidenceSignals": [
+        "github-live-api-smoke",
+        "github-rate-limit-budget",
+        "github-provider-failure-classification"
+      ]
     },
     {
       "providerKey": "github-repo-radar",
@@ -52,7 +65,8 @@
         "github-repo-radar-gh-archive-query",
         "github-repo-radar-live-verification",
         "github-repo-radar-live-smoke",
-        "github-repo-radar-prisma-live-e2e"
+        "github-repo-radar-prisma-live-e2e",
+        "github-repo-radar-provider-failure-classification"
       ]
     },
     {
@@ -66,9 +80,10 @@
         "403/429 responses are classified as retryable rate_limited and parser/runtime failures as retryable unavailable"
       ],
       "liveEvidenceSignals": [
-        "github-trending-page-live-page-smoke",
-        "github-trending-page-parser-drift-alert",
-        "github-trending-page-rate-limit-evidence"
+        "github-trending-page-live-smoke",
+        "github-trending-page-parser-drift",
+        "github-trending-page-rate-limit-budget",
+        "github-trending-page-provider-failure-classification"
       ]
     },
     {
