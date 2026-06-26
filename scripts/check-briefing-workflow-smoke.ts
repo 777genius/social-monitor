@@ -40,6 +40,15 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
   async select(): ReturnType<ReaderSummaryEvidenceSelectorPort["select"]> {
     return {
       rankingPolicyVersion: "story_ranking_v1",
+      personalization: {
+        memoryGuidanceStatus: "available",
+        memoryGuidanceApplied: true,
+        providerPreferenceCount: 1,
+        keywordPreferenceCount: 1,
+        mutedKeywordCount: 0,
+        blockedProviderCount: 0,
+        signals: ["memory_guidance_available", "memory_guidance_applied"],
+      },
       sourceWindow: {
         windowId: "workspace:briefing-workflow-smoke",
         startedAt: new Date("2026-06-23T08:00:00.000Z"),
@@ -117,6 +126,7 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     scope: { type: "workspace" },
+    userId: "briefing-workflow-user",
     idempotencyKey: "briefing-workflow-smoke",
     correlationId: "briefing-workflow-smoke",
   });
@@ -216,6 +226,18 @@ async function main(): Promise<void> {
   assert(
     artifact.content.topReads[0]?.whyNow.includes("cross-source coverage"),
     "reader summary must explain why the top read matters now",
+  );
+  assert(
+    artifact.userId === "briefing-workflow-user",
+    "briefing workflow must persist the reader user id",
+  );
+  assert(
+    artifact.personalization?.memoryGuidanceApplied === true,
+    "briefing workflow must persist applied memory guidance metadata",
+  );
+  assert(
+    artifact.personalization?.signals.includes("memory_guidance_applied"),
+    "briefing workflow must expose memory guidance explanation signals",
   );
   assert(
     events.all().length === 1,
