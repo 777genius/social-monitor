@@ -68,7 +68,6 @@ describe('ListSourceBindingsUseCase', () => {
               apiToken: {
                 encrypted: true,
                 algorithm: 'aes-256-gcm',
-                keyId: 'local-ephemeral',
               },
             },
           }),

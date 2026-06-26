@@ -41,7 +41,6 @@ const previewConfigValue = (value: unknown): SourceBindingConfigPreviewValue => 
     return {
       encrypted: true,
       algorithm: value.algorithm,
-      keyId: value.keyId,
     };
   }
 

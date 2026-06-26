@@ -137,7 +137,7 @@ async function proveSourceCredentialRotationAndRedaction(): Promise<readonly Rot
 
   assert(!previewSerialized.includes(rawConfig.accessToken), 'source binding preview must not expose access token');
   assert(!previewSerialized.includes(rawConfig.nested.refreshToken), 'source binding preview must not expose refresh token');
-  assert(previewSerialized.includes('source-key-new'), 'source binding preview must expose only rotated key id metadata');
+  assert(!previewSerialized.includes('source-key-new'), 'source binding preview must not expose source key id metadata');
 
   try {
     await oldProtector.unprotect(newProtectedConfig);

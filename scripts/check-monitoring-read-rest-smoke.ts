@@ -240,6 +240,10 @@ async function main(): Promise<void> {
       'source binding REST list must not expose encrypted ciphertext',
     );
     assert(
+      listedBindings.body.sourceBindings[0].configPreview.apiToken.keyId === undefined,
+      'source binding REST list must not expose encrypted key id',
+    );
+    assert(
       listedBindings.body.sourceBindings[0].configPreview.apiToken.encrypted === true,
       'source binding REST list must expose safe encrypted config marker',
     );
