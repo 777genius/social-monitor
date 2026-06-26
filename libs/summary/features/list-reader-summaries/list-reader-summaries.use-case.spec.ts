@@ -64,6 +64,108 @@ describe("ListReaderSummariesUseCase", () => {
     });
     expect(repository.queries).toEqual([]);
   });
+
+  it("filters reader summaries without skipping matching cursor pages", async () => {
+    const repository = new FakeReaderSummaryArtifactRepository([
+      readerSummaryArtifact({
+        readerSummaryId: "reader-summary-github",
+        providerKeys: ["github"],
+      }),
+      readerSummaryArtifact({
+        readerSummaryId: "reader-summary-reddit",
+        providerKeys: ["reddit"],
+      }),
+    ]);
+    const useCase = new ListReaderSummariesUseCase(
+      repository,
+      new FakeReaderSummaryFreshnessProbe(),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      providerKey: "reddit",
+      limit: 1,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        items: [
+          expect.objectContaining({
+            readerSummaryId: "reader-summary-reddit",
+          }),
+        ],
+        nextCursor: undefined,
+      },
+    });
+    expect(repository.queries).toEqual([
+      expect.objectContaining({ cursor: undefined, limit: 1 }),
+      expect.objectContaining({ cursor: "1", limit: 1 }),
+    ]);
+  });
+
+  it("filters personal memory-guided stale reader summaries", async () => {
+    const artifact = readerSummaryArtifact({
+      readerSummaryId: "reader-summary-personal",
+      userId: "user-1",
+      subscriptionId: "11111111-1111-4111-8111-111111111111",
+      personalization: {
+        memoryGuidanceStatus: "available",
+        memoryGuidanceApplied: true,
+        providerPreferenceCount: 1,
+        keywordPreferenceCount: 2,
+        mutedKeywordCount: 0,
+        blockedProviderCount: 0,
+        signals: ["More AI agent releases"],
+      },
+    });
+    const useCase = new ListReaderSummariesUseCase(
+      new FakeReaderSummaryArtifactRepository([
+        readerSummaryArtifact({
+          readerSummaryId: "reader-summary-workspace",
+        }),
+        artifact,
+      ]),
+      new FakeReaderSummaryFreshnessProbe({
+        "workspace:reader-summary-personal": {
+          status: "stale",
+          checkedAt: new Date("2026-06-23T08:40:00.000Z"),
+          staleMarkedAt: new Date("2026-06-23T08:41:00.000Z"),
+          reason: "new_evidence_after_window",
+          newestFeedItemId: "feed-new",
+          newestObservedAt: new Date("2026-06-23T08:39:00.000Z"),
+        },
+      }),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      userId: "user-1",
+      subscriptionId: "11111111-1111-4111-8111-111111111111",
+      freshnessStatus: "stale",
+      memoryGuidanceApplied: true,
+      limit: 5,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        items: [
+          expect.objectContaining({
+            readerSummaryId: "reader-summary-personal",
+            userId: "user-1",
+            personalization: expect.objectContaining({
+              memoryGuidanceApplied: true,
+            }),
+            freshness: expect.objectContaining({ status: "stale" }),
+          }),
+        ],
+        nextCursor: undefined,
+      },
+    });
+  });
 });
 
 const tenant = tenantId("tenant-reader-summary-list");
@@ -72,6 +174,12 @@ const workspace = workspaceId("workspace-reader-summary-list");
 const readerSummaryArtifact = (params: {
   readonly readerSummaryId: string;
   readonly scope?: ReaderSummaryScope;
+  readonly providerKeys?: readonly string[];
+  readonly userId?: string;
+  readonly subscriptionId?: string;
+  readonly personalization?: Parameters<
+    typeof ReaderSummaryArtifact.create
+  >[0]["personalization"];
 }): ReaderSummaryArtifact =>
   ReaderSummaryArtifact.create({
     schemaVersion: "reader_summary.artifact.v1",
@@ -79,8 +187,10 @@ const readerSummaryArtifact = (params: {
     tenantId: tenant,
     workspaceId: workspace,
     scope: params.scope ?? { type: "workspace" },
+    userId: params.userId,
+    subscriptionId: params.subscriptionId,
     sourceWindow: {
-      windowId: "workspace:list",
+      windowId: `workspace:${params.readerSummaryId}`,
       startedAt: new Date("2026-06-23T08:00:00.000Z"),
       endedAt: new Date("2026-06-23T08:30:00.000Z"),
       selectedFeedItemIds: ["feed-reddit"],
@@ -93,7 +203,7 @@ const readerSummaryArtifact = (params: {
         representativeFeedItemId: "feed-reddit",
         duplicateFeedItemIds: ["feed-github"],
         topicIds: ["topic-ai", "topic-github"],
-        providerKeys: ["reddit", "github"],
+        providerKeys: params.providerKeys ?? ["reddit", "github"],
         score: 2.4,
         observedAtRange: {
           startedAt: new Date("2026-06-23T08:00:00.000Z"),
@@ -103,6 +213,7 @@ const readerSummaryArtifact = (params: {
       },
     ],
     contextArtifacts: [],
+    personalization: params.personalization,
     headline: "Workspace AI tooling reader summary",
     executiveSummary:
       "AI tooling discussion is repeating across monitored sources.",
@@ -125,7 +236,7 @@ const readerSummaryArtifact = (params: {
         citationId: "c1",
         feedItemId: "feed-reddit",
         sourceItemId: "source-reddit",
-        providerKey: "reddit",
+        providerKey: params.providerKeys?.[0] ?? "reddit",
         field: "title",
       },
     ],
@@ -164,8 +275,14 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
     query: ListReaderSummaryArtifactsQuery,
   ): Promise<ListReaderSummaryArtifactsResult> {
     this.queries.push(query);
+    const offset = query.cursor === undefined ? 0 : Number(query.cursor);
+    const items = this.artifacts.slice(offset, offset + query.limit);
+    const nextOffset = offset + items.length;
+
     return {
-      items: this.artifacts.slice(0, query.limit),
+      items,
+      nextCursor:
+        nextOffset < this.artifacts.length ? String(nextOffset) : undefined,
     };
   }
 
@@ -175,8 +292,16 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
 }
 
 class FakeReaderSummaryFreshnessProbe implements ReaderSummaryFreshnessProbePort {
-  async evaluate(): Promise<ReaderSummaryFreshness> {
-    return {
+  constructor(
+    private readonly freshnessByWindowId: Readonly<
+      Record<string, ReaderSummaryFreshness>
+    > = {},
+  ) {}
+
+  async evaluate(
+    query: Parameters<ReaderSummaryFreshnessProbePort["evaluate"]>[0],
+  ): Promise<ReaderSummaryFreshness> {
+    return this.freshnessByWindowId[query.sourceWindow.windowId] ?? {
       status: "fresh",
       checkedAt: new Date("2026-06-23T08:40:00.000Z"),
     };

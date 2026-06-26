@@ -5495,6 +5495,50 @@
           },
           {
             "in": "query",
+            "name": "memoryGuidanceApplied",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "freshnessStatus",
+            "required": false,
+            "schema": {
+              "enum": [
+                "fresh",
+                "stale"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "subscriptionId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "userId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "topicId",
             "required": false,
             "schema": {

@@ -62,6 +62,19 @@ export class BriefingController {
     enum: ["workspace", "topic"],
   })
   @ApiQuery({ name: "topicId", required: false, type: String })
+  @ApiQuery({ name: "providerKey", required: false, type: String })
+  @ApiQuery({ name: "userId", required: false, type: String })
+  @ApiQuery({ name: "subscriptionId", required: false, type: String })
+  @ApiQuery({
+    name: "freshnessStatus",
+    required: false,
+    enum: ["fresh", "stale"],
+  })
+  @ApiQuery({
+    name: "memoryGuidanceApplied",
+    required: false,
+    type: Boolean,
+  })
   @ApiQuery({ name: "limit", required: false, type: Number })
   @ApiQuery({ name: "cursor", required: false, type: String })
   @ApiOkResponse({ type: ListBriefingsResponseDto })
@@ -72,6 +85,11 @@ export class BriefingController {
     @Headers("authorization") authorizationHeader: string | undefined,
     @Query("scopeType") scopeType: string | undefined,
     @Query("topicId") topicId: string | undefined,
+    @Query("providerKey") providerKey: string | undefined,
+    @Query("userId") userId: string | undefined,
+    @Query("subscriptionId") subscriptionId: string | undefined,
+    @Query("freshnessStatus") freshnessStatus: string | undefined,
+    @Query("memoryGuidanceApplied") memoryGuidanceApplied: string | undefined,
     @Query("limit") limitQuery: string | undefined,
     @Query("cursor") cursor: string | undefined,
   ): Promise<ListBriefingsResponseDto> {
@@ -90,6 +108,14 @@ export class BriefingController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       scope: normalizeBriefingScopeQuery(scopeType, topicId),
+      providerKey: normalizeOptionalBriefingFilter(providerKey),
+      userId: normalizeOptionalBriefingFilter(userId),
+      subscriptionId: normalizeOptionalBriefingFilter(subscriptionId),
+      freshnessStatus: normalizeBriefingFreshnessStatus(freshnessStatus),
+      memoryGuidanceApplied: normalizeBriefingBooleanFilter(
+        memoryGuidanceApplied,
+        "memoryGuidanceApplied",
+      ),
       limit: parsePaginationLimit(limitQuery, {
         defaultLimit: 20,
         invalidMessage: "Briefing page limit must be between 1 and 100",
@@ -194,5 +220,58 @@ const normalizeBriefingScopeQuery = (
   throw new DomainError(
     "validation.failed",
     "Briefing scopeType must be workspace or topic",
+  );
+};
+
+const normalizeOptionalBriefingFilter = (
+  value: string | undefined,
+): string | undefined => {
+  const normalized = value?.trim();
+
+  return normalized === undefined || normalized.length === 0
+    ? undefined
+    : normalized;
+};
+
+const normalizeBriefingFreshnessStatus = (
+  value: string | undefined,
+): "fresh" | "stale" | undefined => {
+  const normalized = normalizeOptionalBriefingFilter(value);
+
+  if (normalized === undefined) {
+    return undefined;
+  }
+
+  if (normalized === "fresh" || normalized === "stale") {
+    return normalized;
+  }
+
+  throw new DomainError(
+    "validation.failed",
+    "Briefing freshnessStatus must be fresh or stale",
+  );
+};
+
+const normalizeBriefingBooleanFilter = (
+  value: string | undefined,
+  name: string,
+): boolean | undefined => {
+  const normalized = normalizeOptionalBriefingFilter(value);
+
+  if (normalized === undefined) {
+    return undefined;
+  }
+
+  if (normalized === "true") {
+    return true;
+  }
+
+  if (normalized === "false") {
+    return false;
+  }
+
+  throw new DomainError(
+    "validation.failed",
+    `Briefing ${name} must be true or false`,
   );
 };

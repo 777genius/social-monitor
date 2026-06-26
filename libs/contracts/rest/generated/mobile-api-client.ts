@@ -194,9 +194,14 @@ export const mobileApiOperations = [
     "pathParameters": [],
     "queryParameters": [
       "cursor",
+      "freshnessStatus",
       "limit",
+      "memoryGuidanceApplied",
+      "providerKey",
       "scopeType",
-      "topicId"
+      "subscriptionId",
+      "topicId",
+      "userId"
     ],
     "requiredHeaders": [
       "x-tenant-id",

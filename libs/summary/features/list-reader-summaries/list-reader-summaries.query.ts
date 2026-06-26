@@ -6,6 +6,11 @@ export type ListReaderSummariesQuery = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly scope?: ReaderSummaryScope;
+  readonly providerKey?: string;
+  readonly userId?: string;
+  readonly subscriptionId?: string;
+  readonly freshnessStatus?: "fresh" | "stale";
+  readonly memoryGuidanceApplied?: boolean;
   readonly limit: number;
   readonly cursor?: string;
 };

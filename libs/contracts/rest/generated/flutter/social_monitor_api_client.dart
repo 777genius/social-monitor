@@ -195,9 +195,14 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'pathParameters': [],
     'queryParameters': [
       'cursor',
+      'freshnessStatus',
       'limit',
+      'memoryGuidanceApplied',
+      'providerKey',
       'scopeType',
+      'subscriptionId',
       'topicId',
+      'userId',
     ],
     'requiredHeaders': [
       'x-tenant-id',
