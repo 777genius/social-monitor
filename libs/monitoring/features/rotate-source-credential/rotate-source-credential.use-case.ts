@@ -11,8 +11,8 @@ import type {
   SourceCredentialRepositoryPort,
   SourceCredentialVaultPort,
 } from '../../ports';
-import { previewFromSecret } from '../create-source-credential/create-source-credential.use-case';
 import { presentSourceCredential } from '../shared/source-credential-presenter';
+import { previewFromSourceCredentialSecret } from '../shared/source-credential-preview-policy';
 import { normalizeSourceCredentialSecretForStorage } from '../shared/source-credential-secret-policy';
 import type { RotateSourceCredentialCommand } from './rotate-source-credential.command';
 import type { RotateSourceCredentialResult } from './rotate-source-credential.result';
@@ -55,7 +55,10 @@ export class RotateSourceCredentialUseCase {
     const secretKeyId = `source_cred_${snapshot.id}_${this.ids.generate()}`;
     const rotated = existing.rotate({
       secretKeyId,
-      secretPreview: previewFromSecret(command.secretPreview, secret),
+      secretPreview: previewFromSourceCredentialSecret(
+        command.secretPreview,
+        secret,
+      ),
       scopes: command.scopes ?? snapshot.scopes,
       expiresAt: command.expiresAt,
       now: this.clock.now(),

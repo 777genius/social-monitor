@@ -36,6 +36,27 @@ describe('CreateSourceCredentialUseCase', () => {
     expect(vault.secrets.size).toBe(1);
   });
 
+  it('does not expose configured preview when it repeats secret material', async () => {
+    const result = await new CreateSourceCredentialUseCase(
+      new FakeSourceCredentialRepository(),
+      new FakeSourceCredentialVault(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-21T10:00:00.000Z')),
+    ).execute({
+      tenantId: sourceCredentialTenant,
+      workspaceId: sourceCredentialWorkspace,
+      providerKey: 'github',
+      kind: 'oauth2',
+      secret: { accessToken: 'raw-access-token' },
+      scopes: ['read'],
+      secretPreview: 'raw-access-token',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.sourceCredential.secretPreview).toBe('configured');
+    expect(JSON.stringify(result)).not.toContain('raw-access-token');
+  });
+
   it('normalizes Reddit OAuth credentials for recurring refresh-token scans', async () => {
     const repository = new FakeSourceCredentialRepository();
     const vault = new FakeSourceCredentialVault();

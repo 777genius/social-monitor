@@ -15,6 +15,7 @@ import type {
 import type { CreateSourceCredentialCommand } from './create-source-credential.command';
 import type { CreateSourceCredentialResult } from './create-source-credential.result';
 import { presentSourceCredential } from '../shared/source-credential-presenter';
+import { previewFromSourceCredentialSecret } from '../shared/source-credential-preview-policy';
 import { normalizeSourceCredentialSecretForStorage } from '../shared/source-credential-secret-policy';
 
 type CreateSourceCredentialFailure = DomainError | Error;
@@ -59,7 +60,10 @@ export class CreateSourceCredentialUseCase {
       providerKey,
       kind: command.kind,
       secretKeyId,
-      secretPreview: previewFromSecret(command.secretPreview, secret),
+      secretPreview: previewFromSourceCredentialSecret(
+        command.secretPreview,
+        secret,
+      ),
       scopes: command.scopes ?? [],
       expiresAt: command.expiresAt,
       createdAt: now,
@@ -74,43 +78,3 @@ export class CreateSourceCredentialUseCase {
     return ok({ sourceCredential: presentSourceCredential(credential) });
   }
 }
-
-export const previewFromSecret = (
-  configuredPreview: string | undefined,
-  secret: Readonly<Record<string, unknown>>,
-): string => {
-  const trimmed = configuredPreview?.trim();
-  if (trimmed !== undefined && trimmed.length > 0) {
-    return trimmed.slice(-16);
-  }
-
-  const candidate = firstSecretPreviewCandidate(secret);
-
-  return candidate === undefined ? 'configured' : candidate.slice(-8);
-};
-
-const firstSecretPreviewCandidate = (value: unknown): string | undefined => {
-  if (typeof value === 'string' && value.trim().length > 0) {
-    return value.trim();
-  }
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const candidate = firstSecretPreviewCandidate(item);
-      if (candidate !== undefined) {
-        return candidate;
-      }
-    }
-  }
-
-  if (value !== null && typeof value === 'object') {
-    for (const nestedValue of Object.values(value)) {
-      const candidate = firstSecretPreviewCandidate(nestedValue);
-      if (candidate !== undefined) {
-        return candidate;
-      }
-    }
-  }
-
-  return undefined;
-};

@@ -23,6 +23,7 @@ const assertNoSecretMaterial = (value: unknown, message: string): void => {
     'rotated-access-token',
     'rotated-refresh-token',
     'rotated-client-secret',
+    'unsafe-preview-access-token',
     'secretKeyId',
     'source_cred_',
   ]) {
@@ -111,6 +112,28 @@ async function main(): Promise<void> {
     assert(credential.secretPreview === 'reddit-oauth', 'source credential create must return safe secret preview');
     assert(credential.scopes.length === 2, 'source credential create must preserve scopes');
     assertNoSecretMaterial(created.body, 'source credential create response must not expose secret material');
+
+    const unsafePreview = await request(app.getHttpServer())
+      .post('/source-credentials')
+      .set(adminHeaders)
+      .send({
+        providerKey: 'hacker-news',
+        kind: 'bearer_token',
+        secret: {
+          accessToken: 'unsafe-preview-access-token',
+        },
+        secretPreview: 'unsafe-preview-access-token',
+      })
+      .expect(201);
+
+    assert(
+      unsafePreview.body.sourceCredential.secretPreview === 'configured',
+      'source credential create must replace secret-like preview with a safe fallback',
+    );
+    assertNoSecretMaterial(
+      unsafePreview.body,
+      'source credential create with unsafe preview must not expose secret material',
+    );
 
     const listed = await request(app.getHttpServer())
       .get('/source-credentials')

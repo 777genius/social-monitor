@@ -38,6 +38,36 @@ describe('RotateSourceCredentialUseCase', () => {
     expect(result.ok).toBe(true);
     expect(await vault.get({ secretKeyId: 'old-secret-key' })).toBeNull();
     expect([...vault.secrets.values()]).toEqual([{ accessToken: 'new-token' }]);
+    expect(result.ok && result.value.sourceCredential.secretPreview).toBe('configured');
+  });
+
+  it('does not expose configured preview when rotated preview repeats secret material', async () => {
+    const repository = new FakeSourceCredentialRepository();
+    const vault = new FakeSourceCredentialVault();
+    const credential = await createStoredSourceCredential({
+      repository,
+      vault,
+      secretKeyId: 'old-secret-key',
+      providerKey: 'github',
+      secret: { accessToken: 'old-token' },
+    });
+
+    const result = await new RotateSourceCredentialUseCase(
+      repository,
+      vault,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-21T11:00:00.000Z')),
+    ).execute({
+      tenantId: sourceCredentialTenant,
+      workspaceId: sourceCredentialWorkspace,
+      sourceCredentialId: credential.toSnapshot().id,
+      secret: { accessToken: 'new-raw-access-token' },
+      secretPreview: 'new-raw-access-token',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.sourceCredential.secretPreview).toBe('configured');
+    expect(JSON.stringify(result)).not.toContain('new-raw-access-token');
   });
 
   it('rejects rotating Reddit OAuth credentials to access-token-only material', async () => {
