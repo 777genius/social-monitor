@@ -14,6 +14,71 @@ const allowedDevOnlyWorkspaceRoleOperations = new Set([
   'PublicApiAuditEventsController_list',
   'ScanDeadLetterController_list',
 ]);
+const frontendCriticalOperations = [
+  {
+    operationId: 'FeedController_list',
+    requiredQueryParameters: [
+      'cursor',
+      'limit',
+      'providerKey',
+      'repositoryLanguage',
+      'repositoryTopic',
+      'repositoryTrendWindow',
+      'topicId',
+    ],
+    requiredResponseSchemaRefs: ['#/components/schemas/ListFeedItemsResponseDto'],
+  },
+  {
+    operationId: 'BriefingController_list',
+    requiredQueryParameters: [
+      'cursor',
+      'freshnessStatus',
+      'limit',
+      'memoryGuidanceApplied',
+      'providerKey',
+      'scopeType',
+      'subscriptionId',
+      'topicId',
+      'userId',
+    ],
+    requiredResponseSchemaRefs: ['#/components/schemas/ListBriefingsResponseDto'],
+  },
+  {
+    operationId: 'BriefingController_get',
+    requiredPathParameters: ['briefingId'],
+    requiredResponseSchemaRefs: ['#/components/schemas/BriefingResponseDto'],
+  },
+  {
+    operationId: 'SourceBindingController_list',
+    requiredPathParameters: ['topicId'],
+    requiredQueryParameters: ['cursor', 'limit', 'providerKey', 'status'],
+    requiredResponseSchemaRefs: ['#/components/schemas/ListSourceBindingsResponseDto'],
+  },
+  {
+    operationId: 'SourceBindingController_overview',
+    requiredPathParameters: ['topicId'],
+    requiredQueryParameters: ['cursor', 'limit', 'providerKey', 'status'],
+    requiredResponseSchemaRefs: ['#/components/schemas/ListSourceBindingOverviewResponseDto'],
+  },
+  {
+    operationId: 'SourceBindingController_dailyHistory',
+    requiredPathParameters: ['topicId'],
+    requiredQueryParameters: ['days', 'providerKey'],
+    requiredResponseSchemaRefs: ['#/components/schemas/ListTopicSourceDailyHistoryResponseDto'],
+  },
+  {
+    operationId: 'ScanRequestController_list',
+    requiredPathParameters: ['sourceBindingId'],
+    requiredQueryParameters: ['cursor', 'limit', 'status'],
+    requiredResponseSchemaRefs: ['#/components/schemas/ListScanRequestsResponseDto'],
+  },
+  {
+    operationId: 'SummaryFeedbackController_list',
+    requiredPathParameters: ['summaryId'],
+    requiredQueryParameters: ['cursor', 'limit'],
+    requiredResponseSchemaRefs: ['#/components/schemas/ListSummaryFeedbackResponseDto'],
+  },
+];
 
 const snapshot = JSON.parse(readFileSync(snapshotPath, 'utf8'));
 const operations = extractOperations(snapshot);
@@ -173,7 +238,59 @@ function validateOperations(operations) {
     }
   }
 
+  validateFrontendCriticalOperations(operations, issues);
+
   return issues;
+}
+
+function validateFrontendCriticalOperations(operations, issues) {
+  const operationsById = new Map(
+    operations.map((operation) => [operation.operationId, operation]),
+  );
+
+  for (const requirement of frontendCriticalOperations) {
+    const operation = operationsById.get(requirement.operationId);
+    if (operation === undefined) {
+      issues.push(`Missing frontend-critical operation: ${requirement.operationId}`);
+      continue;
+    }
+
+    if (operation.method !== 'GET') {
+      issues.push(`${requirement.operationId} must remain a GET operation`);
+    }
+    if (!operation.requiresTenantWorkspace) {
+      issues.push(`${requirement.operationId} must require tenant/workspace headers`);
+    }
+    if (!operation.supportsBearerApiKey) {
+      issues.push(`${requirement.operationId} must support bearer API key auth`);
+    }
+    requireIncludesAll(
+      operation.pathParameters,
+      requirement.requiredPathParameters ?? [],
+      `${requirement.operationId} pathParameters`,
+      issues,
+    );
+    requireIncludesAll(
+      operation.queryParameters,
+      requirement.requiredQueryParameters ?? [],
+      `${requirement.operationId} queryParameters`,
+      issues,
+    );
+    requireIncludesAll(
+      operation.successResponseSchemaRefs,
+      requirement.requiredResponseSchemaRefs,
+      `${requirement.operationId} successResponseSchemaRefs`,
+      issues,
+    );
+  }
+}
+
+function requireIncludesAll(actual, expected, label, issues) {
+  for (const item of expected) {
+    if (!actual.includes(item)) {
+      issues.push(`${label} missing ${item}`);
+    }
+  }
 }
 
 function schemaRef(schema) {
