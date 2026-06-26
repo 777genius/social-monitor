@@ -18,6 +18,7 @@ const apiKeysUserJwtManagementE2e = readFileSync('test/e2e/api-keys.user-jwt-man
 const scanDeadLettersAuthorizationE2e = readFileSync('test/e2e/scan-dead-letters.authorization.e2e-spec.ts', 'utf8');
 const usageAuditEventsListE2e = readFileSync('test/e2e/usage-audit-events.list.e2e-spec.ts', 'utf8');
 const productionAuthBoundaryMatrixE2e = readFileSync('test/e2e/production-auth-boundary-matrix.e2e-spec.ts', 'utf8');
+const userAuthBoundaryRunner = readFileSync('scripts/check-user-auth-boundary.mjs', 'utf8');
 const envExample = readFileSync('.env.example', 'utf8');
 const compose = readFileSync('docker-compose.yml', 'utf8');
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
@@ -213,20 +214,24 @@ if (!String(packageJson.scripts?.verify ?? '').includes('check:auth-boundary')) 
   violations.push('package.json verify must include check:auth-boundary');
 }
 
-if (!String(packageJson.scripts?.['check:user-auth-boundary'] ?? '').includes('user-jwt-auth-boundary.e2e-spec.ts')) {
-  violations.push('package.json missing check:user-auth-boundary JWT e2e guard');
+if (!String(packageJson.scripts?.['check:user-auth-boundary'] ?? '').includes('check-user-auth-boundary.mjs')) {
+  violations.push('package.json check:user-auth-boundary must run scripts/check-user-auth-boundary.mjs');
 }
 
-if (!String(packageJson.scripts?.['check:user-auth-boundary'] ?? '').includes('api-keys.user-jwt-management.e2e-spec.ts')) {
-  violations.push('package.json missing check:user-auth-boundary API key user JWT e2e guard');
+if (!userAuthBoundaryRunner.includes('user-jwt-auth-boundary.e2e-spec.ts')) {
+  violations.push('check-user-auth-boundary runner missing JWT e2e guard');
 }
 
-if (!String(packageJson.scripts?.['check:user-auth-boundary'] ?? '').includes('scan-dead-letters.authorization.e2e-spec.ts')) {
-  violations.push('package.json missing check:user-auth-boundary scan dead-letter user JWT e2e guard');
+if (!userAuthBoundaryRunner.includes('api-keys.user-jwt-management.e2e-spec.ts')) {
+  violations.push('check-user-auth-boundary runner missing API key user JWT e2e guard');
 }
 
-if (!String(packageJson.scripts?.['check:user-auth-boundary'] ?? '').includes('usage-audit-events.list.e2e-spec.ts')) {
-  violations.push('package.json missing check:user-auth-boundary usage audit user JWT e2e guard');
+if (!userAuthBoundaryRunner.includes('scan-dead-letters.authorization.e2e-spec.ts')) {
+  violations.push('check-user-auth-boundary runner missing scan dead-letter user JWT e2e guard');
+}
+
+if (!userAuthBoundaryRunner.includes('usage-audit-events.list.e2e-spec.ts')) {
+  violations.push('check-user-auth-boundary runner missing usage audit user JWT e2e guard');
 }
 
 if (!String(packageJson.scripts?.verify ?? '').includes('check:user-auth-boundary')) {

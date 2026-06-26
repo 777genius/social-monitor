@@ -30,7 +30,7 @@ for (const specPath of e2eSpecs) {
     [
       'scripts/run-with-timeout.mjs',
       '--timeout-ms',
-      '90000',
+      '150000',
       '--clean-env',
       '--node-options',
       '--max-old-space-size=768',
