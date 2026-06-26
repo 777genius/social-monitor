@@ -74,7 +74,7 @@ describe('RedditRefreshTokenProvider', () => {
 
   it('redacts token-like fields from failed token responses', async () => {
     globalThis.fetch = jest.fn().mockResolvedValueOnce(new Response(
-      '{"error":"invalid_grant","access_token":"leaked-access","refresh_token":"leaked-refresh","client_secret":"leaked-secret"}',
+      '{"error":"invalid_grant","access_token":"leaked-access","refresh_token":"leaked-refresh","client_secret":"leaked-secret"} refresh_token=plain-leak Bearer token-value',
       { status: 401 },
     )) as unknown as typeof fetch;
 
@@ -91,10 +91,12 @@ describe('RedditRefreshTokenProvider', () => {
       message = error instanceof Error ? error.message : String(error);
     }
 
-    expect(message).toContain('"access_token":"[redacted]"');
+    expect(message).toContain('"access_token":"[REDACTED]"');
     expect(message).not.toContain('leaked-access');
     expect(message).not.toContain('leaked-refresh');
     expect(message).not.toContain('leaked-secret');
+    expect(message).not.toContain('plain-leak');
+    expect(message).not.toContain('token-value');
   });
 });
 

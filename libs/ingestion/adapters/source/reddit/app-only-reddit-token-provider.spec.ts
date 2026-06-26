@@ -61,7 +61,7 @@ describe('RedditAppOnlyTokenProvider', () => {
 
   it('redacts token-like fields from failed token responses', async () => {
     globalThis.fetch = jest.fn().mockResolvedValueOnce(new Response(
-      '{"error":"invalid_client","access_token":"leaked","client_secret":"leaked"}',
+      '{"error":"invalid_client","access_token":"leaked","client_secret":"leaked"} refresh_token=plain-leak Bearer token-value',
       { status: 401 },
     )) as unknown as typeof fetch;
 
@@ -70,8 +70,17 @@ describe('RedditAppOnlyTokenProvider', () => {
       clientSecret: 'reddit-client-secret',
     });
 
-    await expect(provider.getAccessToken()).rejects.toThrow('"access_token":"[redacted]"');
-    await expect(provider.getAccessToken()).rejects.not.toThrow('leaked');
+    let message = '';
+    try {
+      await provider.getAccessToken();
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toContain('"access_token":"[REDACTED]"');
+    expect(message).not.toContain('leaked');
+    expect(message).not.toContain('plain-leak');
+    expect(message).not.toContain('token-value');
   });
 });
 

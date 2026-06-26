@@ -25,6 +25,36 @@ describe('OAuth2SourceCredentialRefresher', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
+
+  it('redacts JSON and plain token-like fields from failed token responses', async () => {
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(
+      '{"error":"invalid_grant","access_token":"json-access"} refresh_token=plain-refresh Bearer token-value',
+      { status: 401 },
+    ));
+    const refresher = new OAuth2SourceCredentialRefresher({ refreshSkewMs: 60_000 });
+
+    let message = '';
+    try {
+      await refresher.refreshIfNeeded({
+        credential: makeExpiredCredential(),
+        secret: {
+          refreshToken: 'permanent-refresh-token',
+          tokenUrl: 'https://oauth.example.test/token',
+          clientId: 'reddit-client-id',
+        },
+        now: new Date('2026-06-21T10:00:00.000Z'),
+      });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toContain('"access_token":"[REDACTED]"');
+    expect(message).not.toContain('json-access');
+    expect(message).not.toContain('plain-refresh');
+    expect(message).not.toContain('token-value');
+
+    fetchSpy.mockRestore();
+  });
 });
 
 const makeExpiredCredential = (): SourceCredential =>

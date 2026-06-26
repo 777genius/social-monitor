@@ -1,6 +1,8 @@
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
+import { REDACTED_VALUE, redactSensitiveText } from '@social-monitor/shared-kernel';
+
 import { validateRedditTokenUrl } from './reddit-token-url-policy';
 
 export type RedditRefreshTokenRequest = {
@@ -158,10 +160,10 @@ function readExpiresInSeconds(value: unknown): number {
 }
 
 function redactedBodyPreview(body: string): string {
-  return body
-    .replace(/"access_token"\s*:\s*"[^"]+"/gi, '"access_token":"[redacted]"')
-    .replace(/"refresh_token"\s*:\s*"[^"]+"/gi, '"refresh_token":"[redacted]"')
-    .replace(/"client_secret"\s*:\s*"[^"]+"/gi, '"client_secret":"[redacted]"')
+  return redactSensitiveText(body
+    .replace(/"access_token"\s*:\s*"[^"]+"/gi, `"access_token":"${REDACTED_VALUE}"`)
+    .replace(/"refresh_token"\s*:\s*"[^"]+"/gi, `"refresh_token":"${REDACTED_VALUE}"`)
+    .replace(/"client_secret"\s*:\s*"[^"]+"/gi, `"client_secret":"${REDACTED_VALUE}"`))
     .slice(0, 500);
 }
 

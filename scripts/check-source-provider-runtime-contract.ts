@@ -390,7 +390,7 @@ async function verifyRedditPermanentOAuthRuntime(): Promise<void> {
           );
         }
         assert(
-          message.includes('[redacted]'),
+          message.includes('[REDACTED]'),
           'Reddit refresh-token error must include redacted placeholders',
         );
         return;
