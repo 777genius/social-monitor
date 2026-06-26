@@ -28,6 +28,7 @@ const toLegacyReadyEvent = (
   return {
     ...event,
     eventType: "briefing.ready",
+    schemaVersion: 1,
     payload: {
       ...rest,
       briefingJobId: readerSummaryJobId,

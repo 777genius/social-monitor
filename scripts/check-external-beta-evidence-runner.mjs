@@ -11,6 +11,7 @@ const auditPath = 'ops/release/backend-mvp-completion-audit.json';
 const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
 const packagePath = 'package.json';
+const sourceCertificationPath = 'ops/ingestion/source-provider-certification.json';
 
 const contract = readJson(contractPath);
 const externalReadiness = readJson(externalReadinessPath);
@@ -18,6 +19,7 @@ const audit = readJson(auditPath);
 const backendSafe = readJson(backendSafePath);
 const baseline = readJson(baselinePath);
 const packageJson = readJson(packagePath);
+const sourceCertification = readJson(sourceCertificationPath);
 const runnerSource = readFileSync(contract.runnerFile, 'utf8');
 const envExampleSource = typeof contract.envExample === 'string' && existsSync(contract.envExample)
   ? readFileSync(contract.envExample, 'utf8')
@@ -460,6 +462,16 @@ console.log('External beta evidence runner contract OK');
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function sourceFreshnessGuardForProvider(providerKey) {
+  const provider = (sourceCertification.certifiedProviders ?? [])
+    .find((candidate) => candidate.providerKey === providerKey);
+  if (provider?.freshnessGuard === undefined) {
+    throw new Error(`${sourceCertificationPath}: missing freshnessGuard for ${providerKey}`);
+  }
+
+  return JSON.parse(JSON.stringify(provider.freshnessGuard));
 }
 
 function validateSafety() {
@@ -3218,6 +3230,7 @@ function liveOpenConnectorsArtifact() {
       {
         providerKey: 'hacker-news',
         status: 'passed',
+        freshnessGuard: sourceFreshnessGuardForProvider('hacker-news'),
         signalResults: [
           {
             signalId: 'hn-live-http-smoke',
@@ -3243,11 +3256,23 @@ function liveOpenConnectorsArtifact() {
               degradationSignalRecorded: true,
             },
           },
+          {
+            signalId: 'hn-provider-failure-classification',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'Hacker News provider failures were classified into retryable health states without raw payloads.',
+              failureKindsObserved: ['timeout', 'provider_unavailable'],
+              retryPolicyObserved: true,
+              classifiedWithoutRawPayloads: true,
+            },
+          },
         ],
       },
       {
         providerKey: 'rss',
         status: 'passed',
+        freshnessGuard: sourceFreshnessGuardForProvider('rss'),
         signalResults: [
           {
             signalId: 'rss-allowlisted-live-feeds',
@@ -3283,11 +3308,23 @@ function liveOpenConnectorsArtifact() {
               rejectedBeforeFetch: true,
             },
           },
+          {
+            signalId: 'rss-provider-failure-classification',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'RSS provider failures were classified into retryable health states without raw feed payloads.',
+              failureKindsObserved: ['timeout', 'invalid_xml'],
+              retryPolicyObserved: true,
+              classifiedWithoutRawPayloads: true,
+            },
+          },
         ],
       },
       {
         providerKey: 'github-issues',
         status: 'passed',
+        freshnessGuard: sourceFreshnessGuardForProvider('github-issues'),
         signalResults: [
           {
             signalId: 'github-live-api-smoke',
@@ -3310,6 +3347,17 @@ function liveOpenConnectorsArtifact() {
               coreRemaining: 100,
               searchRemaining: 10,
               budgetObserved: true,
+            },
+          },
+          {
+            signalId: 'github-provider-failure-classification',
+            status: 'passed',
+            observedAt: now,
+            evidence: {
+              summary: 'GitHub Issues provider failures were classified into retryable health states without raw API payloads.',
+              failureKindsObserved: ['rate_limited', 'provider_unavailable'],
+              retryPolicyObserved: true,
+              classifiedWithoutRawPayloads: true,
             },
           },
         ],
@@ -3401,6 +3449,7 @@ function liveRedditArtifact(lifecycleArtifactSha256) {
       {
         providerKey: 'reddit',
         status: 'passed',
+        freshnessGuard: sourceFreshnessGuardForProvider('reddit'),
         signalResults: [
           {
             signalId: 'reddit-tenant-oauth-smoke',

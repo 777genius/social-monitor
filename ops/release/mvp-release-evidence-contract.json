@@ -525,6 +525,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "summary-feedback-sample-capture",
+      "command": "npm run check:summary-feedback-sample-capture",
+      "blocksRelease": true
+    },
+    {
       "gateId": "summary-memory-sdk",
       "command": "npm run check:summary-memory-sdk",
       "blocksRelease": true

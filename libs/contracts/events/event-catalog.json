@@ -73,6 +73,14 @@
       "requiredPayloadFields": ["summaryJobId", "summaryId", "tenantId", "workspaceId", "topicId", "status"]
     },
     {
+      "eventType": "briefing.ready",
+      "schemaVersion": 1,
+      "producer": "summary",
+      "tenantScoped": true,
+      "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
+      "requiredPayloadFields": ["briefingJobId", "briefingId", "tenantId", "workspaceId", "status"]
+    },
+    {
       "eventType": "summary.status.changed.v1",
       "schemaVersion": 1,
       "producer": "delivery",
