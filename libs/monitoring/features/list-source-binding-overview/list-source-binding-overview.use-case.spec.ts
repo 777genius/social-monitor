@@ -139,24 +139,41 @@ const makeSourceBindingView = (
 
 const makeHealthView = (
   overrides: Partial<GetSourceBindingHealthResult> = {},
-): GetSourceBindingHealthResult => ({
-  sourceBinding: makeSourceBindingView(),
-  healthState: 'scheduled',
-  operatorAction: 'wait_for_next_run_or_trigger_manual_scan',
-  evaluatedAt: '2026-06-26T00:00:00.000Z',
-  recentWindow: {
-    providerHealthState: 'unknown',
-    windowStartedAt: '2026-06-25T00:00:00.000Z',
-    windowEndedAt: '2026-06-26T00:00:00.000Z',
-    totalScans: 0,
-    succeededScans: 0,
-    failedScans: 0,
-    activeScans: 0,
-    rateLimitedScans: 0,
-    providerUnavailableScans: 0,
-    consecutiveFailures: 0,
-    operatorAction: 'wait_for_next_scan_or_trigger_manual_scan',
-    signals: ['no_recent_scans'],
-  },
-  ...overrides,
-});
+): GetSourceBindingHealthResult => {
+  const defaults: GetSourceBindingHealthResult = {
+    sourceBinding: makeSourceBindingView(),
+    healthState: 'scheduled',
+    operatorAction: 'wait_for_next_run_or_trigger_manual_scan',
+    evaluatedAt: '2026-06-26T00:00:00.000Z',
+    schedulerDecision: {
+      canScanNow: false,
+      decision: 'scheduled_later',
+      reason: 'scan_not_due_yet',
+      minimumIntervalSeconds: 300,
+      configuredIntervalSeconds: 900,
+      nextEligibleAt: '2026-06-26T00:05:00.000Z',
+      waitSeconds: 300,
+      signals: ['minimum_interval'],
+    },
+    recentWindow: {
+      providerHealthState: 'unknown',
+      windowStartedAt: '2026-06-25T00:00:00.000Z',
+      windowEndedAt: '2026-06-26T00:00:00.000Z',
+      totalScans: 0,
+      succeededScans: 0,
+      failedScans: 0,
+      activeScans: 0,
+      rateLimitedScans: 0,
+      providerUnavailableScans: 0,
+      consecutiveFailures: 0,
+      operatorAction: 'wait_for_next_scan_or_trigger_manual_scan',
+      signals: ['no_recent_scans'],
+    },
+  };
+
+  return {
+    ...defaults,
+    ...overrides,
+    schedulerDecision: overrides.schedulerDecision ?? defaults.schedulerDecision,
+  };
+};

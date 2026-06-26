@@ -4,6 +4,7 @@ const providerMinimumScanIntervalSeconds = new Map<string, number>([
   ['fake-source', 60],
   ['hacker-news', 300],
   ['rss', 300],
+  ['github', 300],
   ['github-issues', 300],
   ['reddit', 900],
   ['github-trending-page', 3_600],

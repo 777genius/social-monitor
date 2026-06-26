@@ -15,7 +15,7 @@ import type {
 import type { ScanStatusFailureClass, ScanStatusUserState } from '../../features/shared/scan-status-view';
 import type { ScanJobStatus } from '../../domain';
 import type { ScanExecutionAttemptStatus } from '../../ports';
-import { sourceBindingStatusValues, SourceBindingResponseDto } from './list-source-bindings.dto';
+import { SourceBindingResponseDto } from './list-source-bindings.dto';
 
 export const sourceBindingHealthStateValues = [
   'paused',

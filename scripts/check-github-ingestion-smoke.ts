@@ -340,9 +340,32 @@ const proveScheduledGitHubCollection = async ({
     scanCursors,
     scanFailures,
     scanLeases,
-    expectedFeedCount: 2,
+    expectedFeedCount: 1,
     expectedNextRunAt: '2026-06-06T10:09:00.000Z',
     signal: 'github-scheduled-smoke-second',
+    expectedQueued: false,
+  });
+
+  await runScheduledGitHubTick({
+    triggerTime: new Date('2026-06-06T10:16:00.000Z'),
+    tenant,
+    workspace,
+    provider,
+    bindings,
+    policies,
+    jobs,
+    queuePublisher,
+    queueReader,
+    metrics,
+    feedItems,
+    sourceItems,
+    scanAttempts,
+    scanCursors,
+    scanFailures,
+    scanLeases,
+    expectedFeedCount: 2,
+    expectedNextRunAt: '2026-06-06T10:19:00.000Z',
+    signal: 'github-scheduled-smoke-third',
   });
 
   const feed = await feedItems.list({
@@ -378,6 +401,7 @@ const runScheduledGitHubTick = async ({
   expectedFeedCount,
   expectedNextRunAt,
   signal,
+  expectedQueued,
 }: {
   readonly triggerTime: Date;
   readonly tenant: ReturnType<typeof tenantId>;
@@ -398,6 +422,7 @@ const runScheduledGitHubTick = async ({
   readonly expectedFeedCount: number;
   readonly expectedNextRunAt: string;
   readonly signal: string;
+  readonly expectedQueued?: boolean;
 }): Promise<void> => {
   const schedulerRuntime = new WorkerRuntime({ serviceName: 'ingestion-worker' });
   schedulerRuntime.onModuleInit();
@@ -427,55 +452,62 @@ const runScheduledGitHubTick = async ({
   await scheduleLoop.onApplicationShutdown(`${signal}-schedule-complete`);
   await schedulerRuntime.onApplicationShutdown(`${signal}-schedule-complete`);
 
-  assert(queuePublisher.all().length === 1, `${signal}: expected one queued GitHub scan`);
-  assert(
-    queuePublisher.all()[0]?.payload.providerKey === LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
-    `${signal}: queued scan must target legacy GitHub issues alias`,
-  );
+  const shouldQueue = expectedQueued ?? true;
+  if (!shouldQueue) {
+    assert(queuePublisher.all().length === 0, `${signal}: expected no queued GitHub scan inside freshness window`);
+  } else {
+    assert(queuePublisher.all().length === 1, `${signal}: expected one queued GitHub scan`);
+    assert(
+      queuePublisher.all()[0]?.payload.providerKey === LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
+      `${signal}: queued scan must target legacy GitHub issues alias`,
+    );
+  }
 
-  const drainRuntime = new WorkerRuntime({ serviceName: 'ingestion-worker' });
-  drainRuntime.onModuleInit();
-  const handler = new ExecuteScanCommandHandler(
-    new ExecuteScanUseCase(
-      new RegistrySourceFetcherAdapter(
-        new InMemorySourceProviderRegistry(
-          [provider],
-          sourceReadinessProfiles,
-          [{ providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY, canonicalProviderKey: GITHUB_ISSUES_PROVIDER_KEY }],
+  if (shouldQueue) {
+    const drainRuntime = new WorkerRuntime({ serviceName: 'ingestion-worker' });
+    drainRuntime.onModuleInit();
+    const handler = new ExecuteScanCommandHandler(
+      new ExecuteScanUseCase(
+        new RegistrySourceFetcherAdapter(
+          new InMemorySourceProviderRegistry(
+            [provider],
+            sourceReadinessProfiles,
+            [{ providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY, canonicalProviderKey: GITHUB_ISSUES_PROVIDER_KEY }],
+          ),
+          new StaticSourceConfigReader(),
         ),
-        new StaticSourceConfigReader(),
+        sourceItems,
+        new InMemoryFeedProjectionAdapter(feedItems),
+        scanAttempts,
+        scanCursors,
+        new MonitoringScanExecutionReporter(new RecordScanExecutionUseCase(jobs)),
+        scanFailures,
+        scanLeases,
+        new SequenceIdGenerator(`${signal}-item`),
+        new FixedClock(new Date(triggerTime.getTime() + 1000)),
       ),
-      sourceItems,
-      new InMemoryFeedProjectionAdapter(feedItems),
-      scanAttempts,
-      scanCursors,
-      new MonitoringScanExecutionReporter(new RecordScanExecutionUseCase(jobs)),
+      metrics,
+      drainRuntime,
+    );
+    const drainLoop = new ScanQueueDrainLoop(
+      queueReader,
+      handler,
       scanFailures,
-      scanLeases,
-      new SequenceIdGenerator(`${signal}-item`),
+      {
+        enabled: true,
+        intervalMs: 60_000,
+        limit: 10,
+        runOnStart: true,
+      },
+      metrics,
       new FixedClock(new Date(triggerTime.getTime() + 1000)),
-    ),
-    metrics,
-    drainRuntime,
-  );
-  const drainLoop = new ScanQueueDrainLoop(
-    queueReader,
-    handler,
-    scanFailures,
-    {
-      enabled: true,
-      intervalMs: 60_000,
-      limit: 10,
-      runOnStart: true,
-    },
-    metrics,
-    new FixedClock(new Date(triggerTime.getTime() + 1000)),
-  );
-  try {
-    await drainLoop.onModuleInit();
-    await drainLoop.onApplicationShutdown(`${signal}-drain-complete`);
-  } finally {
-    await drainRuntime.onApplicationShutdown(`${signal}-drain-complete`);
+    );
+    try {
+      await drainLoop.onModuleInit();
+      await drainLoop.onApplicationShutdown(`${signal}-drain-complete`);
+    } finally {
+      await drainRuntime.onApplicationShutdown(`${signal}-drain-complete`);
+    }
   }
 
   assert(queuePublisher.all().length === 0, `${signal}: drain loop must empty scheduled GitHub queue`);
