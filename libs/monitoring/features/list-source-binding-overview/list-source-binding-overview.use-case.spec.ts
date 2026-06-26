@@ -98,6 +98,7 @@ describe('ListSourceBindingOverviewUseCase', () => {
         sourceBindings: [
           makeSourceBindingView({ id: 'binding-ready', providerKey: 'rss' }),
           makeSourceBindingView({ id: 'binding-rate-limited', providerKey: 'reddit' }),
+          makeSourceBindingView({ id: 'binding-provider-failure', providerKey: 'reddit' }),
           makeSourceBindingView({ id: 'binding-stale', providerKey: 'reddit' }),
         ],
       })),
@@ -143,6 +144,34 @@ describe('ListSourceBindingOverviewUseCase', () => {
           },
         })))
         .mockResolvedValueOnce(ok(makeHealthView({
+          sourceBinding: makeSourceBindingView({ id: 'binding-provider-failure', providerKey: 'reddit' }),
+          healthState: 'degraded',
+          schedulerDecision: {
+            canScanNow: false,
+            decision: 'provider_failure_backoff',
+            reason: 'provider_failure_backoff_active',
+            minimumIntervalSeconds: 900,
+            providerFailureBackoffUntil: '2026-06-26T00:25:00.000Z',
+            nextEligibleAt: '2026-06-26T00:25:00.000Z',
+            waitSeconds: 1500,
+            signals: ['provider_failure_backoff'],
+          },
+          recentWindow: {
+            providerHealthState: 'degraded',
+            windowStartedAt: '2026-06-25T00:00:00.000Z',
+            windowEndedAt: '2026-06-26T00:00:00.000Z',
+            totalScans: 2,
+            succeededScans: 0,
+            failedScans: 2,
+            activeScans: 0,
+            rateLimitedScans: 0,
+            providerUnavailableScans: 2,
+            consecutiveFailures: 2,
+            operatorAction: 'check_provider_health_or_credentials',
+            signals: ['provider_failure_backoff', 'provider_unavailable'],
+          },
+        })))
+        .mockResolvedValueOnce(ok(makeHealthView({
           sourceBinding: makeSourceBindingView({ id: 'binding-stale', providerKey: 'reddit' }),
           healthState: 'stale',
         }))),
@@ -162,24 +191,26 @@ describe('ListSourceBindingOverviewUseCase', () => {
       ok: true,
       value: expect.objectContaining({
         summary: expect.objectContaining({
-          totalBindings: 3,
+          totalBindings: 4,
           canScanNowBindings: 1,
           staleBindings: 1,
-          degradedBindings: 1,
+          degradedBindings: 2,
           rateLimitedBindings: 1,
-          providerUnavailableScans: 1,
-          attentionRequiredBindings: 2,
+          providerFailureBackoffSkips: 1,
+          providerUnavailableScans: 3,
+          attentionRequiredBindings: 3,
           nextEligibleAt: '2026-06-26T00:05:00.000Z',
           operatorAction: 'wait_for_provider_rate_limit_backoff',
-          signals: ['provider_unavailable', 'rate_limit_backoff', 'scan_ready', 'scheduled_later', 'stale_source_data'],
+          signals: ['provider_failure_backoff', 'provider_unavailable', 'rate_limit_backoff', 'scan_ready', 'scheduled_later', 'stale_source_data'],
           providerBreakdown: [
             expect.objectContaining({
               providerKey: 'reddit',
-              totalBindings: 2,
+              totalBindings: 3,
               staleBindings: 1,
-              degradedBindings: 1,
+              degradedBindings: 2,
               rateLimitBackoffSkips: 1,
-              providerUnavailableScans: 1,
+              providerFailureBackoffSkips: 1,
+              providerUnavailableScans: 3,
             }),
             expect.objectContaining({
               providerKey: 'rss',

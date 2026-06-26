@@ -13,6 +13,7 @@ export type SourceBindingOverviewProviderBreakdownView = {
   readonly canScanNowBindings: number;
   readonly freshSuccessSkips: number;
   readonly rateLimitBackoffSkips: number;
+  readonly providerFailureBackoffSkips: number;
   readonly providerUnavailableScans: number;
   readonly nextEligibleAt?: string;
   readonly signals: readonly string[];
@@ -30,6 +31,7 @@ export type SourceBindingOverviewSummaryView = {
   readonly canScanNowBindings: number;
   readonly freshSuccessSkips: number;
   readonly rateLimitedBindings: number;
+  readonly providerFailureBackoffSkips: number;
   readonly providerUnavailableScans: number;
   readonly attentionRequiredBindings: number;
   readonly nextEligibleAt?: string;

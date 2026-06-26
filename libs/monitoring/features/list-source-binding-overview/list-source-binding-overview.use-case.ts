@@ -81,6 +81,7 @@ const buildOverviewSummary = (
     canScanNowBindings: summary.canScanNowBindings,
     freshSuccessSkips: summary.freshSuccessSkips,
     rateLimitedBindings: summary.rateLimitBackoffSkips,
+    providerFailureBackoffSkips: summary.providerFailureBackoffSkips,
     providerUnavailableScans: summary.providerUnavailableScans,
     attentionRequiredBindings: attentionRequiredBindingCount(items),
     nextEligibleAt: summary.nextEligibleAt,
@@ -124,6 +125,10 @@ const buildProviderBreakdown = (
   canScanNowBindings: items.filter((item) => item.schedulerDecision.canScanNow).length,
   freshSuccessSkips: countBySchedulerDecision(items, 'fresh_success'),
   rateLimitBackoffSkips: countBySchedulerDecision(items, 'rate_limit_backoff'),
+  providerFailureBackoffSkips: countBySchedulerDecision(
+    items,
+    'provider_failure_backoff',
+  ),
   providerUnavailableScans: items.reduce(
     (total, item) => total + (item.recentWindow?.providerUnavailableScans ?? 0),
     0,
@@ -154,6 +159,7 @@ const attentionRequiredBindingCount = (
     item.healthState === 'degraded' ||
     item.healthState === 'not_configured' ||
     item.schedulerDecision.decision === 'rate_limit_backoff' ||
+    item.schedulerDecision.decision === 'provider_failure_backoff' ||
     (item.recentWindow?.providerUnavailableScans ?? 0) > 0,
   ).length;
 
@@ -166,6 +172,10 @@ const overviewOperatorAction = (
 
   if (items.some((item) => item.schedulerDecision.decision === 'rate_limit_backoff')) {
     return 'wait_for_provider_rate_limit_backoff';
+  }
+
+  if (items.some((item) => item.schedulerDecision.decision === 'provider_failure_backoff')) {
+    return 'check_provider_health_or_credentials';
   }
 
   if (items.some((item) =>
@@ -209,6 +219,9 @@ const overviewSignals = (
   }
   if (items.some((item) => item.schedulerDecision.decision === 'rate_limit_backoff')) {
     signals.add('rate_limit_backoff');
+  }
+  if (items.some((item) => item.schedulerDecision.decision === 'provider_failure_backoff')) {
+    signals.add('provider_failure_backoff');
   }
   if (items.some((item) => (item.recentWindow?.providerUnavailableScans ?? 0) > 0)) {
     signals.add('provider_unavailable');

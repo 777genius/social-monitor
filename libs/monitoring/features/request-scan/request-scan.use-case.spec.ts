@@ -681,11 +681,12 @@ describe('RequestScanUseCase', () => {
         status: 'failed',
         created: false,
         requestDecision: {
-          decision: 'rate_limit_backoff',
+          decision: 'provider_failure_backoff',
           reason: 'provider_failure_backoff_active',
           createdNewScan: false,
           nextEligibleAt: '2026-06-05T00:36:00.000Z',
           waitSeconds: 1560,
+          providerFailureBackoffUntil: '2026-06-05T00:36:00.000Z',
           signals: ['provider_failure_backoff', 'provider_minimum_interval_enforced'],
         },
       },

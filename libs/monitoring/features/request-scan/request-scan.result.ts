@@ -5,7 +5,8 @@ export type RequestScanDecision =
   | 'idempotent_replay'
   | 'active_scan'
   | 'fresh_success'
-  | 'rate_limit_backoff';
+  | 'rate_limit_backoff'
+  | 'provider_failure_backoff';
 
 export type RequestScanDecisionView = {
   readonly decision: RequestScanDecision;
@@ -15,6 +16,7 @@ export type RequestScanDecisionView = {
   readonly waitSeconds?: number;
   readonly freshnessDeadlineAt?: string;
   readonly rateLimitBackoffUntil?: string;
+  readonly providerFailureBackoffUntil?: string;
   readonly signals: readonly string[];
 };
 

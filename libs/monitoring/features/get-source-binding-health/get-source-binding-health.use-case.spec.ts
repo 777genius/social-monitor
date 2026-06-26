@@ -380,13 +380,14 @@ describe('GetSourceBindingHealthUseCase', () => {
         healthState: 'degraded',
         schedulerDecision: expect.objectContaining({
           canScanNow: false,
-          decision: 'rate_limit_backoff',
+          decision: 'provider_failure_backoff',
           reason: 'provider_failure_backoff_active',
           minimumIntervalSeconds: 900,
           configuredIntervalSeconds: 900,
           freshnessSeconds: 900,
           nextEligibleAt: '2026-06-16T00:38:05.000Z',
           waitSeconds: 1685,
+          providerFailureBackoffUntil: '2026-06-16T00:38:05.000Z',
           signals: ['provider_failure_backoff'],
         }),
         recentWindow: expect.objectContaining({

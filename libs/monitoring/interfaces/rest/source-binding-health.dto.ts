@@ -55,6 +55,7 @@ const sourceBindingHealthSchedulerDecisionValues = [
   'active_scan',
   'fresh_success',
   'rate_limit_backoff',
+  'provider_failure_backoff',
   'scheduled_later',
 ] as const satisfies readonly SourceBindingHealthSchedulerDecision[];
 
@@ -239,6 +240,9 @@ export class SourceBindingHealthSchedulerDecisionResponseDto implements SourceBi
 
   @ApiPropertyOptional({ format: 'date-time' })
   declare readonly rateLimitBackoffUntil?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly providerFailureBackoffUntil?: string;
 
   @ApiProperty({ type: String, isArray: true })
   declare readonly signals: readonly string[];

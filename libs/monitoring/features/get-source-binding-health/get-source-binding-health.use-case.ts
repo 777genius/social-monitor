@@ -329,10 +329,11 @@ const buildSchedulerDecision = (params: {
     return {
       ...base,
       canScanNow: false,
-      decision: 'rate_limit_backoff',
+      decision: 'provider_failure_backoff',
       reason: 'provider_failure_backoff_active',
       nextEligibleAt: backoffUntil,
       waitSeconds: secondsUntil(backoffUntil, params.now),
+      providerFailureBackoffUntil: backoffUntil,
       signals: cadenceSignals('provider_failure_backoff', params.cadence?.providerMinimumIntervalEnforced === true),
     };
   }

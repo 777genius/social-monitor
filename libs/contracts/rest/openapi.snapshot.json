@@ -2885,7 +2885,8 @@
               "idempotent_replay",
               "active_scan",
               "fresh_success",
-              "rate_limit_backoff"
+              "rate_limit_backoff",
+              "provider_failure_backoff"
             ],
             "type": "string"
           },
@@ -2894,6 +2895,10 @@
             "type": "string"
           },
           "nextEligibleAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "providerFailureBackoffUntil": {
             "format": "date-time",
             "type": "string"
           },
@@ -3690,6 +3695,7 @@
               "active_scan",
               "fresh_success",
               "rate_limit_backoff",
+              "provider_failure_backoff",
               "scheduled_later"
             ],
             "type": "string"
@@ -3701,6 +3707,10 @@
             "type": "number"
           },
           "nextEligibleAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "providerFailureBackoffUntil": {
             "format": "date-time",
             "type": "string"
           },
@@ -3754,6 +3764,9 @@
           "pausedBindings": {
             "type": "number"
           },
+          "providerFailureBackoffSkips": {
+            "type": "number"
+          },
           "providerKey": {
             "type": "string"
           },
@@ -3795,6 +3808,7 @@
           "canScanNowBindings",
           "freshSuccessSkips",
           "rateLimitBackoffSkips",
+          "providerFailureBackoffSkips",
           "providerUnavailableScans",
           "signals"
         ],
@@ -3836,6 +3850,9 @@
             },
             "type": "array"
           },
+          "providerFailureBackoffSkips": {
+            "type": "number"
+          },
           "providerUnavailableScans": {
             "type": "number"
           },
@@ -3873,6 +3890,7 @@
           "canScanNowBindings",
           "freshSuccessSkips",
           "rateLimitedBindings",
+          "providerFailureBackoffSkips",
           "providerUnavailableScans",
           "attentionRequiredBindings",
           "operatorAction",

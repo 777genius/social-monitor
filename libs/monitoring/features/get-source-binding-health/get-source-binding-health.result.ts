@@ -76,6 +76,7 @@ export type SourceBindingHealthSchedulerDecision =
   | 'active_scan'
   | 'fresh_success'
   | 'rate_limit_backoff'
+  | 'provider_failure_backoff'
   | 'scheduled_later';
 
 export type SourceBindingHealthSchedulerDecisionView = {
@@ -88,6 +89,7 @@ export type SourceBindingHealthSchedulerDecisionView = {
   readonly nextEligibleAt?: string;
   readonly waitSeconds?: number;
   readonly rateLimitBackoffUntil?: string;
+  readonly providerFailureBackoffUntil?: string;
   readonly signals: readonly string[];
 };
 

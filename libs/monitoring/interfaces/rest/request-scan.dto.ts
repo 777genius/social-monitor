@@ -25,6 +25,7 @@ const requestScanDecisionValues = [
   'active_scan',
   'fresh_success',
   'rate_limit_backoff',
+  'provider_failure_backoff',
 ] as const satisfies readonly RequestScanDecision[];
 
 export class RequestScanDecisionResponseDto implements RequestScanDecisionView {
@@ -48,6 +49,9 @@ export class RequestScanDecisionResponseDto implements RequestScanDecisionView {
 
   @ApiPropertyOptional({ format: 'date-time' })
   declare readonly rateLimitBackoffUntil?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly providerFailureBackoffUntil?: string;
 
   @ApiProperty({ type: String, isArray: true })
   declare readonly signals: readonly string[];

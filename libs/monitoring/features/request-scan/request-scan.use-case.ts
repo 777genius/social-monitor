@@ -212,11 +212,12 @@ export class RequestScanUseCase {
         status: snapshot.status,
         created: false,
         requestDecision: {
-          decision: 'rate_limit_backoff',
+          decision: 'provider_failure_backoff',
           reason: 'provider_failure_backoff_active',
           createdNewScan: false,
           nextEligibleAt: providerFailureBackoffUntilIso,
           waitSeconds: secondsUntil(providerFailureBackoffUntilIso, now),
+          providerFailureBackoffUntil: providerFailureBackoffUntilIso,
           signals: cadenceSignals('provider_failure_backoff', cadence.providerMinimumIntervalEnforced),
         },
       });

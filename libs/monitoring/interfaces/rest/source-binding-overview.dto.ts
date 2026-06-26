@@ -44,6 +44,9 @@ export class SourceBindingOverviewProviderBreakdownResponseDto implements Source
   declare readonly rateLimitBackoffSkips: number;
 
   @ApiProperty()
+  declare readonly providerFailureBackoffSkips: number;
+
+  @ApiProperty()
   declare readonly providerUnavailableScans: number;
 
   @ApiPropertyOptional({ format: 'date-time' })
@@ -86,6 +89,9 @@ export class SourceBindingOverviewSummaryResponseDto implements SourceBindingOve
 
   @ApiProperty()
   declare readonly rateLimitedBindings: number;
+
+  @ApiProperty()
+  declare readonly providerFailureBackoffSkips: number;
 
   @ApiProperty()
   declare readonly providerUnavailableScans: number;
