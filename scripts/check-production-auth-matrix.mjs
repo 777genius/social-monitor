@@ -40,6 +40,7 @@ const requiredNegativeCases = new Set([
 ]);
 const allowedRoles = new Set(['owner', 'admin', 'member', 'viewer']);
 const allowedAuthModes = new Set(['bearer-oidc-jwt', 'workspace-role-dev-test']);
+const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
 const allowedApiKeyScopes = new Set([
   'read:delivery_status',
   'read:feed',
@@ -74,6 +75,12 @@ const publicOperationKeys = new Set();
 for (const operation of matrix.publicOperations ?? []) {
   requireOperationShape(operation, 'publicOperations');
   publicOperationKeys.add(operationKey(operation));
+  if (!safeMethods.has(operation.method)) {
+    violations.push(`${matrixPath}: public operation ${operationKey(operation)} must use a safe HTTP method`);
+  }
+  if (operation.path.includes('{') || operation.path.includes('}')) {
+    violations.push(`${matrixPath}: public operation ${operationKey(operation)} must not expose path parameters`);
+  }
   if (typeof operation.reason !== 'string' || operation.reason.trim().length === 0) {
     violations.push(`${matrixPath}: public operation ${operationKey(operation)} must define reason`);
   }
@@ -126,6 +133,9 @@ for (const surface of matrix.surfaces ?? []) {
     if (operation.apiKeyScope !== undefined && !allowedApiKeyScopes.has(operation.apiKeyScope)) {
       violations.push(`${matrixPath}: protected operation "${key}" declares unsupported apiKeyScope "${operation.apiKeyScope}"`);
     }
+    if (operation.apiKeyScope !== undefined) {
+      validateApiKeyScopeSemantics(operation, key);
+    }
     if (operation.apiKeyScope === undefined) {
       const authModes = new Set(operation.authModes ?? []);
       for (const authMode of authModes) {
@@ -136,6 +146,7 @@ for (const surface of matrix.surfaces ?? []) {
       if (!authModes.has('bearer-oidc-jwt') || !authModes.has('workspace-role-dev-test')) {
         violations.push(`${matrixPath}: protected operation "${key}" without apiKeyScope must declare JWT and dev role authModes`);
       }
+      validateAdminOnlyJwtOperation(operation, key);
     }
   }
 }
@@ -238,6 +249,22 @@ function requireOperationShape(operation, label) {
   }
   if (typeof operation.path !== 'string' || !operation.path.startsWith('/')) {
     violations.push(`${matrixPath}: ${label} operation must define absolute path`);
+  }
+}
+
+function validateApiKeyScopeSemantics(operation, key) {
+  const expectedPrefix = safeMethods.has(operation.method) ? 'read:' : 'write:';
+  if (!operation.apiKeyScope.startsWith(expectedPrefix)) {
+    violations.push(`${matrixPath}: protected operation "${key}" must use ${expectedPrefix} apiKeyScope`);
+  }
+}
+
+function validateAdminOnlyJwtOperation(operation, key) {
+  const roles = new Set(operation.roles ?? []);
+  for (const role of roles) {
+    if (role !== 'owner' && role !== 'admin') {
+      violations.push(`${matrixPath}: protected JWT/dev-only operation "${key}" must stay owner/admin only`);
+    }
   }
 }
 
