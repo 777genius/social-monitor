@@ -1,5 +1,8 @@
 import type { ScanProviderHealthState } from '../shared/scan-provider-health-summary';
+import type { ScanSchedulerSkipBreakdownView } from '../shared/scan-scheduler-decision-summary';
 import type { ScanPolicyCadenceView } from '../shared/scan-policy-presenter';
+
+export type SourceBindingDailyHistorySchedulerSkipBreakdownView = ScanSchedulerSkipBreakdownView;
 
 export type SourceBindingDailyHistoryDayView = {
   readonly date: string;
@@ -13,6 +16,11 @@ export type SourceBindingDailyHistoryDayView = {
   readonly rateLimitedScans: number;
   readonly providerUnavailableScans: number;
   readonly consecutiveFailures: number;
+  readonly schedulerDecisionCount: number;
+  readonly schedulerEnqueuedCount: number;
+  readonly schedulerSkippedCount: number;
+  readonly schedulerSkippedByReason: SourceBindingDailyHistorySchedulerSkipBreakdownView;
+  readonly lastSchedulerEvaluatedAt?: string;
   readonly fetched: number;
   readonly inserted: number;
   readonly skippedDuplicates: number;
@@ -32,6 +40,11 @@ export type SourceBindingDailyHistorySummaryView = {
   readonly rateLimitedScans: number;
   readonly providerUnavailableScans: number;
   readonly consecutiveFailures: number;
+  readonly schedulerDecisionCount: number;
+  readonly schedulerEnqueuedCount: number;
+  readonly schedulerSkippedCount: number;
+  readonly schedulerSkippedByReason: SourceBindingDailyHistorySchedulerSkipBreakdownView;
+  readonly lastSchedulerEvaluatedAt?: string;
   readonly fetched: number;
   readonly inserted: number;
   readonly skippedDuplicates: number;

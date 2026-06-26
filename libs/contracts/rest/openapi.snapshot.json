@@ -3224,6 +3224,41 @@
         ],
         "type": "object"
       },
+      "SourceBindingDailyHistorySchedulerSkipBreakdownResponseDto": {
+        "properties": {
+          "activeScan": {
+            "type": "number"
+          },
+          "duplicateWindow": {
+            "type": "number"
+          },
+          "freshSuccess": {
+            "type": "number"
+          },
+          "providerFailureBackoff": {
+            "type": "number"
+          },
+          "queueBackpressure": {
+            "type": "number"
+          },
+          "rateLimitBackoff": {
+            "type": "number"
+          },
+          "sourceUnavailable": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "activeScan",
+          "duplicateWindow",
+          "freshSuccess",
+          "providerFailureBackoff",
+          "queueBackpressure",
+          "rateLimitBackoff",
+          "sourceUnavailable"
+        ],
+        "type": "object"
+      },
       "SourceBindingDailyScanHistoryDayResponseDto": {
         "properties": {
           "activeScans": {
@@ -3252,6 +3287,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "lastSchedulerEvaluatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "operatorAction": {
             "type": "string"
           },
@@ -3271,6 +3310,18 @@
             "type": "number"
           },
           "rateLimitedScans": {
+            "type": "number"
+          },
+          "schedulerDecisionCount": {
+            "type": "number"
+          },
+          "schedulerEnqueuedCount": {
+            "type": "number"
+          },
+          "schedulerSkippedByReason": {
+            "$ref": "#/components/schemas/SourceBindingDailyHistorySchedulerSkipBreakdownResponseDto"
+          },
+          "schedulerSkippedCount": {
             "type": "number"
           },
           "signals": {
@@ -3309,6 +3360,10 @@
           "rateLimitedScans",
           "providerUnavailableScans",
           "consecutiveFailures",
+          "schedulerDecisionCount",
+          "schedulerEnqueuedCount",
+          "schedulerSkippedCount",
+          "schedulerSkippedByReason",
           "fetched",
           "inserted",
           "skippedDuplicates",
@@ -3352,6 +3407,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "lastSchedulerEvaluatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "operatorAction": {
             "type": "string"
           },
@@ -3371,6 +3430,18 @@
             "type": "number"
           },
           "rateLimitedScans": {
+            "type": "number"
+          },
+          "schedulerDecisionCount": {
+            "type": "number"
+          },
+          "schedulerEnqueuedCount": {
+            "type": "number"
+          },
+          "schedulerSkippedByReason": {
+            "$ref": "#/components/schemas/SourceBindingDailyHistorySchedulerSkipBreakdownResponseDto"
+          },
+          "schedulerSkippedCount": {
             "type": "number"
           },
           "signals": {
@@ -3398,6 +3469,10 @@
           "rateLimitedScans",
           "providerUnavailableScans",
           "consecutiveFailures",
+          "schedulerDecisionCount",
+          "schedulerEnqueuedCount",
+          "schedulerSkippedCount",
+          "schedulerSkippedByReason",
           "fetched",
           "inserted",
           "skippedDuplicates",

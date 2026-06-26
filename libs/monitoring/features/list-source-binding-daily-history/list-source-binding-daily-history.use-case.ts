@@ -6,9 +6,12 @@ import type {
   ScanExecutionAttemptSnapshot,
   ScanJobHistoryReadPort,
   ScanPolicyRepositoryPort,
+  ScanSchedulerDecisionHistoryPort,
+  ScanSchedulerDecisionRecord,
   SourceBindingRepositoryPort,
 } from '../../ports';
 import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
+import { summarizeScanSchedulerDecisions } from '../shared/scan-scheduler-decision-summary';
 import { presentScanPolicy } from '../shared/scan-policy-presenter';
 import type { ListSourceBindingDailyHistoryQuery } from './list-source-binding-daily-history.query';
 import type {
@@ -21,6 +24,7 @@ type ListSourceBindingDailyHistoryFailure = DomainError;
 
 const maxHistoryDays = 90;
 const maxScanJobsPerDay = 100;
+const maxSchedulerDecisionsPerDay = 100;
 
 export class ListSourceBindingDailyHistoryUseCase {
   constructor(
@@ -29,6 +33,7 @@ export class ListSourceBindingDailyHistoryUseCase {
     private readonly scanJobs: ScanJobHistoryReadPort,
     private readonly scanExecutionAttempts: ScanExecutionAttemptReadPort,
     private readonly clock: Clock,
+    private readonly schedulerDecisions?: ScanSchedulerDecisionHistoryPort,
   ) {}
 
   async execute(
@@ -73,14 +78,24 @@ export class ListSourceBindingDailyHistoryUseCase {
       return err(new DomainError('validation.failed', 'Scan history days must be between 1 and 90'));
     }
     const maxScanJobs = query.days * maxScanJobsPerDay;
-    const history = await this.scanJobs.listBySourceBindingWindow({
-      tenantId: query.tenantId,
-      workspaceId: query.workspaceId,
-      sourceBindingId: query.sourceBindingId,
-      windowStartedAt: firstWindow.startedAt,
-      windowEndedAt: lastWindow.endedAt,
-      limit: maxScanJobs,
-    });
+    const [history, schedulerHistory] = await Promise.all([
+      this.scanJobs.listBySourceBindingWindow({
+        tenantId: query.tenantId,
+        workspaceId: query.workspaceId,
+        sourceBindingId: query.sourceBindingId,
+        windowStartedAt: firstWindow.startedAt,
+        windowEndedAt: lastWindow.endedAt,
+        limit: maxScanJobs,
+      }),
+      this.schedulerDecisions?.listBySourceBindingWindow({
+        tenantId: query.tenantId,
+        workspaceId: query.workspaceId,
+        sourceBindingId: query.sourceBindingId,
+        windowStartedAt: firstWindow.startedAt,
+        windowEndedAt: lastWindow.endedAt,
+        limit: query.days * maxSchedulerDecisionsPerDay,
+      }) ?? Promise.resolve({ records: [], truncated: false }),
+    ]);
     const attempts = new Map(
       await Promise.all(history.scanJobs.map(async (job) => {
         const snapshot = job.toSnapshot();
@@ -94,8 +109,10 @@ export class ListSourceBindingDailyHistoryUseCase {
       })),
     );
     const jobsByDay = new Map<string, readonly ScanJob[]>();
+    const schedulerDecisionsByDay = new Map<string, readonly ScanSchedulerDecisionRecord[]>();
     for (const window of windows) {
       jobsByDay.set(window.date, []);
+      schedulerDecisionsByDay.set(window.date, []);
     }
     for (const job of history.scanJobs) {
       const snapshot = job.toSnapshot();
@@ -106,9 +123,18 @@ export class ListSourceBindingDailyHistoryUseCase {
         jobsByDay.set(date, [...bucket, job]);
       }
     }
+    for (const decision of schedulerHistory.records) {
+      const date = utcDateKey(decision.evaluatedAt);
+      const bucket = schedulerDecisionsByDay.get(date);
+
+      if (bucket !== undefined) {
+        schedulerDecisionsByDay.set(date, [...bucket, decision]);
+      }
+    }
     const days = windows.map((window) => buildDayView({
       window,
       jobs: jobsByDay.get(window.date) ?? [],
+      schedulerDecisions: schedulerDecisionsByDay.get(window.date) ?? [],
       attempts,
     }));
 
@@ -123,10 +149,11 @@ export class ListSourceBindingDailyHistoryUseCase {
       summary: buildSummaryView({
         days,
         jobs: history.scanJobs,
+        schedulerDecisions: schedulerHistory.records,
         attempts,
       }),
       days,
-      truncated: history.truncated,
+      truncated: history.truncated || schedulerHistory.truncated,
       maxScanJobs,
     });
   }
@@ -135,10 +162,12 @@ export class ListSourceBindingDailyHistoryUseCase {
 const buildDayView = (params: {
   readonly window: UtcDayWindow;
   readonly jobs: readonly ScanJob[];
+  readonly schedulerDecisions: readonly ScanSchedulerDecisionRecord[];
   readonly attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>;
 }): SourceBindingDailyHistoryDayView => {
   const snapshots = params.jobs.map((job) => job.toSnapshot());
   const health = summarizeScanProviderHealth(snapshots);
+  const schedulerSummary = summarizeScanSchedulerDecisions(params.schedulerDecisions);
   const latestAttempts = snapshots
     .map((snapshot) => params.attempts.get(snapshot.id))
     .filter((attempt): attempt is NonNullable<typeof attempt> => attempt !== null && attempt !== undefined);
@@ -155,6 +184,11 @@ const buildDayView = (params: {
     rateLimitedScans: health.rateLimitedScans,
     providerUnavailableScans: health.providerUnavailableScans,
     consecutiveFailures: health.consecutiveFailures,
+    schedulerDecisionCount: schedulerSummary.schedulerDecisionCount,
+    schedulerEnqueuedCount: schedulerSummary.schedulerEnqueuedCount,
+    schedulerSkippedCount: schedulerSummary.schedulerSkippedCount,
+    schedulerSkippedByReason: schedulerSummary.schedulerSkippedByReason,
+    lastSchedulerEvaluatedAt: schedulerSummary.lastSchedulerEvaluatedAt,
     fetched: sumAttempts(latestAttempts, 'fetched'),
     inserted: sumAttempts(latestAttempts, 'inserted'),
     skippedDuplicates: sumAttempts(latestAttempts, 'skippedDuplicates'),
@@ -172,10 +206,12 @@ const buildDayView = (params: {
 const buildSummaryView = (params: {
   readonly days: readonly SourceBindingDailyHistoryDayView[];
   readonly jobs: readonly ScanJob[];
+  readonly schedulerDecisions: readonly ScanSchedulerDecisionRecord[];
   readonly attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>;
 }): SourceBindingDailyHistorySummaryView => {
   const snapshots = params.jobs.map((job) => job.toSnapshot());
   const health = summarizeScanProviderHealth(snapshots);
+  const schedulerSummary = summarizeScanSchedulerDecisions(params.schedulerDecisions);
   const latestAttempts = snapshots
     .map((snapshot) => params.attempts.get(snapshot.id))
     .filter((attempt): attempt is NonNullable<typeof attempt> => attempt !== null && attempt !== undefined);
@@ -189,6 +225,11 @@ const buildSummaryView = (params: {
     rateLimitedScans: health.rateLimitedScans,
     providerUnavailableScans: health.providerUnavailableScans,
     consecutiveFailures: health.consecutiveFailures,
+    schedulerDecisionCount: schedulerSummary.schedulerDecisionCount,
+    schedulerEnqueuedCount: schedulerSummary.schedulerEnqueuedCount,
+    schedulerSkippedCount: schedulerSummary.schedulerSkippedCount,
+    schedulerSkippedByReason: schedulerSummary.schedulerSkippedByReason,
+    lastSchedulerEvaluatedAt: schedulerSummary.lastSchedulerEvaluatedAt,
     fetched: sumAttempts(latestAttempts, 'fetched'),
     inserted: sumAttempts(latestAttempts, 'inserted'),
     skippedDuplicates: sumAttempts(latestAttempts, 'skippedDuplicates'),

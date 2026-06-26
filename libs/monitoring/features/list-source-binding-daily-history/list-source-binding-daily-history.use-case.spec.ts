@@ -13,6 +13,8 @@ import type {
   ScanExecutionAttemptSnapshot,
   ScanJobHistoryReadPort,
   ScanPolicyRepositoryPort,
+  ScanSchedulerDecisionHistoryPort,
+  ScanSchedulerDecisionRecord,
   SourceBindingRepositoryPort,
 } from '../../ports';
 import { ListSourceBindingDailyHistoryUseCase } from './list-source-binding-daily-history.use-case';
@@ -117,6 +119,43 @@ class FakeScanExecutionAttempts implements ScanExecutionAttemptReadPort {
   }
 }
 
+class FakeSchedulerDecisionHistory implements ScanSchedulerDecisionHistoryPort {
+  readonly windowQueries: Parameters<ScanSchedulerDecisionHistoryPort['listBySourceBindingWindow']>[0][] = [];
+  private readonly storedRecords: ScanSchedulerDecisionRecord[];
+
+  constructor(
+    records: readonly ScanSchedulerDecisionRecord[] = [],
+    private readonly truncated: boolean = false,
+  ) {
+    this.storedRecords = [...records];
+  }
+
+  async recordBatch(
+    command: Parameters<ScanSchedulerDecisionHistoryPort['recordBatch']>[0],
+  ): Promise<void> {
+    this.storedRecords.push(...command.records);
+  }
+
+  async listBySourceBindingWindow(
+    query: Parameters<ScanSchedulerDecisionHistoryPort['listBySourceBindingWindow']>[0],
+  ): ReturnType<ScanSchedulerDecisionHistoryPort['listBySourceBindingWindow']> {
+    this.windowQueries.push(query);
+
+    return Promise.resolve({
+      records: this.storedRecords
+        .filter((record) => (
+          record.tenantId === query.tenantId &&
+          record.workspaceId === query.workspaceId &&
+          record.sourceBindingId === query.sourceBindingId &&
+          record.evaluatedAt.getTime() >= query.windowStartedAt.getTime() &&
+          record.evaluatedAt.getTime() < query.windowEndedAt.getTime()
+        ))
+        .slice(0, query.limit),
+      truncated: this.truncated,
+    });
+  }
+}
+
 const tenant = tenantId('tenant-daily-history');
 const workspace = workspaceId('workspace-daily-history');
 const now = new Date('2026-06-25T18:30:00.000Z');
@@ -161,6 +200,18 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
           rateLimitedScans: 0,
           providerUnavailableScans: 0,
           consecutiveFailures: 0,
+          schedulerDecisionCount: 0,
+          schedulerEnqueuedCount: 0,
+          schedulerSkippedCount: 0,
+          schedulerSkippedByReason: {
+            activeScan: 0,
+            duplicateWindow: 0,
+            freshSuccess: 0,
+            providerFailureBackoff: 0,
+            queueBackpressure: 0,
+            rateLimitBackoff: 0,
+            sourceUnavailable: 0,
+          },
           fetched: 0,
           inserted: 0,
           skippedDuplicates: 0,
@@ -262,6 +313,18 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
         rateLimitedScans: 1,
         providerUnavailableScans: 0,
         consecutiveFailures: 1,
+        schedulerDecisionCount: 0,
+        schedulerEnqueuedCount: 0,
+        schedulerSkippedCount: 0,
+        schedulerSkippedByReason: {
+          activeScan: 0,
+          duplicateWindow: 0,
+          freshSuccess: 0,
+          providerFailureBackoff: 0,
+          queueBackpressure: 0,
+          rateLimitBackoff: 0,
+          sourceUnavailable: 0,
+        },
         fetched: 12,
         inserted: 7,
         skippedDuplicates: 3,
@@ -318,6 +381,101 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
     if (result.ok) {
       expect(result.value.truncated).toBe(true);
       expect(result.value.maxScanJobs).toBe(100);
+    }
+  });
+
+  it('exposes scheduler decision history by day and summary', async () => {
+    const schedulerHistory = new FakeSchedulerDecisionHistory([
+      schedulerDecision({
+        id: 'decision-enqueued',
+        decision: 'enqueued',
+        reason: 'scan_policy_due_now',
+        evaluatedAt: new Date('2026-06-25T08:00:00.000Z'),
+      }),
+      schedulerDecision({
+        id: 'decision-rate-limit',
+        decision: 'skipped',
+        reason: 'rate_limit_backoff',
+        evaluatedAt: new Date('2026-06-25T09:00:00.000Z'),
+      }),
+      schedulerDecision({
+        id: 'decision-backpressure',
+        decision: 'skipped',
+        reason: 'queue_backpressure',
+        evaluatedAt: new Date('2026-06-24T09:00:00.000Z'),
+      }),
+    ]);
+
+    const result = await new ListSourceBindingDailyHistoryUseCase(
+      await readyBindings(),
+      await readyScanPolicies(),
+      new FakeScanHistory([]),
+      new FakeScanExecutionAttempts(),
+      new FixedClock(now),
+      schedulerHistory,
+    ).execute(baseQuery({ days: 2 }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.summary).toEqual(expect.objectContaining({
+        schedulerDecisionCount: 3,
+        schedulerEnqueuedCount: 1,
+        schedulerSkippedCount: 2,
+        schedulerSkippedByReason: {
+          activeScan: 0,
+          duplicateWindow: 0,
+          freshSuccess: 0,
+          providerFailureBackoff: 0,
+          queueBackpressure: 1,
+          rateLimitBackoff: 1,
+          sourceUnavailable: 0,
+        },
+        lastSchedulerEvaluatedAt: '2026-06-25T09:00:00.000Z',
+      }));
+      expect(result.value.days).toEqual([
+        expect.objectContaining({
+          date: '2026-06-24',
+          schedulerDecisionCount: 1,
+          schedulerSkippedCount: 1,
+          schedulerSkippedByReason: expect.objectContaining({
+            queueBackpressure: 1,
+            rateLimitBackoff: 0,
+          }),
+          lastSchedulerEvaluatedAt: '2026-06-24T09:00:00.000Z',
+        }),
+        expect.objectContaining({
+          date: '2026-06-25',
+          schedulerDecisionCount: 2,
+          schedulerEnqueuedCount: 1,
+          schedulerSkippedCount: 1,
+          schedulerSkippedByReason: expect.objectContaining({
+            queueBackpressure: 0,
+            rateLimitBackoff: 1,
+          }),
+          lastSchedulerEvaluatedAt: '2026-06-25T09:00:00.000Z',
+        }),
+      ]);
+      expect(schedulerHistory.windowQueries[0]).toEqual(expect.objectContaining({
+        limit: 200,
+        windowStartedAt: new Date('2026-06-24T00:00:00.000Z'),
+        windowEndedAt: new Date('2026-06-26T00:00:00.000Z'),
+      }));
+    }
+  });
+
+  it('propagates truncation when scheduler decision history is capped', async () => {
+    const result = await new ListSourceBindingDailyHistoryUseCase(
+      await readyBindings(),
+      await readyScanPolicies(),
+      new FakeScanHistory([]),
+      new FakeScanExecutionAttempts(),
+      new FixedClock(now),
+      new FakeSchedulerDecisionHistory([], true),
+    ).execute(baseQuery({ days: 1 }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.truncated).toBe(true);
     }
   });
 
@@ -442,4 +600,29 @@ const attempt = (params: {
   skippedDuplicates: params.skippedDuplicates,
   projected: params.projected,
   failureReason: params.failureReason,
+});
+
+const schedulerDecision = (params: {
+  readonly id: string;
+  readonly decision: ScanSchedulerDecisionRecord['decision'];
+  readonly reason: ScanSchedulerDecisionRecord['reason'];
+  readonly evaluatedAt: Date;
+}): ScanSchedulerDecisionRecord => ({
+  id: params.id,
+  tenantId: tenant,
+  workspaceId: workspace,
+  decisionKey: `decision:${params.id}`,
+  scanPolicyId: 'policy-1',
+  sourceBindingId: 'binding-1',
+  providerKey: 'fake-source',
+  decision: params.decision,
+  reason: params.reason,
+  scanJobId: params.decision === 'enqueued' ? `scan-${params.id}` : undefined,
+  policyDueAt: new Date(params.evaluatedAt.getTime() - 1000),
+  evaluatedAt: params.evaluatedAt,
+  nextRunAt: new Date(params.evaluatedAt.getTime() + 300_000),
+  configuredIntervalSeconds: 300,
+  effectiveIntervalSeconds: 300,
+  freshnessSeconds: 900,
+  providerMinimumIntervalEnforced: false,
 });

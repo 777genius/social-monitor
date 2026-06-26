@@ -4,6 +4,7 @@ import type { ScanJobStatus } from '../../domain';
 import type {
   ListSourceBindingDailyHistoryResult,
   SourceBindingDailyHistoryDayView,
+  SourceBindingDailyHistorySchedulerSkipBreakdownView,
   SourceBindingDailyHistorySummaryView,
 } from '../../features/list-source-binding-daily-history/list-source-binding-daily-history.result';
 import type {
@@ -96,6 +97,30 @@ export class ListScanRequestsResponseDto {
   declare readonly nextCursor?: string;
 }
 
+export class SourceBindingDailyHistorySchedulerSkipBreakdownResponseDto
+  implements SourceBindingDailyHistorySchedulerSkipBreakdownView {
+  @ApiProperty()
+  declare readonly activeScan: number;
+
+  @ApiProperty()
+  declare readonly duplicateWindow: number;
+
+  @ApiProperty()
+  declare readonly freshSuccess: number;
+
+  @ApiProperty()
+  declare readonly providerFailureBackoff: number;
+
+  @ApiProperty()
+  declare readonly queueBackpressure: number;
+
+  @ApiProperty()
+  declare readonly rateLimitBackoff: number;
+
+  @ApiProperty()
+  declare readonly sourceUnavailable: number;
+}
+
 export class SourceBindingDailyScanHistoryDayResponseDto implements SourceBindingDailyHistoryDayView {
   @ApiProperty()
   declare readonly date: string;
@@ -129,6 +154,21 @@ export class SourceBindingDailyScanHistoryDayResponseDto implements SourceBindin
 
   @ApiProperty()
   declare readonly consecutiveFailures: number;
+
+  @ApiProperty()
+  declare readonly schedulerDecisionCount: number;
+
+  @ApiProperty()
+  declare readonly schedulerEnqueuedCount: number;
+
+  @ApiProperty()
+  declare readonly schedulerSkippedCount: number;
+
+  @ApiProperty({ type: () => SourceBindingDailyHistorySchedulerSkipBreakdownResponseDto })
+  declare readonly schedulerSkippedByReason: SourceBindingDailyHistorySchedulerSkipBreakdownResponseDto;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly lastSchedulerEvaluatedAt?: string;
 
   @ApiProperty()
   declare readonly fetched: number;
@@ -179,6 +219,21 @@ export class SourceBindingDailyScanHistorySummaryResponseDto implements SourceBi
 
   @ApiProperty()
   declare readonly consecutiveFailures: number;
+
+  @ApiProperty()
+  declare readonly schedulerDecisionCount: number;
+
+  @ApiProperty()
+  declare readonly schedulerEnqueuedCount: number;
+
+  @ApiProperty()
+  declare readonly schedulerSkippedCount: number;
+
+  @ApiProperty({ type: () => SourceBindingDailyHistorySchedulerSkipBreakdownResponseDto })
+  declare readonly schedulerSkippedByReason: SourceBindingDailyHistorySchedulerSkipBreakdownResponseDto;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly lastSchedulerEvaluatedAt?: string;
 
   @ApiProperty()
   declare readonly fetched: number;

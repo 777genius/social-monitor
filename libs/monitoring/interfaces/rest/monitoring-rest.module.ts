@@ -79,6 +79,7 @@ import type {
   ScanJobHistoryReadPort,
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
+  ScanSchedulerDecisionHistoryPort,
   ScanQueuePort,
   SourceBindingConfigProtectorPort,
   SourceBindingRepositoryPort,
@@ -101,6 +102,7 @@ import {
   MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
   MONITORING_SCAN_POLICY_REPOSITORY,
   MONITORING_SCAN_QUEUE,
+  MONITORING_SCAN_SCHEDULER_DECISION_HISTORY,
   MONITORING_SOURCE_BINDING_REPOSITORY,
   MONITORING_SOURCE_CATALOG,
   MONITORING_SOURCE_CREDENTIAL_REFRESHER,
@@ -565,6 +567,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
         scanPolicies: ScanPolicyRepositoryPort,
         scanJobs: ScanJobRepositoryPort & ScanJobHistoryReadPort,
         scanExecutionAttempts: ScanExecutionAttemptReadPort,
+        schedulerDecisions: ScanSchedulerDecisionHistoryPort,
       ) =>
         new ListSourceBindingDailyHistoryUseCase(
           sourceBindings,
@@ -572,12 +575,14 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
           scanJobs,
           scanExecutionAttempts,
           new SystemClock(),
+          schedulerDecisions,
         ),
       inject: [
         MONITORING_SOURCE_BINDING_REPOSITORY,
         MONITORING_SCAN_POLICY_REPOSITORY,
         MONITORING_SCAN_JOB_REPOSITORY,
         MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
+        MONITORING_SCAN_SCHEDULER_DECISION_HISTORY,
       ],
     },
     {

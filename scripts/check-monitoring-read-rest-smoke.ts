@@ -340,6 +340,14 @@ async function main(): Promise<void> {
       dailyHistory.body.cadence.providerMinimumIntervalEnforced === false,
       'source binding daily history must expose provider minimum enforcement flag',
     );
+    assert(
+      dailyHistory.body.summary.schedulerDecisionCount === 0,
+      'source binding daily history must expose empty scheduler decision count',
+    );
+    assert(
+      dailyHistory.body.summary.schedulerSkippedByReason.queueBackpressure === 0,
+      'source binding daily history must expose empty scheduler skip breakdown',
+    );
 
     const rssBinding = await request(app.getHttpServer())
       .post(`/topics/${newTopic.body.topicId}/source-bindings`)
@@ -394,6 +402,24 @@ async function main(): Promise<void> {
       scanJobId: 'topic-history-fake-source-success',
       evaluatedAt: new Date(completedAt.getTime() - 2_000),
     });
+    const dailyHistoryWithScheduler = await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-requests/daily`)
+      .set(headers)
+      .set('x-workspace-role', 'viewer')
+      .query({ days: 1 })
+      .expect(200);
+    assert(
+      dailyHistoryWithScheduler.body.summary.schedulerDecisionCount === 1,
+      'source binding daily history must count scheduler decisions',
+    );
+    assert(
+      dailyHistoryWithScheduler.body.summary.schedulerEnqueuedCount === 1,
+      'source binding daily history must count scheduler enqueues',
+    );
+    assert(
+      dailyHistoryWithScheduler.body.days[0].lastSchedulerEvaluatedAt !== undefined,
+      'source binding daily history must expose last scheduler evaluation time',
+    );
     await recordSchedulerDecision({
       schedulerDecisions,
       tenant,

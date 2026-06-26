@@ -8,6 +8,10 @@ import {
   summarizeScanProviderHealth,
   type ScanProviderHealthSummary,
 } from '../shared/scan-provider-health-summary';
+import {
+  summarizeScanSchedulerDecisions,
+  type ScanSchedulerSkipBreakdownView,
+} from '../shared/scan-scheduler-decision-summary';
 import type {
   TopicSourceDailyHistoryCadenceSummaryView,
   TopicSourceDailyHistoryDayView,
@@ -203,15 +207,10 @@ const buildProviderView = (
 
       return right.id.localeCompare(left.id);
     });
-  const sortedSchedulerDecisions = [...schedulerDecisions].sort((left, right) => {
-    const evaluatedDiff = right.evaluatedAt.getTime() - left.evaluatedAt.getTime();
-
-    return evaluatedDiff === 0 ? right.id.localeCompare(left.id) : evaluatedDiff;
-  });
-  const schedulerSkippedByReason = schedulerSkipBreakdown(sortedSchedulerDecisions);
+  const schedulerSummary = summarizeScanSchedulerDecisions(schedulerDecisions);
   const health = providerHealthWithSchedulerBackoff(
     summarizeScanProviderHealth(snapshots),
-    schedulerSkippedByReason,
+    schedulerSummary.schedulerSkippedByReason,
   );
   const latestAttempts = snapshots
     .map((snapshot) => attempts.get(snapshot.id))
@@ -230,11 +229,11 @@ const buildProviderView = (
       sourceBindingCount: bindings.length,
       scannedSourceBindingCount,
     }),
-    schedulerDecisionCount: sortedSchedulerDecisions.length,
-    schedulerEnqueuedCount: sortedSchedulerDecisions.filter((decision) => decision.decision === 'enqueued').length,
-    schedulerSkippedCount: sortedSchedulerDecisions.filter((decision) => decision.decision === 'skipped').length,
-    schedulerSkippedByReason,
-    lastSchedulerEvaluatedAt: sortedSchedulerDecisions[0]?.evaluatedAt.toISOString(),
+    schedulerDecisionCount: schedulerSummary.schedulerDecisionCount,
+    schedulerEnqueuedCount: schedulerSummary.schedulerEnqueuedCount,
+    schedulerSkippedCount: schedulerSummary.schedulerSkippedCount,
+    schedulerSkippedByReason: schedulerSummary.schedulerSkippedByReason,
+    lastSchedulerEvaluatedAt: schedulerSummary.lastSchedulerEvaluatedAt,
     cadenceSummary: summarizeProviderCadence(bindings, scanPoliciesByBindingId),
     providerHealthState: health.providerHealthState,
     totalScans: health.totalScans,
@@ -260,7 +259,7 @@ const buildProviderView = (
 
 const providerHealthWithSchedulerBackoff = (
   health: ScanProviderHealthSummary,
-  skippedByReason: ReturnType<typeof schedulerSkipBreakdown>,
+  skippedByReason: ScanSchedulerSkipBreakdownView,
 ): ScanProviderHealthSummary => {
   if (skippedByReason.providerFailureBackoff > 0) {
     return {
@@ -335,22 +334,6 @@ const scanCoverageState = (params: {
   }
 
   return 'partial';
-};
-
-const schedulerSkipBreakdown = (
-  decisions: readonly ScanSchedulerDecisionRecord[],
-) => {
-  const skipped = decisions.filter((decision) => decision.decision === 'skipped');
-
-  return {
-    activeScan: skipped.filter((decision) => decision.reason === 'active_scan').length,
-    duplicateWindow: skipped.filter((decision) => decision.reason === 'duplicate_window').length,
-    freshSuccess: skipped.filter((decision) => decision.reason === 'fresh_success').length,
-    providerFailureBackoff: skipped.filter((decision) => decision.reason === 'provider_failure_backoff').length,
-    queueBackpressure: skipped.filter((decision) => decision.reason === 'queue_backpressure').length,
-    rateLimitBackoff: skipped.filter((decision) => decision.reason === 'rate_limit_backoff').length,
-    sourceUnavailable: skipped.filter((decision) => decision.reason === 'source_unavailable').length,
-  };
 };
 
 const summarizeProviderCadence = (

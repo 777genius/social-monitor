@@ -1,4 +1,5 @@
 import type { ScanProviderHealthState } from '../shared/scan-provider-health-summary';
+import type { ScanSchedulerSkipBreakdownView } from '../shared/scan-scheduler-decision-summary';
 
 export type TopicSourceDailyHistoryScanCoverageState =
   | 'no_sources'
@@ -6,15 +7,7 @@ export type TopicSourceDailyHistoryScanCoverageState =
   | 'partial'
   | 'complete';
 
-export type TopicSourceDailyHistorySchedulerSkipBreakdownView = {
-  readonly activeScan: number;
-  readonly duplicateWindow: number;
-  readonly freshSuccess: number;
-  readonly providerFailureBackoff: number;
-  readonly queueBackpressure: number;
-  readonly rateLimitBackoff: number;
-  readonly sourceUnavailable: number;
-};
+export type TopicSourceDailyHistorySchedulerSkipBreakdownView = ScanSchedulerSkipBreakdownView;
 
 export type TopicSourceDailyHistoryCadenceSummaryView = {
   readonly sourceBindingCount: number;
