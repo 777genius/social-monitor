@@ -364,6 +364,7 @@ function defaultInputSpecs() {
   const githubRepoRadarOverridePath = process.env.GITHUB_REPO_RADAR_LIVE_EVIDENCE_ENV_PATH?.trim();
   const githubTrendingPageOverridePath = process.env.GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_ENV_PATH?.trim();
   const githubSummaryOverridePath = process.env.GITHUB_LIVE_SUMMARY_EVIDENCE_ENV_PATH?.trim();
+  const securityFinalSweepOverridePath = process.env.SECURITY_FINAL_SWEEP_ENV_PATH?.trim();
   const feedbackOverridePath = process.env.SUMMARY_FEEDBACK_SAMPLES_ENV_PATH?.trim();
   const resolvedArtifactDir = resolve(artifactDir);
 
@@ -400,6 +401,13 @@ function defaultInputSpecs() {
       path: githubSummaryOverridePath,
       staleCommitPolicy: githubSummaryOverridePath ? 'reject' : 'skip',
       source: 'legacy_github_live_summary_env',
+    },
+    {
+      path: securityFinalSweepOverridePath || join(resolvedArtifactDir, 'security-final-sweep.env'),
+      staleCommitPolicy: securityFinalSweepOverridePath ? 'reject' : 'skip',
+      source: securityFinalSweepOverridePath
+        ? 'security_final_sweep_env_override'
+        : 'default_security_final_sweep_env',
     },
     {
       path: redditOverridePath || join(resolvedArtifactDir, 'live-reddit-oauth.env'),
