@@ -14,6 +14,7 @@
   "providerKeys": [
     "reddit",
     "github-issues",
+    "github-trending-page",
     "rss",
     "hacker-news"
   ],
@@ -22,8 +23,8 @@
       "signalId": "scheduled-multi-provider-scan",
       "status": "passed",
       "evidence": {
-        "evaluated": 4,
-        "enqueued": 4,
+        "evaluated": 5,
+        "enqueued": 5,
         "scanBindings": [
           {
             "providerKey": "reddit",
@@ -40,16 +41,23 @@
             "freshnessSeconds": 900
           },
           {
-            "providerKey": "rss",
+            "providerKey": "github-trending-page",
             "sourceBindingId": "autonomous-loop-12",
             "scanPolicyId": "autonomous-loop-14",
+            "intervalSeconds": 3600,
+            "freshnessSeconds": 3600
+          },
+          {
+            "providerKey": "rss",
+            "sourceBindingId": "autonomous-loop-16",
+            "scanPolicyId": "autonomous-loop-18",
             "intervalSeconds": 300,
             "freshnessSeconds": 900
           },
           {
             "providerKey": "hacker-news",
-            "sourceBindingId": "autonomous-loop-16",
-            "scanPolicyId": "autonomous-loop-18",
+            "sourceBindingId": "autonomous-loop-20",
+            "scanPolicyId": "autonomous-loop-22",
             "intervalSeconds": 300,
             "freshnessSeconds": 900
           }
@@ -60,14 +68,14 @@
       "signalId": "findings-dedup-and-ranking",
       "status": "passed",
       "evidence": {
-        "initialFeedItemCount": 8,
-        "feedItemCountAfterReplay": 8,
-        "replaySkippedDuplicates": 8,
-        "rankedCount": 6,
+        "initialFeedItemCount": 10,
+        "feedItemCountAfterReplay": 10,
+        "replaySkippedDuplicates": 10,
+        "rankedCount": 8,
         "topProviderKey": "github-issues",
         "clusteredFeedItemIds": [
           "feed:autonomous-loop-8:github-agents-release",
-          "feed:autonomous-loop-16:hn-summary-quality"
+          "feed:autonomous-loop-20:hn-summary-quality"
         ]
       }
     },
@@ -75,15 +83,16 @@
       "signalId": "auto-summary-with-provider-citations",
       "status": "passed",
       "evidence": {
-        "summaryJobId": "autonomous-loop-47",
-        "summaryId": "autonomous-loop-48",
+        "summaryJobId": "autonomous-loop-57",
+        "summaryId": "autonomous-loop-58",
         "citedProviders": [
           "github-issues",
+          "github-trending-page",
           "hacker-news",
           "reddit",
           "rss"
         ],
-        "selectedFeedItemCount": 6,
+        "selectedFeedItemCount": 8,
         "qualityFlags": []
       }
     },
@@ -91,11 +100,11 @@
       "signalId": "digest-webhook-realtime-audit",
       "status": "passed",
       "evidence": {
-        "digestScheduleId": "autonomous-loop-52",
-        "digestId": "autonomous-loop-53",
-        "deliveryAttemptId": "autonomous-loop-54",
+        "digestScheduleId": "autonomous-loop-62",
+        "digestId": "autonomous-loop-63",
+        "deliveryAttemptId": "autonomous-loop-64",
         "deliveryState": "delivered",
-        "realtimeEventId": "autonomous-loop-51",
+        "realtimeEventId": "autonomous-loop-61",
         "auditActions": [
           "autonomous.digest.delivered",
           "autonomous.findings.ranked",
@@ -110,6 +119,13 @@
     "initialScanMetrics": [
       {
         "providerKey": "github-issues",
+        "fetched": 2,
+        "inserted": 2,
+        "skippedDuplicates": 0,
+        "projected": 2
+      },
+      {
+        "providerKey": "github-trending-page",
         "fetched": 2,
         "inserted": 2,
         "skippedDuplicates": 0,
@@ -146,6 +162,13 @@
         "projected": 2
       },
       {
+        "providerKey": "github-trending-page",
+        "fetched": 2,
+        "inserted": 0,
+        "skippedDuplicates": 2,
+        "projected": 2
+      },
+      {
         "providerKey": "hacker-news",
         "fetched": 2,
         "inserted": 0,
@@ -167,10 +190,10 @@
         "projected": 2
       }
     ],
-    "feedItems": 8,
-    "rankedItems": 6,
-    "citationCount": 6,
-    "digestProvenanceItems": 9,
+    "feedItems": 10,
+    "rankedItems": 8,
+    "citationCount": 8,
+    "digestProvenanceItems": 11,
     "webhookDeliveries": 1,
     "realtimeEvents": 1,
     "auditEvents": 5

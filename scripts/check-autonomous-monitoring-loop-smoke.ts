@@ -96,7 +96,12 @@ import { SetScanPolicyUseCase } from '../libs/monitoring/features/set-scan-polic
 import { minimumScanIntervalSecondsForProvider } from '../libs/monitoring/features/shared/scan-cadence-policy';
 import type { SourceBindingConfig, SourceBindingConfigProtectorPort } from '../libs/monitoring/ports';
 
-type ProviderKey = 'reddit' | 'github-issues' | 'rss' | 'hacker-news';
+type ProviderKey =
+  | 'reddit'
+  | 'github-issues'
+  | 'github-trending-page'
+  | 'rss'
+  | 'hacker-news';
 
 type QueuedScanPayload = {
   readonly tenantId: TenantId;
@@ -139,7 +144,7 @@ const workspace = workspaceId('workspace-autonomous-monitoring-loop-smoke');
 const userId = 'user-autonomous-monitoring-loop-smoke';
 const correlationId = 'corr-autonomous-monitoring-loop-smoke';
 const evidencePath = 'ops/release/autonomous-monitoring-loop-evidence.json';
-const providerKeys: readonly ProviderKey[] = ['reddit', 'github-issues', 'rss', 'hacker-news'];
+const providerKeys: readonly ProviderKey[] = ['reddit', 'github-issues', 'github-trending-page', 'rss', 'hacker-news'];
 
 async function main(): Promise<void> {
   const ids = new SequenceIdGenerator('autonomous-loop');
@@ -209,6 +214,7 @@ async function main(): Promise<void> {
     topicWeights: [{ key: topic.topicId, weight: 1 }],
     sourceWeights: [
       { key: 'github-issues', weight: 1 },
+      { key: 'github-trending-page', weight: 0.75 },
       { key: 'reddit', weight: 0.8 },
       { key: 'hacker-news', weight: 0.6 },
       { key: 'rss', weight: 0.4 },
@@ -274,7 +280,11 @@ async function main(): Promise<void> {
   });
 
   const feedAfterInitialScans = await listFeed(feedItems, topic.topicId, clock);
-  assert(feedAfterInitialScans.items.length === 8, `expected 8 feed findings, got ${feedAfterInitialScans.items.length}`);
+  const expectedInitialFeedFindings = providerKeys.length * 2;
+  assert(
+    feedAfterInitialScans.items.length === expectedInitialFeedFindings,
+    `expected ${expectedInitialFeedFindings} feed findings, got ${feedAfterInitialScans.items.length}`,
+  );
   const replayMetrics = await executeReplayScans({
     executeScan,
     scanJobs,
@@ -839,6 +849,14 @@ function providerTargets(): readonly ProviderTarget[] {
       },
     },
     {
+      providerKey: 'github-trending-page',
+      freshnessSeconds: 3600,
+      config: {
+        window: 'daily',
+        language: 'python',
+      },
+    },
+    {
       providerKey: 'rss',
       freshnessSeconds: 900,
       config: {
@@ -875,6 +893,7 @@ function providerSamples(
 ): readonly FetchedSourceItem[] {
   const publishedAtByProvider: Record<ProviderKey, string> = {
     'github-issues': '2026-06-22T11:55:00.000Z',
+    'github-trending-page': '2026-06-22T11:52:00.000Z',
     reddit: '2026-06-22T11:50:00.000Z',
     'hacker-news': '2026-06-22T11:45:00.000Z',
     rss: '2026-06-22T11:40:00.000Z',
@@ -918,6 +937,25 @@ function providerSamples(
         canonicalUrl: `https://www.reddit.com/r/programming/comments/${sourceBindingId}/monitoring_digest/`,
         title: 'Daily monitoring digest catches provider incidents faster',
         body: 'Teams want one digest instead of checking many social and developer sources manually.',
+      },
+    ];
+  }
+
+  if (providerKey === 'github-trending-page') {
+    return [
+      {
+        ...base,
+        externalId: 'github-trending-openmontage',
+        canonicalUrl: 'https://github.com/calesthio/OpenMontage',
+        title: 'calesthio/OpenMontage is trending with 3,703 stars today',
+        body: 'Agentic open-source video production system with 12 pipelines, 52 tools and 500+ agent skills.',
+      },
+      {
+        ...base,
+        externalId: 'github-trending-container',
+        canonicalUrl: 'https://github.com/apple/container',
+        title: 'apple/container keeps trending for lightweight Linux containers on Mac',
+        body: 'Swift-based container tooling is drawing developer attention as local AI and agent workflows need isolated runtimes.',
       },
     ];
   }
