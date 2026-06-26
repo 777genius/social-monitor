@@ -9,8 +9,13 @@ const allowedPaths = [
   /^libs\/summary\/adapters\/memory\//,
   /^libs\/summary\/interfaces\/rest\/summary-rest\.module\.ts$/,
   /^libs\/summary\/interfaces\/rest\/summary-provider-tokens\.ts$/,
+  /^libs\/relevance\/adapters\/memory\//,
+  /^libs\/relevance\/interfaces\/rest\/relevance-rest\.module\.ts$/,
+  /^libs\/relevance\/interfaces\/rest\/relevance-provider-tokens\.ts$/,
   /^scripts\/check-summary-memory-[a-z0-9-]+\.(?:mjs|ts)$/,
   /^scripts\/capture-summary-memory-[a-z0-9-]+\.(?:mjs|ts)$/,
+  /^scripts\/check-relevance-memory-[a-z0-9-]+\.(?:mjs|ts)$/,
+  /^scripts\/capture-relevance-memory-[a-z0-9-]+\.(?:mjs|ts)$/,
 ];
 
 const explicitlyForbiddenPaths = [
@@ -18,6 +23,10 @@ const explicitlyForbiddenPaths = [
   /^libs\/summary\/features\//,
   /^libs\/summary\/interfaces\/rest\/.*\.controller\.ts$/,
   /^libs\/summary\/interfaces\/rest\/.*\.dto\.ts$/,
+  /^libs\/relevance\/domain\//,
+  /^libs\/relevance\/features\//,
+  /^libs\/relevance\/interfaces\/rest\/.*\.controller\.ts$/,
+  /^libs\/relevance\/interfaces\/rest\/.*\.dto\.ts$/,
 ];
 
 for (const file of scanFiles()) {
@@ -35,7 +44,7 @@ for (const file of scanFiles()) {
     }
 
     if (!allowedPaths.some((pattern) => pattern.test(normalized))) {
-      violations.push(`${normalized}: ${sdkPackage} is allowed only in summary memory adapters, summary wiring, or summary-memory smoke/check scripts`);
+      violations.push(`${normalized}: ${sdkPackage} is allowed only in summary/relevance memory adapters, approved REST wiring, or memory smoke/check scripts`);
     }
   }
 }

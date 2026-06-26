@@ -515,6 +515,56 @@
       "blocksRelease": true
     },
     {
+      "gateId": "summary-memory-sdk",
+      "command": "npm run check:summary-memory-sdk",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-sdk-package",
+      "command": "npm run check:summary-memory-sdk-package",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-boundary",
+      "command": "npm run check:summary-memory-boundary",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-feedback-loop",
+      "command": "npm run check:summary-memory-feedback-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-preference-loop",
+      "command": "npm run check:summary-memory-preference-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-rich-context",
+      "command": "npm run check:summary-memory-rich-context",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-review-loop",
+      "command": "npm run check:summary-memory-review-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-redaction",
+      "command": "npm run check:summary-memory-redaction",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-product-loop",
+      "command": "npm run check:summary-memory-product-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-runtime-canary-evidence",
+      "command": "npm run check:summary-memory-runtime-canary-evidence",
+      "blocksRelease": true
+    },
+    {
       "gateId": "backup-restore-contract",
       "command": "npm run check:backup-restore",
       "blocksRelease": true
