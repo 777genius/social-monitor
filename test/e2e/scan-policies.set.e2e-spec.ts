@@ -123,4 +123,65 @@ describe('Set scan policy flow (e2e)', () => {
       }),
     ]);
   });
+
+  it('rejects scan policy intervals below provider cadence minimum', async () => {
+    const tenant = tenantId('tenant-policy-cadence-e2e');
+    const workspace = workspaceId('workspace-policy-cadence-e2e');
+    const topic = await request(app.getHttpServer())
+      .post('/topics')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-policy-cadence-topic')
+      .set('idempotency-key', 'create-policy-cadence-topic')
+      .send({
+        name: 'Repo Radar Cadence',
+        query: 'repo radar cadence',
+      })
+      .expect(201);
+
+    const binding = await request(app.getHttpServer())
+      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-policy-cadence-bind')
+      .set('idempotency-key', 'bind-policy-cadence-source')
+      .send({
+        providerKey: 'github-repo-radar',
+        config: { query: 'agent tooling', windows: ['24h', '7d'] },
+      })
+      .expect(201);
+
+    const rejected = await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-policy-cadence-set')
+      .set('idempotency-key', 'set-policy-cadence-too-fast')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(400);
+
+    expect(rejected.body).toMatchObject({
+      code: 'validation.failed',
+      details: {
+        providerKey: 'github-repo-radar',
+        intervalSeconds: 300,
+        minimumIntervalSeconds: 21_600,
+      },
+    });
+
+    const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 10,
+    });
+
+    expect(auditRecords.records.filter((record) => record.action === 'scan_policy.created')).toHaveLength(0);
+  });
 });

@@ -102,13 +102,13 @@ class FakeIdempotency implements IdempotencyPort {
   }
 }
 
-const makeBinding = () =>
+const makeBinding = (providerKey = 'fake-source') =>
   SourceBinding.create({
     id: 'binding-1',
     tenantId: tenantId('tenant-1'),
     workspaceId: workspaceId('workspace-1'),
     topicId: 'topic-1',
-    providerKey: 'fake-source',
+    providerKey,
     capabilityProfileVersion: 1,
     config: {},
     createdAt: new Date('2026-06-05T00:00:00.000Z'),
@@ -284,6 +284,41 @@ describe('SetScanPolicyUseCase', () => {
     });
 
     expect(result.ok).toBe(false);
+  });
+
+  it('rejects scan intervals below provider cadence minimum', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding('github-repo-radar'));
+
+    const result = await new SetScanPolicyUseCase(
+      bindings,
+      new FakeScanPolicies(),
+      new FakeOutbox(),
+      new FakeIdempotency(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+    ).execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      intervalSeconds: 300,
+      freshnessSeconds: 900,
+      retryBudget: 3,
+      idempotencyKey: 'scan-policy-too-aggressive',
+      correlationId: 'correlation-1',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'validation.failed',
+        details: {
+          providerKey: 'github-repo-radar',
+          intervalSeconds: 300,
+          minimumIntervalSeconds: 21_600,
+        },
+      }),
+    });
   });
 
   it('rejects freshness windows smaller than the scan interval without throwing', async () => {

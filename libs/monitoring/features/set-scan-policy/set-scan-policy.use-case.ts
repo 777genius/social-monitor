@@ -19,6 +19,7 @@ import type {
 } from '../../ports';
 import type { SetScanPolicyCommand } from './set-scan-policy.command';
 import type { SetScanPolicyResult } from './set-scan-policy.result';
+import { validateProviderScanCadence } from '../shared/scan-cadence-policy';
 
 type SetScanPolicyFailure = DomainError | Error;
 
@@ -60,6 +61,14 @@ export class SetScanPolicyUseCase {
           sourceBindingId: command.sourceBindingId,
         }),
       );
+    }
+    const bindingSnapshot = binding.toSnapshot();
+    const providerCadenceValidation = validateProviderScanCadence({
+      providerKey: bindingSnapshot.providerKey,
+      intervalSeconds: command.intervalSeconds,
+    });
+    if (providerCadenceValidation !== null) {
+      return err(providerCadenceValidation);
     }
 
     const existing = await this.scanPolicies.findBySourceBinding({
