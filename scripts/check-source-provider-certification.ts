@@ -39,6 +39,7 @@ import type {
 
 const outputPath = 'ops/ingestion/source-provider-certification.json';
 const update = process.argv.includes('--update');
+const packageScripts = readPackageScripts();
 
 type ProviderCase = {
   readonly providerFactory: () => SourceProviderPort;
@@ -448,6 +449,7 @@ async function certifyProvider(
       'scan_history_required_for_freshness',
       'rate_limit_backoff_declared_for_quota_models',
       'live_evidence_requirements_declared_for_external_beta',
+      'live_evidence_verification_commands_exist',
     ],
   };
 }
@@ -489,6 +491,11 @@ function assertLiveEvidenceRequirements(
       requirement.verificationCommand.trim().startsWith('npm run ') ||
         requirement.verificationCommand.includes(' npm run '),
       `${providerKey}: live evidence verificationCommand must reference an npm script for ${requirement.signalId}`,
+    );
+    assertVerificationCommandScriptsExist(
+      providerKey,
+      requirement.signalId,
+      requirement.verificationCommand,
     );
     assert(
       requirement.requiredFor === 'external_beta',
@@ -658,6 +665,54 @@ function isHttpUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function assertVerificationCommandScriptsExist(
+  providerKey: string,
+  signalId: string,
+  verificationCommand: string,
+): void {
+  const scriptNames = npmRunScriptNames(verificationCommand);
+  assert(
+    scriptNames.length > 0,
+    `${providerKey}: live evidence command for ${signalId} must include npm run <script>`,
+  );
+
+  for (const scriptName of scriptNames) {
+    assert(
+      packageScripts.has(scriptName),
+      `${providerKey}: live evidence command for ${signalId} references missing package script ${scriptName}`,
+    );
+  }
+}
+
+function npmRunScriptNames(command: string): readonly string[] {
+  const scripts: string[] = [];
+  const matcher = /(?:^|\s)npm\s+run\s+([A-Za-z0-9:_-]+)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = matcher.exec(command)) !== null) {
+    const scriptName = match[1];
+    if (scriptName !== undefined) {
+      scripts.push(scriptName);
+    }
+  }
+
+  return scripts;
+}
+
+function readPackageScripts(): ReadonlySet<string> {
+  const parsed = JSON.parse(readFileSync('package.json', 'utf8')) as {
+    readonly scripts?: unknown;
+  };
+  const scripts = parsed.scripts;
+
+  assert(
+    scripts !== null && typeof scripts === 'object' && !Array.isArray(scripts),
+    'package.json scripts must be an object',
+  );
+
+  return new Set(Object.keys(scripts));
 }
 
 function assert(condition: unknown, message: string): asserts condition {

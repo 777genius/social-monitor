@@ -48,7 +48,8 @@
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models",
-        "live_evidence_requirements_declared_for_external_beta"
+        "live_evidence_requirements_declared_for_external_beta",
+        "live_evidence_verification_commands_exist"
       ]
     },
     {
@@ -117,7 +118,8 @@
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models",
-        "live_evidence_requirements_declared_for_external_beta"
+        "live_evidence_requirements_declared_for_external_beta",
+        "live_evidence_verification_commands_exist"
       ]
     },
     {
@@ -200,7 +202,8 @@
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models",
-        "live_evidence_requirements_declared_for_external_beta"
+        "live_evidence_requirements_declared_for_external_beta",
+        "live_evidence_verification_commands_exist"
       ]
     },
     {
@@ -276,7 +279,8 @@
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models",
-        "live_evidence_requirements_declared_for_external_beta"
+        "live_evidence_requirements_declared_for_external_beta",
+        "live_evidence_verification_commands_exist"
       ]
     },
     {
@@ -345,7 +349,8 @@
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models",
-        "live_evidence_requirements_declared_for_external_beta"
+        "live_evidence_requirements_declared_for_external_beta",
+        "live_evidence_verification_commands_exist"
       ]
     },
     {
@@ -421,7 +426,8 @@
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models",
-        "live_evidence_requirements_declared_for_external_beta"
+        "live_evidence_requirements_declared_for_external_beta",
+        "live_evidence_verification_commands_exist"
       ]
     },
     {
@@ -497,7 +503,8 @@
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
         "rate_limit_backoff_declared_for_quota_models",
-        "live_evidence_requirements_declared_for_external_beta"
+        "live_evidence_requirements_declared_for_external_beta",
+        "live_evidence_verification_commands_exist"
       ]
     }
   ],
