@@ -1,7 +1,11 @@
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import type { QueueCommandEnvelope } from '@social-monitor/platform-queue';
 import type { WorkerRuntime } from '@social-monitor/platform-worker';
-import { DomainError, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import {
+  DomainError,
+  tenantId,
+  workspaceId,
+} from '@social-monitor/shared-kernel';
 
 import type { ScheduleDueScansResult } from '../../features/schedule-due-scans/schedule-due-scans.result';
 import type { ScheduleDueScansUseCase } from '../../features/schedule-due-scans/schedule-due-scans.use-case';
@@ -10,9 +14,11 @@ type ScheduleDueScansQueuePayload = {
   readonly tenantId?: string;
   readonly workspaceId?: string;
   readonly limit?: number;
+  readonly includeDecisions?: boolean;
 };
 
-export type ScheduleDueScansQueueCommand = QueueCommandEnvelope<ScheduleDueScansQueuePayload>;
+export type ScheduleDueScansQueueCommand =
+  QueueCommandEnvelope<ScheduleDueScansQueuePayload>;
 
 export class ScheduleDueScansCommandHandler {
   constructor(
@@ -21,7 +27,9 @@ export class ScheduleDueScansCommandHandler {
     private readonly runtime: WorkerRuntime,
   ) {}
 
-  async handle(command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>): Promise<ScheduleDueScansResult> {
+  async handle(
+    command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>,
+  ): Promise<ScheduleDueScansResult> {
     if (command.commandType !== 'monitoring.scans.schedule_due') {
       throw new Error(`Unsupported command type: ${command.commandType}`);
     }
@@ -33,10 +41,17 @@ export class ScheduleDueScansCommandHandler {
 
       try {
         const result = await this.scheduleDueScans.execute({
-          tenantId: payload.tenantId === undefined ? undefined : tenantId(payload.tenantId),
-          workspaceId: payload.workspaceId === undefined ? undefined : workspaceId(payload.workspaceId),
+          tenantId:
+            payload.tenantId === undefined
+              ? undefined
+              : tenantId(payload.tenantId),
+          workspaceId:
+            payload.workspaceId === undefined
+              ? undefined
+              : workspaceId(payload.workspaceId),
           limit: payload.limit ?? 50,
           correlationId: command.correlationId,
+          includeDecisions: payload.includeDecisions,
         });
 
         if (!result.ok) {
@@ -61,7 +76,9 @@ export class ScheduleDueScansCommandHandler {
           value: result.value.skipped,
           labels: { worker: 'ingestion-worker' },
         });
-        for (const [reason, value] of Object.entries(result.value.skippedByReason)) {
+        for (const [reason, value] of Object.entries(
+          result.value.skippedByReason,
+        )) {
           this.metrics.recordGauge({
             name: 'monitoring_scan_scheduler_last_skipped_by_reason',
             value,
@@ -104,18 +121,29 @@ export class ScheduleDueScansCommandHandler {
   }
 }
 
-const classifyFailure = (error: unknown): 'validation_failed' | 'worker_conflict' | 'system_failure' => {
+const classifyFailure = (
+  error: unknown,
+): 'validation_failed' | 'worker_conflict' | 'system_failure' => {
   if (error instanceof DomainError) {
-    if (error.code === 'validation.failed' || error.code === 'tenant.scope_missing') {
+    if (
+      error.code === 'validation.failed' ||
+      error.code === 'tenant.scope_missing'
+    ) {
       return 'validation_failed';
     }
 
-    if (error.code === 'operation.conflict' || error.code === 'operation.backpressure') {
+    if (
+      error.code === 'operation.conflict' ||
+      error.code === 'operation.backpressure'
+    ) {
       return 'worker_conflict';
     }
   }
 
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  const message =
+    error instanceof Error
+      ? error.message.toLowerCase()
+      : String(error).toLowerCase();
 
   if (message.includes('validation') || message.includes('invalid')) {
     return 'validation_failed';
@@ -128,7 +156,9 @@ const classifyFailure = (error: unknown): 'validation_failed' | 'worker_conflict
   return 'system_failure';
 };
 
-const parsePayload = (payload: Readonly<Record<string, unknown>>): ScheduleDueScansQueuePayload => {
+const parsePayload = (
+  payload: Readonly<Record<string, unknown>>,
+): ScheduleDueScansQueuePayload => {
   const tenant = readOptionalString(payload, 'tenantId');
   const workspace = readOptionalString(payload, 'workspaceId');
 
@@ -143,6 +173,7 @@ const parsePayload = (payload: Readonly<Record<string, unknown>>): ScheduleDueSc
     tenantId: tenant,
     workspaceId: workspace,
     limit: readOptionalPositiveInteger(payload, 'limit'),
+    includeDecisions: readOptionalBoolean(payload, 'includeDecisions'),
   };
 };
 
@@ -157,7 +188,9 @@ const readOptionalString = (
   }
 
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`Invalid schedule due scans command payload field: ${field}`);
+    throw new Error(
+      `Invalid schedule due scans command payload field: ${field}`,
+    );
   }
 
   return value.trim();
@@ -173,8 +206,34 @@ const readOptionalPositiveInteger = (
     return undefined;
   }
 
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 100) {
-    throw new Error(`Invalid schedule due scans command payload field: ${field}`);
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > 100
+  ) {
+    throw new Error(
+      `Invalid schedule due scans command payload field: ${field}`,
+    );
+  }
+
+  return value;
+};
+
+const readOptionalBoolean = (
+  payload: Readonly<Record<string, unknown>>,
+  field: string,
+): boolean | undefined => {
+  const value = payload[field];
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== 'boolean') {
+    throw new Error(
+      `Invalid schedule due scans command payload field: ${field}`,
+    );
   }
 
   return value;

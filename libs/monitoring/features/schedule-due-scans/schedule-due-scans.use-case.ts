@@ -17,6 +17,7 @@ import type {
 } from '../../ports';
 import type { ScheduleDueScansCommand } from './schedule-due-scans.command';
 import type {
+  ScheduleDueScansDecision,
   ScheduleDueScansResult,
   ScheduleDueScansSkipBreakdown,
   ScheduleDueScansSkipReason,
@@ -30,21 +31,36 @@ import {
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
 type ScheduleDueScansFailure = DomainError | Error;
-type ScanJobRecentHistoryReadPort = Pick<ScanJobHistoryReadPort, 'listBySourceBinding'>;
+type ScanJobRecentHistoryReadPort = Pick<
+  ScanJobHistoryReadPort,
+  'listBySourceBinding'
+>;
 
 export class ScheduleDueScansUseCase {
   constructor(
     private readonly sourceBindings: SourceBindingRepositoryPort,
     private readonly scanPolicies: ScanPolicyRepositoryPort,
-    private readonly scanJobs: ScanJobRepositoryPort & ScanJobRecentHistoryReadPort,
+    private readonly scanJobs: ScanJobRepositoryPort &
+      ScanJobRecentHistoryReadPort,
     private readonly scanQueue: ScanQueuePort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
   ) {}
 
-  async execute(command: ScheduleDueScansCommand): Promise<Result<ScheduleDueScansResult, ScheduleDueScansFailure>> {
-    if (!Number.isInteger(command.limit) || command.limit < 1 || command.limit > 100) {
-      return err(new DomainError('validation.failed', 'Schedule due scans limit must be between 1 and 100'));
+  async execute(
+    command: ScheduleDueScansCommand,
+  ): Promise<Result<ScheduleDueScansResult, ScheduleDueScansFailure>> {
+    if (
+      !Number.isInteger(command.limit) ||
+      command.limit < 1 ||
+      command.limit > 100
+    ) {
+      return err(
+        new DomainError(
+          'validation.failed',
+          'Schedule due scans limit must be between 1 and 100',
+        ),
+      );
     }
 
     const now = this.clock.now();
@@ -56,6 +72,10 @@ export class ScheduleDueScansUseCase {
     });
     let enqueued = 0;
     const skippedByReason = emptySkipBreakdown();
+    const decisions =
+      command.includeDecisions === true
+        ? ([] as ScheduleDueScansDecision[])
+        : undefined;
 
     for (const policy of policies) {
       const policySnapshot = policy.toSnapshot();
@@ -66,8 +86,21 @@ export class ScheduleDueScansUseCase {
       });
 
       const bindingSnapshot = binding?.toSnapshot();
-      if (bindingSnapshot === undefined || bindingSnapshot.status !== 'enabled') {
+      if (
+        bindingSnapshot === undefined ||
+        bindingSnapshot.status !== 'enabled'
+      ) {
         recordSkipped(skippedByReason, 'source_unavailable');
+        recordDecision(decisions, {
+          scanPolicyId: policySnapshot.id,
+          sourceBindingId: policySnapshot.sourceBindingId,
+          providerKey: bindingSnapshot?.providerKey,
+          decision: 'skipped',
+          reason: 'source_unavailable',
+          policyDueAt: policySnapshot.nextRunAt,
+          nextRunAt: policySnapshot.nextRunAt,
+          configuredIntervalSeconds: policySnapshot.intervalSeconds,
+        });
         continue;
       }
 
@@ -87,7 +120,10 @@ export class ScheduleDueScansUseCase {
         sourceBindingId: policySnapshot.sourceBindingId,
         limit: 5,
       });
-      const idempotencyKey = scheduledIdempotencyKey(policySnapshot.id, policySnapshot.nextRunAt);
+      const idempotencyKey = scheduledIdempotencyKey(
+        policySnapshot.id,
+        policySnapshot.nextRunAt,
+      );
       const existingJob = await this.scanJobs.findByIdempotencyKey({
         tenantId: policySnapshot.tenantId,
         workspaceId: policySnapshot.workspaceId,
@@ -137,6 +173,20 @@ export class ScheduleDueScansUseCase {
         };
         if (!(await this.scanQueue.canAccept(queueCommand))) {
           recordSkipped(skippedByReason, 'queue_backpressure');
+          recordDecision(decisions, {
+            scanPolicyId: policySnapshot.id,
+            sourceBindingId: policySnapshot.sourceBindingId,
+            providerKey: bindingSnapshot.providerKey,
+            decision: 'skipped',
+            reason: 'queue_backpressure',
+            policyDueAt: policySnapshot.nextRunAt,
+            nextRunAt: policySnapshot.nextRunAt,
+            configuredIntervalSeconds: policySnapshot.intervalSeconds,
+            effectiveIntervalSeconds: cadence.intervalSeconds,
+            freshnessSeconds: cadence.freshnessSeconds,
+            providerMinimumIntervalEnforced:
+              cadence.providerMinimumIntervalEnforced,
+          });
           continue;
         }
 
@@ -153,18 +203,62 @@ export class ScheduleDueScansUseCase {
         await this.scanQueue.enqueue(queueCommand);
         await this.scanJobs.save(job.markEnqueued({ enqueuedAt: now }));
         enqueued += 1;
+        recordDecision(decisions, {
+          scanPolicyId: policySnapshot.id,
+          sourceBindingId: policySnapshot.sourceBindingId,
+          providerKey: bindingSnapshot.providerKey,
+          decision: 'enqueued',
+          reason: 'scan_policy_due_now',
+          scanJobId: queueCommand.scanJobId,
+          policyDueAt: policySnapshot.nextRunAt,
+          nextRunAt: nextRunAtAfterSchedulerDecision({
+            dueAt: policySnapshot.nextRunAt,
+            intervalSeconds: cadence.intervalSeconds,
+            now,
+            backoffUntil: null,
+          }),
+          configuredIntervalSeconds: policySnapshot.intervalSeconds,
+          effectiveIntervalSeconds: cadence.intervalSeconds,
+          freshnessSeconds: cadence.freshnessSeconds,
+          providerMinimumIntervalEnforced:
+            cadence.providerMinimumIntervalEnforced,
+        });
       } else {
         recordSkipped(skippedByReason, skipReason);
+        const backoffUntil =
+          rateLimitBackoff ?? providerFailureBackoff ?? undefined;
+        recordDecision(decisions, {
+          scanPolicyId: policySnapshot.id,
+          sourceBindingId: policySnapshot.sourceBindingId,
+          providerKey: bindingSnapshot.providerKey,
+          decision: 'skipped',
+          reason: skipReason,
+          policyDueAt: policySnapshot.nextRunAt,
+          nextRunAt: nextRunAtAfterSchedulerDecision({
+            dueAt: policySnapshot.nextRunAt,
+            intervalSeconds: cadence.intervalSeconds,
+            now,
+            backoffUntil: rateLimitBackoff ?? providerFailureBackoff,
+          }),
+          configuredIntervalSeconds: policySnapshot.intervalSeconds,
+          effectiveIntervalSeconds: cadence.intervalSeconds,
+          freshnessSeconds: cadence.freshnessSeconds,
+          providerMinimumIntervalEnforced:
+            cadence.providerMinimumIntervalEnforced,
+          backoffUntil,
+        });
       }
 
-      await this.scanPolicies.save(policy.scheduleNext({
-        nextRunAt: nextRunAtAfterSchedulerDecision({
-          dueAt: policySnapshot.nextRunAt,
-          intervalSeconds: cadence.intervalSeconds,
-          now,
-          backoffUntil: rateLimitBackoff ?? providerFailureBackoff,
+      await this.scanPolicies.save(
+        policy.scheduleNext({
+          nextRunAt: nextRunAtAfterSchedulerDecision({
+            dueAt: policySnapshot.nextRunAt,
+            intervalSeconds: cadence.intervalSeconds,
+            now,
+            backoffUntil: rateLimitBackoff ?? providerFailureBackoff,
+          }),
         }),
-      }));
+      );
     }
 
     return ok({
@@ -173,9 +267,17 @@ export class ScheduleDueScansUseCase {
       enqueued,
       skipped: totalSkipped(skippedByReason),
       skippedByReason,
+      ...(decisions === undefined ? {} : { decisions }),
     });
   }
 }
+
+const recordDecision = (
+  decisions: ScheduleDueScansDecision[] | undefined,
+  decision: ScheduleDueScansDecision,
+): void => {
+  decisions?.push(decision);
+};
 
 const emptySkipBreakdown = (): Record<ScheduleDueScansSkipReason, number> => ({
   active_scan: 0,
@@ -240,9 +342,10 @@ const nextRunAtAfterSchedulerDecision = (params: {
   const intervalNextRunAt = new Date(params.dueAt.getTime() + intervalMs);
 
   if (params.backoffUntil !== null) {
-    const backoffNextRunAt = params.backoffUntil.getTime() > intervalNextRunAt.getTime()
-      ? params.backoffUntil
-      : intervalNextRunAt;
+    const backoffNextRunAt =
+      params.backoffUntil.getTime() > intervalNextRunAt.getTime()
+        ? params.backoffUntil
+        : intervalNextRunAt;
 
     if (backoffNextRunAt.getTime() > params.now.getTime()) {
       return backoffNextRunAt;

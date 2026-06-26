@@ -1,6 +1,6 @@
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
-import type { DomainError} from '@social-monitor/shared-kernel';
+import type { DomainError } from '@social-monitor/shared-kernel';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { ScheduleDueScansUseCase } from '../../features/schedule-due-scans/schedule-due-scans.use-case';
@@ -9,7 +9,9 @@ import { ScheduleDueScansCommandHandler } from './schedule-due-scans-command.han
 class FakeScheduleDueScansUseCase {
   readonly commands: unknown[] = [];
 
-  async execute(command: unknown): ReturnType<ScheduleDueScansUseCase['execute']> {
+  async execute(
+    command: unknown,
+  ): ReturnType<ScheduleDueScansUseCase['execute']> {
     this.commands.push(command);
 
     return {
@@ -53,6 +55,7 @@ describe('ScheduleDueScansCommandHandler', () => {
         tenantId: 'tenant-1',
         workspaceId: 'workspace-1',
         limit: 10,
+        includeDecisions: true,
       },
     });
 
@@ -67,19 +70,29 @@ describe('ScheduleDueScansCommandHandler', () => {
         workspaceId: workspaceId('workspace-1'),
         limit: 10,
         correlationId: 'correlation-1',
+        includeDecisions: true,
       },
     ]);
-    expect(metrics.counterValue('monitoring_scan_scheduler_runs_total', {
-      status: 'started',
-      worker: 'ingestion-worker',
-    })).toBe(1);
-    expect(metrics.latestGaugeValue('monitoring_scan_scheduler_last_enqueued', {
-      worker: 'ingestion-worker',
-    })).toBe(1);
-    expect(metrics.latestGaugeValue('monitoring_scan_scheduler_last_skipped_by_reason', {
-      reason: 'fresh_success',
-      worker: 'ingestion-worker',
-    })).toBe(0);
+    expect(
+      metrics.counterValue('monitoring_scan_scheduler_runs_total', {
+        status: 'started',
+        worker: 'ingestion-worker',
+      }),
+    ).toBe(1);
+    expect(
+      metrics.latestGaugeValue('monitoring_scan_scheduler_last_enqueued', {
+        worker: 'ingestion-worker',
+      }),
+    ).toBe(1);
+    expect(
+      metrics.latestGaugeValue(
+        'monitoring_scan_scheduler_last_skipped_by_reason',
+        {
+          reason: 'fresh_success',
+          worker: 'ingestion-worker',
+        },
+      ),
+    ).toBe(0);
   });
 
   it('rejects partially scoped sweeps before executing the use case', async () => {
@@ -87,21 +100,25 @@ describe('ScheduleDueScansCommandHandler', () => {
     const runtime = new WorkerRuntime({ serviceName: 'ingestion-worker' });
     runtime.onModuleInit();
 
-    await expect(new ScheduleDueScansCommandHandler(
-      scheduleDueScans as unknown as ScheduleDueScansUseCase,
-      new InMemoryMetricsRecorder(),
-      runtime,
-    ).handle({
-      commandId: 'command-1',
-      commandType: 'monitoring.scans.schedule_due',
-      schemaVersion: 1,
-      correlationId: 'correlation-1',
-      payload: {
-        tenantId: 'tenant-1',
-      },
-    })).rejects.toEqual(expect.objectContaining({
-      code: 'tenant.scope_missing',
-    } satisfies Partial<DomainError>));
+    await expect(
+      new ScheduleDueScansCommandHandler(
+        scheduleDueScans as unknown as ScheduleDueScansUseCase,
+        new InMemoryMetricsRecorder(),
+        runtime,
+      ).handle({
+        commandId: 'command-1',
+        commandType: 'monitoring.scans.schedule_due',
+        schemaVersion: 1,
+        correlationId: 'correlation-1',
+        payload: {
+          tenantId: 'tenant-1',
+        },
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: 'tenant.scope_missing',
+      } satisfies Partial<DomainError>),
+    );
     expect(scheduleDueScans.commands).toEqual([]);
   });
 });

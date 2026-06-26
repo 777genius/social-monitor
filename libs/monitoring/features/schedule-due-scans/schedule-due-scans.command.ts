@@ -5,4 +5,5 @@ export type ScheduleDueScansCommand = {
   readonly workspaceId?: WorkspaceId;
   readonly limit: number;
   readonly correlationId: string;
+  readonly includeDecisions?: boolean;
 };

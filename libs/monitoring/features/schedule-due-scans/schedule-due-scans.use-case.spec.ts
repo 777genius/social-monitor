@@ -1,4 +1,9 @@
-import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import {
+  FixedClock,
+  type IdGenerator,
+  tenantId,
+  workspaceId,
+} from '@social-monitor/shared-kernel';
 
 import { ScanJob, ScanPolicy, SourceBinding } from '../../domain';
 import type {
@@ -28,7 +33,10 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
 
   add(binding: SourceBinding): void {
     const snapshot = binding.toSnapshot();
-    this.bindings.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, binding);
+    this.bindings.set(
+      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`,
+      binding,
+    );
   }
 
   async save(binding: SourceBinding): Promise<void> {
@@ -39,11 +47,19 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
     return null;
   }
 
-  async findById(params: Parameters<SourceBindingRepositoryPort['findById']>[0]): Promise<SourceBinding | null> {
-    return this.bindings.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
+  async findById(
+    params: Parameters<SourceBindingRepositoryPort['findById']>[0],
+  ): Promise<SourceBinding | null> {
+    return (
+      this.bindings.get(
+        `${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`,
+      ) ?? null
+    );
   }
 
-  async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
+  async listByTopic(
+    query: ListSourceBindingsQuery,
+  ): Promise<ListSourceBindingsResult> {
     return {
       sourceBindings: [...this.bindings.values()].filter((binding) => {
         const snapshot = binding.toSnapshot();
@@ -64,21 +80,28 @@ class FakeScanPolicies implements ScanPolicyRepositoryPort {
 
   add(policy: ScanPolicy): void {
     const snapshot = policy.toSnapshot();
-    this.policies.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.sourceBindingId}`, policy);
+    this.policies.set(
+      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.sourceBindingId}`,
+      policy,
+    );
   }
 
   async save(policy: ScanPolicy): Promise<void> {
     this.add(policy);
   }
 
-  async findDue(params: Parameters<ScanPolicyRepositoryPort['findDue']>[0]): Promise<readonly ScanPolicy[]> {
+  async findDue(
+    params: Parameters<ScanPolicyRepositoryPort['findDue']>[0],
+  ): Promise<readonly ScanPolicy[]> {
     return [...this.policies.values()]
       .filter((policy) => {
         const snapshot = policy.toSnapshot();
 
         return (
-          (params.tenantId === undefined || snapshot.tenantId === params.tenantId) &&
-          (params.workspaceId === undefined || snapshot.workspaceId === params.workspaceId) &&
+          (params.tenantId === undefined ||
+            snapshot.tenantId === params.tenantId) &&
+          (params.workspaceId === undefined ||
+            snapshot.workspaceId === params.workspaceId) &&
           snapshot.nextRunAt.getTime() <= params.now.getTime()
         );
       })
@@ -88,7 +111,11 @@ class FakeScanPolicies implements ScanPolicyRepositoryPort {
   async findBySourceBinding(
     params: Parameters<ScanPolicyRepositoryPort['findBySourceBinding']>[0],
   ): Promise<ScanPolicy | null> {
-    return this.policies.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
+    return (
+      this.policies.get(
+        `${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`,
+      ) ?? null
+    );
   }
 }
 
@@ -98,12 +125,24 @@ class FakeScanJobs implements ScanJobRepositoryPort {
 
   async save(job: ScanJob): Promise<void> {
     const snapshot = job.toSnapshot();
-    this.jobsById.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, job);
-    this.jobsByIdempotencyKey.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.idempotencyKey}`, job);
+    this.jobsById.set(
+      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`,
+      job,
+    );
+    this.jobsByIdempotencyKey.set(
+      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.idempotencyKey}`,
+      job,
+    );
   }
 
-  async findById(params: Parameters<ScanJobRepositoryPort['findById']>[0]): Promise<ScanJob | null> {
-    return this.jobsById.get(`${params.tenantId}:${params.workspaceId}:${params.scanJobId}`) ?? null;
+  async findById(
+    params: Parameters<ScanJobRepositoryPort['findById']>[0],
+  ): Promise<ScanJob | null> {
+    return (
+      this.jobsById.get(
+        `${params.tenantId}:${params.workspaceId}:${params.scanJobId}`,
+      ) ?? null
+    );
   }
 
   async findActiveBySourceBinding(
@@ -142,7 +181,11 @@ class FakeScanJobs implements ScanJobRepositoryPort {
   async findByIdempotencyKey(
     params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0],
   ): Promise<ScanJob | null> {
-    return this.jobsByIdempotencyKey.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
+    return (
+      this.jobsByIdempotencyKey.get(
+        `${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`,
+      ) ?? null
+    );
   }
 
   private sortedBySourceBinding(params: {
@@ -160,7 +203,11 @@ class FakeScanJobs implements ScanJobRepositoryPort {
           snapshot.sourceBindingId === params.sourceBindingId
         );
       })
-      .sort((left, right) => right.toSnapshot().requestedAt.getTime() - left.toSnapshot().requestedAt.getTime());
+      .sort(
+        (left, right) =>
+          right.toSnapshot().requestedAt.getTime() -
+          left.toSnapshot().requestedAt.getTime(),
+      );
   }
 }
 
@@ -171,7 +218,9 @@ class FakeScanQueue implements ScanQueuePort {
     return true;
   }
 
-  async enqueue(command: Parameters<ScanQueuePort['enqueue']>[0]): Promise<void> {
+  async enqueue(
+    command: Parameters<ScanQueuePort['enqueue']>[0],
+  ): Promise<void> {
     this.commands.push(command);
   }
 }
@@ -183,7 +232,9 @@ class BackpressuredScanQueue implements ScanQueuePort {
     return false;
   }
 
-  async enqueue(command: Parameters<ScanQueuePort['enqueue']>[0]): Promise<void> {
+  async enqueue(
+    command: Parameters<ScanQueuePort['enqueue']>[0],
+  ): Promise<void> {
     this.commands.push(command);
   }
 }
@@ -251,6 +302,7 @@ describe('ScheduleDueScansUseCase', () => {
       workspaceId: workspaceId('workspace-1'),
       limit: 10,
       correlationId: 'scheduler-tick-1',
+      includeDecisions: true,
     });
 
     expect(result).toEqual({
@@ -261,6 +313,22 @@ describe('ScheduleDueScansUseCase', () => {
         enqueued: 1,
         skipped: 0,
         skippedByReason: noSkippedByReason(),
+        decisions: [
+          {
+            scanPolicyId: 'policy-1',
+            sourceBindingId: 'binding-1',
+            providerKey: 'fake-source',
+            decision: 'enqueued',
+            reason: 'scan_policy_due_now',
+            scanJobId: 'scan-job-1',
+            policyDueAt: new Date('2026-06-05T12:00:00.000Z'),
+            nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
+            configuredIntervalSeconds: 300,
+            effectiveIntervalSeconds: 300,
+            freshnessSeconds: 900,
+            providerMinimumIntervalEnforced: false,
+          },
+        ],
       },
     });
     expect(queue.commands).toEqual([
@@ -275,11 +343,15 @@ describe('ScheduleDueScansUseCase', () => {
         causationId: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
       }),
     ]);
-    expect((await policies.findBySourceBinding({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-    }))?.toSnapshot()).toMatchObject({
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
     });
   });
@@ -288,17 +360,19 @@ describe('ScheduleDueScansUseCase', () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding());
     const policies = new FakeScanPolicies();
-    policies.add(ScanPolicy.create({
-      id: 'policy-1',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      intervalSeconds: 300,
-      freshnessSeconds: 900,
-      retryBudget: 3,
-      nextRunAt: new Date('2026-06-05T10:00:00.000Z'),
-      createdAt: new Date('2026-06-05T00:00:00.000Z'),
-    }));
+    policies.add(
+      ScanPolicy.create({
+        id: 'policy-1',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+        nextRunAt: new Date('2026-06-05T10:00:00.000Z'),
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
     const queue = new FakeScanQueue();
     const useCase = new ScheduleDueScansUseCase(
       bindings,
@@ -327,11 +401,15 @@ describe('ScheduleDueScansUseCase', () => {
       },
     });
     expect(queue.commands).toHaveLength(1);
-    expect((await policies.findBySourceBinding({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-    }))?.toSnapshot()).toMatchObject({
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
     });
   });
@@ -340,17 +418,19 @@ describe('ScheduleDueScansUseCase', () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding('reddit'));
     const policies = new FakeScanPolicies();
-    policies.add(ScanPolicy.create({
-      id: 'policy-1',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      intervalSeconds: 60,
-      freshnessSeconds: 60,
-      retryBudget: 3,
-      nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
-      createdAt: new Date('2026-06-05T00:00:00.000Z'),
-    }));
+    policies.add(
+      ScanPolicy.create({
+        id: 'policy-1',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        intervalSeconds: 60,
+        freshnessSeconds: 60,
+        retryBudget: 3,
+        nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
     const queue = new FakeScanQueue();
     const useCase = new ScheduleDueScansUseCase(
       bindings,
@@ -384,11 +464,15 @@ describe('ScheduleDueScansUseCase', () => {
         causationId: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
       }),
     ]);
-    expect((await policies.findBySourceBinding({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-    }))?.toSnapshot()).toMatchObject({
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:15:00.000Z'),
     });
   });
@@ -397,31 +481,37 @@ describe('ScheduleDueScansUseCase', () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding('reddit'));
     const policies = new FakeScanPolicies();
-    policies.add(ScanPolicy.create({
-      id: 'policy-1',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      intervalSeconds: 60,
-      freshnessSeconds: 60,
-      retryBudget: 3,
-      nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
-      createdAt: new Date('2026-06-05T00:00:00.000Z'),
-    }));
+    policies.add(
+      ScanPolicy.create({
+        id: 'policy-1',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        intervalSeconds: 60,
+        freshnessSeconds: 60,
+        retryBudget: 3,
+        nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
     const scanJobs = new FakeScanJobs();
-    await scanJobs.save(ScanJob.request({
-      id: 'recent-reddit-scan-job',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      scanPolicyId: 'policy-1',
-      idempotencyKey: 'manual-recent-reddit-scan',
-      requestedAt: new Date('2026-06-05T11:54:00.000Z'),
-    }).markEnqueued({
-      enqueuedAt: new Date('2026-06-05T11:54:01.000Z'),
-    }).markSucceeded({
-      completedAt: new Date('2026-06-05T11:55:00.000Z'),
-    }));
+    await scanJobs.save(
+      ScanJob.request({
+        id: 'recent-reddit-scan-job',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: 'manual-recent-reddit-scan',
+        requestedAt: new Date('2026-06-05T11:54:00.000Z'),
+      })
+        .markEnqueued({
+          enqueuedAt: new Date('2026-06-05T11:54:01.000Z'),
+        })
+        .markSucceeded({
+          completedAt: new Date('2026-06-05T11:55:00.000Z'),
+        }),
+    );
     const queue = new FakeScanQueue();
     const useCase = new ScheduleDueScansUseCase(
       bindings,
@@ -450,43 +540,51 @@ describe('ScheduleDueScansUseCase', () => {
       },
     });
     expect(queue.commands).toHaveLength(0);
-    expect((await policies.findBySourceBinding({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-    }))?.toSnapshot()).toMatchObject({
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:15:00.000Z'),
     });
   });
 
   it('enqueues daily GitHub repo radar scans with configured discovery query', async () => {
     const bindings = new FakeSourceBindings();
-    bindings.add(SourceBinding.create({
-      id: 'repo-radar-binding-1',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-repo-radar',
-      providerKey: 'github-repo-radar',
-      capabilityProfileVersion: 1,
-      config: {
-        query: 'agent tooling',
-        topics: ['ai', 'agents'],
-        languages: ['TypeScript'],
-      },
-      createdAt: new Date('2026-06-05T00:00:00.000Z'),
-    }));
+    bindings.add(
+      SourceBinding.create({
+        id: 'repo-radar-binding-1',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        topicId: 'topic-repo-radar',
+        providerKey: 'github-repo-radar',
+        capabilityProfileVersion: 1,
+        config: {
+          query: 'agent tooling',
+          topics: ['ai', 'agents'],
+          languages: ['TypeScript'],
+        },
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
     const policies = new FakeScanPolicies();
-    policies.add(ScanPolicy.create({
-      id: 'repo-radar-daily-policy',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'repo-radar-binding-1',
-      intervalSeconds: 86_400,
-      freshnessSeconds: 86_400,
-      retryBudget: 3,
-      nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
-      createdAt: new Date('2026-06-05T00:00:00.000Z'),
-    }));
+    policies.add(
+      ScanPolicy.create({
+        id: 'repo-radar-daily-policy',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'repo-radar-binding-1',
+        intervalSeconds: 86_400,
+        freshnessSeconds: 86_400,
+        retryBudget: 3,
+        nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
     const queue = new FakeScanQueue();
     const useCase = new ScheduleDueScansUseCase(
       bindings,
@@ -522,14 +620,19 @@ describe('ScheduleDueScansUseCase', () => {
         providerKey: 'github-repo-radar',
         sourceQuery: { mode: 'search', query: 'agent tooling' },
         retryBudget: 3,
-        causationId: 'scheduled:repo-radar-daily-policy:2026-06-05T12:00:00.000Z',
+        causationId:
+          'scheduled:repo-radar-daily-policy:2026-06-05T12:00:00.000Z',
       }),
     ]);
-    expect((await policies.findBySourceBinding({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'repo-radar-binding-1',
-    }))?.toSnapshot()).toMatchObject({
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'repo-radar-binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
       nextRunAt: new Date('2026-06-06T12:00:00.000Z'),
     });
   });
@@ -573,17 +676,19 @@ describe('ScheduleDueScansUseCase', () => {
     const policies = new FakeScanPolicies();
     policies.add(makePolicy());
     const scanJobs = new FakeScanJobs();
-    await scanJobs.save(ScanJob.request({
-      id: 'active-scan-job',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      scanPolicyId: 'policy-1',
-      idempotencyKey: 'manual-scan-active',
-      requestedAt: new Date('2026-06-05T11:59:00.000Z'),
-    }).markEnqueued({
-      enqueuedAt: new Date('2026-06-05T11:59:01.000Z'),
-    }));
+    await scanJobs.save(
+      ScanJob.request({
+        id: 'active-scan-job',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: 'manual-scan-active',
+        requestedAt: new Date('2026-06-05T11:59:00.000Z'),
+      }).markEnqueued({
+        enqueuedAt: new Date('2026-06-05T11:59:01.000Z'),
+      }),
+    );
     const queue = new FakeScanQueue();
     const useCase = new ScheduleDueScansUseCase(
       bindings,
@@ -620,20 +725,24 @@ describe('ScheduleDueScansUseCase', () => {
     const policies = new FakeScanPolicies();
     policies.add(makePolicy());
     const scanJobs = new FakeScanJobs();
-    await scanJobs.save(ScanJob.request({
-      id: 'duplicate-window-scan-job',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      scanPolicyId: 'policy-1',
-      idempotencyKey: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
-      requestedAt: new Date('2026-06-05T11:50:00.000Z'),
-    }).markEnqueued({
-      enqueuedAt: new Date('2026-06-05T11:50:01.000Z'),
-    }).markFailed({
-      completedAt: new Date('2026-06-05T11:51:00.000Z'),
-      failureReason: 'Provider rejected malformed query',
-    }));
+    await scanJobs.save(
+      ScanJob.request({
+        id: 'duplicate-window-scan-job',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
+        requestedAt: new Date('2026-06-05T11:50:00.000Z'),
+      })
+        .markEnqueued({
+          enqueuedAt: new Date('2026-06-05T11:50:01.000Z'),
+        })
+        .markFailed({
+          completedAt: new Date('2026-06-05T11:51:00.000Z'),
+          failureReason: 'Provider rejected malformed query',
+        }),
+    );
     const queue = new FakeScanQueue();
     const useCase = new ScheduleDueScansUseCase(
       bindings,
@@ -662,11 +771,15 @@ describe('ScheduleDueScansUseCase', () => {
       },
     });
     expect(queue.commands).toHaveLength(0);
-    expect((await policies.findBySourceBinding({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-    }))?.toSnapshot()).toMatchObject({
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
     });
   });
@@ -677,19 +790,23 @@ describe('ScheduleDueScansUseCase', () => {
     const policies = new FakeScanPolicies();
     policies.add(makePolicy());
     const scanJobs = new FakeScanJobs();
-    await scanJobs.save(ScanJob.request({
-      id: 'fresh-completed-scan-job',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      scanPolicyId: 'policy-1',
-      idempotencyKey: 'manual-scan-fresh',
-      requestedAt: new Date('2026-06-05T11:54:00.000Z'),
-    }).markEnqueued({
-      enqueuedAt: new Date('2026-06-05T11:54:01.000Z'),
-    }).markSucceeded({
-      completedAt: new Date('2026-06-05T11:55:00.000Z'),
-    }));
+    await scanJobs.save(
+      ScanJob.request({
+        id: 'fresh-completed-scan-job',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: 'manual-scan-fresh',
+        requestedAt: new Date('2026-06-05T11:54:00.000Z'),
+      })
+        .markEnqueued({
+          enqueuedAt: new Date('2026-06-05T11:54:01.000Z'),
+        })
+        .markSucceeded({
+          completedAt: new Date('2026-06-05T11:55:00.000Z'),
+        }),
+    );
     const queue = new FakeScanQueue();
     const useCase = new ScheduleDueScansUseCase(
       bindings,
@@ -718,11 +835,15 @@ describe('ScheduleDueScansUseCase', () => {
       },
     });
     expect(queue.commands).toHaveLength(0);
-    expect((await policies.findBySourceBinding({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-    }))?.toSnapshot()).toMatchObject({
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
     });
   });
@@ -731,32 +852,38 @@ describe('ScheduleDueScansUseCase', () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding());
     const policies = new FakeScanPolicies();
-    policies.add(ScanPolicy.create({
-      id: 'policy-1',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      intervalSeconds: 300,
-      freshnessSeconds: 900,
-      retryBudget: 3,
-      nextRunAt: new Date('2026-06-05T11:55:00.000Z'),
-      createdAt: new Date('2026-06-05T00:00:00.000Z'),
-    }));
+    policies.add(
+      ScanPolicy.create({
+        id: 'policy-1',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+        nextRunAt: new Date('2026-06-05T11:55:00.000Z'),
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
     const scanJobs = new FakeScanJobs();
-    await scanJobs.save(ScanJob.request({
-      id: 'rate-limited-scan-job',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      scanPolicyId: 'policy-1',
-      idempotencyKey: 'manual-scan-rate-limited',
-      requestedAt: new Date('2026-06-05T11:57:00.000Z'),
-    }).markEnqueued({
-      enqueuedAt: new Date('2026-06-05T11:57:01.000Z'),
-    }).markFailed({
-      completedAt: new Date('2026-06-05T11:58:00.000Z'),
-      failureReason: 'Provider rate limit 429',
-    }));
+    await scanJobs.save(
+      ScanJob.request({
+        id: 'rate-limited-scan-job',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: 'manual-scan-rate-limited',
+        requestedAt: new Date('2026-06-05T11:57:00.000Z'),
+      })
+        .markEnqueued({
+          enqueuedAt: new Date('2026-06-05T11:57:01.000Z'),
+        })
+        .markFailed({
+          completedAt: new Date('2026-06-05T11:58:00.000Z'),
+          failureReason: 'Provider rate limit 429',
+        }),
+    );
     const queue = new FakeScanQueue();
     const useCase = new ScheduleDueScansUseCase(
       bindings,
@@ -772,6 +899,7 @@ describe('ScheduleDueScansUseCase', () => {
       workspaceId: workspaceId('workspace-1'),
       limit: 10,
       correlationId: 'scheduler-tick-rate-limit-backoff',
+      includeDecisions: true,
     });
 
     expect(result).toEqual({
@@ -782,14 +910,34 @@ describe('ScheduleDueScansUseCase', () => {
         enqueued: 0,
         skipped: 1,
         skippedByReason: skippedByReason('rate_limit_backoff'),
+        decisions: [
+          {
+            scanPolicyId: 'policy-1',
+            sourceBindingId: 'binding-1',
+            providerKey: 'fake-source',
+            decision: 'skipped',
+            reason: 'rate_limit_backoff',
+            policyDueAt: new Date('2026-06-05T11:55:00.000Z'),
+            nextRunAt: new Date('2026-06-05T12:03:00.000Z'),
+            configuredIntervalSeconds: 300,
+            effectiveIntervalSeconds: 300,
+            freshnessSeconds: 900,
+            providerMinimumIntervalEnforced: false,
+            backoffUntil: new Date('2026-06-05T12:03:00.000Z'),
+          },
+        ],
       },
     });
     expect(queue.commands).toHaveLength(0);
-    expect((await policies.findBySourceBinding({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-    }))?.toSnapshot()).toMatchObject({
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:03:00.000Z'),
     });
   });
@@ -798,36 +946,50 @@ describe('ScheduleDueScansUseCase', () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding('reddit'));
     const policies = new FakeScanPolicies();
-    policies.add(ScanPolicy.create({
-      id: 'policy-1',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      intervalSeconds: 300,
-      freshnessSeconds: 900,
-      retryBudget: 3,
-      nextRunAt: new Date('2026-06-05T11:55:00.000Z'),
-      createdAt: new Date('2026-06-05T00:00:00.000Z'),
-    }));
-    const scanJobs = new FakeScanJobs();
-    for (const [id, requestedAt, completedAt] of [
-      ['auth-failed-scan-job-2', '2026-06-05T11:57:00.000Z', '2026-06-05T11:58:00.000Z'],
-      ['auth-failed-scan-job-1', '2026-06-05T11:56:00.000Z', '2026-06-05T11:57:00.000Z'],
-    ] as const) {
-      await scanJobs.save(ScanJob.request({
-        id,
+    policies.add(
+      ScanPolicy.create({
+        id: 'policy-1',
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
         sourceBindingId: 'binding-1',
-        scanPolicyId: 'policy-1',
-        idempotencyKey: `manual-${id}`,
-        requestedAt: new Date(requestedAt),
-      }).markEnqueued({
-        enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000),
-      }).markFailed({
-        completedAt: new Date(completedAt),
-        failureReason: 'kind=auth_failed provider credential rejected',
-      }));
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+        nextRunAt: new Date('2026-06-05T11:55:00.000Z'),
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
+    const scanJobs = new FakeScanJobs();
+    for (const [id, requestedAt, completedAt] of [
+      [
+        'auth-failed-scan-job-2',
+        '2026-06-05T11:57:00.000Z',
+        '2026-06-05T11:58:00.000Z',
+      ],
+      [
+        'auth-failed-scan-job-1',
+        '2026-06-05T11:56:00.000Z',
+        '2026-06-05T11:57:00.000Z',
+      ],
+    ] as const) {
+      await scanJobs.save(
+        ScanJob.request({
+          id,
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+          scanPolicyId: 'policy-1',
+          idempotencyKey: `manual-${id}`,
+          requestedAt: new Date(requestedAt),
+        })
+          .markEnqueued({
+            enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000),
+          })
+          .markFailed({
+            completedAt: new Date(completedAt),
+            failureReason: 'kind=auth_failed provider credential rejected',
+          }),
+      );
     }
     const queue = new FakeScanQueue();
     const useCase = new ScheduleDueScansUseCase(
@@ -857,11 +1019,15 @@ describe('ScheduleDueScansUseCase', () => {
       },
     });
     expect(queue.commands).toHaveLength(0);
-    expect((await policies.findBySourceBinding({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-    }))?.toSnapshot()).toMatchObject({
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:28:00.000Z'),
     });
   });
@@ -899,17 +1065,23 @@ describe('ScheduleDueScansUseCase', () => {
         skippedByReason: skippedByReason('source_unavailable'),
       },
     });
-    await expect(scanJobs.findByIdempotencyKey({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      idempotencyKey: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
-    })).resolves.toBeNull();
+    await expect(
+      scanJobs.findByIdempotencyKey({
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        idempotencyKey: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
+      }),
+    ).resolves.toBeNull();
     expect(queue.commands).toHaveLength(0);
-    expect((await policies.findBySourceBinding({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-    }))?.toSnapshot()).toMatchObject({
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
     });
   });
@@ -947,17 +1119,23 @@ describe('ScheduleDueScansUseCase', () => {
         skippedByReason: skippedByReason('queue_backpressure'),
       },
     });
-    await expect(scanJobs.findByIdempotencyKey({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      idempotencyKey: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
-    })).resolves.toBeNull();
+    await expect(
+      scanJobs.findByIdempotencyKey({
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        idempotencyKey: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
+      }),
+    ).resolves.toBeNull();
     expect(queue.commands).toHaveLength(0);
-    expect((await policies.findBySourceBinding({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-    }))?.toSnapshot()).toMatchObject({
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
     });
   });
