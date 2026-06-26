@@ -15,7 +15,7 @@
     "check:backend-mvp-completion-audit": "node scripts/check-backend-mvp-completion-audit.mjs",
     "check:backend-mvp-status": "node scripts/check-backend-mvp-status.mjs",
     "check:backend-safe-verify": "node scripts/check-backend-safe-verify.mjs",
-    "check:user-auth-boundary": "node scripts/run-with-timeout.mjs --timeout-ms 180000 --clean-env --node-options --max-old-space-size=512 -- jest --config test/jest-e2e.config.ts --runInBand --runTestsByPath test/e2e/user-jwt-auth-boundary.e2e-spec.ts test/e2e/api-keys.user-jwt-management.e2e-spec.ts test/e2e/scan-dead-letters.authorization.e2e-spec.ts test/e2e/usage-audit-events.list.e2e-spec.ts test/e2e/production-auth-boundary-matrix.e2e-spec.ts",
+    "check:user-auth-boundary": "node scripts/check-user-auth-boundary.mjs",
     "check:backup-restore": "node scripts/check-backup-restore.mjs",
     "check:beta-launch-support": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-beta-launch-support-rest-smoke.ts",
     "check:beta-feedback-report": "node scripts/check-beta-feedback-report.mjs",
