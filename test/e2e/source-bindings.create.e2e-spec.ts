@@ -145,6 +145,127 @@ describe('Bind source flow (e2e)', () => {
     expect(JSON.stringify(auditRecords.records)).not.toContain('config');
   });
 
+  it('filters source binding list and overview by provider and status', async () => {
+    const tenant = tenantId('tenant-source-filter-e2e');
+    const workspace = workspaceId('workspace-source-filter-e2e');
+    const topic = await request(app.getHttpServer())
+      .post('/topics')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-source-filter-topic')
+      .set('idempotency-key', 'create-source-filter-topic')
+      .send({
+        name: 'Source Filter Monitoring',
+        query: 'source filter monitoring',
+      })
+      .expect(201);
+
+    const fake = await request(app.getHttpServer())
+      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-source-filter-fake')
+      .set('idempotency-key', 'bind-source-filter-fake')
+      .send({
+        providerKey: 'fake-source',
+        config: { query: 'source filter monitoring' },
+      })
+      .expect(201);
+
+    const rss = await request(app.getHttpServer())
+      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-source-filter-rss')
+      .set('idempotency-key', 'bind-source-filter-rss')
+      .send({
+        providerKey: 'rss',
+        config: { feedUrl: 'https://example.test/filter-feed.xml' },
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/topics/${topic.body.topicId}/source-bindings/${rss.body.sourceBindingId}/status`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-source-filter-pause-rss')
+      .set('idempotency-key', 'pause-source-filter-rss')
+      .send({ status: 'paused' })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(`/topics/${topic.body.topicId}/source-bindings`)
+      .query({ providerKey: 'rss', status: 'paused' })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toEqual({
+          sourceBindings: [
+            expect.objectContaining({
+              id: rss.body.sourceBindingId,
+              providerKey: 'rss',
+              status: 'paused',
+            }),
+          ],
+        });
+      });
+
+    await request(app.getHttpServer())
+      .get(`/topics/${topic.body.topicId}/source-bindings`)
+      .query({ status: 'enabled' })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.sourceBindings).toEqual([
+          expect.objectContaining({
+            id: fake.body.sourceBindingId,
+            status: 'enabled',
+          }),
+        ]);
+      });
+
+    await request(app.getHttpServer())
+      .get(`/topics/${topic.body.topicId}/source-bindings/overview`)
+      .query({ providerKey: 'rss', status: 'paused' })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          summary: {
+            totalBindings: 1,
+            pausedBindings: 1,
+            providerBreakdown: [
+              expect.objectContaining({
+                providerKey: 'rss',
+                totalBindings: 1,
+                pausedBindings: 1,
+              }),
+            ],
+          },
+          items: [
+            expect.objectContaining({
+              sourceBinding: expect.objectContaining({
+                id: rss.body.sourceBindingId,
+                providerKey: 'rss',
+                status: 'paused',
+              }),
+              healthState: 'paused',
+            }),
+          ],
+        });
+      });
+  });
+
   it('rejects deferred providers before creating bindings or audit success records', async () => {
     const tenant = tenantId('tenant-source-deferred-e2e');
     const workspace = workspaceId('workspace-source-deferred-e2e');

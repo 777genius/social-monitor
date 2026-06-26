@@ -1485,6 +1485,8 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'queryParameters': [
       'cursor',
       'limit',
+      'providerKey',
+      'status',
     ],
     'requiredHeaders': [
       'x-tenant-id',
@@ -1645,6 +1647,8 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'queryParameters': [
       'cursor',
       'limit',
+      'providerKey',
+      'status',
     ],
     'requiredHeaders': [
       'x-tenant-id',

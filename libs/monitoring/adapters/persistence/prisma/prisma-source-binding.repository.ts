@@ -108,11 +108,23 @@ export class PrismaSourceBindingRepository implements SourceBindingRepositoryPor
   async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
     const offset = parseOffsetCursor(query.cursor);
     const limit = Math.max(1, Math.min(query.limit, 100));
+    const sourceCatalogEntryIds = query.providerKeys === undefined
+      ? undefined
+      : (await Promise.all(query.providerKeys.map((providerKey) =>
+          this.prisma.sourceCatalogEntry.findUnique({ where: { providerKey } }),
+        )))
+          .flatMap((entry) => entry === null ? [] : [entry.id]);
     const records = await this.prisma.sourceBinding.findMany({
       where: {
         tenantId: query.tenantId,
         workspaceId: query.workspaceId,
         topicId: query.topicId,
+        ...(sourceCatalogEntryIds === undefined
+          ? {}
+          : { sourceCatalogEntryId: { in: sourceCatalogEntryIds } }),
+        ...(query.statuses === undefined
+          ? {}
+          : { status: { in: query.statuses.map(sourceBindingStatusToPrisma) } }),
         deletedAt: null,
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

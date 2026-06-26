@@ -78,6 +78,75 @@ describe('ListSourceBindingsUseCase', () => {
     });
   });
 
+  it('filters source bindings by provider and status before pagination', async () => {
+    const topics = new FakeTopicRepository();
+    const bindings = new FakeSourceBindingRepository();
+    const tenant = tenantId('tenant-1');
+    const workspace = workspaceId('workspace-1');
+    await topics.save(Topic.create({
+      id: 'topic-1',
+      tenantId: tenant,
+      workspaceId: workspace,
+      name: 'AI Infrastructure',
+      query: 'AI infrastructure',
+      createdAt: new Date('2026-06-06T00:00:00.000Z'),
+    }));
+    await bindings.save(makeBinding({
+      id: 'binding-reddit',
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: 'topic-1',
+      providerKey: 'reddit',
+      createdAt: new Date('2026-06-06T02:00:00.000Z'),
+    }));
+    await bindings.save(makeBinding({
+      id: 'binding-rss-paused',
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: 'topic-1',
+      providerKey: 'rss',
+      status: 'paused',
+      createdAt: new Date('2026-06-06T01:00:00.000Z'),
+    }));
+    await bindings.save(makeBinding({
+      id: 'binding-rss-enabled',
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: 'topic-1',
+      providerKey: 'rss',
+      createdAt: new Date('2026-06-06T00:30:00.000Z'),
+    }));
+
+    const result = await new ListSourceBindingsUseCase(topics, bindings).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: 'topic-1',
+      limit: 10,
+      providerKeys: [' rss ', 'rss'],
+      statuses: ['paused'],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        sourceBindings: [
+          expect.objectContaining({
+            id: 'binding-rss-paused',
+            providerKey: 'rss',
+            status: 'paused',
+          }),
+        ],
+        nextCursor: undefined,
+      },
+    });
+    expect(bindings.queries).toEqual([
+      expect.objectContaining({
+        providerKeys: ['rss'],
+        statuses: ['paused'],
+      }),
+    ]);
+  });
+
   it('returns not found when topic is outside the tenant workspace', async () => {
     const topics = new FakeTopicRepository();
     const bindings = new FakeSourceBindingRepository();
@@ -93,6 +162,37 @@ describe('ListSourceBindingsUseCase', () => {
         code: 'resource.not_found',
       }),
     });
+  });
+
+  it('rejects unsupported status filters before listing bindings', async () => {
+    const topics = new FakeTopicRepository();
+    const bindings = new FakeSourceBindingRepository();
+    const tenant = tenantId('tenant-1');
+    const workspace = workspaceId('workspace-1');
+    await topics.save(Topic.create({
+      id: 'topic-1',
+      tenantId: tenant,
+      workspaceId: workspace,
+      name: 'AI Infrastructure',
+      query: 'AI infrastructure',
+      createdAt: new Date('2026-06-06T00:00:00.000Z'),
+    }));
+
+    const result = await new ListSourceBindingsUseCase(topics, bindings).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId: 'topic-1',
+      limit: 10,
+      statuses: ['failed'],
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'validation.failed',
+      }),
+    });
+    expect(bindings.queries).toEqual([]);
   });
 });
 
@@ -143,6 +243,7 @@ class FakeTopicRepository implements TopicRepositoryPort {
 
 class FakeSourceBindingRepository implements SourceBindingRepositoryPort {
   private readonly bindings = new Map<string, SourceBinding>();
+  readonly queries: ListSourceBindingsQuery[] = [];
 
   async save(binding: SourceBinding): Promise<void> {
     const snapshot = binding.toSnapshot();
@@ -170,6 +271,7 @@ class FakeSourceBindingRepository implements SourceBindingRepositoryPort {
   }
 
   async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
+    this.queries.push(query);
     const offset = parseCursor(query.cursor);
     const allBindings = [...this.bindings.values()]
       .filter((binding) => {
@@ -178,7 +280,11 @@ class FakeSourceBindingRepository implements SourceBindingRepositoryPort {
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          snapshot.topicId === query.topicId
+          snapshot.topicId === query.topicId &&
+          (query.providerKeys === undefined ||
+            query.providerKeys.includes(snapshot.providerKey)) &&
+          (query.statuses === undefined ||
+            query.statuses.includes(snapshot.status))
         );
       })
       .sort(compareBindingsByCreation);

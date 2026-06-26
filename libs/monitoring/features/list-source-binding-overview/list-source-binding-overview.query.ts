@@ -6,4 +6,6 @@ export type ListSourceBindingOverviewQuery = {
   readonly topicId: string;
   readonly limit: number;
   readonly cursor?: string;
+  readonly providerKeys?: readonly string[];
+  readonly statuses?: readonly string[];
 };

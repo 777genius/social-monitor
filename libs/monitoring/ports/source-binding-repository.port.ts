@@ -1,6 +1,6 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
-import type { SourceBinding } from '../domain';
+import type { SourceBinding, SourceBindingStatus } from '../domain';
 
 export type ListSourceBindingsQuery = {
   readonly tenantId: TenantId;
@@ -8,6 +8,8 @@ export type ListSourceBindingsQuery = {
   readonly topicId: string;
   readonly limit: number;
   readonly cursor?: string;
+  readonly providerKeys?: readonly string[];
+  readonly statuses?: readonly SourceBindingStatus[];
 };
 
 export type ListSourceBindingsResult = {

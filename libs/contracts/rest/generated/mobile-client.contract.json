@@ -1559,7 +1559,9 @@
       ],
       "queryParameters": [
         "cursor",
-        "limit"
+        "limit",
+        "providerKey",
+        "status"
       ],
       "requiredHeaders": [
         "x-tenant-id",
@@ -1719,7 +1721,9 @@
       ],
       "queryParameters": [
         "cursor",
-        "limit"
+        "limit",
+        "providerKey",
+        "status"
       ],
       "requiredHeaders": [
         "x-tenant-id",

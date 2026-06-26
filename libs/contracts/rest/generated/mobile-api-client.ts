@@ -1483,7 +1483,9 @@ export const mobileApiOperations = [
     ],
     "queryParameters": [
       "cursor",
-      "limit"
+      "limit",
+      "providerKey",
+      "status"
     ],
     "requiredHeaders": [
       "x-tenant-id",
@@ -1643,7 +1645,9 @@ export const mobileApiOperations = [
     ],
     "queryParameters": [
       "cursor",
-      "limit"
+      "limit",
+      "providerKey",
+      "status"
     ],
     "requiredHeaders": [
       "x-tenant-id",

@@ -22,7 +22,7 @@ import { ListSourceBindingOverviewUseCase } from '../../features/list-source-bin
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
 import { ListTopicSourceDailyHistoryUseCase } from '../../features/list-topic-source-daily-history/list-topic-source-daily-history.use-case';
 import { BindSourceRequestDto, BindSourceResponseDto, normalizeSourceBindingConfig } from './bind-source.dto';
-import { ListSourceBindingsResponseDto } from './list-source-bindings.dto';
+import { ListSourceBindingsResponseDto, sourceBindingStatusValues } from './list-source-bindings.dto';
 import { ListSourceBindingOverviewResponseDto } from './source-binding-overview.dto';
 import {
   ChangeSourceBindingStatusRequestDto,
@@ -122,6 +122,8 @@ export class SourceBindingController {
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
+  @ApiQuery({ name: 'providerKey', required: false, type: String, isArray: true })
+  @ApiQuery({ name: 'status', required: false, enum: sourceBindingStatusValues, isArray: true })
   @ApiOkResponse({ type: ListSourceBindingsResponseDto })
   async list(
     @Param('topicId') topicId: string,
@@ -131,6 +133,8 @@ export class SourceBindingController {
     @Headers('authorization') authorizationHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
+    @Query('providerKey') providerKeyQuery: string | readonly string[] | undefined,
+    @Query('status') statusQuery: string | readonly string[] | undefined,
   ): Promise<ListSourceBindingsResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
@@ -152,6 +156,8 @@ export class SourceBindingController {
         invalidMessage: 'Source binding list limit must be between 1 and 100',
       }),
       cursor,
+      providerKeys: parseQueryListFilter(providerKeyQuery),
+      statuses: parseQueryListFilter(statusQuery),
     });
 
     if (!result.ok) {
@@ -171,6 +177,8 @@ export class SourceBindingController {
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
+  @ApiQuery({ name: 'providerKey', required: false, type: String, isArray: true })
+  @ApiQuery({ name: 'status', required: false, enum: sourceBindingStatusValues, isArray: true })
   @ApiOkResponse({ type: ListSourceBindingOverviewResponseDto })
   async overview(
     @Param('topicId') topicId: string,
@@ -180,6 +188,8 @@ export class SourceBindingController {
     @Headers('authorization') authorizationHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
+    @Query('providerKey') providerKeyQuery: string | readonly string[] | undefined,
+    @Query('status') statusQuery: string | readonly string[] | undefined,
   ): Promise<ListSourceBindingOverviewResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
@@ -201,6 +211,8 @@ export class SourceBindingController {
         invalidMessage: 'Source binding overview limit must be between 1 and 100',
       }),
       cursor,
+      providerKeys: parseQueryListFilter(providerKeyQuery),
+      statuses: parseQueryListFilter(statusQuery),
     });
 
     if (!result.ok) {
@@ -251,7 +263,7 @@ export class SourceBindingController {
         fieldName: 'days',
         invalidMessage: 'Topic source history days must be between 1 and 90',
       }),
-      providerKeys: parseProviderKeyFilter(providerKeyQuery),
+      providerKeys: parseQueryListFilter(providerKeyQuery),
     });
 
     if (!result.ok) {
@@ -450,17 +462,17 @@ export class SourceBindingController {
   }
 }
 
-const parseProviderKeyFilter = (
-  providerKeyQuery: string | readonly string[] | undefined,
+const parseQueryListFilter = (
+  query: string | readonly string[] | undefined,
 ): readonly string[] | undefined => {
-  if (providerKeyQuery === undefined) {
+  if (query === undefined) {
     return undefined;
   }
 
   const values: readonly string[] =
-    typeof providerKeyQuery === 'string'
-      ? providerKeyQuery.split(',')
-      : providerKeyQuery;
+    typeof query === 'string'
+      ? query.split(',')
+      : query;
 
   return values.map((value) => value.trim());
 };

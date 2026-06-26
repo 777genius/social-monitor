@@ -50,7 +50,11 @@ export class InMemorySourceBindingRepository implements SourceBindingRepositoryP
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          snapshot.topicId === query.topicId
+          snapshot.topicId === query.topicId &&
+          (query.providerKeys === undefined ||
+            query.providerKeys.includes(snapshot.providerKey)) &&
+          (query.statuses === undefined ||
+            query.statuses.includes(snapshot.status))
         );
       })
       .sort(compareSourceBindingsByCreation);
