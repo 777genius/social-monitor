@@ -29,6 +29,13 @@ export const redactSensitiveText = (value: string): string =>
     .replace(inlineGeneratedSecretPattern, REDACTED_VALUE)
     .replace(inlineUrlWithPasswordPattern, (_match, protocol: string) => `${protocol}${REDACTED_VALUE}@`);
 
+export const redactSensitiveResponseText = (value: string, maxLength = 500): string =>
+  redactSensitiveText(value
+    .replace(/"access_token"\s*:\s*"[^"]+"/gi, `"access_token":"${REDACTED_VALUE}"`)
+    .replace(/"refresh_token"\s*:\s*"[^"]+"/gi, `"refresh_token":"${REDACTED_VALUE}"`)
+    .replace(/"client_secret"\s*:\s*"[^"]+"/gi, `"client_secret":"${REDACTED_VALUE}"`))
+    .slice(0, maxLength);
+
 export const redactSensitiveRecord = (
   record: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> =>

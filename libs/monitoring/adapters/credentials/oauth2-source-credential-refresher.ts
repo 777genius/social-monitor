@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 
-import { REDACTED_VALUE, redactSensitiveText, validateOutboundUrl } from '@social-monitor/shared-kernel';
+import { redactSensitiveResponseText, validateOutboundUrl } from '@social-monitor/shared-kernel';
 
 import type {
   SourceCredentialRefreshPort,
@@ -180,8 +180,4 @@ const parseTokenResponse = (body: string): OAuth2TokenResponse => {
 };
 
 const redactedBodyPreview = (body: string): string =>
-  redactSensitiveText(body
-    .replace(/"access_token"\s*:\s*"[^"]+"/gi, `"access_token":"${REDACTED_VALUE}"`)
-    .replace(/"refresh_token"\s*:\s*"[^"]+"/gi, `"refresh_token":"${REDACTED_VALUE}"`)
-    .replace(/"client_secret"\s*:\s*"[^"]+"/gi, `"client_secret":"${REDACTED_VALUE}"`))
-    .slice(0, 500);
+  redactSensitiveResponseText(body);

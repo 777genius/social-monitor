@@ -4,6 +4,7 @@ import {
   isSensitiveString,
   redactSensitiveMetadataRecord,
   redactSensitiveRecord,
+  redactSensitiveResponseText,
   redactSensitiveText,
 } from './redaction';
 
@@ -59,5 +60,18 @@ describe('redaction helpers', () => {
     )).toBe(
       `See token=${REDACTED_VALUE}, secret=${REDACTED_VALUE}, private_key=${REDACTED_VALUE} and https://${REDACTED_VALUE}@example.test/feed.`,
     );
+  });
+
+  it('redacts JSON and plain response credentials before error text leaves the trust boundary', () => {
+    const redacted = redactSensitiveResponseText(
+      '{"access_token":"json-access","refresh_token":"json-refresh","client_secret":"json-secret"} refresh_token=plain-refresh Bearer token-value',
+    );
+
+    expect(redacted).toContain(`"access_token":"${REDACTED_VALUE}"`);
+    expect(redacted).not.toContain('json-access');
+    expect(redacted).not.toContain('json-refresh');
+    expect(redacted).not.toContain('json-secret');
+    expect(redacted).not.toContain('plain-refresh');
+    expect(redacted).not.toContain('token-value');
   });
 });
