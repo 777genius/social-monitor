@@ -294,12 +294,68 @@ export class FeedItemDto {
   declare readonly normalizedSignal?: FeedNormalizedSignalDto;
 }
 
+export class FeedSourceBreakdownEntryDto {
+  @ApiProperty()
+  declare readonly providerKey: string;
+
+  @ApiProperty()
+  declare readonly sourceKey: string;
+
+  @ApiProperty()
+  declare readonly contentType: string;
+
+  @ApiProperty({ type: () => [String] })
+  declare readonly sourceBindingIds: readonly string[];
+
+  @ApiProperty()
+  declare readonly itemCount: number;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly latestObservedAt?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly latestPublishedAt?: string;
+
+  @ApiPropertyOptional()
+  declare readonly maxSignalScore?: number;
+
+  @ApiPropertyOptional({
+    enum: ['no_signal', 'low', 'normal', 'high', 'breakout'],
+  })
+  declare readonly maxSignalBand?:
+    | 'no_signal'
+    | 'low'
+    | 'normal'
+    | 'high'
+    | 'breakout';
+
+  @ApiProperty({ type: () => [String] })
+  declare readonly sampleItemIds: readonly string[];
+}
+
+export class FeedSourceBreakdownDto {
+  @ApiProperty()
+  declare readonly totalItems: number;
+
+  @ApiProperty()
+  declare readonly providerCount: number;
+
+  @ApiProperty()
+  declare readonly sourceCount: number;
+
+  @ApiProperty({ type: () => [FeedSourceBreakdownEntryDto] })
+  declare readonly sources: readonly FeedSourceBreakdownEntryDto[];
+}
+
 export class ListFeedItemsResponseDto {
   @ApiProperty({ type: () => [FeedItemDto] })
   declare readonly items: readonly FeedItemDto[];
 
   @ApiPropertyOptional()
   declare readonly nextCursor?: string;
+
+  @ApiPropertyOptional({ type: () => FeedSourceBreakdownDto })
+  declare readonly sourceBreakdown?: FeedSourceBreakdownDto;
 }
 
 export class GetFeedItemResponseDto extends FeedItemDto {}

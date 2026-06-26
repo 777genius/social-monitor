@@ -119,6 +119,23 @@ describe('ListFeedItemsUseCase', () => {
           },
         ],
         nextCursor: 'next',
+        sourceBreakdown: {
+          totalItems: 1,
+          providerCount: 1,
+          sourceCount: 1,
+          sources: [
+            {
+              providerKey: 'reddit',
+              sourceKey: 'binding:binding-1',
+              contentType: 'item',
+              sourceBindingIds: ['binding-1'],
+              itemCount: 1,
+              latestObservedAt: '2026-06-05T00:01:00.000Z',
+              latestPublishedAt: '2026-06-05T00:00:00.000Z',
+              sampleItemIds: ['1'],
+            },
+          ],
+        },
       },
     });
     expect(repository.queries).toEqual([
@@ -313,6 +330,61 @@ describe('ListFeedItemsUseCase', () => {
         ],
       },
     ]);
+  });
+
+  it('returns a stable source breakdown for visible provider sources', async () => {
+    const repository = new FakeFeedItemReadRepository({
+      items: [
+        makeRedditItem('reddit-1', 'TinySaaS'),
+        makeRedditItem('reddit-2', 'TinySaaS'),
+        makeRedditItem('reddit-3', 'ClaudeAI'),
+      ],
+    });
+    const baseline = new FakeFeedSignalBaselineRepository();
+    const useCase = new ListFeedItemsUseCase(repository, baseline, fixedClock);
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 20,
+      topicId: 'topic-1',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.value.sourceBreakdown).toEqual({
+      totalItems: 3,
+      providerCount: 1,
+      sourceCount: 2,
+      sources: [
+        {
+          providerKey: 'reddit',
+          sourceKey: 'r/tinysaas',
+          contentType: 'post',
+          sourceBindingIds: ['binding-TinySaaS'],
+          itemCount: 2,
+          latestObservedAt: '2026-06-05T00:01:00.000Z',
+          latestPublishedAt: '2026-06-05T00:00:00.000Z',
+          maxSignalScore: 50,
+          maxSignalBand: 'normal',
+          sampleItemIds: ['reddit-1', 'reddit-2'],
+        },
+        {
+          providerKey: 'reddit',
+          sourceKey: 'r/claudeai',
+          contentType: 'post',
+          sourceBindingIds: ['binding-ClaudeAI'],
+          itemCount: 1,
+          latestObservedAt: '2026-06-05T00:01:00.000Z',
+          latestPublishedAt: '2026-06-05T00:00:00.000Z',
+          maxSignalScore: 50,
+          maxSignalBand: 'normal',
+          sampleItemIds: ['reddit-3'],
+        },
+      ],
+    });
   });
 
   it('rejects invalid repository trend windows', async () => {

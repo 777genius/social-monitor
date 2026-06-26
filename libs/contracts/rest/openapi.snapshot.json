@@ -1649,6 +1649,90 @@
         ],
         "type": "object"
       },
+      "FeedSourceBreakdownDto": {
+        "properties": {
+          "providerCount": {
+            "type": "number"
+          },
+          "sourceCount": {
+            "type": "number"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/FeedSourceBreakdownEntryDto"
+            },
+            "type": "array"
+          },
+          "totalItems": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "totalItems",
+          "providerCount",
+          "sourceCount",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "FeedSourceBreakdownEntryDto": {
+        "properties": {
+          "contentType": {
+            "type": "string"
+          },
+          "itemCount": {
+            "type": "number"
+          },
+          "latestObservedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "latestPublishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "maxSignalBand": {
+            "enum": [
+              "no_signal",
+              "low",
+              "normal",
+              "high",
+              "breakout"
+            ],
+            "type": "string"
+          },
+          "maxSignalScore": {
+            "type": "number"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "sampleItemIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sourceBindingIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sourceKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "providerKey",
+          "sourceKey",
+          "contentType",
+          "sourceBindingIds",
+          "itemCount",
+          "sampleItemIds"
+        ],
+        "type": "object"
+      },
       "GetFeedItemResponseDto": {
         "properties": {
           "authorHandle": {
@@ -1978,6 +2062,9 @@
           },
           "nextCursor": {
             "type": "string"
+          },
+          "sourceBreakdown": {
+            "$ref": "#/components/schemas/FeedSourceBreakdownDto"
           }
         },
         "required": [

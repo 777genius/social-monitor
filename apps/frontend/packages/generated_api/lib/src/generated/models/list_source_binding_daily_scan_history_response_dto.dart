@@ -5,6 +5,7 @@
 import 'package:json_annotation/json_annotation.dart';
 
 import 'source_binding_daily_scan_history_day_response_dto.dart';
+import 'source_binding_daily_scan_history_summary_response_dto.dart';
 
 part 'list_source_binding_daily_scan_history_response_dto.g.dart';
 
@@ -17,6 +18,7 @@ class ListSourceBindingDailyScanHistoryResponseDto {
     required this.truncated,
     required this.windowEndedAt,
     required this.windowStartedAt,
+    this.summary,
   });
 
   factory ListSourceBindingDailyScanHistoryResponseDto.fromJson(
@@ -26,6 +28,7 @@ class ListSourceBindingDailyScanHistoryResponseDto {
   final List<SourceBindingDailyScanHistoryDayResponseDto> days;
   final num maxScanJobs;
   final String sourceBindingId;
+  final SourceBindingDailyScanHistorySummaryResponseDto? summary;
   final bool truncated;
   final DateTime windowEndedAt;
   final DateTime windowStartedAt;

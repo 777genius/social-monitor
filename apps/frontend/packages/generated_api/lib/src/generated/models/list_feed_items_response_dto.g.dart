@@ -13,6 +13,11 @@ ListFeedItemsResponseDto _$ListFeedItemsResponseDtoFromJson(
       .map((e) => FeedItemDto.fromJson(e as Map<String, dynamic>))
       .toList(),
   nextCursor: json['nextCursor'] as String?,
+  sourceBreakdown: json['sourceBreakdown'] == null
+      ? null
+      : FeedSourceBreakdownDto.fromJson(
+          json['sourceBreakdown'] as Map<String, dynamic>,
+        ),
 );
 
 Map<String, dynamic> _$ListFeedItemsResponseDtoToJson(
@@ -20,4 +25,5 @@ Map<String, dynamic> _$ListFeedItemsResponseDtoToJson(
 ) => <String, dynamic>{
   'items': instance.items,
   'nextCursor': instance.nextCursor,
+  'sourceBreakdown': instance.sourceBreakdown,
 };

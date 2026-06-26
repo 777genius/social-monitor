@@ -4,6 +4,7 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'request_scan_decision_response_dto.dart';
 import 'request_scan_response_dto_status_status.dart';
 
 part 'request_scan_response_dto.g.dart';
@@ -12,6 +13,7 @@ part 'request_scan_response_dto.g.dart';
 class RequestScanResponseDto {
   const RequestScanResponseDto({
     required this.created,
+    required this.requestDecision,
     required this.scanJobId,
     required this.status,
   });
@@ -20,6 +22,7 @@ class RequestScanResponseDto {
       _$RequestScanResponseDtoFromJson(json);
 
   final bool created;
+  final RequestScanDecisionResponseDto requestDecision;
   final String scanJobId;
   final RequestScanResponseDtoStatusStatus status;
 

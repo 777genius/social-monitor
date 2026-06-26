@@ -5,18 +5,24 @@
 import 'package:json_annotation/json_annotation.dart';
 
 import 'feed_item_dto.dart';
+import 'feed_source_breakdown_dto.dart';
 
 part 'list_feed_items_response_dto.g.dart';
 
 @JsonSerializable()
 class ListFeedItemsResponseDto {
-  const ListFeedItemsResponseDto({required this.items, this.nextCursor});
+  const ListFeedItemsResponseDto({
+    required this.items,
+    this.nextCursor,
+    this.sourceBreakdown,
+  });
 
   factory ListFeedItemsResponseDto.fromJson(Map<String, Object?> json) =>
       _$ListFeedItemsResponseDtoFromJson(json);
 
   final List<FeedItemDto> items;
   final String? nextCursor;
+  final FeedSourceBreakdownDto? sourceBreakdown;
 
   Map<String, Object?> toJson() => _$ListFeedItemsResponseDtoToJson(this);
 }

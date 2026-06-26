@@ -59,6 +59,11 @@ BriefingResponseDto _$BriefingResponseDtoFromJson(
       .toList(),
   usage: BriefingUsageDto.fromJson(json['usage'] as Map<String, dynamic>),
   workspaceId: json['workspaceId'] as String,
+  coverage: json['coverage'] == null
+      ? null
+      : BriefingCoverageSummaryDto.fromJson(
+          json['coverage'] as Map<String, dynamic>,
+        ),
   noSignalReason: json['noSignalReason'] as String?,
   subscriptionId: json['subscriptionId'] as String?,
   userId: json['userId'] as String?,
@@ -71,6 +76,7 @@ Map<String, dynamic> _$BriefingResponseDtoToJson(
   'citations': instance.citations,
   'confidence': instance.confidence,
   'contextArtifacts': instance.contextArtifacts,
+  'coverage': instance.coverage,
   'executiveSummary': instance.executiveSummary,
   'freshness': instance.freshness,
   'headline': instance.headline,

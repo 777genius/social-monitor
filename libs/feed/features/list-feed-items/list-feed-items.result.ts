@@ -24,4 +24,25 @@ export type FeedItemListEntry = {
 export type ListFeedItemsUseCaseResult = {
   readonly items: readonly FeedItemListEntry[];
   readonly nextCursor?: string;
+  readonly sourceBreakdown: FeedSourceBreakdown;
+};
+
+export type FeedSourceBreakdown = {
+  readonly totalItems: number;
+  readonly providerCount: number;
+  readonly sourceCount: number;
+  readonly sources: readonly FeedSourceBreakdownEntry[];
+};
+
+export type FeedSourceBreakdownEntry = {
+  readonly providerKey: string;
+  readonly sourceKey: string;
+  readonly contentType: string;
+  readonly sourceBindingIds: readonly string[];
+  readonly itemCount: number;
+  readonly latestObservedAt?: string;
+  readonly latestPublishedAt?: string;
+  readonly maxSignalScore?: number;
+  readonly maxSignalBand?: FeedNormalizedSignal['band'];
+  readonly sampleItemIds: readonly string[];
 };

@@ -11,6 +11,7 @@ SourceProfileFreshnessGuardDto _$SourceProfileFreshnessGuardDtoFromJson(
 ) => SourceProfileFreshnessGuardDto(
   cursorResumeRequired: json['cursorResumeRequired'] as bool,
   maxStalenessSeconds: json['maxStalenessSeconds'] as num,
+  minimumScanIntervalSeconds: json['minimumScanIntervalSeconds'] as num,
   providerFailureHealthState:
       SourceProfileFreshnessGuardDtoProviderFailureHealthStateProviderFailureHealthState.fromJson(
         json['providerFailureHealthState'] as String,
@@ -30,6 +31,7 @@ Map<String, dynamic> _$SourceProfileFreshnessGuardDtoToJson(
 ) => <String, dynamic>{
   'cursorResumeRequired': instance.cursorResumeRequired,
   'maxStalenessSeconds': instance.maxStalenessSeconds,
+  'minimumScanIntervalSeconds': instance.minimumScanIntervalSeconds,
   'providerFailureHealthState': instance.providerFailureHealthState,
   'rateLimitBackoffRequired': instance.rateLimitBackoffRequired,
   'scanHistoryRequired': instance.scanHistoryRequired,

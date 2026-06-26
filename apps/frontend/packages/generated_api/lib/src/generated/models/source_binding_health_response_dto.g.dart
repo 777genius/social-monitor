@@ -14,6 +14,9 @@ SourceBindingHealthResponseDto _$SourceBindingHealthResponseDtoFromJson(
     json['healthState'] as String,
   ),
   operatorAction: json['operatorAction'] as String,
+  schedulerDecision: SourceBindingHealthSchedulerDecisionResponseDto.fromJson(
+    json['schedulerDecision'] as Map<String, dynamic>,
+  ),
   sourceBinding: SourceBindingResponseDto.fromJson(
     json['sourceBinding'] as Map<String, dynamic>,
   ),
@@ -49,5 +52,6 @@ Map<String, dynamic> _$SourceBindingHealthResponseDtoToJson(
   'operatorAction': instance.operatorAction,
   'recentWindow': instance.recentWindow,
   'scanPolicy': instance.scanPolicy,
+  'schedulerDecision': instance.schedulerDecision,
   'sourceBinding': instance.sourceBinding,
 };

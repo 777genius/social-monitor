@@ -7,6 +7,7 @@ import 'package:json_annotation/json_annotation.dart';
 import 'briefing_citation_view_dto.dart';
 import 'briefing_confidence_dto.dart';
 import 'briefing_context_artifact_dto.dart';
+import 'briefing_coverage_summary_dto.dart';
 import 'briefing_freshness_dto.dart';
 import 'briefing_lineage_dto.dart';
 import 'briefing_reader_brief_dto.dart';
@@ -46,6 +47,7 @@ class BriefingResponseDto {
     required this.topStories,
     required this.usage,
     required this.workspaceId,
+    this.coverage,
     this.noSignalReason,
     this.subscriptionId,
     this.userId,
@@ -58,6 +60,7 @@ class BriefingResponseDto {
   final List<BriefingCitationViewDto> citations;
   final BriefingConfidenceDto confidence;
   final List<BriefingContextArtifactDto> contextArtifacts;
+  final BriefingCoverageSummaryDto? coverage;
   final String executiveSummary;
   final BriefingFreshnessDto freshness;
   final String headline;

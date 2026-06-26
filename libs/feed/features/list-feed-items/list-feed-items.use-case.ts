@@ -10,6 +10,7 @@ import { CohortBaselineFeedSignalNormalizer } from '../../domain';
 import type { FeedItemReadRepositoryPort, FeedSignalBaselineRepositoryPort } from '../../ports';
 import { loadFeedSignalBaselineSamples } from '../shared/feed-signal-baseline-loader';
 import { presentFeedItem } from '../shared/feed-item-presenter';
+import { buildFeedSourceBreakdown } from '../shared/feed-source-breakdown-presenter';
 import type { ListFeedItemsUseCaseQuery } from './list-feed-items.query';
 import type { ListFeedItemsUseCaseResult } from './list-feed-items.result';
 
@@ -65,9 +66,14 @@ export class ListFeedItemsUseCase {
       now,
     });
 
+    const items = result.items.map((item) =>
+      presentFeedItem(item, signalById.get(item.toSnapshot().id)),
+    );
+
     return ok({
-      items: result.items.map((item) => presentFeedItem(item, signalById.get(item.toSnapshot().id))),
+      items,
       nextCursor: result.nextCursor,
+      sourceBreakdown: buildFeedSourceBreakdown(items),
     });
   }
 }

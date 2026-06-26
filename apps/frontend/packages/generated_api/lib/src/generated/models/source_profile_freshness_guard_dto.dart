@@ -14,6 +14,7 @@ class SourceProfileFreshnessGuardDto {
   const SourceProfileFreshnessGuardDto({
     required this.cursorResumeRequired,
     required this.maxStalenessSeconds,
+    required this.minimumScanIntervalSeconds,
     required this.providerFailureHealthState,
     required this.rateLimitBackoffRequired,
     required this.scanHistoryRequired,
@@ -27,6 +28,7 @@ class SourceProfileFreshnessGuardDto {
 
   final bool cursorResumeRequired;
   final num maxStalenessSeconds;
+  final num minimumScanIntervalSeconds;
   final SourceProfileFreshnessGuardDtoProviderFailureHealthStateProviderFailureHealthState
   providerFailureHealthState;
   final bool rateLimitBackoffRequired;
