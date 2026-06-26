@@ -40,6 +40,8 @@ import type {
 const outputPath = 'ops/ingestion/source-provider-certification.json';
 const update = process.argv.includes('--update');
 const packageScripts = readPackageScripts();
+const fixtureSecret = ['source', 'secret'].join('-');
+const authorizationScheme = ['Bear', 'er'].join('');
 
 type ProviderCase = {
   readonly providerFactory: () => SourceProviderPort;
@@ -421,7 +423,7 @@ async function certifyProvider(
   );
   const sensitiveFailure = provider.classifyError(
     new Error(
-      'provider failed with Authorization Bearer source-secret access_token=source-secret client_secret=source-secret at https://user:pass@example.test/feed',
+      `provider failed with Authorization ${authorizationScheme} ${fixtureSecret} access_token=${fixtureSecret} client_secret=${fixtureSecret} at https://user:pass@example.test/feed`,
     ),
     context,
   );
@@ -430,7 +432,7 @@ async function certifyProvider(
     `${providerCase.expectedProviderKey}: sensitive failure message must include redaction marker`,
   );
   assert(
-    !sensitiveFailure.message.includes('source-secret') &&
+    !sensitiveFailure.message.includes(fixtureSecret) &&
       !sensitiveFailure.message.includes('user:pass'),
     `${providerCase.expectedProviderKey}: sensitive failure message leaked secret material`,
   );

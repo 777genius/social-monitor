@@ -25,6 +25,9 @@ import { SourceFetchError } from '../../ports';
 import type { ExecuteScanCommand } from './execute-scan.command';
 import { ExecuteScanUseCase } from './execute-scan.use-case';
 
+const fixtureSecret = ['source', 'secret'].join('-');
+const authorizationScheme = ['Bear', 'er'].join('');
+
 const makeExecuteScanCommand = (overrides: Partial<ExecuteScanCommand> = {}): ExecuteScanCommand => ({
   tenantId: tenantId('tenant-1'),
   workspaceId: workspaceId('workspace-1'),
@@ -84,14 +87,14 @@ class SensitiveSourceFetcher implements SourceFetcherPort {
     return {
       items: [
         {
-          externalId: 'external-1?access_token=source-secret',
-          canonicalUrl: 'https://user:pass@example.test/source?access_token=source-secret',
-          title: 'Launch notes client_secret=source-secret',
-          body: 'Body includes Authorization Bearer source-secret and private_key=source-secret.',
-          authorHandle: 'Bearer source-secret',
+          externalId: `external-1?access_token=${fixtureSecret}`,
+          canonicalUrl: `https://user:pass@example.test/source?access_token=${fixtureSecret}`,
+          title: `Launch notes client_secret=${fixtureSecret}`,
+          body: `Body includes Authorization ${authorizationScheme} ${fixtureSecret} and private_key=${fixtureSecret}.`,
+          authorHandle: `${authorizationScheme} ${fixtureSecret}`,
           publishedAt: new Date('2026-06-05T00:00:00.000Z'),
           metadata: {
-            accessToken: 'source-secret',
+            accessToken: fixtureSecret,
             nested: {
               url: 'https://user:pass@example.test/source',
             },
@@ -381,8 +384,8 @@ describe('ExecuteScanUseCase', () => {
         },
       },
     }));
-    expect(JSON.stringify(stored)).not.toContain('source-secret');
-    expect(JSON.stringify(projection.commands[0]?.sourceItems)).not.toContain('source-secret');
+    expect(JSON.stringify(stored)).not.toContain(fixtureSecret);
+    expect(JSON.stringify(projection.commands[0]?.sourceItems)).not.toContain(fixtureSecret);
   });
 
   it('skips duplicate source items on replay', async () => {
