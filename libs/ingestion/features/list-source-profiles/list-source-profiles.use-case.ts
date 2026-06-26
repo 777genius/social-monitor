@@ -26,6 +26,7 @@ export class ListSourceProfilesUseCase {
             readinessState: profile.state,
             runtimeReadiness: profile.runtimeReadiness,
             liveBetaBlockers: profile.liveBetaBlockers,
+            liveEvidenceRequirements: profile.liveEvidenceRequirements,
             freshnessGuard: profile.freshnessGuard,
             acquisitionMode: profile.acquisitionMode,
             supportedContentUnits: profile.supportedContentUnits,

@@ -4037,6 +4037,12 @@
             },
             "type": "array"
           },
+          "liveEvidenceRequirements": {
+            "items": {
+              "$ref": "#/components/schemas/SourceProfileLiveEvidenceRequirementDto"
+            },
+            "type": "array"
+          },
           "productionSafe": {
             "type": "boolean"
           },
@@ -4085,6 +4091,7 @@
           "readinessState",
           "runtimeReadiness",
           "liveBetaBlockers",
+          "liveEvidenceRequirements",
           "acquisitionMode",
           "supportedContentUnits",
           "supportedQueryModes",
@@ -4145,6 +4152,35 @@
           "staleReadModelState",
           "providerFailureHealthState",
           "signals"
+        ],
+        "type": "object"
+      },
+      "SourceProfileLiveEvidenceRequirementDto": {
+        "properties": {
+          "artifactEnv": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "requiredFor": {
+            "enum": [
+              "external_beta"
+            ],
+            "type": "string"
+          },
+          "signalId": {
+            "type": "string"
+          },
+          "verificationCommand": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "signalId",
+          "description",
+          "verificationCommand",
+          "requiredFor"
         ],
         "type": "object"
       },

@@ -13,6 +13,7 @@
       "liveBetaBlockers": [
         "Synthetic provider is not a real external source."
       ],
+      "liveEvidenceRequirements": [],
       "freshnessGuard": {
         "maxStalenessSeconds": 86400,
         "minimumScanIntervalSeconds": 60,
@@ -46,7 +47,8 @@
         "freshness_guard_declared",
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
-        "rate_limit_backoff_declared_for_quota_models"
+        "rate_limit_backoff_declared_for_quota_models",
+        "live_evidence_requirements_declared_for_external_beta"
       ]
     },
     {
@@ -56,6 +58,29 @@
       "liveBetaReady": false,
       "liveBetaBlockers": [
         "Live GitHub issues API smoke and deployed rate-limit budget evidence required before external beta."
+      ],
+      "liveEvidenceRequirements": [
+        {
+          "signalId": "github-live-api-smoke",
+          "description": "GitHub REST search API returns normalized public issues.",
+          "verificationCommand": "npm run capture:live-open-connectors",
+          "artifactEnv": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "github-rate-limit-budget",
+          "description": "GitHub API rate-limit budget and timeout behavior are recorded.",
+          "verificationCommand": "npm run capture:live-open-connectors",
+          "artifactEnv": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "github-provider-failure-classification",
+          "description": "GitHub API failures are classified without raw payload leakage.",
+          "verificationCommand": "npm run capture:live-open-connectors",
+          "artifactEnv": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        }
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 1800,
@@ -91,7 +116,8 @@
         "freshness_guard_declared",
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
-        "rate_limit_backoff_declared_for_quota_models"
+        "rate_limit_backoff_declared_for_quota_models",
+        "live_evidence_requirements_declared_for_external_beta"
       ]
     },
     {
@@ -101,6 +127,43 @@
       "liveBetaReady": false,
       "liveBetaBlockers": [
         "BigQuery GH Archive credentials/quota evidence, npm run check:github-repo-radar-live-smoke, npm run check:github-repo-radar-prisma-live-e2e and GitHub live verification rate-limit budget required before external beta."
+      ],
+      "liveEvidenceRequirements": [
+        {
+          "signalId": "github-repo-radar-gh-archive-query",
+          "description": "GH Archive BigQuery query uses a bounded billing window and returns candidates.",
+          "verificationCommand": "npm run check:github-repo-radar-prisma-live-e2e",
+          "artifactEnv": "GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "github-repo-radar-live-verification",
+          "description": "GitHub REST repository verifier confirms live repository metadata.",
+          "verificationCommand": "npm run check:github-repo-radar-prisma-live-e2e",
+          "artifactEnv": "GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "github-repo-radar-live-smoke",
+          "description": "Repo Radar live smoke produces ranked trend candidates.",
+          "verificationCommand": "npm run check:github-repo-radar-prisma-live-e2e",
+          "artifactEnv": "GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "github-repo-radar-prisma-live-e2e",
+          "description": "Repo Radar live E2E persists source, feed and trend history in Postgres.",
+          "verificationCommand": "npm run check:github-repo-radar-prisma-live-e2e",
+          "artifactEnv": "GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "github-repo-radar-provider-failure-classification",
+          "description": "Repo Radar failures are classified for BigQuery/GitHub failure modes.",
+          "verificationCommand": "npm run check:github-repo-radar-prisma-live-e2e",
+          "artifactEnv": "GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        }
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 21600,
@@ -136,7 +199,8 @@
         "freshness_guard_declared",
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
-        "rate_limit_backoff_declared_for_quota_models"
+        "rate_limit_backoff_declared_for_quota_models",
+        "live_evidence_requirements_declared_for_external_beta"
       ]
     },
     {
@@ -146,6 +210,36 @@
       "liveBetaReady": false,
       "liveBetaBlockers": [
         "Representative live page smoke, parser drift alert and rate-limit evidence required before external beta."
+      ],
+      "liveEvidenceRequirements": [
+        {
+          "signalId": "github-trending-page-live-smoke",
+          "description": "GitHub Trending page returns normalized repositories with stars gained.",
+          "verificationCommand": "npm run check:github-trending-page-live-smoke",
+          "artifactEnv": "GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "github-trending-page-parser-drift",
+          "description": "Parser drift checks cover repository identity, rank and star-gain fields.",
+          "verificationCommand": "npm run check:github-trending-page-live-smoke",
+          "artifactEnv": "GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "github-trending-page-rate-limit-budget",
+          "description": "Page fetch timeout and rate-limit behavior are recorded.",
+          "verificationCommand": "npm run check:github-trending-page-live-smoke",
+          "artifactEnv": "GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "github-trending-page-provider-failure-classification",
+          "description": "Trending page failures are classified without raw HTML retention.",
+          "verificationCommand": "npm run check:github-trending-page-live-smoke",
+          "artifactEnv": "GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        }
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 3600,
@@ -181,7 +275,8 @@
         "freshness_guard_declared",
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
-        "rate_limit_backoff_declared_for_quota_models"
+        "rate_limit_backoff_declared_for_quota_models",
+        "live_evidence_requirements_declared_for_external_beta"
       ]
     },
     {
@@ -191,6 +286,29 @@
       "liveBetaReady": false,
       "liveBetaBlockers": [
         "Live HTTP smoke and deployed rate-limit evidence required before external beta."
+      ],
+      "liveEvidenceRequirements": [
+        {
+          "signalId": "hn-live-http-smoke",
+          "description": "Live HN listing/search HTTP calls return normalized public stories.",
+          "verificationCommand": "npm run capture:live-open-connectors",
+          "artifactEnv": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "hn-rate-limit-evidence",
+          "description": "HN timeout, item cap and degradation behavior are recorded.",
+          "verificationCommand": "npm run capture:live-open-connectors",
+          "artifactEnv": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "hn-provider-failure-classification",
+          "description": "HN provider failures are classified without raw payload leakage.",
+          "verificationCommand": "npm run capture:live-open-connectors",
+          "artifactEnv": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        }
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 900,
@@ -226,7 +344,8 @@
         "freshness_guard_declared",
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
-        "rate_limit_backoff_declared_for_quota_models"
+        "rate_limit_backoff_declared_for_quota_models",
+        "live_evidence_requirements_declared_for_external_beta"
       ]
     },
     {
@@ -236,6 +355,36 @@
       "liveBetaReady": false,
       "liveBetaBlockers": [
         "App-only OAuth client credentials and live Reddit API rate-limit evidence required before external beta."
+      ],
+      "liveEvidenceRequirements": [
+        {
+          "signalId": "reddit-tenant-oauth-smoke",
+          "description": "Tenant Reddit OAuth credentials fetch authorized public listings.",
+          "verificationCommand": "npm run capture:live-reddit-oauth",
+          "artifactEnv": "REDDIT_LIVE_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "reddit-auth-failure",
+          "description": "Invalid or expired Reddit credentials fail closed without retry storms.",
+          "verificationCommand": "npm run capture:live-reddit-oauth",
+          "artifactEnv": "REDDIT_LIVE_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "reddit-rate-limit-budget",
+          "description": "Reddit rate-limit headers and backoff budget are recorded.",
+          "verificationCommand": "npm run capture:live-reddit-oauth",
+          "artifactEnv": "REDDIT_LIVE_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "reddit-credential-lifecycle",
+          "description": "Reddit refresh-token create, rotate, revoke and redacted preview are proven.",
+          "verificationCommand": "npm run capture:live-reddit-oauth",
+          "artifactEnv": "REDDIT_LIVE_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        }
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 900,
@@ -271,7 +420,8 @@
         "freshness_guard_declared",
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
-        "rate_limit_backoff_declared_for_quota_models"
+        "rate_limit_backoff_declared_for_quota_models",
+        "live_evidence_requirements_declared_for_external_beta"
       ]
     },
     {
@@ -281,6 +431,36 @@
       "liveBetaReady": false,
       "liveBetaBlockers": [
         "Representative live feed allowlist, HTTP cache and SSRF controls need deployed evidence."
+      ],
+      "liveEvidenceRequirements": [
+        {
+          "signalId": "rss-allowlisted-live-feeds",
+          "description": "Representative allowlisted RSS/Atom feeds return normalized entries.",
+          "verificationCommand": "npm run capture:live-open-connectors",
+          "artifactEnv": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "rss-http-cache-evidence",
+          "description": "ETag and Last-Modified cache behavior is recorded.",
+          "verificationCommand": "npm run capture:live-open-connectors",
+          "artifactEnv": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "rss-ssrf-proof",
+          "description": "Outbound feed URL policy blocks local/private/metadata targets.",
+          "verificationCommand": "npm run capture:live-open-connectors",
+          "artifactEnv": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        },
+        {
+          "signalId": "rss-provider-failure-classification",
+          "description": "RSS provider failures are classified without raw payload leakage.",
+          "verificationCommand": "npm run capture:live-open-connectors",
+          "artifactEnv": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
+          "requiredFor": "external_beta"
+        }
       ],
       "freshnessGuard": {
         "maxStalenessSeconds": 3600,
@@ -316,7 +496,8 @@
         "freshness_guard_declared",
         "minimum_scan_interval_declared",
         "scan_history_required_for_freshness",
-        "rate_limit_backoff_declared_for_quota_models"
+        "rate_limit_backoff_declared_for_quota_models",
+        "live_evidence_requirements_declared_for_external_beta"
       ]
     }
   ],

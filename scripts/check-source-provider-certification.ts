@@ -32,6 +32,7 @@ import type {
   SourceProviderScanContext,
   SourceQuery,
   SourceQueryMode,
+  SourceLiveEvidenceRequirement,
   SourceReadinessFreshnessGuard,
   SourceReadinessState,
 } from '../libs/ingestion/ports';
@@ -55,6 +56,7 @@ type ProviderCertificationReport = {
   readonly runtimeReadiness: string;
   readonly liveBetaReady: boolean;
   readonly liveBetaBlockers: readonly string[];
+  readonly liveEvidenceRequirements: readonly SourceLiveEvidenceRequirement[];
   readonly freshnessGuard: SourceReadinessFreshnessGuard;
   readonly productionSafe: boolean;
   readonly cursorModel: SourceCursorModel;
@@ -210,6 +212,7 @@ async function main(): Promise<void> {
   );
   for (const profile of sourceReadinessProfiles) {
     assertFreshnessGuard(profile.providerKey, profile);
+    assertLiveEvidenceRequirements(profile.providerKey, profile);
   }
 
   const certifiedProviders = await Promise.all(
@@ -422,6 +425,7 @@ async function certifyProvider(
     runtimeReadiness: readiness.runtimeReadiness,
     liveBetaReady: false,
     liveBetaBlockers: readiness.liveBetaBlockers,
+    liveEvidenceRequirements: readiness.liveEvidenceRequirements,
     freshnessGuard: readiness.freshnessGuard,
     productionSafe: profile.productionSafe,
     cursorModel: profile.cursorModel,
@@ -443,8 +447,59 @@ async function certifyProvider(
       'minimum_scan_interval_declared',
       'scan_history_required_for_freshness',
       'rate_limit_backoff_declared_for_quota_models',
+      'live_evidence_requirements_declared_for_external_beta',
     ],
   };
+}
+
+function assertLiveEvidenceRequirements(
+  providerKey: string,
+  readiness: (typeof sourceReadinessProfiles)[number],
+): void {
+  const requirements = readiness.liveEvidenceRequirements;
+  const signalIds = new Set<string>();
+
+  if (readiness.state === 'enabled_beta') {
+    assert(
+      requirements.length > 0,
+      `${providerKey}: enabled_beta providers must declare live evidence requirements`,
+    );
+  } else if (readiness.runtimeReadiness === 'deferred') {
+    assert(
+      requirements.length === 0,
+      `${providerKey}: deferred providers must not expose external beta live evidence requirements`,
+    );
+  }
+
+  for (const requirement of requirements) {
+    assert(
+      requirement.signalId.trim().length > 0,
+      `${providerKey}: live evidence signalId is required`,
+    );
+    assert(
+      !signalIds.has(requirement.signalId),
+      `${providerKey}: duplicate live evidence signalId ${requirement.signalId}`,
+    );
+    signalIds.add(requirement.signalId);
+    assert(
+      requirement.description.trim().length > 0,
+      `${providerKey}: live evidence description is required for ${requirement.signalId}`,
+    );
+    assert(
+      requirement.verificationCommand.trim().startsWith('npm run ') ||
+        requirement.verificationCommand.includes(' npm run '),
+      `${providerKey}: live evidence verificationCommand must reference an npm script for ${requirement.signalId}`,
+    );
+    assert(
+      requirement.requiredFor === 'external_beta',
+      `${providerKey}: live evidence requirement ${requirement.signalId} must be required for external_beta`,
+    );
+    assert(
+      requirement.artifactEnv === undefined ||
+        requirement.artifactEnv.trim().endsWith('_EVIDENCE_PATH'),
+      `${providerKey}: live evidence artifactEnv must point at an evidence path env for ${requirement.signalId}`,
+    );
+  }
 }
 
 function assertFreshnessGuard(

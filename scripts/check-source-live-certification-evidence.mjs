@@ -433,6 +433,8 @@ function validateSourceCertification() {
     ) {
       violations.push(`${sourceCertificationPath}: provider "${providerKey}" must declare live beta blockers`);
     }
+
+    validateSourceCertificationLiveEvidenceRequirements(providerKey, provider);
   }
 
   for (const provider of sourceCertification.certifiedProviders ?? []) {
@@ -460,6 +462,54 @@ function validateSourceCertification() {
     }
     if (fakeSource.runtimeReadiness !== 'fixture_ready') {
       violations.push(`${sourceCertificationPath}: fake-source runtimeReadiness must be fixture_ready`);
+    }
+  }
+}
+
+function validateSourceCertificationLiveEvidenceRequirements(providerKey, provider) {
+  const expectedSignals = requiredProviderSignals.get(providerKey) ?? new Set();
+  const requirements = provider.liveEvidenceRequirements;
+
+  if (!Array.isArray(requirements) || requirements.length === 0) {
+    violations.push(`${sourceCertificationPath}: provider "${providerKey}" must expose liveEvidenceRequirements`);
+    return;
+  }
+
+  const actualSignals = new Set();
+  for (const requirement of requirements) {
+    if (typeof requirement.signalId !== 'string' || requirement.signalId.trim().length === 0) {
+      violations.push(`${sourceCertificationPath}: provider "${providerKey}" has liveEvidenceRequirement without signalId`);
+      continue;
+    }
+    if (actualSignals.has(requirement.signalId)) {
+      violations.push(`${sourceCertificationPath}: provider "${providerKey}" has duplicate liveEvidenceRequirement "${requirement.signalId}"`);
+    }
+    actualSignals.add(requirement.signalId);
+
+    if (!expectedSignals.has(requirement.signalId)) {
+      violations.push(`${sourceCertificationPath}: provider "${providerKey}" has unsupported liveEvidenceRequirement "${requirement.signalId}"`);
+    }
+    if (typeof requirement.description !== 'string' || requirement.description.trim().length === 0) {
+      violations.push(`${sourceCertificationPath}: provider "${providerKey}" requirement "${requirement.signalId}" must define description`);
+    }
+    validateCommand(
+      requirement.verificationCommand,
+      `provider "${providerKey}" requirement "${requirement.signalId}" verificationCommand`,
+    );
+    if (requirement.requiredFor !== 'external_beta') {
+      violations.push(`${sourceCertificationPath}: provider "${providerKey}" requirement "${requirement.signalId}" must be requiredFor=external_beta`);
+    }
+    if (
+      requirement.artifactEnv !== undefined &&
+      (typeof requirement.artifactEnv !== 'string' || !requirement.artifactEnv.endsWith('_EVIDENCE_PATH'))
+    ) {
+      violations.push(`${sourceCertificationPath}: provider "${providerKey}" requirement "${requirement.signalId}" artifactEnv must end with _EVIDENCE_PATH`);
+    }
+  }
+
+  for (const signalId of expectedSignals) {
+    if (!actualSignals.has(signalId)) {
+      violations.push(`${sourceCertificationPath}: provider "${providerKey}" missing liveEvidenceRequirement "${signalId}"`);
     }
   }
 }

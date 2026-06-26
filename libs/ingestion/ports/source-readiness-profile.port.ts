@@ -23,11 +23,20 @@ export type SourceReadinessFreshnessGuard = {
   readonly signals: readonly string[];
 };
 
+export type SourceLiveEvidenceRequirement = {
+  readonly signalId: string;
+  readonly description: string;
+  readonly verificationCommand: string;
+  readonly artifactEnv?: string;
+  readonly requiredFor: 'external_beta';
+};
+
 export type SourceReadinessProfile = {
   readonly providerKey: ProviderKey;
   readonly state: SourceReadinessState;
   readonly runtimeReadiness: SourceRuntimeReadiness;
   readonly liveBetaBlockers: readonly string[];
+  readonly liveEvidenceRequirements: readonly SourceLiveEvidenceRequirement[];
   readonly freshnessGuard: SourceReadinessFreshnessGuard;
   readonly acquisitionMode: string;
   readonly approvalOwner: string;

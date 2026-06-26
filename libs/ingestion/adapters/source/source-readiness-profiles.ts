@@ -1,4 +1,12 @@
 import type { SourceReadinessProfile } from '../../ports';
+import {
+  githubIssuesLiveEvidenceRequirements,
+  githubRepoRadarLiveEvidenceRequirements,
+  githubTrendingPageLiveEvidenceRequirements,
+  hackerNewsLiveEvidenceRequirements,
+  redditLiveEvidenceRequirements,
+  rssLiveEvidenceRequirements,
+} from './source-live-evidence-requirements';
 
 export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   {
@@ -6,6 +14,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     state: 'certification_ready',
     runtimeReadiness: 'fixture_ready',
     liveBetaBlockers: ['Synthetic provider is not a real external source.'],
+    liveEvidenceRequirements: [],
     freshnessGuard: {
       maxStalenessSeconds: 86_400,
       minimumScanIntervalSeconds: 60,
@@ -41,6 +50,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'Live HTTP smoke and deployed rate-limit evidence required before external beta.',
     ],
+    liveEvidenceRequirements: hackerNewsLiveEvidenceRequirements,
     freshnessGuard: {
       maxStalenessSeconds: 900,
       minimumScanIntervalSeconds: 300,
@@ -80,6 +90,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'Representative live feed allowlist, HTTP cache and SSRF controls need deployed evidence.',
     ],
+    liveEvidenceRequirements: rssLiveEvidenceRequirements,
     freshnessGuard: {
       maxStalenessSeconds: 3_600,
       minimumScanIntervalSeconds: 300,
@@ -123,6 +134,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'Live GitHub issues API smoke and deployed rate-limit budget evidence required before external beta.',
     ],
+    liveEvidenceRequirements: githubIssuesLiveEvidenceRequirements,
     freshnessGuard: {
       maxStalenessSeconds: 1_800,
       minimumScanIntervalSeconds: 300,
@@ -166,6 +178,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'BigQuery GH Archive credentials/quota evidence, npm run check:github-repo-radar-live-smoke, npm run check:github-repo-radar-prisma-live-e2e and GitHub live verification rate-limit budget required before external beta.',
     ],
+    liveEvidenceRequirements: githubRepoRadarLiveEvidenceRequirements,
     freshnessGuard: {
       maxStalenessSeconds: 21_600,
       minimumScanIntervalSeconds: 21_600,
@@ -218,6 +231,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'Representative live page smoke, parser drift alert and rate-limit evidence required before external beta.',
     ],
+    liveEvidenceRequirements: githubTrendingPageLiveEvidenceRequirements,
     freshnessGuard: {
       maxStalenessSeconds: 3_600,
       minimumScanIntervalSeconds: 3_600,
@@ -274,6 +288,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'App-only OAuth client credentials and live Reddit API rate-limit evidence required before external beta.',
     ],
+    liveEvidenceRequirements: redditLiveEvidenceRequirements,
     freshnessGuard: {
       maxStalenessSeconds: 900,
       minimumScanIntervalSeconds: 900,
@@ -319,6 +334,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
       'Paid X API or approved vendor contract is required before enablement.',
       'Read-only scopes, endpoint rate limits, retention policy and spend cap must be proven before beta binding.',
     ],
+    liveEvidenceRequirements: [],
     freshnessGuard: {
       maxStalenessSeconds: 900,
       minimumScanIntervalSeconds: 900,
@@ -360,6 +376,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     liveBetaBlockers: [
       'Authorized channel scope and credential lifecycle are required before automation.',
     ],
+    liveEvidenceRequirements: [],
     freshnessGuard: {
       maxStalenessSeconds: 3_600,
       minimumScanIntervalSeconds: 3_600,

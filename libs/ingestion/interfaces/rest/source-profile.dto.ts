@@ -48,6 +48,23 @@ export class SourceProfileFreshnessGuardDto {
   declare readonly signals: readonly string[];
 }
 
+export class SourceProfileLiveEvidenceRequirementDto {
+  @ApiProperty()
+  declare readonly signalId: string;
+
+  @ApiProperty()
+  declare readonly description: string;
+
+  @ApiProperty()
+  declare readonly verificationCommand: string;
+
+  @ApiPropertyOptional()
+  declare readonly artifactEnv?: string;
+
+  @ApiProperty({ enum: ['external_beta'] })
+  declare readonly requiredFor: 'external_beta';
+}
+
 export class SourceProfileDto implements SourceProfileEntry {
   @ApiProperty()
   declare readonly providerKey: string;
@@ -69,6 +86,9 @@ export class SourceProfileDto implements SourceProfileEntry {
 
   @ApiProperty({ type: [String] })
   declare readonly liveBetaBlockers: readonly string[];
+
+  @ApiProperty({ type: () => [SourceProfileLiveEvidenceRequirementDto] })
+  declare readonly liveEvidenceRequirements: readonly SourceProfileLiveEvidenceRequirementDto[];
 
   @ApiPropertyOptional({ type: () => SourceProfileFreshnessGuardDto })
   declare readonly freshnessGuard?: SourceProfileFreshnessGuardDto;

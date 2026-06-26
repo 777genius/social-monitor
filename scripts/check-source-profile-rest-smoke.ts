@@ -13,6 +13,13 @@ type SourceProfile = {
   readonly readinessState: string;
   readonly runtimeReadiness: string;
   readonly liveBetaBlockers: readonly string[];
+  readonly liveEvidenceRequirements: readonly {
+    readonly signalId: string;
+    readonly description: string;
+    readonly verificationCommand: string;
+    readonly artifactEnv?: string;
+    readonly requiredFor: string;
+  }[];
   readonly freshnessGuard?: {
     readonly maxStalenessSeconds: number;
     readonly minimumScanIntervalSeconds: number;
@@ -57,6 +64,38 @@ const requireFreshnessGuard = (source: SourceProfile): NonNullable<SourceProfile
   }
 
   return source.freshnessGuard;
+};
+
+const assertLiveEvidenceRequirement = (
+  source: SourceProfile,
+  signalId: string,
+  artifactEnv: string,
+): void => {
+  const requirement = source.liveEvidenceRequirements.find(
+    (candidate) => candidate.signalId === signalId,
+  );
+
+  if (requirement === undefined) {
+    throw new Error(
+      `${source.providerKey} profile must expose live evidence requirement ${signalId}`,
+    );
+  }
+  assert(
+    requirement.description.trim().length > 0,
+    `${source.providerKey} live evidence requirement ${signalId} must describe the proof`,
+  );
+  assert(
+    requirement.verificationCommand.includes('npm run '),
+    `${source.providerKey} live evidence requirement ${signalId} must expose an npm verification command`,
+  );
+  assert(
+    requirement.artifactEnv === artifactEnv,
+    `${source.providerKey} live evidence requirement ${signalId} must expose ${artifactEnv}`,
+  );
+  assert(
+    requirement.requiredFor === 'external_beta',
+    `${source.providerKey} live evidence requirement ${signalId} must be required for external beta`,
+  );
 };
 
 async function main(): Promise<void> {
@@ -177,6 +216,16 @@ async function main(): Promise<void> {
       githubTrendingPage.cursorModel === 'time',
       'GitHub Trending page must expose time cursor model',
     );
+    assertLiveEvidenceRequirement(
+      githubTrendingPage,
+      'github-trending-page-live-smoke',
+      'GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH',
+    );
+    assertLiveEvidenceRequirement(
+      githubTrendingPage,
+      'github-trending-page-parser-drift',
+      'GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH',
+    );
     const githubTrendingGuard = requireFreshnessGuard(githubTrendingPage);
     assert(
       githubTrendingGuard.maxStalenessSeconds === 3_600,
@@ -239,6 +288,16 @@ async function main(): Promise<void> {
       ),
       'Reddit profile must document OAuth API limitation',
     );
+    assertLiveEvidenceRequirement(
+      reddit,
+      'reddit-tenant-oauth-smoke',
+      'REDDIT_LIVE_EVIDENCE_PATH',
+    );
+    assertLiveEvidenceRequirement(
+      reddit,
+      'reddit-credential-lifecycle',
+      'REDDIT_LIVE_EVIDENCE_PATH',
+    );
     const redditFreshnessGuard = requireFreshnessGuard(reddit);
     assert(
       redditFreshnessGuard.maxStalenessSeconds === 900,
@@ -282,6 +341,10 @@ async function main(): Promise<void> {
       'X/Twitter must not expose query modes without a registered runtime provider',
     );
     assert(
+      xTwitter.liveEvidenceRequirements.length === 0,
+      'X/Twitter must not expose live beta evidence requirements while deferred',
+    );
+    assert(
       xTwitter.liveBetaBlockers.some((blocker) =>
         blocker.toLowerCase().includes('paid x api'),
       ),
@@ -299,6 +362,10 @@ async function main(): Promise<void> {
     assert(
       telegram.supportedQueryModes.length === 0,
       'Telegram must not expose query modes without a registered runtime provider',
+    );
+    assert(
+      telegram.liveEvidenceRequirements.length === 0,
+      'Telegram must not expose live beta evidence requirements while deferred',
     );
 
     console.log('Source profile REST smoke OK');

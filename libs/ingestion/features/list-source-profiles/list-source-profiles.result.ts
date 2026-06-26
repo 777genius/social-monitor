@@ -2,6 +2,7 @@ import type {
   SourceReadinessFreshnessGuard,
   SourceReadinessState,
   SourceRuntimeReadiness,
+  SourceLiveEvidenceRequirement,
 } from '../../ports';
 
 export type SourceProfileEntry = {
@@ -12,6 +13,7 @@ export type SourceProfileEntry = {
   readonly readinessState: SourceReadinessState;
   readonly runtimeReadiness: SourceRuntimeReadiness;
   readonly liveBetaBlockers: readonly string[];
+  readonly liveEvidenceRequirements: readonly SourceLiveEvidenceRequirement[];
   readonly freshnessGuard?: SourceReadinessFreshnessGuard;
   readonly acquisitionMode: string;
   readonly supportedContentUnits: readonly string[];
