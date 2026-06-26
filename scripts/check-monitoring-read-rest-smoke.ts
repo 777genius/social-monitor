@@ -181,6 +181,29 @@ async function main(): Promise<void> {
     );
     assert(fetchedScanPolicy.body.intervalSeconds === 300, 'scan policy REST get must preserve interval');
 
+    const sourceHealth = await request(app.getHttpServer())
+      .get(`/topics/${newTopic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)
+      .set(headers)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    assert(
+      sourceHealth.body.schedulerDecision.minimumIntervalSeconds === 60,
+      'source binding health must expose provider minimum interval',
+    );
+    assert(
+      sourceHealth.body.schedulerDecision.configuredIntervalSeconds === 300,
+      'source binding health must expose configured interval',
+    );
+    assert(
+      sourceHealth.body.schedulerDecision.effectiveIntervalSeconds === 300,
+      'source binding health must expose effective interval',
+    );
+    assert(
+      sourceHealth.body.schedulerDecision.providerMinimumIntervalEnforced === false,
+      'source binding health must expose provider minimum enforcement flag',
+    );
+
     const dailyHistory = await request(app.getHttpServer())
       .get(`/source-bindings/${binding.body.sourceBindingId}/scan-requests/daily`)
       .set(headers)

@@ -125,6 +125,14 @@ describe('Source binding status API (e2e)', () => {
       },
       healthState: 'paused',
       operatorAction: 'resume_source_binding_before_scanning',
+      schedulerDecision: {
+        decision: 'paused',
+        minimumIntervalSeconds: 60,
+        configuredIntervalSeconds: 300,
+        effectiveIntervalSeconds: 300,
+        freshnessSeconds: 900,
+        providerMinimumIntervalEnforced: false,
+      },
     });
 
     await request(app.getHttpServer())

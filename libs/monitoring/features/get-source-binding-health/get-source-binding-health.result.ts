@@ -85,7 +85,9 @@ export type SourceBindingHealthSchedulerDecisionView = {
   readonly reason: string;
   readonly minimumIntervalSeconds: number;
   readonly configuredIntervalSeconds?: number;
+  readonly effectiveIntervalSeconds?: number;
   readonly freshnessSeconds?: number;
+  readonly providerMinimumIntervalEnforced?: boolean;
   readonly nextEligibleAt?: string;
   readonly waitSeconds?: number;
   readonly rateLimitBackoffUntil?: string;

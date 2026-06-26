@@ -2896,6 +2896,9 @@
       },
       "RequestScanDecisionResponseDto": {
         "properties": {
+          "configuredIntervalSeconds": {
+            "type": "number"
+          },
           "createdNewScan": {
             "type": "boolean"
           },
@@ -2910,9 +2913,18 @@
             ],
             "type": "string"
           },
+          "effectiveIntervalSeconds": {
+            "type": "number"
+          },
           "freshnessDeadlineAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "freshnessSeconds": {
+            "type": "number"
+          },
+          "minimumIntervalSeconds": {
+            "type": "number"
           },
           "nextEligibleAt": {
             "format": "date-time",
@@ -2921,6 +2933,9 @@
           "providerFailureBackoffUntil": {
             "format": "date-time",
             "type": "string"
+          },
+          "providerMinimumIntervalEnforced": {
+            "type": "boolean"
           },
           "rateLimitBackoffUntil": {
             "format": "date-time",
@@ -3720,6 +3735,9 @@
             ],
             "type": "string"
           },
+          "effectiveIntervalSeconds": {
+            "type": "number"
+          },
           "freshnessSeconds": {
             "type": "number"
           },
@@ -3733,6 +3751,9 @@
           "providerFailureBackoffUntil": {
             "format": "date-time",
             "type": "string"
+          },
+          "providerMinimumIntervalEnforced": {
+            "type": "boolean"
           },
           "rateLimitBackoffUntil": {
             "format": "date-time",

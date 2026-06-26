@@ -254,7 +254,9 @@ const buildSchedulerDecision = (params: {
   const base = {
     minimumIntervalSeconds,
     configuredIntervalSeconds: params.scanPolicySnapshot?.intervalSeconds,
+    effectiveIntervalSeconds: params.cadence?.intervalSeconds,
     freshnessSeconds: params.cadence?.freshnessSeconds ?? params.scanPolicySnapshot?.freshnessSeconds,
+    providerMinimumIntervalEnforced: params.cadence?.providerMinimumIntervalEnforced,
   };
 
   if (params.bindingStatus === 'paused') {

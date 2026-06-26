@@ -12,6 +12,11 @@ export type RequestScanDecisionView = {
   readonly decision: RequestScanDecision;
   readonly reason: string;
   readonly createdNewScan: boolean;
+  readonly minimumIntervalSeconds?: number;
+  readonly configuredIntervalSeconds?: number;
+  readonly effectiveIntervalSeconds?: number;
+  readonly freshnessSeconds?: number;
+  readonly providerMinimumIntervalEnforced?: boolean;
   readonly nextEligibleAt?: string;
   readonly waitSeconds?: number;
   readonly freshnessDeadlineAt?: string;

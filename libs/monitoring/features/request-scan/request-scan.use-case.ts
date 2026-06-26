@@ -165,6 +165,7 @@ export class RequestScanUseCase {
           decision: 'fresh_success',
           reason: 'latest_success_still_fresh',
           createdNewScan: false,
+          ...cadenceDecisionFields(policySnapshot, cadence),
           nextEligibleAt: freshnessDeadlineAt,
           waitSeconds: secondsUntil(freshnessDeadlineAt, now),
           freshnessDeadlineAt,
@@ -190,6 +191,7 @@ export class RequestScanUseCase {
           decision: 'rate_limit_backoff',
           reason: 'provider_rate_limit_backoff_active',
           createdNewScan: false,
+          ...cadenceDecisionFields(policySnapshot, cadence),
           nextEligibleAt: rateLimitBackoffUntil,
           waitSeconds: secondsUntil(rateLimitBackoffUntil, now),
           rateLimitBackoffUntil,
@@ -215,6 +217,7 @@ export class RequestScanUseCase {
           decision: 'provider_failure_backoff',
           reason: 'provider_failure_backoff_active',
           createdNewScan: false,
+          ...cadenceDecisionFields(policySnapshot, cadence),
           nextEligibleAt: providerFailureBackoffUntilIso,
           waitSeconds: secondsUntil(providerFailureBackoffUntilIso, now),
           providerFailureBackoffUntil: providerFailureBackoffUntilIso,
@@ -299,6 +302,7 @@ export class RequestScanUseCase {
         decision: 'created',
         reason: 'manual_scan_enqueued',
         createdNewScan: true,
+        ...cadenceDecisionFields(policySnapshot, cadence),
         signals: ['manual_scan_enqueued'],
       },
     });
@@ -338,3 +342,14 @@ const cadenceSignals = (primarySignal: string, providerMinimumIntervalEnforced: 
   providerMinimumIntervalEnforced
     ? [primarySignal, 'provider_minimum_interval_enforced']
     : [primarySignal];
+
+const cadenceDecisionFields = (
+  policySnapshot: { readonly intervalSeconds: number },
+  cadence: ReturnType<typeof effectiveProviderScanCadence>,
+) => ({
+  minimumIntervalSeconds: cadence.minimumIntervalSeconds,
+  configuredIntervalSeconds: policySnapshot.intervalSeconds,
+  effectiveIntervalSeconds: cadence.intervalSeconds,
+  freshnessSeconds: cadence.freshnessSeconds,
+  providerMinimumIntervalEnforced: cadence.providerMinimumIntervalEnforced,
+});

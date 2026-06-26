@@ -230,7 +230,13 @@ export class SourceBindingHealthSchedulerDecisionResponseDto implements SourceBi
   declare readonly configuredIntervalSeconds?: number;
 
   @ApiPropertyOptional()
+  declare readonly effectiveIntervalSeconds?: number;
+
+  @ApiPropertyOptional()
   declare readonly freshnessSeconds?: number;
+
+  @ApiPropertyOptional()
+  declare readonly providerMinimumIntervalEnforced?: boolean;
 
   @ApiPropertyOptional({ format: 'date-time' })
   declare readonly nextEligibleAt?: string;

@@ -457,6 +457,14 @@ describe('Request scan flow (e2e)', () => {
       scanJobId: first.body.scanJobId,
       status: 'failed',
       created: false,
+      requestDecision: {
+        decision: 'rate_limit_backoff',
+        minimumIntervalSeconds: 60,
+        configuredIntervalSeconds: 300,
+        effectiveIntervalSeconds: 300,
+        freshnessSeconds: 900,
+        providerMinimumIntervalEnforced: false,
+      },
     });
     expect(queue.all()).toHaveLength(queueBaseline + 1);
 
