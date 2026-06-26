@@ -6,6 +6,7 @@ import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/sourc
 import { parseGitHubTrendingPageRepositoryMetadata } from '../libs/ingestion/domain';
 import type { SourceReadinessFreshnessGuard } from '../libs/ingestion/ports';
 import { writeLiveEvidenceArtifactAtomically } from './lib/live-evidence-artifact';
+import { classifyProviderFailures } from './lib/provider-failure-classification';
 
 const liveArtifactFormat = 'source-live-provider-evidence-v1';
 const liveEvidencePathEnv = 'GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH';
@@ -106,6 +107,25 @@ async function main(): Promise<void> {
         maxItems: 5,
         degradationSignalRecorded: true,
       },
+    },
+    {
+      signalId: 'github-trending-page-provider-failure-classification',
+      status: 'passed' as const,
+      observedAt,
+      evidence: classifyProviderFailures('GitHub Trending Page', (error) => provider.classifyError(error), [
+        {
+          label: 'rate_limit',
+          error: new Error('429 rate limit from GitHub Trending page'),
+          expectedKind: 'rate_limited',
+          expectedRetryable: true,
+        },
+        {
+          label: 'parser_or_upstream_unavailable',
+          error: new Error('GitHub Trending page parser returned no repository rows'),
+          expectedKind: 'unavailable',
+          expectedRetryable: true,
+        },
+      ]),
     },
   ];
 

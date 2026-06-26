@@ -231,9 +231,14 @@
           "signalId": "hn-rate-limit-evidence",
           "status": "pending_live_evidence",
           "requiredSignal": "rate-limit budget and degradation behavior are recorded for deployed Hacker News scans"
+        },
+        {
+          "signalId": "hn-provider-failure-classification",
+          "status": "pending_live_evidence",
+          "requiredSignal": "Hacker News provider-specific failures classify rate-limit and unavailable states for retry/backoff"
         }
       ],
-      "exitCondition": "Attach live HTTP smoke and rate-limit evidence for Hacker News before external beta."
+      "exitCondition": "Attach live HTTP smoke, rate-limit and provider failure classification evidence for Hacker News before external beta."
     },
     {
       "providerKey": "rss",
@@ -261,9 +266,14 @@
           "signalId": "rss-ssrf-proof",
           "status": "pending_live_evidence",
           "requiredSignal": "SSRF protections reject private, loopback, file and metadata-service targets before fetch"
+        },
+        {
+          "signalId": "rss-provider-failure-classification",
+          "status": "pending_live_evidence",
+          "requiredSignal": "RSS provider-specific failures classify invalid query and rate-limit states for retry/backoff"
         }
       ],
-      "exitCondition": "Attach allowlisted feed, HTTP cache and SSRF evidence for RSS before external beta."
+      "exitCondition": "Attach allowlisted feed, HTTP cache, SSRF and provider failure classification evidence for RSS before external beta."
     },
     {
       "providerKey": "github-issues",
@@ -286,9 +296,14 @@
           "signalId": "github-rate-limit-budget",
           "status": "pending_live_evidence",
           "requiredSignal": "GitHub rate-limit budget and fallback behavior are recorded for deployed scans"
+        },
+        {
+          "signalId": "github-provider-failure-classification",
+          "status": "pending_live_evidence",
+          "requiredSignal": "GitHub Issues provider-specific failures classify auth and rate-limit states for retry/backoff"
         }
       ],
-      "exitCondition": "Attach live API smoke and rate-limit budget evidence for GitHub before external beta."
+      "exitCondition": "Attach live API smoke, rate-limit budget and provider failure classification evidence for GitHub before external beta."
     },
     {
       "providerKey": "github-repo-radar",
@@ -351,9 +366,14 @@
           "signalId": "github-trending-page-rate-limit-budget",
           "status": "pending_live_evidence",
           "requiredSignal": "public page scan proves bounded timeout, maxItems and degradation behavior"
+        },
+        {
+          "signalId": "github-trending-page-provider-failure-classification",
+          "status": "pending_live_evidence",
+          "requiredSignal": "GitHub Trending Page provider-specific failures classify rate-limit and parser/upstream unavailable states for retry/backoff"
         }
       ],
-      "exitCondition": "Attach live page smoke, parser drift and public page budget evidence for GitHub Trending Page before external beta."
+      "exitCondition": "Attach live page smoke, parser drift, public page budget and provider failure classification evidence for GitHub Trending Page before external beta."
     },
     {
       "providerKey": "reddit",

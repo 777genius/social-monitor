@@ -76,6 +76,23 @@
                 "maxListingStories": 2,
                 "maxSearchStories": 2
               }
+            },
+            {
+              "signalId": "hn-provider-failure-classification",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:02.500Z",
+              "evidence": {
+                "summary": "Hacker News provider-specific failures were classified into release-safe retry/backoff states.",
+                "failureKindsObserved": [
+                  "rate_limited",
+                  "unavailable"
+                ],
+                "retryPolicyObserved": true,
+                "classifiedWithoutRawPayloads": true
+              },
+              "metrics": {
+                "classifiedFailureCount": 2
+              }
             }
           ]
         },
@@ -149,6 +166,23 @@
               "metrics": {
                 "rejectedProbeCount": 4
               }
+            },
+            {
+              "signalId": "rss-provider-failure-classification",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:05.500Z",
+              "evidence": {
+                "summary": "RSS provider-specific failures were classified into release-safe retry/backoff states.",
+                "failureKindsObserved": [
+                  "invalid_query",
+                  "rate_limited"
+                ],
+                "retryPolicyObserved": true,
+                "classifiedWithoutRawPayloads": true
+              },
+              "metrics": {
+                "classifiedFailureCount": 2
+              }
             }
           ]
         },
@@ -200,6 +234,23 @@
               "metrics": {
                 "coreRemainingObserved": true,
                 "searchRemainingObserved": true
+              }
+            },
+            {
+              "signalId": "github-provider-failure-classification",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:07.500Z",
+              "evidence": {
+                "summary": "GitHub Issues provider-specific failures were classified into release-safe retry/backoff states.",
+                "failureKindsObserved": [
+                  "auth_failed",
+                  "rate_limited"
+                ],
+                "retryPolicyObserved": true,
+                "classifiedWithoutRawPayloads": true
+              },
+              "metrics": {
+                "classifiedFailureCount": 2
               }
             }
           ]
@@ -357,6 +408,23 @@
               "metrics": {
                 "timeoutMs": 15000,
                 "maxItems": 5
+              }
+            },
+            {
+              "signalId": "github-trending-page-provider-failure-classification",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:10.500Z",
+              "evidence": {
+                "summary": "GitHub Trending Page provider-specific failures were classified into release-safe retry/backoff states.",
+                "failureKindsObserved": [
+                  "rate_limited",
+                  "unavailable"
+                ],
+                "retryPolicyObserved": true,
+                "classifiedWithoutRawPayloads": true
+              },
+              "metrics": {
+                "classifiedFailureCount": 2
               }
             }
           ]

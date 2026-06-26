@@ -56,9 +56,17 @@ const redditCredentialLifecycleFormat = 'reddit-credential-lifecycle-redacted-v1
 const redditCredentialLifecycleEvidenceKind = 'credential_lifecycle';
 const requiredRedditLifecycleOperations = new Set(['create', 'rotate', 'revoke', 'redacted-preview']);
 const requiredProviderSignals = new Map([
-  ['hacker-news', new Set(['hn-live-http-smoke', 'hn-rate-limit-evidence'])],
-  ['rss', new Set(['rss-allowlisted-live-feeds', 'rss-http-cache-evidence', 'rss-ssrf-proof'])],
-  ['github-issues', new Set(['github-live-api-smoke', 'github-rate-limit-budget'])],
+  ['hacker-news', new Set(['hn-live-http-smoke', 'hn-rate-limit-evidence', 'hn-provider-failure-classification'])],
+  [
+    'rss',
+    new Set([
+      'rss-allowlisted-live-feeds',
+      'rss-http-cache-evidence',
+      'rss-ssrf-proof',
+      'rss-provider-failure-classification',
+    ]),
+  ],
+  ['github-issues', new Set(['github-live-api-smoke', 'github-rate-limit-budget', 'github-provider-failure-classification'])],
   [
     'github-repo-radar',
     new Set([
@@ -74,6 +82,7 @@ const requiredProviderSignals = new Map([
       'github-trending-page-live-smoke',
       'github-trending-page-parser-drift',
       'github-trending-page-rate-limit-budget',
+      'github-trending-page-provider-failure-classification',
     ]),
   ],
   [
@@ -108,6 +117,15 @@ const requiredEvidenceShapeBySignalId = new Map([
     ],
   ],
   [
+    'hn-provider-failure-classification',
+    [
+      ['summary', 'non_empty_string'],
+      ['failureKindsObserved', 'non_empty_string_array'],
+      ['retryPolicyObserved', 'boolean_true'],
+      ['classifiedWithoutRawPayloads', 'boolean_true'],
+    ],
+  ],
+  [
     'rss-allowlisted-live-feeds',
     [
       ['summary', 'non_empty_string'],
@@ -136,6 +154,15 @@ const requiredEvidenceShapeBySignalId = new Map([
     ],
   ],
   [
+    'rss-provider-failure-classification',
+    [
+      ['summary', 'non_empty_string'],
+      ['failureKindsObserved', 'non_empty_string_array'],
+      ['retryPolicyObserved', 'boolean_true'],
+      ['classifiedWithoutRawPayloads', 'boolean_true'],
+    ],
+  ],
+  [
     'github-live-api-smoke',
     [
       ['summary', 'non_empty_string'],
@@ -143,6 +170,15 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['canonicalUrlsObserved', 'boolean_true'],
       ['pullRequestsExcluded', 'boolean_true'],
       ['authMode', 'non_empty_string'],
+    ],
+  ],
+  [
+    'github-provider-failure-classification',
+    [
+      ['summary', 'non_empty_string'],
+      ['failureKindsObserved', 'non_empty_string_array'],
+      ['retryPolicyObserved', 'boolean_true'],
+      ['classifiedWithoutRawPayloads', 'boolean_true'],
     ],
   ],
   [
@@ -223,6 +259,15 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['timeoutMs', 'positive_integer'],
       ['maxItems', 'positive_integer'],
       ['degradationSignalRecorded', 'boolean_true'],
+    ],
+  ],
+  [
+    'github-trending-page-provider-failure-classification',
+    [
+      ['summary', 'non_empty_string'],
+      ['failureKindsObserved', 'non_empty_string_array'],
+      ['retryPolicyObserved', 'boolean_true'],
+      ['classifiedWithoutRawPayloads', 'boolean_true'],
     ],
   ],
   [

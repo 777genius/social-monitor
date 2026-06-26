@@ -1,28 +1,38 @@
 import { HttpGitHubClient } from '../libs/ingestion/adapters/source/github/http-github-client';
+import { GitHubSourceProvider } from '../libs/ingestion/adapters/source/github/github-source.provider';
 import { HttpHackerNewsClient } from '../libs/ingestion/adapters/source/hacker-news/http-hacker-news-client';
+import { HackerNewsSourceProvider } from '../libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider';
 import { validateFeedUrl } from '../libs/ingestion/adapters/source/rss/feed-url-policy';
 import { HttpRssClient } from '../libs/ingestion/adapters/source/rss/http-rss-client';
+import { RssSourceProvider } from '../libs/ingestion/adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
 import type { SourceReadinessFreshnessGuard } from '../libs/ingestion/ports';
 import { writeLiveEvidenceArtifactAtomically } from './lib/live-evidence-artifact';
+import { classifyProviderFailures } from './lib/provider-failure-classification';
 
 type LiveOpenSignalId =
   | 'hn-live-http-smoke'
   | 'hn-rate-limit-evidence'
+  | 'hn-provider-failure-classification'
   | 'rss-allowlisted-live-feeds'
   | 'rss-http-cache-evidence'
   | 'rss-ssrf-proof'
+  | 'rss-provider-failure-classification'
   | 'github-live-api-smoke'
-  | 'github-rate-limit-budget';
+  | 'github-rate-limit-budget'
+  | 'github-provider-failure-classification';
 
 const coveredSignalIds: readonly LiveOpenSignalId[] = [
   'hn-live-http-smoke',
   'hn-rate-limit-evidence',
+  'hn-provider-failure-classification',
   'rss-allowlisted-live-feeds',
   'rss-http-cache-evidence',
   'rss-ssrf-proof',
+  'rss-provider-failure-classification',
   'github-live-api-smoke',
   'github-rate-limit-budget',
+  'github-provider-failure-classification',
 ];
 const liveArtifactFormat = 'source-live-provider-evidence-v1';
 const liveEvidencePathEnv = 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH';
@@ -58,6 +68,7 @@ function assert(condition: unknown, message: string): asserts condition {
 
 async function main(): Promise<void> {
   const hackerNews = new HttpHackerNewsClient(timeoutMs);
+  const hackerNewsProvider = new HackerNewsSourceProvider(hackerNews);
   const [topStories, searchStories] = await Promise.all([
     hackerNews.listStories('top', 2),
     hackerNews.searchStories('monitoring', 2),
@@ -72,7 +83,9 @@ async function main(): Promise<void> {
 
   const rssEvidence = await readRssEvidence();
 
-  const github = await new HttpGitHubClient(timeoutMs).searchIssues({
+  const githubClient = new HttpGitHubClient(timeoutMs);
+  const githubProvider = new GitHubSourceProvider(githubClient);
+  const github = await githubClient.searchIssues({
     query: 'repo:microsoft/TypeScript is:issue',
     limit: 1,
     accessToken: readOptionalEnv('GITHUB_ACCESS_TOKEN'),
@@ -122,6 +135,25 @@ async function main(): Promise<void> {
             maxListingStories: 2,
             maxSearchStories: 2,
           },
+        },
+        {
+          signalId: 'hn-provider-failure-classification' satisfies LiveOpenSignalId,
+          status: 'passed',
+          observedAt: sampledAt,
+          evidence: classifyProviderFailures('Hacker News', (error) => hackerNewsProvider.classifyError(error), [
+            {
+              label: 'rate_limit',
+              error: new Error('429 rate limit from Hacker News'),
+              expectedKind: 'rate_limited',
+              expectedRetryable: true,
+            },
+            {
+              label: 'upstream_unavailable',
+              error: new Error('Hacker News upstream timeout'),
+              expectedKind: 'unavailable',
+              expectedRetryable: true,
+            },
+          ]),
         },
       ],
     },
@@ -174,6 +206,29 @@ async function main(): Promise<void> {
             rejectedProbeCount: rssEvidence.ssrfRejectedUrls.length,
           },
         },
+        {
+          signalId: 'rss-provider-failure-classification' satisfies LiveOpenSignalId,
+          status: 'passed',
+          observedAt: sampledAt,
+          evidence: classifyProviderFailures(
+            'RSS',
+            (error) => new RssSourceProvider(new HttpRssClient(timeoutMs)).classifyError(error),
+            [
+              {
+                label: 'invalid_feed_url',
+                error: new Error('Feed URL must use http or https'),
+                expectedKind: 'invalid_query',
+                expectedRetryable: false,
+              },
+              {
+                label: 'rate_limit',
+                error: new Error('429 rate limit from RSS host'),
+                expectedKind: 'rate_limited',
+                expectedRetryable: true,
+              },
+            ],
+          ),
+        },
       ],
     },
     {
@@ -215,6 +270,25 @@ async function main(): Promise<void> {
             searchRemaining: githubRateLimit.search.remaining,
             oauthScopeCount: githubRateLimit.oauthScopeCount,
           },
+        },
+        {
+          signalId: 'github-provider-failure-classification' satisfies LiveOpenSignalId,
+          status: 'passed',
+          observedAt: sampledAt,
+          evidence: classifyProviderFailures('GitHub Issues', (error) => githubProvider.classifyError(error), [
+            {
+              label: 'auth_failed',
+              error: new Error('401 Bad credentials'),
+              expectedKind: 'auth_failed',
+              expectedRetryable: false,
+            },
+            {
+              label: 'rate_limit',
+              error: new Error('403 API rate limit exceeded'),
+              expectedKind: 'rate_limited',
+              expectedRetryable: true,
+            },
+          ]),
         },
       ],
     },
