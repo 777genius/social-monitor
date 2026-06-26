@@ -400,6 +400,21 @@
       "blocksRelease": true
     },
     {
+      "gateId": "github-repo-radar-ingestion-smoke",
+      "command": "npm run check:github-repo-radar-smoke",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "github-trending-page-ingestion-smoke",
+      "command": "npm run check:github-trending-page-smoke",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "github-trending-page-html-e2e",
+      "command": "npm run check:github-trending-page-html-e2e",
+      "blocksRelease": true
+    },
+    {
       "gateId": "reddit-ingestion-smoke",
       "command": "npm run check:reddit-smoke",
       "blocksRelease": true
