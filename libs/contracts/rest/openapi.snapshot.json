@@ -52,6 +52,9 @@
             },
             "type": "array"
           },
+          "coverage": {
+            "$ref": "#/components/schemas/BriefingCoverageSummaryDto"
+          },
           "executiveSummary": {
             "type": "string"
           },
@@ -259,6 +262,85 @@
           "summaryText",
           "generatedAt",
           "freshness"
+        ],
+        "type": "object"
+      },
+      "BriefingCoverageSummaryDto": {
+        "properties": {
+          "citationCount": {
+            "type": "number"
+          },
+          "crossSourceClusterCount": {
+            "type": "number"
+          },
+          "duplicateFeedItemCount": {
+            "type": "number"
+          },
+          "freshnessStatus": {
+            "enum": [
+              "fresh",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "hasCrossProviderEvidence": {
+            "type": "boolean"
+          },
+          "isSingleSource": {
+            "type": "boolean"
+          },
+          "providerCount": {
+            "type": "number"
+          },
+          "selectedFeedItemCount": {
+            "type": "number"
+          },
+          "storyClusterCount": {
+            "type": "number"
+          },
+          "topicCount": {
+            "type": "number"
+          },
+          "topProviderKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "topReadCount": {
+            "type": "number"
+          },
+          "topTopicIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "windowEndedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "windowStartedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "selectedFeedItemCount",
+          "storyClusterCount",
+          "topReadCount",
+          "citationCount",
+          "providerCount",
+          "topicCount",
+          "duplicateFeedItemCount",
+          "crossSourceClusterCount",
+          "hasCrossProviderEvidence",
+          "isSingleSource",
+          "topProviderKeys",
+          "topTopicIds",
+          "windowStartedAt",
+          "windowEndedAt",
+          "freshnessStatus"
         ],
         "type": "object"
       },
@@ -791,6 +873,9 @@
               "$ref": "#/components/schemas/BriefingContextArtifactDto"
             },
             "type": "array"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/BriefingCoverageSummaryDto"
           },
           "executiveSummary": {
             "type": "string"

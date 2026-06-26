@@ -37,6 +37,23 @@ describe("GetReaderSummaryUseCase", () => {
             feedItemId: "feed-reddit",
           }),
         ],
+        coverage: {
+          selectedFeedItemCount: 1,
+          storyClusterCount: 1,
+          topReadCount: 1,
+          citationCount: 1,
+          providerCount: 2,
+          topicCount: 2,
+          duplicateFeedItemCount: 1,
+          crossSourceClusterCount: 1,
+          hasCrossProviderEvidence: true,
+          isSingleSource: false,
+          topProviderKeys: ["reddit", "github"],
+          topTopicIds: ["topic-ai", "topic-github"],
+          windowStartedAt: "2026-06-23T08:00:00.000Z",
+          windowEndedAt: "2026-06-23T08:30:00.000Z",
+          freshnessStatus: "fresh",
+        },
       }),
     });
   });

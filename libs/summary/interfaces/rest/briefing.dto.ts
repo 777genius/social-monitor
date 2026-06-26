@@ -278,6 +278,53 @@ export class BriefingFreshnessDto {
   declare readonly newestObservedAt?: string;
 }
 
+export class BriefingCoverageSummaryDto {
+  @ApiProperty()
+  declare readonly selectedFeedItemCount: number;
+
+  @ApiProperty()
+  declare readonly storyClusterCount: number;
+
+  @ApiProperty()
+  declare readonly topReadCount: number;
+
+  @ApiProperty()
+  declare readonly citationCount: number;
+
+  @ApiProperty()
+  declare readonly providerCount: number;
+
+  @ApiProperty()
+  declare readonly topicCount: number;
+
+  @ApiProperty()
+  declare readonly duplicateFeedItemCount: number;
+
+  @ApiProperty()
+  declare readonly crossSourceClusterCount: number;
+
+  @ApiProperty()
+  declare readonly hasCrossProviderEvidence: boolean;
+
+  @ApiProperty()
+  declare readonly isSingleSource: boolean;
+
+  @ApiProperty({ type: [String] })
+  declare readonly topProviderKeys: readonly string[];
+
+  @ApiProperty({ type: [String] })
+  declare readonly topTopicIds: readonly string[];
+
+  @ApiProperty({ format: "date-time" })
+  declare readonly windowStartedAt: string;
+
+  @ApiProperty({ format: "date-time" })
+  declare readonly windowEndedAt: string;
+
+  @ApiProperty({ enum: ["fresh", "stale"] })
+  declare readonly freshnessStatus: "fresh" | "stale";
+}
+
 export class BriefingArtifactResponseDto {
   @ApiProperty()
   declare readonly schemaVersion: string;
@@ -350,6 +397,9 @@ export class BriefingArtifactResponseDto {
 
   @ApiProperty({ type: () => BriefingFreshnessDto })
   declare readonly freshness: BriefingFreshnessDto;
+
+  @ApiPropertyOptional({ type: () => BriefingCoverageSummaryDto })
+  declare readonly coverage?: BriefingCoverageSummaryDto;
 }
 
 export class BriefingResponseDto extends BriefingArtifactResponseDto {}

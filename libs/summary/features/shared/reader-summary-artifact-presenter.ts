@@ -50,7 +50,26 @@ export type ReaderSummaryArtifactView = Omit<
   readonly storyClusters: readonly ReaderSummaryStoryClusterView[];
   readonly contextArtifacts: readonly ReaderSummaryContextArtifactView[];
   readonly citations: readonly ReaderSummaryCitationView[];
+  readonly coverage: ReaderSummaryCoverageView;
   readonly freshness: ReaderSummaryFreshnessView;
+};
+
+export type ReaderSummaryCoverageView = {
+  readonly selectedFeedItemCount: number;
+  readonly storyClusterCount: number;
+  readonly topReadCount: number;
+  readonly citationCount: number;
+  readonly providerCount: number;
+  readonly topicCount: number;
+  readonly duplicateFeedItemCount: number;
+  readonly crossSourceClusterCount: number;
+  readonly hasCrossProviderEvidence: boolean;
+  readonly isSingleSource: boolean;
+  readonly topProviderKeys: readonly string[];
+  readonly topTopicIds: readonly string[];
+  readonly windowStartedAt: string;
+  readonly windowEndedAt: string;
+  readonly freshnessStatus: ReaderSummaryFreshnessView["status"];
 };
 
 export type ReaderSummaryFreshnessView =
@@ -76,23 +95,25 @@ export const presentReaderSummaryArtifact = (
   freshness: ReaderSummaryFreshness,
 ): ReaderSummaryArtifactView => {
   const snapshot = artifact.toSnapshot();
+  const content =
+    snapshot.content ??
+    buildReaderSummary({
+      headline: snapshot.headline,
+      executiveSummary: snapshot.executiveSummary,
+      topStories: snapshot.topStories,
+      topicHighlights: snapshot.topicHighlights,
+      repeatedSignals: snapshot.repeatedSignals,
+      risksAndUnknowns: snapshot.risksAndUnknowns,
+      citationMap: snapshot.citationMap,
+      storyClusters: snapshot.storyClusters,
+      qualityFlags: snapshot.qualityFlags,
+      noSignalReason: snapshot.noSignalReason,
+    });
+  const freshnessView = presentFreshness(freshness);
 
   return {
     ...snapshot,
-    content:
-      snapshot.content ??
-      buildReaderSummary({
-        headline: snapshot.headline,
-        executiveSummary: snapshot.executiveSummary,
-        topStories: snapshot.topStories,
-        topicHighlights: snapshot.topicHighlights,
-        repeatedSignals: snapshot.repeatedSignals,
-        risksAndUnknowns: snapshot.risksAndUnknowns,
-        citationMap: snapshot.citationMap,
-        storyClusters: snapshot.storyClusters,
-        qualityFlags: snapshot.qualityFlags,
-        noSignalReason: snapshot.noSignalReason,
-      }),
+    content,
     sourceWindow: {
       ...snapshot.sourceWindow,
       startedAt: snapshot.sourceWindow.startedAt.toISOString(),
@@ -118,8 +139,87 @@ export const presentReaderSummaryArtifact = (
       field: citation.field,
       canonicalUrl: citation.canonicalUrl,
     })),
-    freshness: presentFreshness(freshness),
+    coverage: buildCoverageView(snapshot, content, freshnessView),
+    freshness: freshnessView,
   };
+};
+
+const buildCoverageView = (
+  snapshot: ReaderSummaryArtifactProps,
+  content: ReaderSummaryContent,
+  freshness: ReaderSummaryFreshnessView,
+): ReaderSummaryCoverageView => {
+  const topicIds = countBy(
+    snapshot.storyClusters.flatMap((cluster) => cluster.topicIds),
+  );
+  const topProviderKeys = content.sourceMix
+    .filter(
+      (source) =>
+        source.itemCount > 0 ||
+        source.citationCount > 0 ||
+        source.storyClusterCount > 0,
+    )
+    .sort((left, right) => {
+      const citationDiff = right.citationCount - left.citationCount;
+      if (citationDiff !== 0) {
+        return citationDiff;
+      }
+
+      const itemDiff = right.itemCount - left.itemCount;
+      if (itemDiff !== 0) {
+        return itemDiff;
+      }
+
+      const storyDiff = right.storyClusterCount - left.storyClusterCount;
+      if (storyDiff !== 0) {
+        return storyDiff;
+      }
+
+      return left.providerKey.localeCompare(right.providerKey);
+    })
+    .slice(0, 5)
+    .map((source) => source.providerKey);
+
+  return {
+    selectedFeedItemCount: snapshot.sourceWindow.selectedFeedItemIds.length,
+    storyClusterCount: snapshot.storyClusters.length,
+    topReadCount: content.topReads.length,
+    citationCount: snapshot.citationMap.length,
+    providerCount: content.sourceMix.length,
+    topicCount: topicIds.size,
+    duplicateFeedItemCount: snapshot.storyClusters.reduce(
+      (total, cluster) => total + cluster.duplicateFeedItemIds.length,
+      0,
+    ),
+    crossSourceClusterCount: snapshot.storyClusters.filter(
+      (cluster) => cluster.providerKeys.length > 1,
+    ).length,
+    hasCrossProviderEvidence: snapshot.storyClusters.some(
+      (cluster) => cluster.providerKeys.length > 1,
+    ),
+    isSingleSource:
+      content.sourceMix.length <= 1 ||
+      content.sourceMix.every((source) => source.singleSourceOnly),
+    topProviderKeys,
+    topTopicIds: [...topicIds.entries()]
+      .sort((left, right) => {
+        const countDiff = right[1] - left[1];
+        return countDiff === 0 ? left[0].localeCompare(right[0]) : countDiff;
+      })
+      .slice(0, 5)
+      .map(([topicId]) => topicId),
+    windowStartedAt: snapshot.sourceWindow.startedAt.toISOString(),
+    windowEndedAt: snapshot.sourceWindow.endedAt.toISOString(),
+    freshnessStatus: freshness.status,
+  };
+};
+
+const countBy = (values: readonly string[]): ReadonlyMap<string, number> => {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return counts;
 };
 
 const presentFreshness = (
