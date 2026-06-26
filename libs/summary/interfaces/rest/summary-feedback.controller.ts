@@ -30,6 +30,7 @@ import { ApiKeyOrWorkspaceRoleAuth } from "@social-monitor/identity/interfaces/r
 import {
   parsePaginationLimit,
   RequestCorrelationIdFactory,
+  requireIdempotencyKeyHeader,
 } from "@social-monitor/platform-request-context";
 import {
   DomainError,
@@ -40,7 +41,6 @@ import {
 
 import { ListSummaryFeedbackUseCase } from "../../features/list-summary-feedback/list-summary-feedback.use-case";
 import { RecordSummaryFeedbackUseCase } from "../../features/record-summary-feedback/record-summary-feedback.use-case";
-import { requireIdempotencyKeyHeader } from "./idempotency-key-header";
 import {
   ListSummaryFeedbackResponseDto,
   RecordSummaryFeedbackRequestDto,

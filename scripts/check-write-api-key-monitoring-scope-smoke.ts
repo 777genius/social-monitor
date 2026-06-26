@@ -81,6 +81,18 @@ async function main(): Promise<void> {
 
     assert(topic.body.created === true, 'write:topics API key must create a topic');
 
+    await expectMissingIdempotencyKey({
+      request: request(server)
+        .post('/topics')
+        .set(headers)
+        .set('Authorization', `Bearer ${workflowSecret}`)
+        .send({
+          name: 'Missing idempotency topic',
+          query: 'missing idempotency',
+        }),
+      label: 'topic create',
+    });
+
     const binding = await request(server)
       .post(`/topics/${topic.body.topicId}/source-bindings`)
       .set(headers)
@@ -101,6 +113,20 @@ async function main(): Promise<void> {
 
     assert(binding.body.created === true, 'write:source_bindings API key must create source binding');
 
+    await expectMissingIdempotencyKey({
+      request: request(server)
+        .post(`/topics/${topic.body.topicId}/source-bindings`)
+        .set(headers)
+        .set('Authorization', `Bearer ${workflowSecret}`)
+        .send({
+          providerKey: 'fake-source',
+          config: {
+            query: 'missing idempotency binding',
+          },
+        }),
+      label: 'source binding create',
+    });
+
     const policy = await request(server)
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
       .set(headers)
@@ -118,6 +144,19 @@ async function main(): Promise<void> {
       `write:source_bindings API key must set scan policy, got ${policy.status}: ${JSON.stringify(policy.body)}`,
     );
 
+    await expectMissingIdempotencyKey({
+      request: request(server)
+        .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+        .set(headers)
+        .set('Authorization', `Bearer ${workflowSecret}`)
+        .send({
+          intervalSeconds: 900,
+          freshnessSeconds: 3600,
+          retryBudget: 2,
+        }),
+      label: 'scan policy set',
+    });
+
     const scan = await request(server)
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
       .set(headers)
@@ -131,6 +170,25 @@ async function main(): Promise<void> {
     );
 
     assert(scan.body.status === 'enqueued', `write:scan_requests API key must enqueue scan, got ${scan.body.status}`);
+
+    await expectMissingIdempotencyKey({
+      request: request(server)
+        .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+        .set(headers)
+        .set('Authorization', `Bearer ${workflowSecret}`),
+      label: 'scan request create',
+    });
+
+    await expectMissingIdempotencyKey({
+      request: request(server)
+        .patch(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/status`)
+        .set(headers)
+        .set('Authorization', `Bearer ${workflowSecret}`)
+        .send({
+          status: 'paused',
+        }),
+      label: 'source binding status update',
+    });
 
     await request(server)
       .get(`/scan-requests/${scan.body.scanJobId}/status`)
@@ -193,6 +251,26 @@ const createApiKey = async (params: {
   );
 
   return response.body.secret;
+};
+
+const expectMissingIdempotencyKey = async (params: {
+  readonly request: request.Test;
+  readonly label: string;
+}): Promise<void> => {
+  const response = await params.request;
+
+  assert(
+    response.status === 400,
+    `${params.label} without idempotency-key must fail with 400, got ${response.status}: ${JSON.stringify(response.body)}`,
+  );
+  assert(
+    response.body.code === 'validation.failed',
+    `${params.label} without idempotency-key must report validation.failed, got ${JSON.stringify(response.body)}`,
+  );
+  assert(
+    response.body.detail === 'idempotency-key header is required',
+    `${params.label} without idempotency-key must explain missing header, got ${JSON.stringify(response.body)}`,
+  );
 };
 
 void main().catch((error) => {

@@ -10,7 +10,11 @@ import {
   WORKSPACE_AUTHORIZATION_POLICY,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
-import { parsePaginationLimit, RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
+import {
+  parsePaginationLimit,
+  RequestCorrelationIdFactory,
+  requireIdempotencyKeyHeader,
+} from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import type { PublicApiAuditMetadataValue } from '@social-monitor/usage/ports';
@@ -65,7 +69,7 @@ export class SourceBindingController {
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
-    @Headers('idempotency-key') idempotencyKey: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Headers('x-request-id') requestId: string | undefined,
     @Body() body: BindSourceRequestDto,
   ): Promise<BindSourceResponseDto> {
@@ -87,7 +91,7 @@ export class SourceBindingController {
       topicId,
       providerKey: body.providerKey,
       config: normalizeSourceBindingConfig(body.config),
-      idempotencyKey,
+      idempotencyKey: requireIdempotencyKeyHeader(idempotencyKey),
       correlationId: this.requestCorrelationIds.fromRequestId(requestId),
     });
 
@@ -361,7 +365,7 @@ export class SourceBindingController {
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
-    @Headers('idempotency-key') idempotencyKey: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Headers('x-request-id') requestId: string | undefined,
     @Body() body: ChangeSourceBindingStatusRequestDto,
   ): Promise<ChangeSourceBindingStatusResponseDto> {
@@ -383,7 +387,7 @@ export class SourceBindingController {
       topicId,
       sourceBindingId,
       status: body.status,
-      idempotencyKey,
+      idempotencyKey: requireIdempotencyKeyHeader(idempotencyKey),
       correlationId: this.requestCorrelationIds.fromRequestId(requestId),
     });
 

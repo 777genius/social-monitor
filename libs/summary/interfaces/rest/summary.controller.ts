@@ -28,6 +28,7 @@ import { ApiKeyOrWorkspaceRoleAuth } from "@social-monitor/identity/interfaces/r
 import {
   parsePaginationLimit,
   RequestCorrelationIdFactory,
+  requireIdempotencyKeyHeader,
 } from "@social-monitor/platform-request-context";
 import {
   requireTenantScope,
@@ -38,7 +39,6 @@ import {
 import { GetSummaryUseCase } from "../../features/get-summary/get-summary.use-case";
 import { ListSummariesUseCase } from "../../features/list-summaries/list-summaries.use-case";
 import { RegenerateSummaryUseCase } from "../../features/regenerate-summary/regenerate-summary.use-case";
-import { requireIdempotencyKeyHeader } from "./idempotency-key-header";
 import { RegenerateSummaryResponseDto } from "./regenerate-summary.dto";
 import { ListSummariesResponseDto, SummaryResponseDto } from "./summary.dto";
 

@@ -1,4 +1,4 @@
-import { DomainError } from "@social-monitor/shared-kernel";
+import { DomainError } from '@social-monitor/shared-kernel';
 
 export const requireIdempotencyKeyHeader = (
   value: string | undefined,
@@ -7,8 +7,8 @@ export const requireIdempotencyKeyHeader = (
 
   if (normalized === undefined || normalized.length === 0) {
     throw new DomainError(
-      "validation.failed",
-      "idempotency-key header is required",
+      'validation.failed',
+      'idempotency-key header is required',
     );
   }
 

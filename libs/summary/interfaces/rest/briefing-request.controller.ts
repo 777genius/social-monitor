@@ -16,7 +16,10 @@ import {
   WORKSPACE_AUTHORIZATION_POLICY,
   type WorkspaceAuthorizationPolicyPort,
 } from "@social-monitor/identity/ports";
-import { RequestCorrelationIdFactory } from "@social-monitor/platform-request-context";
+import {
+  RequestCorrelationIdFactory,
+  requireIdempotencyKeyHeader,
+} from "@social-monitor/platform-request-context";
 import {
   DomainError,
   requireTenantScope,
@@ -31,7 +34,6 @@ import {
   RequestBriefingRequestDto,
   RequestBriefingResponseDto,
 } from "./request-briefing.dto";
-import { requireIdempotencyKeyHeader } from "./idempotency-key-header";
 
 @ApiTags("briefings")
 @Controller("briefing-requests")

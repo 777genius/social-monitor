@@ -10,7 +10,11 @@ import {
   WORKSPACE_AUTHORIZATION_POLICY,
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
-import { parsePaginationLimit, RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
+import {
+  parsePaginationLimit,
+  RequestCorrelationIdFactory,
+  requireIdempotencyKeyHeader,
+} from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
@@ -46,7 +50,7 @@ export class TopicController {
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
-    @Headers('idempotency-key') idempotencyKey: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Headers('x-request-id') requestId: string | undefined,
     @Body() body: CreateTopicRequestDto,
   ): Promise<CreateTopicResponseDto> {
@@ -67,7 +71,7 @@ export class TopicController {
       workspaceId: scope.workspaceId,
       name: body.name,
       query: body.query,
-      idempotencyKey,
+      idempotencyKey: requireIdempotencyKeyHeader(idempotencyKey),
       correlationId: this.requestCorrelationIds.fromRequestId(requestId),
     });
 

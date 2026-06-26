@@ -15,7 +15,10 @@ import {
   hasBearerAuthorizationHeader,
 } from "@social-monitor/identity/interfaces/rest/api-key-request-authorizer";
 import { ApiKeyOrWorkspaceRoleAuth } from "@social-monitor/identity/interfaces/rest/api-key-openapi.decorators";
-import { RequestCorrelationIdFactory } from "@social-monitor/platform-request-context";
+import {
+  RequestCorrelationIdFactory,
+  requireIdempotencyKeyHeader,
+} from "@social-monitor/platform-request-context";
 import {
   requireTenantScope,
   type TenantId,
@@ -27,7 +30,6 @@ import {
   RequestSummaryRequestDto,
   RequestSummaryResponseDto,
 } from "./request-summary.dto";
-import { requireIdempotencyKeyHeader } from "./idempotency-key-header";
 
 @ApiTags("summaries")
 @Controller("topics/:topicId/summary-requests")
