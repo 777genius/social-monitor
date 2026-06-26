@@ -1102,7 +1102,7 @@ describe('ScheduleDueScansUseCase', () => {
     });
   });
 
-  it('skips due policy without advancing next run when queue is backpressured', async () => {
+  it('skips due policy and advances next run when queue is backpressured', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding());
     const policies = new FakeScanPolicies();
@@ -1123,6 +1123,7 @@ describe('ScheduleDueScansUseCase', () => {
       workspaceId: workspaceId('workspace-1'),
       limit: 10,
       correlationId: 'scheduler-tick-backpressure',
+      includeDecisions: true,
     });
 
     expect(result).toEqual({
@@ -1133,6 +1134,21 @@ describe('ScheduleDueScansUseCase', () => {
         enqueued: 0,
         skipped: 1,
         skippedByReason: skippedByReason('queue_backpressure'),
+        decisions: [
+          {
+            scanPolicyId: 'policy-1',
+            sourceBindingId: 'binding-1',
+            providerKey: 'fake-source',
+            decision: 'skipped',
+            reason: 'queue_backpressure',
+            policyDueAt: new Date('2026-06-05T12:00:00.000Z'),
+            nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
+            configuredIntervalSeconds: 300,
+            effectiveIntervalSeconds: 300,
+            freshnessSeconds: 900,
+            providerMinimumIntervalEnforced: false,
+          },
+        ],
       },
     });
     await expect(
@@ -1152,7 +1168,7 @@ describe('ScheduleDueScansUseCase', () => {
         })
       )?.toSnapshot(),
     ).toMatchObject({
-      nextRunAt: new Date('2026-06-05T12:00:00.000Z'),
+      nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
     });
   });
 

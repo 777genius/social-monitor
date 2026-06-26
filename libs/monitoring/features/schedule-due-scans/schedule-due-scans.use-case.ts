@@ -199,6 +199,12 @@ export class ScheduleDueScansUseCase {
           causationId: idempotencyKey,
         };
         if (!(await this.scanQueue.canAccept(queueCommand))) {
+          const nextRunAt = nextRunAtAfterSchedulerDecision({
+            dueAt: policySnapshot.nextRunAt,
+            intervalSeconds: cadence.intervalSeconds,
+            now,
+            backoffUntil: null,
+          });
           recordSkipped(skippedByReason, 'queue_backpressure');
           recordDecision(decisions, {
             scanPolicyId: policySnapshot.id,
@@ -207,13 +213,18 @@ export class ScheduleDueScansUseCase {
             decision: 'skipped',
             reason: 'queue_backpressure',
             policyDueAt: policySnapshot.nextRunAt,
-            nextRunAt: policySnapshot.nextRunAt,
+            nextRunAt,
             configuredIntervalSeconds: policySnapshot.intervalSeconds,
             effectiveIntervalSeconds: cadence.intervalSeconds,
             freshnessSeconds: cadence.freshnessSeconds,
             providerMinimumIntervalEnforced:
               cadence.providerMinimumIntervalEnforced,
           });
+          await this.scanPolicies.save(
+            policy.scheduleNext({
+              nextRunAt,
+            }),
+          );
           continue;
         }
 
