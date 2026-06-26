@@ -124,6 +124,7 @@
         "npm run check:credential-secret-runtime-flow",
         "npm run check:secrets",
         "npm run check:source-config-protector",
+        "npm run check:source-credential-lifecycle",
         "npm run check:http-webhook-delivery-provider"
       ],
       "requiredArtifacts": [
