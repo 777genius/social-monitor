@@ -55,6 +55,7 @@ export type ReaderSummaryFactoryInput = {
 };
 
 const maxReaderTopReads = 10;
+const maxTopReadCitationIds = 4;
 
 export class ReaderSummary {
   private constructor(private readonly snapshot: ReaderSummarySnapshot) {}
@@ -210,7 +211,31 @@ const storyToTopRead = (
   clusterById: ReadonlyMap<string, StoryCluster>,
   evidenceByClusterId: ReadonlyMap<string, readonly SummaryEvidenceItem[]>,
 ): TopRead => {
-  const citations = story.citationIds
+  const modelCitations = story.citationIds
+    .map((citationId) => citationById.get(citationId))
+    .filter(
+      (citation): citation is ReaderSummaryCitation => citation !== undefined,
+    );
+  const modelCitedEvidence = modelCitations
+    .map((citation) => evidenceByFeedItemId.get(citation.feedItemId))
+    .filter((item): item is SummaryEvidenceItem => item !== undefined);
+  const cluster = clusterById.get(story.storyClusterId);
+  const clusterEvidence =
+    cluster === undefined
+      ? modelCitedEvidence
+      : (evidenceByClusterId.get(cluster.id) ?? modelCitedEvidence);
+  const citationIdByFeedItemId = new Map(
+    [...citationById.values()].map(
+      (citation) => [citation.feedItemId, citation.citationId] as const,
+    ),
+  );
+  const citationIds = compactUnique([
+    ...story.citationIds,
+    ...clusterEvidence.map((item) =>
+      citationIdByFeedItemId.get(item.feedItemId),
+    ),
+  ]).slice(0, maxTopReadCitationIds);
+  const citations = citationIds
     .map((citationId) => citationById.get(citationId))
     .filter(
       (citation): citation is ReaderSummaryCitation => citation !== undefined,
@@ -219,11 +244,6 @@ const storyToTopRead = (
     .map((citation) => evidenceByFeedItemId.get(citation.feedItemId))
     .filter((item): item is SummaryEvidenceItem => item !== undefined);
   const citation = citations[0];
-  const cluster = clusterById.get(story.storyClusterId);
-  const clusterEvidence =
-    cluster === undefined
-      ? citedEvidence
-      : (evidenceByClusterId.get(cluster.id) ?? citedEvidence);
   const evidence = citedEvidence[0] ?? clusterEvidence[0];
   const providerKey =
     citation?.providerKey ??
@@ -283,7 +303,7 @@ const storyToTopRead = (
       whyImportant.length > 0 ? whyImportant.slice(0, 4) : [story.summary],
     whyNow: buildWhyNow(cluster, story.providerKeys, clusterEvidence),
     canonicalUrl: citation?.canonicalUrl ?? evidence?.canonicalUrl,
-    citationIds: story.citationIds,
+    citationIds,
   };
 };
 

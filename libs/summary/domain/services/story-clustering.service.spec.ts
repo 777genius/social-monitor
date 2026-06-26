@@ -402,6 +402,78 @@ describe("StoryClusteringService", () => {
     ).toEqual([["x-alias"], ["hn-alias"]]);
   });
 
+  it("keeps cross-provider evidence before same-provider duplicates inside the selected window", () => {
+    const service = new StoryClusteringService(clock, {
+      ...STORY_RANKING_POLICY_V1,
+      maxSelectedEvidencePerCluster: 3,
+    });
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        scope: { type: "workspace" },
+      },
+      limit: 10,
+      items: [
+        evidenceItem({
+          feedItemId: "github-repo-main",
+          providerKey: "github-repo-radar",
+          canonicalUrl: "https://github.com/openai/codex",
+          title: "openai/codex",
+          score: 3,
+        }),
+        evidenceItem({
+          feedItemId: "github-repo-duplicate-1",
+          sourceItemId: "github-duplicate-1",
+          providerKey: "github-repo-radar",
+          canonicalUrl: "https://github.com/openai/codex?ref=radar",
+          title: "openai/codex",
+          score: 2.9,
+        }),
+        evidenceItem({
+          feedItemId: "github-repo-duplicate-2",
+          sourceItemId: "github-duplicate-2",
+          providerKey: "github-repo-radar",
+          canonicalUrl: "https://github.com/openai/codex/stargazers",
+          title: "openai/codex stargazers",
+          score: 2.8,
+        }),
+        evidenceItem({
+          feedItemId: "reddit-discussion",
+          sourceItemId: "reddit-discussion",
+          providerKey: "reddit",
+          canonicalUrl:
+            "https://www.reddit.com/r/programming/comments/codex/openai_codex_discussion",
+          title: "Reddit discusses openai/codex",
+          bodyPreview: "Developers compare openai/codex adoption velocity.",
+          score: 1.1,
+        }),
+        evidenceItem({
+          feedItemId: "hn-discussion",
+          sourceItemId: "hn-discussion",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://news.ycombinator.com/item?id=123",
+          title: "HN discusses openai/codex",
+          bodyPreview:
+            "Comments link to https://github.com/openai/codex and discuss the launch.",
+          score: 1,
+        }),
+      ],
+    });
+
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]).toMatchObject({
+      storyKey: "github-repo:openai/codex",
+      providerKeys: ["github-repo-radar", "hacker-news", "reddit"],
+    });
+    expect(selection.sourceWindow.selectedFeedItemIds).toEqual([
+      "github-repo-main",
+      "reddit-discussion",
+      "hn-discussion",
+    ]);
+  });
+
   it("returns a deterministic empty source window for no evidence", () => {
     const service = new StoryClusteringService(clock);
 

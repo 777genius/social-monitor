@@ -106,10 +106,7 @@ const selectedClusterEvidence = (
   const selectedIds = new Set<string>();
 
   for (const cluster of clusters) {
-    const ids = [
-      cluster.representativeFeedItemId,
-      ...cluster.duplicateFeedItemIds,
-    ].slice(0, policy.maxSelectedEvidencePerCluster);
+    const ids = selectedClusterEvidenceIds(cluster, byId, policy);
 
     for (const id of ids) {
       const item = byId.get(id);
@@ -119,6 +116,56 @@ const selectedClusterEvidence = (
       selected.push(item);
       selectedIds.add(id);
     }
+  }
+
+  return selected;
+};
+
+const selectedClusterEvidenceIds = (
+  cluster: StoryCluster,
+  evidenceById: ReadonlyMap<string, SummaryEvidenceItem>,
+  policy: StoryRankingPolicy,
+): readonly string[] => {
+  const limit = Math.max(1, policy.maxSelectedEvidencePerCluster);
+  const clusterItems = [
+    cluster.representativeFeedItemId,
+    ...cluster.duplicateFeedItemIds,
+  ]
+    .map((id) => evidenceById.get(id))
+    .filter((item): item is SummaryEvidenceItem => item !== undefined);
+  const selected: string[] = [];
+  const selectedIds = new Set<string>();
+  const selectedProviders = new Set<string>();
+
+  const select = (item: SummaryEvidenceItem): void => {
+    if (selected.length >= limit || selectedIds.has(item.feedItemId)) {
+      return;
+    }
+    selected.push(item.feedItemId);
+    selectedIds.add(item.feedItemId);
+    selectedProviders.add(item.providerKey);
+  };
+
+  const representative = evidenceById.get(cluster.representativeFeedItemId);
+  if (representative !== undefined) {
+    select(representative);
+  }
+
+  for (const item of clusterItems) {
+    if (selected.length >= limit) {
+      break;
+    }
+    if (selectedProviders.has(item.providerKey)) {
+      continue;
+    }
+    select(item);
+  }
+
+  for (const item of clusterItems) {
+    if (selected.length >= limit) {
+      break;
+    }
+    select(item);
   }
 
   return selected;

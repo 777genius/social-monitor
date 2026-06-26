@@ -439,7 +439,7 @@ describe("buildReaderSummary", () => {
           summary: "GitHub growth is backed by Reddit discussion.",
           topicIds: ["ai-agents"],
           providerKeys: ["github-repo-radar", "reddit"],
-          citationIds: ["citation-1", "citation-2"],
+          citationIds: ["citation-1"],
         },
       ],
       topicHighlights: [],
@@ -547,6 +547,10 @@ describe("buildReaderSummary", () => {
     expect(readerSummary.topReads[0]?.whyNow).toBe(
       "Current summary window has cross-source coverage from Repo Radar, Reddit and clustered 1 related item.",
     );
+    expect(readerSummary.topReads[0]?.citationIds).toEqual([
+      "citation-1",
+      "citation-2",
+    ]);
     expect(readerSummary.topReads[0]?.providerMetrics).toEqual([]);
   });
 });
