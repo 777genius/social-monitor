@@ -28,6 +28,12 @@ const githubTrendingPageLiveScriptPath = 'scripts/check-github-trending-page-liv
 const redditSourceProviderPath = 'libs/ingestion/adapters/source/reddit/reddit-source.provider.ts';
 const redditRefreshTokenProviderPath = 'libs/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider.ts';
 const liveEvidenceArtifactHelperPath = 'scripts/lib/live-evidence-artifact.ts';
+const localTsNodePath = join(
+  process.cwd(),
+  'node_modules',
+  '.bin',
+  process.platform === 'win32' ? 'ts-node.cmd' : 'ts-node',
+);
 
 const evidence = readJson(evidencePath);
 const sourceCertification = readJson(sourceCertificationPath);
@@ -702,7 +708,7 @@ function runLiveRedditSmokeExpectingFailure(env) {
         '--node-options',
         '--max-old-space-size=1024',
         '--',
-        'ts-node',
+        localTsNodePath,
         '-r',
         'tsconfig-paths/register',
         redditLiveScriptPath,
