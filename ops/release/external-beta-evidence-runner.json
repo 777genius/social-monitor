@@ -248,7 +248,7 @@
           "expectedProviderKeys": [
             "hacker-news",
             "rss",
-            "github"
+            "github-issues"
           ]
         }
       ],

@@ -53,7 +53,7 @@
       "durableReplacementPlan": "RelevanceRestModule can opt into Prisma user relevance profiles, feedback signals and relevance memory projection state with RELEVANCE_PERSISTENCE=prisma; beta runtime must keep this selector durable so personalized ranking, digest selection, summary evidence weighting and memory projection retries survive restarts"
     },
     {
-      "moduleFile": "libs/summary/interfaces/rest/summary-rest.module.ts",
+      "moduleFile": "libs/summary/interfaces/rest/summary-rest-infrastructure.module.ts",
       "context": "summary-api",
       "owner": "summary-owner",
       "inMemoryStateAdapters": [
@@ -178,7 +178,7 @@
   ],
   "runtimeNoopAdapters": [
     {
-      "moduleFile": "libs/summary/interfaces/rest/summary-rest.module.ts",
+      "moduleFile": "libs/summary/interfaces/rest/summary-rest-infrastructure.module.ts",
       "adapter": "NoopSummaryMemoryAdapter",
       "owner": "summary-owner",
       "risk": "summary memory context and feedback learning are disabled when SUMMARY_MEMORY_MODE is left at the local default",

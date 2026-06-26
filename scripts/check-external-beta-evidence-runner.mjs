@@ -264,7 +264,7 @@ const requiredJobOutputArtifacts = new Map([
         ref: 'LIVE_OPEN_CONNECTORS_EVIDENCE_PATH',
         format: 'source-live-provider-evidence-v1',
         expectedArtifactId: 'live-open-connectors-evidence-v1',
-        expectedProviderKeys: ['hacker-news', 'rss', 'github'],
+        expectedProviderKeys: ['hacker-news', 'rss', 'github-issues'],
       },
     ],
   ],
@@ -896,10 +896,10 @@ function validateRunnerNegativeSmokes() {
     },
     {
       label: 'missing provider key',
-      expectedOutput: 'must include providerKey github',
+      expectedOutput: 'must include providerKey github-issues',
       artifact: (base) => ({
         ...base,
-        providerResults: base.providerResults.filter((result) => result.providerKey !== 'github'),
+        providerResults: base.providerResults.filter((result) => result.providerKey !== 'github-issues'),
       }),
     },
     {
@@ -3233,7 +3233,7 @@ function liveOpenConnectorsArtifact() {
         ],
       },
       {
-        providerKey: 'github',
+        providerKey: 'github-issues',
         status: 'passed',
         signalResults: [
           {
