@@ -1035,6 +1035,7 @@ describe('ScheduleDueScansUseCase', () => {
       );
     }
     const queue = new FakeScanQueue();
+    const schedulerDecisions = new FakeSchedulerDecisionHistory();
     const useCase = new ScheduleDueScansUseCase(
       bindings,
       policies,
@@ -1042,6 +1043,7 @@ describe('ScheduleDueScansUseCase', () => {
       queue,
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+      schedulerDecisions,
     );
 
     const result = await useCase.execute({
@@ -1049,6 +1051,7 @@ describe('ScheduleDueScansUseCase', () => {
       workspaceId: workspaceId('workspace-1'),
       limit: 10,
       correlationId: 'scheduler-tick-provider-failure-backoff',
+      includeDecisions: true,
     });
 
     expect(result).toEqual({
@@ -1059,6 +1062,22 @@ describe('ScheduleDueScansUseCase', () => {
         enqueued: 0,
         skipped: 1,
         skippedByReason: skippedByReason('provider_failure_backoff'),
+        decisions: [
+          {
+            scanPolicyId: 'policy-1',
+            sourceBindingId: 'binding-1',
+            providerKey: 'reddit',
+            decision: 'skipped',
+            reason: 'provider_failure_backoff',
+            policyDueAt: new Date('2026-06-05T11:55:00.000Z'),
+            nextRunAt: new Date('2026-06-05T12:28:00.000Z'),
+            configuredIntervalSeconds: 300,
+            effectiveIntervalSeconds: 900,
+            freshnessSeconds: 900,
+            providerMinimumIntervalEnforced: true,
+            backoffUntil: new Date('2026-06-05T12:28:00.000Z'),
+          },
+        ],
       },
     });
     expect(queue.commands).toHaveLength(0);
@@ -1073,6 +1092,29 @@ describe('ScheduleDueScansUseCase', () => {
     ).toMatchObject({
       nextRunAt: new Date('2026-06-05T12:28:00.000Z'),
     });
+    expect(schedulerDecisions.records).toEqual([
+      expect.objectContaining({
+        id: 'scan-job-1',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        decisionKey: 'scan-policy:policy-1:due-at:2026-06-05T11:55:00.000Z',
+        scanPolicyId: 'policy-1',
+        sourceBindingId: 'binding-1',
+        providerKey: 'reddit',
+        decision: 'skipped',
+        reason: 'provider_failure_backoff',
+        policyDueAt: new Date('2026-06-05T11:55:00.000Z'),
+        evaluatedAt: new Date('2026-06-05T12:00:00.000Z'),
+        nextRunAt: new Date('2026-06-05T12:28:00.000Z'),
+        configuredIntervalSeconds: 300,
+        effectiveIntervalSeconds: 900,
+        freshnessSeconds: 900,
+        providerMinimumIntervalEnforced: true,
+        backoffUntil: new Date('2026-06-05T12:28:00.000Z'),
+        correlationId: 'scheduler-tick-provider-failure-backoff',
+        causationId: 'scheduled:policy-1:2026-06-05T11:55:00.000Z',
+      }),
+    ]);
   });
 
   it('skips due policy and advances next run when source binding is paused', async () => {
