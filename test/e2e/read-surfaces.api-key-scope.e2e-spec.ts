@@ -375,14 +375,39 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
     expect(briefingDetail.body).toMatchObject({
       briefingId: executedBriefing.value.readerSummaryId,
       readerBrief: {
+        sourceMix: [
+          expect.objectContaining({
+            providerKey: 'github',
+            itemCount: 1,
+            citationCount: expect.any(Number),
+          }),
+        ],
         topReads: [
           expect.objectContaining({
             providerKey: 'github',
             canonicalUrl: 'https://example.test/read-api-key-feed',
+            citationIds: expect.arrayContaining([expect.any(String)]),
+            whyNow: expect.any(String),
           }),
         ],
       },
+      citations: [
+        expect.objectContaining({
+          providerKey: 'github',
+          canonicalUrl: 'https://example.test/read-api-key-feed',
+          label: expect.stringMatching(/^\[\d+\]$/),
+        }),
+      ],
     });
+    expect(briefingDetail.body.readerBrief.topReads[0].whyNow.trim()).not.toHaveLength(0);
+    expect(briefingDetail.body.readerBrief.oneLineTakeaway.trim()).not.toHaveLength(0);
+    expect(briefingDetail.body.readerBrief.bullets.length).toBeGreaterThan(0);
+    expect(briefingDetail.body.readerBrief.qualityState.status).toMatch(
+      /^(ready|partial|limited_sources|low_confidence|no_signal|failed_provider)$/,
+    );
+    expect(briefingDetail.body.readerBrief.topReads[0].citationIds).toEqual(
+      expect.arrayContaining([briefingDetail.body.citations[0].citationId]),
+    );
 
     await request(app.getHttpServer())
       .get('/briefing-jobs/missing-read-api-key-briefing-job/status')
