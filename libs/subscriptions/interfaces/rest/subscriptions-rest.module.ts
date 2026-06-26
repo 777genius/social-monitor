@@ -16,6 +16,7 @@ import { PrismaUserSubscriptionScheduleRepository } from '../../adapters/persist
 import { PrismaUserSummaryPreferenceRepository } from '../../adapters/persistence/prisma/prisma-user-summary-preference.repository';
 import { StaticSourceTargetCatalogAdapter } from '../../adapters/target-catalog/static-source-target-catalog.adapter';
 import { CreateUserSubscriptionUseCase } from '../../features/create-user-subscription/create-user-subscription.use-case';
+import { GetEffectiveUserSummaryPreferenceUseCase } from '../../features/get-effective-user-summary-preference/get-effective-user-summary-preference.use-case';
 import { ListUserSubscriptionsUseCase } from '../../features/list-user-subscriptions/list-user-subscriptions.use-case';
 import { UpsertUserSummaryPreferenceUseCase } from '../../features/upsert-user-summary-preference/upsert-user-summary-preference.use-case';
 import {
@@ -182,9 +183,17 @@ import { UserSubscriptionsController } from './user-subscriptions.controller';
         SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR,
       ],
     },
+    {
+      provide: GetEffectiveUserSummaryPreferenceUseCase,
+      useFactory: (
+        preferences: UserSummaryPreferenceRepositoryPort,
+      ) => new GetEffectiveUserSummaryPreferenceUseCase(preferences),
+      inject: [SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY],
+    },
   ],
   exports: [
     CreateUserSubscriptionUseCase,
+    GetEffectiveUserSummaryPreferenceUseCase,
     InMemorySourceTargetRepository,
     InMemoryUserSubscriptionRepository,
     InMemoryUserSubscriptionScheduleRepository,

@@ -1,5 +1,5 @@
-import { Body, Controller, Headers, Inject, Param, Put } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Headers, Inject, Param, Put, Query } from '@nestjs/common';
+import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
   WorkspaceRoleHeaderParser,
 } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
@@ -15,8 +15,10 @@ import {
 } from '@social-monitor/identity/ports';
 import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
+import { GetEffectiveUserSummaryPreferenceUseCase } from '../../features/get-effective-user-summary-preference/get-effective-user-summary-preference.use-case';
 import { UpsertUserSummaryPreferenceUseCase } from '../../features/upsert-user-summary-preference/upsert-user-summary-preference.use-case';
 import {
+  type GetEffectiveUserSummaryPreferenceResponseDto,
   UpsertTopicUserSummaryPreferenceRequestDto,
   type UpsertUserSummaryPreferenceResponseDto,
 } from './user-subscriptions.dto';
@@ -25,12 +27,63 @@ import {
 @Controller('topics/:topicId/user-summary-preference')
 export class UserSummaryPreferencesController {
   constructor(
+    private readonly getEffectiveUserSummaryPreference: GetEffectiveUserSummaryPreferenceUseCase,
     private readonly upsertUserSummaryPreference: UpsertUserSummaryPreferenceUseCase,
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
     private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
   ) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Read the effective topic summary preference overlay for one user.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiQuery({ name: 'userId', required: true, type: String })
+  @ApiQuery({ name: 'subscriptionId', required: false, type: String })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:summaries',
+    workspaceRoleDescription: 'Comma-separated workspace roles. User summary preference reads allow owner, admin, member or viewer.',
+  })
+  async getEffectiveTopicSummaryPreference(
+    @Param('topicId') topicId: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
+    @Query('userId') userId: string | undefined,
+    @Query('subscriptionId') subscriptionId: string | undefined,
+  ): Promise<GetEffectiveUserSummaryPreferenceResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+    const authorization = await this.authorizeSummaryRead(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
+    const targetUserId = resolveUserOwnedTarget(
+      userId ?? '',
+      authorization,
+      'Bearer JWT user cannot access another user summary preference',
+    );
+
+    const result = await this.getEffectiveUserSummaryPreference.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      userId: targetUserId,
+      topicId,
+      subscriptionId,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
 
   @Put()
   @ApiOperation({ summary: 'Create or update the topic-level summary preference overlay for one user.' })
@@ -58,7 +111,11 @@ export class UserSummaryPreferencesController {
       workspaceRoleHeader,
       authorizationHeader,
     );
-    const targetUserId = resolveUserOwnedTarget(body.userId, authorization);
+    const targetUserId = resolveUserOwnedTarget(
+      body.userId,
+      authorization,
+      'Bearer JWT user cannot write another user summary preference',
+    );
 
     const result = await this.upsertUserSummaryPreference.execute({
       tenantId: scope.tenantId,
@@ -81,6 +138,36 @@ export class UserSummaryPreferencesController {
     return result.value;
   }
 
+  private async authorizeSummaryRead(
+    tenantId: TenantId,
+    workspaceId: WorkspaceId,
+    workspaceRoleHeader: string | undefined,
+    authorizationHeader: string | undefined,
+  ): Promise<BearerRequestAuthorization | undefined> {
+    if (hasBearerAuthorizationHeader(authorizationHeader)) {
+      return this.apiKeyRequestAuthorizer.authorize({
+        authorizationHeader,
+        tenantId,
+        workspaceId,
+        requiredScope: 'read:summaries',
+        operation: 'user_summary_preferences.read',
+      });
+    }
+
+    const authorization = this.workspaceAuthorization.authorize({
+      tenantId,
+      workspaceId,
+      action: 'user_summary_preferences.read',
+      roles: this.workspaceRoleHeaderParser.parse(workspaceRoleHeader),
+    });
+
+    if (!authorization.ok) {
+      throw authorization.error;
+    }
+
+    return undefined;
+  }
+
   private async authorizeSummaryWrite(
     tenantId: TenantId,
     workspaceId: WorkspaceId,
@@ -95,7 +182,6 @@ export class UserSummaryPreferencesController {
         requiredScope: 'write:summaries',
         operation: 'user_summary_preferences.set',
       });
-      return;
     }
 
     const authorization = this.workspaceAuthorization.authorize({
@@ -116,13 +202,14 @@ export class UserSummaryPreferencesController {
 const resolveUserOwnedTarget = (
   requestedUserId: string,
   authorization: BearerRequestAuthorization | undefined,
+  denialMessage: string,
 ): string => {
   if (authorization?.actorType !== 'user') {
     return requestedUserId;
   }
 
   if (requestedUserId.trim() !== authorization.userId) {
-    throw new DomainError('authorization.denied', 'Bearer JWT user cannot write another user summary preference');
+    throw new DomainError('authorization.denied', denialMessage);
   }
 
   return authorization.userId;

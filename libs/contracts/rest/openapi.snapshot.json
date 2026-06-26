@@ -1498,6 +1498,10 @@
         ],
         "type": "object"
       },
+      "CreateUserSubscriptionRequestDto": {
+        "properties": {},
+        "type": "object"
+      },
       "CreateWebhookEndpointRequestDto": {
         "properties": {},
         "type": "object"
@@ -5080,6 +5084,10 @@
         "properties": {},
         "type": "object"
       },
+      "UpsertTopicUserSummaryPreferenceRequestDto": {
+        "properties": {},
+        "type": "object"
+      },
       "UpsertUserRelevanceProfileRequestDto": {
         "properties": {
           "blockedProviderKeys": {
@@ -5128,6 +5136,10 @@
           "profile",
           "created"
         ],
+        "type": "object"
+      },
+      "UpsertUserSummaryPreferenceRequestDto": {
+        "properties": {},
         "type": "object"
       },
       "UserRelevanceProfileDto": {
@@ -9139,6 +9151,146 @@
         ]
       }
     },
+    "/topics/{topicId}/user-summary-preference": {
+      "get": {
+        "operationId": "UserSummaryPreferencesController_getEffectiveTopicSummaryPreference",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topicId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. User summary preference reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "subscriptionId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Read the effective topic summary preference overlay for one user.",
+        "tags": [
+          "user-summary-preferences"
+        ]
+      },
+      "put": {
+        "operationId": "UserSummaryPreferencesController_upsertTopicSummaryPreference",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topicId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. User summary preference writes allow owner, admin or member. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertTopicUserSummaryPreferenceRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Create or update the topic-level summary preference overlay for one user.",
+        "tags": [
+          "user-summary-preferences"
+        ]
+      }
+    },
     "/usage/audit-events": {
       "get": {
         "operationId": "PublicApiAuditEventsController_list",
@@ -9252,6 +9404,206 @@
         "summary": "List tenant/workspace public API audit events for beta support and investigations.",
         "tags": [
           "usage"
+        ]
+      }
+    },
+    "/user-subscriptions": {
+      "get": {
+        "operationId": "UserSubscriptionsController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. User subscription reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List source target subscriptions for one user.",
+        "tags": [
+          "user-subscriptions"
+        ]
+      },
+      "post": {
+        "operationId": "UserSubscriptionsController_create",
+        "parameters": [
+          {
+            "description": "Optional Bearer API key. Requires write:topics. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. User subscription creation allows owner, admin or member. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserSubscriptionRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Create a user subscription to a provider-specific source target.",
+        "tags": [
+          "user-subscriptions"
+        ]
+      }
+    },
+    "/user-subscriptions/{subscriptionId}/summary-preference": {
+      "put": {
+        "operationId": "UserSubscriptionsController_upsertSummaryPreference",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subscriptionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. User summary preference writes allow owner, admin or member. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertUserSummaryPreferenceRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Create or update the summary preference overlay for a user subscription.",
+        "tags": [
+          "user-subscriptions"
         ]
       }
     }

@@ -16,6 +16,7 @@ import {
 } from 'class-validator';
 
 import type { CreateUserSubscriptionResult } from '../../features/create-user-subscription/create-user-subscription.result';
+import type { GetEffectiveUserSummaryPreferenceResult } from '../../features/get-effective-user-summary-preference/get-effective-user-summary-preference.result';
 import type { ListUserSubscriptionsResult } from '../../features/list-user-subscriptions/list-user-subscriptions.result';
 import type { UpsertUserSummaryPreferenceResult } from '../../features/upsert-user-summary-preference/upsert-user-summary-preference.result';
 
@@ -119,5 +120,6 @@ export class UpsertTopicUserSummaryPreferenceRequestDto extends UserSummaryPrefe
 }
 
 export type CreateUserSubscriptionResponseDto = CreateUserSubscriptionResult;
+export type GetEffectiveUserSummaryPreferenceResponseDto = GetEffectiveUserSummaryPreferenceResult;
 export type ListUserSubscriptionsResponseDto = ListUserSubscriptionsResult;
 export type UpsertUserSummaryPreferenceResponseDto = UpsertUserSummaryPreferenceResult;

@@ -41,6 +41,7 @@ export type WorkspaceAction =
   | 'summary_regenerations.create'
   | 'user_subscriptions.read'
   | 'user_subscriptions.create'
+  | 'user_summary_preferences.read'
   | 'user_summary_preferences.set'
   | 'webhook_endpoints.read'
   | 'webhook_endpoints.create'

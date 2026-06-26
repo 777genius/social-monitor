@@ -44,6 +44,7 @@ const allowedRolesByAction: Record<WorkspaceAction, readonly WorkspaceRole[]> = 
   'summary_regenerations.create': ['owner', 'admin', 'member'],
   'user_subscriptions.read': ['owner', 'admin', 'member', 'viewer'],
   'user_subscriptions.create': ['owner', 'admin', 'member'],
+  'user_summary_preferences.read': ['owner', 'admin', 'member', 'viewer'],
   'user_summary_preferences.set': ['owner', 'admin', 'member'],
   'webhook_endpoints.read': ['owner', 'admin', 'member', 'viewer'],
   'webhook_endpoints.create': ['owner', 'admin'],

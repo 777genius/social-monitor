@@ -1759,6 +1759,65 @@ export const mobileApiOperations = [
     ]
   },
   {
+    "operationId": "UserSummaryPreferencesController_getEffectiveTopicSummaryPreference",
+    "clientName": "UserSummaryPreferencesController_getEffectiveTopicSummaryPreference",
+    "method": "GET",
+    "path": "/topics/{topicId}/user-summary-preference",
+    "tags": [
+      "user-summary-preferences"
+    ],
+    "summary": "Read the effective topic summary preference overlay for one user.",
+    "pathParameters": [
+      "topicId"
+    ],
+    "queryParameters": [
+      "subscriptionId",
+      "userId"
+    ],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": []
+  },
+  {
+    "operationId": "UserSummaryPreferencesController_upsertTopicSummaryPreference",
+    "clientName": "UserSummaryPreferencesController_upsertTopicSummaryPreference",
+    "method": "PUT",
+    "path": "/topics/{topicId}/user-summary-preference",
+    "tags": [
+      "user-summary-preferences"
+    ],
+    "summary": "Create or update the topic-level summary preference overlay for one user.",
+    "pathParameters": [
+      "topicId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/UpsertTopicUserSummaryPreferenceRequestDto",
+    "successResponseSchemaRefs": []
+  },
+  {
     "operationId": "PublicApiAuditEventsController_list",
     "clientName": "PublicApiAuditEventsController_list",
     "method": "GET",
@@ -1790,6 +1849,90 @@ export const mobileApiOperations = [
     "usesDevOnlyWorkspaceRoleHeader": true,
     "devOnlyWorkspaceRoleRequired": false,
     "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": []
+  },
+  {
+    "operationId": "UserSubscriptionsController_list",
+    "clientName": "UserSubscriptionsController_list",
+    "method": "GET",
+    "path": "/user-subscriptions",
+    "tags": [
+      "user-subscriptions"
+    ],
+    "summary": "List source target subscriptions for one user.",
+    "pathParameters": [],
+    "queryParameters": [
+      "cursor",
+      "limit",
+      "userId"
+    ],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": []
+  },
+  {
+    "operationId": "UserSubscriptionsController_create",
+    "clientName": "UserSubscriptionsController_create",
+    "method": "POST",
+    "path": "/user-subscriptions",
+    "tags": [
+      "user-subscriptions"
+    ],
+    "summary": "Create a user subscription to a provider-specific source target.",
+    "pathParameters": [],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/CreateUserSubscriptionRequestDto",
+    "successResponseSchemaRefs": []
+  },
+  {
+    "operationId": "UserSubscriptionsController_upsertSummaryPreference",
+    "clientName": "UserSubscriptionsController_upsertSummaryPreference",
+    "method": "PUT",
+    "path": "/user-subscriptions/{subscriptionId}/summary-preference",
+    "tags": [
+      "user-subscriptions"
+    ],
+    "summary": "Create or update the summary preference overlay for a user subscription.",
+    "pathParameters": [
+      "subscriptionId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/UpsertUserSummaryPreferenceRequestDto",
     "successResponseSchemaRefs": []
   }
 ] as const;

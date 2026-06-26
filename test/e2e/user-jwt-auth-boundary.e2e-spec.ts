@@ -233,6 +233,34 @@ describe('User JWT auth boundary (e2e)', () => {
         customInstructions: 'Prioritize concise security updates.',
       }),
     });
+
+    await request(app.getHttpServer())
+      .get('/topics/topic-jwt-user-preference/user-summary-preference')
+      .query({ userId: 'another-user' })
+      .set(jwtHeaders(memberToken))
+      .expect(403)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'authorization.denied',
+          detail: 'Bearer JWT user cannot access another user summary preference',
+        });
+      });
+
+    const effectivePreference = await request(app.getHttpServer())
+      .get('/topics/topic-jwt-user-preference/user-summary-preference')
+      .query({ userId: 'personalization-user' })
+      .set(jwtHeaders(memberToken))
+      .expect(200);
+
+    expect(effectivePreference.body).toEqual({
+      source: 'topic',
+      summaryPreference: expect.objectContaining({
+        userId: 'personalization-user',
+        topicId: 'topic-jwt-user-preference',
+        language: 'ru',
+        tone: 'concise',
+      }),
+    });
   });
 
   it('binds user subscription writes and reads to the authenticated JWT subject', async () => {

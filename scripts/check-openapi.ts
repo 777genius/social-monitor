@@ -91,6 +91,12 @@ import { SummaryJobController } from "@social-monitor/summary/interfaces/rest/su
 import { SummaryPolicyController } from "@social-monitor/summary/interfaces/rest/summary-policy.controller";
 import { SummaryRequestController } from "@social-monitor/summary/interfaces/rest/summary-request.controller";
 import { SummaryController } from "@social-monitor/summary/interfaces/rest/summary.controller";
+import { CreateUserSubscriptionUseCase } from "@social-monitor/subscriptions/features/create-user-subscription/create-user-subscription.use-case";
+import { GetEffectiveUserSummaryPreferenceUseCase } from "@social-monitor/subscriptions/features/get-effective-user-summary-preference/get-effective-user-summary-preference.use-case";
+import { ListUserSubscriptionsUseCase } from "@social-monitor/subscriptions/features/list-user-subscriptions/list-user-subscriptions.use-case";
+import { UpsertUserSummaryPreferenceUseCase } from "@social-monitor/subscriptions/features/upsert-user-summary-preference/upsert-user-summary-preference.use-case";
+import { UserSubscriptionsController } from "@social-monitor/subscriptions/interfaces/rest/user-subscriptions.controller";
+import { UserSummaryPreferencesController } from "@social-monitor/subscriptions/interfaces/rest/user-summary-preferences.controller";
 import { ListPublicApiAuditEventsUseCase } from "@social-monitor/usage/features/list-public-api-audit-events/list-public-api-audit-events.use-case";
 import { RecordPublicApiAuditEventUseCase } from "@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case";
 import { PublicApiAuditEventsController } from "@social-monitor/usage/interfaces/rest/public-api-audit-events.controller";
@@ -211,6 +217,8 @@ const useCaseProviders = [
   ListTopicsUseCase,
   ListWebhookEndpointsUseCase,
   BuildPersonalizedDigestUseCase,
+  CreateUserSubscriptionUseCase,
+  GetEffectiveUserSummaryPreferenceUseCase,
   RankFeedItemsUseCase,
   RecordRelevanceFeedbackUseCase,
   RecordPublicApiAuditEventUseCase,
@@ -223,8 +231,10 @@ const useCaseProviders = [
   RevokeApiKeyUseCase,
   SetNotificationPreferenceUseCase,
   SetScanPolicyUseCase,
+  ListUserSubscriptionsUseCase,
   UpsertUserRelevanceProfileUseCase,
   UpsertSummaryPolicyUseCase,
+  UpsertUserSummaryPreferenceUseCase,
 ].map((provider) => ({
   provide: provider,
   useValue: noopUseCase,
@@ -258,6 +268,8 @@ const useCaseProviders = [
     RealtimeEventsController,
     WebhookEndpointsController,
     ApiKeysController,
+    UserSubscriptionsController,
+    UserSummaryPreferencesController,
     PublicApiAuditEventsController,
   ],
   providers: [

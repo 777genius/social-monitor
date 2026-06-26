@@ -205,7 +205,6 @@ export class UserSubscriptionsController {
         requiredScope: 'read:topics',
         operation: 'user_subscriptions.read',
       });
-      return;
     }
 
     const authorization = this.workspaceAuthorization.authorize({
@@ -236,7 +235,6 @@ export class UserSubscriptionsController {
         requiredScope: 'write:topics',
         operation: 'user_subscriptions.create',
       });
-      return;
     }
 
     const authorization = this.workspaceAuthorization.authorize({
@@ -267,7 +265,6 @@ export class UserSubscriptionsController {
         requiredScope: 'write:summaries',
         operation: 'user_summary_preferences.set',
       });
-      return;
     }
 
     const authorization = this.workspaceAuthorization.authorize({
