@@ -16,6 +16,7 @@ import type { ScanStatusFailureClass, ScanStatusUserState } from '../../features
 import type { ScanJobStatus } from '../../domain';
 import type { ScanExecutionAttemptStatus } from '../../ports';
 import { SourceBindingResponseDto } from './list-source-bindings.dto';
+import { ScanPolicyCadenceResponseDto } from './scan-policy-cadence.dto';
 
 export const sourceBindingHealthStateValues = [
   'paused',
@@ -203,6 +204,9 @@ export class SourceBindingHealthPolicyResponseDto implements SourceBindingHealth
 
   @ApiProperty({ format: 'date-time' })
   declare readonly createdAt: string;
+
+  @ApiPropertyOptional({ type: () => ScanPolicyCadenceResponseDto })
+  declare readonly cadence?: ScanPolicyCadenceResponseDto;
 
   @ApiProperty()
   declare readonly isDue: boolean;

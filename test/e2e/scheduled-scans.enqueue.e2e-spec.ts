@@ -189,11 +189,15 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       .set('x-request-id', 'request-scheduled-overlap-manual')
       .set('idempotency-key', 'request-scheduled-overlap-manual')
       .expect(201);
-    expect(manual.body).toEqual({
+    expect(manual.body).toEqual(expect.objectContaining({
       scanJobId: expect.any(String),
       status: 'enqueued',
       created: true,
-    });
+      requestDecision: expect.objectContaining({
+        decision: 'created',
+        reason: 'manual_scan_enqueued',
+      }),
+    }));
 
     const result = await scheduler.execute({
       tenantId: tenantId(tenant),

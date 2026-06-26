@@ -1823,6 +1823,9 @@
       },
       "GetScanPolicyResponseDto": {
         "properties": {
+          "cadence": {
+            "$ref": "#/components/schemas/ScanPolicyCadenceResponseDto"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -2926,6 +2929,41 @@
         ],
         "type": "object"
       },
+      "ScanPolicyCadenceResponseDto": {
+        "properties": {
+          "configuredFreshnessSeconds": {
+            "type": "number"
+          },
+          "configuredIntervalSeconds": {
+            "type": "number"
+          },
+          "effectiveFreshnessSeconds": {
+            "type": "number"
+          },
+          "effectiveIntervalSeconds": {
+            "type": "number"
+          },
+          "minimumIntervalSeconds": {
+            "type": "number"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "providerMinimumIntervalEnforced": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "providerKey",
+          "minimumIntervalSeconds",
+          "configuredIntervalSeconds",
+          "configuredFreshnessSeconds",
+          "effectiveIntervalSeconds",
+          "effectiveFreshnessSeconds",
+          "providerMinimumIntervalEnforced"
+        ],
+        "type": "object"
+      },
       "ScanStatusResponseDto": {
         "properties": {
           "completedAt": {
@@ -3300,6 +3338,9 @@
       },
       "SourceBindingHealthPolicyResponseDto": {
         "properties": {
+          "cadence": {
+            "$ref": "#/components/schemas/ScanPolicyCadenceResponseDto"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"

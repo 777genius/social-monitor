@@ -148,7 +148,7 @@ export class GetSourceBindingHealthUseCase {
       scanPolicy: scanPolicy === null || scanPolicySnapshot === undefined
         ? undefined
         : {
-            ...presentScanPolicy(scanPolicy),
+            ...presentScanPolicy(scanPolicy, { providerKey: bindingSnapshot.providerKey }),
             isDue: scanPolicySnapshot.nextRunAt.getTime() <= now.getTime(),
           },
       latestScan: latestScanSnapshot === undefined

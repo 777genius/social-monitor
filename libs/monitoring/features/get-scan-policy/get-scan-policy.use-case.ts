@@ -40,6 +40,6 @@ export class GetScanPolicyUseCase {
       }));
     }
 
-    return ok(presentScanPolicy(policy));
+    return ok(presentScanPolicy(policy, { providerKey: binding.toSnapshot().providerKey }));
   }
 }

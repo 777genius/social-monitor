@@ -1,6 +1,6 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { ScanPolicy, SourceBinding, type ScanPolicyProps } from '../../domain';
+import { ScanPolicy, SourceBinding, type ScanPolicyProps, type SourceBindingProps } from '../../domain';
 import type {
   ListSourceBindingsQuery,
   ListSourceBindingsResult,
@@ -32,7 +32,47 @@ describe('GetScanPolicyUseCase', () => {
         retryBudget: 3,
         nextRunAt: '2026-06-05T00:05:00.000Z',
         createdAt: '2026-06-05T00:00:00.000Z',
+        cadence: {
+          providerKey: 'fake-source',
+          minimumIntervalSeconds: 60,
+          configuredIntervalSeconds: 300,
+          configuredFreshnessSeconds: 900,
+          effectiveIntervalSeconds: 300,
+          effectiveFreshnessSeconds: 900,
+          providerMinimumIntervalEnforced: false,
+        },
       },
+    });
+  });
+
+  it('reports effective cadence when a legacy policy is below provider minimums', async () => {
+    const bindings = new FakeSourceBindings();
+    const policies = new FakeScanPolicies();
+    bindings.add(makeBinding({ providerKey: 'reddit' }));
+    await policies.save(makePolicy({
+      intervalSeconds: 60,
+      freshnessSeconds: 60,
+    }));
+
+    await expect(new GetScanPolicyUseCase(bindings, policies).execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+    })).resolves.toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        intervalSeconds: 60,
+        freshnessSeconds: 60,
+        cadence: {
+          providerKey: 'reddit',
+          minimumIntervalSeconds: 900,
+          configuredIntervalSeconds: 60,
+          configuredFreshnessSeconds: 60,
+          effectiveIntervalSeconds: 900,
+          effectiveFreshnessSeconds: 900,
+          providerMinimumIntervalEnforced: true,
+        },
+      }),
     });
   });
 
@@ -50,7 +90,9 @@ describe('GetScanPolicyUseCase', () => {
   });
 });
 
-const makeBinding = (): SourceBinding => SourceBinding.create({
+const makeBinding = (
+  overrides: Partial<Omit<SourceBindingProps, 'status'>> = {},
+): SourceBinding => SourceBinding.create({
   id: 'binding-1',
   tenantId: tenantId('tenant-1'),
   workspaceId: workspaceId('workspace-1'),
@@ -59,6 +101,7 @@ const makeBinding = (): SourceBinding => SourceBinding.create({
   capabilityProfileVersion: 1,
   config: {},
   createdAt: new Date('2026-06-05T00:00:00.000Z'),
+  ...overrides,
 });
 
 const makePolicy = (overrides: Partial<ScanPolicyProps> = {}): ScanPolicy => ScanPolicy.create({

@@ -1,6 +1,7 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import type { ScanPolicyView } from '../../features/shared/scan-policy-presenter';
+import { ScanPolicyCadenceResponseDto } from './scan-policy-cadence.dto';
 
 export class GetScanPolicyResponseDto implements ScanPolicyView {
   @ApiProperty()
@@ -29,4 +30,7 @@ export class GetScanPolicyResponseDto implements ScanPolicyView {
 
   @ApiProperty({ format: 'date-time' })
   declare readonly createdAt: string;
+
+  @ApiPropertyOptional({ type: () => ScanPolicyCadenceResponseDto })
+  declare readonly cadence?: ScanPolicyCadenceResponseDto;
 }
