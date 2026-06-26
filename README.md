@@ -255,7 +255,7 @@ npm run frontend:create-feature -- <bounded_context> "<Title>" "<Purpose>"
 npm run frontend:generate-api
 ```
 
-Live connector checks are intentionally separated from `npm run verify`: HN/RSS/GitHub public checks can run without credentials, while Reddit requires tenant-owned OAuth credentials. `capture:live-reddit-oauth` accepts either `REDDIT_ACCESS_TOKEN` or `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` + `REDDIT_REFRESH_TOKEN` and writes only redacted evidence artifacts. X/Twitter and Telegram remain deferred until an approved API/vendor or authorized channel path is available.
+Live connector checks are intentionally separated from `npm run verify`: HN/RSS/GitHub public checks can run without credentials, while Reddit requires tenant-owned OAuth credentials. `capture:live-reddit-oauth` and `check:live-reddit-oauth` accept either a short-lived `REDDIT_ACCESS_TOKEN` or durable `REDDIT_CLIENT_ID`/`REDDIT_APP_CLIENT_ID` + optional client secret + `REDDIT_REFRESH_TOKEN`, then write only redacted evidence artifacts. X/Twitter and Telegram remain deferred until an approved API/vendor or authorized channel path is available.
 
 Summary feedback capture expects an already-redacted JSON input outside the git workspace. Set `SUMMARY_FEEDBACK_REDACTED_INPUT_PATH`, `SUMMARY_REAL_FEEDBACK_SAMPLES_PATH`, `SUMMARY_FEEDBACK_SOURCE_KIND`, `SUMMARY_FEEDBACK_ENVIRONMENT_ID`, `SUMMARY_FEEDBACK_OPERATOR`, `SUMMARY_FEEDBACK_REDACTED_BY`, `SUMMARY_FEEDBACK_APPROVED_BY`, `SUMMARY_FEEDBACK_COLLECTION_METHOD`, and either input `sampleWindow` or `SUMMARY_FEEDBACK_WINDOW_STARTED_AT` / `SUMMARY_FEEDBACK_WINDOW_ENDED_AT`.
 

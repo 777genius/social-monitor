@@ -1,10 +1,19 @@
 import { createHash } from 'node:crypto';
 
 import { HttpRedditClient } from '../libs/ingestion/adapters/source/reddit/http-reddit-client';
+import {
+  RedditRefreshTokenProvider,
+  type RedditRefreshTokenProviderPort,
+} from '../libs/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider';
 import { RedditSourceProvider } from '../libs/ingestion/adapters/source/reddit/reddit-source.provider';
 import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
-import type { SourceProviderScanContext, SourceQuery, SourceReadinessFreshnessGuard } from '../libs/ingestion/ports';
+import type {
+  SourceProviderScanContext,
+  SourceQuery,
+  SourceReadinessFreshnessGuard,
+  SourceRuntimeConfig,
+} from '../libs/ingestion/ports';
 import { readLiveEvidenceArtifactFile, writeLiveEvidenceArtifactAtomically } from './lib/live-evidence-artifact';
 
 type RedditLiveSignalId =
@@ -19,7 +28,17 @@ const coveredSignalIds: readonly RedditLiveSignalId[] = [
   'reddit-rate-limit-budget',
   'reddit-credential-lifecycle',
 ];
-const missingTokenPolicy = 'fail_closed_without_reddit_access_token';
+type RedditCredentialMode = 'access_token' | 'refresh_token';
+
+type RedditCredentialPlan = {
+  readonly credentialMode: RedditCredentialMode;
+  readonly provider: RedditSourceProvider;
+  readonly config: SourceRuntimeConfig;
+  readonly invalidConfig: SourceRuntimeConfig;
+  accessTokenForRateLimit(): Promise<string>;
+};
+
+const missingTokenPolicy = 'fail_closed_without_reddit_oauth_credential';
 const liveArtifactFormat = 'source-live-provider-evidence-v1';
 const credentialLifecycleArtifactFormat = 'reddit-credential-lifecycle-redacted-v1';
 const credentialLifecycleEvidenceKind = 'credential_lifecycle';
@@ -46,17 +65,9 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 async function main(): Promise<void> {
-  const accessToken = readOptionalEnv('REDDIT_ACCESS_TOKEN');
-
-  if (accessToken === undefined || accessToken.length === 0) {
-    throw new Error(
-      `Live Reddit OAuth smoke requires REDDIT_ACCESS_TOKEN (${missingTokenPolicy}). Use fixture reddit smoke for backend-safe checks.`,
-    );
-  }
-
   const credentialLifecycle = readCredentialLifecycleEvidence();
-  const provider = new RedditSourceProvider(new HttpRedditClient('https://oauth.reddit.com', timeoutMs));
   const userAgent = readOptionalEnv('REDDIT_USER_AGENT') ?? 'social-monitor-mvp/0.1 live-smoke';
+  const credential = redditCredentialPlan(userAgent);
   const subreddit = readOptionalEnv('REDDIT_SUBREDDIT') ?? 'programming';
   const listing = readOptionalEnv('REDDIT_LISTING') ?? 'hot';
   const query: SourceQuery = {
@@ -70,7 +81,7 @@ async function main(): Promise<void> {
     scanJobId: 'scan-job-live-reddit-oauth-smoke',
     correlationId: 'correlation-live-reddit-oauth-smoke',
     config: {
-      accessToken,
+      ...credential.config,
       userAgent,
       subreddit,
       listing,
@@ -78,11 +89,11 @@ async function main(): Promise<void> {
     },
   };
 
-  const validation = provider.validateBinding(query);
+  const validation = credential.provider.validateBinding(query);
   assert(validation.ok, 'Reddit live query must validate before scan');
 
-  const plan = provider.planScan(query, context);
-  const result = await provider.scan(plan, context);
+  const plan = credential.provider.planScan(query, context);
+  const result = await credential.provider.scan(plan, context);
 
   assert(result.items.length > 0, 'Reddit live OAuth scan must return at least one normalized item');
   assert(
@@ -98,8 +109,8 @@ async function main(): Promise<void> {
     'Reddit live OAuth scan must expose readable title or body',
   );
 
-  await assertRedditAuthFailure(provider, query, context);
-  const rateLimit = await readRedditRateLimitBudget(accessToken, userAgent);
+  await assertRedditAuthFailure(credential.provider, query, context, credential.invalidConfig);
+  const rateLimit = await readRedditRateLimitBudget(await credential.accessTokenForRateLimit(), userAgent);
   const sampledAt = new Date().toISOString();
   writeEvidenceIfRequested({
     artifactId: 'live-reddit-oauth-evidence-v1',
@@ -116,6 +127,7 @@ async function main(): Promise<void> {
             observedAt: sampledAt,
             evidence: {
               summary: 'Tenant-owned Reddit OAuth credential returned normalized listing items.',
+              credentialMode: credential.credentialMode,
               subreddit,
               listing,
               itemCount: result.items.length,
@@ -123,6 +135,7 @@ async function main(): Promise<void> {
               warningCount: result.warnings.length,
             },
             metrics: {
+              credentialMode: credential.credentialMode,
               subreddit,
               listing,
               itemCount: result.items.length,
@@ -183,6 +196,7 @@ async function main(): Promise<void> {
     `Signals: ${coveredSignalIds.join(', ')}`,
     `Subreddit: ${subreddit}`,
     `Listing: ${listing}`,
+    `Credential mode: ${credential.credentialMode}`,
     `Items: ${result.items.length}`,
     `Next cursor: ${result.nextCursor ?? 'none'}`,
     `Warnings: ${result.warnings.length}`,
@@ -191,16 +205,88 @@ async function main(): Promise<void> {
   ].join('\n'));
 }
 
+const redditCredentialPlan = (userAgent: string): RedditCredentialPlan => {
+  const accessToken = readOptionalEnv('REDDIT_ACCESS_TOKEN');
+  if (accessToken !== undefined) {
+    return {
+      credentialMode: 'access_token',
+      provider: new RedditSourceProvider(new HttpRedditClient('https://oauth.reddit.com', timeoutMs)),
+      config: { accessToken },
+      invalidConfig: { accessToken: 'invalid-reddit-token-for-fail-closed-smoke' },
+      accessTokenForRateLimit: async () => accessToken,
+    };
+  }
+
+  const refreshToken = readOptionalEnv('REDDIT_REFRESH_TOKEN');
+  if (refreshToken === undefined) {
+    throw new Error(
+      `Live Reddit OAuth smoke requires REDDIT_ACCESS_TOKEN or REDDIT_CLIENT_ID/REDDIT_APP_CLIENT_ID plus REDDIT_REFRESH_TOKEN (${missingTokenPolicy}). Use fixture reddit smoke for backend-safe checks.`,
+    );
+  }
+
+  const clientId = readRequiredFirstEnv('REDDIT_CLIENT_ID', 'REDDIT_APP_CLIENT_ID');
+  const clientSecret = firstNonEmptyString(
+    readOptionalEnv('REDDIT_CLIENT_SECRET'),
+    readOptionalEnv('REDDIT_APP_CLIENT_SECRET'),
+  );
+  const refreshTokenProvider = RedditRefreshTokenProvider.fromEnvironment(process.env);
+  const config: SourceRuntimeConfig = {
+    clientId,
+    redditClientId: clientId,
+    refreshToken,
+    redditRefreshToken: refreshToken,
+    userAgent,
+    ...(clientSecret === undefined ? {} : {
+      clientSecret,
+      redditClientSecret: clientSecret,
+    }),
+  };
+
+  return {
+    credentialMode: 'refresh_token',
+    provider: new RedditSourceProvider(
+      new HttpRedditClient('https://oauth.reddit.com', timeoutMs),
+      undefined,
+      refreshTokenProvider,
+    ),
+    config,
+    invalidConfig: {
+      ...config,
+      refreshToken: 'invalid-reddit-refresh-token-for-fail-closed-smoke',
+      redditRefreshToken: 'invalid-reddit-refresh-token-for-fail-closed-smoke',
+    },
+    accessTokenForRateLimit: () =>
+      refreshAccessTokenForRateLimit(refreshTokenProvider, {
+        clientId,
+        clientSecret,
+        refreshToken,
+        userAgent,
+      }),
+  };
+};
+
+const refreshAccessTokenForRateLimit = (
+  provider: RedditRefreshTokenProviderPort,
+  request: {
+    readonly clientId: string;
+    readonly clientSecret?: string;
+    readonly refreshToken: string;
+    readonly userAgent: string;
+  },
+): Promise<string> =>
+  provider.getAccessToken(request);
+
 const assertRedditAuthFailure = async (
   provider: RedditSourceProvider,
   query: SourceQuery,
   context: SourceProviderScanContext,
+  invalidConfig: SourceRuntimeConfig,
 ): Promise<void> => {
   const invalidContext: SourceProviderScanContext = {
     ...context,
     config: {
       ...context.config,
-      accessToken: 'invalid-reddit-token-for-fail-closed-smoke',
+      ...invalidConfig,
     },
   };
   const plan = provider.planScan(query, invalidContext);
@@ -209,7 +295,10 @@ const assertRedditAuthFailure = async (
     await provider.scan(plan, invalidContext);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    assert(/401|403|Reddit API returned/i.test(message), 'Reddit invalid OAuth credential must fail closed as an auth failure');
+    assert(
+      /401|403|oauth|credential|token|Reddit API returned/i.test(message),
+      'Reddit invalid OAuth credential must fail closed as an auth failure',
+    );
     return;
   }
 
@@ -394,6 +483,15 @@ const readOptionalEnv = (name: string): string | undefined => {
   const value = process.env[name]?.trim();
   return value === undefined || value.length === 0 ? undefined : value;
 };
+
+const readRequiredFirstEnv = (...names: readonly string[]): string => {
+  const value = firstNonEmptyString(...names.map(readOptionalEnv));
+  assert(value !== undefined, `Live Reddit OAuth smoke requires one of ${names.join(', ')}`);
+  return value;
+};
+
+const firstNonEmptyString = (...values: readonly (string | undefined)[]): string | undefined =>
+  values.find((value) => value !== undefined && value.trim().length > 0)?.trim();
 
 const writeEvidenceIfRequested = (evidence: {
   readonly artifactId: string;

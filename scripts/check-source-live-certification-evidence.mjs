@@ -584,8 +584,16 @@ function validateLiveSmokeScripts() {
       violations.push(`${redditRefreshTokenProviderPath}: Reddit refresh-token provider must implement safe token exchange through ${marker}`);
     }
   }
-  if (!redditLiveScript.includes('fail_closed_without_reddit_access_token')) {
-    violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must fail closed when REDDIT_ACCESS_TOKEN is missing`);
+  for (const marker of [
+    'fail_closed_without_reddit_oauth_credential',
+    'REDDIT_REFRESH_TOKEN',
+    'RedditRefreshTokenProvider.fromEnvironment',
+    'credentialMode: \'refresh_token\'',
+    'REDDIT_CLIENT_ID/REDDIT_APP_CLIENT_ID',
+  ]) {
+    if (!redditLiveScript.includes(marker)) {
+      violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must support durable refresh-token credentials through ${marker}`);
+    }
   }
   if (/SKIPPED:\s*REDDIT_ACCESS_TOKEN is not set/i.test(redditLiveScript)) {
     violations.push(`${redditLiveScriptPath}: live Reddit OAuth smoke must not skip missing REDDIT_ACCESS_TOKEN`);
