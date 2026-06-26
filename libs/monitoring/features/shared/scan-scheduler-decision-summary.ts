@@ -1,4 +1,5 @@
 import type { ScanSchedulerDecisionRecord } from '../../ports';
+import type { ScanProviderHealthSummary } from './scan-provider-health-summary';
 
 export type ScanSchedulerSkipBreakdownView = {
   readonly activeScan: number;
@@ -41,6 +42,40 @@ export const sortSchedulerDecisions = (
     return evaluatedDiff === 0 ? right.id.localeCompare(left.id) : evaluatedDiff;
   });
 
+export const providerHealthWithSchedulerBackoff = (
+  health: ScanProviderHealthSummary,
+  skippedByReason: ScanSchedulerSkipBreakdownView,
+): ScanProviderHealthSummary => {
+  if (skippedByReason.providerFailureBackoff > 0) {
+    return {
+      ...health,
+      providerHealthState: 'down',
+      operatorAction: 'pause_or_backoff_provider_until_recovery',
+      signals: uniqueStable([
+        ...health.signals,
+        'provider_failure_backoff',
+      ]),
+    };
+  }
+
+  if (
+    skippedByReason.rateLimitBackoff > 0 &&
+    health.providerHealthState !== 'down'
+  ) {
+    return {
+      ...health,
+      providerHealthState: 'degraded',
+      operatorAction: 'inspect_recent_scan_failures_and_rate_limits',
+      signals: uniqueStable([
+        ...health.signals,
+        'rate_limit_backoff',
+      ]),
+    };
+  }
+
+  return health;
+};
+
 const schedulerSkipBreakdown = (
   decisions: readonly ScanSchedulerDecisionRecord[],
 ): ScanSchedulerSkipBreakdownView => {
@@ -55,4 +90,20 @@ const schedulerSkipBreakdown = (
     rateLimitBackoff: skipped.filter((decision) => decision.reason === 'rate_limit_backoff').length,
     sourceUnavailable: skipped.filter((decision) => decision.reason === 'source_unavailable').length,
   };
+};
+
+const uniqueStable = <TValue>(values: readonly TValue[]): readonly TValue[] => {
+  const seen = new Set<TValue>();
+  const result: TValue[] = [];
+
+  for (const value of values) {
+    if (seen.has(value)) {
+      continue;
+    }
+
+    seen.add(value);
+    result.push(value);
+  }
+
+  return result;
 };

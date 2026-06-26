@@ -418,6 +418,7 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.summary).toEqual(expect.objectContaining({
+        providerHealthState: 'degraded',
         schedulerDecisionCount: 3,
         schedulerEnqueuedCount: 1,
         schedulerSkippedCount: 2,
@@ -431,6 +432,8 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
           sourceUnavailable: 0,
         },
         lastSchedulerEvaluatedAt: '2026-06-25T09:00:00.000Z',
+        operatorAction: 'inspect_recent_scan_failures_and_rate_limits',
+        signals: ['no_recent_scans', 'rate_limit_backoff'],
       }));
       expect(result.value.days).toEqual([
         expect.objectContaining({
@@ -445,6 +448,7 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
         }),
         expect.objectContaining({
           date: '2026-06-25',
+          providerHealthState: 'degraded',
           schedulerDecisionCount: 2,
           schedulerEnqueuedCount: 1,
           schedulerSkippedCount: 1,
@@ -453,12 +457,51 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
             rateLimitBackoff: 1,
           }),
           lastSchedulerEvaluatedAt: '2026-06-25T09:00:00.000Z',
+          signals: ['no_recent_scans', 'rate_limit_backoff'],
         }),
       ]);
       expect(schedulerHistory.windowQueries[0]).toEqual(expect.objectContaining({
         limit: 200,
         windowStartedAt: new Date('2026-06-24T00:00:00.000Z'),
         windowEndedAt: new Date('2026-06-26T00:00:00.000Z'),
+      }));
+    }
+  });
+
+  it('marks daily health down when scheduler is backing off provider failures', async () => {
+    const result = await new ListSourceBindingDailyHistoryUseCase(
+      await readyBindings(),
+      await readyScanPolicies(),
+      new FakeScanHistory([]),
+      new FakeScanExecutionAttempts(),
+      new FixedClock(now),
+      new FakeSchedulerDecisionHistory([
+        schedulerDecision({
+          id: 'decision-provider-failure',
+          decision: 'skipped',
+          reason: 'provider_failure_backoff',
+          evaluatedAt: new Date('2026-06-25T09:00:00.000Z'),
+        }),
+      ]),
+    ).execute(baseQuery({ days: 1 }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.summary).toEqual(expect.objectContaining({
+        providerHealthState: 'down',
+        schedulerSkippedByReason: expect.objectContaining({
+          providerFailureBackoff: 1,
+        }),
+        operatorAction: 'pause_or_backoff_provider_until_recovery',
+        signals: ['no_recent_scans', 'provider_failure_backoff'],
+      }));
+      expect(result.value.days[0]).toEqual(expect.objectContaining({
+        providerHealthState: 'down',
+        schedulerSkippedByReason: expect.objectContaining({
+          providerFailureBackoff: 1,
+        }),
+        operatorAction: 'pause_or_backoff_provider_until_recovery',
+        signals: ['no_recent_scans', 'provider_failure_backoff'],
       }));
     }
   });

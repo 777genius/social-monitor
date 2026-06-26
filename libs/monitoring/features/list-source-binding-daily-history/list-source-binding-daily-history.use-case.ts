@@ -11,7 +11,10 @@ import type {
   SourceBindingRepositoryPort,
 } from '../../ports';
 import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
-import { summarizeScanSchedulerDecisions } from '../shared/scan-scheduler-decision-summary';
+import {
+  providerHealthWithSchedulerBackoff,
+  summarizeScanSchedulerDecisions,
+} from '../shared/scan-scheduler-decision-summary';
 import { presentScanPolicy } from '../shared/scan-policy-presenter';
 import type { ListSourceBindingDailyHistoryQuery } from './list-source-binding-daily-history.query';
 import type {
@@ -166,8 +169,11 @@ const buildDayView = (params: {
   readonly attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>;
 }): SourceBindingDailyHistoryDayView => {
   const snapshots = params.jobs.map((job) => job.toSnapshot());
-  const health = summarizeScanProviderHealth(snapshots);
   const schedulerSummary = summarizeScanSchedulerDecisions(params.schedulerDecisions);
+  const health = providerHealthWithSchedulerBackoff(
+    summarizeScanProviderHealth(snapshots),
+    schedulerSummary.schedulerSkippedByReason,
+  );
   const latestAttempts = snapshots
     .map((snapshot) => params.attempts.get(snapshot.id))
     .filter((attempt): attempt is NonNullable<typeof attempt> => attempt !== null && attempt !== undefined);
@@ -210,8 +216,11 @@ const buildSummaryView = (params: {
   readonly attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>;
 }): SourceBindingDailyHistorySummaryView => {
   const snapshots = params.jobs.map((job) => job.toSnapshot());
-  const health = summarizeScanProviderHealth(snapshots);
   const schedulerSummary = summarizeScanSchedulerDecisions(params.schedulerDecisions);
+  const health = providerHealthWithSchedulerBackoff(
+    summarizeScanProviderHealth(snapshots),
+    schedulerSummary.schedulerSkippedByReason,
+  );
   const latestAttempts = snapshots
     .map((snapshot) => params.attempts.get(snapshot.id))
     .filter((attempt): attempt is NonNullable<typeof attempt> => attempt !== null && attempt !== undefined);

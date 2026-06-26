@@ -6,11 +6,10 @@ import type {
 import { effectiveProviderScanCadence } from '../shared/scan-cadence-policy';
 import {
   summarizeScanProviderHealth,
-  type ScanProviderHealthSummary,
 } from '../shared/scan-provider-health-summary';
 import {
+  providerHealthWithSchedulerBackoff,
   summarizeScanSchedulerDecisions,
-  type ScanSchedulerSkipBreakdownView,
 } from '../shared/scan-scheduler-decision-summary';
 import type {
   TopicSourceDailyHistoryCadenceSummaryView,
@@ -257,40 +256,6 @@ const buildProviderView = (
   };
 };
 
-const providerHealthWithSchedulerBackoff = (
-  health: ScanProviderHealthSummary,
-  skippedByReason: ScanSchedulerSkipBreakdownView,
-): ScanProviderHealthSummary => {
-  if (skippedByReason.providerFailureBackoff > 0) {
-    return {
-      ...health,
-      providerHealthState: 'down',
-      operatorAction: 'pause_or_backoff_provider_until_recovery',
-      signals: uniqueStable([
-        ...health.signals,
-        'provider_failure_backoff',
-      ]),
-    };
-  }
-
-  if (
-    skippedByReason.rateLimitBackoff > 0 &&
-    health.providerHealthState !== 'down'
-  ) {
-    return {
-      ...health,
-      providerHealthState: 'degraded',
-      operatorAction: 'inspect_recent_scan_failures_and_rate_limits',
-      signals: uniqueStable([
-        ...health.signals,
-        'rate_limit_backoff',
-      ]),
-    };
-  }
-
-  return health;
-};
-
 const countBindingsByStatus = (
   bindings: readonly SourceBinding[],
   status: 'enabled' | 'paused',
@@ -388,19 +353,3 @@ const sumAttempts = (
   field: 'fetched' | 'inserted' | 'skippedDuplicates' | 'projected',
 ): number =>
   attempts.reduce((total, attempt) => total + attempt[field], 0);
-
-const uniqueStable = <TValue>(values: readonly TValue[]): readonly TValue[] => {
-  const seen = new Set<TValue>();
-  const result: TValue[] = [];
-
-  for (const value of values) {
-    if (seen.has(value)) {
-      continue;
-    }
-
-    seen.add(value);
-    result.push(value);
-  }
-
-  return result;
-};
