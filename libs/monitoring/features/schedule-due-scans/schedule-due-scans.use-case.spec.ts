@@ -248,6 +248,57 @@ describe('ScheduleDueScansUseCase', () => {
     });
   });
 
+  it('fast-forwards stale due policies after scheduler downtime', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    policies.add(ScanPolicy.create({
+      id: 'policy-1',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      intervalSeconds: 300,
+      freshnessSeconds: 900,
+      retryBudget: 3,
+      nextRunAt: new Date('2026-06-05T10:00:00.000Z'),
+      createdAt: new Date('2026-06-05T00:00:00.000Z'),
+    }));
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      new FakeScanJobs(),
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-after-downtime',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 1,
+        skipped: 0,
+      },
+    });
+    expect(queue.commands).toHaveLength(1);
+    expect((await policies.findBySourceBinding({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+    }))?.toSnapshot()).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
+    });
+  });
+
   it('enqueues daily GitHub repo radar scans with configured discovery query', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(SourceBinding.create({

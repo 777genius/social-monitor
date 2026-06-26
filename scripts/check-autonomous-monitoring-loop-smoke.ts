@@ -93,6 +93,7 @@ import { CreateTopicUseCase } from '../libs/monitoring/features/create-topic/cre
 import { RecordScanExecutionUseCase } from '../libs/monitoring/features/record-scan-execution/record-scan-execution.use-case';
 import { ScheduleDueScansUseCase } from '../libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case';
 import { SetScanPolicyUseCase } from '../libs/monitoring/features/set-scan-policy/set-scan-policy.use-case';
+import { minimumScanIntervalSecondsForProvider } from '../libs/monitoring/features/shared/scan-cadence-policy';
 import type { SourceBindingConfig, SourceBindingConfigProtectorPort } from '../libs/monitoring/ports';
 
 type ProviderKey = 'reddit' | 'github-issues' | 'rss' | 'hacker-news';
@@ -112,6 +113,14 @@ type ScanBinding = {
   readonly providerKey: ProviderKey;
   readonly sourceBindingId: string;
   readonly scanPolicyId: string;
+  readonly intervalSeconds: number;
+  readonly freshnessSeconds: number;
+};
+
+type ProviderTarget = {
+  readonly providerKey: ProviderKey;
+  readonly config: SourceBindingConfig;
+  readonly freshnessSeconds: number;
 };
 
 type ScanMetric = {
@@ -674,8 +683,8 @@ async function bindProviders(params: {
         tenantId: tenant,
         workspaceId: workspace,
         sourceBindingId: binding.sourceBindingId,
-        intervalSeconds: 300,
-        freshnessSeconds: 900,
+        intervalSeconds: minimumScanIntervalSecondsForProvider(target.providerKey),
+        freshnessSeconds: target.freshnessSeconds,
         retryBudget: 3,
         idempotencyKey: `autonomous-loop:scan-policy:${target.providerKey}`,
         correlationId,
@@ -686,6 +695,8 @@ async function bindProviders(params: {
       providerKey: target.providerKey,
       sourceBindingId: binding.sourceBindingId,
       scanPolicyId: policy.scanPolicyId,
+      intervalSeconds: minimumScanIntervalSecondsForProvider(target.providerKey),
+      freshnessSeconds: target.freshnessSeconds,
     });
   }
 
@@ -808,10 +819,11 @@ async function audit(
   );
 }
 
-function providerTargets(): readonly { readonly providerKey: ProviderKey; readonly config: SourceBindingConfig }[] {
+function providerTargets(): readonly ProviderTarget[] {
   return [
     {
       providerKey: 'reddit',
+      freshnessSeconds: 900,
       config: {
         mode: 'listing',
         subreddit: 'programming',
@@ -820,6 +832,7 @@ function providerTargets(): readonly { readonly providerKey: ProviderKey; readon
     },
     {
       providerKey: 'github-issues',
+      freshnessSeconds: 900,
       config: {
         mode: 'search',
         query: 'repo:microsoft/TypeScript agents orchestration reliability',
@@ -827,12 +840,14 @@ function providerTargets(): readonly { readonly providerKey: ProviderKey; readon
     },
     {
       providerKey: 'rss',
+      freshnessSeconds: 900,
       config: {
         feedUrl: 'https://hnrss.org/frontpage',
       },
     },
     {
       providerKey: 'hacker-news',
+      freshnessSeconds: 900,
       config: {
         mode: 'search',
         query: 'agents orchestration reliability',

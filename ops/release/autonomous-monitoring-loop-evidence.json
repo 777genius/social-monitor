@@ -28,22 +28,30 @@
           {
             "providerKey": "reddit",
             "sourceBindingId": "autonomous-loop-4",
-            "scanPolicyId": "autonomous-loop-6"
+            "scanPolicyId": "autonomous-loop-6",
+            "intervalSeconds": 900,
+            "freshnessSeconds": 900
           },
           {
             "providerKey": "github-issues",
             "sourceBindingId": "autonomous-loop-8",
-            "scanPolicyId": "autonomous-loop-10"
+            "scanPolicyId": "autonomous-loop-10",
+            "intervalSeconds": 300,
+            "freshnessSeconds": 900
           },
           {
             "providerKey": "rss",
             "sourceBindingId": "autonomous-loop-12",
-            "scanPolicyId": "autonomous-loop-14"
+            "scanPolicyId": "autonomous-loop-14",
+            "intervalSeconds": 300,
+            "freshnessSeconds": 900
           },
           {
             "providerKey": "hacker-news",
             "sourceBindingId": "autonomous-loop-16",
-            "scanPolicyId": "autonomous-loop-18"
+            "scanPolicyId": "autonomous-loop-18",
+            "intervalSeconds": 300,
+            "freshnessSeconds": 900
           }
         ]
       }

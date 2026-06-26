@@ -126,6 +126,7 @@ export class ScheduleDueScansUseCase {
         nextRunAt: nextRunAtAfterSchedulerDecision({
           dueAt: policySnapshot.nextRunAt,
           intervalSeconds: policySnapshot.intervalSeconds,
+          now,
           rateLimitBackoff,
         }),
       }));
@@ -146,15 +147,24 @@ const scheduledIdempotencyKey = (scanPolicyId: string, dueAt: Date): string =>
 const nextRunAtAfterSchedulerDecision = (params: {
   readonly dueAt: Date;
   readonly intervalSeconds: number;
+  readonly now: Date;
   readonly rateLimitBackoff: Date | null;
 }): Date => {
-  const intervalNextRunAt = new Date(params.dueAt.getTime() + params.intervalSeconds * 1000);
+  const intervalMs = params.intervalSeconds * 1000;
+  const intervalNextRunAt = new Date(params.dueAt.getTime() + intervalMs);
 
-  if (params.rateLimitBackoff === null) {
-    return intervalNextRunAt;
+  if (params.rateLimitBackoff !== null) {
+    const backoffNextRunAt = params.rateLimitBackoff.getTime() > intervalNextRunAt.getTime()
+      ? params.rateLimitBackoff
+      : intervalNextRunAt;
+
+    if (backoffNextRunAt.getTime() > params.now.getTime()) {
+      return backoffNextRunAt;
+    }
   }
 
-  return params.rateLimitBackoff.getTime() > intervalNextRunAt.getTime()
-    ? params.rateLimitBackoff
-    : intervalNextRunAt;
+  const elapsedMs = Math.max(0, params.now.getTime() - params.dueAt.getTime());
+  const elapsedIntervals = Math.floor(elapsedMs / intervalMs) + 1;
+
+  return new Date(params.dueAt.getTime() + elapsedIntervals * intervalMs);
 };
