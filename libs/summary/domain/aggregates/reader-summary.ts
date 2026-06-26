@@ -2,7 +2,6 @@ import type { ReaderSummaryCitation } from "../entities/citation";
 import type { ReaderSummarySnapshot } from "../entities/reader-summary-snapshot";
 import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type {
-  ReaderTopicSection,
   ReaderTrendDelta,
   ReaderSummaryRisk,
   RepeatedSignal,
@@ -15,6 +14,7 @@ import {
   buildReaderSummaryQualityState,
   buildSourceMix,
 } from "../policies/source-mix-quality-policy";
+import { buildTopicSections } from "../policies/reader-topic-section-policy";
 import { selectUniqueTopReadCandidates } from "../policies/top-read-selection-policy";
 import type {
   StoryCluster,
@@ -34,10 +34,8 @@ import {
   buildMatchedRules,
   buildWhyNow,
   confirmedProviderKeys,
-  hasAnyCitation,
   readerItemConfidence,
   storyProviderMetricLabels,
-  uniqueItems,
 } from "../services/reader-summary-support";
 
 export type ReaderSummaryFactoryInput = {
@@ -348,48 +346,6 @@ const buildReaderSummaryBullets = (
   return compacted.length > 0
     ? compacted.slice(0, 5)
     : [input.executiveSummary];
-};
-
-const buildTopicSections = (
-  input: ReaderSummaryFactoryInput,
-  topReads: readonly TopRead[],
-): readonly ReaderTopicSection[] => {
-  if (input.topicHighlights.length > 0) {
-    return input.topicHighlights.slice(0, 6).map((highlight) => ({
-      topicId: highlight.topicId,
-      title: highlight.title,
-      insight: highlight.summary,
-      items: topReads
-        .filter((item) =>
-          hasAnyCitation(item.citationIds, highlight.citationIds),
-        )
-        .slice(0, 3),
-      citationIds: highlight.citationIds,
-    }));
-  }
-
-  const sectionsByTopic = new Map<string, ReaderTopicSection>();
-  for (const story of input.topStories) {
-    const matchingItem = topReads.find((item) =>
-      hasAnyCitation(item.citationIds, story.citationIds),
-    );
-    for (const topicId of story.topicIds) {
-      const current = sectionsByTopic.get(topicId);
-      const item = matchingItem === undefined ? [] : [matchingItem];
-      sectionsByTopic.set(topicId, {
-        topicId,
-        title: topicTitle(topicId),
-        insight: current?.insight ?? story.summary,
-        items: uniqueItems([...(current?.items ?? []), ...item]).slice(0, 3),
-        citationIds: uniqueNonEmpty([
-          ...(current?.citationIds ?? []),
-          ...story.citationIds,
-        ]),
-      });
-    }
-  }
-
-  return [...sectionsByTopic.values()].slice(0, 6);
 };
 
 const buildTrendDelta = (

@@ -313,6 +313,37 @@ describe("buildReaderSummary", () => {
     ]);
   });
 
+  it("does not repeat the same top read across topic sections", () => {
+    const input = readerTopReadFixture(3);
+    const readerSummary = buildReaderSummary({
+      ...input,
+      topicHighlights: [
+        {
+          topicId: "ai-developer-tools",
+          title: "AI developer tools",
+          summary: "Two repo radar links are the strongest first reads.",
+          citationIds: ["citation-1", "citation-2"],
+        },
+        {
+          topicId: "repo-radar",
+          title: "Repo radar",
+          summary:
+            "The second section shares one citation but should show the next unique read.",
+          citationIds: ["citation-1", "citation-3"],
+        },
+      ],
+    });
+
+    expect(
+      readerSummary.topicSections.map((section) =>
+        section.items.map((item) => item.title),
+      ),
+    ).toEqual([
+      ["repo-radar/project-1", "repo-radar/project-2"],
+      ["repo-radar/project-3"],
+    ]);
+  });
+
   it("keeps GitHub Trending page summaries distinct from Repo Radar", () => {
     const readerSummary = buildReaderSummary({
       headline: "GitHub Trending today",
