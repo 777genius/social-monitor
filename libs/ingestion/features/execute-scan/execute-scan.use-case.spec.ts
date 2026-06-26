@@ -1,4 +1,4 @@
-import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { FixedClock, REDACTED_VALUE, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { ScanAttempt, SourceItem } from '../../domain';
 import type {
@@ -75,6 +75,30 @@ class FixedSourceFetcher implements SourceFetcherPort {
         },
       ],
       nextCursor: 'cursor-after-scan',
+    };
+  }
+}
+
+class SensitiveSourceFetcher implements SourceFetcherPort {
+  async fetch(): Promise<FetchSourceItemsResult> {
+    return {
+      items: [
+        {
+          externalId: 'external-1?access_token=source-secret',
+          canonicalUrl: 'https://user:pass@example.test/source?access_token=source-secret',
+          title: 'Launch notes client_secret=source-secret',
+          body: 'Body includes Authorization Bearer source-secret and private_key=source-secret.',
+          authorHandle: 'Bearer source-secret',
+          publishedAt: new Date('2026-06-05T00:00:00.000Z'),
+          metadata: {
+            accessToken: 'source-secret',
+            nested: {
+              url: 'https://user:pass@example.test/source',
+            },
+          },
+        },
+      ],
+      nextCursor: 'cursor-after-sensitive-scan',
     };
   }
 }
@@ -323,6 +347,42 @@ describe('ExecuteScanUseCase', () => {
       skippedDuplicates: 0,
       projected: 2,
     });
+  });
+
+  it('redacts sensitive source item fields before persistence and projection', async () => {
+    const repository = new FakeSourceItemRepository();
+    const projection = new FakeFeedProjection();
+    const useCase = new ExecuteScanUseCase(
+      new SensitiveSourceFetcher(),
+      repository,
+      projection,
+      new FakeScanAttemptRepository(),
+      new FakeScanCursorRepository(),
+      new FakeScanExecutionReporter(),
+      new FakeScanFailureQueue(),
+      new FakeScanLease(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    await useCase.execute(makeExecuteScanCommand());
+
+    const stored = repository.all()[0]?.toSnapshot();
+    expect(stored).toEqual(expect.objectContaining({
+      externalId: `external-1?access_token=${REDACTED_VALUE}`,
+      canonicalUrl: 'https://example.test/source',
+      title: `Launch notes client_secret=${REDACTED_VALUE}`,
+      body: `Body includes Authorization ${REDACTED_VALUE} and private_key=${REDACTED_VALUE}`,
+      authorHandle: REDACTED_VALUE,
+      metadata: {
+        accessToken: REDACTED_VALUE,
+        nested: {
+          url: REDACTED_VALUE,
+        },
+      },
+    }));
+    expect(JSON.stringify(stored)).not.toContain('source-secret');
+    expect(JSON.stringify(projection.commands[0]?.sourceItems)).not.toContain('source-secret');
   });
 
   it('skips duplicate source items on replay', async () => {

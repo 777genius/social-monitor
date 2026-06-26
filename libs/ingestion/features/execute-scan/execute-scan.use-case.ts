@@ -2,6 +2,10 @@ import {
   type Clock,
   DomainError,
   type IdGenerator,
+  type JsonObject,
+  isSensitiveKey,
+  redactSensitiveRecord,
+  redactSensitiveText,
   err,
   ok,
   type Result,
@@ -27,6 +31,7 @@ import {
   type SourceItemEnrichmentPort,
   type SourceItemMetadataProjectionPort,
   type SourceItemRepositoryPort,
+  type FetchedSourceItem,
 } from "../../ports";
 import type { ExecuteScanCommand } from "./execute-scan.command";
 import type { ExecuteScanResult } from "./execute-scan.result";
@@ -136,7 +141,7 @@ export class ExecuteScanUseCase {
         correlationId: command.correlationId,
         items: fetched.items,
       });
-      const items = enriched.items.map((item) =>
+      const items = enriched.items.map(sanitizeFetchedSourceItem).map((item) =>
         SourceItem.ingest({
           id: this.ids.generate(),
           tenantId: command.tenantId,
@@ -289,4 +294,39 @@ const formatScanFailureReason = (error: unknown): string => {
   return error instanceof Error
     ? error.message
     : "Unknown scan execution failure";
+};
+
+const sanitizeFetchedSourceItem = (item: FetchedSourceItem): FetchedSourceItem => ({
+  ...item,
+  externalId: redactSensitiveText(item.externalId),
+  canonicalUrl: sanitizeFetchedSourceUrl(item.canonicalUrl),
+  title: redactSensitiveText(item.title),
+  body: redactSensitiveText(item.body),
+  authorHandle: item.authorHandle === undefined
+    ? undefined
+    : redactSensitiveText(item.authorHandle),
+  metadata: item.metadata === undefined
+    ? undefined
+    : redactSensitiveRecord(item.metadata) as JsonObject,
+});
+
+const sanitizeFetchedSourceUrl = (value: string): string => {
+  const redacted = redactSensitiveText(value);
+
+  try {
+    const parsed = new URL(redacted);
+    parsed.username = "";
+    parsed.password = "";
+    parsed.hash = "";
+
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (isSensitiveKey(key)) {
+        parsed.searchParams.delete(key);
+      }
+    }
+
+    return parsed.toString();
+  } catch {
+    return redacted;
+  }
 };
