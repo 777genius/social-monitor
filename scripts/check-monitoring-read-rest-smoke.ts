@@ -227,6 +227,26 @@ async function main(): Promise<void> {
       dailyHistory.body.sourceBindingStatus === 'enabled',
       'source binding daily history must expose source binding status',
     );
+    assert(
+      dailyHistory.body.cadence.providerKey === 'fake-source',
+      'source binding daily history must expose cadence provider key',
+    );
+    assert(
+      dailyHistory.body.cadence.minimumIntervalSeconds === 60,
+      'source binding daily history must expose provider minimum interval',
+    );
+    assert(
+      dailyHistory.body.cadence.configuredIntervalSeconds === 300,
+      'source binding daily history must expose configured interval',
+    );
+    assert(
+      dailyHistory.body.cadence.effectiveIntervalSeconds === 300,
+      'source binding daily history must expose effective interval',
+    );
+    assert(
+      dailyHistory.body.cadence.providerMinimumIntervalEnforced === false,
+      'source binding daily history must expose provider minimum enforcement flag',
+    );
 
     await request(app.getHttpServer())
       .get('/topics/missing-topic/source-bindings')

@@ -2151,6 +2151,9 @@
       },
       "ListSourceBindingDailyScanHistoryResponseDto": {
         "properties": {
+          "cadence": {
+            "$ref": "#/components/schemas/ScanPolicyCadenceResponseDto"
+          },
           "days": {
             "items": {
               "$ref": "#/components/schemas/SourceBindingDailyScanHistoryDayResponseDto"

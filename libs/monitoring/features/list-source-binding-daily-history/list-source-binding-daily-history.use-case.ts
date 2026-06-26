@@ -5,9 +5,11 @@ import type {
   ScanExecutionAttemptReadPort,
   ScanExecutionAttemptSnapshot,
   ScanJobHistoryReadPort,
+  ScanPolicyRepositoryPort,
   SourceBindingRepositoryPort,
 } from '../../ports';
 import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
+import { presentScanPolicy } from '../shared/scan-policy-presenter';
 import type { ListSourceBindingDailyHistoryQuery } from './list-source-binding-daily-history.query';
 import type {
   ListSourceBindingDailyHistoryResult,
@@ -23,6 +25,7 @@ const maxScanJobsPerDay = 100;
 export class ListSourceBindingDailyHistoryUseCase {
   constructor(
     private readonly sourceBindings: SourceBindingRepositoryPort,
+    private readonly scanPolicies: ScanPolicyRepositoryPort,
     private readonly scanJobs: ScanJobHistoryReadPort,
     private readonly scanExecutionAttempts: ScanExecutionAttemptReadPort,
     private readonly clock: Clock,
@@ -51,6 +54,14 @@ export class ListSourceBindingDailyHistoryUseCase {
       }));
     }
     const bindingSnapshot = binding.toSnapshot();
+    const scanPolicy = await this.scanPolicies.findBySourceBinding({
+      tenantId: query.tenantId,
+      workspaceId: query.workspaceId,
+      sourceBindingId: query.sourceBindingId,
+    });
+    const cadence = scanPolicy === null
+      ? undefined
+      : presentScanPolicy(scanPolicy, { providerKey: bindingSnapshot.providerKey }).cadence;
 
     const windows = buildUtcDayWindows({
       now: this.clock.now(),
@@ -106,6 +117,7 @@ export class ListSourceBindingDailyHistoryUseCase {
       topicId: bindingSnapshot.topicId,
       providerKey: bindingSnapshot.providerKey,
       sourceBindingStatus: bindingSnapshot.status,
+      cadence,
       windowStartedAt: firstWindow.startedAt.toISOString(),
       windowEndedAt: lastWindow.endedAt.toISOString(),
       summary: buildSummaryView({

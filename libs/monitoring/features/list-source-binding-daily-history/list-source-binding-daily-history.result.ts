@@ -1,4 +1,5 @@
 import type { ScanProviderHealthState } from '../shared/scan-provider-health-summary';
+import type { ScanPolicyCadenceView } from '../shared/scan-policy-presenter';
 
 export type SourceBindingDailyHistoryDayView = {
   readonly date: string;
@@ -49,6 +50,7 @@ export type ListSourceBindingDailyHistoryResult = {
   readonly topicId: string;
   readonly providerKey: string;
   readonly sourceBindingStatus: 'enabled' | 'paused';
+  readonly cadence?: ScanPolicyCadenceView;
   readonly windowStartedAt: string;
   readonly windowEndedAt: string;
   readonly summary?: SourceBindingDailyHistorySummaryView;

@@ -606,17 +606,20 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
       provide: ListSourceBindingDailyHistoryUseCase,
       useFactory: (
         sourceBindings: SourceBindingRepositoryPort,
+        scanPolicies: ScanPolicyRepositoryPort,
         scanJobs: ScanJobRepositoryPort & ScanJobHistoryReadPort,
         scanExecutionAttempts: ScanExecutionAttemptReadPort,
       ) =>
         new ListSourceBindingDailyHistoryUseCase(
           sourceBindings,
+          scanPolicies,
           scanJobs,
           scanExecutionAttempts,
           new SystemClock(),
         ),
       inject: [
         MONITORING_SOURCE_BINDING_REPOSITORY,
+        MONITORING_SCAN_POLICY_REPOSITORY,
         MONITORING_SCAN_JOB_REPOSITORY,
         MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
       ],

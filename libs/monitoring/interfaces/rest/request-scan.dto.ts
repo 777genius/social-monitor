@@ -11,7 +11,9 @@ import type {
   RequestScanDecisionView,
 } from '../../features/request-scan/request-scan.result';
 import type { ScanProviderHealthState } from '../../features/shared/scan-provider-health-summary';
+import type { ScanPolicyCadenceView } from '../../features/shared/scan-policy-presenter';
 import { scanJobStatusValues, ScanStatusResponseDto } from './scan-status.dto';
+import { ScanPolicyCadenceResponseDto } from './scan-policy-cadence.dto';
 
 const scanProviderHealthStateValues = [
   'unknown',
@@ -224,6 +226,9 @@ export class ListSourceBindingDailyScanHistoryResponseDto implements ListSourceB
 
   @ApiProperty({ enum: ['enabled', 'paused'] })
   declare readonly sourceBindingStatus: 'enabled' | 'paused';
+
+  @ApiPropertyOptional({ type: () => ScanPolicyCadenceResponseDto })
+  declare readonly cadence?: ScanPolicyCadenceView;
 
   @ApiProperty({ format: 'date-time' })
   declare readonly windowStartedAt: string;

@@ -1,6 +1,6 @@
 import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { ScanJob, SourceBinding } from '../../domain';
+import { ScanJob, ScanPolicy, SourceBinding } from '../../domain';
 import type {
   FindScanExecutionAttemptQuery,
   ListScanJobsBySourceBindingQuery,
@@ -12,6 +12,7 @@ import type {
   ScanExecutionAttemptReadPort,
   ScanExecutionAttemptSnapshot,
   ScanJobHistoryReadPort,
+  ScanPolicyRepositoryPort,
   SourceBindingRepositoryPort,
 } from '../../ports';
 import { ListSourceBindingDailyHistoryUseCase } from './list-source-binding-daily-history.use-case';
@@ -85,6 +86,25 @@ class FakeScanHistory implements ScanJobHistoryReadPort {
   }
 }
 
+class FakeScanPolicies implements ScanPolicyRepositoryPort {
+  private readonly policies = new Map<string, ScanPolicy>();
+
+  async save(policy: ScanPolicy): Promise<void> {
+    const snapshot = policy.toSnapshot();
+    this.policies.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.sourceBindingId}`, policy);
+  }
+
+  async findDue(): Promise<readonly ScanPolicy[]> {
+    return [];
+  }
+
+  async findBySourceBinding(
+    params: Parameters<ScanPolicyRepositoryPort['findBySourceBinding']>[0],
+  ): Promise<ScanPolicy | null> {
+    return this.policies.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
+  }
+}
+
 class FakeScanExecutionAttempts implements ScanExecutionAttemptReadPort {
   private readonly attempts = new Map<string, ScanExecutionAttemptSnapshot>();
 
@@ -108,6 +128,7 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
 
     const result = await new ListSourceBindingDailyHistoryUseCase(
       bindings,
+      await readyScanPolicies(),
       scanHistory,
       new FakeScanExecutionAttempts(),
       new FixedClock(now),
@@ -120,6 +141,15 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
         topicId: 'topic-1',
         providerKey: 'fake-source',
         sourceBindingStatus: 'enabled',
+        cadence: {
+          providerKey: 'fake-source',
+          minimumIntervalSeconds: 60,
+          configuredIntervalSeconds: 300,
+          configuredFreshnessSeconds: 900,
+          effectiveIntervalSeconds: 300,
+          effectiveFreshnessSeconds: 900,
+          providerMinimumIntervalEnforced: false,
+        },
         windowStartedAt: '2026-06-23T00:00:00.000Z',
         windowEndedAt: '2026-06-26T00:00:00.000Z',
         summary: {
@@ -206,6 +236,7 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
 
     const result = await new ListSourceBindingDailyHistoryUseCase(
       await readyBindings(),
+      await readyScanPolicies(),
       new FakeScanHistory(jobs),
       attempts,
       new FixedClock(now),
@@ -213,6 +244,15 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
+      expect(result.value.cadence).toEqual({
+        providerKey: 'fake-source',
+        minimumIntervalSeconds: 60,
+        configuredIntervalSeconds: 300,
+        configuredFreshnessSeconds: 900,
+        effectiveIntervalSeconds: 300,
+        effectiveFreshnessSeconds: 900,
+        providerMinimumIntervalEnforced: false,
+      });
       expect(result.value.summary).toEqual({
         providerHealthState: 'degraded',
         totalScans: 3,
@@ -268,6 +308,7 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
   it('propagates truncation when the source has more scans than the history cap', async () => {
     const result = await new ListSourceBindingDailyHistoryUseCase(
       await readyBindings(),
+      await readyScanPolicies(),
       new FakeScanHistory([], true),
       new FakeScanExecutionAttempts(),
       new FixedClock(now),
@@ -280,15 +321,40 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
     }
   });
 
+  it('exposes provider minimum cadence for legacy aggressive policies', async () => {
+    const result = await new ListSourceBindingDailyHistoryUseCase(
+      await readyBindings('reddit'),
+      await readyScanPolicies({ intervalSeconds: 60, freshnessSeconds: 60 }),
+      new FakeScanHistory([]),
+      new FakeScanExecutionAttempts(),
+      new FixedClock(now),
+    ).execute(baseQuery({ days: 1 }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.cadence).toEqual({
+        providerKey: 'reddit',
+        minimumIntervalSeconds: 900,
+        configuredIntervalSeconds: 60,
+        configuredFreshnessSeconds: 60,
+        effectiveIntervalSeconds: 900,
+        effectiveFreshnessSeconds: 900,
+        providerMinimumIntervalEnforced: true,
+      });
+    }
+  });
+
   it('rejects missing bindings and unsafe day ranges', async () => {
     const missing = await new ListSourceBindingDailyHistoryUseCase(
       new FakeSourceBindings(),
+      await readyScanPolicies(),
       new FakeScanHistory([]),
       new FakeScanExecutionAttempts(),
       new FixedClock(now),
     ).execute(baseQuery({ days: 7 }));
     const invalidDays = await new ListSourceBindingDailyHistoryUseCase(
       await readyBindings(),
+      await readyScanPolicies(),
       new FakeScanHistory([]),
       new FakeScanExecutionAttempts(),
       new FixedClock(now),
@@ -299,20 +365,42 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
   });
 });
 
-const readyBindings = async (): Promise<FakeSourceBindings> => {
+const readyBindings = async (providerKey = 'fake-source'): Promise<FakeSourceBindings> => {
   const bindings = new FakeSourceBindings();
   await bindings.save(SourceBinding.create({
     id: 'binding-1',
     tenantId: tenant,
     workspaceId: workspace,
     topicId: 'topic-1',
-    providerKey: 'fake-source',
+    providerKey,
     capabilityProfileVersion: 1,
     config: { query: 'daily history' },
     createdAt: new Date('2026-06-20T10:00:00.000Z'),
   }));
 
   return bindings;
+};
+
+const readyScanPolicies = async (
+  params: {
+    readonly intervalSeconds?: number;
+    readonly freshnessSeconds?: number;
+  } = {},
+): Promise<FakeScanPolicies> => {
+  const policies = new FakeScanPolicies();
+  await policies.save(ScanPolicy.create({
+    id: 'policy-1',
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: 'binding-1',
+    intervalSeconds: params.intervalSeconds ?? 300,
+    freshnessSeconds: params.freshnessSeconds ?? 900,
+    retryBudget: 3,
+    nextRunAt: new Date('2026-06-25T18:00:00.000Z'),
+    createdAt: new Date('2026-06-20T10:00:00.000Z'),
+  }));
+
+  return policies;
 };
 
 const baseQuery = (params: { readonly days: number }) => ({
