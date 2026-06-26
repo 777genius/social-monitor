@@ -1,7 +1,16 @@
 import { ValidationPipe } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
+import { ScanJob } from '@social-monitor/monitoring/domain';
+import {
+  MONITORING_SCAN_JOB_REPOSITORY,
+  MONITORING_SCAN_POLICY_REPOSITORY,
+} from '@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
+import type {
+  ScanJobRepositoryPort,
+  ScanPolicyRepositoryPort,
+} from '@social-monitor/monitoring/ports';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
@@ -11,6 +20,130 @@ const assert = (condition: unknown, message: string): void => {
   if (!condition) {
     throw new Error(message);
   }
+};
+
+type HttpServer = Parameters<typeof request>[0];
+type RequestHeaders = Record<string, string>;
+
+type SourceBindingFixture = {
+  readonly sourceBindingId: string;
+  readonly scanPolicyId: string;
+};
+
+const createTopic = async (params: {
+  readonly httpServer: HttpServer;
+  readonly headers: RequestHeaders;
+  readonly idempotencyKey: string;
+  readonly name: string;
+  readonly query: string;
+}): Promise<string> => {
+  const topic = await request(params.httpServer)
+    .post('/topics')
+    .set(params.headers)
+    .set('idempotency-key', params.idempotencyKey)
+    .send({
+      name: params.name,
+      query: params.query,
+    })
+    .expect(201);
+
+  return topic.body.topicId;
+};
+
+const createBindingWithPolicy = async (params: {
+  readonly httpServer: HttpServer;
+  readonly topicId: string;
+  readonly headers: RequestHeaders;
+  readonly idempotencyKey: string;
+  readonly intervalSeconds: number;
+  readonly freshnessSeconds: number;
+}): Promise<SourceBindingFixture> => {
+  const binding = await request(params.httpServer)
+    .post(`/topics/${params.topicId}/source-bindings`)
+    .set(params.headers)
+    .set('idempotency-key', `binding-${params.idempotencyKey}`)
+    .send({
+      providerKey: 'fake-source',
+      config: { mode: 'search', query: `health ${params.idempotencyKey}` },
+    })
+    .expect(201);
+
+  const policy = await request(params.httpServer)
+    .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
+    .set(params.headers)
+    .set('idempotency-key', `policy-${params.idempotencyKey}`)
+    .send({
+      intervalSeconds: params.intervalSeconds,
+      freshnessSeconds: params.freshnessSeconds,
+      retryBudget: 3,
+    })
+    .expect(201);
+
+  return {
+    sourceBindingId: binding.body.sourceBindingId,
+    scanPolicyId: policy.body.scanPolicyId,
+  };
+};
+
+const readHealth = async (params: {
+  readonly httpServer: HttpServer;
+  readonly topicId: string;
+  readonly sourceBindingId: string;
+  readonly headers: RequestHeaders;
+}) =>
+  request(params.httpServer)
+    .get(`/topics/${params.topicId}/source-bindings/${params.sourceBindingId}/health`)
+    .set(params.headers)
+    .expect(200);
+
+const seedCompletedScan = async (params: {
+  readonly scanJobs: ScanJobRepositoryPort;
+  readonly tenant: ReturnType<typeof tenantId>;
+  readonly workspace: ReturnType<typeof workspaceId>;
+  readonly sourceBindingId: string;
+  readonly scanPolicyId: string;
+  readonly scanJobId: string;
+  readonly completedAt: Date;
+  readonly failureReason?: string;
+}): Promise<void> => {
+  const requestedAt = new Date(params.completedAt.getTime() - 2_000);
+  const enqueuedAt = new Date(params.completedAt.getTime() - 1_000);
+  const enqueued = ScanJob.request({
+    id: params.scanJobId,
+    tenantId: params.tenant,
+    workspaceId: params.workspace,
+    sourceBindingId: params.sourceBindingId,
+    scanPolicyId: params.scanPolicyId,
+    idempotencyKey: `seed-${params.scanJobId}`,
+    requestedAt,
+  }).markEnqueued({ enqueuedAt });
+  const completed =
+    params.failureReason === undefined
+      ? enqueued.markSucceeded({ completedAt: params.completedAt })
+      : enqueued.markFailed({
+          completedAt: params.completedAt,
+          failureReason: params.failureReason,
+        });
+
+  await params.scanJobs.save(completed);
+};
+
+const movePolicyNextRunForward = async (params: {
+  readonly scanPolicies: ScanPolicyRepositoryPort;
+  readonly tenant: ReturnType<typeof tenantId>;
+  readonly workspace: ReturnType<typeof workspaceId>;
+  readonly sourceBindingId: string;
+  readonly nextRunAt: Date;
+}): Promise<void> => {
+  const policy = await params.scanPolicies.findBySourceBinding({
+    tenantId: params.tenant,
+    workspaceId: params.workspace,
+    sourceBindingId: params.sourceBindingId,
+  });
+  if (policy === null) {
+    throw new Error('scheduled-later fixture must have scan policy');
+  }
+  await params.scanPolicies.save(policy.scheduleNext({ nextRunAt: params.nextRunAt }));
 };
 
 async function main(): Promise<void> {
@@ -36,6 +169,8 @@ async function main(): Promise<void> {
   await app.init();
 
   try {
+    const scanJobs = moduleRef.get<ScanJobRepositoryPort>(MONITORING_SCAN_JOB_REPOSITORY);
+    const scanPolicies = moduleRef.get<ScanPolicyRepositoryPort>(MONITORING_SCAN_POLICY_REPOSITORY);
     const tenant = tenantId('tenant-source-health-rest-smoke');
     const workspace = workspaceId('workspace-source-health-rest-smoke');
     const adminHeaders = {
@@ -186,6 +321,222 @@ async function main(): Promise<void> {
     assert(
       pausedHealth.body.schedulerDecision.decision === 'paused',
       'source health must expose paused scheduler decision',
+    );
+
+    const freshTopicId = await createTopic({
+      httpServer: app.getHttpServer(),
+      headers: adminHeaders,
+      idempotencyKey: 'topic-fresh',
+      name: 'Fresh source health',
+      query: 'fresh source operational health',
+    });
+    const fresh = await createBindingWithPolicy({
+      httpServer: app.getHttpServer(),
+      topicId: freshTopicId,
+      headers: adminHeaders,
+      idempotencyKey: 'fresh',
+      intervalSeconds: 300,
+      freshnessSeconds: 900,
+    });
+    await seedCompletedScan({
+      scanJobs,
+      tenant,
+      workspace,
+      sourceBindingId: fresh.sourceBindingId,
+      scanPolicyId: fresh.scanPolicyId,
+      scanJobId: 'fresh-success-scan',
+      completedAt: new Date(Date.now() - 30_000),
+    });
+
+    const freshHealth = await readHealth({
+      httpServer: app.getHttpServer(),
+      topicId: freshTopicId,
+      sourceBindingId: fresh.sourceBindingId,
+      headers: viewerHeaders,
+    });
+    assert(
+      freshHealth.body.healthState === 'healthy',
+      `source health must mark fresh success healthy, got ${freshHealth.body.healthState}`,
+    );
+    assert(freshHealth.body.freshness.isFresh === true, 'source health must expose fresh successful scan');
+    assert(
+      freshHealth.body.schedulerDecision.decision === 'fresh_success',
+      'source health must expose fresh-success scheduler decision',
+    );
+    assert(
+      freshHealth.body.schedulerDecision.canScanNow === false,
+      'fresh-success scheduler decision must not scan again immediately',
+    );
+    assert(
+      freshHealth.body.recentWindow.providerHealthState === 'operational',
+      'fresh successful scan must mark provider window operational',
+    );
+    assert(
+      freshHealth.body.recentWindow.signals.includes('recent_success'),
+      'fresh successful scan must expose recent success signal',
+    );
+
+    const rateLimitedTopicId = await createTopic({
+      httpServer: app.getHttpServer(),
+      headers: adminHeaders,
+      idempotencyKey: 'topic-rate-limited',
+      name: 'Rate limited source health',
+      query: 'rate limited source operational health',
+    });
+    const rateLimited = await createBindingWithPolicy({
+      httpServer: app.getHttpServer(),
+      topicId: rateLimitedTopicId,
+      headers: adminHeaders,
+      idempotencyKey: 'rate-limited',
+      intervalSeconds: 300,
+      freshnessSeconds: 900,
+    });
+    await seedCompletedScan({
+      scanJobs,
+      tenant,
+      workspace,
+      sourceBindingId: rateLimited.sourceBindingId,
+      scanPolicyId: rateLimited.scanPolicyId,
+      scanJobId: 'rate-limited-scan',
+      completedAt: new Date(Date.now() - 30_000),
+      failureReason: 'Provider rate limit 429',
+    });
+
+    const rateLimitedHealth = await readHealth({
+      httpServer: app.getHttpServer(),
+      topicId: rateLimitedTopicId,
+      sourceBindingId: rateLimited.sourceBindingId,
+      headers: viewerHeaders,
+    });
+    assert(rateLimitedHealth.body.healthState === 'degraded', 'rate-limited source health must be degraded');
+    assert(
+      rateLimitedHealth.body.latestScan.failureClass === 'provider_rate_limited',
+      'source health must classify latest rate-limit failure',
+    );
+    assert(
+      rateLimitedHealth.body.schedulerDecision.decision === 'rate_limit_backoff',
+      'source health must expose rate-limit backoff scheduler decision',
+    );
+    assert(
+      rateLimitedHealth.body.schedulerDecision.rateLimitBackoffUntil !== undefined,
+      'rate-limit scheduler decision must expose backoff deadline',
+    );
+    assert(
+      rateLimitedHealth.body.recentWindow.rateLimitedScans === 1,
+      'source health recent window must count rate-limited scans',
+    );
+    assert(
+      rateLimitedHealth.body.recentWindow.signals.includes('rate_limited'),
+      'source health recent window must expose rate-limit signal',
+    );
+
+    const providerFailureTopicId = await createTopic({
+      httpServer: app.getHttpServer(),
+      headers: adminHeaders,
+      idempotencyKey: 'topic-provider-failure',
+      name: 'Provider failure source health',
+      query: 'provider failure source operational health',
+    });
+    const providerFailure = await createBindingWithPolicy({
+      httpServer: app.getHttpServer(),
+      topicId: providerFailureTopicId,
+      headers: adminHeaders,
+      idempotencyKey: 'provider-failure',
+      intervalSeconds: 300,
+      freshnessSeconds: 900,
+    });
+    await seedCompletedScan({
+      scanJobs,
+      tenant,
+      workspace,
+      sourceBindingId: providerFailure.sourceBindingId,
+      scanPolicyId: providerFailure.scanPolicyId,
+      scanJobId: 'provider-failure-scan-1',
+      completedAt: new Date(Date.now() - 90_000),
+      failureReason: 'kind=auth_failed provider credential rejected',
+    });
+    await seedCompletedScan({
+      scanJobs,
+      tenant,
+      workspace,
+      sourceBindingId: providerFailure.sourceBindingId,
+      scanPolicyId: providerFailure.scanPolicyId,
+      scanJobId: 'provider-failure-scan-2',
+      completedAt: new Date(Date.now() - 30_000),
+      failureReason: 'kind=auth_failed provider credential rejected',
+    });
+
+    const providerFailureHealth = await readHealth({
+      httpServer: app.getHttpServer(),
+      topicId: providerFailureTopicId,
+      sourceBindingId: providerFailure.sourceBindingId,
+      headers: viewerHeaders,
+    });
+    assert(
+      providerFailureHealth.body.latestScan.failureClass === 'provider_unavailable',
+      'source health must classify auth/provider failures as provider unavailable',
+    );
+    assert(
+      providerFailureHealth.body.schedulerDecision.decision === 'provider_failure_backoff',
+      'source health must expose provider failure backoff scheduler decision',
+    );
+    assert(
+      providerFailureHealth.body.schedulerDecision.providerFailureBackoffUntil !== undefined,
+      'provider failure scheduler decision must expose backoff deadline',
+    );
+    assert(
+      providerFailureHealth.body.recentWindow.providerUnavailableScans === 2,
+      'source health recent window must count provider unavailable scans',
+    );
+    assert(
+      providerFailureHealth.body.recentWindow.consecutiveFailures === 2,
+      'source health recent window must count consecutive provider failures',
+    );
+    assert(
+      providerFailureHealth.body.recentWindow.signals.includes('consecutive_failures'),
+      'source health recent window must expose consecutive failure signal',
+    );
+
+    const scheduledLaterTopicId = await createTopic({
+      httpServer: app.getHttpServer(),
+      headers: adminHeaders,
+      idempotencyKey: 'topic-scheduled-later',
+      name: 'Scheduled later source health',
+      query: 'scheduled later source operational health',
+    });
+    const scheduledLater = await createBindingWithPolicy({
+      httpServer: app.getHttpServer(),
+      topicId: scheduledLaterTopicId,
+      headers: adminHeaders,
+      idempotencyKey: 'scheduled-later',
+      intervalSeconds: 300,
+      freshnessSeconds: 900,
+    });
+    await movePolicyNextRunForward({
+      scanPolicies,
+      tenant,
+      workspace,
+      sourceBindingId: scheduledLater.sourceBindingId,
+      nextRunAt: new Date(Date.now() + 300_000),
+    });
+
+    const scheduledLaterHealth = await readHealth({
+      httpServer: app.getHttpServer(),
+      topicId: scheduledLaterTopicId,
+      sourceBindingId: scheduledLater.sourceBindingId,
+      headers: viewerHeaders,
+    });
+    assert(
+      scheduledLaterHealth.body.schedulerDecision.decision === 'scheduled_later',
+      'source health must expose scheduled-later scheduler decision',
+    );
+    assert(
+      scheduledLaterHealth.body.schedulerDecision.canScanNow === false,
+      'scheduled-later scheduler decision must not scan before nextRunAt',
+    );
+    assert(
+      scheduledLaterHealth.body.schedulerDecision.nextEligibleAt !== undefined,
+      'scheduled-later scheduler decision must expose next eligible time',
     );
 
     console.log('Source binding health REST smoke OK');
