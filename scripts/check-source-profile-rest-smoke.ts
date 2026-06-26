@@ -145,6 +145,7 @@ async function main(): Promise<void> {
 
     const fake = requireSource(sources, 'fake-source');
     const github = requireSource(sources, 'github-issues');
+    const githubRepoRadar = requireSource(sources, 'github-repo-radar');
     const githubTrendingPage = requireSource(sources, 'github-trending-page');
     requireSource(sources, 'hacker-news');
     requireSource(sources, 'rss');
@@ -189,6 +190,72 @@ async function main(): Promise<void> {
     assert(
       github.cursorModel === 'page_token',
       'GitHub profile must expose page-token cursor model',
+    );
+
+    assert(
+      githubRepoRadar.displayName === 'GitHub Repo Radar',
+      'GitHub Repo Radar profile must expose display name',
+    );
+    assert(
+      githubRepoRadar.productionSafe === true,
+      'GitHub Repo Radar profile must be marked production safe',
+    );
+    assert(
+      githubRepoRadar.readinessState === 'enabled_beta',
+      'GitHub Repo Radar readiness must be enabled beta',
+    );
+    assert(
+      githubRepoRadar.acquisitionMode === 'official_or_open_api',
+      'GitHub Repo Radar profile must document GH Archive/GitHub API acquisition',
+    );
+    assert(
+      githubRepoRadar.supportedQueryModes.includes('search'),
+      'GitHub Repo Radar must support search mode',
+    );
+    assert(
+      githubRepoRadar.supportedContentUnits.includes('link'),
+      'GitHub Repo Radar must expose repository links as content units',
+    );
+    assert(
+      githubRepoRadar.cursorModel === 'time',
+      'GitHub Repo Radar must expose time cursor model',
+    );
+    assert(
+      githubRepoRadar.quotaModel === 'per_app',
+      'GitHub Repo Radar must expose app-level quota model',
+    );
+    assert(
+      githubRepoRadar.limitations.some((limitation) =>
+        limitation.includes('GH Archive BigQuery WatchEvent aggregation'),
+      ),
+      'GitHub Repo Radar must document GH Archive BigQuery acquisition limits',
+    );
+    assertLiveEvidenceRequirement(
+      githubRepoRadar,
+      'github-repo-radar-gh-archive-query',
+      'GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH',
+    );
+    assertLiveEvidenceRequirement(
+      githubRepoRadar,
+      'github-repo-radar-prisma-live-e2e',
+      'GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH',
+    );
+    const githubRepoRadarGuard = requireFreshnessGuard(githubRepoRadar);
+    assert(
+      githubRepoRadarGuard.maxStalenessSeconds === 21_600,
+      'GitHub Repo Radar must expose 6 hour freshness guard',
+    );
+    assert(
+      githubRepoRadarGuard.minimumScanIntervalSeconds === 21_600,
+      'GitHub Repo Radar must expose 6 hour minimum scan interval',
+    );
+    assert(
+      githubRepoRadarGuard.signals.includes('gh_archive_window_end'),
+      'GitHub Repo Radar must expose GH Archive window freshness signal',
+    );
+    assert(
+      githubRepoRadarGuard.signals.includes('repository_snapshot_checked_at'),
+      'GitHub Repo Radar must expose repository live snapshot freshness signal',
     );
 
     assert(
