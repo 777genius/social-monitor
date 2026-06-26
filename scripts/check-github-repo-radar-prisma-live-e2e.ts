@@ -36,6 +36,7 @@ import { FeedSummaryEvidenceSelector } from '../libs/summary/adapters/evidence/f
 import { DeterministicSummaryModelAdapter } from '../libs/summary/adapters/model/deterministic-summary-model.adapter';
 import type { SummaryModelBudget, SummaryModelInput, SummaryModelPolicy } from '../libs/summary/ports';
 import { writeLiveEvidenceArtifactAtomically } from './lib/live-evidence-artifact';
+import { classifyProviderFailures } from './lib/provider-failure-classification';
 
 const enabledEnv = 'GITHUB_REPO_RADAR_PRISMA_LIVE_E2E';
 const defaultDatabaseUrl = 'postgresql://social_monitor:social_monitor_local_password@127.0.0.1:5432/social_monitor';
@@ -346,6 +347,34 @@ const main = async (): Promise<void> => {
           trendSnapshots: sqlEvidence.trendSnapshotCount,
           trendResults: sqlEvidence.trendResultCount,
           scanAttempts: sqlEvidence.scanAttemptCount,
+        },
+      },
+      {
+        signalId: 'github-repo-radar-provider-failure-classification',
+        status: 'passed',
+        observedAt,
+        evidence: classifyProviderFailures('GitHub Repo Radar', (error) => provider.classifyError(error), [
+          {
+            label: 'auth_failed',
+            error: new Error('401 credential permission denied by GitHub live verifier'),
+            expectedKind: 'auth_failed',
+            expectedRetryable: false,
+          },
+          {
+            label: 'rate_limit',
+            error: new Error('BigQuery quota exceeded and GitHub API rate limit reached'),
+            expectedKind: 'rate_limited',
+            expectedRetryable: true,
+          },
+          {
+            label: 'upstream_unavailable',
+            error: new Error('GH Archive BigQuery upstream unavailable'),
+            expectedKind: 'unavailable',
+            expectedRetryable: true,
+          },
+        ]),
+        metrics: {
+          classifiedFailureCount: 3,
         },
       },
     ] as const;

@@ -74,6 +74,7 @@ const requiredProviderSignals = new Map([
       'github-repo-radar-live-verification',
       'github-repo-radar-live-smoke',
       'github-repo-radar-prisma-live-e2e',
+      'github-repo-radar-provider-failure-classification',
     ]),
   ],
   [
@@ -230,6 +231,15 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['trendResultCount', 'positive_integer'],
       ['cursorCount', 'positive_integer'],
       ['noDuplicateCursor', 'boolean_true'],
+    ],
+  ],
+  [
+    'github-repo-radar-provider-failure-classification',
+    [
+      ['summary', 'non_empty_string'],
+      ['failureKindsObserved', 'non_empty_string_array'],
+      ['retryPolicyObserved', 'boolean_true'],
+      ['classifiedWithoutRawPayloads', 'boolean_true'],
     ],
   ],
   [

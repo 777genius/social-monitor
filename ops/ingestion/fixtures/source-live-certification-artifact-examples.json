@@ -342,6 +342,24 @@
                 "trendResults": 2,
                 "scanAttempts": 2
               }
+            },
+            {
+              "signalId": "github-repo-radar-provider-failure-classification",
+              "status": "passed",
+              "observedAt": "2026-06-18T10:00:11.500Z",
+              "evidence": {
+                "summary": "GitHub Repo Radar provider-specific failures were classified into release-safe retry/backoff states.",
+                "failureKindsObserved": [
+                  "auth_failed",
+                  "rate_limited",
+                  "unavailable"
+                ],
+                "retryPolicyObserved": true,
+                "classifiedWithoutRawPayloads": true
+              },
+              "metrics": {
+                "classifiedFailureCount": 3
+              }
             }
           ]
         },

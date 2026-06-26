@@ -336,9 +336,14 @@
           "signalId": "github-repo-radar-prisma-live-e2e",
           "status": "pending_live_evidence",
           "requiredSignal": "Postgres persistence proves source items, feed items, trend history, scan attempts and cursor state across repeated scans"
+        },
+        {
+          "signalId": "github-repo-radar-provider-failure-classification",
+          "status": "pending_live_evidence",
+          "requiredSignal": "GitHub Repo Radar provider-specific failures classify auth, quota/rate-limit and unavailable states for retry/backoff"
         }
       ],
-      "exitCondition": "Attach BigQuery GH Archive, GitHub REST verification, live smoke and Prisma/Postgres evidence for GitHub Repo Radar before external beta."
+      "exitCondition": "Attach BigQuery GH Archive, GitHub REST verification, live smoke, Prisma/Postgres and provider failure classification evidence for GitHub Repo Radar before external beta."
     },
     {
       "providerKey": "github-trending-page",
