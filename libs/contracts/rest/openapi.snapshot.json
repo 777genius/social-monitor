@@ -3271,6 +3271,9 @@
           "scanPolicy": {
             "$ref": "#/components/schemas/SourceBindingHealthPolicyResponseDto"
           },
+          "schedulerDecision": {
+            "$ref": "#/components/schemas/SourceBindingHealthSchedulerDecisionResponseDto"
+          },
           "sourceBinding": {
             "$ref": "#/components/schemas/SourceBindingResponseDto"
           }
@@ -3279,7 +3282,8 @@
           "sourceBinding",
           "healthState",
           "operatorAction",
-          "evaluatedAt"
+          "evaluatedAt",
+          "schedulerDecision"
         ],
         "type": "object"
       },
@@ -3343,6 +3347,62 @@
           "userState",
           "operatorAction",
           "requestedAt"
+        ],
+        "type": "object"
+      },
+      "SourceBindingHealthSchedulerDecisionResponseDto": {
+        "properties": {
+          "canScanNow": {
+            "type": "boolean"
+          },
+          "configuredIntervalSeconds": {
+            "type": "number"
+          },
+          "decision": {
+            "enum": [
+              "ready",
+              "paused",
+              "not_configured",
+              "active_scan",
+              "fresh_success",
+              "rate_limit_backoff",
+              "scheduled_later"
+            ],
+            "type": "string"
+          },
+          "freshnessSeconds": {
+            "type": "number"
+          },
+          "minimumIntervalSeconds": {
+            "type": "number"
+          },
+          "nextEligibleAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "rateLimitBackoffUntil": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "waitSeconds": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "canScanNow",
+          "decision",
+          "reason",
+          "minimumIntervalSeconds",
+          "signals"
         ],
         "type": "object"
       },

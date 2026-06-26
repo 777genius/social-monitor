@@ -89,6 +89,10 @@ async function main(): Promise<void> {
       healthBeforePolicy.body.recentWindow.totalScans === 0,
       'source health recent window must start with no scans',
     );
+    assert(
+      healthBeforePolicy.body.schedulerDecision.decision === 'not_configured',
+      'source health must expose missing-policy scheduler decision',
+    );
 
     await request(app.getHttpServer())
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
@@ -109,6 +113,14 @@ async function main(): Promise<void> {
     assert(healthAfterPolicy.body.healthState === 'scheduled', 'source health must show scheduled source');
     assert(healthAfterPolicy.body.scanPolicy.intervalSeconds === 300, 'source health must expose scan policy');
     assert(healthAfterPolicy.body.latestScan === undefined, 'source health must omit latest scan before first run');
+    assert(
+      healthAfterPolicy.body.schedulerDecision.decision === 'ready',
+      'source health must expose ready scheduler decision after due policy setup',
+    );
+    assert(
+      healthAfterPolicy.body.schedulerDecision.canScanNow === true,
+      'source health ready scheduler decision must be scannable',
+    );
 
     const scan = await request(app.getHttpServer())
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
@@ -134,6 +146,10 @@ async function main(): Promise<void> {
       healthDuringScan.body.recentWindow.signals.includes('active_scan_in_progress'),
       'source health recent window must expose active scan signal',
     );
+    assert(
+      healthDuringScan.body.schedulerDecision.decision === 'active_scan',
+      'source health must expose active scan scheduler decision',
+    );
 
     await request(app.getHttpServer())
       .patch(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/status`)
@@ -148,6 +164,10 @@ async function main(): Promise<void> {
       .expect(200);
 
     assert(pausedHealth.body.healthState === 'paused', 'source health must prioritize paused state');
+    assert(
+      pausedHealth.body.schedulerDecision.decision === 'paused',
+      'source health must expose paused scheduler decision',
+    );
 
     console.log('Source binding health REST smoke OK');
   } finally {

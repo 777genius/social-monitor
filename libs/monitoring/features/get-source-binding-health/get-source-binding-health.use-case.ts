@@ -9,6 +9,8 @@ import type {
   SourceBindingRepositoryPort,
 } from '../../ports';
 import { presentScanPolicy } from '../shared/scan-policy-presenter';
+import { minimumScanIntervalSecondsForProvider } from '../shared/scan-cadence-policy';
+import { isFreshSuccessfulScan, rateLimitBackoffUntil } from '../shared/scan-freshness-guard';
 import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
 import { buildScanStatusView } from '../shared/scan-status-view';
 import { presentSourceBinding } from '../shared/source-binding-presenter';
@@ -17,6 +19,7 @@ import type {
   GetSourceBindingHealthResult,
   SourceBindingHealthFreshnessView,
   SourceBindingHealthRecentWindowView,
+  SourceBindingHealthSchedulerDecisionView,
   SourceBindingHealthState,
 } from './get-source-binding-health.result';
 
@@ -58,8 +61,13 @@ export class GetSourceBindingHealthUseCase {
 
     const bindingSnapshot = binding.toSnapshot();
     const now = this.clock.now();
-    const [scanPolicy, latestScanJob] = await Promise.all([
+    const [scanPolicy, activeScanJob, latestScanJob] = await Promise.all([
       this.scanPolicies.findBySourceBinding({
+        tenantId: query.tenantId,
+        workspaceId: query.workspaceId,
+        sourceBindingId: query.sourceBindingId,
+      }),
+      this.scanJobs.findActiveBySourceBinding({
         tenantId: query.tenantId,
         workspaceId: query.workspaceId,
         sourceBindingId: query.sourceBindingId,
@@ -77,6 +85,14 @@ export class GetSourceBindingHealthUseCase {
       limit: recentScanLimit,
     });
     const latestScanSnapshot = latestScanJob?.toSnapshot();
+    const scanPolicySnapshot = scanPolicy?.toSnapshot();
+    const freshness = scanPolicySnapshot === undefined || latestScanSnapshot?.completedAt === undefined
+      ? undefined
+      : buildFreshness({
+          completedAt: latestScanSnapshot.completedAt,
+          freshnessSeconds: scanPolicySnapshot.freshnessSeconds,
+          now,
+        });
     const latestAttempt = latestScanSnapshot === undefined
       ? null
       : await this.scanExecutionAttempts.findLatestByScanJob({
@@ -88,13 +104,7 @@ export class GetSourceBindingHealthUseCase {
       bindingStatus: bindingSnapshot.status,
       hasScanPolicy: scanPolicy !== null,
       latestScanStatus: latestScanSnapshot?.status,
-      freshness: scanPolicy === null || latestScanSnapshot?.completedAt === undefined
-        ? undefined
-        : buildFreshness({
-            completedAt: latestScanSnapshot.completedAt,
-            freshnessSeconds: scanPolicy.toSnapshot().freshnessSeconds,
-            now,
-          }),
+      freshness,
     });
 
     return ok({
@@ -102,11 +112,20 @@ export class GetSourceBindingHealthUseCase {
       healthState,
       operatorAction: operatorActionForHealth(healthState),
       evaluatedAt: now.toISOString(),
-      scanPolicy: scanPolicy === null
+      schedulerDecision: buildSchedulerDecision({
+        bindingStatus: bindingSnapshot.status,
+        providerKey: bindingSnapshot.providerKey,
+        scanPolicySnapshot,
+        activeScanJob,
+        latestScanJob,
+        freshness,
+        now,
+      }),
+      scanPolicy: scanPolicy === null || scanPolicySnapshot === undefined
         ? undefined
         : {
             ...presentScanPolicy(scanPolicy),
-            isDue: scanPolicy.toSnapshot().nextRunAt.getTime() <= now.getTime(),
+            isDue: scanPolicySnapshot.nextRunAt.getTime() <= now.getTime(),
           },
       latestScan: latestScanSnapshot === undefined
         ? undefined
@@ -135,13 +154,7 @@ export class GetSourceBindingHealthUseCase {
                   failureReason: latestAttempt.failureReason,
                 },
           },
-      freshness: scanPolicy === null || latestScanSnapshot?.completedAt === undefined
-        ? undefined
-        : buildFreshness({
-            completedAt: latestScanSnapshot.completedAt,
-            freshnessSeconds: scanPolicy.toSnapshot().freshnessSeconds,
-            now,
-          }),
+      freshness,
       recentWindow: buildRecentWindow({
         jobs: recentScanJobs.scanJobs,
         now,
@@ -195,6 +208,126 @@ const buildFreshness = (params: {
     freshnessDeadlineAt: new Date(freshnessDeadlineMs).toISOString(),
     staleBySeconds: staleBySeconds === 0 ? undefined : staleBySeconds,
   };
+};
+
+const buildSchedulerDecision = (params: {
+  readonly bindingStatus: 'enabled' | 'paused';
+  readonly providerKey: string;
+  readonly scanPolicySnapshot?: {
+    readonly intervalSeconds: number;
+    readonly freshnessSeconds: number;
+    readonly nextRunAt: Date;
+  };
+  readonly activeScanJob: ScanJob | null;
+  readonly latestScanJob: ScanJob | null;
+  readonly freshness?: SourceBindingHealthFreshnessView;
+  readonly now: Date;
+}): SourceBindingHealthSchedulerDecisionView => {
+  const minimumIntervalSeconds = minimumScanIntervalSecondsForProvider(params.providerKey);
+  const base = {
+    minimumIntervalSeconds,
+    configuredIntervalSeconds: params.scanPolicySnapshot?.intervalSeconds,
+    freshnessSeconds: params.scanPolicySnapshot?.freshnessSeconds,
+  };
+
+  if (params.bindingStatus === 'paused') {
+    return {
+      ...base,
+      canScanNow: false,
+      decision: 'paused',
+      reason: 'source_binding_paused',
+      signals: ['source_binding_paused'],
+    };
+  }
+
+  if (params.scanPolicySnapshot === undefined) {
+    return {
+      ...base,
+      canScanNow: false,
+      decision: 'not_configured',
+      reason: 'scan_policy_missing',
+      signals: ['scan_policy_missing'],
+    };
+  }
+
+  if (params.activeScanJob !== null) {
+    return {
+      ...base,
+      canScanNow: false,
+      decision: 'active_scan',
+      reason: 'scan_already_in_progress',
+      signals: ['active_scan_in_progress'],
+    };
+  }
+
+  if (isFreshSuccessfulScan({
+    latestJob: params.latestScanJob,
+    freshnessSeconds: params.scanPolicySnapshot.freshnessSeconds,
+    now: params.now,
+  })) {
+    return {
+      ...base,
+      canScanNow: false,
+      decision: 'fresh_success',
+      reason: 'latest_success_still_fresh',
+      nextEligibleAt: params.freshness?.freshnessDeadlineAt,
+      waitSeconds: secondsUntil(params.freshness?.freshnessDeadlineAt, params.now),
+      signals: ['fresh_success'],
+    };
+  }
+
+  const rateLimitBackoff = rateLimitBackoffUntil({
+    latestJob: params.latestScanJob,
+    backoffSeconds: params.scanPolicySnapshot.intervalSeconds,
+    now: params.now,
+  });
+  if (rateLimitBackoff !== null) {
+    const backoffUntil = rateLimitBackoff.toISOString();
+
+    return {
+      ...base,
+      canScanNow: false,
+      decision: 'rate_limit_backoff',
+      reason: 'provider_rate_limit_backoff_active',
+      nextEligibleAt: backoffUntil,
+      waitSeconds: secondsUntil(backoffUntil, params.now),
+      rateLimitBackoffUntil: backoffUntil,
+      signals: ['rate_limit_backoff'],
+    };
+  }
+
+  const policyNextRunAt = params.scanPolicySnapshot.nextRunAt;
+  if (policyNextRunAt.getTime() > params.now.getTime()) {
+    const nextEligibleAt = policyNextRunAt.toISOString();
+
+    return {
+      ...base,
+      canScanNow: false,
+      decision: 'scheduled_later',
+      reason: 'scan_policy_next_run_in_future',
+      nextEligibleAt,
+      waitSeconds: secondsUntil(nextEligibleAt, params.now),
+      signals: ['scheduled_later'],
+    };
+  }
+
+  return {
+    ...base,
+    canScanNow: true,
+    decision: 'ready',
+    reason: 'scan_policy_due_now',
+    nextEligibleAt: params.now.toISOString(),
+    waitSeconds: 0,
+    signals: ['scan_policy_due'],
+  };
+};
+
+const secondsUntil = (isoDate: string | undefined, now: Date): number | undefined => {
+  if (isoDate === undefined) {
+    return undefined;
+  }
+
+  return Math.max(0, Math.ceil((new Date(isoDate).getTime() - now.getTime()) / 1000));
 };
 
 const buildRecentWindow = (params: {

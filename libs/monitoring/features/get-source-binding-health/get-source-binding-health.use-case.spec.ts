@@ -194,6 +194,12 @@ describe('GetSourceBindingHealthUseCase', () => {
       value: expect.objectContaining({
         healthState: 'not_configured',
         operatorAction: 'create_scan_policy_for_source_binding',
+        schedulerDecision: expect.objectContaining({
+          canScanNow: false,
+          decision: 'not_configured',
+          reason: 'scan_policy_missing',
+          minimumIntervalSeconds: 60,
+        }),
       }),
     }));
   });
@@ -213,6 +219,57 @@ describe('GetSourceBindingHealthUseCase', () => {
           scanJobId: 'scan-job-1',
           userState: 'scan_in_progress',
         }),
+        schedulerDecision: expect.objectContaining({
+          canScanNow: false,
+          decision: 'active_scan',
+          reason: 'scan_already_in_progress',
+          signals: ['active_scan_in_progress'],
+        }),
+      }),
+    }));
+  });
+
+  it('explains when a configured binding is ready for a due scan', async () => {
+    const { useCase, policies } = await setup();
+    await policies.save(makePolicy());
+
+    const result = await useCase.execute(baseQuery());
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      value: expect.objectContaining({
+        healthState: 'scheduled',
+        schedulerDecision: {
+          canScanNow: true,
+          decision: 'ready',
+          reason: 'scan_policy_due_now',
+          minimumIntervalSeconds: 60,
+          configuredIntervalSeconds: 300,
+          freshnessSeconds: 900,
+          nextEligibleAt: '2026-06-16T00:10:00.000Z',
+          waitSeconds: 0,
+          signals: ['scan_policy_due'],
+        },
+      }),
+    }));
+  });
+
+  it('explains future scheduled scans without marking the source scannable', async () => {
+    const { useCase, policies } = await setup();
+    await policies.save(makePolicy({ nextRunAt: new Date('2026-06-16T00:15:00.000Z') }));
+
+    const result = await useCase.execute(baseQuery());
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      value: expect.objectContaining({
+        schedulerDecision: expect.objectContaining({
+          canScanNow: false,
+          decision: 'scheduled_later',
+          reason: 'scan_policy_next_run_in_future',
+          nextEligibleAt: '2026-06-16T00:15:00.000Z',
+          waitSeconds: 300,
+        }),
       }),
     }));
   });
@@ -228,6 +285,32 @@ describe('GetSourceBindingHealthUseCase', () => {
     expect(await healthState(fresh)).toBe('healthy');
     expect(await healthState(stale)).toBe('stale');
     expect(await healthState(failed)).toBe('degraded');
+  });
+
+  it('explains fresh-success and rate-limit backoff skip windows', async () => {
+    const fresh = await setupWithCompletedJob(new Date('2026-06-16T00:00:30.000Z'));
+    const rateLimited = await setupWithCompletedJob(
+      new Date('2026-06-16T00:08:05.000Z'),
+      'Provider rate limit 429',
+    );
+
+    await expectSchedulerDecision(fresh, {
+      canScanNow: false,
+      decision: 'fresh_success',
+      reason: 'latest_success_still_fresh',
+      nextEligibleAt: '2026-06-16T00:15:30.000Z',
+      waitSeconds: 330,
+      signals: ['fresh_success'],
+    });
+    await expectSchedulerDecision(rateLimited, {
+      canScanNow: false,
+      decision: 'rate_limit_backoff',
+      reason: 'provider_rate_limit_backoff_active',
+      nextEligibleAt: '2026-06-16T00:13:05.000Z',
+      waitSeconds: 185,
+      rateLimitBackoffUntil: '2026-06-16T00:13:05.000Z',
+      signals: ['rate_limit_backoff'],
+    });
   });
 
   it('summarizes recent provider health window from scan history', async () => {
@@ -354,6 +437,19 @@ const healthState = async (useCase: GetSourceBindingHealthUseCase) => {
   return result.value.healthState;
 };
 
+const expectSchedulerDecision = async (
+  useCase: GetSourceBindingHealthUseCase,
+  expected: Record<string, unknown>,
+): Promise<void> => {
+  const result = await useCase.execute(baseQuery());
+
+  if (!result.ok) {
+    throw result.error;
+  }
+
+  expect(result.value.schedulerDecision).toEqual(expect.objectContaining(expected));
+};
+
 const baseQuery = () => ({
   tenantId: tenant,
   workspaceId: workspace,
@@ -373,7 +469,7 @@ const makeBinding = () =>
     createdAt: new Date('2026-06-16T00:00:00.000Z'),
   });
 
-const makePolicy = () =>
+const makePolicy = (overrides: Partial<Parameters<typeof ScanPolicy.create>[0]> = {}) =>
   ScanPolicy.create({
     id: 'policy-1',
     tenantId: tenant,
@@ -384,6 +480,7 @@ const makePolicy = () =>
     retryBudget: 3,
     nextRunAt: new Date('2026-06-16T00:05:00.000Z'),
     createdAt: new Date('2026-06-16T00:00:00.000Z'),
+    ...overrides,
   });
 
 const makeJob = (

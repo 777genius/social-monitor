@@ -6,6 +6,8 @@ import type {
   SourceBindingHealthFreshnessView,
   SourceBindingHealthPolicyView,
   SourceBindingHealthRecentWindowView,
+  SourceBindingHealthSchedulerDecision,
+  SourceBindingHealthSchedulerDecisionView,
   SourceBindingHealthScanView,
   SourceBindingHealthState,
   SourceBindingProviderHealthState,
@@ -45,6 +47,15 @@ const sourceBindingProviderHealthStateValues = [
   'degraded',
   'down',
 ] as const satisfies readonly SourceBindingProviderHealthState[];
+const sourceBindingHealthSchedulerDecisionValues = [
+  'ready',
+  'paused',
+  'not_configured',
+  'active_scan',
+  'fresh_success',
+  'rate_limit_backoff',
+  'scheduled_later',
+] as const satisfies readonly SourceBindingHealthSchedulerDecision[];
 
 export class SourceBindingHealthAttemptResponseDto implements SourceBindingHealthAttemptView {
   @ApiProperty()
@@ -197,6 +208,38 @@ export class SourceBindingHealthPolicyResponseDto implements SourceBindingHealth
   declare readonly isDue: boolean;
 }
 
+export class SourceBindingHealthSchedulerDecisionResponseDto implements SourceBindingHealthSchedulerDecisionView {
+  @ApiProperty()
+  declare readonly canScanNow: boolean;
+
+  @ApiProperty({ enum: sourceBindingHealthSchedulerDecisionValues })
+  declare readonly decision: SourceBindingHealthSchedulerDecision;
+
+  @ApiProperty()
+  declare readonly reason: string;
+
+  @ApiProperty()
+  declare readonly minimumIntervalSeconds: number;
+
+  @ApiPropertyOptional()
+  declare readonly configuredIntervalSeconds?: number;
+
+  @ApiPropertyOptional()
+  declare readonly freshnessSeconds?: number;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly nextEligibleAt?: string;
+
+  @ApiPropertyOptional()
+  declare readonly waitSeconds?: number;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly rateLimitBackoffUntil?: string;
+
+  @ApiProperty({ type: String, isArray: true })
+  declare readonly signals: readonly string[];
+}
+
 export class SourceBindingHealthResponseDto implements GetSourceBindingHealthResult {
   @ApiProperty({ type: () => SourceBindingResponseDto })
   declare readonly sourceBinding: SourceBindingResponseDto;
@@ -209,6 +252,9 @@ export class SourceBindingHealthResponseDto implements GetSourceBindingHealthRes
 
   @ApiProperty({ format: 'date-time' })
   declare readonly evaluatedAt: string;
+
+  @ApiProperty({ type: () => SourceBindingHealthSchedulerDecisionResponseDto })
+  declare readonly schedulerDecision: SourceBindingHealthSchedulerDecisionResponseDto;
 
   @ApiPropertyOptional({ type: () => SourceBindingHealthPolicyResponseDto })
   declare readonly scanPolicy?: SourceBindingHealthPolicyResponseDto;

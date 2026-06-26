@@ -69,11 +69,34 @@ export type SourceBindingHealthPolicyView = ScanPolicyView & {
   readonly isDue: boolean;
 };
 
+export type SourceBindingHealthSchedulerDecision =
+  | 'ready'
+  | 'paused'
+  | 'not_configured'
+  | 'active_scan'
+  | 'fresh_success'
+  | 'rate_limit_backoff'
+  | 'scheduled_later';
+
+export type SourceBindingHealthSchedulerDecisionView = {
+  readonly canScanNow: boolean;
+  readonly decision: SourceBindingHealthSchedulerDecision;
+  readonly reason: string;
+  readonly minimumIntervalSeconds: number;
+  readonly configuredIntervalSeconds?: number;
+  readonly freshnessSeconds?: number;
+  readonly nextEligibleAt?: string;
+  readonly waitSeconds?: number;
+  readonly rateLimitBackoffUntil?: string;
+  readonly signals: readonly string[];
+};
+
 export type GetSourceBindingHealthResult = {
   readonly sourceBinding: SourceBindingView;
   readonly healthState: SourceBindingHealthState;
   readonly operatorAction: string;
   readonly evaluatedAt: string;
+  readonly schedulerDecision: SourceBindingHealthSchedulerDecisionView;
   readonly scanPolicy?: SourceBindingHealthPolicyView;
   readonly latestScan?: SourceBindingHealthScanView;
   readonly freshness?: SourceBindingHealthFreshnessView;
