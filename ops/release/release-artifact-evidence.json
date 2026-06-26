@@ -100,7 +100,7 @@
       "artifactId": "openapi-snapshot",
       "path": "libs/contracts/rest/openapi.snapshot.json",
       "algorithm": "sha256",
-      "value": "a1f3b60d94dc6c684b5272c7b96b387d34dbc1e79856ab7352d24d7d76e8f43c"
+      "value": "fc46768d4a68bc918131d965f052ef9503a4b0825ec73091b098f183b40a0ffc"
     },
     {
       "artifactId": "event-catalog",
@@ -112,7 +112,7 @@
       "artifactId": "prisma-schema",
       "path": "prisma/schema.prisma",
       "algorithm": "sha256",
-      "value": "6e76d8740a29a3ccbdd4091bda6a386eef4df828bc76d9c3be16cac0f90a5a7c"
+      "value": "53fb09517d90ff10c119abdf3904ce446c6060a123201b0122752eb4c0d6546c"
     }
   ],
   "deploySmokeEvidence": [
