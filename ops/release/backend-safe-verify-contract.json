@@ -66,6 +66,7 @@
     "check:source-binding-health-rest",
     "check:source-profile-rest",
     "check:source-config-protector",
+    "check:source-credential-lifecycle",
     "check:source-config-reader-boundary",
     "check:scan-status-attempt-rest",
     "check:scan-scheduler-command",
