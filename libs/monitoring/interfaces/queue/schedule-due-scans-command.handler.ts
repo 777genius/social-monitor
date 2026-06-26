@@ -61,6 +61,16 @@ export class ScheduleDueScansCommandHandler {
           value: result.value.skipped,
           labels: { worker: 'ingestion-worker' },
         });
+        for (const [reason, value] of Object.entries(result.value.skippedByReason)) {
+          this.metrics.recordGauge({
+            name: 'monitoring_scan_scheduler_last_skipped_by_reason',
+            value,
+            labels: {
+              reason,
+              worker: 'ingestion-worker',
+            },
+          });
+        }
         this.recordRunMetric('succeeded');
         return result.value;
       } catch (error) {

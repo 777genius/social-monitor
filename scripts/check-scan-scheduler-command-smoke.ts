@@ -91,6 +91,10 @@ async function main(): Promise<void> {
   assert(result.evaluated === 1, `expected one evaluated policy, got ${result.evaluated}`);
   assert(result.enqueued === 1, `expected one enqueued scan, got ${result.enqueued}`);
   assert(result.skipped === 0, `expected zero skipped scans, got ${result.skipped}`);
+  assert(
+    Object.values(result.skippedByReason).every((value) => value === 0),
+    `expected zero skip reasons, got ${JSON.stringify(result.skippedByReason)}`,
+  );
 
   const queued = queuePublisher.all();
   assert(queued.length === 1, `expected one queued scan command, got ${queued.length}`);
@@ -138,6 +142,13 @@ async function main(): Promise<void> {
   assert(
     metrics.latestGaugeValue('monitoring_scan_scheduler_last_enqueued', { worker: 'ingestion-worker' }) === 1,
     'scheduler handler must record enqueued gauge',
+  );
+  assert(
+    metrics.latestGaugeValue('monitoring_scan_scheduler_last_skipped_by_reason', {
+      reason: 'rate_limit_backoff',
+      worker: 'ingestion-worker',
+    }) === 0,
+    'scheduler handler must record skip reason gauges',
   );
 
   console.log('Scan scheduler command smoke OK');

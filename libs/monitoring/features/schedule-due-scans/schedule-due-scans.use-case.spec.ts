@@ -195,6 +195,22 @@ const makePolicy = () =>
     createdAt: new Date('2026-06-05T00:00:00.000Z'),
   });
 
+const noSkippedByReason = () => ({
+  active_scan: 0,
+  duplicate_window: 0,
+  fresh_success: 0,
+  queue_backpressure: 0,
+  rate_limit_backoff: 0,
+  source_unavailable: 0,
+});
+
+const skippedByReason = (
+  reason: keyof ReturnType<typeof noSkippedByReason>,
+) => ({
+  ...noSkippedByReason(),
+  [reason]: 1,
+});
+
 describe('ScheduleDueScansUseCase', () => {
   it('enqueues due scan policy and advances next run', async () => {
     const bindings = new FakeSourceBindings();
@@ -225,6 +241,7 @@ describe('ScheduleDueScansUseCase', () => {
         evaluated: 1,
         enqueued: 1,
         skipped: 0,
+        skippedByReason: noSkippedByReason(),
       },
     });
     expect(queue.commands).toEqual([
@@ -287,6 +304,7 @@ describe('ScheduleDueScansUseCase', () => {
         evaluated: 1,
         enqueued: 1,
         skipped: 0,
+        skippedByReason: noSkippedByReason(),
       },
     });
     expect(queue.commands).toHaveLength(1);
@@ -351,6 +369,7 @@ describe('ScheduleDueScansUseCase', () => {
         evaluated: 1,
         enqueued: 1,
         skipped: 0,
+        skippedByReason: noSkippedByReason(),
       },
     });
     expect(queue.commands).toEqual([
@@ -400,6 +419,7 @@ describe('ScheduleDueScansUseCase', () => {
         evaluated: 0,
         enqueued: 0,
         skipped: 0,
+        skippedByReason: noSkippedByReason(),
       },
     });
     expect(queue.commands).toHaveLength(0);
@@ -446,9 +466,67 @@ describe('ScheduleDueScansUseCase', () => {
         evaluated: 1,
         enqueued: 0,
         skipped: 1,
+        skippedByReason: skippedByReason('active_scan'),
       },
     });
     expect(queue.commands).toHaveLength(0);
+  });
+
+  it('skips due policy when scheduled idempotency window already exists', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    await scanJobs.save(ScanJob.request({
+      id: 'duplicate-window-scan-job',
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      scanPolicyId: 'policy-1',
+      idempotencyKey: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
+      requestedAt: new Date('2026-06-05T11:50:00.000Z'),
+    }).markEnqueued({
+      enqueuedAt: new Date('2026-06-05T11:50:01.000Z'),
+    }).markFailed({
+      completedAt: new Date('2026-06-05T11:51:00.000Z'),
+      failureReason: 'Provider rejected malformed query',
+    }));
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-duplicate-window',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 0,
+        skipped: 1,
+        skippedByReason: skippedByReason('duplicate_window'),
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect((await policies.findBySourceBinding({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+    }))?.toSnapshot()).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
+    });
   });
 
   it('skips due policy and advances next run when latest successful scan is still fresh', async () => {
@@ -494,6 +572,7 @@ describe('ScheduleDueScansUseCase', () => {
         evaluated: 1,
         enqueued: 0,
         skipped: 1,
+        skippedByReason: skippedByReason('fresh_success'),
       },
     });
     expect(queue.commands).toHaveLength(0);
@@ -560,6 +639,7 @@ describe('ScheduleDueScansUseCase', () => {
         evaluated: 1,
         enqueued: 0,
         skipped: 1,
+        skippedByReason: skippedByReason('rate_limit_backoff'),
       },
     });
     expect(queue.commands).toHaveLength(0);
@@ -602,6 +682,7 @@ describe('ScheduleDueScansUseCase', () => {
         evaluated: 1,
         enqueued: 0,
         skipped: 1,
+        skippedByReason: skippedByReason('source_unavailable'),
       },
     });
     await expect(scanJobs.findByIdempotencyKey({
@@ -649,6 +730,7 @@ describe('ScheduleDueScansUseCase', () => {
         evaluated: 1,
         enqueued: 0,
         skipped: 1,
+        skippedByReason: skippedByReason('queue_backpressure'),
       },
     });
     await expect(scanJobs.findByIdempotencyKey({

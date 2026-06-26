@@ -15,7 +15,11 @@ import type {
   SourceBindingRepositoryPort,
 } from '../../ports';
 import type { ScheduleDueScansCommand } from './schedule-due-scans.command';
-import type { ScheduleDueScansResult } from './schedule-due-scans.result';
+import type {
+  ScheduleDueScansResult,
+  ScheduleDueScansSkipBreakdown,
+  ScheduleDueScansSkipReason,
+} from './schedule-due-scans.result';
 import { isFreshSuccessfulScan, rateLimitBackoffUntil } from '../shared/scan-freshness-guard';
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
@@ -44,7 +48,7 @@ export class ScheduleDueScansUseCase {
       limit: command.limit,
     });
     let enqueued = 0;
-    let skipped = 0;
+    const skippedByReason = emptySkipBreakdown();
 
     for (const policy of policies) {
       const policySnapshot = policy.toSnapshot();
@@ -56,7 +60,7 @@ export class ScheduleDueScansUseCase {
 
       const bindingSnapshot = binding?.toSnapshot();
       if (bindingSnapshot === undefined || bindingSnapshot.status !== 'enabled') {
-        skipped += 1;
+        recordSkipped(skippedByReason, 'source_unavailable');
         continue;
       }
 
@@ -81,12 +85,19 @@ export class ScheduleDueScansUseCase {
         backoffSeconds: policySnapshot.intervalSeconds,
         now,
       });
-
-      if (activeJob === null && existingJob === null && !isFreshSuccessfulScan({
+      const freshSuccess = isFreshSuccessfulScan({
         latestJob,
         freshnessSeconds: policySnapshot.freshnessSeconds,
         now,
-      }) && rateLimitBackoff === null) {
+      });
+      const skipReason = schedulerSkipReason({
+        activeJob,
+        existingJob,
+        freshSuccess,
+        rateLimitBackoff,
+      });
+
+      if (skipReason === null) {
         const queueCommand = {
           tenantId: policySnapshot.tenantId,
           workspaceId: policySnapshot.workspaceId,
@@ -101,7 +112,7 @@ export class ScheduleDueScansUseCase {
           causationId: idempotencyKey,
         };
         if (!(await this.scanQueue.canAccept(queueCommand))) {
-          skipped += 1;
+          recordSkipped(skippedByReason, 'queue_backpressure');
           continue;
         }
 
@@ -119,7 +130,7 @@ export class ScheduleDueScansUseCase {
         await this.scanJobs.save(job.markEnqueued({ enqueuedAt: now }));
         enqueued += 1;
       } else {
-        skipped += 1;
+        recordSkipped(skippedByReason, skipReason);
       }
 
       await this.scanPolicies.save(policy.scheduleNext({
@@ -136,10 +147,55 @@ export class ScheduleDueScansUseCase {
       scannedAt: now,
       evaluated: policies.length,
       enqueued,
-      skipped,
+      skipped: totalSkipped(skippedByReason),
+      skippedByReason,
     });
   }
 }
+
+const emptySkipBreakdown = (): Record<ScheduleDueScansSkipReason, number> => ({
+  active_scan: 0,
+  duplicate_window: 0,
+  fresh_success: 0,
+  queue_backpressure: 0,
+  rate_limit_backoff: 0,
+  source_unavailable: 0,
+});
+
+const recordSkipped = (
+  breakdown: Record<ScheduleDueScansSkipReason, number>,
+  reason: ScheduleDueScansSkipReason,
+): void => {
+  breakdown[reason] += 1;
+};
+
+const totalSkipped = (breakdown: ScheduleDueScansSkipBreakdown): number =>
+  Object.values(breakdown).reduce((total, value) => total + value, 0);
+
+const schedulerSkipReason = (params: {
+  readonly activeJob: ScanJob | null;
+  readonly existingJob: ScanJob | null;
+  readonly freshSuccess: boolean;
+  readonly rateLimitBackoff: Date | null;
+}): ScheduleDueScansSkipReason | null => {
+  if (params.activeJob !== null) {
+    return 'active_scan';
+  }
+
+  if (params.existingJob !== null) {
+    return 'duplicate_window';
+  }
+
+  if (params.freshSuccess) {
+    return 'fresh_success';
+  }
+
+  if (params.rateLimitBackoff !== null) {
+    return 'rate_limit_backoff';
+  }
+
+  return null;
+};
 
 const scheduledIdempotencyKey = (scanPolicyId: string, dueAt: Date): string =>
   `scheduled:${scanPolicyId}:${dueAt.toISOString()}`;

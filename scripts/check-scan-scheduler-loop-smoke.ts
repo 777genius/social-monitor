@@ -169,6 +169,20 @@ async function main(): Promise<void> {
     }) === 1,
     'loop tick must record successful scheduler run',
   );
+  assert(
+    metrics.latestGaugeValue('monitoring_scan_scheduler_last_skipped_by_reason', {
+      reason: 'fresh_success',
+      worker: 'ingestion-worker',
+    }) === 1,
+    'loop tick must record fresh-success skip reason',
+  );
+  assert(
+    metrics.latestGaugeValue('monitoring_scan_scheduler_last_skipped_by_reason', {
+      reason: 'source_unavailable',
+      worker: 'ingestion-worker',
+    }) === 1,
+    'loop tick must record source-unavailable skip reason',
+  );
 
   const advancedPolicy = await policies.findBySourceBinding({
     tenantId: tenant,

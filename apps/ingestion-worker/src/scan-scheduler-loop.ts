@@ -91,6 +91,12 @@ export class ScanSchedulerLoop implements OnModuleInit, OnApplicationShutdown {
         evaluated: result.evaluated,
         enqueued: result.enqueued,
         skipped: result.skipped,
+        skippedActiveScan: result.skippedByReason.active_scan,
+        skippedDuplicateWindow: result.skippedByReason.duplicate_window,
+        skippedFreshSuccess: result.skippedByReason.fresh_success,
+        skippedQueueBackpressure: result.skippedByReason.queue_backpressure,
+        skippedRateLimitBackoff: result.skippedByReason.rate_limit_backoff,
+        skippedSourceUnavailable: result.skippedByReason.source_unavailable,
         worker: 'ingestion-worker',
       });
     } catch (error) {

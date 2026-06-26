@@ -19,6 +19,14 @@ class FakeScheduleDueScansUseCase {
         evaluated: 1,
         enqueued: 1,
         skipped: 0,
+        skippedByReason: {
+          active_scan: 0,
+          duplicate_window: 0,
+          fresh_success: 0,
+          queue_backpressure: 0,
+          rate_limit_backoff: 0,
+          source_unavailable: 0,
+        },
       },
     };
   }
@@ -67,6 +75,10 @@ describe('ScheduleDueScansCommandHandler', () => {
     expect(metrics.latestGaugeValue('monitoring_scan_scheduler_last_enqueued', {
       worker: 'ingestion-worker',
     })).toBe(1);
+    expect(metrics.latestGaugeValue('monitoring_scan_scheduler_last_skipped_by_reason', {
+      reason: 'fresh_success',
+      worker: 'ingestion-worker',
+    })).toBe(0);
   });
 
   it('rejects partially scoped sweeps before executing the use case', async () => {
