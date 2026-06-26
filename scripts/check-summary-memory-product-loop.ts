@@ -52,6 +52,7 @@ import {
   providerQualityScope,
   spaceSlug,
   topicFeedbackScope,
+  userPreferenceScope,
 } from '@social-monitor/summary/adapters/memory/memo-stack-summary-memory.adapter';
 import type {
   ReserveSummaryJobQuotaResult,
@@ -159,9 +160,19 @@ async function main(): Promise<void> {
   if (memoryBackend === undefined) {
     await waitForLiveMemory({ topicId: topic.topicId, feedItems, memory, clock });
   } else {
-    assert.equal(memoryBackend.factBodies.length, 2, 'feedback must be mirrored into topic and provider memo-stack fact writes');
+    assert.equal(memoryBackend.captureBodies.length, 3, 'feedback must be mirrored into topic, provider and user memo-stack captures');
+    assert.equal(memoryBackend.factBodies.length, 3, 'feedback must be mirrored into topic, provider and user memo-stack fact writes');
+    assert.equal(memoryBackend.captureBodies[0]?.memory_scope_external_ref, topicFeedbackScope(topic.topicId));
+    assert.equal(memoryBackend.captureBodies[1]?.memory_scope_external_ref, providerQualityScope(topic.topicId, 'reddit'));
+    assert.equal(memoryBackend.captureBodies[2]?.memory_scope_external_ref, userPreferenceScope(userId));
     assert.equal(memoryBackend.factBodies[0]?.memory_scope_external_ref, topicFeedbackScope(topic.topicId));
     assert.equal(memoryBackend.factBodies[1]?.memory_scope_external_ref, providerQualityScope(topic.topicId, 'reddit'));
+    assert.equal(memoryBackend.factBodies[2]?.memory_scope_external_ref, userPreferenceScope(userId));
+    assert.equal(memoryBackend.factBodies[2]?.category, 'relevance_quality');
+    assert(
+      String(memoryBackend.factBodies[2]?.text ?? '').includes('down-rank similar reddit evidence'),
+      'user preference fact must carry ranking guidance for the next briefing',
+    );
   }
 
   const secondSummary = await runSummary({
@@ -281,6 +292,7 @@ async function maybeCheckLivePostgresEvidence(params: {
     const memorySpaceSlug = spaceSlug(tenant, workspace);
     const memoryScopeRef = topicFeedbackScope(params.topicId);
     const providerScopeRef = providerQualityScope(params.topicId, params.providerKey);
+    const userScopeRef = userPreferenceScope(userId);
     const topicCaptures = await countRows(pool, `
       select count(*)::int as count
       from memory_captures c
@@ -314,7 +326,33 @@ async function maybeCheckLivePostgresEvidence(params: {
         and c.metadata_json->>'provider_quality_action' = 'downrank_low_signal_provider'
         and c.metadata_json->>'provider_quality_scope' = $2
     `, [memorySpaceSlug, providerScopeRef, params.topicId, params.summaryId, params.citationId]);
-    const facts = await countRows(pool, `
+    const userPreferenceCaptures = await countRows(pool, `
+      select count(*)::int as count
+      from memory_captures c
+      join memory_spaces sp on sp.id = c.space_id
+      join memory_scopes s on s.id = c.memory_scope_id
+      where sp.slug = $1
+        and s.external_ref = $2
+        and c.source_agent = 'social-monitor.summary-feedback-user-preference'
+        and c.event_type = 'social-monitor.summary_feedback.user_preference_recorded'
+        and c.status = 'accepted'
+        and c.metadata_json->>'topic_id' = $3
+        and c.metadata_json->>'summary_id' = $4
+        and c.metadata_json->>'citation_id' = $5
+        and c.metadata_json->>'memory_action' = 'downrank_similar_provider_evidence'
+        and c.metadata_json->>'memory_scope_external_ref' = $2
+    `, [memorySpaceSlug, userScopeRef, params.topicId, params.summaryId, params.citationId]);
+    const topicFacts = await countRows(pool, `
+      select count(*)::int as count
+      from memory_facts f
+      join memory_spaces sp on sp.id = f.space_id
+      join memory_scopes s on s.id = f.memory_scope_id
+      where sp.slug = $1
+        and s.external_ref = $2
+        and f.status = 'active'
+        and f.ttl_policy = 'durable'
+    `, [memorySpaceSlug, memoryScopeRef]);
+    const providerFacts = await countRows(pool, `
       select count(*)::int as count
       from memory_facts f
       join memory_spaces sp on sp.id = f.space_id
@@ -324,14 +362,34 @@ async function maybeCheckLivePostgresEvidence(params: {
         and f.status = 'active'
         and f.ttl_policy = 'durable'
     `, [memorySpaceSlug, providerScopeRef]);
+    const userPreferenceFacts = await countRows(pool, `
+      select count(*)::int as count
+      from memory_facts f
+      join memory_spaces sp on sp.id = f.space_id
+      join memory_scopes s on s.id = f.memory_scope_id
+      where sp.slug = $1
+        and s.external_ref = $2
+        and f.status = 'active'
+        and f.ttl_policy = 'durable'
+        and f.category = 'relevance_quality'
+    `, [memorySpaceSlug, userScopeRef]);
     const sourceTypes = await readSourceTypes(pool, memorySpaceSlug, providerScopeRef);
+    const userPreferenceSourceTypes = await readSourceTypes(pool, memorySpaceSlug, userScopeRef);
 
     assert(topicCaptures >= 1, 'live memo-stack Postgres evidence must include accepted feedback capture');
     assert(providerCaptures >= 1, 'live memo-stack Postgres evidence must include accepted provider quality capture');
-    assert(facts >= 1, 'live memo-stack Postgres evidence must include durable active fact');
+    assert(userPreferenceCaptures >= 1, 'live memo-stack Postgres evidence must include accepted user preference capture');
+    assert(topicFacts >= 1, 'live memo-stack Postgres evidence must include durable active topic fact');
+    assert(providerFacts >= 1, 'live memo-stack Postgres evidence must include durable active provider fact');
+    assert(userPreferenceFacts >= 1, 'live memo-stack Postgres evidence must include durable active user preference fact');
     assertRequiredSourceTypes(sourceTypes);
+    assertRequiredSourceTypes(userPreferenceSourceTypes);
 
-    return { captures: topicCaptures + providerCaptures, facts, sourceTypes };
+    return {
+      captures: topicCaptures + providerCaptures + userPreferenceCaptures,
+      facts: topicFacts + providerFacts + userPreferenceFacts,
+      sourceTypes: uniqueSorted([...sourceTypes, ...userPreferenceSourceTypes]),
+    };
   } finally {
     await pool.end();
   }
@@ -385,6 +443,10 @@ function formatPostgresEvidence(evidence: PostgresEvidence | undefined): string 
   return evidence === undefined
     ? 'skipped'
     : `captures=${evidence.captures}, facts=${evidence.facts}, sourceTypes=${evidence.sourceTypes.join('|')}`;
+}
+
+function uniqueSorted(values: readonly string[]): readonly string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right, 'en-US'));
 }
 
 function memoryQuery(
