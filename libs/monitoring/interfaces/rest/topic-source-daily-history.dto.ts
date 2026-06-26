@@ -5,6 +5,7 @@ import type {
   TopicSourceDailyHistoryCadenceSummaryView,
   TopicSourceDailyHistoryDayView,
   TopicSourceDailyHistoryProviderView,
+  TopicSourceDailyHistoryScanCoverageState,
   TopicSourceDailyHistorySummaryView,
 } from '../../features/list-topic-source-daily-history/list-topic-source-daily-history.result';
 import type { ScanProviderHealthState } from '../../features/shared/scan-provider-health-summary';
@@ -15,6 +16,13 @@ const sourceHistoryProviderHealthStateValues = [
   'degraded',
   'down',
 ] as const satisfies readonly ScanProviderHealthState[];
+
+const sourceHistoryScanCoverageStateValues = [
+  'no_sources',
+  'none_scanned',
+  'partial',
+  'complete',
+] as const satisfies readonly TopicSourceDailyHistoryScanCoverageState[];
 
 export class TopicSourceDailyHistoryCadenceSummaryResponseDto implements TopicSourceDailyHistoryCadenceSummaryView {
   @ApiProperty()
@@ -63,6 +71,15 @@ export class TopicSourceDailyHistoryProviderResponseDto implements TopicSourceDa
 
   @ApiProperty()
   declare readonly unconfiguredSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly scannedSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly unscannedSourceBindingCount: number;
+
+  @ApiProperty({ enum: sourceHistoryScanCoverageStateValues })
+  declare readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
 
   @ApiPropertyOptional({ type: () => TopicSourceDailyHistoryCadenceSummaryResponseDto })
   declare readonly cadenceSummary?: TopicSourceDailyHistoryCadenceSummaryResponseDto;
@@ -145,6 +162,15 @@ export class TopicSourceDailyHistoryDayResponseDto implements TopicSourceDailyHi
   declare readonly unconfiguredSourceBindingCount: number;
 
   @ApiProperty()
+  declare readonly scannedSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly unscannedSourceBindingCount: number;
+
+  @ApiProperty({ enum: sourceHistoryScanCoverageStateValues })
+  declare readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
+
+  @ApiProperty()
   declare readonly totalScans: number;
 
   @ApiProperty()
@@ -211,6 +237,15 @@ export class TopicSourceDailyHistorySummaryResponseDto implements TopicSourceDai
 
   @ApiProperty()
   declare readonly unconfiguredSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly scannedSourceBindingCount: number;
+
+  @ApiProperty()
+  declare readonly unscannedSourceBindingCount: number;
+
+  @ApiProperty({ enum: sourceHistoryScanCoverageStateValues })
+  declare readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
 
   @ApiProperty()
   declare readonly totalScans: number;

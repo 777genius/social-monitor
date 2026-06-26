@@ -5,6 +5,7 @@
 import 'package:json_annotation/json_annotation.dart';
 
 import 'topic_source_daily_history_day_response_dto_provider_health_state_provider_health_state.dart';
+import 'topic_source_daily_history_day_response_dto_scan_coverage_state_scan_coverage_state.dart';
 import 'topic_source_daily_history_provider_response_dto.dart';
 
 part 'topic_source_daily_history_day_response_dto.g.dart';
@@ -27,12 +28,15 @@ class TopicSourceDailyHistoryDayResponseDto {
     required this.providerHealthState,
     required this.providerUnavailableScans,
     required this.rateLimitedScans,
+    required this.scanCoverageState,
+    required this.scannedSourceBindingCount,
     required this.signals,
     required this.skippedDuplicates,
     required this.sourceBindingCount,
     required this.succeededScans,
     required this.totalScans,
     required this.unconfiguredSourceBindingCount,
+    required this.unscannedSourceBindingCount,
     required this.windowEndedAt,
     required this.windowStartedAt,
     this.lastCompletedAt,
@@ -61,12 +65,16 @@ class TopicSourceDailyHistoryDayResponseDto {
   providerHealthState;
   final num providerUnavailableScans;
   final num rateLimitedScans;
+  final TopicSourceDailyHistoryDayResponseDtoScanCoverageStateScanCoverageState
+  scanCoverageState;
+  final num scannedSourceBindingCount;
   final List<String> signals;
   final num skippedDuplicates;
   final num sourceBindingCount;
   final num succeededScans;
   final num totalScans;
   final num unconfiguredSourceBindingCount;
+  final num unscannedSourceBindingCount;
   final DateTime windowEndedAt;
   final DateTime windowStartedAt;
 

@@ -27,12 +27,18 @@ _$TopicSourceDailyHistoryProviderResponseDtoFromJson(
   providerKey: json['providerKey'] as String,
   providerUnavailableScans: json['providerUnavailableScans'] as num,
   rateLimitedScans: json['rateLimitedScans'] as num,
+  scanCoverageState:
+      TopicSourceDailyHistoryProviderResponseDtoScanCoverageStateScanCoverageState.fromJson(
+        json['scanCoverageState'] as String,
+      ),
+  scannedSourceBindingCount: json['scannedSourceBindingCount'] as num,
   signals: (json['signals'] as List<dynamic>).map((e) => e as String).toList(),
   skippedDuplicates: json['skippedDuplicates'] as num,
   sourceBindingCount: json['sourceBindingCount'] as num,
   succeededScans: json['succeededScans'] as num,
   totalScans: json['totalScans'] as num,
   unconfiguredSourceBindingCount: json['unconfiguredSourceBindingCount'] as num,
+  unscannedSourceBindingCount: json['unscannedSourceBindingCount'] as num,
   cadenceSummary: json['cadenceSummary'] == null
       ? null
       : TopicSourceDailyHistoryCadenceSummaryResponseDto.fromJson(
@@ -66,10 +72,13 @@ Map<String, dynamic> _$TopicSourceDailyHistoryProviderResponseDtoToJson(
   'providerKey': instance.providerKey,
   'providerUnavailableScans': instance.providerUnavailableScans,
   'rateLimitedScans': instance.rateLimitedScans,
+  'scanCoverageState': instance.scanCoverageState,
+  'scannedSourceBindingCount': instance.scannedSourceBindingCount,
   'signals': instance.signals,
   'skippedDuplicates': instance.skippedDuplicates,
   'sourceBindingCount': instance.sourceBindingCount,
   'succeededScans': instance.succeededScans,
   'totalScans': instance.totalScans,
   'unconfiguredSourceBindingCount': instance.unconfiguredSourceBindingCount,
+  'unscannedSourceBindingCount': instance.unscannedSourceBindingCount,
 };

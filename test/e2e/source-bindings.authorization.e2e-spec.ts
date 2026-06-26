@@ -162,6 +162,9 @@ describe('Source binding workspace authorization (e2e)', () => {
             pausedSourceBindingCount: 0,
             configuredSourceBindingCount: 0,
             unconfiguredSourceBindingCount: 1,
+            scannedSourceBindingCount: 0,
+            unscannedSourceBindingCount: 1,
+            scanCoverageState: 'none_scanned',
             totalScans: 0,
             providerBreakdown: [
               expect.objectContaining({
@@ -171,12 +174,25 @@ describe('Source binding workspace authorization (e2e)', () => {
                 pausedSourceBindingCount: 0,
                 configuredSourceBindingCount: 0,
                 unconfiguredSourceBindingCount: 1,
+                scannedSourceBindingCount: 0,
+                unscannedSourceBindingCount: 1,
+                scanCoverageState: 'none_scanned',
               }),
             ],
           },
           days: [
-            expect.objectContaining({ totalScans: 0 }),
-            expect.objectContaining({ totalScans: 0 }),
+            expect.objectContaining({
+              scannedSourceBindingCount: 0,
+              unscannedSourceBindingCount: 1,
+              scanCoverageState: 'none_scanned',
+              totalScans: 0,
+            }),
+            expect.objectContaining({
+              scannedSourceBindingCount: 0,
+              unscannedSourceBindingCount: 1,
+              scanCoverageState: 'none_scanned',
+              totalScans: 0,
+            }),
           ],
         });
       });
@@ -197,12 +213,27 @@ describe('Source binding workspace authorization (e2e)', () => {
             pausedSourceBindingCount: 0,
             configuredSourceBindingCount: 0,
             unconfiguredSourceBindingCount: 0,
+            scannedSourceBindingCount: 0,
+            unscannedSourceBindingCount: 0,
+            scanCoverageState: 'no_sources',
             totalScans: 0,
             providerBreakdown: [],
           },
           days: [
-            expect.objectContaining({ totalScans: 0, providerBreakdown: [] }),
-            expect.objectContaining({ totalScans: 0, providerBreakdown: [] }),
+            expect.objectContaining({
+              scannedSourceBindingCount: 0,
+              unscannedSourceBindingCount: 0,
+              scanCoverageState: 'no_sources',
+              totalScans: 0,
+              providerBreakdown: [],
+            }),
+            expect.objectContaining({
+              scannedSourceBindingCount: 0,
+              unscannedSourceBindingCount: 0,
+              scanCoverageState: 'no_sources',
+              totalScans: 0,
+              providerBreakdown: [],
+            }),
           ],
           maxScanJobs: 0,
         });

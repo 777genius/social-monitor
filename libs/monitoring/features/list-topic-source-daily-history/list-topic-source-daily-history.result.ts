@@ -1,5 +1,11 @@
 import type { ScanProviderHealthState } from '../shared/scan-provider-health-summary';
 
+export type TopicSourceDailyHistoryScanCoverageState =
+  | 'no_sources'
+  | 'none_scanned'
+  | 'partial'
+  | 'complete';
+
 export type TopicSourceDailyHistoryCadenceSummaryView = {
   readonly sourceBindingCount: number;
   readonly minimumIntervalSeconds: number;
@@ -19,6 +25,9 @@ export type TopicSourceDailyHistoryProviderView = {
   readonly pausedSourceBindingCount: number;
   readonly configuredSourceBindingCount: number;
   readonly unconfiguredSourceBindingCount: number;
+  readonly scannedSourceBindingCount: number;
+  readonly unscannedSourceBindingCount: number;
+  readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
   readonly cadenceSummary?: TopicSourceDailyHistoryCadenceSummaryView;
   readonly providerHealthState: ScanProviderHealthState;
   readonly totalScans: number;
@@ -48,6 +57,9 @@ export type TopicSourceDailyHistoryDayView = {
   readonly pausedSourceBindingCount: number;
   readonly configuredSourceBindingCount: number;
   readonly unconfiguredSourceBindingCount: number;
+  readonly scannedSourceBindingCount: number;
+  readonly unscannedSourceBindingCount: number;
+  readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
   readonly totalScans: number;
   readonly succeededScans: number;
   readonly failedScans: number;
@@ -73,6 +85,9 @@ export type TopicSourceDailyHistorySummaryView = {
   readonly pausedSourceBindingCount: number;
   readonly configuredSourceBindingCount: number;
   readonly unconfiguredSourceBindingCount: number;
+  readonly scannedSourceBindingCount: number;
+  readonly unscannedSourceBindingCount: number;
+  readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
   readonly totalScans: number;
   readonly succeededScans: number;
   readonly failedScans: number;

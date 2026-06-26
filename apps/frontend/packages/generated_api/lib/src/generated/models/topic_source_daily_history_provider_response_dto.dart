@@ -6,6 +6,7 @@ import 'package:json_annotation/json_annotation.dart';
 
 import 'topic_source_daily_history_cadence_summary_response_dto.dart';
 import 'topic_source_daily_history_provider_response_dto_provider_health_state_provider_health_state.dart';
+import 'topic_source_daily_history_provider_response_dto_scan_coverage_state_scan_coverage_state.dart';
 
 part 'topic_source_daily_history_provider_response_dto.g.dart';
 
@@ -26,12 +27,15 @@ class TopicSourceDailyHistoryProviderResponseDto {
     required this.providerKey,
     required this.providerUnavailableScans,
     required this.rateLimitedScans,
+    required this.scanCoverageState,
+    required this.scannedSourceBindingCount,
     required this.signals,
     required this.skippedDuplicates,
     required this.sourceBindingCount,
     required this.succeededScans,
     required this.totalScans,
     required this.unconfiguredSourceBindingCount,
+    required this.unscannedSourceBindingCount,
     this.cadenceSummary,
     this.lastCompletedAt,
     this.lastScanRequestedAt,
@@ -59,12 +63,16 @@ class TopicSourceDailyHistoryProviderResponseDto {
   final String providerKey;
   final num providerUnavailableScans;
   final num rateLimitedScans;
+  final TopicSourceDailyHistoryProviderResponseDtoScanCoverageStateScanCoverageState
+  scanCoverageState;
+  final num scannedSourceBindingCount;
   final List<String> signals;
   final num skippedDuplicates;
   final num sourceBindingCount;
   final num succeededScans;
   final num totalScans;
   final num unconfiguredSourceBindingCount;
+  final num unscannedSourceBindingCount;
 
   Map<String, Object?> toJson() =>
       _$TopicSourceDailyHistoryProviderResponseDtoToJson(this);
