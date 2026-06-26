@@ -16,6 +16,7 @@
     "source_credential_secrets",
     "scan_policies",
     "scan_jobs",
+    "scan_scheduler_decisions",
     "cursor_checkpoints",
     "source_items",
     "scan_failure_queue_entries",
@@ -59,6 +60,7 @@
   "operationalStateTables": [
     "api_keys",
     "scan_jobs",
+    "scan_scheduler_decisions",
     "cursor_checkpoints",
     "scan_failure_queue_entries",
     "scan_attempts",
@@ -96,6 +98,7 @@
     "select count(*) from workspaces",
     "select count(*) from api_keys",
     "select count(*) from scan_jobs",
+    "select count(*) from scan_scheduler_decisions",
     "select count(*) from scan_failure_queue_entries",
     "select count(*) from feed_signal_baseline_samples",
     "select count(*) from github_repository_trend_candidates",
