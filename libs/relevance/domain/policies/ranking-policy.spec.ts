@@ -129,6 +129,40 @@ describe("RankingPolicy", () => {
     ]);
     expect(result[0]?.whyImportant).toContain("Matches memory preference");
   });
+
+  it("keeps negative memory preferences explainable without hard-filtering the source", () => {
+    const generatedAt = new Date("2026-06-22T10:00:00.000Z");
+    const policy = new RankingPolicy();
+
+    const result = policy.rank({
+      candidates: [
+        candidate({
+          id: "candidate-reddit",
+          providerKey: "reddit",
+          title: "Agent launch discussion with strong engagement",
+          sourceSignalScore: 0.5,
+        }),
+        candidate({
+          id: "candidate-github",
+          providerKey: "github",
+          title: "Agent runtime release",
+          sourceSignalScore: 0.2,
+        }),
+      ],
+      profile: null,
+      memoryGuidance: {
+        providerPreferences: [{ key: "reddit", weight: -1 }],
+      },
+      generatedAt,
+      limit: 10,
+    });
+
+    expect(result.map((item) => item.candidate.id)).toEqual([
+      "candidate-github",
+      "candidate-reddit",
+    ]);
+    expect(result[1]?.whyImportant).toContain("Down-ranked by memory preference");
+  });
 });
 
 const candidate = (

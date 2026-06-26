@@ -240,6 +240,10 @@ const buildWhyImportant = (params: {
     reasons.push("Matches memory preference");
   }
 
+  if (params.memoryScore < 0) {
+    reasons.push("Down-ranked by memory preference");
+  }
+
   if (params.recencyScore > 0.25) {
     reasons.push("Fresh item in the current monitoring window");
   }
