@@ -340,6 +340,68 @@ describe('User JWT auth boundary (e2e)', () => {
     ]));
   });
 
+  it('binds source activation writes to the authenticated JWT subject', async () => {
+    const memberToken = tokenFor({ subject: 'activation-user', roles: ['member'] });
+
+    await request(app.getHttpServer())
+      .post('/user-subscriptions/activate-source')
+      .set(jwtHeaders(memberToken))
+      .send({
+        userId: 'another-user',
+        providerKey: 'reddit',
+        targetKind: 'subreddit',
+        targetValue: 'programming',
+        schedule: {
+          recipientKey: 'another-user',
+          channel: 'in_app',
+          intervalSeconds: 3600,
+          includeNoSignal: true,
+        },
+      })
+      .expect(403)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'authorization.denied',
+          detail: 'Bearer JWT user cannot access another user subscription preference',
+        });
+      });
+
+    const activated = await request(app.getHttpServer())
+      .post('/user-subscriptions/activate-source')
+      .set(jwtHeaders(memberToken))
+      .send({
+        userId: 'activation-user',
+        providerKey: 'reddit',
+        targetKind: 'subreddit',
+        targetValue: 'programming',
+        schedule: {
+          recipientKey: 'activation-user',
+          channel: 'in_app',
+          intervalSeconds: 3600,
+          includeNoSignal: true,
+        },
+      })
+      .expect(201);
+
+    expect(activated.body).toEqual(expect.objectContaining({
+      created: true,
+      sourceTarget: expect.objectContaining({
+        providerKey: 'reddit',
+        targetKind: 'subreddit',
+        targetValue: 'programming',
+      }),
+      subscription: expect.objectContaining({
+        userId: 'activation-user',
+      }),
+      activation: {
+        topicCreated: true,
+        sourceBindingCreated: true,
+        scanPolicyCreated: true,
+        scanPolicyUpdated: false,
+      },
+    }));
+  });
+
   it('binds summary feedback actors to the authenticated JWT subject', async () => {
     const memberToken = tokenFor({ subject: 'feedback-user', roles: ['member'] });
 
