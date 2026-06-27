@@ -27,6 +27,7 @@ export class MonitoringScanExecutionReporterAdapter implements ScanExecutionRepo
       completedAt: command.completedAt,
       status: 'failed',
       failureReason: command.failureReason,
+      failureMetadata: command.failureMetadata,
     });
 
     if (!result.ok) {

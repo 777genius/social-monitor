@@ -93,9 +93,17 @@ class XCollectorAuthError(XCollectorError):
 
 
 class XCollectorRateLimitError(XCollectorError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after_ms: int | None = None,
+        reset_at: datetime | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after_ms = retry_after_ms
+        self.reset_at = reset_at
 
 
 class XCollectorUnavailableError(XCollectorError):
     pass
-

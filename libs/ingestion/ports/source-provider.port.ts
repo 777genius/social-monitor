@@ -56,6 +56,8 @@ export type ProviderFailure = {
   readonly kind: ProviderFailureKind;
   readonly retryable: boolean;
   readonly message: string;
+  readonly retryAfterMs?: number;
+  readonly rateLimitResetAt?: Date;
 };
 
 export interface SourceProviderPort {

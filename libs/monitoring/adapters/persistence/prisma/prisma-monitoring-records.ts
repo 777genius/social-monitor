@@ -1,4 +1,4 @@
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { normalizeJsonObject, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import {
   ScanJob,
@@ -105,6 +105,7 @@ export type PrismaScanJobRecord = {
   readonly enqueuedAt: Date | null;
   readonly completedAt: Date | null;
   readonly failureReason: string | null;
+  readonly failureMetadata: unknown;
   readonly createdAt: Date;
 };
 
@@ -245,6 +246,7 @@ export const scanJobFromPrisma = (record: PrismaScanJobRecord): ScanJob =>
     enqueuedAt: record.enqueuedAt ?? undefined,
     completedAt: record.completedAt ?? undefined,
     failureReason: record.failureReason ?? undefined,
+    failureMetadata: normalizeJsonObject(record.failureMetadata),
   } satisfies ScanJobProps);
 
 export const scanSchedulerDecisionFromPrisma = (

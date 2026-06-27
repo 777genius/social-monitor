@@ -1,3 +1,5 @@
+import type { JsonObject } from '@social-monitor/shared-kernel';
+
 import type { ScanJobStatus } from '../../domain';
 
 export type ScanStatusUserState =
@@ -21,6 +23,7 @@ export type ScanStatusView = {
 export const buildScanStatusView = (params: {
   readonly status: ScanJobStatus;
   readonly failureReason?: string;
+  readonly failureMetadata?: JsonObject;
 }): ScanStatusView => {
   if (params.status === 'requested') {
     return {
@@ -43,7 +46,10 @@ export const buildScanStatusView = (params: {
     };
   }
 
-  const failureClass = classifyFailure(params.failureReason);
+  const failureClass = classifyFailure(
+    params.failureReason,
+    params.failureMetadata,
+  );
 
   return {
     userState: 'scan_degraded',
@@ -52,10 +58,29 @@ export const buildScanStatusView = (params: {
   };
 };
 
-const classifyFailure = (failureReason: string | undefined): ScanStatusFailureClass => {
+const classifyFailure = (
+  failureReason: string | undefined,
+  failureMetadata: JsonObject | undefined,
+): ScanStatusFailureClass => {
+  const failureKind = readMetadataString(failureMetadata, 'kind');
+  if (failureKind === 'rate_limited') {
+    return 'provider_rate_limited';
+  }
+  if (
+    failureKind === 'auth_failed' ||
+    failureKind === 'unavailable' ||
+    failureKind === 'invalid_query'
+  ) {
+    return 'provider_unavailable';
+  }
+
   const normalized = failureReason?.toLowerCase() ?? '';
 
-  if (normalized.includes('rate limit') || normalized.includes('429')) {
+  if (
+    normalized.includes('rate limit') ||
+    normalized.includes('rate_limited') ||
+    normalized.includes('429')
+  ) {
     return 'provider_rate_limited';
   }
 
@@ -77,6 +102,15 @@ const classifyFailure = (failureReason: string | undefined): ScanStatusFailureCl
   }
 
   return 'system_failure';
+};
+
+const readMetadataString = (
+  metadata: JsonObject | undefined,
+  key: string,
+): string | undefined => {
+  const value = metadata?.[key];
+
+  return typeof value === 'string' ? value : undefined;
 };
 
 const operatorActionFor = (failureClass: ScanStatusFailureClass): string => {

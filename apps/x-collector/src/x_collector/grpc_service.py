@@ -273,6 +273,18 @@ def abort_collector_error(
         context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
 
     if isinstance(exc, XCollectorRateLimitError):
+        metadata = []
+        if exc.retry_after_ms is not None:
+            metadata.append(("retry-after-ms", str(exc.retry_after_ms)))
+        if exc.reset_at is not None:
+            metadata.append(
+                (
+                    "rate-limit-reset-at",
+                    exc.reset_at.astimezone(UTC).isoformat(),
+                ),
+            )
+        if metadata:
+            context.set_trailing_metadata(tuple(metadata))
         context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, str(exc))
 
     if isinstance(exc, XCollectorUnavailableError):

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import re
+import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from . import __version__
@@ -38,9 +41,11 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
         self,
         scweet_factory: ScweetFactory,
         clock: Clock | None = None,
+        scweet_db_path: str | None = None,
     ) -> None:
         self._scweet_factory = scweet_factory
         self._clock = clock or SystemClock()
+        self._scweet_db_path = scweet_db_path
 
     @classmethod
     def from_settings(
@@ -74,7 +79,7 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                 provision=True,
             )
 
-        return cls(create_scweet, clock)
+        return cls(create_scweet, clock, settings.scweet_db_path)
 
     def collect_daily_search(
         self,
@@ -106,7 +111,11 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                     until=until,
                 )
             except Exception as exc:
-                raise classify_scweet_error(exc) from exc
+                raise classify_scweet_error(
+                    exc,
+                    clock=self._clock,
+                    scweet_db_path=self._scweet_db_path,
+                ) from exc
 
             accepted_count = 0
             for rank, record in enumerate(records, start=1):
@@ -267,7 +276,12 @@ def post_is_in_window(
     return window_start <= published_at <= window_end + timedelta(minutes=5)
 
 
-def classify_scweet_error(exc: Exception) -> Exception:
+def classify_scweet_error(
+    exc: Exception,
+    *,
+    clock: Clock | None = None,
+    scweet_db_path: str | None = None,
+) -> Exception:
     message = str(exc).lower()
 
     if any(token in message for token in ["auth", "cookie", "token", "401"]):
@@ -277,9 +291,64 @@ def classify_scweet_error(exc: Exception) -> Exception:
         token in message
         for token in ["rate", "limit", "cooldown", "daily cap", "429"]
     ):
-        return XCollectorRateLimitError("Scweet rate limit reached")
+        now = (clock or SystemClock()).now()
+        reset_at = (
+            rate_limit_reset_from_message(str(exc))
+            or rate_limit_reset_from_scweet_db(scweet_db_path, now)
+            or now + timedelta(minutes=15)
+        )
+        retry_after_ms = max(
+            1,
+            int((reset_at - now).total_seconds() * 1000),
+        )
+        return XCollectorRateLimitError(
+            "Scweet rate limit reached",
+            retry_after_ms=retry_after_ms,
+            reset_at=reset_at,
+        )
 
     return XCollectorUnavailableError("Scweet collection failed")
+
+
+def rate_limit_reset_from_message(message: str) -> datetime | None:
+    match = re.search(r"\breset=(\d{10,})\b", message)
+    if match is None:
+        return None
+
+    return datetime.fromtimestamp(int(match.group(1)), UTC)
+
+
+def rate_limit_reset_from_scweet_db(
+    scweet_db_path: str | None,
+    now: datetime,
+) -> datetime | None:
+    if scweet_db_path is None or scweet_db_path == ":memory:":
+        return None
+    if not Path(scweet_db_path).exists():
+        return None
+
+    try:
+        with sqlite3.connect(scweet_db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT MAX(available_til)
+                FROM accounts
+                WHERE cooldown_reason = 'rate_limit'
+                  AND available_til IS NOT NULL
+                """,
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+
+    value = row[0] if row is not None else None
+    if not isinstance(value, (int, float)):
+        return None
+
+    reset_at = datetime.fromtimestamp(float(value), UTC)
+    if reset_at <= now or reset_at > now + timedelta(hours=24):
+        return None
+
+    return reset_at
 
 
 def read_mapping(value: Any) -> Mapping[str, Any]:

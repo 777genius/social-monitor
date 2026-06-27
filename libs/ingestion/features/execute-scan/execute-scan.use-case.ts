@@ -3,7 +3,9 @@ import {
   DomainError,
   type IdGenerator,
   type JsonObject,
+  emptyJsonObjectAsUndefined,
   isSensitiveKey,
+  normalizeJsonObject,
   redactSensitiveRecord,
   redactSensitiveText,
   err,
@@ -214,6 +216,7 @@ export class ExecuteScanUseCase {
       });
     } catch (error) {
       const safeFailureReason = formatScanFailureReason(error);
+      const failureMetadata = buildScanFailureMetadata(error);
       attempt = attempt.fail({
         finishedAt: this.clock.now(),
         failureReason: safeFailureReason,
@@ -225,6 +228,7 @@ export class ExecuteScanUseCase {
         scanJobId: command.scanJobId,
         completedAt: this.clock.now(),
         failureReason: safeFailureReason,
+        failureMetadata,
       });
       const failedCommand = {
         tenantId: command.tenantId,
@@ -243,7 +247,7 @@ export class ExecuteScanUseCase {
       };
 
       if (
-        isRetryableScanFailure(error) &&
+        shouldEnqueueScanRetry(error) &&
         scanPolicy.attemptNumber < scanPolicy.retryBudget
       ) {
         await this.scanFailures.enqueueRetry({
@@ -267,6 +271,30 @@ export class ExecuteScanUseCase {
 
 const isRetryableScanFailure = (error: unknown): boolean =>
   error instanceof SourceFetchError ? error.retryable : true;
+
+const shouldEnqueueScanRetry = (error: unknown): boolean =>
+  isRetryableScanFailure(error) && !isProviderRateLimitFailure(error);
+
+const isProviderRateLimitFailure = (error: unknown): boolean =>
+  error instanceof SourceFetchError && error.kind === "rate_limited";
+
+const buildScanFailureMetadata = (error: unknown): JsonObject | undefined => {
+  if (!(error instanceof SourceFetchError)) {
+    return undefined;
+  }
+
+  return emptyJsonObjectAsUndefined(normalizeJsonObject({
+    providerKey: error.providerKey,
+    kind: error.kind,
+    retryable: error.retryable,
+    ...(error.retryAfterMs === undefined
+      ? {}
+      : { retryAfterMs: error.retryAfterMs }),
+    ...(error.rateLimitResetAt === undefined
+      ? {}
+      : { rateLimitResetAt: error.rateLimitResetAt.toISOString() }),
+  }));
+};
 
 const createDomainValue = <T>(factory: () => T): Result<T, DomainError> => {
   try {

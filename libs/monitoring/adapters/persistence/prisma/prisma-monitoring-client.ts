@@ -230,6 +230,7 @@ export type PrismaMonitoringClient = {
         readonly enqueuedAt?: Date | null;
         readonly completedAt?: Date | null;
         readonly failureReason?: string | null;
+        readonly failureMetadata?: Readonly<Record<string, unknown>> | null;
       };
       readonly create: {
         readonly id: string;
@@ -243,6 +244,7 @@ export type PrismaMonitoringClient = {
         readonly enqueuedAt?: Date | null;
         readonly completedAt?: Date | null;
         readonly failureReason?: string | null;
+        readonly failureMetadata?: Readonly<Record<string, unknown>> | null;
       };
     }): Promise<PrismaScanJobRecord>;
     findFirst(args: {

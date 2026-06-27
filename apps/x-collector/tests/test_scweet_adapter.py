@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -192,6 +194,37 @@ def test_rate_limit_errors_are_mapped() -> None:
 
     with pytest.raises(XCollectorRateLimitError):
         collector.collect_daily_search(request())
+
+
+def test_rate_limit_errors_include_scweet_account_cooldown(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "scweet_state.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE accounts (
+              available_til FLOAT,
+              cooldown_reason VARCHAR(128)
+            )
+            """,
+        )
+        connection.execute(
+            "INSERT INTO accounts (available_til, cooldown_reason) VALUES (?, ?)",
+            (datetime(2026, 6, 27, 12, 15, tzinfo=UTC).timestamp(), "rate_limit"),
+        )
+
+    collector = ScweetDailySearchCollector(
+        lambda: BrokenScweet("Rate limit exceeded"),
+        FixedClock(datetime(2026, 6, 27, 12, tzinfo=UTC)),
+        str(db_path),
+    )
+
+    with pytest.raises(XCollectorRateLimitError) as exc:
+        collector.collect_daily_search(request())
+
+    assert exc.value.reset_at == datetime(2026, 6, 27, 12, 15, tzinfo=UTC)
+    assert exc.value.retry_after_ms == 900_000
 
 
 class BrokenScweet:

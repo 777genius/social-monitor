@@ -116,6 +116,12 @@ describe('RecordScanExecutionUseCase', () => {
       status: 'failed',
       completedAt: new Date('2026-06-06T00:00:02.000Z'),
       failureReason: 'Provider unavailable',
+      failureMetadata: {
+        providerKey: 'x-twitter',
+        kind: 'rate_limited',
+        retryAfterMs: 900_000,
+        rateLimitResetAt: '2026-06-06T00:15:00.000Z',
+      },
     });
 
     expect(result).toEqual({
@@ -132,6 +138,12 @@ describe('RecordScanExecutionUseCase', () => {
     }))?.toSnapshot()).toMatchObject({
       status: 'failed',
       failureReason: 'Provider unavailable',
+      failureMetadata: {
+        providerKey: 'x-twitter',
+        kind: 'rate_limited',
+        retryAfterMs: 900_000,
+        rateLimitResetAt: '2026-06-06T00:15:00.000Z',
+      },
     });
   });
 

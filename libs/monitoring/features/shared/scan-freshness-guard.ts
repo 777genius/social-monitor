@@ -1,7 +1,10 @@
+import type { JsonObject } from '@social-monitor/shared-kernel';
+
 import type { ScanJob } from '../../domain';
 import { buildScanStatusView } from './scan-status-view';
 
 const maximumTransientProviderBackoffSeconds = 900;
+const providerRateLimitResetBufferMs = 30_000;
 
 export const boundedTransientProviderBackoffSeconds = (params: {
   readonly intervalSeconds: number;
@@ -39,9 +42,20 @@ export const rateLimitBackoffUntil = (params: {
     buildScanStatusView({
       status: latestSnapshot.status,
       failureReason: latestSnapshot.failureReason,
+      failureMetadata: latestSnapshot.failureMetadata,
     }).failureClass !== 'provider_rate_limited'
   ) {
     return null;
+  }
+
+  const providerBackoffUntil = providerRateLimitBackoffUntil({
+    failureReason: latestSnapshot.failureReason,
+    failureMetadata: latestSnapshot.failureMetadata,
+    completedAt: latestSnapshot.completedAt,
+    now: params.now,
+  });
+  if (providerBackoffUntil !== null) {
+    return providerBackoffUntil;
   }
 
   const backoffUntil = new Date(
@@ -77,6 +91,7 @@ export const providerFailureBackoffUntil = (params: {
     const view = buildScanStatusView({
       status: snapshot.status,
       failureReason: snapshot.failureReason,
+      failureMetadata: snapshot.failureMetadata,
     });
     if (view.failureClass !== 'provider_unavailable') {
       break;
@@ -103,4 +118,103 @@ export const providerFailureBackoffUntil = (params: {
   );
 
   return backoffUntil.getTime() > params.now.getTime() ? backoffUntil : null;
+};
+
+const providerRateLimitBackoffUntil = (params: {
+  readonly failureReason?: string;
+  readonly failureMetadata?: JsonObject;
+  readonly completedAt: Date;
+  readonly now: Date;
+}): Date | null => {
+  const resetAt =
+    readMetadataDate(params.failureMetadata, 'rateLimitResetAt') ??
+    parseFailureReasonDate(
+      params.failureReason,
+      'rateLimitResetAt',
+    );
+  if (resetAt !== null && resetAt.getTime() > params.now.getTime()) {
+    return new Date(resetAt.getTime() + providerRateLimitResetBufferMs);
+  }
+
+  const retryAfterMs =
+    readMetadataPositiveInteger(params.failureMetadata, 'retryAfterMs') ??
+    parseFailureReasonPositiveInteger(
+      params.failureReason,
+      'retryAfterMs',
+    );
+  if (retryAfterMs !== null) {
+    const retryAt = new Date(
+      params.completedAt.getTime() +
+        retryAfterMs +
+        providerRateLimitResetBufferMs,
+    );
+
+    return retryAt.getTime() > params.now.getTime() ? retryAt : null;
+  }
+
+  return null;
+};
+
+const readMetadataDate = (
+  metadata: JsonObject | undefined,
+  key: string,
+): Date | null => {
+  const value = metadata?.[key];
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const parsed = new Date(value);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const readMetadataPositiveInteger = (
+  metadata: JsonObject | undefined,
+  key: string,
+): number | null => {
+  const value = metadata?.[key];
+
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+    ? value
+    : null;
+};
+
+const parseFailureReasonDate = (
+  failureReason: string | undefined,
+  key: string,
+): Date | null => {
+  const value = parseFailureReasonToken(failureReason, key);
+  if (value === null) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const parseFailureReasonPositiveInteger = (
+  failureReason: string | undefined,
+  key: string,
+): number | null => {
+  const value = parseFailureReasonToken(failureReason, key);
+  if (value === null) {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const parseFailureReasonToken = (
+  failureReason: string | undefined,
+  key: string,
+): string | null => {
+  const match = failureReason?.match(
+    new RegExp(`(?:^|\\s)${key}=([^\\s]+)`, 'u'),
+  );
+
+  return match?.[1] ?? null;
 };

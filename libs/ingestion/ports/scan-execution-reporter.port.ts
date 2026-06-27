@@ -1,4 +1,4 @@
-import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import type { JsonObject, TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 export type ReportScanSucceededCommand = {
   readonly tenantId: TenantId;
@@ -13,6 +13,7 @@ export type ReportScanFailedCommand = {
   readonly scanJobId: string;
   readonly completedAt: Date;
   readonly failureReason: string;
+  readonly failureMetadata?: JsonObject;
 };
 
 export interface ScanExecutionReporterPort {

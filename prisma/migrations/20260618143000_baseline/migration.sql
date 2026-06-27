@@ -249,6 +249,7 @@ CREATE TABLE "scan_jobs" (
     "enqueued_at" TIMESTAMPTZ(6),
     "completed_at" TIMESTAMPTZ(6),
     "failure_reason" TEXT,
+    "failure_metadata" JSONB,
     "correlation_id" TEXT,
     "causation_id" TEXT,
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,

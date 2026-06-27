@@ -1,6 +1,7 @@
-import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import { emptyJsonObjectAsUndefined, normalizeJsonObject, type JsonObject, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 export type ScanJobStatus = 'requested' | 'enqueued' | 'succeeded' | 'failed';
+export type ScanJobFailureMetadata = JsonObject;
 
 export type ScanJobProps = {
   readonly id: string;
@@ -14,6 +15,7 @@ export type ScanJobProps = {
   readonly enqueuedAt?: Date;
   readonly completedAt?: Date;
   readonly failureReason?: string;
+  readonly failureMetadata?: ScanJobFailureMetadata;
 };
 
 export class ScanJob {
@@ -25,6 +27,8 @@ export class ScanJob {
     return new ScanJob({
       ...props,
       status: 'requested',
+      failureReason: props.failureReason?.trim(),
+      failureMetadata: normalizeFailureMetadata(props.failureMetadata),
     });
   }
 
@@ -58,6 +62,7 @@ export class ScanJob {
     return new ScanJob({
       ...props,
       failureReason: props.failureReason?.trim(),
+      failureMetadata: normalizeFailureMetadata(props.failureMetadata),
     });
   }
 
@@ -84,10 +89,16 @@ export class ScanJob {
       ...this.props,
       status: 'succeeded',
       completedAt: params.completedAt,
+      failureReason: undefined,
+      failureMetadata: undefined,
     });
   }
 
-  markFailed(params: { readonly completedAt: Date; readonly failureReason: string }): ScanJob {
+  markFailed(params: {
+    readonly completedAt: Date;
+    readonly failureReason: string;
+    readonly failureMetadata?: ScanJobFailureMetadata;
+  }): ScanJob {
     this.assertCanComplete(params.completedAt);
 
     if (params.failureReason.trim().length === 0) {
@@ -99,6 +110,7 @@ export class ScanJob {
       status: 'failed',
       completedAt: params.completedAt,
       failureReason: params.failureReason.trim(),
+      failureMetadata: normalizeFailureMetadata(params.failureMetadata),
     });
   }
 
@@ -126,3 +138,8 @@ export class ScanJob {
     }
   }
 }
+
+const normalizeFailureMetadata = (
+  metadata: ScanJobFailureMetadata | undefined,
+): ScanJobFailureMetadata | undefined =>
+  emptyJsonObjectAsUndefined(normalizeJsonObject(metadata));

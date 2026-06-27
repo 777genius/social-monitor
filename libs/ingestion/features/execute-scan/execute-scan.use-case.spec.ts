@@ -123,6 +123,19 @@ class ClassifiedFailingSourceFetcher implements SourceFetcherPort {
   }
 }
 
+class RateLimitedSourceFetcher implements SourceFetcherPort {
+  async fetch(): Promise<FetchSourceItemsResult> {
+    throw new SourceFetchError({
+      providerKey: 'x-twitter',
+      kind: 'rate_limited',
+      retryable: true,
+      retryAfterMs: 900_000,
+      rateLimitResetAt: new Date('2026-06-05T12:15:00.000Z'),
+      message: 'X collector rate limit reached',
+    });
+  }
+}
+
 class FakeSourceItemRepository implements SourceItemRepositoryPort {
   private readonly itemsByKey = new Map<string, SourceItem>();
 
@@ -645,12 +658,65 @@ describe('ExecuteScanUseCase', () => {
     expect(failureReason).toContain('retryable=false');
     expect(failureReason).toContain('message=Reddit OAuth token expired');
     expect((reporter.failed[0] as { readonly failureReason?: string }).failureReason).toBe(failureReason);
+    expect((reporter.failed[0] as { readonly failureMetadata?: unknown }).failureMetadata).toEqual({
+      providerKey: 'reddit',
+      kind: 'auth_failed',
+      retryable: false,
+    });
     expect(failures.retries).toHaveLength(0);
     expect(failures.deadLetters).toHaveLength(1);
     expect((failures.deadLetters[0] as { readonly failureReason?: string }).failureReason).toBe(failureReason);
     expect(repository.all()).toHaveLength(0);
     expect(projection.commands).toHaveLength(0);
     expect(cursors.saved).toHaveLength(0);
+  });
+
+  it('does not immediately retry provider rate limits and records provider reset metadata', async () => {
+    const attempts = new FakeScanAttemptRepository();
+    const failures = new FakeScanFailureQueue();
+    const reporter = new FakeScanExecutionReporter();
+    const useCase = new ExecuteScanUseCase(
+      new RateLimitedSourceFetcher(),
+      new FakeSourceItemRepository(),
+      new FakeFeedProjection(),
+      attempts,
+      new FakeScanCursorRepository(),
+      reporter,
+      failures,
+      new FakeScanLease(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute(makeExecuteScanCommand({
+      providerKey: 'x-twitter',
+      scanJobId: 'scan-job-rate-limited',
+      attemptNumber: 1,
+      retryBudget: 3,
+    }));
+
+    expect(result.ok).toBe(false);
+    const failureReason = (await attempts.findByScanJob({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      scanJobId: 'scan-job-rate-limited',
+    }))?.toSnapshot().failureReason;
+    expect(failureReason).toContain('provider=x-twitter');
+    expect(failureReason).toContain('kind=rate_limited');
+    expect((reporter.failed[0] as { readonly failureMetadata?: unknown }).failureMetadata).toEqual({
+      providerKey: 'x-twitter',
+      kind: 'rate_limited',
+      retryable: true,
+      retryAfterMs: 900_000,
+      rateLimitResetAt: '2026-06-05T12:15:00.000Z',
+    });
+    expect(failures.retries).toHaveLength(0);
+    expect(failures.deadLetters).toEqual([
+      expect.objectContaining({
+        scanJobId: 'scan-job-rate-limited',
+        failureReason,
+      }),
+    ]);
   });
 
   it('rejects execution before provider fetch when scan job is already leased', async () => {

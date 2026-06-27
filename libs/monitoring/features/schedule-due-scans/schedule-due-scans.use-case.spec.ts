@@ -1190,6 +1190,107 @@ describe('ScheduleDueScansUseCase', () => {
     });
   });
 
+  it('defers rate-limited source bindings until provider reset metadata plus safety buffer', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding('x-twitter'));
+    const policies = new FakeScanPolicies();
+    policies.add(
+      ScanPolicy.create({
+        id: 'policy-1',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+        nextRunAt: new Date('2026-06-05T11:55:00.000Z'),
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
+    const scanJobs = new FakeScanJobs();
+    await scanJobs.save(
+      ScanJob.request({
+        id: 'rate-limited-scan-job',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: 'manual-scan-rate-limited',
+        requestedAt: new Date('2026-06-05T11:57:00.000Z'),
+      })
+        .markEnqueued({
+          enqueuedAt: new Date('2026-06-05T11:57:01.000Z'),
+        })
+        .markFailed({
+          completedAt: new Date('2026-06-05T11:58:00.000Z'),
+          failureReason: 'provider=x-twitter kind=rate_limited retryable=true message=Scweet rate limit reached',
+          failureMetadata: {
+            providerKey: 'x-twitter',
+            kind: 'rate_limited',
+            retryable: true,
+            retryAfterMs: 900_000,
+            rateLimitResetAt: '2026-06-05T12:15:00.000Z',
+          },
+        }),
+    );
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-rate-limit-reset-at',
+      includeDecisions: true,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 0,
+        skipped: 1,
+        skippedByReason: skippedByReason('rate_limit_backoff'),
+        decisions: [
+          {
+            scanPolicyId: 'policy-1',
+            sourceBindingId: 'binding-1',
+            providerKey: 'x-twitter',
+            decision: 'skipped',
+            reason: 'rate_limit_backoff',
+            policyDueAt: new Date('2026-06-05T11:55:00.000Z'),
+            nextRunAt: new Date('2026-06-05T12:15:30.000Z'),
+            configuredIntervalSeconds: 300,
+            effectiveIntervalSeconds: 86_400,
+            freshnessSeconds: 86_400,
+            providerMinimumIntervalEnforced: true,
+            backoffUntil: new Date('2026-06-05T12:15:30.000Z'),
+          },
+        ],
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:15:30.000Z'),
+    });
+  });
+
   it('retries high-cadence provider rate limits with bounded transient backoff', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding('github-repo-radar'));

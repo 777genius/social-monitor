@@ -25,6 +25,10 @@ import { InMemoryReaderSummaryJobQueueAdapter } from "@social-monitor/summary/ad
 import { DeterministicSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-summary-model.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import {
+  OpenAiResponsesReaderSummaryModelAdapter,
+  resolveOpenAiResponsesReaderSummaryModelOptions,
+} from "@social-monitor/summary/adapters/model/openai-responses-reader-summary-model.adapter";
+import {
   OpenAiResponsesSummaryModelAdapter,
   resolveOpenAiResponsesSummaryModelOptions,
 } from "@social-monitor/summary/adapters/model/openai-responses-summary-model.adapter";
@@ -48,6 +52,7 @@ import { RequestSummaryUseCase } from "@social-monitor/summary/features/request-
 import { presentReaderSummaryArtifact } from "../libs/summary/features/shared/reader-summary-artifact-presenter";
 import type {
   ReserveSummaryJobQuotaResult,
+  ReaderSummaryModelPort,
   SummaryModelPort,
   SummaryQuotaPort,
 } from "@social-monitor/summary/ports";
@@ -171,6 +176,7 @@ const evidencePathEnv = "LIVE_MULTI_PROVIDER_SUMMARY_EVIDENCE_PATH";
 const frontendFixturePathEnv =
   "LIVE_MULTI_PROVIDER_SUMMARY_FRONTEND_FIXTURE_PATH";
 const summaryModelMode = readSummaryModelMode();
+const readerSummaryModelMode = readReaderSummaryModelMode();
 
 class StaticSourceConfigReader implements SourceConfigReaderPort {
   constructor(
@@ -693,7 +699,7 @@ const runLiveReaderSummarySmoke = async (params: {
     readerSummaryArtifacts,
     readerSummaryPolicies,
     evidenceSelector,
-    new DeterministicReaderSummaryModelAdapter(),
+    buildReaderSummaryModel(),
     readerSummaryEvents,
     readerSummaryIds,
     params.clock,
@@ -816,6 +822,18 @@ const buildSummaryModel = (): SummaryModelPort => {
 
   return new OpenAiResponsesSummaryModelAdapter(
     resolveOpenAiResponsesSummaryModelOptions(process.env, {
+      requireApiKey: true,
+    }),
+  );
+};
+
+const buildReaderSummaryModel = (): ReaderSummaryModelPort => {
+  if (readerSummaryModelMode === "deterministic") {
+    return new DeterministicReaderSummaryModelAdapter();
+  }
+
+  return new OpenAiResponsesReaderSummaryModelAdapter(
+    resolveOpenAiResponsesReaderSummaryModelOptions(process.env, {
       requireApiKey: true,
     }),
   );
@@ -1176,6 +1194,19 @@ function readSummaryModelMode(): "deterministic" | "openai-responses" {
   );
 }
 
+function readReaderSummaryModelMode(): "deterministic" | "openai-responses" {
+  const value =
+    readOptionalEnv("LIVE_MULTI_PROVIDER_READER_SUMMARY_MODEL") ??
+    "deterministic";
+  if (value === "deterministic" || value === "openai-responses") {
+    return value;
+  }
+
+  throw new Error(
+    'LIVE_MULTI_PROVIDER_READER_SUMMARY_MODEL must be "deterministic" or "openai-responses"',
+  );
+}
+
 const unwrap = <TValue, TError>(
   result: Result<TValue, TError>,
   label: string,
@@ -1272,6 +1303,6 @@ const sha256 = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
 
 void main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
+  console.error(error instanceof Error ? (error.stack ?? error.message) : error);
   process.exit(1);
 });

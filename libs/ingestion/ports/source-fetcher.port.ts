@@ -32,17 +32,23 @@ export class SourceFetchError extends Error {
   readonly providerKey: string;
   readonly kind: ProviderFailureKind;
   readonly retryable: boolean;
+  readonly retryAfterMs?: number;
+  readonly rateLimitResetAt?: Date;
 
   constructor(params: {
     readonly providerKey: string;
     readonly kind: ProviderFailureKind;
     readonly retryable: boolean;
     readonly message: string;
+    readonly retryAfterMs?: number;
+    readonly rateLimitResetAt?: Date;
   }) {
     super(params.message);
     this.providerKey = params.providerKey;
     this.kind = params.kind;
     this.retryable = params.retryable;
+    this.retryAfterMs = params.retryAfterMs;
+    this.rateLimitResetAt = params.rateLimitResetAt;
   }
 }
 

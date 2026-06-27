@@ -121,7 +121,13 @@ export class XTwitterSourceProvider implements SourceProviderPort {
     );
 
     if (code === status.RESOURCE_EXHAUSTED) {
-      return { kind: 'rate_limited', retryable: true, message };
+      return {
+        kind: 'rate_limited',
+        retryable: true,
+        message,
+        retryAfterMs: readGrpcMetadataPositiveInteger(error, 'retry-after-ms'),
+        rateLimitResetAt: readGrpcMetadataDate(error, 'rate-limit-reset-at'),
+      };
     }
 
     if (code === status.UNAUTHENTICATED || code === status.PERMISSION_DENIED) {
@@ -229,6 +235,53 @@ const formatWarning = (warning: XDailyCollectorWarning): string =>
   warning.code.trim().length === 0
     ? warning.message
     : `${warning.code}: ${warning.message}`;
+
+const readGrpcMetadataPositiveInteger = (
+  error: unknown,
+  key: string,
+): number | undefined => {
+  const value = readGrpcMetadataString(error, key);
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+const readGrpcMetadataDate = (error: unknown, key: string): Date | undefined => {
+  const value = readGrpcMetadataString(error, key);
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsed = new Date(value);
+
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+};
+
+const readGrpcMetadataString = (
+  error: unknown,
+  key: string,
+): string | undefined => {
+  const metadata = (error as { readonly metadata?: { get(name: string): unknown[] } }).metadata;
+  const value = metadata?.get(key)[0];
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+
+    return trimmed.length === 0 ? undefined : trimmed;
+  }
+
+  if (Buffer.isBuffer(value)) {
+    const trimmed = value.toString('utf8').trim();
+
+    return trimmed.length === 0 ? undefined : trimmed;
+  }
+
+  return undefined;
+};
 
 const readSearchProducts = (
   value: unknown,

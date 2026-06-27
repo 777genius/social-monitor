@@ -28,6 +28,7 @@ export class RecordScanExecutionUseCase {
         : job.markFailed({
             completedAt: command.completedAt,
             failureReason: command.failureReason,
+            failureMetadata: command.failureMetadata,
           });
     await this.scanJobs.save(updated);
     const snapshot = updated.toSnapshot();

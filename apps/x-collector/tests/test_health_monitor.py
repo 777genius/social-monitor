@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from x_collector.domain import (
     DailySearchResult,
+    XCollectorRateLimitError,
     XCollectorRun,
 )
 from x_collector.grpc_service import XCollectorGrpcService
@@ -72,6 +73,33 @@ def test_collect_daily_search_appends_manifest_health_warning() -> None:
     assert response.warnings[0].code == "x_collector.manifest_scrape_failed"
 
 
+def test_collect_daily_search_rate_limit_sets_retry_metadata() -> None:
+    service = XCollectorGrpcService(RateLimitedCollector())
+    context = FakeContext()
+
+    try:
+        service.CollectDailySearch(
+            x_collector_pb2.CollectDailySearchRequest(
+                schema_version=1,
+                request_id="request-1",
+                tenant_id="tenant-1",
+                workspace_id="workspace-1",
+                source_binding_id="binding-1",
+                scan_job_id="scan-1",
+                correlation_id="corr-1",
+                query="openai",
+            ),
+            context,
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "abort RESOURCE_EXHAUSTED Scweet rate limit reached"
+
+    assert context.trailing_metadata == (
+        ("retry-after-ms", "900000"),
+        ("rate-limit-reset-at", "2026-06-27T12:15:00+00:00"),
+    )
+
+
 class EmptyCollector:
     def collect_daily_search(self, _request: object) -> DailySearchResult:
         now = datetime(2026, 6, 27, 12, tzinfo=UTC)
@@ -93,12 +121,26 @@ class EmptyCollector:
         )
 
 
+class RateLimitedCollector:
+    def collect_daily_search(self, _request: object) -> DailySearchResult:
+        raise XCollectorRateLimitError(
+            "Scweet rate limit reached",
+            retry_after_ms=900_000,
+            reset_at=datetime(2026, 6, 27, 12, 15, tzinfo=UTC),
+        )
+
+
 class FakeContext:
+    trailing_metadata: tuple[tuple[str, str], ...] = ()
+
     def invocation_metadata(self) -> tuple[object, ...]:
         return ()
 
-    def abort(self, *_: object) -> None:
-        raise RuntimeError("unexpected abort")
+    def set_trailing_metadata(self, metadata: tuple[tuple[str, str], ...]) -> None:
+        self.trailing_metadata = metadata
+
+    def abort(self, code: object, details: object) -> None:
+        raise RuntimeError(f"abort {code.name} {details}")
 
 
 def log_record(message: str) -> logging.LogRecord:

@@ -29,6 +29,7 @@ export class PrismaScanJobRepository implements ScanJobRepositoryPort, ScanJobHi
         enqueuedAt: snapshot.enqueuedAt ?? null,
         completedAt: snapshot.completedAt ?? null,
         failureReason: snapshot.failureReason ?? null,
+        failureMetadata: snapshot.failureMetadata ?? null,
       },
       create: {
         id: snapshot.id,
@@ -42,6 +43,7 @@ export class PrismaScanJobRepository implements ScanJobRepositoryPort, ScanJobHi
         enqueuedAt: snapshot.enqueuedAt ?? null,
         completedAt: snapshot.completedAt ?? null,
         failureReason: snapshot.failureReason ?? null,
+        failureMetadata: snapshot.failureMetadata ?? null,
       },
     }));
   }

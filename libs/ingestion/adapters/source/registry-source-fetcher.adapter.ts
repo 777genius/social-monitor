@@ -52,6 +52,8 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
         kind: failure.kind,
         retryable: failure.retryable,
         message: failure.message,
+        retryAfterMs: failure.retryAfterMs,
+        rateLimitResetAt: failure.rateLimitResetAt,
       });
     }
   }

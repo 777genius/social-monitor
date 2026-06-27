@@ -633,6 +633,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         enqueuedAt: args.update.enqueuedAt ?? null,
         completedAt: args.update.completedAt ?? null,
         failureReason: args.update.failureReason ?? null,
+        failureMetadata: args.update.failureMetadata ?? null,
         createdAt: existing?.createdAt ?? clock.now(),
       };
       this.scanJobs.set(record.id, record);

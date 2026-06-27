@@ -1,4 +1,4 @@
-import { status } from '@grpc/grpc-js';
+import { Metadata, status } from '@grpc/grpc-js';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { XTwitterSourceProvider } from './x-twitter-experimental-daily-source.provider';
@@ -101,6 +101,17 @@ describe('XTwitterSourceProvider', () => {
       kind: 'rate_limited',
       retryable: true,
     });
+    expect(provider.classifyError(errorWithCode(
+      status.RESOURCE_EXHAUSTED,
+      {
+        'retry-after-ms': '900000',
+        'rate-limit-reset-at': '2026-06-27T12:15:00.000Z',
+      },
+    ))).toMatchObject({
+      kind: 'rate_limited',
+      retryAfterMs: 900_000,
+      rateLimitResetAt: new Date('2026-06-27T12:15:00.000Z'),
+    });
     expect(provider.classifyError(errorWithCode(status.UNAUTHENTICATED))).toMatchObject({
       kind: 'auth_failed',
       retryable: false,
@@ -159,9 +170,21 @@ class RecordingCollector implements XDailyCollectorClientPort {
   }
 }
 
-const errorWithCode = (code: number): Error & { code: number; details: string } => {
-  const error = new Error(`grpc ${code}`) as Error & { code: number; details: string };
+const errorWithCode = (
+  code: number,
+  metadataValues: Readonly<Record<string, string>> = {},
+): Error & { code: number; details: string; metadata: Metadata } => {
+  const metadata = new Metadata();
+  for (const [key, value] of Object.entries(metadataValues)) {
+    metadata.set(key, value);
+  }
+  const error = new Error(`grpc ${code}`) as Error & {
+    code: number;
+    details: string;
+    metadata: Metadata;
+  };
   error.code = code;
   error.details = `grpc ${code}`;
+  error.metadata = metadata;
   return error;
 };
