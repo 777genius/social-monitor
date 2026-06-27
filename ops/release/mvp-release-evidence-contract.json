@@ -205,6 +205,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "topic-source-daily-history-rest",
+      "command": "npm run check:topic-source-daily-history-rest",
+      "blocksRelease": true
+    },
+    {
       "gateId": "source-binding-health-rest",
       "command": "npm run check:source-binding-health-rest",
       "blocksRelease": true

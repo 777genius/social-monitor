@@ -50,6 +50,7 @@ const requiredGateIds = new Set([
   'persistence-readiness',
   'monitoring-prisma-persistence',
   'monitoring-read-rest',
+  'topic-source-daily-history-rest',
   'source-binding-health-rest',
   'source-profile-rest',
   'source-config-protector',

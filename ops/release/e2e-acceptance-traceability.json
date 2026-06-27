@@ -238,6 +238,10 @@
         },
         {
           "kind": "command",
+          "command": "npm run check:topic-source-daily-history-rest"
+        },
+        {
+          "kind": "command",
           "command": "npm run check:scan-status-attempt-rest"
         }
       ]

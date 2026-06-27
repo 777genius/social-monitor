@@ -63,6 +63,7 @@
     "check:persistence-readiness",
     "check:monitoring-persistence",
     "check:monitoring-read-rest",
+    "check:topic-source-daily-history-rest",
     "check:source-binding-health-rest",
     "check:source-profile-rest",
     "check:source-config-protector",
