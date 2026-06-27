@@ -97,6 +97,7 @@ import { SummaryPolicyController } from "@social-monitor/summary/interfaces/rest
 import { SummaryRequestController } from "@social-monitor/summary/interfaces/rest/summary-request.controller";
 import { SummaryController } from "@social-monitor/summary/interfaces/rest/summary.controller";
 import { CreateUserSubscriptionUseCase } from "@social-monitor/subscriptions/features/create-user-subscription/create-user-subscription.use-case";
+import { ActivateTopicSourceUseCase } from "@social-monitor/subscriptions/features/activate-topic-source/activate-topic-source.use-case";
 import { GetEffectiveUserSummaryPreferenceUseCase } from "@social-monitor/subscriptions/features/get-effective-user-summary-preference/get-effective-user-summary-preference.use-case";
 import { ListUserSubscriptionsUseCase } from "@social-monitor/subscriptions/features/list-user-subscriptions/list-user-subscriptions.use-case";
 import { UpsertUserSummaryPreferenceUseCase } from "@social-monitor/subscriptions/features/upsert-user-summary-preference/upsert-user-summary-preference.use-case";
@@ -224,6 +225,7 @@ const useCaseProviders = [
   ListTopicsUseCase,
   ListWebhookEndpointsUseCase,
   BuildPersonalizedDigestUseCase,
+  ActivateTopicSourceUseCase,
   CreateUserSubscriptionUseCase,
   GetEffectiveUserSummaryPreferenceUseCase,
   RankFeedItemsUseCase,

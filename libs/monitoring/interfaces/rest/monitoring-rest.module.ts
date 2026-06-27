@@ -592,7 +592,10 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
     },
   ],
   exports: [
+    BindSourceUseCase,
+    CreateTopicUseCase,
     ScheduleDueScansUseCase,
+    SetScanPolicyUseCase,
     GetScanStatusUseCase,
     ListSourceBindingDailyHistoryUseCase,
     ListSourceBindingScansUseCase,

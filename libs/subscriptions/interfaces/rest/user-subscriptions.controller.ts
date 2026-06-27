@@ -16,12 +16,15 @@ import {
 import { parsePaginationLimit } from '@social-monitor/platform-request-context';
 import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
+import { ActivateTopicSourceUseCase } from '../../features/activate-topic-source/activate-topic-source.use-case';
 import { CreateUserSubscriptionUseCase } from '../../features/create-user-subscription/create-user-subscription.use-case';
 import { ListUserSubscriptionsUseCase } from '../../features/list-user-subscriptions/list-user-subscriptions.use-case';
 import { UpsertUserSummaryPreferenceUseCase } from '../../features/upsert-user-summary-preference/upsert-user-summary-preference.use-case';
 import {
   CreateUserSubscriptionRequestDto,
   type CreateUserSubscriptionResponseDto,
+  ActivateTopicSourceRequestDto,
+  type ActivateTopicSourceResponseDto,
   type ListUserSubscriptionsResponseDto,
   UpsertUserSummaryPreferenceRequestDto,
   type UpsertUserSummaryPreferenceResponseDto,
@@ -31,6 +34,7 @@ import {
 @Controller('user-subscriptions')
 export class UserSubscriptionsController {
   constructor(
+    private readonly activateTopicSource: ActivateTopicSourceUseCase,
     private readonly createUserSubscription: CreateUserSubscriptionUseCase,
     private readonly listUserSubscriptions: ListUserSubscriptionsUseCase,
     private readonly upsertUserSummaryPreference: UpsertUserSummaryPreferenceUseCase,
@@ -39,6 +43,61 @@ export class UserSubscriptionsController {
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
     private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
   ) {}
+
+  @Post('activate-source')
+  @ApiOperation({ summary: 'Create a user subscription and activate its monitoring source pipeline.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:topics',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Source activation allows owner, admin or member.',
+  })
+  async activateSource(
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
+    @Body() body: ActivateTopicSourceRequestDto,
+  ): Promise<ActivateTopicSourceResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+    const authorization = await this.authorizeWrite(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
+    const targetUserId = resolveUserOwnedTarget(body.userId, authorization);
+
+    const result = await this.activateTopicSource.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      userId: targetUserId,
+      providerKey: body.providerKey,
+      targetKind: body.targetKind,
+      targetValue: body.targetValue,
+      targetConfig: body.targetConfig,
+      schedule: {
+        recipientKey: body.schedule.recipientKey,
+        channel: body.schedule.channel,
+        intervalSeconds: body.schedule.intervalSeconds,
+        includeNoSignal: body.schedule.includeNoSignal,
+        nextRunAt: body.schedule.nextRunAt === undefined ? undefined : parseDate(body.schedule.nextRunAt, 'nextRunAt'),
+      },
+      summaryPreference: body.summaryPreference,
+      scanPolicy: body.scanPolicy,
+      idempotencyKey: `activate-source:${body.providerKey}:${body.targetKind}:${body.targetValue}:${targetUserId}`,
+      correlationId: `activate-source:${targetUserId}`,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a user subscription to a provider-specific source target.' })

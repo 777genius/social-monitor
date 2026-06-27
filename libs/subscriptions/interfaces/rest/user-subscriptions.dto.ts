@@ -16,6 +16,7 @@ import {
 } from 'class-validator';
 
 import type { CreateUserSubscriptionResult } from '../../features/create-user-subscription/create-user-subscription.result';
+import type { ActivateTopicSourceResult } from '../../features/activate-topic-source/activate-topic-source.result';
 import type { GetEffectiveUserSummaryPreferenceResult } from '../../features/get-effective-user-summary-preference/get-effective-user-summary-preference.result';
 import type { ListUserSubscriptionsResult } from '../../features/list-user-subscriptions/list-user-subscriptions.result';
 import type { UpsertUserSummaryPreferenceResult } from '../../features/upsert-user-summary-preference/upsert-user-summary-preference.result';
@@ -107,6 +108,31 @@ export class CreateUserSubscriptionRequestDto {
   summaryPreference?: UserSummaryPreferenceRequestDto;
 }
 
+export class ActivateTopicSourceScanPolicyRequestDto {
+  @IsOptional()
+  @IsInt()
+  @Min(60)
+  intervalSeconds?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(60)
+  freshnessSeconds?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  retryBudget?: number;
+}
+
+export class ActivateTopicSourceRequestDto extends CreateUserSubscriptionRequestDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ActivateTopicSourceScanPolicyRequestDto)
+  scanPolicy?: ActivateTopicSourceScanPolicyRequestDto;
+}
+
 export class UpsertUserSummaryPreferenceRequestDto extends UserSummaryPreferenceRequestDto {
   @IsString()
   @MinLength(1)
@@ -120,6 +146,7 @@ export class UpsertTopicUserSummaryPreferenceRequestDto extends UserSummaryPrefe
 }
 
 export type CreateUserSubscriptionResponseDto = CreateUserSubscriptionResult;
+export type ActivateTopicSourceResponseDto = ActivateTopicSourceResult;
 export type GetEffectiveUserSummaryPreferenceResponseDto = GetEffectiveUserSummaryPreferenceResult;
 export type ListUserSubscriptionsResponseDto = ListUserSubscriptionsResult;
 export type UpsertUserSummaryPreferenceResponseDto = UpsertUserSummaryPreferenceResult;

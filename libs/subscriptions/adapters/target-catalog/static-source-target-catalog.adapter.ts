@@ -24,10 +24,6 @@ const providerRules = new Map<string, readonly ProviderTargetRule[]>([
     { kind: 'search_query', normalize: normalizeSearchQuery },
     { kind: 'account', normalize: normalizeHandle },
   ]],
-  ['x-twitter-experimental-daily', [
-    { kind: 'topic', normalize: normalizeSearchQuery },
-    { kind: 'search_query', normalize: normalizeSearchQuery },
-  ]],
   ['rss', [
     { kind: 'url', normalize: normalizeUrl },
   ]],
@@ -37,6 +33,10 @@ const providerRules = new Map<string, readonly ProviderTargetRule[]>([
   ]],
 ]);
 
+const providerAliases = new Map<string, string>([
+  ['x-twitter-experimental-daily', 'x-twitter'],
+]);
+
 export class StaticSourceTargetCatalogAdapter implements SourceTargetCatalogPort {
   validateTarget(params: {
     readonly providerKey: string;
@@ -44,7 +44,7 @@ export class StaticSourceTargetCatalogAdapter implements SourceTargetCatalogPort
     readonly targetValue: string;
     readonly config: Readonly<Record<string, unknown>>;
   }): SourceTargetValidationResult {
-    const providerKey = params.providerKey.trim().toLowerCase();
+    const providerKey = canonicalProviderKey(params.providerKey);
     const rules = providerRules.get(providerKey);
 
     if (rules === undefined) {
@@ -75,6 +75,12 @@ export class StaticSourceTargetCatalogAdapter implements SourceTargetCatalogPort
     };
   }
 }
+
+const canonicalProviderKey = (providerKey: string): string => {
+  const normalized = providerKey.trim().toLowerCase();
+
+  return providerAliases.get(normalized) ?? normalized;
+};
 
 function normalizeSubreddit(value: string): string | null {
   const normalized = value.replace(/^r\//i, '').trim().toLowerCase();

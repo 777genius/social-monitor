@@ -257,6 +257,133 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
     ]));
   });
 
+  it('activates a canonical X source pipeline through the product subscription flow', async () => {
+    const tenant = tenantId('tenant-x-activation-e2e');
+    const workspace = workspaceId('workspace-x-activation-e2e');
+    const userId = 'user-x-activation';
+
+    const activated = await request(app.getHttpServer())
+      .post('/user-subscriptions/activate-source')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
+      .send({
+        userId,
+        providerKey: 'x-twitter-experimental-daily',
+        targetKind: 'search_query',
+        targetValue: 'OpenAI Agents',
+        targetConfig: {
+          language: 'en',
+          maxItems: 40,
+        },
+        schedule: {
+          recipientKey: userId,
+          channel: 'in_app',
+          intervalSeconds: 3600,
+          includeNoSignal: true,
+        },
+        scanPolicy: {
+          intervalSeconds: 3600,
+          freshnessSeconds: 3600,
+          retryBudget: 4,
+        },
+        summaryPreference: {
+          language: 'en',
+          format: 'risk_brief',
+          tone: 'analytical',
+          maxKeyPoints: 3,
+          includeRisks: true,
+          includeSourceHighlights: true,
+          customInstructions: 'Prioritize high-engagement X posts from today.',
+        },
+      })
+      .expect(201);
+
+    expect(activated.body).toEqual(expect.objectContaining({
+      created: true,
+      topicId: expect.any(String),
+      sourceBindingId: expect.any(String),
+      scanPolicyId: expect.any(String),
+      sourceTarget: expect.objectContaining({
+        providerKey: 'x-twitter',
+        targetKind: 'search_query',
+        targetValue: 'openai agents',
+        normalizedKey: 'x-twitter:search_query:openai agents',
+      }),
+      subscription: expect.objectContaining({
+        userId,
+        status: 'enabled',
+      }),
+      activation: {
+        topicCreated: true,
+        sourceBindingCreated: true,
+        scanPolicyCreated: true,
+        scanPolicyUpdated: false,
+      },
+    }));
+
+    const topics = await request(app.getHttpServer())
+      .get('/topics')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(topics.body.topics).toEqual([
+      expect.objectContaining({
+        id: activated.body.topicId,
+        name: 'openai agents',
+        query: 'openai agents',
+      }),
+    ]);
+
+    const bindings = await request(app.getHttpServer())
+      .get(`/topics/${activated.body.topicId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(bindings.body.sourceBindings).toEqual([
+      expect.objectContaining({
+        id: activated.body.sourceBindingId,
+        providerKey: 'x-twitter',
+        configPreview: expect.objectContaining({
+          mode: 'search',
+          query: 'openai agents',
+          language: 'en',
+          windowHours: 24,
+          searchProducts: ['top', 'latest'],
+          maxItems: 40,
+          limitPerProduct: 50,
+          minLikes: 1,
+          minRetweets: 0,
+          minReplies: 0,
+        }),
+      }),
+    ]);
+
+    const policy = await request(app.getHttpServer())
+      .get(`/source-bindings/${activated.body.sourceBindingId}/scan-policy`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(policy.body).toEqual(expect.objectContaining({
+      id: activated.body.scanPolicyId,
+      sourceBindingId: activated.body.sourceBindingId,
+      intervalSeconds: 86_400,
+      freshnessSeconds: 86_400,
+      retryBudget: 4,
+      cadence: expect.objectContaining({
+        providerKey: 'x-twitter',
+        minimumIntervalSeconds: 86_400,
+        providerMinimumIntervalEnforced: false,
+      }),
+    }));
+  });
+
   it('updates subscription summary preference only for the owning user', async () => {
     const tenant = tenantId('tenant-user-subscription-preference-update-e2e');
     const workspace = workspaceId('workspace-user-subscription-preference-update-e2e');
