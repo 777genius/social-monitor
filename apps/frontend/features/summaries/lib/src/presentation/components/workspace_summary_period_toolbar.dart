@@ -14,6 +14,8 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
     required this.onPreviousPeriod,
     required this.onCurrentPeriod,
     required this.onNextPeriod,
+    required this.onCalendarDateSelected,
+    this.calendarNow,
   });
 
   final SummaryPeriod selectedPeriod;
@@ -24,6 +26,8 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
   final VoidCallback onPreviousPeriod;
   final VoidCallback onCurrentPeriod;
   final VoidCallback onNextPeriod;
+  final ValueChanged<DateTime> onCalendarDateSelected;
+  final DateTime? calendarNow;
 
   @override
   Widget build(BuildContext context) {
@@ -86,6 +90,12 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
               onPressed: isCurrentPeriod ? null : onCurrentPeriod,
             ),
             IconButton(
+              key: const ValueKey('workspace-summary-period-calendar'),
+              tooltip: 'Choose period date',
+              icon: const Icon(Icons.calendar_today_outlined),
+              onPressed: () => _choosePeriodDate(context),
+            ),
+            IconButton(
               tooltip: 'Next period',
               icon: const Icon(Icons.chevron_right),
               onPressed: canNavigateToNextPeriod ? onNextPeriod : null,
@@ -118,4 +128,45 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
       ],
     );
   }
+
+  Future<void> _choosePeriodDate(BuildContext context) async {
+    final lastDate = _datePickerDate(
+      selectedPreset.latestSelectableCalendarDate(now: calendarNow),
+    );
+    final firstDate = DateTime(2020);
+    final initialDate = _clampDate(
+      _datePickerDate(selectedPeriod.calendarFocusDate),
+      firstDate,
+      lastDate,
+    );
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      helpText: 'Choose ${selectedPreset.label.toLowerCase()} period',
+      fieldLabelText: 'Summary period date',
+    );
+
+    if (picked != null) {
+      onCalendarDateSelected(picked);
+    }
+  }
+}
+
+DateTime _datePickerDate(DateTime value) {
+  final utc = value.toUtc();
+  return DateTime(utc.year, utc.month, utc.day);
+}
+
+DateTime _clampDate(DateTime value, DateTime firstDate, DateTime lastDate) {
+  if (value.isBefore(firstDate)) {
+    return firstDate;
+  }
+
+  if (value.isAfter(lastDate)) {
+    return lastDate;
+  }
+
+  return value;
 }

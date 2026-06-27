@@ -56,6 +56,40 @@ enum SummaryPeriodPreset {
     };
   }
 
+  SummaryPeriod resolveForCalendarDate(DateTime date, {DateTime? now}) {
+    final selectedDay = _calendarDayStart(date);
+    final latestDay = latestSelectableCalendarDate(now: now);
+    final day = selectedDay.isAfter(latestDay) ? latestDay : selectedDay;
+
+    return switch (this) {
+      SummaryPeriodPreset.daily => resolve(
+        periodEndedAt: day.add(const Duration(days: 1)),
+      ),
+      SummaryPeriodPreset.weekly => SummaryPeriod(
+        cadence: SummaryPeriodCadence.weekly,
+        startedAt: day.subtract(Duration(days: day.weekday - DateTime.monday)),
+        endedAt: day
+            .subtract(Duration(days: day.weekday - DateTime.monday))
+            .add(const Duration(days: 7)),
+        timezone: 'UTC',
+      ),
+      SummaryPeriodPreset.twoWeeks => resolve(
+        periodEndedAt: day.add(const Duration(days: 1)),
+      ),
+      SummaryPeriodPreset.threeWeeks => resolve(
+        periodEndedAt: day.add(const Duration(days: 1)),
+      ),
+      SummaryPeriodPreset.monthly => SummaryPeriod(
+        cadence: SummaryPeriodCadence.monthly,
+        startedAt: DateTime.utc(day.year, day.month),
+        endedAt: day.month == DateTime.december
+            ? DateTime.utc(day.year + 1, DateTime.january)
+            : DateTime.utc(day.year, day.month + 1),
+        timezone: 'UTC',
+      ),
+    };
+  }
+
   DateTime currentPeriodEndedAt({DateTime? now}) {
     final todayStart = _utcDayStart(now ?? DateTime.now());
     return switch (this) {
@@ -70,6 +104,10 @@ enum SummaryPeriodPreset {
         todayStart.month,
       ),
     };
+  }
+
+  DateTime latestSelectableCalendarDate({DateTime? now}) {
+    return currentPeriodEndedAt(now: now).subtract(const Duration(days: 1));
   }
 
   DateTime previousPeriodEndedAt(DateTime currentEndedAt) {
@@ -141,6 +179,10 @@ final class SummaryPeriod {
     return '${_dateTimeUtcLabel(startedAt)} - ${_dateTimeUtcLabel(endedAt)} UTC';
   }
 
+  DateTime get calendarFocusDate {
+    return _utcDayStart(endedAt.subtract(const Duration(days: 1)));
+  }
+
   @override
   bool operator ==(Object other) {
     return other is SummaryPeriod &&
@@ -160,6 +202,10 @@ final class SummaryPeriod {
 DateTime _utcDayStart(DateTime value) {
   final utc = value.toUtc();
   return DateTime.utc(utc.year, utc.month, utc.day);
+}
+
+DateTime _calendarDayStart(DateTime value) {
+  return DateTime.utc(value.year, value.month, value.day);
 }
 
 DateTime _previousMonthStart(DateTime currentMonthStart) {

@@ -170,6 +170,16 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
     await _reloadSelectedWorkspaceSummaryPeriod();
   }
 
+  Future<void> selectWorkspaceSummaryCalendarDate(DateTime date) async {
+    final nextPeriod = selectedSummaryPeriodPreset.resolveForCalendarDate(date);
+    if (nextPeriod == selectedSummaryPeriod) {
+      return;
+    }
+
+    _selectedSummaryPeriodEndedAt = nextPeriod.endedAt;
+    await _reloadSelectedWorkspaceSummaryPeriod();
+  }
+
   Future<void> showNextWorkspaceSummaryPeriod() async {
     if (!canShowNextSummaryPeriod) {
       return;
