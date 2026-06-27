@@ -9,6 +9,7 @@ const providerMinimumScanIntervalSeconds = new Map<string, number>([
   ['reddit', 900],
   ['github-trending-page', 3_600],
   ['github-repo-radar', 21_600],
+  ['x-twitter-experimental-daily', 86_400],
   ['telegram', 3_600],
 ]);
 

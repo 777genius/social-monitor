@@ -33,10 +33,14 @@ import { HttpRssClient } from '@social-monitor/ingestion/adapters/source/rss/htt
 import { RssSourceProvider } from '@social-monitor/ingestion/adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfiles } from '@social-monitor/ingestion/adapters/source/source-readiness-profiles';
 import { selectRuntimeSourceProviders } from '@social-monitor/ingestion/adapters/source/source-provider-runtime-scope';
-import type { SourceConfigReaderPort } from '@social-monitor/ingestion/ports';
+import { GrpcXDailyCollectorClient } from '@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/grpc-x-daily-collector-client';
+import { XTwitterExperimentalDailySourceProvider } from '@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/x-twitter-experimental-daily-source.provider';
+import type { SourceConfigReaderPort, SourceProviderPort } from '@social-monitor/ingestion/ports';
 
 import { githubRepoRadarProviders } from './github-repo-radar.module';
 import { MonitoringSourceConfigReaderAdapter } from './adapters/source/monitoring-source-config-reader.adapter';
+
+const X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER = Symbol('X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER');
 
 export const sourceProviderRegistryProviders: Provider[] = [
   FakeSourceProvider,
@@ -112,6 +116,30 @@ export const sourceProviderRegistryProviders: Provider[] = [
     ],
   },
   {
+    provide: X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER,
+    useFactory: (): SourceProviderPort | null => {
+      const config = resolveXCollectorConfig(process.env);
+      if (config === null) {
+        return null;
+      }
+
+      const clock = new SystemClock();
+      const collectorClient = GrpcXDailyCollectorClient.connect({
+        address: config.address,
+        clock,
+        options: {
+          timeoutMs: config.timeoutMs,
+          serviceToken: config.serviceToken,
+        },
+      });
+
+      return new XTwitterExperimentalDailySourceProvider(
+        collectorClient,
+        clock,
+      );
+    },
+  },
+  {
     provide: InMemorySourceProviderRegistry,
     useFactory: (
       fakeProvider: FakeSourceProvider,
@@ -121,6 +149,7 @@ export const sourceProviderRegistryProviders: Provider[] = [
       hackerNewsProvider: HackerNewsSourceProvider,
       redditProvider: RedditSourceProvider,
       rssProvider: RssSourceProvider,
+      xTwitterExperimentalDailyProvider: SourceProviderPort | null,
     ) =>
       new InMemorySourceProviderRegistry(
         selectRuntimeSourceProviders(
@@ -132,6 +161,9 @@ export const sourceProviderRegistryProviders: Provider[] = [
             hackerNewsProvider,
             redditProvider,
             rssProvider,
+            ...(xTwitterExperimentalDailyProvider === null
+              ? []
+              : [xTwitterExperimentalDailyProvider]),
           ],
           process.env,
         ),
@@ -151,6 +183,7 @@ export const sourceProviderRegistryProviders: Provider[] = [
       HackerNewsSourceProvider,
       RedditSourceProvider,
       RssSourceProvider,
+      X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER,
     ],
   },
   {
@@ -196,3 +229,47 @@ export const sourceProviderRegistryProviders: Provider[] = [
     inject: [RegistrySourceFetcherAdapter],
   },
 ];
+
+type XCollectorRuntimeConfig = {
+  readonly address: string;
+  readonly timeoutMs: number;
+  readonly serviceToken?: string;
+};
+
+const resolveXCollectorConfig = (
+  env: NodeJS.ProcessEnv,
+): XCollectorRuntimeConfig | null => {
+  if (env.X_COLLECTOR_EXPERIMENTAL_ENABLED !== '1') {
+    return null;
+  }
+
+  const address = env.X_COLLECTOR_GRPC_ADDRESS?.trim();
+  if (address === undefined || address.length === 0) {
+    return null;
+  }
+
+  return {
+    address,
+    timeoutMs: readPositiveEnvInteger(env.X_COLLECTOR_GRPC_TIMEOUT_MS, 60_000),
+    serviceToken: readOptionalEnvString(env.X_COLLECTOR_SERVICE_TOKEN),
+  };
+};
+
+const readPositiveEnvInteger = (
+  value: string | undefined,
+  fallback: number,
+): number => {
+  if (value === undefined || value.trim().length === 0) {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const readOptionalEnvString = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim();
+
+  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
+};

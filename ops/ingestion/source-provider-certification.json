@@ -585,6 +585,32 @@
         ]
       },
       "acquisitionMode": "approved_paid_api_or_vendor"
+    },
+    {
+      "providerKey": "x-twitter-experimental-daily",
+      "state": "provider_only",
+      "runtimeReadiness": "deferred",
+      "liveBetaBlockers": [
+        "Experimental Scweet-backed gRPC x-collector is not production-safe.",
+        "Must stay opt-in and excluded from beta runtime until legal, policy and reliability evidence exists.",
+        "Paid X API or approved vendor contract is still required for production X/Twitter support."
+      ],
+      "freshnessGuard": {
+        "maxStalenessSeconds": 86400,
+        "minimumScanIntervalSeconds": 86400,
+        "skipRecentlyScanned": true,
+        "scanHistoryRequired": true,
+        "cursorResumeRequired": true,
+        "rateLimitBackoffRequired": true,
+        "staleReadModelState": "stale",
+        "providerFailureHealthState": "down",
+        "signals": [
+          "x_experimental_daily_window",
+          "x_collector_grpc_status",
+          "x_collector_rate_limit_backoff"
+        ]
+      },
+      "acquisitionMode": "experimental_unofficial_collector"
     }
   ]
 }

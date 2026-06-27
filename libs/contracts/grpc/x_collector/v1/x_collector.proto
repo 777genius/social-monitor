@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package social_monitor.x_collector.v1;
+
+import "google/protobuf/timestamp.proto";
+
+service XCollectorService {
+  rpc CollectDailySearch(CollectDailySearchRequest) returns (CollectDailySearchResponse);
+  rpc CheckHealth(CheckHealthRequest) returns (CheckHealthResponse);
+}
+
+enum XSearchProduct {
+  X_SEARCH_PRODUCT_UNSPECIFIED = 0;
+  X_SEARCH_PRODUCT_TOP = 1;
+  X_SEARCH_PRODUCT_LATEST = 2;
+}
+
+enum XCollectorHealthStatus {
+  X_COLLECTOR_HEALTH_STATUS_UNSPECIFIED = 0;
+  X_COLLECTOR_HEALTH_STATUS_SERVING = 1;
+  X_COLLECTOR_HEALTH_STATUS_DEGRADED = 2;
+  X_COLLECTOR_HEALTH_STATUS_NOT_SERVING = 3;
+}
+
+message CollectDailySearchRequest {
+  uint32 schema_version = 1;
+  string request_id = 2;
+  string tenant_id = 3;
+  string workspace_id = 4;
+  string source_binding_id = 5;
+  string scan_job_id = 6;
+  string correlation_id = 7;
+  string query = 8;
+  string language = 9;
+  uint32 window_hours = 10;
+  google.protobuf.Timestamp window_end = 11;
+  repeated XSearchProduct search_products = 12;
+  uint32 limit_per_product = 13;
+  uint32 max_items = 14;
+  uint32 min_likes = 15;
+  uint32 min_retweets = 16;
+  uint32 min_replies = 17;
+  string cursor = 18;
+}
+
+message CollectDailySearchResponse {
+  uint32 schema_version = 1;
+  repeated XCollectedPost posts = 2;
+  string next_cursor = 3;
+  repeated XCollectorWarning warnings = 4;
+  XCollectorRun run = 5;
+}
+
+message XCollectedPost {
+  string tweet_id = 1;
+  string canonical_url = 2;
+  string text = 3;
+  string author_handle = 4;
+  string author_name = 5;
+  google.protobuf.Timestamp published_at = 6;
+  XPostMetrics metrics = 7;
+  repeated string media_urls = 8;
+  XSearchProduct source_product = 9;
+  double trend_score = 10;
+}
+
+message XPostMetrics {
+  uint64 likes = 1;
+  uint64 retweets = 2;
+  uint64 replies = 3;
+  uint64 quotes = 4;
+  uint64 views = 5;
+  bool quotes_observed = 6;
+  bool views_observed = 7;
+}
+
+message XCollectorWarning {
+  string code = 1;
+  string message = 2;
+}
+
+message XCollectorRun {
+  string collector_engine = 1;
+  string collector_version = 2;
+  google.protobuf.Timestamp started_at = 3;
+  google.protobuf.Timestamp completed_at = 4;
+  uint32 requested_limit = 5;
+  uint32 fetched_count = 6;
+  uint32 returned_count = 7;
+  bool partial = 8;
+}
+
+message CheckHealthRequest {
+  string service = 1;
+}
+
+message CheckHealthResponse {
+  XCollectorHealthStatus status = 1;
+  string collector_engine = 2;
+  string collector_version = 3;
+  repeated XCollectorWarning warnings = 4;
+}

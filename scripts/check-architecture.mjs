@@ -55,6 +55,7 @@ const violations = [];
 const platformAliases = new Map([
   ['@social-monitor/platform-config', 'libs/platform/config/src/index.ts'],
   ['@social-monitor/platform-events', 'libs/platform/events/src/index.ts'],
+  ['@social-monitor/platform-grpc', 'libs/platform/grpc/src/index.ts'],
   ['@social-monitor/platform-logging', 'libs/platform/logging/src/index.ts'],
   ['@social-monitor/platform-metrics', 'libs/platform/metrics/src/index.ts'],
   ['@social-monitor/platform-persistence', 'libs/platform/persistence/src/index.ts'],

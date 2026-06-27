@@ -370,6 +370,53 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
       'Do not enable direct adapter; use vendor-only integration if approved.',
   },
   {
+    providerKey: 'x-twitter-experimental-daily',
+    state: 'provider_only',
+    runtimeReadiness: 'deferred',
+    liveBetaBlockers: [
+      'Experimental Scweet-backed gRPC x-collector is not production-safe.',
+      'Must stay opt-in and excluded from beta runtime until legal, policy and reliability evidence exists.',
+      'Paid X API or approved vendor contract is still required for production X/Twitter support.',
+    ],
+    liveEvidenceRequirements: [],
+    freshnessGuard: {
+      maxStalenessSeconds: 86_400,
+      minimumScanIntervalSeconds: 86_400,
+      skipRecentlyScanned: true,
+      scanHistoryRequired: true,
+      cursorResumeRequired: true,
+      rateLimitBackoffRequired: true,
+      staleReadModelState: 'stale',
+      providerFailureHealthState: 'down',
+      signals: [
+        'x_experimental_daily_window',
+        'x_collector_grpc_status',
+        'x_collector_rate_limit_backoff',
+      ],
+    },
+    acquisitionMode: 'experimental_unofficial_collector',
+    approvalOwner: 'engineering_research',
+    termsNotes:
+      'Unofficial Scweet-backed collector for controlled research/canary use only; not approved as production X support.',
+    credentialOwnership: 'app_research_accounts',
+    quotaModel: 'per_credential',
+    retentionNotes:
+      'Store normalized public post provenance only; do not retain raw X payloads without explicit approval.',
+    cursorModel: 'opaque',
+    identityStrategy: ['providerId', 'canonicalUrl'],
+    supportedContentUnits: ['post', 'link', 'media'],
+    unsupportedContentUnits: ['comment', 'profile', 'community'],
+    estimatedCostPerScan: 'low_cash_cost_high_operational_risk',
+    betaEnablementCriteria: [
+      'Explicit opt-in environment flag and gRPC address are configured outside beta',
+      'Daily account caps and collector cooldown evidence are captured',
+      'No production-safe label or public source enablement is exposed',
+      'Rollback disables X_COLLECTOR_EXPERIMENTAL_ENABLED',
+    ],
+    rollbackPlan:
+      'Unset X_COLLECTOR_EXPERIMENTAL_ENABLED or remove X_COLLECTOR_GRPC_ADDRESS; provider remains excluded from beta runtime.',
+  },
+  {
     providerKey: 'telegram',
     state: 'manual_only',
     runtimeReadiness: 'deferred',

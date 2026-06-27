@@ -17,6 +17,11 @@ coverage/
 .cache/
 .parcel-cache/
 prisma/generated/
+__pycache__/
+*.pyc
+.pytest_cache/
+apps/x-collector/.venv/
+apps/x-collector/var/
 
 # local env/secrets
 .env

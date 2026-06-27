@@ -24,6 +24,10 @@ const providerRules = new Map<string, readonly ProviderTargetRule[]>([
     { kind: 'search_query', normalize: normalizeSearchQuery },
     { kind: 'account', normalize: normalizeHandle },
   ]],
+  ['x-twitter-experimental-daily', [
+    { kind: 'topic', normalize: normalizeSearchQuery },
+    { kind: 'search_query', normalize: normalizeSearchQuery },
+  ]],
   ['rss', [
     { kind: 'url', normalize: normalizeUrl },
   ]],
