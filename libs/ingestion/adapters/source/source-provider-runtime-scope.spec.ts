@@ -9,7 +9,11 @@ describe('source provider runtime scope', () => {
   it('keeps beta runtime fail-closed to enabled beta providers only', () => {
     const providers = [
       provider('fake-source'),
+      provider('hacker-news'),
+      provider('rss'),
       provider('github-issues'),
+      provider('github-repo-radar'),
+      provider('github-trending-page'),
       provider('reddit'),
       provider('x-twitter'),
       provider('unknown-provider'),
@@ -20,10 +24,18 @@ describe('source provider runtime scope', () => {
     });
 
     expect(selected.map((item) => item.key())).toEqual([
+      'hacker-news',
+      'rss',
       'github-issues',
+      'github-repo-radar',
+      'github-trending-page',
       'reddit',
     ]);
+    expect(isBetaSourceProvider('hacker-news')).toBe(true);
+    expect(isBetaSourceProvider('rss')).toBe(true);
     expect(isBetaSourceProvider('github-issues')).toBe(true);
+    expect(isBetaSourceProvider('github-repo-radar')).toBe(true);
+    expect(isBetaSourceProvider('github-trending-page')).toBe(true);
     expect(isBetaSourceProvider('reddit')).toBe(true);
     expect(isBetaSourceProvider('x-twitter')).toBe(false);
     expect(isBetaSourceProvider('unknown-provider')).toBe(false);
