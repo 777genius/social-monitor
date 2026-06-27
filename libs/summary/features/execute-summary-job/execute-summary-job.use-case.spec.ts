@@ -249,6 +249,22 @@ class CapturingSummaryMemory implements SummaryMemoryPort {
   }
 }
 
+class FailingSummaryMemory extends CapturingSummaryMemory {
+  constructor() {
+    super({
+      status: 'disabled',
+      diagnostics: {},
+      retrievedAt: new Date('2026-06-06T00:00:01.000Z'),
+    });
+  }
+
+  override async buildContext(): Promise<SummaryMemoryContext> {
+    throw new Error(
+      'memo-stack failed Bearer token-value https://example.test/callback?token=query-token&api_key=key-value',
+    );
+  }
+}
+
 class InvalidCitationSummaryModel extends NoSignalSummaryModel {
   override async summarize(input: SummaryModelInput, route: SummaryModelRoute): Promise<ProviderSummaryAttempt> {
     void input;
@@ -548,6 +564,62 @@ describe('ExecuteSummaryJobUseCase', () => {
         query_decomposition_derived_query_count: 2,
       },
     });
+  });
+
+  it('keeps summary generation running with redacted memory failure diagnostics', async () => {
+    const jobs = new FakeSummaryJobs();
+    const artifacts = new FakeSummaryArtifacts();
+    const events = new FakeSummaryEvents();
+    const tenant = tenantId('tenant-1');
+    const workspace = workspaceId('workspace-1');
+    const model = new CapturingSummaryModel();
+    await jobs.save(
+      SummaryJob.request({
+        id: 'summary-job-memory-failure',
+        tenantId: tenant,
+        workspaceId: workspace,
+        topicId: 'topic-1',
+        idempotencyKey: 'summary-request-memory-failure',
+        requestedAt: new Date('2026-06-06T00:00:00.000Z'),
+        userId: 'user-1',
+      }),
+    );
+    const useCase = new ExecuteSummaryJobUseCase(
+      jobs,
+      artifacts,
+      new FakeSummaryPolicies(),
+      new FakeUserSummaryPreferenceReader(),
+      new SelectedEvidenceSelector(),
+      model,
+      events,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-06T00:00:02.000Z')),
+      new FailingSummaryMemory(),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: 'summary-job-memory-failure',
+    });
+
+    expect(result.ok).toBe(true);
+    const routedInput = model.routedInputs[0];
+    expect(routedInput).toBeDefined();
+    if (routedInput === undefined) {
+      throw new Error('Expected summary model input to be routed');
+    }
+    const memoryContext = routedInput.memoryContext;
+    expect(memoryContext).toBeDefined();
+    if (memoryContext === undefined) {
+      throw new Error('Expected summary model input to include memory context');
+    }
+    expect(memoryContext.status).toBe('unavailable');
+    const message = memoryContext.diagnostics.message;
+    expect(message).toContain('[REDACTED]');
+    expect(message).not.toContain('token-value');
+    expect(message).not.toContain('query-token');
+    expect(message).not.toContain('key-value');
   });
 
   it('fails the job without throwing when provider response validation fails', async () => {

@@ -34,10 +34,14 @@ describe("LoadUserContextForSummaryUseCase", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.context.status).toBe("unavailable");
-      expect(result.value.context.diagnostics).toEqual({
-        code: "summary.memory.unavailable",
-        message: "memo-stack failed Bearer [REDACTED]",
-      });
+      expect(result.value.context.diagnostics.code).toBe(
+        "summary.memory.unavailable",
+      );
+      const message = result.value.context.diagnostics.message;
+      expect(message).toContain("[REDACTED]");
+      expect(message).not.toContain("token-value");
+      expect(message).not.toContain("query-token");
+      expect(message).not.toContain("key-value");
     }
   });
 });
@@ -91,6 +95,8 @@ class FailingSummaryMemory extends CapturingSummaryMemory {
   }
 
   override async buildContext(): Promise<SummaryMemoryContext> {
-    throw new Error("memo-stack failed Bearer token-value");
+    throw new Error(
+      "memo-stack failed Bearer token-value https://example.test/callback?token=query-token&api_key=key-value",
+    );
   }
 }

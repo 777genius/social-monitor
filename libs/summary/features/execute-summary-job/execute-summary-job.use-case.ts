@@ -7,6 +7,7 @@ import {
   type IdGenerator,
   err,
   ok,
+  redactSensitiveText,
   type Result,
 } from '@social-monitor/shared-kernel';
 
@@ -267,8 +268,5 @@ export class ExecuteSummaryJobUseCase {
 const safeMemoryErrorMessage = (error: unknown): string => {
   const message = error instanceof Error ? error.message : 'Summary memory context unavailable';
 
-  return message
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
-    .replace(/([?&](?:token|api_key|apikey|secret|password)=)[^&\s]+/gi, '$1[REDACTED]')
-    .slice(0, 240);
+  return redactSensitiveText(message).slice(0, 240);
 };
