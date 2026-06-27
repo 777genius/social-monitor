@@ -190,6 +190,28 @@ const sourceCatalogEntries: readonly SourceCatalogSeedEntry[] = [
       tenantCredentialOverrideSupported: true,
     },
   },
+  {
+    id: "00000000-0000-7000-8000-000000000501",
+    profileId: "00000000-0000-7000-8000-000000000502",
+    providerKey: "x-twitter",
+    displayName: "X/Twitter",
+    acquisitionMode: "x-collector-scweet",
+    readiness: "provider-only",
+    config: {
+      supportsSearch: true,
+      supportsCursor: true,
+      productionSafe: true,
+      requiresCredentials: true,
+      requiresCollector: true,
+      collectorService: "x-collector",
+      supportedSearchProducts: ["top", "latest"],
+      defaultSearchProducts: ["top"],
+      maxWindowHours: 72,
+      defaultWindowHours: 24,
+      dailyAccountCapsRequired: true,
+      rateLimitBackoffRequired: true,
+    },
+  },
 ];
 
 void main()

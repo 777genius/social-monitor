@@ -86,6 +86,20 @@ const dailyTrendingSeeds = [
 ] as const;
 
 const feedbackSignals: RecordedFeedbackSignal[] = [];
+const selectedWorkspace = {
+  tenantId,
+  workspaceId,
+  tenantName: 'Frontend Reader Summary E2E',
+  workspaceName: 'Live evidence workspace',
+  workspaceRole: 'admin',
+  statusLabel: 'Ready',
+};
+const authSession = {
+  userId,
+  userLabel: 'Reader summary reviewer',
+  selectedWorkspace,
+  workspaces: [selectedWorkspace],
+};
 const topReads = dailyTrendingSeeds.map(
   ([title, canonicalUrl, stars, trend], index) => ({
     title,
@@ -474,6 +488,11 @@ async function handleRequest(
   }
 
   const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+
+  if (request.method === 'GET' && url.pathname === '/auth/session') {
+    sendJson(response, 200, authSession);
+    return;
+  }
 
   if (request.method === 'GET' && url.pathname === '/summaries') {
     sendJson(response, 200, { items: [summaryArtifact], nextCursor: null });
