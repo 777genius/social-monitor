@@ -131,6 +131,7 @@
         "npm run check:secrets",
         "npm run check:source-config-protector",
         "npm run check:source-credential-lifecycle",
+        "npm run check:reddit-credential-ref",
         "npm run check:http-webhook-delivery-provider"
       ],
       "externalVerificationCommands": [],
@@ -138,6 +139,7 @@
         "credential-secret-runtime-flow",
         "secret-scan",
         "source-config-protector",
+        "reddit-credential-ref",
         "http-webhook-delivery-provider"
       ],
       "exitCondition": "source credentials, webhook secrets, OIDC, DB and RabbitMQ secrets use approved runtime boundaries",

@@ -54,6 +54,7 @@ const requiredGateIds = new Set([
   'source-profile-rest',
   'source-config-protector',
   'source-config-reader-boundary',
+  'reddit-credential-ref',
   'scan-status-attempt-rest',
   'scan-scheduler-command',
   'scan-scheduler-loop',

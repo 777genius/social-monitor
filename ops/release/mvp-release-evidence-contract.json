@@ -225,6 +225,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "reddit-credential-ref",
+      "command": "npm run check:reddit-credential-ref",
+      "blocksRelease": true
+    },
+    {
       "gateId": "scan-status-attempt-rest",
       "command": "npm run check:scan-status-attempt-rest",
       "blocksRelease": true
