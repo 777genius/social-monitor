@@ -1205,6 +1205,126 @@ export const mobileApiOperations = [
     ]
   },
   {
+    "operationId": "SourceCredentialController_list",
+    "clientName": "SourceCredentialController_list",
+    "method": "GET",
+    "path": "/source-credentials",
+    "tags": [
+      "source-credentials"
+    ],
+    "summary": "List source credentials without exposing secret material.",
+    "pathParameters": [],
+    "queryParameters": [
+      "cursor",
+      "limit",
+      "providerKey"
+    ],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ListSourceCredentialsResponseDto"
+    ]
+  },
+  {
+    "operationId": "SourceCredentialController_create",
+    "clientName": "SourceCredentialController_create",
+    "method": "POST",
+    "path": "/source-credentials",
+    "tags": [
+      "source-credentials"
+    ],
+    "summary": "Create tenant-owned source credential metadata and encrypted secret material.",
+    "pathParameters": [],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/CreateSourceCredentialRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/SourceCredentialResponseDto"
+    ]
+  },
+  {
+    "operationId": "SourceCredentialController_revoke",
+    "clientName": "SourceCredentialController_revoke",
+    "method": "POST",
+    "path": "/source-credentials/{sourceCredentialId}/revoke",
+    "tags": [
+      "source-credentials"
+    ],
+    "summary": "Revoke a source credential and remove its active secret material.",
+    "pathParameters": [
+      "sourceCredentialId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/SourceCredentialResponseDto"
+    ]
+  },
+  {
+    "operationId": "SourceCredentialController_rotate",
+    "clientName": "SourceCredentialController_rotate",
+    "method": "PATCH",
+    "path": "/source-credentials/{sourceCredentialId}/rotate",
+    "tags": [
+      "source-credentials"
+    ],
+    "summary": "Rotate encrypted secret material for an existing source credential.",
+    "pathParameters": [
+      "sourceCredentialId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/RotateSourceCredentialRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/SourceCredentialResponseDto"
+    ]
+  },
+  {
     "operationId": "SourceProfileController_list",
     "clientName": "SourceProfileController_list",
     "method": "GET",

@@ -48,10 +48,12 @@ import { GetBetaLaunchSupportUseCase } from "@social-monitor/launch/features/get
 import { BetaLaunchSupportController } from "@social-monitor/launch/interfaces/rest/beta-launch-support.controller";
 import { BindSourceUseCase } from "@social-monitor/monitoring/features/bind-source/bind-source.use-case";
 import { ChangeSourceBindingStatusUseCase } from "@social-monitor/monitoring/features/change-source-binding-status/change-source-binding-status.use-case";
+import { CreateSourceCredentialUseCase } from "@social-monitor/monitoring/features/create-source-credential/create-source-credential.use-case";
 import { CreateTopicUseCase } from "@social-monitor/monitoring/features/create-topic/create-topic.use-case";
 import { GetScanPolicyUseCase } from "@social-monitor/monitoring/features/get-scan-policy/get-scan-policy.use-case";
 import { GetScanStatusUseCase } from "@social-monitor/monitoring/features/get-scan-status/get-scan-status.use-case";
 import { GetSourceBindingHealthUseCase } from "@social-monitor/monitoring/features/get-source-binding-health/get-source-binding-health.use-case";
+import { ListSourceCredentialsUseCase } from "@social-monitor/monitoring/features/list-source-credentials/list-source-credentials.use-case";
 import { ListSourceBindingDailyHistoryUseCase } from "@social-monitor/monitoring/features/list-source-binding-daily-history/list-source-binding-daily-history.use-case";
 import { ListSourceBindingOverviewUseCase } from "@social-monitor/monitoring/features/list-source-binding-overview/list-source-binding-overview.use-case";
 import { ListSourceBindingScansUseCase } from "@social-monitor/monitoring/features/list-source-binding-scans/list-source-binding-scans.use-case";
@@ -59,11 +61,14 @@ import { ListSourceBindingsUseCase } from "@social-monitor/monitoring/features/l
 import { ListTopicSourceDailyHistoryUseCase } from "@social-monitor/monitoring/features/list-topic-source-daily-history/list-topic-source-daily-history.use-case";
 import { ListTopicsUseCase } from "@social-monitor/monitoring/features/list-topics/list-topics.use-case";
 import { RequestScanUseCase } from "@social-monitor/monitoring/features/request-scan/request-scan.use-case";
+import { RevokeSourceCredentialUseCase } from "@social-monitor/monitoring/features/revoke-source-credential/revoke-source-credential.use-case";
+import { RotateSourceCredentialUseCase } from "@social-monitor/monitoring/features/rotate-source-credential/rotate-source-credential.use-case";
 import { SetScanPolicyUseCase } from "@social-monitor/monitoring/features/set-scan-policy/set-scan-policy.use-case";
 import { ScanPolicyController } from "@social-monitor/monitoring/interfaces/rest/scan-policy.controller";
 import { ScanRequestController } from "@social-monitor/monitoring/interfaces/rest/scan-request.controller";
 import { ScanStatusController } from "@social-monitor/monitoring/interfaces/rest/scan-status.controller";
 import { SourceBindingController } from "@social-monitor/monitoring/interfaces/rest/source-binding.controller";
+import { SourceCredentialController } from "@social-monitor/monitoring/interfaces/rest/source-credential.controller";
 import { TopicController } from "@social-monitor/monitoring/interfaces/rest/topic.controller";
 import { BuildPersonalizedDigestUseCase } from "@social-monitor/relevance/features/build-personalized-digest/build-personalized-digest.use-case";
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
@@ -180,6 +185,7 @@ const useCaseProviders = [
   ChangeSourceBindingStatusUseCase,
   CreateApiKeyUseCase,
   CreateDigestScheduleUseCase,
+  CreateSourceCredentialUseCase,
   CreateTopicUseCase,
   CreateWebhookEndpointUseCase,
   DisableWebhookEndpointUseCase,
@@ -205,6 +211,7 @@ const useCaseProviders = [
   ListPublicApiAuditEventsUseCase,
   ListRealtimeEventsUseCase,
   ListScanDeadLettersUseCase,
+  ListSourceCredentialsUseCase,
   ListSourceBindingsUseCase,
   ListSourceBindingDailyHistoryUseCase,
   ListSourceBindingOverviewUseCase,
@@ -228,7 +235,9 @@ const useCaseProviders = [
   RequestReaderSummaryUseCase,
   RequestSummaryUseCase,
   RetryDeliveryAttemptUseCase,
+  RevokeSourceCredentialUseCase,
   RevokeApiKeyUseCase,
+  RotateSourceCredentialUseCase,
   SetNotificationPreferenceUseCase,
   SetScanPolicyUseCase,
   ListUserSubscriptionsUseCase,
@@ -245,6 +254,7 @@ const useCaseProviders = [
     HealthController,
     TopicController,
     SourceBindingController,
+    SourceCredentialController,
     ScanRequestController,
     ScanPolicyController,
     ScanStatusController,

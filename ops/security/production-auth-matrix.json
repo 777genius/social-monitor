@@ -46,6 +46,19 @@
       ]
     },
     {
+      "surfaceId": "source-credentials",
+      "evidenceFiles": [
+        "scripts/check-source-credential-lifecycle-smoke.ts",
+        "scripts/check-source-credential-rest-smoke.ts"
+      ],
+      "operations": [
+        { "method": "GET", "path": "/source-credentials", "action": "source_credentials.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/source-credentials", "action": "source_credentials.write", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] },
+        { "method": "POST", "path": "/source-credentials/{sourceCredentialId}/revoke", "action": "source_credentials.write", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] },
+        { "method": "PATCH", "path": "/source-credentials/{sourceCredentialId}/rotate", "action": "source_credentials.write", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] }
+      ]
+    },
+    {
       "surfaceId": "scans",
       "evidenceFiles": [
         "test/e2e/scan-requests.authorization.e2e-spec.ts",

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Headers, Inject, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiHeader, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
@@ -52,6 +52,7 @@ export class SourceCredentialController {
     apiKeyScope: 'write:source_bindings',
     workspaceRoleDescription: 'Comma-separated workspace roles. Source credential writes require owner or admin.',
   })
+  @ApiCreatedResponse({ type: SourceCredentialResponseDto })
   async create(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -101,6 +102,7 @@ export class SourceCredentialController {
   @ApiQuery({ name: 'providerKey', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
+  @ApiOkResponse({ type: ListSourceCredentialsResponseDto })
   async list(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -138,6 +140,7 @@ export class SourceCredentialController {
     apiKeyScope: 'write:source_bindings',
     workspaceRoleDescription: 'Comma-separated workspace roles. Source credential writes require owner or admin.',
   })
+  @ApiOkResponse({ type: SourceCredentialResponseDto })
   async rotate(
     @Param('sourceCredentialId') sourceCredentialId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -184,6 +187,7 @@ export class SourceCredentialController {
     apiKeyScope: 'write:source_bindings',
     workspaceRoleDescription: 'Comma-separated workspace roles. Source credential writes require owner or admin.',
   })
+  @ApiCreatedResponse({ type: SourceCredentialResponseDto })
   async revoke(
     @Param('sourceCredentialId') sourceCredentialId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,

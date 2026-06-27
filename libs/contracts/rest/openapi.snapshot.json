@@ -1478,6 +1478,10 @@
         "properties": {},
         "type": "object"
       },
+      "CreateSourceCredentialRequestDto": {
+        "properties": {},
+        "type": "object"
+      },
       "CreateTopicRequestDto": {
         "properties": {
           "name": {
@@ -2257,6 +2261,23 @@
         ],
         "type": "object"
       },
+      "ListSourceCredentialsResponseDto": {
+        "properties": {
+          "nextCursor": {
+            "type": "string"
+          },
+          "sourceCredentials": {
+            "items": {
+              "$ref": "#/components/schemas/SourceCredentialViewDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sourceCredentials"
+        ],
+        "type": "object"
+      },
       "ListSourceProfilesResponseDto": {
         "properties": {
           "sources": {
@@ -3033,6 +3054,10 @@
         "type": "object"
       },
       "RetryDeliveryAttemptRequestDto": {
+        "properties": {},
+        "type": "object"
+      },
+      "RotateSourceCredentialRequestDto": {
         "properties": {},
         "type": "object"
       },
@@ -4117,6 +4142,92 @@
           "categories",
           "rawPayloadRetained",
           "retentionPolicy"
+        ],
+        "type": "object"
+      },
+      "SourceCredentialResponseDto": {
+        "properties": {
+          "sourceCredential": {
+            "$ref": "#/components/schemas/SourceCredentialViewDto"
+          }
+        },
+        "required": [
+          "sourceCredential"
+        ],
+        "type": "object"
+      },
+      "SourceCredentialViewDto": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "oauth2",
+              "api_token",
+              "bearer_token",
+              "app_oauth"
+            ],
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "rotatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "secretPreview": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "revoked",
+              "expired"
+            ],
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "object"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "workspaceId",
+          "providerKey",
+          "kind",
+          "status",
+          "secretPreview",
+          "scopes",
+          "createdAt",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -8195,6 +8306,292 @@
         "summary": "List daily scan history for a source binding.",
         "tags": [
           "scan-requests"
+        ]
+      }
+    },
+    "/source-credentials": {
+      "get": {
+        "operationId": "SourceCredentialController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source credential reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSourceCredentialsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "List source credentials without exposing secret material.",
+        "tags": [
+          "source-credentials"
+        ]
+      },
+      "post": {
+        "operationId": "SourceCredentialController_create",
+        "parameters": [
+          {
+            "description": "Optional Bearer API key. Requires write:source_bindings. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source credential writes require owner or admin. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSourceCredentialRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceCredentialResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Create tenant-owned source credential metadata and encrypted secret material.",
+        "tags": [
+          "source-credentials"
+        ]
+      }
+    },
+    "/source-credentials/{sourceCredentialId}/revoke": {
+      "post": {
+        "operationId": "SourceCredentialController_revoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sourceCredentialId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:source_bindings. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source credential writes require owner or admin. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceCredentialResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Revoke a source credential and remove its active secret material.",
+        "tags": [
+          "source-credentials"
+        ]
+      }
+    },
+    "/source-credentials/{sourceCredentialId}/rotate": {
+      "patch": {
+        "operationId": "SourceCredentialController_rotate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sourceCredentialId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:source_bindings. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source credential writes require owner or admin. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateSourceCredentialRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceCredentialResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Rotate encrypted secret material for an existing source credential.",
+        "tags": [
+          "source-credentials"
         ]
       }
     },

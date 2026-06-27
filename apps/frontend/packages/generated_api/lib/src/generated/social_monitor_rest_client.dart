@@ -9,6 +9,7 @@ import 'clients/feed_client.dart';
 import 'clients/relevance_client.dart';
 import 'clients/scan_requests_client.dart';
 import 'clients/scan_policies_client.dart';
+import 'clients/source_credentials_client.dart';
 import 'clients/sources_client.dart';
 import 'clients/summaries_client.dart';
 import 'clients/topics_client.dart';
@@ -32,6 +33,7 @@ class SocialMonitorRestClient {
   RelevanceClient? _relevance;
   ScanRequestsClient? _scanRequests;
   ScanPoliciesClient? _scanPolicies;
+  SourceCredentialsClient? _sourceCredentials;
   SourcesClient? _sources;
   SummariesClient? _summaries;
   TopicsClient? _topics;
@@ -50,6 +52,9 @@ class SocialMonitorRestClient {
 
   ScanPoliciesClient get scanPolicies =>
       _scanPolicies ??= ScanPoliciesClient(_dio, baseUrl: _baseUrl);
+
+  SourceCredentialsClient get sourceCredentials =>
+      _sourceCredentials ??= SourceCredentialsClient(_dio, baseUrl: _baseUrl);
 
   SourcesClient get sources =>
       _sources ??= SourcesClient(_dio, baseUrl: _baseUrl);

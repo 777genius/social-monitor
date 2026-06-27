@@ -12,6 +12,7 @@ openapi_generator:
     - topics
     - sources
     - source-bindings
+    - source-credentials
     - scan-policies
     - scan-requests
     - feed

@@ -18,6 +18,7 @@ const violations = [];
 const requiredSurfaces = new Set([
   'topics',
   'source-bindings',
+  'source-credentials',
   'scans',
   'feed',
   'summaries',
