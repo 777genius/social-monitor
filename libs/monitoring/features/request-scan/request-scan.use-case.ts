@@ -25,6 +25,7 @@ import type { RequestScanCommand } from './request-scan.command';
 import type { RequestScanDecisionView, RequestScanResult } from './request-scan.result';
 import { effectiveProviderScanCadence } from '../shared/scan-cadence-policy';
 import {
+  boundedTransientProviderBackoffSeconds,
   isFreshSuccessfulScan,
   providerFailureBackoffUntil,
   rateLimitBackoffUntil,
@@ -176,9 +177,12 @@ export class RequestScanUseCase {
       await this.cacheResult(command, result);
       return ok(result);
     }
+    const transientProviderBackoffSeconds = boundedTransientProviderBackoffSeconds({
+      intervalSeconds: cadence.intervalSeconds,
+    });
     const rateLimitBackoff = rateLimitBackoffUntil({
       latestJob,
-      backoffSeconds: cadence.intervalSeconds,
+      backoffSeconds: transientProviderBackoffSeconds,
       now,
     });
     if (latestJob !== null && rateLimitBackoff !== null) {
@@ -206,7 +210,7 @@ export class RequestScanUseCase {
     }
     const providerFailureBackoff = providerFailureBackoffUntil({
       recentJobs: recentJobs.scanJobs,
-      backoffSeconds: cadence.intervalSeconds,
+      backoffSeconds: transientProviderBackoffSeconds,
       now,
     });
     if (latestJob !== null && providerFailureBackoff !== null) {

@@ -15,6 +15,7 @@ import {
 } from '../shared/scan-cadence-policy';
 import { presentScanPolicy } from '../shared/scan-policy-presenter';
 import {
+  boundedTransientProviderBackoffSeconds,
   isFreshSuccessfulScan,
   providerFailureBackoffUntil,
   rateLimitBackoffUntil,
@@ -127,7 +128,9 @@ export class GetSourceBindingHealthUseCase {
       ? null
       : providerFailureBackoffUntil({
           recentJobs: recentScanJobs.scanJobs,
-          backoffSeconds: cadence.intervalSeconds,
+          backoffSeconds: boundedTransientProviderBackoffSeconds({
+            intervalSeconds: cadence.intervalSeconds,
+          }),
           now,
         });
     const latestAttempt = latestScanSnapshot === undefined
@@ -350,7 +353,9 @@ const buildSchedulerDecision = (params: {
 
   const rateLimitBackoff = rateLimitBackoffUntil({
     latestJob: params.latestScanJob,
-    backoffSeconds: params.cadence?.intervalSeconds ?? params.scanPolicySnapshot.intervalSeconds,
+    backoffSeconds: boundedTransientProviderBackoffSeconds({
+      intervalSeconds: params.cadence?.intervalSeconds ?? params.scanPolicySnapshot.intervalSeconds,
+    }),
     now: params.now,
   });
   if (rateLimitBackoff !== null) {

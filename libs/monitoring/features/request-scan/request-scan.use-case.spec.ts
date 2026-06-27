@@ -52,11 +52,7 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
       sourceBindings: [...this.bindings.values()].filter((binding) => {
         const snapshot = binding.toSnapshot();
 
-        return (
-          snapshot.tenantId === query.tenantId &&
-          snapshot.workspaceId === query.workspaceId &&
-          snapshot.topicId === query.topicId
-        );
+        return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId && snapshot.topicId === query.topicId;
       }),
       nextCursor: undefined,
     };
@@ -79,9 +75,7 @@ class FakeScanPolicies implements ScanPolicyRepositoryPort {
     return [];
   }
 
-  async findBySourceBinding(
-    params: Parameters<ScanPolicyRepositoryPort['findBySourceBinding']>[0],
-  ): Promise<ScanPolicy | null> {
+  async findBySourceBinding(params: Parameters<ScanPolicyRepositoryPort['findBySourceBinding']>[0]): Promise<ScanPolicy | null> {
     return this.policies.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
   }
 }
@@ -100,9 +94,7 @@ class FakeScanJobs implements ScanJobRepositoryPort {
     return this.jobsById.get(`${params.tenantId}:${params.workspaceId}:${params.scanJobId}`) ?? null;
   }
 
-  async findActiveBySourceBinding(
-    params: Parameters<ScanJobRepositoryPort['findActiveBySourceBinding']>[0],
-  ): Promise<ScanJob | null> {
+  async findActiveBySourceBinding(params: Parameters<ScanJobRepositoryPort['findActiveBySourceBinding']>[0]): Promise<ScanJob | null> {
     return (
       [...this.jobsById.values()].find((job) => {
         const snapshot = job.toSnapshot();
@@ -117,42 +109,28 @@ class FakeScanJobs implements ScanJobRepositoryPort {
     );
   }
 
-  async findLatestBySourceBinding(
-    params: Parameters<ScanJobRepositoryPort['findLatestBySourceBinding']>[0],
-  ): Promise<ScanJob | null> {
+  async findLatestBySourceBinding(params: Parameters<ScanJobRepositoryPort['findLatestBySourceBinding']>[0]): Promise<ScanJob | null> {
     const jobs = this.sortedBySourceBinding(params);
 
     return jobs[0] ?? null;
   }
 
-  async listBySourceBinding(
-    query: ListScanJobsBySourceBindingQuery,
-  ): Promise<ListScanJobsBySourceBindingResult> {
+  async listBySourceBinding(query: ListScanJobsBySourceBindingQuery): Promise<ListScanJobsBySourceBindingResult> {
     return {
       scanJobs: this.sortedBySourceBinding(query).slice(0, query.limit),
     };
   }
 
-  async findByIdempotencyKey(
-    params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0],
-  ): Promise<ScanJob | null> {
+  async findByIdempotencyKey(params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0]): Promise<ScanJob | null> {
     return this.jobs.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
   }
 
-  private sortedBySourceBinding(params: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-    readonly sourceBindingId: string;
-  }): readonly ScanJob[] {
+  private sortedBySourceBinding(params: { readonly tenantId: string; readonly workspaceId: string; readonly sourceBindingId: string }): readonly ScanJob[] {
     return [...this.jobsById.values()]
       .filter((job) => {
         const snapshot = job.toSnapshot();
 
-        return (
-          snapshot.tenantId === params.tenantId &&
-          snapshot.workspaceId === params.workspaceId &&
-          snapshot.sourceBindingId === params.sourceBindingId
-        );
+        return snapshot.tenantId === params.tenantId && snapshot.workspaceId === params.workspaceId && snapshot.sourceBindingId === params.sourceBindingId;
       })
       .sort((left, right) => right.toSnapshot().requestedAt.getTime() - left.toSnapshot().requestedAt.getTime());
   }
@@ -424,19 +402,23 @@ describe('RequestScanUseCase', () => {
     const policies = new FakeScanPolicies();
     policies.add(makePolicy());
     const scanJobs = new FakeScanJobs();
-    await scanJobs.save(ScanJob.request({
-      id: 'fresh-successful-scan-job',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      scanPolicyId: 'policy-1',
-      idempotencyKey: 'fresh-successful-scan',
-      requestedAt: new Date('2026-06-05T00:05:00.000Z'),
-    }).markEnqueued({
-      enqueuedAt: new Date('2026-06-05T00:05:01.000Z'),
-    }).markSucceeded({
-      completedAt: new Date('2026-06-05T00:06:00.000Z'),
-    }));
+    await scanJobs.save(
+      ScanJob.request({
+        id: 'fresh-successful-scan-job',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: 'fresh-successful-scan',
+        requestedAt: new Date('2026-06-05T00:05:00.000Z'),
+      })
+        .markEnqueued({
+          enqueuedAt: new Date('2026-06-05T00:05:01.000Z'),
+        })
+        .markSucceeded({
+          completedAt: new Date('2026-06-05T00:06:00.000Z'),
+        }),
+    );
     const queue = new FakeScanQueue();
     const outbox = new FakeOutbox();
     const quota = new AllowingScanRequestQuota();
@@ -485,42 +467,50 @@ describe('RequestScanUseCase', () => {
     expect(queue.commands).toHaveLength(0);
     expect(outbox.events).toHaveLength(0);
     expect(quota.reservationCount).toBe(0);
-    await expect(scanJobs.findByIdempotencyKey({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      idempotencyKey: 'manual-scan-fresh-skip',
-    })).resolves.toBeNull();
+    await expect(
+      scanJobs.findByIdempotencyKey({
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        idempotencyKey: 'manual-scan-fresh-skip',
+      }),
+    ).resolves.toBeNull();
   });
 
   it('uses provider minimum cadence when blocking duplicate manual scans for legacy policy', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding('reddit'));
     const policies = new FakeScanPolicies();
-    policies.add(ScanPolicy.create({
-      id: 'policy-1',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      intervalSeconds: 60,
-      freshnessSeconds: 60,
-      retryBudget: 3,
-      nextRunAt: new Date('2026-06-05T00:00:00.000Z'),
-      createdAt: new Date('2026-06-05T00:00:00.000Z'),
-    }));
+    policies.add(
+      ScanPolicy.create({
+        id: 'policy-1',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        intervalSeconds: 60,
+        freshnessSeconds: 60,
+        retryBudget: 3,
+        nextRunAt: new Date('2026-06-05T00:00:00.000Z'),
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
     const scanJobs = new FakeScanJobs();
-    await scanJobs.save(ScanJob.request({
-      id: 'recent-reddit-successful-scan-job',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      scanPolicyId: 'policy-1',
-      idempotencyKey: 'recent-reddit-successful-scan',
-      requestedAt: new Date('2026-06-05T00:04:00.000Z'),
-    }).markEnqueued({
-      enqueuedAt: new Date('2026-06-05T00:04:01.000Z'),
-    }).markSucceeded({
-      completedAt: new Date('2026-06-05T00:05:00.000Z'),
-    }));
+    await scanJobs.save(
+      ScanJob.request({
+        id: 'recent-reddit-successful-scan-job',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: 'recent-reddit-successful-scan',
+        requestedAt: new Date('2026-06-05T00:04:00.000Z'),
+      })
+        .markEnqueued({
+          enqueuedAt: new Date('2026-06-05T00:04:01.000Z'),
+        })
+        .markSucceeded({
+          completedAt: new Date('2026-06-05T00:05:00.000Z'),
+        }),
+    );
     const queue = new FakeScanQueue();
     const outbox = new FakeOutbox();
     const quota = new AllowingScanRequestQuota();
@@ -577,20 +567,24 @@ describe('RequestScanUseCase', () => {
     const policies = new FakeScanPolicies();
     policies.add(makePolicy());
     const scanJobs = new FakeScanJobs();
-    await scanJobs.save(ScanJob.request({
-      id: 'rate-limited-scan-job',
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      scanPolicyId: 'policy-1',
-      idempotencyKey: 'rate-limited-scan',
-      requestedAt: new Date('2026-06-05T00:05:00.000Z'),
-    }).markEnqueued({
-      enqueuedAt: new Date('2026-06-05T00:05:01.000Z'),
-    }).markFailed({
-      completedAt: new Date('2026-06-05T00:06:00.000Z'),
-      failureReason: 'Provider rate limit 429',
-    }));
+    await scanJobs.save(
+      ScanJob.request({
+        id: 'rate-limited-scan-job',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: 'rate-limited-scan',
+        requestedAt: new Date('2026-06-05T00:05:00.000Z'),
+      })
+        .markEnqueued({
+          enqueuedAt: new Date('2026-06-05T00:05:01.000Z'),
+        })
+        .markFailed({
+          completedAt: new Date('2026-06-05T00:06:00.000Z'),
+          failureReason: 'Provider rate limit 429',
+        }),
+    );
     const queue = new FakeScanQueue();
     const outbox = new FakeOutbox();
     const quota = new AllowingScanRequestQuota();
@@ -640,11 +634,88 @@ describe('RequestScanUseCase', () => {
     expect(queue.commands).toHaveLength(0);
     expect(outbox.events).toHaveLength(0);
     expect(quota.reservationCount).toBe(0);
-    await expect(scanJobs.findByIdempotencyKey({
+    await expect(
+      scanJobs.findByIdempotencyKey({
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        idempotencyKey: 'manual-scan-rate-limit-backoff',
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('returns bounded transient backoff for high-cadence provider rate limits', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding('github-repo-radar'));
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    await scanJobs.save(
+      ScanJob.request({
+        id: 'repo-radar-rate-limited-scan-job',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: 'repo-radar-rate-limited-scan',
+        requestedAt: new Date('2026-06-05T00:05:00.000Z'),
+      })
+        .markEnqueued({
+          enqueuedAt: new Date('2026-06-05T00:05:01.000Z'),
+        })
+        .markFailed({
+          completedAt: new Date('2026-06-05T00:06:00.000Z'),
+          failureReason: 'Provider rate limit 429',
+        }),
+    );
+    const queue = new FakeScanQueue();
+    const outbox = new FakeOutbox();
+    const quota = new AllowingScanRequestQuota();
+    const useCase = new RequestScanUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      outbox,
+      new FakeIdempotency(),
+      quota,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:10:00.000Z')),
+    );
+
+    const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      idempotencyKey: 'manual-scan-rate-limit-backoff',
-    })).resolves.toBeNull();
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'manual-scan-repo-radar-rate-limit-backoff',
+      correlationId: 'correlation-repo-radar-rate-limit-backoff',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scanJobId: 'repo-radar-rate-limited-scan-job',
+        status: 'failed',
+        created: false,
+        requestDecision: {
+          decision: 'rate_limit_backoff',
+          reason: 'provider_rate_limit_backoff_active',
+          createdNewScan: false,
+          minimumIntervalSeconds: 21_600,
+          configuredIntervalSeconds: 300,
+          effectiveIntervalSeconds: 21_600,
+          freshnessSeconds: 21_600,
+          providerMinimumIntervalEnforced: true,
+          nextEligibleAt: '2026-06-05T00:21:00.000Z',
+          waitSeconds: 660,
+          rateLimitBackoffUntil: '2026-06-05T00:21:00.000Z',
+          providerHealthState: 'degraded',
+          signals: ['rate_limit_backoff', 'provider_minimum_interval_enforced'],
+        },
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect(outbox.events).toHaveLength(0);
+    expect(quota.reservationCount).toBe(0);
   });
 
   it('returns latest provider failure while repeated auth-failure backoff is active', async () => {
@@ -657,20 +728,24 @@ describe('RequestScanUseCase', () => {
       ['auth-failed-scan-job-2', '2026-06-05T00:05:00.000Z', '2026-06-05T00:06:00.000Z'],
       ['auth-failed-scan-job-1', '2026-06-05T00:04:00.000Z', '2026-06-05T00:05:00.000Z'],
     ] as const) {
-      await scanJobs.save(ScanJob.request({
-        id,
-        tenantId: tenantId('tenant-1'),
-        workspaceId: workspaceId('workspace-1'),
-        sourceBindingId: 'binding-1',
-        scanPolicyId: 'policy-1',
-        idempotencyKey: `manual-${id}`,
-        requestedAt: new Date(requestedAt),
-      }).markEnqueued({
-        enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000),
-      }).markFailed({
-        completedAt: new Date(completedAt),
-        failureReason: 'kind=auth_failed provider credential rejected',
-      }));
+      await scanJobs.save(
+        ScanJob.request({
+          id,
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+          scanPolicyId: 'policy-1',
+          idempotencyKey: `manual-${id}`,
+          requestedAt: new Date(requestedAt),
+        })
+          .markEnqueued({
+            enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000),
+          })
+          .markFailed({
+            completedAt: new Date(completedAt),
+            failureReason: 'kind=auth_failed provider credential rejected',
+          }),
+      );
     }
     const queue = new FakeScanQueue();
     const outbox = new FakeOutbox();
@@ -721,11 +796,93 @@ describe('RequestScanUseCase', () => {
     expect(queue.commands).toHaveLength(0);
     expect(outbox.events).toHaveLength(0);
     expect(quota.reservationCount).toBe(0);
-    await expect(scanJobs.findByIdempotencyKey({
+    await expect(
+      scanJobs.findByIdempotencyKey({
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        idempotencyKey: 'manual-scan-provider-failure-backoff',
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('returns bounded transient backoff for high-cadence provider failures', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding('github-repo-radar'));
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    for (const [id, requestedAt, completedAt] of [
+      ['repo-radar-unavailable-scan-job-2', '2026-06-05T00:05:00.000Z', '2026-06-05T00:06:00.000Z'],
+      ['repo-radar-unavailable-scan-job-1', '2026-06-05T00:04:00.000Z', '2026-06-05T00:05:00.000Z'],
+    ] as const) {
+      await scanJobs.save(
+        ScanJob.request({
+          id,
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+          scanPolicyId: 'policy-1',
+          idempotencyKey: `manual-${id}`,
+          requestedAt: new Date(requestedAt),
+        })
+          .markEnqueued({
+            enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000),
+          })
+          .markFailed({
+            completedAt: new Date(completedAt),
+            failureReason: 'Provider unavailable while reading repo radar',
+          }),
+      );
+    }
+    const queue = new FakeScanQueue();
+    const outbox = new FakeOutbox();
+    const quota = new AllowingScanRequestQuota();
+    const useCase = new RequestScanUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      outbox,
+      new FakeIdempotency(),
+      quota,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:10:00.000Z')),
+    );
+
+    const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      idempotencyKey: 'manual-scan-provider-failure-backoff',
-    })).resolves.toBeNull();
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'manual-scan-repo-radar-provider-failure-backoff',
+      correlationId: 'correlation-repo-radar-provider-failure-backoff',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scanJobId: 'repo-radar-unavailable-scan-job-2',
+        status: 'failed',
+        created: false,
+        requestDecision: {
+          decision: 'provider_failure_backoff',
+          reason: 'provider_failure_backoff_active',
+          createdNewScan: false,
+          minimumIntervalSeconds: 21_600,
+          configuredIntervalSeconds: 300,
+          effectiveIntervalSeconds: 21_600,
+          freshnessSeconds: 21_600,
+          providerMinimumIntervalEnforced: true,
+          nextEligibleAt: '2026-06-05T00:36:00.000Z',
+          waitSeconds: 1560,
+          providerFailureBackoffUntil: '2026-06-05T00:36:00.000Z',
+          providerHealthState: 'degraded',
+          signals: ['provider_failure_backoff', 'provider_minimum_interval_enforced'],
+        },
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect(outbox.events).toHaveLength(0);
+    expect(quota.reservationCount).toBe(0);
   });
 
   it('rejects new manual scan requests when the source binding is paused', async () => {
@@ -830,11 +987,13 @@ describe('RequestScanUseCase', () => {
         code: 'operation.backpressure',
       }),
     });
-    await expect(scanJobs.findByIdempotencyKey({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      idempotencyKey: 'scan-1',
-    })).resolves.toBeNull();
+    await expect(
+      scanJobs.findByIdempotencyKey({
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        idempotencyKey: 'scan-1',
+      }),
+    ).resolves.toBeNull();
     expect(quota.reservationCount).toBe(0);
     expect(queue.commands).toHaveLength(0);
     expect(outbox.events).toHaveLength(0);
@@ -874,11 +1033,13 @@ describe('RequestScanUseCase', () => {
         code: 'operation.quota_exceeded',
       }),
     });
-    await expect(scanJobs.findByIdempotencyKey({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      idempotencyKey: 'scan-1',
-    })).resolves.toBeNull();
+    await expect(
+      scanJobs.findByIdempotencyKey({
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        idempotencyKey: 'scan-1',
+      }),
+    ).resolves.toBeNull();
     expect(queue.commands).toHaveLength(0);
     expect(outbox.events).toHaveLength(0);
   });

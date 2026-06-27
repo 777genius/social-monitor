@@ -40,11 +40,7 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
       sourceBindings: [...this.bindings.values()].filter((binding) => {
         const snapshot = binding.toSnapshot();
 
-        return (
-          snapshot.tenantId === query.tenantId &&
-          snapshot.workspaceId === query.workspaceId &&
-          snapshot.topicId === query.topicId
-        );
+        return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId && snapshot.topicId === query.topicId;
       }),
     };
   }
@@ -62,9 +58,7 @@ class FakeScanPolicies implements ScanPolicyRepositoryPort {
     return [];
   }
 
-  async findBySourceBinding(
-    params: Parameters<ScanPolicyRepositoryPort['findBySourceBinding']>[0],
-  ): Promise<ScanPolicy | null> {
+  async findBySourceBinding(params: Parameters<ScanPolicyRepositoryPort['findBySourceBinding']>[0]): Promise<ScanPolicy | null> {
     return this.policies.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
   }
 }
@@ -83,9 +77,7 @@ class FakeScanJobs implements ScanJobRepositoryPort, ScanJobHistoryReadPort {
     return this.jobsById.get(`${params.tenantId}:${params.workspaceId}:${params.scanJobId}`) ?? null;
   }
 
-  async findActiveBySourceBinding(
-    params: Parameters<ScanJobRepositoryPort['findActiveBySourceBinding']>[0],
-  ): Promise<ScanJob | null> {
+  async findActiveBySourceBinding(params: Parameters<ScanJobRepositoryPort['findActiveBySourceBinding']>[0]): Promise<ScanJob | null> {
     return (
       [...this.jobsById.values()].find((job) => {
         const snapshot = job.toSnapshot();
@@ -100,25 +92,19 @@ class FakeScanJobs implements ScanJobRepositoryPort, ScanJobHistoryReadPort {
     );
   }
 
-  async findLatestBySourceBinding(
-    params: Parameters<ScanJobRepositoryPort['findLatestBySourceBinding']>[0],
-  ): Promise<ScanJob | null> {
+  async findLatestBySourceBinding(params: Parameters<ScanJobRepositoryPort['findLatestBySourceBinding']>[0]): Promise<ScanJob | null> {
     const jobs = this.sortedBySourceBinding(params);
 
     return jobs[0] ?? null;
   }
 
-  async listBySourceBinding(
-    query: ListScanJobsBySourceBindingQuery,
-  ): Promise<ListScanJobsBySourceBindingResult> {
+  async listBySourceBinding(query: ListScanJobsBySourceBindingQuery): Promise<ListScanJobsBySourceBindingResult> {
     return {
       scanJobs: this.sortedBySourceBinding(query).slice(0, query.limit),
     };
   }
 
-  async listBySourceBindingWindow(
-    query: ListScanJobsBySourceBindingWindowQuery,
-  ): Promise<ListScanJobsBySourceBindingWindowResult> {
+  async listBySourceBindingWindow(query: ListScanJobsBySourceBindingWindowQuery): Promise<ListScanJobsBySourceBindingWindowResult> {
     return {
       scanJobs: this.sortedBySourceBinding(query)
         .filter((job) => {
@@ -131,33 +117,21 @@ class FakeScanJobs implements ScanJobRepositoryPort, ScanJobHistoryReadPort {
     };
   }
 
-  async findByIdempotencyKey(
-    params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0],
-  ): Promise<ScanJob | null> {
+  async findByIdempotencyKey(params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0]): Promise<ScanJob | null> {
     return this.jobsByIdempotencyKey.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
   }
 
-  private sortedBySourceBinding(params: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-    readonly sourceBindingId: string;
-  }): readonly ScanJob[] {
+  private sortedBySourceBinding(params: { readonly tenantId: string; readonly workspaceId: string; readonly sourceBindingId: string }): readonly ScanJob[] {
     return [...this.jobsById.values()]
       .filter((job) => {
         const snapshot = job.toSnapshot();
 
-        return (
-          snapshot.tenantId === params.tenantId &&
-          snapshot.workspaceId === params.workspaceId &&
-          snapshot.sourceBindingId === params.sourceBindingId
-        );
+        return snapshot.tenantId === params.tenantId && snapshot.workspaceId === params.workspaceId && snapshot.sourceBindingId === params.sourceBindingId;
       })
       .sort((left, right) => {
         const requestedDiff = right.toSnapshot().requestedAt.getTime() - left.toSnapshot().requestedAt.getTime();
 
-        return requestedDiff === 0
-          ? right.toSnapshot().id.localeCompare(left.toSnapshot().id)
-          : requestedDiff;
+        return requestedDiff === 0 ? right.toSnapshot().id.localeCompare(left.toSnapshot().id) : requestedDiff;
       });
   }
 }
@@ -170,11 +144,9 @@ class FakeScanExecutionAttempts implements ScanExecutionAttemptReadPort {
       return null;
     }
 
-    return (
-      this.latestAttempt.tenantId === query.tenantId &&
+    return this.latestAttempt.tenantId === query.tenantId &&
       this.latestAttempt.workspaceId === query.workspaceId &&
       this.latestAttempt.scanJobId === query.scanJobId
-    )
       ? this.latestAttempt
       : null;
   }
@@ -190,44 +162,52 @@ describe('GetSourceBindingHealthUseCase', () => {
 
     const result = await useCase.execute(baseQuery());
 
-    expect(result).toEqual(expect.objectContaining({
-      ok: true,
-      value: expect.objectContaining({
-        healthState: 'not_configured',
-        operatorAction: 'create_scan_policy_for_source_binding',
-        schedulerDecision: expect.objectContaining({
-          canScanNow: false,
-          decision: 'not_configured',
-          reason: 'scan_policy_missing',
-          minimumIntervalSeconds: 60,
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({
+          healthState: 'not_configured',
+          operatorAction: 'create_scan_policy_for_source_binding',
+          schedulerDecision: expect.objectContaining({
+            canScanNow: false,
+            decision: 'not_configured',
+            reason: 'scan_policy_missing',
+            minimumIntervalSeconds: 60,
+          }),
         }),
       }),
-    }));
+    );
   });
 
   it('reports active scan jobs as scanning with latest scan context', async () => {
     const { useCase, policies, jobs } = await setup();
     await policies.save(makePolicy());
-    await jobs.save(makeJob().markEnqueued({ enqueuedAt: new Date('2026-06-16T00:00:01.000Z') }));
+    await jobs.save(
+      makeJob().markEnqueued({
+        enqueuedAt: new Date('2026-06-16T00:00:01.000Z'),
+      }),
+    );
 
     const result = await useCase.execute(baseQuery());
 
-    expect(result).toEqual(expect.objectContaining({
-      ok: true,
-      value: expect.objectContaining({
-        healthState: 'scanning',
-        latestScan: expect.objectContaining({
-          scanJobId: 'scan-job-1',
-          userState: 'scan_in_progress',
-        }),
-        schedulerDecision: expect.objectContaining({
-          canScanNow: false,
-          decision: 'active_scan',
-          reason: 'scan_already_in_progress',
-          signals: ['active_scan_in_progress'],
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({
+          healthState: 'scanning',
+          latestScan: expect.objectContaining({
+            scanJobId: 'scan-job-1',
+            userState: 'scan_in_progress',
+          }),
+          schedulerDecision: expect.objectContaining({
+            canScanNow: false,
+            decision: 'active_scan',
+            reason: 'scan_already_in_progress',
+            signals: ['active_scan_in_progress'],
+          }),
         }),
       }),
-    }));
+    );
   });
 
   it('explains when a configured binding is ready for a due scan', async () => {
@@ -236,25 +216,27 @@ describe('GetSourceBindingHealthUseCase', () => {
 
     const result = await useCase.execute(baseQuery());
 
-    expect(result).toEqual(expect.objectContaining({
-      ok: true,
-      value: expect.objectContaining({
-        healthState: 'scheduled',
-        schedulerDecision: {
-          canScanNow: true,
-          decision: 'ready',
-          reason: 'scan_policy_due_now',
-          minimumIntervalSeconds: 60,
-          configuredIntervalSeconds: 300,
-          effectiveIntervalSeconds: 300,
-          freshnessSeconds: 900,
-          providerMinimumIntervalEnforced: false,
-          nextEligibleAt: '2026-06-16T00:10:00.000Z',
-          waitSeconds: 0,
-          signals: ['scan_policy_due'],
-        },
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({
+          healthState: 'scheduled',
+          schedulerDecision: {
+            canScanNow: true,
+            decision: 'ready',
+            reason: 'scan_policy_due_now',
+            minimumIntervalSeconds: 60,
+            configuredIntervalSeconds: 300,
+            effectiveIntervalSeconds: 300,
+            freshnessSeconds: 900,
+            providerMinimumIntervalEnforced: false,
+            nextEligibleAt: '2026-06-16T00:10:00.000Z',
+            waitSeconds: 0,
+            signals: ['scan_policy_due'],
+          },
+        }),
       }),
-    }));
+    );
   });
 
   it('explains future scheduled scans without marking the source scannable', async () => {
@@ -263,18 +245,20 @@ describe('GetSourceBindingHealthUseCase', () => {
 
     const result = await useCase.execute(baseQuery());
 
-    expect(result).toEqual(expect.objectContaining({
-      ok: true,
-      value: expect.objectContaining({
-        schedulerDecision: expect.objectContaining({
-          canScanNow: false,
-          decision: 'scheduled_later',
-          reason: 'scan_policy_next_run_in_future',
-          nextEligibleAt: '2026-06-16T00:15:00.000Z',
-          waitSeconds: 300,
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({
+          schedulerDecision: expect.objectContaining({
+            canScanNow: false,
+            decision: 'scheduled_later',
+            reason: 'scan_policy_next_run_in_future',
+            nextEligibleAt: '2026-06-16T00:15:00.000Z',
+            waitSeconds: 300,
+          }),
         }),
       }),
-    }));
+    );
   });
 
   it('explains duplicate scheduled scan windows without reporting ready', async () => {
@@ -289,10 +273,7 @@ describe('GetSourceBindingHealthUseCase', () => {
         workspaceId: workspace,
         sourceBindingId: 'binding-1',
         scanPolicyId: 'policy-1',
-        idempotencyKey: scheduledScanIdempotencyKey(
-          policySnapshot.id,
-          policySnapshot.nextRunAt,
-        ),
+        idempotencyKey: scheduledScanIdempotencyKey(policySnapshot.id, policySnapshot.nextRunAt),
         requestedAt: new Date('2026-06-16T00:05:00.000Z'),
       })
         .markEnqueued({ enqueuedAt: new Date('2026-06-16T00:05:01.000Z') })
@@ -304,28 +285,27 @@ describe('GetSourceBindingHealthUseCase', () => {
 
     const result = await useCase.execute(baseQuery());
 
-    expect(result).toEqual(expect.objectContaining({
-      ok: true,
-      value: expect.objectContaining({
-        schedulerDecision: expect.objectContaining({
-          canScanNow: false,
-          decision: 'duplicate_window',
-          reason: 'scheduled_scan_window_already_recorded',
-          nextEligibleAt: '2026-06-16T00:15:00.000Z',
-          waitSeconds: 300,
-          signals: ['duplicate_window'],
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({
+          schedulerDecision: expect.objectContaining({
+            canScanNow: false,
+            decision: 'duplicate_window',
+            reason: 'scheduled_scan_window_already_recorded',
+            nextEligibleAt: '2026-06-16T00:15:00.000Z',
+            waitSeconds: 300,
+            signals: ['duplicate_window'],
+          }),
         }),
       }),
-    }));
+    );
   });
 
   it('separates fresh, stale and failed completed scans', async () => {
     const fresh = await setupWithCompletedJob(new Date('2026-06-16T00:00:30.000Z'));
     const stale = await setupWithCompletedJob(new Date('2026-06-15T23:50:00.000Z'));
-    const failed = await setupWithCompletedJob(
-      new Date('2026-06-16T00:00:30.000Z'),
-      'Provider unavailable',
-    );
+    const failed = await setupWithCompletedJob(new Date('2026-06-16T00:00:30.000Z'), 'Provider unavailable');
 
     expect(await healthState(fresh)).toBe('healthy');
     expect(await healthState(stale)).toBe('stale');
@@ -334,10 +314,7 @@ describe('GetSourceBindingHealthUseCase', () => {
 
   it('explains fresh-success and rate-limit backoff skip windows', async () => {
     const fresh = await setupWithCompletedJob(new Date('2026-06-16T00:00:30.000Z'));
-    const rateLimited = await setupWithCompletedJob(
-      new Date('2026-06-16T00:08:05.000Z'),
-      'Provider rate limit 429',
-    );
+    const rateLimited = await setupWithCompletedJob(new Date('2026-06-16T00:08:05.000Z'), 'Provider rate limit 429');
 
     await expectSchedulerDecision(fresh, {
       canScanNow: false,
@@ -358,12 +335,52 @@ describe('GetSourceBindingHealthUseCase', () => {
     });
   });
 
+  it('uses bounded transient backoff for high-cadence provider rate limits', async () => {
+    const context = await setup(new FakeScanExecutionAttempts(), 'github-repo-radar');
+    await context.policies.save(makePolicy());
+    await context.jobs.save(
+      makeJob(new Date('2026-06-16T00:08:00.000Z'), 'repo-radar-rate-limit')
+        .markEnqueued({ enqueuedAt: new Date('2026-06-16T00:08:01.000Z') })
+        .markFailed({
+          completedAt: new Date('2026-06-16T00:08:05.000Z'),
+          failureReason: 'Provider rate limit 429',
+        }),
+    );
+
+    const result = await context.useCase.execute(baseQuery());
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({
+          healthState: 'degraded',
+          schedulerDecision: expect.objectContaining({
+            canScanNow: false,
+            decision: 'rate_limit_backoff',
+            reason: 'provider_rate_limit_backoff_active',
+            minimumIntervalSeconds: 21_600,
+            configuredIntervalSeconds: 300,
+            effectiveIntervalSeconds: 21_600,
+            freshnessSeconds: 21_600,
+            providerMinimumIntervalEnforced: true,
+            nextEligibleAt: '2026-06-16T00:23:05.000Z',
+            waitSeconds: 785,
+            rateLimitBackoffUntil: '2026-06-16T00:23:05.000Z',
+            signals: ['rate_limit_backoff', 'provider_minimum_interval_enforced'],
+          }),
+        }),
+      }),
+    );
+  });
+
   it('uses provider minimum cadence when projecting freshness for legacy policy', async () => {
     const context = await setup(new FakeScanExecutionAttempts(), 'reddit');
-    await context.policies.save(makePolicy({
-      intervalSeconds: 60,
-      freshnessSeconds: 60,
-    }));
+    await context.policies.save(
+      makePolicy({
+        intervalSeconds: 60,
+        freshnessSeconds: 60,
+      }),
+    );
     await context.jobs.save(
       makeJob(new Date('2026-06-16T00:04:58.000Z'))
         .markEnqueued({ enqueuedAt: new Date('2026-06-16T00:04:59.000Z') })
@@ -372,46 +389,102 @@ describe('GetSourceBindingHealthUseCase', () => {
 
     const result = await context.useCase.execute(baseQuery());
 
-    expect(result).toEqual(expect.objectContaining({
-      ok: true,
-      value: expect.objectContaining({
-        healthState: 'healthy',
-        freshness: {
-          isFresh: true,
-          ageSeconds: 300,
-          freshnessDeadlineAt: '2026-06-16T00:20:00.000Z',
-          staleBySeconds: undefined,
-        },
-        schedulerDecision: expect.objectContaining({
-          canScanNow: false,
-          decision: 'fresh_success',
-          reason: 'latest_success_still_fresh',
-          minimumIntervalSeconds: 900,
-          configuredIntervalSeconds: 60,
-          effectiveIntervalSeconds: 900,
-          freshnessSeconds: 900,
-          providerMinimumIntervalEnforced: true,
-          nextEligibleAt: '2026-06-16T00:20:00.000Z',
-          waitSeconds: 600,
-          signals: ['fresh_success', 'provider_minimum_interval_enforced'],
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({
+          healthState: 'healthy',
+          freshness: {
+            isFresh: true,
+            ageSeconds: 300,
+            freshnessDeadlineAt: '2026-06-16T00:20:00.000Z',
+            staleBySeconds: undefined,
+          },
+          schedulerDecision: expect.objectContaining({
+            canScanNow: false,
+            decision: 'fresh_success',
+            reason: 'latest_success_still_fresh',
+            minimumIntervalSeconds: 900,
+            configuredIntervalSeconds: 60,
+            effectiveIntervalSeconds: 900,
+            freshnessSeconds: 900,
+            providerMinimumIntervalEnforced: true,
+            nextEligibleAt: '2026-06-16T00:20:00.000Z',
+            waitSeconds: 600,
+            signals: ['fresh_success', 'provider_minimum_interval_enforced'],
+          }),
         }),
       }),
-    }));
+    );
+  });
+
+  it('uses bounded transient backoff for high-cadence provider failures', async () => {
+    const { useCase, policies, jobs } = await setup(new FakeScanExecutionAttempts(), 'github-repo-radar');
+    await policies.save(makePolicy());
+    for (const [id, requestedAt, completedAt] of [
+      ['repo-radar-unavailable-scan-job-2', '2026-06-16T00:08:00.000Z', '2026-06-16T00:08:05.000Z'],
+      ['repo-radar-unavailable-scan-job-1', '2026-06-16T00:07:00.000Z', '2026-06-16T00:07:05.000Z'],
+    ] as const) {
+      await jobs.save(
+        makeJob(new Date(requestedAt), id)
+          .markEnqueued({
+            enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000),
+          })
+          .markFailed({
+            completedAt: new Date(completedAt),
+            failureReason: 'Provider unavailable while reading repo radar',
+          }),
+      );
+    }
+
+    const result = await useCase.execute(baseQuery());
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({
+          healthState: 'degraded',
+          schedulerDecision: expect.objectContaining({
+            canScanNow: false,
+            decision: 'provider_failure_backoff',
+            reason: 'provider_failure_backoff_active',
+            minimumIntervalSeconds: 21_600,
+            configuredIntervalSeconds: 300,
+            effectiveIntervalSeconds: 21_600,
+            freshnessSeconds: 21_600,
+            providerMinimumIntervalEnforced: true,
+            nextEligibleAt: '2026-06-16T00:38:05.000Z',
+            waitSeconds: 1685,
+            providerFailureBackoffUntil: '2026-06-16T00:38:05.000Z',
+            signals: ['provider_failure_backoff', 'provider_minimum_interval_enforced'],
+          }),
+          recentWindow: expect.objectContaining({
+            providerHealthState: 'degraded',
+            providerUnavailableScans: 2,
+            consecutiveFailures: 2,
+          }),
+        }),
+      }),
+    );
   });
 
   it('projects provider failure backoff after repeated auth failures', async () => {
     const { useCase, policies, jobs } = await setup(new FakeScanExecutionAttempts(), 'reddit');
-    await policies.save(makePolicy({
-      intervalSeconds: 900,
-      freshnessSeconds: 900,
-    }));
+    await policies.save(
+      makePolicy({
+        intervalSeconds: 900,
+        freshnessSeconds: 900,
+      }),
+    );
     for (const [id, requestedAt, completedAt] of [
       ['auth-failed-scan-job-2', '2026-06-16T00:08:00.000Z', '2026-06-16T00:08:05.000Z'],
       ['auth-failed-scan-job-1', '2026-06-16T00:07:00.000Z', '2026-06-16T00:07:05.000Z'],
     ] as const) {
       await jobs.save(
         makeJob(new Date(requestedAt), id)
-          .markEnqueued({ enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000) })
+          .markEnqueued({
+            enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000),
+          })
           .markFailed({
             completedAt: new Date(completedAt),
             failureReason: 'kind=auth_failed provider credential rejected',
@@ -421,32 +494,34 @@ describe('GetSourceBindingHealthUseCase', () => {
 
     const result = await useCase.execute(baseQuery());
 
-    expect(result).toEqual(expect.objectContaining({
-      ok: true,
-      value: expect.objectContaining({
-        healthState: 'degraded',
-        schedulerDecision: expect.objectContaining({
-          canScanNow: false,
-          decision: 'provider_failure_backoff',
-          reason: 'provider_failure_backoff_active',
-          minimumIntervalSeconds: 900,
-          configuredIntervalSeconds: 900,
-          effectiveIntervalSeconds: 900,
-          freshnessSeconds: 900,
-          providerMinimumIntervalEnforced: false,
-          nextEligibleAt: '2026-06-16T00:38:05.000Z',
-          waitSeconds: 1685,
-          providerFailureBackoffUntil: '2026-06-16T00:38:05.000Z',
-          signals: ['provider_failure_backoff'],
-        }),
-        recentWindow: expect.objectContaining({
-          providerHealthState: 'degraded',
-          providerUnavailableScans: 2,
-          consecutiveFailures: 2,
-          signals: ['recent_failure', 'provider_unavailable', 'consecutive_failures'],
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({
+          healthState: 'degraded',
+          schedulerDecision: expect.objectContaining({
+            canScanNow: false,
+            decision: 'provider_failure_backoff',
+            reason: 'provider_failure_backoff_active',
+            minimumIntervalSeconds: 900,
+            configuredIntervalSeconds: 900,
+            effectiveIntervalSeconds: 900,
+            freshnessSeconds: 900,
+            providerMinimumIntervalEnforced: false,
+            nextEligibleAt: '2026-06-16T00:38:05.000Z',
+            waitSeconds: 1685,
+            providerFailureBackoffUntil: '2026-06-16T00:38:05.000Z',
+            signals: ['provider_failure_backoff'],
+          }),
+          recentWindow: expect.objectContaining({
+            providerHealthState: 'degraded',
+            providerUnavailableScans: 2,
+            consecutiveFailures: 2,
+            signals: ['recent_failure', 'provider_unavailable', 'consecutive_failures'],
+          }),
         }),
       }),
-    }));
+    );
   });
 
   it('summarizes recent provider health window from scan history', async () => {
@@ -500,14 +575,12 @@ describe('GetSourceBindingHealthUseCase', () => {
   it('marks provider health down after repeated recent provider failures', async () => {
     const { useCase, policies, jobs } = await setup();
     await policies.save(makePolicy());
-    for (const [index, requestedAt] of [
-      '2026-06-16T00:08:00.000Z',
-      '2026-06-16T00:07:00.000Z',
-      '2026-06-16T00:06:00.000Z',
-    ].entries()) {
+    for (const [index, requestedAt] of ['2026-06-16T00:08:00.000Z', '2026-06-16T00:07:00.000Z', '2026-06-16T00:06:00.000Z'].entries()) {
       await jobs.save(
         makeJob(new Date(requestedAt), `scan-job-failed-${index}`)
-          .markEnqueued({ enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000) })
+          .markEnqueued({
+            enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000),
+          })
           .markFailed({
             completedAt: new Date(new Date(requestedAt).getTime() + 5_000),
             failureReason: 'Provider unavailable',
@@ -519,24 +592,23 @@ describe('GetSourceBindingHealthUseCase', () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.recentWindow).toEqual(expect.objectContaining({
-        providerHealthState: 'down',
-        failedScans: 3,
-        providerUnavailableScans: 3,
-        consecutiveFailures: 3,
-        operatorAction: 'pause_or_backoff_provider_until_recovery',
-        signals: ['recent_failure', 'provider_unavailable', 'consecutive_failures'],
-      }));
+      expect(result.value.recentWindow).toEqual(
+        expect.objectContaining({
+          providerHealthState: 'down',
+          failedScans: 3,
+          providerUnavailableScans: 3,
+          consecutiveFailures: 3,
+          operatorAction: 'pause_or_backoff_provider_until_recovery',
+          signals: ['recent_failure', 'provider_unavailable', 'consecutive_failures'],
+        }),
+      );
       expect(result.value.healthState).toBe('down');
       expect(result.value.operatorAction).toBe('pause_or_backoff_provider_until_recovery');
     }
   });
 });
 
-const setup = async (
-  attempts: ScanExecutionAttemptReadPort = new FakeScanExecutionAttempts(),
-  providerKey = 'fake-source',
-) => {
+const setup = async (attempts: ScanExecutionAttemptReadPort = new FakeScanExecutionAttempts(), providerKey = 'fake-source') => {
   const bindings = new FakeSourceBindings();
   const policies = new FakeScanPolicies();
   const jobs = new FakeScanJobs();
@@ -546,13 +618,7 @@ const setup = async (
     bindings,
     policies,
     jobs,
-    useCase: new GetSourceBindingHealthUseCase(
-      bindings,
-      policies,
-      jobs,
-      attempts,
-      new FixedClock(now),
-    ),
+    useCase: new GetSourceBindingHealthUseCase(bindings, policies, jobs, attempts, new FixedClock(now)),
   };
 };
 
@@ -560,10 +626,10 @@ const setupWithCompletedJob = async (completedAt: Date, failureReason?: string) 
   const context = await setup();
   await context.policies.save(makePolicy());
   const requestedAt = new Date(completedAt.getTime() - 2_000);
-  const enqueued = makeJob(requestedAt).markEnqueued({ enqueuedAt: new Date(completedAt.getTime() - 1_000) });
-  await context.jobs.save(failureReason === undefined
-    ? enqueued.markSucceeded({ completedAt })
-    : enqueued.markFailed({ completedAt, failureReason }));
+  const enqueued = makeJob(requestedAt).markEnqueued({
+    enqueuedAt: new Date(completedAt.getTime() - 1_000),
+  });
+  await context.jobs.save(failureReason === undefined ? enqueued.markSucceeded({ completedAt }) : enqueued.markFailed({ completedAt, failureReason }));
 
   return context.useCase;
 };
@@ -578,10 +644,7 @@ const healthState = async (useCase: GetSourceBindingHealthUseCase) => {
   return result.value.healthState;
 };
 
-const expectSchedulerDecision = async (
-  useCase: GetSourceBindingHealthUseCase,
-  expected: Record<string, unknown>,
-): Promise<void> => {
+const expectSchedulerDecision = async (useCase: GetSourceBindingHealthUseCase, expected: Record<string, unknown>): Promise<void> => {
   const result = await useCase.execute(baseQuery());
 
   if (!result.ok) {
@@ -624,10 +687,7 @@ const makePolicy = (overrides: Partial<Parameters<typeof ScanPolicy.create>[0]> 
     ...overrides,
   });
 
-const makeJob = (
-  requestedAt: Date = new Date('2026-06-16T00:00:00.000Z'),
-  id: string = 'scan-job-1',
-) =>
+const makeJob = (requestedAt: Date = new Date('2026-06-16T00:00:00.000Z'), id: string = 'scan-job-1') =>
   ScanJob.request({
     id,
     tenantId: tenant,
