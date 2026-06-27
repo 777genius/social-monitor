@@ -39,10 +39,15 @@ async function main(): Promise<void> {
 
   try {
     const tenant = tenantId('tenant-delivery-attempt-rest-smoke');
+    const otherTenant = tenantId('tenant-delivery-attempt-rest-other');
     const workspace = workspaceId('workspace-delivery-attempt-rest-smoke');
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
+    };
+    const otherTenantHeaders = {
+      ...headers,
+      'x-tenant-id': otherTenant,
     };
     const deliveryStatusSecret = await createApiKey({
       server: app.getHttpServer(),
@@ -100,6 +105,21 @@ async function main(): Promise<void> {
       throw queued.error;
     }
 
+    const otherTenantQueued = await moduleRef.get(QueueDeliveryAttemptUseCase).execute({
+      tenantId: otherTenant,
+      workspaceId: workspace,
+      idempotencyKey: 'digest:daily:webhook-endpoint-other-tenant',
+      channel: 'webhook',
+      recipientKey: 'webhook-endpoint-other-tenant',
+      resourceType: 'digest',
+      resourceId: 'digest-other-tenant',
+      maxRetries: 3,
+    });
+
+    if (!otherTenantQueued.ok) {
+      throw otherTenantQueued.error;
+    }
+
     const listed = await request(app.getHttpServer())
       .get('/delivery/attempts')
       .query({ limit: 1 })
@@ -125,6 +145,19 @@ async function main(): Promise<void> {
       'read:delivery_status API key must list delivery attempts without workspace role',
     );
 
+    const otherTenantListed = await request(app.getHttpServer())
+      .get('/delivery/attempts')
+      .query({ limit: 10 })
+      .set(otherTenantHeaders)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    assert(
+      otherTenantListed.body.attempts.length === 1 &&
+        otherTenantListed.body.attempts[0].id === otherTenantQueued.value.deliveryAttemptId,
+      'delivery attempt REST list must keep attempts isolated by tenant',
+    );
+
     await request(app.getHttpServer())
       .get('/delivery/attempts')
       .set(headers)
@@ -138,6 +171,12 @@ async function main(): Promise<void> {
       .expect(200);
 
     assert(fetched.body.id === queued.value.deliveryAttemptId, 'delivery attempt REST get must return attempt');
+
+    await request(app.getHttpServer())
+      .get(`/delivery/attempts/${queued.value.deliveryAttemptId}`)
+      .set(otherTenantHeaders)
+      .set('x-workspace-role', 'viewer')
+      .expect(404);
 
     const fetchedWithApiKey = await request(app.getHttpServer())
       .get(`/delivery/attempts/${queued.value.deliveryAttemptId}`)
@@ -197,6 +236,18 @@ async function main(): Promise<void> {
         },
       })
       .expect(403);
+
+    await request(app.getHttpServer())
+      .post(`/delivery/attempts/${queued.value.deliveryAttemptId}/retry`)
+      .set(otherTenantHeaders)
+      .set('x-workspace-role', 'member')
+      .send({
+        content: {
+          subject: 'Daily digest',
+          body: 'Digest body',
+        },
+      })
+      .expect(404);
 
     const retried = await request(app.getHttpServer())
       .post(`/delivery/attempts/${queued.value.deliveryAttemptId}/retry`)

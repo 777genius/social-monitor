@@ -38,10 +38,15 @@ async function main(): Promise<void> {
 
   try {
     const tenant = tenantId('tenant-digest-schedule-rest-smoke');
+    const otherTenant = tenantId('tenant-digest-schedule-rest-other');
     const workspace = workspaceId('workspace-digest-schedule-rest-smoke');
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
+    };
+    const otherTenantHeaders = {
+      ...headers,
+      'x-tenant-id': otherTenant,
     };
     const deliveryStatusSecret = await createApiKey({
       server: app.getHttpServer(),
@@ -95,6 +100,16 @@ async function main(): Promise<void> {
       'digest schedule REST create must normalize topic ids',
     );
 
+    const otherTenantCreated = await request(app.getHttpServer())
+      .post('/delivery/digest-schedules')
+      .set(otherTenantHeaders)
+      .set('x-workspace-role', 'member')
+      .send({
+        ...body,
+        recipientKey: 'user-rest-smoke-other-tenant',
+      })
+      .expect(201);
+
     await request(app.getHttpServer())
       .post('/delivery/digest-schedules')
       .set(headers)
@@ -122,7 +137,7 @@ async function main(): Promise<void> {
 
     const listed = await request(app.getHttpServer())
       .get('/delivery/digest-schedules')
-      .query({ limit: 2 })
+      .query({ limit: 10 })
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .expect(200);
@@ -131,6 +146,25 @@ async function main(): Promise<void> {
     assert(
       listed.body.schedules.some((schedule: { readonly id: string }) => schedule.id === created.body.schedule.id),
       'digest schedule REST list must include role-created schedule id',
+    );
+    assert(
+      !listed.body.schedules.some(
+        (schedule: { readonly id: string }) => schedule.id === otherTenantCreated.body.schedule.id,
+      ),
+      'digest schedule REST list must not leak schedules from another tenant',
+    );
+
+    const otherTenantListed = await request(app.getHttpServer())
+      .get('/delivery/digest-schedules')
+      .query({ limit: 10 })
+      .set(otherTenantHeaders)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    assert(
+      otherTenantListed.body.schedules.length === 1 &&
+        otherTenantListed.body.schedules[0].id === otherTenantCreated.body.schedule.id,
+      'digest schedule REST list must keep schedules isolated by tenant',
     );
 
     const listedWithApiKey = await request(app.getHttpServer())
@@ -159,6 +193,12 @@ async function main(): Promise<void> {
 
     assert(fetched.body.id === created.body.schedule.id, 'digest schedule REST get must return created schedule');
     assert(fetched.body.recipientKey === body.recipientKey, 'digest schedule REST get must preserve recipient key');
+
+    await request(app.getHttpServer())
+      .get(`/delivery/digest-schedules/${created.body.schedule.id}`)
+      .set(otherTenantHeaders)
+      .set('x-workspace-role', 'viewer')
+      .expect(404);
 
     const fetchedWithApiKey = await request(app.getHttpServer())
       .get(`/delivery/digest-schedules/${created.body.schedule.id}`)
@@ -196,6 +236,12 @@ async function main(): Promise<void> {
       digestWithApiKey.body.id === assembled.value.digest.id,
       'read:delivery_status API key must read digest details without workspace role',
     );
+
+    await request(app.getHttpServer())
+      .get(`/delivery/digests/${assembled.value.digest.id}`)
+      .set(otherTenantHeaders)
+      .set('x-workspace-role', 'viewer')
+      .expect(404);
 
     await request(app.getHttpServer())
       .get(`/delivery/digests/${assembled.value.digest.id}`)

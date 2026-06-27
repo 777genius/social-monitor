@@ -41,10 +41,15 @@ async function main(): Promise<void> {
 
   try {
     const tenant = tenantId('tenant-notification-preference-rest-smoke');
+    const otherTenant = tenantId('tenant-notification-preference-rest-other');
     const workspace = workspaceId('workspace-notification-preference-rest-smoke');
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
+    };
+    const otherTenantHeaders = {
+      ...headers,
+      'x-tenant-id': otherTenant,
     };
     const deliveryReadSecret = await createApiKey({
       server: app.getHttpServer(),
@@ -102,6 +107,22 @@ async function main(): Promise<void> {
       'notification preference REST set must preserve suppression reason',
     );
 
+    const otherTenantAllowed = await request(app.getHttpServer())
+      .put('/delivery/notification-preferences')
+      .set(otherTenantHeaders)
+      .set('x-workspace-role', 'member')
+      .send({
+        recipientKey: body.recipientKey,
+        channel: body.channel,
+        allowed: true,
+      })
+      .expect(200);
+
+    assert(
+      otherTenantAllowed.body.preference.allowed === true,
+      'notification preference REST set must allow the same recipient in another tenant',
+    );
+
     const listed = await request(app.getHttpServer())
       .get('/delivery/notification-preferences')
       .query({ recipientKey: body.recipientKey, channel: body.channel })
@@ -110,6 +131,18 @@ async function main(): Promise<void> {
       .expect(200);
 
     assert(listed.body.allowed === false, 'notification preference REST get must return suppression');
+
+    const otherTenantListed = await request(app.getHttpServer())
+      .get('/delivery/notification-preferences')
+      .query({ recipientKey: body.recipientKey, channel: body.channel })
+      .set(otherTenantHeaders)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    assert(
+      otherTenantListed.body.allowed === true,
+      'notification preference REST get must keep same recipient/channel isolated by tenant',
+    );
 
     const listedWithApiKey = await request(app.getHttpServer())
       .get('/delivery/notification-preferences')
