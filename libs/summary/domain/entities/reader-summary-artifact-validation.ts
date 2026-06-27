@@ -44,7 +44,8 @@ export const assertReaderSummaryArtifactValid = (
   }
 
   const clusterIds = new Set(props.storyClusters.map((cluster) => cluster.id));
-  const citationIds = assertCitations(props.citationMap);
+  const citationById = assertCitations(props.citationMap);
+  const citationIds = new Set(citationById.keys());
 
   for (const cluster of props.storyClusters) {
     if (
@@ -122,7 +123,12 @@ export const assertReaderSummaryArtifactValid = (
   }
 
   if (props.content !== undefined) {
-    assertReaderSummaryContent(props.content, citationIds);
+    assertReaderSummaryContent(
+      props.content,
+      citationIds,
+      citationById,
+      providerKeysFromStoryClusters(props.storyClusters),
+    );
   }
 
   for (const contextArtifact of props.contextArtifacts) {
@@ -215,7 +221,14 @@ export const assertReaderSummaryCitationsAgainstEvidence = (
 const assertReaderSummaryContent = (
   content: ReaderSummaryContent,
   knownCitationIds: ReadonlySet<string>,
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  storyClusterProviderKeys: ReadonlySet<string>,
 ): void => {
+  const knownProviderKeys = new Set([
+    ...storyClusterProviderKeys,
+    ...providerKeysFromCitations(citationById, knownCitationIds),
+  ]);
+
   if (
     content.headline.trim().length === 0 ||
     content.oneLineTakeaway.trim().length === 0 ||
@@ -236,6 +249,11 @@ const assertReaderSummaryContent = (
     ) {
       throw new Error(
         "Reader summary source mix entries must include provider and non-negative counts",
+      );
+    }
+    if (!knownProviderKeys.has(source.providerKey)) {
+      throw new Error(
+        "Reader summary source mix includes provider outside evidence",
       );
     }
   }
@@ -261,12 +279,24 @@ const assertReaderSummaryContent = (
       "Reader summary topic section",
     );
     for (const item of section.items) {
-      assertReaderItem(item, knownCitationIds, "Reader summary topic item");
+      assertReaderItem(
+        item,
+        knownCitationIds,
+        citationById,
+        knownProviderKeys,
+        "Reader summary topic item",
+      );
     }
   }
 
   for (const item of content.topReads) {
-    assertReaderItem(item, knownCitationIds, "Reader summary top read");
+    assertReaderItem(
+      item,
+      knownCitationIds,
+      citationById,
+      knownProviderKeys,
+      "Reader summary top read",
+    );
   }
 
   for (const action of content.nextActions) {
@@ -286,6 +316,8 @@ const assertReaderSummaryContent = (
 const assertReaderItem = (
   item: ReaderSummaryItem,
   knownCitationIds: ReadonlySet<string>,
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  knownProviderKeys: ReadonlySet<string>,
   label: string,
 ): void => {
   if (
@@ -300,6 +332,7 @@ const assertReaderItem = (
     !Number.isFinite(item.signalScore) ||
     item.signalScore < 0 ||
     item.confirmedProviderKeys.length === 0 ||
+    item.citationIds.length === 0 ||
     !Number.isFinite(item.confidence.score) ||
     item.confidence.score < 0 ||
     item.confidence.score > 1 ||
@@ -319,6 +352,37 @@ const assertReaderItem = (
     }
   }
   assertCitationIds(item.citationIds, knownCitationIds, label);
+  assertReaderItemProviderMatchesEvidence(
+    item,
+    citationById,
+    knownProviderKeys,
+    label,
+  );
+};
+
+const assertReaderItemProviderMatchesEvidence = (
+  item: ReaderSummaryItem,
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  knownProviderKeys: ReadonlySet<string>,
+  label: string,
+): void => {
+  const citationProviderKeys = new Set(
+    item.citationIds
+      .map((citationId) => citationById.get(citationId)?.providerKey)
+      .filter((providerKey): providerKey is string => providerKey !== undefined),
+  );
+
+  if (!citationProviderKeys.has(item.providerKey)) {
+    throw new Error(`${label} provider must match at least one citation`);
+  }
+
+  for (const providerKey of item.confirmedProviderKeys) {
+    if (!knownProviderKeys.has(providerKey)) {
+      throw new Error(
+        `${label} confirmed provider must exist in selected evidence`,
+      );
+    }
+  }
 };
 
 const assertCitationIds = (
@@ -335,8 +399,8 @@ const assertCitationIds = (
 
 const assertCitations = (
   citations: readonly ReaderSummaryCitation[],
-): Set<string> => {
-  const citationIds = new Set<string>();
+): Map<string, ReaderSummaryCitation> => {
+  const citationsById = new Map<string, ReaderSummaryCitation>();
 
   for (const citation of citations) {
     if (citation.citationId.trim().length === 0) {
@@ -357,14 +421,35 @@ const assertCitations = (
       throw new Error("Reader summary citation provider key must be non-empty");
     }
 
-    if (citationIds.has(citation.citationId)) {
+    if (citationsById.has(citation.citationId)) {
       throw new Error("Reader summary citation ids must be unique");
     }
 
-    citationIds.add(citation.citationId);
+    citationsById.set(citation.citationId, citation);
   }
 
-  return citationIds;
+  return citationsById;
+};
+
+const providerKeysFromStoryClusters = (
+  storyClusters: readonly { readonly providerKeys: readonly string[] }[],
+): ReadonlySet<string> =>
+  new Set(storyClusters.flatMap((cluster) => cluster.providerKeys));
+
+const providerKeysFromCitations = (
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  knownCitationIds: ReadonlySet<string>,
+): ReadonlySet<string> => {
+  const providerKeys = new Set<string>();
+
+  for (const citationId of knownCitationIds) {
+    const providerKey = citationById.get(citationId)?.providerKey;
+    if (providerKey !== undefined) {
+      providerKeys.add(providerKey);
+    }
+  }
+
+  return providerKeys;
 };
 
 const assertCitedSection = (

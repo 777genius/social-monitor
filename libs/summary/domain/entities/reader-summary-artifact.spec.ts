@@ -92,6 +92,70 @@ const baseArtifact = (
   ...overrides,
 });
 
+const readerTopRead = (
+  overrides: Partial<
+    NonNullable<ReaderSummaryArtifactProps["content"]>["topReads"][number]
+  > = {},
+): NonNullable<ReaderSummaryArtifactProps["content"]>["topReads"][number] => ({
+  title: "AI tooling is trending",
+  providerKey: "reddit",
+  providerName: "Reddit",
+  primaryActionKind: "read_source",
+  reason: "Repeated across monitored topics.",
+  matchedTopicIds: ["topic-ai"],
+  matchedRules: ["developer-tools"],
+  signalScore: 0.91,
+  confidence: {
+    level: "medium",
+    score: 0.72,
+    rationale: "Direct citation backs the top read.",
+  },
+  confirmedProviderKeys: ["reddit"],
+  providerMetrics: [],
+  whyImportant: ["Repeated across monitored topics"],
+  whyNow: "It appeared in the current monitoring window.",
+  canonicalUrl: "https://reddit.com/r/OpenAI/comments/example",
+  citationIds: ["citation-1"],
+  ...overrides,
+});
+
+const readerContent = (
+  overrides: Partial<NonNullable<ReaderSummaryArtifactProps["content"]>> = {},
+): NonNullable<ReaderSummaryArtifactProps["content"]> => ({
+  headline: "AI tooling is trending across sources",
+  oneLineTakeaway: "One monitored story is worth reading now.",
+  bullets: ["Repeated evidence points to a useful developer tooling signal."],
+  qualityState: {
+    status: "ready",
+    flags: [],
+    warnings: [],
+    isSingleSource: false,
+  },
+  topicSections: [],
+  sourceMix: [
+    {
+      providerKey: "reddit",
+      itemCount: 1,
+      citationCount: 1,
+      storyClusterCount: 1,
+      crossSourceClusterCount: 1,
+      singleSourceOnly: false,
+      topicIds: ["topic-ai"],
+    },
+  ],
+  topReads: [readerTopRead()],
+  trendDelta: {
+    newSignals: [],
+    growingSignals: ["AI tooling"],
+    repeatedSignals: [],
+    fadingSignals: [],
+  },
+  openQuestions: [],
+  risks: [],
+  nextActions: [],
+  ...overrides,
+});
+
 describe("ReaderSummaryArtifact", () => {
   it("accepts a workspace reader summary with story clusters and feed citations", () => {
     expect(
@@ -126,6 +190,49 @@ describe("ReaderSummaryArtifact", () => {
         }),
       ),
     ).toThrow("Reader summary top story cites evidence outside citation map");
+  });
+
+  it("rejects reader content top reads whose provider is not backed by citations", () => {
+    expect(() =>
+      ReaderSummaryArtifact.create(
+        baseArtifact({
+          content: readerContent({
+            topReads: [
+              readerTopRead({
+                providerKey: "github",
+                providerName: "GitHub",
+                confirmedProviderKeys: ["github"],
+              }),
+            ],
+          }),
+        }),
+      ),
+    ).toThrow(
+      "Reader summary top read provider must match at least one citation",
+    );
+  });
+
+  it("rejects reader content source mix providers outside selected evidence", () => {
+    expect(() =>
+      ReaderSummaryArtifact.create(
+        baseArtifact({
+          content: readerContent({
+            sourceMix: [
+              ...readerContent().sourceMix,
+              {
+                providerKey: "x-twitter",
+                itemCount: 1,
+                citationCount: 0,
+                storyClusterCount: 0,
+                crossSourceClusterCount: 0,
+                singleSourceOnly: true,
+                topicIds: ["topic-ai"],
+              },
+            ],
+          }),
+        }),
+      ),
+    ).toThrow("Reader summary source mix includes provider outside evidence");
   });
 
   it("rejects model citations outside selected primary evidence", () => {
