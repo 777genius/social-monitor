@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { ArrayMinSize, IsArray, IsString, IsUrl, MinLength } from 'class-validator';
 
 import type { CreateWebhookEndpointResult } from '../../features/create-webhook-endpoint/create-webhook-endpoint.result';
@@ -6,9 +7,11 @@ import type { GetWebhookEndpointResult } from '../../features/get-webhook-endpoi
 import type { ListWebhookEndpointsResult } from '../../features/list-webhook-endpoints/list-webhook-endpoints.result';
 
 export class CreateWebhookEndpointRequestDto {
+  @ApiProperty({ format: 'uri' })
   @IsUrl({ require_protocol: true, protocols: ['https'] })
   url!: string;
 
+  @ApiProperty({ type: [String], minItems: 1 })
   @IsArray()
   @ArrayMinSize(1)
   @IsString({ each: true })

@@ -423,6 +423,54 @@ function assertFrontendReadyRequestSchemas(document: OpenAPIObject): void {
     "freshnessSeconds",
     "retryBudget",
   ]);
+  assertSchemaHasProperties(document, "CreateApiKeyRequestDto", [
+    "name",
+    "scopes",
+  ]);
+  assertSchemaHasProperties(document, "CreateDigestScheduleRequestDto", [
+    "recipientKey",
+    "channel",
+    "topicIds",
+    "intervalSeconds",
+    "includeNoSignal",
+    "nextRunAt",
+  ]);
+  assertSchemaHasProperties(document, "CreateSourceCredentialRequestDto", [
+    "providerKey",
+    "kind",
+    "secret",
+    "secretPreview",
+    "scopes",
+    "expiresAt",
+  ]);
+  assertSchemaHasProperties(document, "CreateWebhookEndpointRequestDto", [
+    "url",
+    "eventTypes",
+  ]);
+  assertSchemaHasProperties(document, "RetryDeliveryAttemptRequestDto", [
+    "content",
+  ]);
+  assertSchemaHasProperties(document, "RotateSourceCredentialRequestDto", [
+    "secret",
+    "secretPreview",
+    "scopes",
+    "expiresAt",
+  ]);
+  assertSchemaHasProperties(document, "SetNotificationPreferenceRequestDto", [
+    "recipientKey",
+    "channel",
+    "allowed",
+    "reason",
+  ]);
+  assertSchemaHasProperties(document, "UpsertSummaryPolicyRequestDto", [
+    "language",
+    "format",
+    "tone",
+    "maxKeyPoints",
+    "includeRisks",
+    "includeSourceHighlights",
+    "customInstructions",
+  ]);
 }
 
 function assertSchemaHasProperties(

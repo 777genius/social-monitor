@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { ArrayMinSize, IsArray, IsString, MinLength } from 'class-validator';
 
 import type { ApiKeyScope } from '../../domain';
@@ -6,10 +7,12 @@ import type { ListApiKeysResult } from '../../features/list-api-keys/list-api-ke
 import type { RevokeApiKeyResult } from '../../features/revoke-api-key/revoke-api-key.result';
 
 export class CreateApiKeyRequestDto {
+  @ApiProperty({ minLength: 2 })
   @IsString()
   @MinLength(2)
   name!: string;
 
+  @ApiProperty({ type: [String], minItems: 1 })
   @IsArray()
   @ArrayMinSize(1)
   @IsString({ each: true })

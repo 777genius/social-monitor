@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsOptional,
@@ -13,17 +14,20 @@ import type { QueueDeliveryAttemptResult } from '../../features/queue-delivery-a
 import type { RetryDeliveryAttemptResult } from '../../features/retry-delivery-attempt/retry-delivery-attempt.result';
 
 class RetryDeliveryContentDto {
+  @ApiPropertyOptional({ minLength: 1 })
   @IsOptional()
   @IsString()
   @MinLength(1)
   subject?: string;
 
+  @ApiProperty({ minLength: 1 })
   @IsString()
   @MinLength(1)
   body!: string;
 }
 
 export class RetryDeliveryAttemptRequestDto {
+  @ApiProperty({ type: () => RetryDeliveryContentDto })
   @IsDefined()
   @ValidateNested()
   @Type(() => RetryDeliveryContentDto)

@@ -155,6 +155,7 @@ export 'models/status2.dart';
 export 'models/build_personalized_digest_response_dto_status_status.dart';
 export 'models/change_source_binding_status_request_dto_status_status.dart';
 export 'models/change_source_binding_status_response_dto_status_status.dart';
+export 'models/create_source_credential_request_dto_kind_kind.dart';
 export 'models/feed_normalized_signal_dto_band_band.dart';
 export 'models/feed_normalized_signal_dto_basis_basis.dart';
 export 'models/feed_signal_cohort_dto_baseline_window_baseline_window.dart';

@@ -8,11 +8,21 @@ part 'rotate_source_credential_request_dto.g.dart';
 
 @JsonSerializable()
 class RotateSourceCredentialRequestDto {
-  const RotateSourceCredentialRequestDto();
+  const RotateSourceCredentialRequestDto({
+    required this.secret,
+    this.expiresAt,
+    this.scopes,
+    this.secretPreview,
+  });
 
   factory RotateSourceCredentialRequestDto.fromJson(
     Map<String, Object?> json,
   ) => _$RotateSourceCredentialRequestDtoFromJson(json);
+
+  final DateTime? expiresAt;
+  final List<String>? scopes;
+  final dynamic secret;
+  final String? secretPreview;
 
   Map<String, Object?> toJson() =>
       _$RotateSourceCredentialRequestDtoToJson(this);

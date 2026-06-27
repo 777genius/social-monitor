@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMinSize,
   IsArray,
@@ -16,27 +17,33 @@ import type { GetDigestScheduleResult } from '../../features/get-digest-schedule
 import type { ListDigestSchedulesResult } from '../../features/list-digest-schedules/list-digest-schedules.result';
 
 export class CreateDigestScheduleRequestDto {
+  @ApiProperty({ minLength: 1 })
   @IsString()
   @MinLength(1)
   recipientKey!: string;
 
+  @ApiProperty({ enum: ['in_app', 'email', 'webhook'] })
   @IsString()
   @IsIn(['in_app', 'email', 'webhook'])
   channel!: 'in_app' | 'email' | 'webhook';
 
+  @ApiProperty({ type: [String], minItems: 1 })
   @IsArray()
   @ArrayMinSize(1)
   @IsString({ each: true })
   @MinLength(1, { each: true })
   topicIds!: string[];
 
+  @ApiProperty({ minimum: 60 })
   @IsInt()
   @Min(60)
   intervalSeconds!: number;
 
+  @ApiProperty()
   @IsBoolean()
   includeNoSignal!: boolean;
 
+  @ApiPropertyOptional({ format: 'date-time' })
   @IsOptional()
   @IsString()
   @IsISO8601()

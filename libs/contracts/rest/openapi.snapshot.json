@@ -185,15 +185,105 @@
         "type": "object"
       },
       "CreateApiKeyRequestDto": {
-        "properties": {},
+        "properties": {
+          "name": {
+            "minLength": 2,
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "scopes"
+        ],
         "type": "object"
       },
       "CreateDigestScheduleRequestDto": {
-        "properties": {},
+        "properties": {
+          "channel": {
+            "enum": [
+              "in_app",
+              "email",
+              "webhook"
+            ],
+            "type": "string"
+          },
+          "includeNoSignal": {
+            "type": "boolean"
+          },
+          "intervalSeconds": {
+            "minimum": 60,
+            "type": "number"
+          },
+          "nextRunAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "recipientKey": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "topicIds": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "recipientKey",
+          "channel",
+          "topicIds",
+          "intervalSeconds",
+          "includeNoSignal"
+        ],
         "type": "object"
       },
       "CreateSourceCredentialRequestDto": {
-        "properties": {},
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "oauth2",
+              "api_token",
+              "bearer_token",
+              "app_oauth"
+            ],
+            "type": "string"
+          },
+          "providerKey": {
+            "minLength": 2,
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "secret": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "secretPreview": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "providerKey",
+          "kind",
+          "secret"
+        ],
         "type": "object"
       },
       "CreateTopicRequestDto": {
@@ -275,7 +365,23 @@
         "type": "object"
       },
       "CreateWebhookEndpointRequestDto": {
-        "properties": {},
+        "properties": {
+          "eventTypes": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "url": {
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "eventTypes"
+        ],
         "type": "object"
       },
       "FeedItemDto": {
@@ -3263,11 +3369,55 @@
         "type": "object"
       },
       "RetryDeliveryAttemptRequestDto": {
-        "properties": {},
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/RetryDeliveryContentDto"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "type": "object"
+      },
+      "RetryDeliveryContentDto": {
+        "properties": {
+          "body": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "subject": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
         "type": "object"
       },
       "RotateSourceCredentialRequestDto": {
-        "properties": {},
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "secret": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "secretPreview": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "secret"
+        ],
         "type": "object"
       },
       "ScanExecutionAttemptResponseDto": {
@@ -3425,7 +3575,32 @@
         "type": "object"
       },
       "SetNotificationPreferenceRequestDto": {
-        "properties": {},
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "channel": {
+            "enum": [
+              "in_app",
+              "email",
+              "webhook"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "recipientKey": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipientKey",
+          "channel",
+          "allowed"
+        ],
         "type": "object"
       },
       "SetScanPolicyRequestDto": {
@@ -5817,7 +5992,55 @@
         "type": "object"
       },
       "UpsertSummaryPolicyRequestDto": {
-        "properties": {},
+        "properties": {
+          "customInstructions": {
+            "maxLength": 1200,
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "executive_brief",
+              "bullet_digest",
+              "risk_brief"
+            ],
+            "type": "string"
+          },
+          "includeRisks": {
+            "type": "boolean"
+          },
+          "includeSourceHighlights": {
+            "type": "boolean"
+          },
+          "language": {
+            "enum": [
+              "auto",
+              "en",
+              "ru"
+            ],
+            "type": "string"
+          },
+          "maxKeyPoints": {
+            "maximum": 10,
+            "minimum": 1,
+            "type": "number"
+          },
+          "tone": {
+            "enum": [
+              "neutral",
+              "concise",
+              "analytical"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "language",
+          "format",
+          "tone",
+          "maxKeyPoints",
+          "includeRisks",
+          "includeSourceHighlights"
+        ],
         "type": "object"
       },
       "UpsertTopicUserSummaryPreferenceRequestDto": {

@@ -11,41 +11,57 @@ const sourceCredentialKinds = ['oauth2', 'api_token', 'bearer_token', 'app_oauth
 const sourceCredentialStatuses = ['active', 'revoked', 'expired'] as const satisfies readonly SourceCredentialStatus[];
 
 export class CreateSourceCredentialRequestDto {
+  @ApiProperty({ minLength: 2 })
   @IsString()
   @MinLength(2)
   providerKey!: string;
 
+  @ApiProperty({ enum: sourceCredentialKinds })
   @IsIn(sourceCredentialKinds)
   kind!: SourceCredentialKind;
 
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+  })
   @IsObject()
   secret!: Readonly<Record<string, unknown>>;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   secretPreview?: string;
 
+  @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
   scopes?: readonly string[];
 
+  @ApiPropertyOptional({ format: 'date-time' })
   @IsOptional()
   @IsString()
   expiresAt?: string;
 }
 
 export class RotateSourceCredentialRequestDto {
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+  })
   @IsObject()
   secret!: Readonly<Record<string, unknown>>;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   secretPreview?: string;
 
+  @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
   scopes?: readonly string[];
 
+  @ApiPropertyOptional({ format: 'date-time' })
   @IsOptional()
   @IsString()
   expiresAt?: string;
