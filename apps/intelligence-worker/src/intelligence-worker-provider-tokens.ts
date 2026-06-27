@@ -185,7 +185,10 @@ export const resolveIntelligenceRabbitMqSummaryQueueReaderOptions = (
 export const resolveIntelligenceRabbitMqReaderSummaryQueueReaderOptions = (
   env: NodeJS.ProcessEnv,
 ): IntelligenceRabbitMqReaderSummaryQueueReaderOptions => ({
-  queue: nonEmptyOrFallback(env.RABBITMQ_READER_SUMMARY_QUEUE, 'jobs.reader_summary.execute'),
+  queue: nonEmptyOrFallback(
+    env.RABBITMQ_READER_SUMMARY_QUEUE ?? env.RABBITMQ_BRIEFING_QUEUE,
+    'jobs.reader-summary.execute',
+  ),
   deadLetterExchange: parseRabbitMqDeadLetterExchange(env.RABBITMQ_DEAD_LETTER_EXCHANGE, {
     runtimeProfile: env.SOCIAL_MONITOR_RUNTIME_PROFILE,
     settingName: 'INTELLIGENCE_SUMMARY_QUEUE_READER=rabbitmq',

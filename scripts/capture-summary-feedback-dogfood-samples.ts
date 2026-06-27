@@ -106,6 +106,7 @@ async function main(): Promise<void> {
       SUMMARY_FEEDBACK_REVIEW_QUEUE: source.export.reviewQueue,
       SUMMARY_FEEDBACK_REDACTION_REVIEW_ID: source.export.redactionReviewId,
       SUMMARY_FEEDBACK_APPROVAL_REFERENCE: source.export.approvalReference,
+      BACKEND_GIT_COMMIT_SHA: readOptionalEnv('BACKEND_GIT_COMMIT_SHA') ?? currentGitCommitSha(),
     },
     stdio: 'inherit',
   });
@@ -264,6 +265,10 @@ function writePrivateJson(path: string, value: unknown): void {
 
 function compactTimestamp(date: Date): string {
   return date.toISOString().replaceAll(/[-:.TZ]/g, '').slice(0, 14);
+}
+
+function currentGitCommitSha(): string {
+  return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 }
 
 void main().catch((error) => {

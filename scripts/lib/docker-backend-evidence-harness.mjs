@@ -23,6 +23,8 @@ const DOCKER_EVIDENCE_STORAGE_DOCKER_VOLUME_MODE = "docker-volume";
 const DOCKER_EVIDENCE_STORAGE_HOST_BIND_MODE = "host-bind";
 const DOCKER_EVIDENCE_HOST_STORAGE_DIR_ENV =
   "DOCKER_BACKEND_EVIDENCE_HOST_STORAGE_DIR";
+const DEFAULT_DOCKER_EVIDENCE_OPENAI_SUMMARY_MODEL = "gpt-4.1-mini";
+const DEFAULT_DOCKER_EVIDENCE_OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS = "8000";
 
 export async function withDockerBackendEvidenceStack(options, callback) {
   const preflightCwd = options.preflightCwd ?? process.cwd();
@@ -340,6 +342,7 @@ export function assertDurableAutomaticLoopExternalEnv() {
   const missing = [
     "REDDIT_APP_CLIENT_ID",
     "REDDIT_APP_CLIENT_SECRET",
+    "OPENAI_API_KEY",
     "INFINITY_CONTEXT_URL",
     "INFINITY_CONTEXT_TOKEN",
   ].filter((name) => nonEmptyEnvValue(name) === undefined);
@@ -846,6 +849,32 @@ function buildComposeOverride(values) {
     ["REDDIT_APP_CLIENT_ID", process.env.REDDIT_APP_CLIENT_ID],
     ["REDDIT_APP_CLIENT_SECRET", process.env.REDDIT_APP_CLIENT_SECRET],
     ["REDDIT_APP_USER_AGENT", process.env.REDDIT_APP_USER_AGENT],
+    ["SUMMARY_MODEL_PROVIDER", "openai-responses"],
+    ["READER_SUMMARY_MODEL_PROVIDER", "openai-responses"],
+    ["OPENAI_API_KEY", process.env.OPENAI_API_KEY],
+    ["OPENAI_RESPONSES_ENDPOINT_URL", process.env.OPENAI_RESPONSES_ENDPOINT_URL],
+    ["OPENAI_SUMMARY_MODEL", dockerEvidenceOpenAiSummaryModel()],
+    [
+      "OPENAI_SUMMARY_PROMPT_VERSION",
+      process.env.OPENAI_SUMMARY_PROMPT_VERSION,
+    ],
+    ["OPENAI_SUMMARY_TIMEOUT_MS", process.env.OPENAI_SUMMARY_TIMEOUT_MS],
+    [
+      "OPENAI_SUMMARY_MAX_OUTPUT_TOKENS",
+      process.env.OPENAI_SUMMARY_MAX_OUTPUT_TOKENS,
+    ],
+    [
+      "OPENAI_READER_SUMMARY_MODEL",
+      dockerEvidenceOpenAiReaderSummaryModel(),
+    ],
+    [
+      "OPENAI_READER_SUMMARY_TIMEOUT_MS",
+      process.env.OPENAI_READER_SUMMARY_TIMEOUT_MS,
+    ],
+    [
+      "OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS",
+      dockerEvidenceOpenAiReaderSummaryMaxOutputTokens(),
+    ],
     ...memoStackEnvironmentEntries(),
   ];
   const fastLoopEnvironment = [
@@ -903,6 +932,30 @@ function memoStackEnvironmentEntries() {
       process.env.SUMMARY_MEMORY_TIMEOUT_MS ?? "30000",
     ],
   ];
+}
+
+function dockerEvidenceOpenAiSummaryModel() {
+  return (
+    nonEmptyEnvValue("DOCKER_BACKEND_EVIDENCE_OPENAI_SUMMARY_MODEL") ??
+    DEFAULT_DOCKER_EVIDENCE_OPENAI_SUMMARY_MODEL
+  );
+}
+
+function dockerEvidenceOpenAiReaderSummaryModel() {
+  return (
+    nonEmptyEnvValue("DOCKER_BACKEND_EVIDENCE_OPENAI_READER_SUMMARY_MODEL") ??
+    dockerEvidenceOpenAiSummaryModel()
+  );
+}
+
+function dockerEvidenceOpenAiReaderSummaryMaxOutputTokens() {
+  return (
+    nonEmptyEnvValue(
+      "DOCKER_BACKEND_EVIDENCE_OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS",
+    ) ??
+    nonEmptyEnvValue("OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS") ??
+    DEFAULT_DOCKER_EVIDENCE_OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS
+  );
 }
 
 function nonEmptyEnvValue(name) {

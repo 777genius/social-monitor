@@ -81,6 +81,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     const jobs = new FakeReaderSummaryJobRepository();
     const artifacts = new FakeReaderSummaryArtifactRepository();
     const events = new CapturingSummaryEventPublisher();
+    const model = new CapturingReaderSummaryModel();
     const requestedAt = new Date("2026-06-26T08:00:00.000Z");
 
     await jobs.save(
@@ -106,7 +107,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
           return makeReaderEvidenceSelection();
         },
       },
-      new CapturingReaderSummaryModel(),
+      model,
       events,
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
@@ -182,6 +183,11 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       },
     });
     expect(snapshot?.topStories).toHaveLength(1);
+    expect(model.observedPolicies()).toContainEqual(
+      expect.objectContaining({
+        maxOutputTokens: 4_000,
+      }),
+    );
     expect(events.all()).toContainEqual(
       expect.objectContaining({
         eventType: "reader_summary.ready",
@@ -293,7 +299,16 @@ class CapturingSummaryEventPublisher implements SummaryEventPublisherPort {
 }
 
 class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
-  route(): ReaderSummaryModelRoute {
+  private readonly policies: Parameters<ReaderSummaryModelPort["route"]>[1][] =
+    [];
+
+  route(
+    input: Parameters<ReaderSummaryModelPort["route"]>[0],
+    policy: Parameters<ReaderSummaryModelPort["route"]>[1],
+  ): ReaderSummaryModelRoute {
+    void input;
+    this.policies.push(policy);
+
     return {
       provider: "deterministic-local",
       model: "capturing-reader-summary-v1",
@@ -392,6 +407,10 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
       retryable: false,
       message: error instanceof Error ? error.message : "unknown test error",
     };
+  }
+
+  observedPolicies(): readonly Parameters<ReaderSummaryModelPort["route"]>[1][] {
+    return this.policies;
   }
 }
 

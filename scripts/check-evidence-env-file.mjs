@@ -141,6 +141,7 @@ function validateCurrentEvidencePackage() {
   const relevanceMemoryEnvPath = join(tempDirectory, 'relevance-memory-runtime-canary.env');
   const securityFinalSweepEnvPath = join(tempDirectory, 'security-final-sweep.env');
   const redditEnvPath = join(tempDirectory, 'live-reddit-oauth.env');
+  const summaryFeedbackEnvPath = join(tempDirectory, 'summary-feedback-samples.env');
   const outputEnvPath = join(tempDirectory, 'current-package.env');
   const outputReportPath = join(tempDirectory, 'current-package-report.json');
   const artifactPath = (name) => {
@@ -216,6 +217,10 @@ function validateCurrentEvidencePackage() {
     ['PUBLIC_ERROR_EXPORT_PATH', securityPublicErrorsExportPath],
     ['BACKEND_GIT_COMMIT_SHA', commitSha],
   ]);
+  writeEvidenceEnvFile(summaryFeedbackEnvPath, [
+    ['SUMMARY_REAL_FEEDBACK_SAMPLES_PATH', artifactPath('summary-real-feedback-samples')],
+    ['BACKEND_GIT_COMMIT_SHA', commitSha],
+  ]);
 
   const output = execFileSync('node', ['scripts/package-current-external-beta-evidence.mjs'], {
     cwd: process.cwd(),
@@ -229,6 +234,7 @@ function validateCurrentEvidencePackage() {
       RELEVANCE_MEMORY_RUNTIME_CANARY_ENV_PATH: relevanceMemoryEnvPath,
       SECURITY_FINAL_SWEEP_ENV_PATH: securityFinalSweepEnvPath,
       REDDIT_LIVE_EVIDENCE_ENV_PATH: redditEnvPath,
+      SUMMARY_FEEDBACK_SAMPLES_ENV_PATH: summaryFeedbackEnvPath,
       EXTERNAL_BETA_CURRENT_ENV_PATH: outputEnvPath,
       EXTERNAL_BETA_CURRENT_REPORT_PATH: outputReportPath,
       EXTERNAL_BETA_CURRENT_PACKAGE_EXPECTED_COMMIT_SHA: commitSha,
@@ -257,6 +263,9 @@ function validateCurrentEvidencePackage() {
   if (!packagedEnv.includes('SECURITY_FINAL_SWEEP_ARTIFACT_PATH=')) {
     violations.push('current evidence package must merge security final sweep evidence env');
   }
+  if (!packagedEnv.includes('SUMMARY_REAL_FEEDBACK_SAMPLES_PATH=')) {
+    violations.push('current evidence package must merge summary feedback sample evidence env');
+  }
   if (packagedEnv.includes('DATABASE_URL=') || packagedEnv.includes('RABBITMQ_URL=') || packagedEnv.includes('INFINITY_CONTEXT_TOKEN=')) {
     violations.push('current evidence package must not write secret DB/RabbitMQ/memo token values');
   }
@@ -270,7 +279,7 @@ function validateCurrentEvidencePackage() {
   if (report.commitPolicy?.expectedCommitSha !== commitSha || report.commitPolicy?.packagedCommitSha !== commitSha) {
     violations.push('current evidence package report must expose the expected and packaged commit SHA');
   }
-  if (!Array.isArray(report.artifactIntegrity?.inputEnvFiles) || report.artifactIntegrity.inputEnvFiles.length !== 6) {
+  if (!Array.isArray(report.artifactIntegrity?.inputEnvFiles) || report.artifactIntegrity.inputEnvFiles.length !== 7) {
     violations.push('current evidence package report must include input env file integrity records');
   }
   if (!Array.isArray(report.artifactIntegrity?.packagedEvidenceArtifacts) || report.artifactIntegrity.packagedEvidenceArtifacts.length === 0) {
@@ -303,6 +312,9 @@ function validateCurrentEvidencePackage() {
   }
   if (!artifactIntegrityEnvNames.has('SECURITY_FINAL_SWEEP_ARTIFACT_PATH')) {
     violations.push('current evidence package report must hash security final sweep evidence artifact');
+  }
+  if (!artifactIntegrityEnvNames.has('SUMMARY_REAL_FEEDBACK_SAMPLES_PATH')) {
+    violations.push('current evidence package report must hash summary feedback sample evidence artifact');
   }
   if (!report.inputPolicy?.secretEnvNamesWithheld?.includes('DATABASE_URL')) {
     violations.push('current evidence package report must list withheld DATABASE_URL');
@@ -378,6 +390,7 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
   const relevanceMemoryDefaultEnvPath = join(artifactDir, 'relevance-memory-runtime-canary.env');
   const securityFinalSweepDefaultEnvPath = join(artifactDir, 'security-final-sweep.env');
   const redditDefaultEnvPath = join(artifactDir, 'live-reddit-oauth.env');
+  const summaryFeedbackDefaultEnvPath = join(artifactDir, 'summary-feedback-samples.env');
   const artifactPath = (name) => {
     const path = join(artifactDir, `${name}.json`);
     writeFileSync(path, '{}\n', { mode: 0o600 });
@@ -423,6 +436,10 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
     ['BACKEND_GIT_COMMIT_SHA', staleCommitSha],
     ['BACKEND_IMAGE_DIGEST', staleImageDigest],
   ]);
+  writeEvidenceEnvFile(summaryFeedbackDefaultEnvPath, [
+    ['SUMMARY_REAL_FEEDBACK_SAMPLES_PATH', artifactPath('summary-feedback-stale')],
+    ['BACKEND_GIT_COMMIT_SHA', staleCommitSha],
+  ]);
 
   execFileSync('node', ['scripts/package-current-external-beta-evidence.mjs'], {
     cwd: process.cwd(),
@@ -452,7 +469,8 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
     || packagedEnv.includes('GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH=')
     || packagedEnv.includes('RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH=')
     || packagedEnv.includes('SECURITY_FINAL_SWEEP_ARTIFACT_PATH=')
-    || packagedEnv.includes('REDDIT_LIVE_EVIDENCE_PATH=')) {
+    || packagedEnv.includes('REDDIT_LIVE_EVIDENCE_PATH=')
+    || packagedEnv.includes('SUMMARY_REAL_FEEDBACK_SAMPLES_PATH=')) {
     violations.push('current evidence package must not merge stale default evidence env files');
   }
   const report = JSON.parse(readFileSync(outputReportPath, 'utf8'));
@@ -462,7 +480,8 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
     || !skippedStalePaths.has(githubTrendingPageDefaultEnvPath)
     || !skippedStalePaths.has(relevanceMemoryDefaultEnvPath)
     || !skippedStalePaths.has(securityFinalSweepDefaultEnvPath)
-    || !skippedStalePaths.has(redditDefaultEnvPath)) {
+    || !skippedStalePaths.has(redditDefaultEnvPath)
+    || !skippedStalePaths.has(summaryFeedbackDefaultEnvPath)) {
     violations.push('current evidence package report must list skipped stale default evidence env files');
   }
   if (!Array.isArray(report.artifactIntegrity?.inputEnvFiles) || report.artifactIntegrity.inputEnvFiles.length !== 1) {

@@ -306,6 +306,14 @@ const requiredJobEnvAlternatives = new Map([
       mode: 'captured_artifact',
     },
   ]],
+  ['live-github-repo-radar', [
+    {
+      label: 'github_repo_radar_captured_live_artifact',
+      env: ['GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH'],
+      coversEnv: ['DATABASE_URL'],
+      mode: 'captured_artifact',
+    },
+  ]],
   ['rabbitmq-staging-reliability-drill', [
     {
       label: 'docker_backend_staging_bundle',
@@ -324,7 +332,16 @@ const requiredJobEnvAlternatives = new Map([
     {
       label: 'docker_backend_staging_bundle',
       env: ['BACKEND_STAGING_EVIDENCE_BUNDLE_PATH'],
-      coversEnv: ['API_BASE_URL'],
+      coversEnv: ['API_BASE_URL', 'INFINITY_CONTEXT_URL', 'INFINITY_CONTEXT_TOKEN'],
+      mode: 'captured_artifact',
+    },
+  ]],
+  ['relevance-memory-runtime-canary', [
+    {
+      label: 'relevance_memory_captured_canary_artifact',
+      env: ['RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH'],
+      coversEnv: ['DATABASE_URL', 'INFINITY_CONTEXT_URL', 'INFINITY_CONTEXT_TOKEN'],
+      mode: 'captured_artifact',
     },
   ]],
   ['release-deploy-smoke', [

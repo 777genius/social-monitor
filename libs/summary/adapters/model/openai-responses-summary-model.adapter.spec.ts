@@ -128,6 +128,103 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
     ).not.toThrow();
   });
 
+  it('repairs unknown model citation ids before validating summary risks', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          ...validProviderDraft(),
+          keyPoints: [
+            {
+              claim: 'Valid evidence still supports the summary.',
+              citationIds: ['c1', 'c11'],
+            },
+          ],
+          risksAndUnknowns: [
+            {
+              description:
+                'The model tried to cite an unknown risk citation.',
+              citationIds: ['c11'],
+              reason: 'source_limit',
+            },
+          ],
+          citationMap: [
+            ...validProviderDraft().citationMap,
+            {
+              citationId: 'c11',
+              feedItemId: 'invented-feed',
+              sourceItemId: 'invented-source',
+              providerKey: 'invented-provider',
+              field: 'title',
+            },
+          ],
+        }),
+      }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(attempt.draft.citationMap.map((citation) => citation.citationId)).toEqual(['c1', 'c2']);
+    expect(attempt.draft.keyPoints[0]?.citationIds).toEqual(['c1']);
+    expect(attempt.draft.risksAndUnknowns[0]?.citationIds).toBeUndefined();
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+    expect(() =>
+      validateSummaryCitationsAgainstEvidence(attempt.draft, input.evidence),
+    ).not.toThrow();
+  });
+
+  it('normalizes nullable OpenAI no-signal reasons into domain-safe reasons', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          ...validProviderDraft(),
+          keyPoints: [],
+          risksAndUnknowns: [],
+          sourceHighlights: [],
+          citationMap: [],
+          qualityFlags: ['no_signal', 'limited_sources'],
+          confidence: {
+            level: 'none',
+            score: 0,
+            rationale: 'No eligible evidence passed the model threshold.',
+          },
+          noSignalReason: null,
+        }),
+      }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(attempt.draft.qualityFlags).toContain('no_signal');
+    expect(attempt.draft.noSignalReason).toBe(
+      'No eligible evidence items selected for this topic.',
+    );
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
   it('does not call OpenAI when selected evidence is empty', async () => {
     const fetchFn = jest.fn();
     const adapter = new OpenAiResponsesSummaryModelAdapter({
@@ -279,7 +376,7 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
     }
   });
 
-  it('rejects invalid provider citations before artifact creation', async () => {
+  it('rejects provider drafts when every key point loses citation support', async () => {
     const adapter = new OpenAiResponsesSummaryModelAdapter({
       apiKey: fakeOpenAiApiKey,
       fetchFn: async () => jsonResponse(200, {
@@ -305,7 +402,7 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
       remainingCostUsd: 1,
     });
 
-    await expect(adapter.summarize(input, route)).rejects.toThrow('Summary key point cites unknown citation');
+    await expect(adapter.summarize(input, route)).rejects.toThrow('No-signal summary must include no_signal quality flag');
   });
 
   it('requires an OpenAI API key when openai-responses mode is selected', () => {

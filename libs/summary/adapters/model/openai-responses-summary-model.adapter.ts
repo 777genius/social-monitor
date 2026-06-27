@@ -51,6 +51,8 @@ const defaultEndpointUrl = 'https://api.openai.com/v1/responses';
 const defaultTimeoutMs = 60_000;
 const defaultMaxOutputTokens = 4_000;
 const defaultInputTokenDivisor = 4;
+const defaultNoSignalReason =
+  'No eligible evidence items selected for this topic.';
 
 const qualityFlags = new Set<SummaryQualityFlag>([
   'no_signal',
@@ -475,24 +477,38 @@ const normalizeOpenAiDraft = (
   usage: SummaryModelEstimate,
   evalDatasetVersion: string,
 ): GeneratedSummaryDraft => {
+  const normalizedQualityFlags = normalizeQualityFlags(raw.qualityFlags);
+  const citationMap = withEvidenceBackedCitations(
+    normalizeCitationMap(raw.citationMap),
+    input.evidence.items,
+  );
+  const knownCitationIds = new Set(
+    citationMap.map((citation) => citation.citationId),
+  );
   const draft = {
     headline: requiredString(raw.headline, 'headline'),
     executiveSummary: requiredString(raw.executiveSummary, 'executiveSummary'),
-    keyPoints: normalizeKeyPoints(raw.keyPoints),
-    risksAndUnknowns: normalizeRisks(raw.risksAndUnknowns),
+    keyPoints: withKnownCitationIds(
+      normalizeKeyPoints(raw.keyPoints),
+      knownCitationIds,
+    ),
+    risksAndUnknowns: withKnownRiskCitationIds(
+      normalizeRisks(raw.risksAndUnknowns),
+      knownCitationIds,
+    ),
     sourceHighlights: normalizeStringArray(
       raw.sourceHighlights,
       'sourceHighlights',
     ),
-    citationMap: withEvidenceBackedCitations(
-      normalizeCitationMap(raw.citationMap),
-      input.evidence.items,
-    ),
-    qualityFlags: normalizeQualityFlags(raw.qualityFlags),
+    citationMap,
+    qualityFlags: normalizedQualityFlags,
     confidence: normalizeConfidence(raw.confidence),
     lineage: buildLineage(input, selectedRoute, evalDatasetVersion),
     usage,
-    noSignalReason: optionalString(raw.noSignalReason),
+    noSignalReason: normalizeNoSignalReason(
+      raw.noSignalReason,
+      normalizedQualityFlags,
+    ),
   };
 
   assertDraftShape(draft);
@@ -587,21 +603,65 @@ const withEvidenceBackedCitations = (
     evidenceItems.map((item, index) => [`c${index + 1}`, item] as const),
   );
 
-  return citations.map((citation) => {
+  return citations.flatMap((citation) => {
     const evidence = evidenceByCitationId.get(citation.citationId);
 
     if (evidence === undefined) {
-      return citation;
+      return [];
     }
 
-    return {
+    return [{
       ...citation,
       feedItemId: evidence.feedItemId,
       sourceItemId: evidence.sourceItemId,
       providerKey: evidence.providerKey,
       canonicalUrl: evidence.canonicalUrl,
+    }];
+  });
+};
+
+const withKnownCitationIds = (
+  keyPoints: readonly SummaryKeyPoint[],
+  knownCitationIds: ReadonlySet<string>,
+): readonly SummaryKeyPoint[] =>
+  keyPoints
+    .map((keyPoint) => ({
+      ...keyPoint,
+      citationIds: knownStringSubset(keyPoint.citationIds, knownCitationIds),
+    }))
+    .filter((keyPoint) => keyPoint.citationIds.length > 0);
+
+const withKnownRiskCitationIds = (
+  risks: readonly SummaryRisk[],
+  knownCitationIds: ReadonlySet<string>,
+): readonly SummaryRisk[] =>
+  risks.map((risk) => {
+    if (risk.citationIds === undefined) {
+      return risk;
+    }
+
+    const citationIds = knownStringSubset(risk.citationIds, knownCitationIds);
+
+    return {
+      ...risk,
+      citationIds: citationIds.length === 0 ? undefined : citationIds,
     };
   });
+
+const knownStringSubset = (
+  values: readonly string[],
+  knownValues: ReadonlySet<string>,
+): readonly string[] => {
+  const result: string[] = [];
+  for (const value of values) {
+    if (!knownValues.has(value) || result.includes(value)) {
+      continue;
+    }
+
+    result.push(value);
+  }
+
+  return result;
 };
 
 const normalizeQualityFlags = (
@@ -616,6 +676,22 @@ const normalizeQualityFlags = (
   }
 
   return values as readonly SummaryQualityFlag[];
+};
+
+const normalizeNoSignalReason = (
+  value: unknown,
+  normalizedQualityFlags: readonly SummaryQualityFlag[],
+): string | undefined => {
+  const reason = optionalString(value);
+
+  if (
+    reason !== undefined ||
+    !normalizedQualityFlags.includes('no_signal')
+  ) {
+    return reason;
+  }
+
+  return defaultNoSignalReason;
 };
 
 const normalizeConfidence = (value: unknown): SummaryConfidence => {
