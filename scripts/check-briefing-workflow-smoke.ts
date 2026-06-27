@@ -21,6 +21,7 @@ import type { ReaderSummaryItem } from "@social-monitor/summary/domain";
 import type {
   ReaderSummaryEvidenceSelectorPort,
   SummaryQuotaPort,
+  UserSummaryPreferenceReaderPort,
 } from "@social-monitor/summary/ports";
 
 import { BriefingJobQueueDrainLoop } from "../apps/intelligence-worker/src/briefing-job-queue-drain-loop";
@@ -93,6 +94,20 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
   }
 }
 
+class WorkflowUserSummaryPreferenceReader implements UserSummaryPreferenceReaderPort {
+  async findEffectivePreference(): ReturnType<UserSummaryPreferenceReaderPort["findEffectivePreference"]> {
+    return {
+      tone: "concise",
+      maxKeyPoints: 1,
+      includeRisks: false,
+      includeSourceHighlights: true,
+      customInstructions:
+        "Prioritize practical agent tooling links and skip low-confidence risks.",
+      rulesVersion: "summary.rules.workflow-user-preference.v1",
+    };
+  }
+}
+
 const assert: (condition: unknown, message: string) => asserts condition = (
   condition,
   message,
@@ -149,6 +164,8 @@ async function main(): Promise<void> {
         events,
         ids,
         clock,
+        undefined,
+        new WorkflowUserSummaryPreferenceReader(),
       ),
       metrics,
       runtime,
@@ -201,6 +218,26 @@ async function main(): Promise<void> {
   assert(
     artifact.content.topReads.length > 0,
     "reader summary content must expose top reads",
+  );
+  assert(
+    artifact.content.topReads.length === 1,
+    "briefing workflow must apply the user max stories preference",
+  );
+  assert(
+    artifact.executiveSummary.includes(
+      "Prioritize practical agent tooling links",
+    ),
+    "briefing workflow must apply user custom summary instructions",
+  );
+  assert(
+    artifact.risksAndUnknowns.length === 0,
+    "briefing workflow must apply the user risk preference",
+  );
+  assert(
+    artifact.lineage.rulesVersion.includes(
+      "summary.rules.workflow-user-preference.v1",
+    ),
+    "briefing workflow lineage must preserve the user preference rules version",
   );
   assert(
     artifact.citationMap.length > 0,
