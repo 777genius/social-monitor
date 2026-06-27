@@ -66,6 +66,7 @@
   ],
   "requiredMissingEnvWithoutCredentials": [
     "API_BASE_URL",
+    "AUDIT_EVENT_EXPORT_PATH",
     "BACKEND_IMAGE_DIGEST",
     "BACKEND_GIT_COMMIT_SHA",
     "DATABASE_URL",

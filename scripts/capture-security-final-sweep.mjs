@@ -17,6 +17,7 @@ const artifactDir =
 const logExportPath = process.env.LOG_EXPORT_PATH ?? join(resolve(artifactDir), 'security-logs-export.json');
 const metricsExportPath = process.env.METRICS_EXPORT_PATH ?? join(resolve(artifactDir), 'security-metrics-export.json');
 const publicErrorExportPath = process.env.PUBLIC_ERROR_EXPORT_PATH ?? join(resolve(artifactDir), 'security-public-errors-export.json');
+const auditEventExportPath = process.env.AUDIT_EVENT_EXPORT_PATH ?? join(resolve(artifactDir), 'security-audit-events-export.json');
 const securityFinalSweepPath =
   process.env.SECURITY_FINAL_SWEEP_ARTIFACT_PATH ??
   join(resolve(artifactDir), 'security-final-sweep.json');
@@ -26,6 +27,7 @@ const envFilePath =
 const logExportTarget = validateEvidenceJsonFilePath(logExportPath, 'LOG_EXPORT_PATH');
 const metricsExportTarget = validateEvidenceJsonFilePath(metricsExportPath, 'METRICS_EXPORT_PATH');
 const publicErrorExportTarget = validateEvidenceJsonFilePath(publicErrorExportPath, 'PUBLIC_ERROR_EXPORT_PATH');
+const auditEventExportTarget = validateEvidenceJsonFilePath(auditEventExportPath, 'AUDIT_EVENT_EXPORT_PATH');
 const securityFinalSweepTarget = validateEvidenceJsonFilePath(
   securityFinalSweepPath,
   'SECURITY_FINAL_SWEEP_ARTIFACT_PATH',
@@ -95,6 +97,26 @@ const exportsBySurface = {
       },
     ],
   }),
+  auditMetadata: writeExport(auditEventExportTarget, {
+    records: [
+      {
+        auditEventId: 'audit-sec-1',
+        tenantId: 'tenant-alpha-1',
+        workspaceId: 'workspace-alpha-1',
+        actorId: 'user-alpha-1',
+        operation: 'create-source-binding',
+        status: 'recorded',
+      },
+      {
+        auditEventId: 'audit-sec-2',
+        tenantId: 'tenant-alpha-1',
+        workspaceId: 'workspace-alpha-1',
+        actorId: 'api-key-alpha-1',
+        operation: 'request-summary',
+        status: 'recorded',
+      },
+    ],
+  }),
 };
 
 const artifact = {
@@ -127,6 +149,7 @@ const artifact = {
     sourceExport('logs', 'LOG_EXPORT_PATH', exportsBySurface.logs),
     sourceExport('metrics', 'METRICS_EXPORT_PATH', exportsBySurface.metrics),
     sourceExport('public-errors', 'PUBLIC_ERROR_EXPORT_PATH', exportsBySurface.publicErrors),
+    sourceExport('audit-metadata', 'AUDIT_EVENT_EXPORT_PATH', exportsBySurface.auditMetadata),
   ],
   surfaces: [
     surface('logs', exportsBySurface.logs.sampleCount, [
@@ -150,7 +173,7 @@ const artifact = {
       'errorCode',
       'operation',
     ]),
-    surface('audit-metadata', 2, [
+    surface('audit-metadata', exportsBySurface.auditMetadata.sampleCount, [
       'auditEventId',
       'tenantId',
       'workspaceId',
@@ -175,6 +198,7 @@ const env = {
   LOG_EXPORT_PATH: logExportTarget,
   METRICS_EXPORT_PATH: metricsExportTarget,
   PUBLIC_ERROR_EXPORT_PATH: publicErrorExportTarget,
+  AUDIT_EVENT_EXPORT_PATH: auditEventExportTarget,
 };
 execFileSync('node', ['scripts/check-security-final-sweep.mjs'], {
   env,
@@ -186,6 +210,7 @@ writeEvidenceEnvFile(envFileTarget, [
   ['LOG_EXPORT_PATH', logExportTarget],
   ['METRICS_EXPORT_PATH', metricsExportTarget],
   ['PUBLIC_ERROR_EXPORT_PATH', publicErrorExportTarget],
+  ['AUDIT_EVENT_EXPORT_PATH', auditEventExportTarget],
 ], {
   usageLines: [
     'Usage:',
@@ -199,6 +224,7 @@ console.log(`SECURITY_FINAL_SWEEP_ARTIFACT_PATH=${securityFinalSweepTarget}`);
 console.log(`LOG_EXPORT_PATH=${logExportTarget}`);
 console.log(`METRICS_EXPORT_PATH=${metricsExportTarget}`);
 console.log(`PUBLIC_ERROR_EXPORT_PATH=${publicErrorExportTarget}`);
+console.log(`AUDIT_EVENT_EXPORT_PATH=${auditEventExportTarget}`);
 console.log(`SECURITY_FINAL_SWEEP_ENV_PATH=${envFileTarget}`);
 
 function writeExport(path, document) {

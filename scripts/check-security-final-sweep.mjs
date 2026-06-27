@@ -56,6 +56,7 @@ const requiredSourceExportEnvBySurface = new Map([
   ['logs', 'LOG_EXPORT_PATH'],
   ['metrics', 'METRICS_EXPORT_PATH'],
   ['public-errors', 'PUBLIC_ERROR_EXPORT_PATH'],
+  ['audit-metadata', 'AUDIT_EVENT_EXPORT_PATH'],
 ]);
 const forbiddenEvidenceFragments = [
   'smk_',
@@ -478,8 +479,15 @@ function validateSourceExportPath(sourceExport, exportLabel, expectedEnv, option
   }
   const exportContent = content.toString('utf8');
   validateNoSensitiveExportLiterals(exportContent, exportLabel);
+  const parsedExport = parseJsonContent(exportContent);
+  const recordCount = exportRecordCount(parsedExport);
+  if (recordCount === null) {
+    violations.push(`${exportLabel}: export file must be a JSON array or object with records array`);
+  } else if (recordCount !== sourceExport.sampleCount) {
+    violations.push(`${exportLabel}: sampleCount must match export records length`);
+  }
   if (options.allowExample !== true) {
-    validateNoRealArtifactFixtureMarkers(parseJsonContent(exportContent) ?? exportContent, `${exportLabel}: export file`);
+    validateNoRealArtifactFixtureMarkers(parsedExport ?? exportContent, `${exportLabel}: export file`);
   }
 }
 
@@ -744,6 +752,21 @@ function parseJsonContent(content) {
   }
 }
 
+function exportRecordCount(parsedExport) {
+  if (Array.isArray(parsedExport)) {
+    return parsedExport.length;
+  }
+  if (
+    parsedExport !== null &&
+    typeof parsedExport === 'object'
+    && Array.isArray(parsedExport.records)
+  ) {
+    return parsedExport.records.length;
+  }
+
+  return null;
+}
+
 function validateDeploySampleEvidence() {
   const deploy = evidence.deploySampleEvidence ?? {};
 
@@ -867,6 +890,7 @@ function validateCaptureHandoff() {
     'LOG_EXPORT_PATH',
     'METRICS_EXPORT_PATH',
     'PUBLIC_ERROR_EXPORT_PATH',
+    'AUDIT_EVENT_EXPORT_PATH',
     'chmodSync',
   ]) {
     if (!captureScriptSource.includes(marker)) {
@@ -896,6 +920,7 @@ function validateCaptureOutputPathGuards() {
     LOG_EXPORT_PATH: '/tmp/social-monitor-security-final-sweep-log-output.json',
     METRICS_EXPORT_PATH: '/tmp/social-monitor-security-final-sweep-metrics-output.json',
     PUBLIC_ERROR_EXPORT_PATH: '/tmp/social-monitor-security-final-sweep-public-errors-output.json',
+    AUDIT_EVENT_EXPORT_PATH: '/tmp/social-monitor-security-final-sweep-audit-output.json',
     SECURITY_FINAL_SWEEP_ENV_PATH: '/tmp/social-monitor-security-final-sweep.env',
     STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
     STAGING_OPERATOR: 'security-owner-1',
@@ -926,6 +951,11 @@ function validateCaptureOutputPathGuards() {
     workspacePath: resolve('security-final-sweep-public-errors-workspace-output.json'),
     expectedMessage: 'PUBLIC_ERROR_EXPORT_PATH must not write release evidence into the git workspace',
   });
+  validateSecurityCaptureOutputPathGuard({
+    envName: 'AUDIT_EVENT_EXPORT_PATH',
+    workspacePath: resolve('security-final-sweep-audit-workspace-output.json'),
+    expectedMessage: 'AUDIT_EVENT_EXPORT_PATH must not write release evidence into the git workspace',
+  });
 }
 
 function validateSecurityCaptureOutputPathGuard({ envName, workspacePath, expectedMessage }) {
@@ -940,6 +970,9 @@ function validateSecurityCaptureOutputPathGuard({ envName, workspacePath, expect
     PUBLIC_ERROR_EXPORT_PATH: envName === 'PUBLIC_ERROR_EXPORT_PATH'
       ? workspacePath
       : '/tmp/social-monitor-security-final-sweep-public-errors-output.json',
+    AUDIT_EVENT_EXPORT_PATH: envName === 'AUDIT_EVENT_EXPORT_PATH'
+      ? workspacePath
+      : '/tmp/social-monitor-security-final-sweep-audit-output.json',
     SECURITY_FINAL_SWEEP_ENV_PATH: '/tmp/social-monitor-security-final-sweep.env',
     STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
     STAGING_OPERATOR: 'security-owner-1',
@@ -1033,6 +1066,7 @@ function validateDirectExportPathGuard({ surfaceId, envName, requiredEnv }) {
       LOG_EXPORT_PATH: workspaceContext.exportPathsByEnv.LOG_EXPORT_PATH,
       METRICS_EXPORT_PATH: workspaceContext.exportPathsByEnv.METRICS_EXPORT_PATH,
       PUBLIC_ERROR_EXPORT_PATH: workspaceContext.exportPathsByEnv.PUBLIC_ERROR_EXPORT_PATH,
+      AUDIT_EVENT_EXPORT_PATH: workspaceContext.exportPathsByEnv.AUDIT_EVENT_EXPORT_PATH,
     });
     if (workspaceResult.exitCode === 0) {
       violations.push(`check:security-final-sweep must reject workspace ${envName}`);
@@ -1055,6 +1089,7 @@ function validateDirectExportPathGuard({ surfaceId, envName, requiredEnv }) {
       LOG_EXPORT_PATH: publicContext.exportPathsByEnv.LOG_EXPORT_PATH,
       METRICS_EXPORT_PATH: publicContext.exportPathsByEnv.METRICS_EXPORT_PATH,
       PUBLIC_ERROR_EXPORT_PATH: publicContext.exportPathsByEnv.PUBLIC_ERROR_EXPORT_PATH,
+      AUDIT_EVENT_EXPORT_PATH: publicContext.exportPathsByEnv.AUDIT_EVENT_EXPORT_PATH,
     });
     if (publicResult.exitCode === 0) {
       violations.push(`check:security-final-sweep must reject public ${envName} permissions`);
@@ -1076,6 +1111,7 @@ function buildDirectSecurityArtifactContext(options = {}) {
     LOG_EXPORT_PATH: join(tempDirectory, 'security-logs-export.json'),
     METRICS_EXPORT_PATH: join(tempDirectory, 'security-metrics-export.json'),
     PUBLIC_ERROR_EXPORT_PATH: join(tempDirectory, 'security-public-errors-export.json'),
+    AUDIT_EVENT_EXPORT_PATH: join(tempDirectory, 'security-audit-events-export.json'),
   };
   if (options.envName !== undefined && options.exportPath !== undefined) {
     exportPathsByEnv[options.envName] = options.exportPath;
@@ -1085,6 +1121,7 @@ function buildDirectSecurityArtifactContext(options = {}) {
     LOG_EXPORT_PATH: { records: [{ requestId: 'req-sec-1', status: 'ok' }] },
     METRICS_EXPORT_PATH: { records: [{ metricName: 'queue_lag_seconds', status: 'ok' }] },
     PUBLIC_ERROR_EXPORT_PATH: { records: [{ errorCode: 'rate_limited', status: 'handled' }] },
+    AUDIT_EVENT_EXPORT_PATH: { records: [{ auditEventId: 'audit-sec-1', status: 'recorded' }] },
   };
   const exportHashesByEnv = {};
   for (const [exportEnvName, exportPath] of Object.entries(exportPathsByEnv)) {
@@ -1116,6 +1153,13 @@ function buildDirectSecurityArtifact({ exportPathsByEnv, exportHashesByEnv }) {
       'PUBLIC_ERROR_EXPORT_PATH',
       exportPathsByEnv.PUBLIC_ERROR_EXPORT_PATH,
       exportHashesByEnv.PUBLIC_ERROR_EXPORT_PATH,
+      sampledAt,
+    ),
+    directSourceExport(
+      'audit-metadata',
+      'AUDIT_EVENT_EXPORT_PATH',
+      exportPathsByEnv.AUDIT_EVENT_EXPORT_PATH,
+      exportHashesByEnv.AUDIT_EVENT_EXPORT_PATH,
       sampledAt,
     ),
   ];

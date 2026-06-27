@@ -30,7 +30,7 @@
       "envVar": "LOG_EXPORT_PATH",
       "path": "ops/security/fixtures/security-final-sweep-logs-export-examples.json",
       "sha256": "6cb5cf6d563f9b44dc1fb8df165bae9d87d242606c27b43d8a06a52ab9c9b2a4",
-      "sampleCount": 12,
+      "sampleCount": 2,
       "redactedOnly": true,
       "sanitized": true,
       "collectedAt": "2026-06-18T00:00:00.000Z"
@@ -40,7 +40,7 @@
       "envVar": "METRICS_EXPORT_PATH",
       "path": "ops/security/fixtures/security-final-sweep-metrics-export-examples.json",
       "sha256": "3859ff36cb7aeaf35c5cf5add97bc2e7cb39bf743cf3ac434d24814213b1eacb",
-      "sampleCount": 9,
+      "sampleCount": 2,
       "redactedOnly": true,
       "sanitized": true,
       "collectedAt": "2026-06-18T00:00:00.000Z"
@@ -50,7 +50,17 @@
       "envVar": "PUBLIC_ERROR_EXPORT_PATH",
       "path": "ops/security/fixtures/security-final-sweep-public-errors-export-examples.json",
       "sha256": "2147748e380bd51d73beb88db538fb0dd80987e5e1be4b653f105370b81cb79c",
-      "sampleCount": 6,
+      "sampleCount": 2,
+      "redactedOnly": true,
+      "sanitized": true,
+      "collectedAt": "2026-06-18T00:00:00.000Z"
+    },
+    {
+      "surfaceId": "audit-metadata",
+      "envVar": "AUDIT_EVENT_EXPORT_PATH",
+      "path": "ops/security/fixtures/security-final-sweep-audit-events-export-examples.json",
+      "sha256": "179ab4e67fdbe62d55808701924eba8aa7836fd36f18153961c54e98658bb35e",
+      "sampleCount": 2,
       "redactedOnly": true,
       "sanitized": true,
       "collectedAt": "2026-06-18T00:00:00.000Z"
@@ -59,7 +69,7 @@
   "surfaces": [
     {
       "surfaceId": "logs",
-      "sampleCount": 12,
+      "sampleCount": 2,
       "scanStatus": "passed",
       "redactedOnly": true,
       "safeDiagnosticFields": [
@@ -74,23 +84,23 @@
         {
           "leakClass": "secret-values",
           "found": false,
-          "sampleCount": 12
+          "sampleCount": 2
         },
         {
           "leakClass": "raw-provider-payloads",
           "found": false,
-          "sampleCount": 12
+          "sampleCount": 2
         },
         {
           "leakClass": "raw-prompt-or-source-text",
           "found": false,
-          "sampleCount": 12
+          "sampleCount": 2
         }
       ]
     },
     {
       "surfaceId": "metrics",
-      "sampleCount": 9,
+      "sampleCount": 2,
       "scanStatus": "passed",
       "redactedOnly": true,
       "safeDiagnosticFields": [
@@ -104,23 +114,23 @@
         {
           "leakClass": "secret-values",
           "found": false,
-          "sampleCount": 9
+          "sampleCount": 2
         },
         {
           "leakClass": "raw-provider-payloads",
           "found": false,
-          "sampleCount": 9
+          "sampleCount": 2
         },
         {
           "leakClass": "raw-prompt-or-source-text",
           "found": false,
-          "sampleCount": 9
+          "sampleCount": 2
         }
       ]
     },
     {
       "surfaceId": "public-errors",
-      "sampleCount": 6,
+      "sampleCount": 2,
       "scanStatus": "passed",
       "redactedOnly": true,
       "safeDiagnosticFields": [
@@ -133,23 +143,23 @@
         {
           "leakClass": "secret-values",
           "found": false,
-          "sampleCount": 6
+          "sampleCount": 2
         },
         {
           "leakClass": "raw-provider-payloads",
           "found": false,
-          "sampleCount": 6
+          "sampleCount": 2
         },
         {
           "leakClass": "raw-prompt-or-source-text",
           "found": false,
-          "sampleCount": 6
+          "sampleCount": 2
         }
       ]
     },
     {
       "surfaceId": "audit-metadata",
-      "sampleCount": 10,
+      "sampleCount": 2,
       "scanStatus": "passed",
       "redactedOnly": true,
       "safeDiagnosticFields": [
@@ -164,17 +174,17 @@
         {
           "leakClass": "secret-values",
           "found": false,
-          "sampleCount": 10
+          "sampleCount": 2
         },
         {
           "leakClass": "raw-provider-payloads",
           "found": false,
-          "sampleCount": 10
+          "sampleCount": 2
         },
         {
           "leakClass": "raw-prompt-or-source-text",
           "found": false,
-          "sampleCount": 10
+          "sampleCount": 2
         }
       ]
     }

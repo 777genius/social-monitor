@@ -762,11 +762,10 @@
         "SECURITY_FINAL_SWEEP_ARTIFACT_PATH",
         "LOG_EXPORT_PATH",
         "METRICS_EXPORT_PATH",
-        "PUBLIC_ERROR_EXPORT_PATH"
-      ],
-      "optionalEnv": [
+        "PUBLIC_ERROR_EXPORT_PATH",
         "AUDIT_EVENT_EXPORT_PATH"
       ],
+      "optionalEnv": [],
       "outputArtifacts": [
         {
           "env": "SECURITY_FINAL_SWEEP_ARTIFACT_PATH",

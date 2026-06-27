@@ -49,6 +49,13 @@
         "pathRequired": true,
         "sha256Required": true,
         "redactedOnly": true
+      },
+      {
+        "surfaceId": "audit-metadata",
+        "envVar": "AUDIT_EVENT_EXPORT_PATH",
+        "pathRequired": true,
+        "sha256Required": true,
+        "redactedOnly": true
       }
     ],
     "provenanceRequirements": {

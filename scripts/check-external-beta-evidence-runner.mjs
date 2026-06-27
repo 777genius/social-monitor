@@ -105,6 +105,7 @@ const requiredJobEnvNames = new Map([
       'LOG_EXPORT_PATH',
       'METRICS_EXPORT_PATH',
       'PUBLIC_ERROR_EXPORT_PATH',
+      'AUDIT_EVENT_EXPORT_PATH',
     ],
   ],
   [
@@ -2125,6 +2126,15 @@ function validateRunnerNegativeSecurityFinalSweepArtifactSmokes() {
       },
     },
     {
+      label: 'security sweep missing audit metadata export',
+      expectedOutput: 'sourceExports must include audit-metadata',
+      mutateArtifact: (artifact) => {
+        artifact.sourceExports = artifact.sourceExports.filter(
+          (sourceExport) => sourceExport.surfaceId !== 'audit-metadata',
+        );
+      },
+    },
+    {
       label: 'security sweep mismatched export digest',
       expectedOutput: 'sha256 must match the export file content',
       mutateArtifact: (artifact) => {
@@ -2273,6 +2283,26 @@ function securityFinalSweepExportDocuments() {
         },
       ],
     },
+    auditMetadata: {
+      records: [
+        {
+          auditEventId: 'audit-sec-1',
+          tenantId: 'tenant-alpha-1',
+          workspaceId: 'workspace-alpha-1',
+          actorId: 'user-alpha-1',
+          operation: 'create-source-binding',
+          status: 'recorded',
+        },
+        {
+          auditEventId: 'audit-sec-2',
+          tenantId: 'tenant-alpha-1',
+          workspaceId: 'workspace-alpha-1',
+          actorId: 'api-key-alpha-1',
+          operation: 'request-summary',
+          status: 'recorded',
+        },
+      ],
+    },
   };
 }
 
@@ -2284,6 +2314,11 @@ function writeSecurityFinalSweepExports(tempDirectory, exportDocuments) {
       tempDirectory,
       'public-errors-export.json',
       exportDocuments.publicErrors,
+    ),
+    auditMetadata: writeSecurityFinalSweepExport(
+      tempDirectory,
+      'audit-events-export.json',
+      exportDocuments.auditMetadata,
     ),
   };
 }
@@ -2323,11 +2358,17 @@ function securityFinalSweepArtifact(exportPaths) {
       exportPaths.publicErrors,
       now,
     ),
+    securityFinalSweepSourceExport(
+      'audit-metadata',
+      'AUDIT_EVENT_EXPORT_PATH',
+      exportPaths.auditMetadata,
+      now,
+    ),
   ];
   updateSecurityFinalSweepSurface(artifact, 'logs', exportPaths.logs.sampleCount);
   updateSecurityFinalSweepSurface(artifact, 'metrics', exportPaths.metrics.sampleCount);
   updateSecurityFinalSweepSurface(artifact, 'public-errors', exportPaths.publicErrors.sampleCount);
-  updateSecurityFinalSweepSurface(artifact, 'audit-metadata', 2);
+  updateSecurityFinalSweepSurface(artifact, 'audit-metadata', exportPaths.auditMetadata.sampleCount);
   artifact.review = {
     reviewer: 'security-owner-1',
     decision: 'passed',
@@ -2503,6 +2544,7 @@ function runRunnerSecurityFinalSweepArtifactSmoke(artifactPath, exportPaths) {
     LOG_EXPORT_PATH: exportPaths.logs.path,
     METRICS_EXPORT_PATH: exportPaths.metrics.path,
     PUBLIC_ERROR_EXPORT_PATH: exportPaths.publicErrors.path,
+    AUDIT_EVENT_EXPORT_PATH: exportPaths.auditMetadata.path,
     SECURITY_FINAL_SWEEP_ARTIFACT_PATH: artifactPath,
   });
 }
@@ -3220,6 +3262,7 @@ function completeExternalEvidencePreflightEnv(tempDirectory) {
     INFINITY_CONTEXT_TOKEN: 'secret-ref:infinity-context-token',
     INFINITY_CONTEXT_URL: 'https://memory.staging.social-monitor.invalid',
     LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: join(tempDirectory, 'live-open-connectors.json'),
+    AUDIT_EVENT_EXPORT_PATH: join(tempDirectory, 'security-audit-event-export.json'),
     LOG_EXPORT_PATH: join(tempDirectory, 'security-log-export.json'),
     METRICS_EXPORT_PATH: join(tempDirectory, 'security-metrics-export.json'),
     POSTGRES_RESTORE_DRILL_ARTIFACT_PATH: join(tempDirectory, 'postgres-restore-drill.json'),

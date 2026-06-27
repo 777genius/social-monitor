@@ -17,6 +17,7 @@ describe('redaction helpers', () => {
 
     expect(isSensitiveString('Bearer token-value')).toBe(true);
     expect(isSensitiveString('Basic token-value')).toBe(true);
+    expect(isSensitiveString('Bearer JWT authorization is required')).toBe(false);
     expect(isSensitiveString('postgres://user:password@example.test/db')).toBe(true);
     expect(isSensitiveString('ordinary value')).toBe(false);
   });
@@ -64,6 +65,15 @@ describe('redaction helpers', () => {
       'See token=memory-leak, secret=another-leak, private_key=key-leak, {"access_token":"json-leak"} and https://user:pass@example.test/feed.',
     )).toBe(
       `See token=${REDACTED_VALUE}, secret=${REDACTED_VALUE}, private_key=${REDACTED_VALUE}, {"access_token":"${REDACTED_VALUE}"} and https://${REDACTED_VALUE}@example.test/feed.`,
+    );
+  });
+
+  it('does not redact public auth scheme wording as bearer credentials', () => {
+    expect(redactSensitiveText('Bearer JWT tenant or workspace does not match request scope')).toBe(
+      'Bearer JWT tenant or workspace does not match request scope',
+    );
+    expect(redactSensitiveText('Reddit refresh-token provider must use Basic client auth')).toBe(
+      'Reddit refresh-token provider must use Basic client auth',
     );
   });
 
