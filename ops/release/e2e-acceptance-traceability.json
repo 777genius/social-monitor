@@ -152,6 +152,10 @@
         {
           "kind": "command",
           "command": "npm run check:summary-evals"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:briefing-workflow"
         }
       ]
     },
