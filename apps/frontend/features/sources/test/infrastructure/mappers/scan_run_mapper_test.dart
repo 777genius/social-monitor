@@ -17,6 +17,14 @@ void main() {
         scanJobId: 'scan-job-1',
         status: 'enqueued',
         created: true,
+        requestDecision: ScanRequestDecisionApiDto(
+          decision: 'provider_failure_backoff',
+          reason: 'provider_failure_backoff_active',
+          createdNewScan: false,
+          providerHealthState: 'degraded',
+          waitSeconds: 120,
+          signals: ['provider_failure_backoff'],
+        ),
       ),
     );
     final status = mapper.statusToDomain(
@@ -30,6 +38,9 @@ void main() {
 
     expect(request.scanJobId.value, 'scan-job-1');
     expect(request.status, ScanJobStatus.enqueued);
+    expect(request.decision.isBackoff, isTrue);
+    expect(request.decision.providerHealthState, 'degraded');
+    expect(request.decision.waitSeconds, 120);
     expect(status.status, ScanJobStatus.failed);
     expect(status.userState, ScanUserState.scanDegraded);
     expect(status.failureClass, ScanFailureClass.providerRateLimited);

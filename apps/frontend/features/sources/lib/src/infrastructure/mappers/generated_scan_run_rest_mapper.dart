@@ -11,6 +11,7 @@ final class GeneratedScanRunRestMapper {
       scanJobId: dto.scanJobId,
       status: dto.status.json ?? 'unknown',
       created: dto.created,
+      requestDecision: _requestDecision(dto.requestDecision),
     );
   }
 
@@ -47,6 +48,20 @@ final class GeneratedScanRunRestMapper {
       skippedDuplicates: dto.skippedDuplicates,
       projected: dto.projected,
       failureReason: dto.failureReason,
+    );
+  }
+
+  ScanRequestDecisionApiDto _requestDecision(
+    generated.RequestScanDecisionResponseDto dto,
+  ) {
+    return ScanRequestDecisionApiDto(
+      decision: dto.decision.json ?? 'unknown',
+      reason: dto.reason,
+      createdNewScan: dto.createdNewScan,
+      providerHealthState: dto.providerHealthState?.json,
+      nextEligibleAt: dto.nextEligibleAt,
+      waitSeconds: dto.waitSeconds,
+      signals: List.unmodifiable(dto.signals),
     );
   }
 }

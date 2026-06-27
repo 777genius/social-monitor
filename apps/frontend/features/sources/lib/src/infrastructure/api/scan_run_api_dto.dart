@@ -17,11 +17,33 @@ final class RequestScanApiResponseDto {
     required this.scanJobId,
     required this.status,
     required this.created,
+    required this.requestDecision,
   });
 
   final String scanJobId;
   final String status;
   final bool created;
+  final ScanRequestDecisionApiDto requestDecision;
+}
+
+final class ScanRequestDecisionApiDto {
+  const ScanRequestDecisionApiDto({
+    required this.decision,
+    required this.reason,
+    required this.createdNewScan,
+    required this.signals,
+    this.providerHealthState,
+    this.nextEligibleAt,
+    this.waitSeconds,
+  });
+
+  final String decision;
+  final String reason;
+  final bool createdNewScan;
+  final String? providerHealthState;
+  final DateTime? nextEligibleAt;
+  final num? waitSeconds;
+  final List<String> signals;
 }
 
 final class ScanStatusApiRequestDto {

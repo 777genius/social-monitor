@@ -18,6 +18,15 @@ final class ScanRunMapper {
       scanJobId: ScanJobId(dto.scanJobId),
       status: scanJobStatusFromApi(dto.status),
       created: dto.created,
+      decision: ScanRequestDecisionSnapshot(
+        decision: _safeText(dto.requestDecision.decision, fallback: 'unknown'),
+        reason: _safeText(dto.requestDecision.reason, fallback: 'Review scan request'),
+        createdNewScan: dto.requestDecision.createdNewScan,
+        providerHealthState: dto.requestDecision.providerHealthState,
+        nextEligibleAt: dto.requestDecision.nextEligibleAt,
+        waitSeconds: dto.requestDecision.waitSeconds?.toInt(),
+        signals: List.unmodifiable(dto.requestDecision.signals),
+      ),
     );
   }
 
@@ -53,5 +62,10 @@ final class ScanRunMapper {
       projected: dto.projected.toInt(),
       failureReason: dto.failureReason,
     );
+  }
+
+  String _safeText(String value, {required String fallback}) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? fallback : trimmed;
   }
 }

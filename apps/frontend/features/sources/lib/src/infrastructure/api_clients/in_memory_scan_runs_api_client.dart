@@ -34,6 +34,12 @@ final class InMemoryScanRunsApiClient implements ScanRunsApiClient {
         scanJobId: scanJobId,
         status: 'enqueued',
         created: true,
+        requestDecision: const ScanRequestDecisionApiDto(
+          decision: 'created',
+          reason: 'manual_scan_requested',
+          createdNewScan: true,
+          signals: ['manual_request'],
+        ),
       ),
     );
   }

@@ -17,6 +17,9 @@ void main() {
           decision:
               generated.RequestScanDecisionResponseDtoDecisionDecision.created,
           reason: 'Scan requested.',
+          providerHealthState: generated
+              .RequestScanDecisionResponseDtoProviderHealthStateProviderHealthState
+              .operational,
           signals: ['manual_request'],
         ),
       ),
@@ -25,6 +28,8 @@ void main() {
     expect(dto.scanJobId, 'scan-job-1');
     expect(dto.status, 'enqueued');
     expect(dto.created, isTrue);
+    expect(dto.requestDecision.decision, 'created');
+    expect(dto.requestDecision.providerHealthState, 'operational');
   });
 
   test('maps generated scan status response and latest attempt', () {
