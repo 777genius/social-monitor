@@ -1,7 +1,6 @@
-import type { SummaryEvidenceSelection } from "../value-objects/summary-evidence-item";
 import { assertReaderSummaryScope } from "../value-objects/reader-summary-scope";
+import { assertReaderSummaryPeriod } from "../value-objects/reader-summary-period";
 import type {
-  GeneratedReaderSummaryDraft,
   ReaderSummaryArtifactProps,
   ReaderSummaryContent,
   ReaderSummaryItem,
@@ -25,6 +24,7 @@ export const assertReaderSummaryArtifactValid = (
   }
 
   assertReaderSummaryScope(props.scope);
+  assertReaderSummaryPeriod(props.period);
 
   if (
     (props.userId ?? "").trim().length === 0 &&
@@ -38,6 +38,13 @@ export const assertReaderSummaryArtifactValid = (
     props.sourceWindow.startedAt.getTime()
   ) {
     throw new Error("Reader summary source window end must be after start");
+  }
+
+  if (
+    props.sourceWindow.startedAt.getTime() < props.period.startedAt.getTime() ||
+    props.sourceWindow.endedAt.getTime() > props.period.endedAt.getTime()
+  ) {
+    throw new Error("Reader summary source window must stay inside period");
   }
 
   if (
@@ -146,6 +153,7 @@ export const assertReaderSummaryArtifactValid = (
       );
     }
     assertReaderSummaryScope(contextArtifact.scope);
+    assertReaderSummaryPeriod(contextArtifact.period);
   }
 
   if (
@@ -187,39 +195,6 @@ export const assertReaderSummaryArtifactValid = (
 
   if (props.confidence.rationale.trim().length === 0) {
     throw new Error("Reader summary confidence rationale must be non-empty");
-  }
-};
-
-export const assertReaderSummaryCitationsAgainstEvidence = (
-  draft: Pick<
-    GeneratedReaderSummaryDraft,
-    | "citationMap"
-    | "topStories"
-    | "topicHighlights"
-    | "repeatedSignals"
-    | "risksAndUnknowns"
-  >,
-  evidence: SummaryEvidenceSelection,
-): void => {
-  const selectedFeedItemIds = new Set(
-    evidence.sourceWindow.selectedFeedItemIds,
-  );
-  for (const selectedFeedItemId of selectedFeedItemIds) {
-    if (
-      !draft.citationMap.some(
-        (citation) => citation.feedItemId === selectedFeedItemId,
-      )
-    ) {
-      continue;
-    }
-  }
-
-  for (const citation of draft.citationMap) {
-    if (!selectedFeedItemIds.has(citation.feedItemId)) {
-      throw new Error(
-        `Reader summary citation ${citation.citationId} references evidence outside selection`,
-      );
-    }
   }
 };
 
@@ -376,7 +351,9 @@ const assertReaderItemProviderMatchesEvidence = (
   const citationProviderKeys = new Set(
     item.citationIds
       .map((citationId) => citationById.get(citationId)?.providerKey)
-      .filter((providerKey): providerKey is string => providerKey !== undefined),
+      .filter(
+        (providerKey): providerKey is string => providerKey !== undefined,
+      ),
   );
 
   if (!citationProviderKeys.has(item.providerKey)) {

@@ -24,7 +24,7 @@ import {
   type WorkspaceId,
 } from "@social-monitor/shared-kernel";
 
-import type { ReaderSummaryScope } from "../../domain";
+import type { ReaderSummaryCadence, ReaderSummaryScope } from "../../domain";
 import { GetReaderSummaryUseCase } from "../../features/get-reader-summary/get-reader-summary.use-case";
 import { ListReaderSummariesUseCase } from "../../features/list-reader-summaries/list-reader-summaries.use-case";
 import {
@@ -62,6 +62,14 @@ export class ReaderSummaryController {
     enum: ["workspace", "topic"],
   })
   @ApiQuery({ name: "topicId", required: false, type: String })
+  @ApiQuery({
+    name: "cadence",
+    required: false,
+    enum: ["daily", "weekly", "monthly", "custom"],
+  })
+  @ApiQuery({ name: "periodStartedAt", required: false, type: String })
+  @ApiQuery({ name: "periodEndedAt", required: false, type: String })
+  @ApiQuery({ name: "timezone", required: false, type: String })
   @ApiQuery({ name: "providerKey", required: false, type: String })
   @ApiQuery({ name: "userId", required: false, type: String })
   @ApiQuery({ name: "subscriptionId", required: false, type: String })
@@ -85,6 +93,10 @@ export class ReaderSummaryController {
     @Headers("authorization") authorizationHeader: string | undefined,
     @Query("scopeType") scopeType: string | undefined,
     @Query("topicId") topicId: string | undefined,
+    @Query("cadence") cadence: string | undefined,
+    @Query("periodStartedAt") periodStartedAt: string | undefined,
+    @Query("periodEndedAt") periodEndedAt: string | undefined,
+    @Query("timezone") timezone: string | undefined,
     @Query("providerKey") providerKey: string | undefined,
     @Query("userId") userId: string | undefined,
     @Query("subscriptionId") subscriptionId: string | undefined,
@@ -108,6 +120,16 @@ export class ReaderSummaryController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       scope: normalizeReaderSummaryScopeQuery(scopeType, topicId),
+      cadence: normalizeReaderSummaryCadenceFilter(cadence),
+      periodStartedAt: normalizeReaderSummaryDateFilter(
+        periodStartedAt,
+        "periodStartedAt",
+      ),
+      periodEndedAt: normalizeReaderSummaryDateFilter(
+        periodEndedAt,
+        "periodEndedAt",
+      ),
+      timezone: normalizeOptionalReaderSummaryFilter(timezone),
       providerKey: normalizeOptionalReaderSummaryFilter(providerKey),
       userId: normalizeOptionalReaderSummaryFilter(userId),
       subscriptionId: normalizeOptionalReaderSummaryFilter(subscriptionId),
@@ -221,6 +243,51 @@ const normalizeReaderSummaryScopeQuery = (
     "validation.failed",
     "ReaderSummary scopeType must be workspace or topic",
   );
+};
+
+const normalizeReaderSummaryCadenceFilter = (
+  value: string | undefined,
+): ReaderSummaryCadence | undefined => {
+  const normalized = normalizeOptionalReaderSummaryFilter(value);
+
+  if (normalized === undefined) {
+    return undefined;
+  }
+
+  if (
+    normalized === "daily" ||
+    normalized === "weekly" ||
+    normalized === "monthly" ||
+    normalized === "custom"
+  ) {
+    return normalized;
+  }
+
+  throw new DomainError(
+    "validation.failed",
+    "ReaderSummary cadence must be daily, weekly, monthly or custom",
+  );
+};
+
+const normalizeReaderSummaryDateFilter = (
+  value: string | undefined,
+  name: string,
+): Date | undefined => {
+  const normalized = normalizeOptionalReaderSummaryFilter(value);
+
+  if (normalized === undefined) {
+    return undefined;
+  }
+
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new DomainError(
+      "validation.failed",
+      `ReaderSummary ${name} must be a valid ISO date`,
+    );
+  }
+
+  return parsed;
 };
 
 const normalizeOptionalReaderSummaryFilter = (

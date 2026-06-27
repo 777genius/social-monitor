@@ -732,13 +732,17 @@ export const mobileApiOperations = [
     "summary": "List tenant/workspace summaries with cursor pagination.",
     "pathParameters": [],
     "queryParameters": [
+      "cadence",
       "cursor",
       "freshnessStatus",
       "limit",
       "memoryGuidanceApplied",
+      "periodEndedAt",
+      "periodStartedAt",
       "providerKey",
       "scopeType",
       "subscriptionId",
+      "timezone",
       "topicId",
       "userId"
     ],

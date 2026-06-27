@@ -51,6 +51,7 @@ describe("RequestReaderSummaryUseCase", () => {
       ok: true,
       value: {
         readerSummaryJobId: "reader-summary-job-1",
+        period: expectedDailyPeriodResult,
         status: "requested",
         created: true,
       },
@@ -59,6 +60,7 @@ describe("RequestReaderSummaryUseCase", () => {
       ok: true,
       value: {
         readerSummaryJobId: "reader-summary-job-1",
+        period: expectedDailyPeriodResult,
         status: "requested",
         created: false,
       },
@@ -72,6 +74,17 @@ describe("RequestReaderSummaryUseCase", () => {
         causationId: "reader-summary-1",
       },
     ]);
+    await expect(
+      useCase.execute({
+        ...command,
+        idempotencyKey: "reader-summary-weekly",
+        cadence: "weekly",
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        ok: true,
+      }),
+    );
   });
 
   it("rejects idempotency key reuse for another scope", async () => {
@@ -94,6 +107,7 @@ describe("RequestReaderSummaryUseCase", () => {
       ok: true,
       value: {
         readerSummaryJobId: "reader-summary-job-1",
+        period: expectedDailyPeriodResult,
         status: "requested",
         created: true,
       },
@@ -140,6 +154,39 @@ describe("RequestReaderSummaryUseCase", () => {
     ]);
   });
 
+  it("rejects idempotency key reuse for another period", async () => {
+    const useCase = new RequestReaderSummaryUseCase(
+      new FakeReaderSummaryJobRepository(),
+      new FakeReaderSummaryJobQueue(),
+      new AllowingSummaryQuota(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date("2026-06-23T08:00:00.000Z")),
+    );
+    const command = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      scope: { type: "workspace" as const },
+      idempotencyKey: "reader-summary-period-key",
+      correlationId: "correlation-1",
+    };
+
+    await expect(useCase.execute(command)).resolves.toEqual(
+      expect.objectContaining({ ok: true }),
+    );
+
+    const result = await useCase.execute({
+      ...command,
+      cadence: "weekly",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: "operation.conflict",
+      }),
+    });
+  });
+
   it("does not enqueue a reader summary job when quota is rejected", async () => {
     const queue = new FakeReaderSummaryJobQueue();
     const useCase = new RequestReaderSummaryUseCase(
@@ -167,6 +214,15 @@ describe("RequestReaderSummaryUseCase", () => {
     expect(queue.all()).toEqual([]);
   });
 });
+
+const expectedDailyPeriodResult = {
+  cadence: "daily",
+  startedAt: "2026-06-23T00:00:00.000Z",
+  endedAt: "2026-06-24T00:00:00.000Z",
+  timezone: "UTC",
+  periodKey:
+    "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
+};
 
 class FakeReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
   private readonly jobsById = new Map<string, ReaderSummaryJob>();

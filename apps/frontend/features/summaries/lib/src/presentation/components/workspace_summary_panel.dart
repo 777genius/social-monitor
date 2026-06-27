@@ -6,6 +6,7 @@ import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/reader_summary_job_snapshot.dart';
 import '../../domain/value_objects/reader_action_target.dart';
 import 'reader_summary_view.dart';
+import 'workspace_summary_period_toolbar.dart';
 
 class WorkspaceSummaryPanel extends StatelessWidget {
   const WorkspaceSummaryPanel({
@@ -15,6 +16,14 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     required this.readerActionState,
     required this.activeReaderActionIdempotencyKey,
     required this.lastReaderActionIdempotencyKey,
+    required this.selectedPeriod,
+    required this.selectedPeriodPreset,
+    required this.canNavigateToNextPeriod,
+    required this.isCurrentPeriod,
+    required this.onPeriodChanged,
+    required this.onPreviousPeriod,
+    required this.onCurrentPeriod,
+    required this.onNextPeriod,
     required this.onRetry,
     required this.onGenerate,
     required this.intentForAction,
@@ -26,6 +35,14 @@ class WorkspaceSummaryPanel extends StatelessWidget {
   final AsyncViewState<ReaderActionResult> readerActionState;
   final String? activeReaderActionIdempotencyKey;
   final String? lastReaderActionIdempotencyKey;
+  final SummaryPeriod selectedPeriod;
+  final SummaryPeriodPreset selectedPeriodPreset;
+  final bool canNavigateToNextPeriod;
+  final bool isCurrentPeriod;
+  final ValueChanged<SummaryPeriodPreset> onPeriodChanged;
+  final VoidCallback onPreviousPeriod;
+  final VoidCallback onCurrentPeriod;
+  final VoidCallback onNextPeriod;
   final VoidCallback onRetry;
   final VoidCallback onGenerate;
   final UserActionIntent Function(ReaderSummary summary, ReaderAction action)
@@ -42,59 +59,67 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     if (jobState is LoadingViewState<ReaderSummaryJobSnapshot>) {
       final current = _currentSummary(state);
       if (current != null) {
-        return _ReadySummary(
-          summary: current,
-          isRefreshing: true,
-          readerActionState: readerActionState,
-          activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
-          lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
-          onGenerate: onGenerate,
-          intentForAction: intentForAction,
-          onAction: onAction,
+        return _withPeriodShell(
+          _ReadySummary(
+            summary: current,
+            isRefreshing: true,
+            readerActionState: readerActionState,
+            activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
+            lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
+            onGenerate: onGenerate,
+            intentForAction: intentForAction,
+            onAction: onAction,
+          ),
         );
       }
-      return const _GeneratingSummary();
+      return _withPeriodShell(const _GeneratingSummary());
     }
     final failedJob = _failedJob(jobState);
     if (failedJob != null) {
-      return AppInlineProblem(
-        title: 'Summary generation failed',
-        message: failedJob.failureReason ?? 'The summary job failed.',
-        tone: AppProblemTone.warning,
-        actionLabel: 'Generate',
-        onAction: onGenerate,
+      return _withPeriodShell(
+        AppInlineProblem(
+          title: 'Summary generation failed',
+          message: failedJob.failureReason ?? 'The summary job failed.',
+          tone: AppProblemTone.warning,
+          actionLabel: 'Generate',
+          onAction: onGenerate,
+        ),
       );
     }
     final activeJob = _activeJob(jobState);
     if (activeJob != null) {
       final current = _currentSummary(state);
       if (current != null) {
-        return _ReadySummary(
-          summary: current,
-          isRefreshing: true,
-          readerActionState: readerActionState,
-          activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
-          lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
-          onGenerate: onGenerate,
-          intentForAction: intentForAction,
-          onAction: onAction,
+        return _withPeriodShell(
+          _ReadySummary(
+            summary: current,
+            isRefreshing: true,
+            readerActionState: readerActionState,
+            activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
+            lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
+            onGenerate: onGenerate,
+            intentForAction: intentForAction,
+            onAction: onAction,
+          ),
         );
       }
-      return _GeneratingSummary(job: activeJob);
+      return _withPeriodShell(_GeneratingSummary(job: activeJob));
     }
     if (jobState case FailureViewState<ReaderSummaryJobSnapshot>(
       :final failure,
     )) {
-      return AppInlineProblem(
-        title: 'Summary request failed',
-        message: failure.message,
-        tone: AppProblemTone.warning,
-        actionLabel: 'Generate',
-        onAction: onGenerate,
+      return _withPeriodShell(
+        AppInlineProblem(
+          title: 'Summary request failed',
+          message: failure.message,
+          tone: AppProblemTone.warning,
+          actionLabel: 'Generate',
+          onAction: onGenerate,
+        ),
       );
     }
 
-    return switch (state) {
+    final body = switch (state) {
       ReadyViewState<WorkspaceSummarySnapshot>(:final value) =>
         value.current == null
             ? _EmptySummary(onGenerate: onGenerate)
@@ -135,6 +160,21 @@ class WorkspaceSummaryPanel extends StatelessWidget {
       ),
       _ => const SizedBox.shrink(),
     };
+    return _withPeriodShell(body);
+  }
+
+  Widget _withPeriodShell(Widget child) {
+    return _WorkspaceSummaryPeriodShell(
+      selectedPeriod: selectedPeriod,
+      selectedPreset: selectedPeriodPreset,
+      canNavigateToNextPeriod: canNavigateToNextPeriod,
+      isCurrentPeriod: isCurrentPeriod,
+      onPeriodChanged: onPeriodChanged,
+      onPreviousPeriod: onPreviousPeriod,
+      onCurrentPeriod: onCurrentPeriod,
+      onNextPeriod: onNextPeriod,
+      child: child,
+    );
   }
 
   ReaderSummaryJobSnapshot? _activeJob(
@@ -170,6 +210,51 @@ class WorkspaceSummaryPanel extends StatelessWidget {
         previousValue?.current,
       _ => null,
     };
+  }
+}
+
+class _WorkspaceSummaryPeriodShell extends StatelessWidget {
+  const _WorkspaceSummaryPeriodShell({
+    required this.selectedPeriod,
+    required this.selectedPreset,
+    required this.canNavigateToNextPeriod,
+    required this.isCurrentPeriod,
+    required this.onPeriodChanged,
+    required this.onPreviousPeriod,
+    required this.onCurrentPeriod,
+    required this.onNextPeriod,
+    required this.child,
+  });
+
+  final SummaryPeriod selectedPeriod;
+  final SummaryPeriodPreset selectedPreset;
+  final bool canNavigateToNextPeriod;
+  final bool isCurrentPeriod;
+  final ValueChanged<SummaryPeriodPreset> onPeriodChanged;
+  final VoidCallback onPreviousPeriod;
+  final VoidCallback onCurrentPeriod;
+  final VoidCallback onNextPeriod;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        WorkspaceSummaryPeriodToolbar(
+          selectedPeriod: selectedPeriod,
+          selectedPreset: selectedPreset,
+          canNavigateToNextPeriod: canNavigateToNextPeriod,
+          isCurrentPeriod: isCurrentPeriod,
+          onPeriodChanged: onPeriodChanged,
+          onPreviousPeriod: onPreviousPeriod,
+          onCurrentPeriod: onCurrentPeriod,
+          onNextPeriod: onNextPeriod,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        child,
+      ],
+    );
   }
 }
 

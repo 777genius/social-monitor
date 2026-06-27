@@ -24,9 +24,11 @@ import {
   INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
   INTELLIGENCE_READER_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
   INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LOOP_OPTIONS,
+  INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER_OPTIONS,
   INTELLIGENCE_SUMMARY_QUEUE_READER_MODE,
   type IntelligenceSummaryQueueReaderMode,
   resolveIntelligenceAutoSummarySchedulerOptions,
+  resolveIntelligencePeriodicReaderSummarySchedulerOptions,
   resolveIntelligenceReaderSummaryJobLoopOptions,
   resolveIntelligenceReaderSummaryQueueDrainLoopOptions,
   resolveIntelligenceRabbitMqReaderSummaryQueueReaderOptions,
@@ -49,6 +51,7 @@ import { ReaderSummaryJobPollingLoop } from "./reader-summary-job-polling-loop";
 import { SummaryJobQueueDrainLoop } from "./summary-job-queue-drain-loop";
 import { SummaryJobPollingLoop } from "./summary-job-polling-loop";
 import { AutoSummarySchedulerLoop } from "./auto-summary-scheduler-loop";
+import { PeriodicReaderSummarySchedulerLoop } from "./periodic-reader-summary-scheduler-loop";
 import { RelevanceMemoryProjectionLoop } from "./relevance-memory-projection-loop";
 
 const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
@@ -74,6 +77,11 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
       provide: INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS,
       useFactory: () =>
         resolveIntelligenceAutoSummarySchedulerOptions(process.env),
+    },
+    {
+      provide: INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER_OPTIONS,
+      useFactory: () =>
+        resolveIntelligencePeriodicReaderSummarySchedulerOptions(process.env),
     },
     {
       provide: INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LOOP_OPTIONS,
@@ -199,6 +207,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
     SummaryJobPollingLoop,
     ReaderSummaryJobPollingLoop,
     AutoSummarySchedulerLoop,
+    PeriodicReaderSummarySchedulerLoop,
     RelevanceMemoryProjectionLoop,
     {
       provide: SummaryJobQueueDrainLoop,
@@ -257,6 +266,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
     SummaryJobQueueDrainLoop,
     ReaderSummaryJobQueueDrainLoop,
     AutoSummarySchedulerLoop,
+    PeriodicReaderSummarySchedulerLoop,
     RelevanceMemoryProjectionLoop,
   ],
 })

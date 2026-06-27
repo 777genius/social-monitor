@@ -10,6 +10,7 @@ import '../../application/queries/load_workspace_summary_job_status_query.dart';
 import '../../application/queries/load_workspace_summary_query.dart';
 import '../../domain/value_objects/reader_action_target.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
+import '../../domain/value_objects/summary_period.dart';
 import '../api/summary_api_dto.dart';
 
 abstract interface class SummariesApiClient {
@@ -85,15 +86,22 @@ final class LoadSummaryDetailApiRequest {
 }
 
 final class LoadWorkspaceSummaryApiRequest {
-  const LoadWorkspaceSummaryApiRequest({required this.scope});
+  const LoadWorkspaceSummaryApiRequest({
+    required this.scope,
+    required this.period,
+  });
 
   factory LoadWorkspaceSummaryApiRequest.fromQuery(
     LoadWorkspaceSummaryQuery query,
   ) {
-    return LoadWorkspaceSummaryApiRequest(scope: query.scope);
+    return LoadWorkspaceSummaryApiRequest(
+      scope: query.scope,
+      period: query.period,
+    );
   }
 
   final WorkspaceScope scope;
+  final SummaryPeriod period;
 }
 
 final class RequestWorkspaceSummaryApiRequest {
@@ -101,6 +109,7 @@ final class RequestWorkspaceSummaryApiRequest {
     required this.scope,
     required this.userId,
     required this.idempotencyKey,
+    required this.period,
   });
 
   factory RequestWorkspaceSummaryApiRequest.fromCommand(
@@ -110,12 +119,14 @@ final class RequestWorkspaceSummaryApiRequest {
       scope: command.scope,
       userId: command.userId,
       idempotencyKey: command.idempotencyKey,
+      period: command.period,
     );
   }
 
   final WorkspaceScope scope;
   final String userId;
   final String idempotencyKey;
+  final SummaryPeriod period;
 }
 
 final class LoadWorkspaceSummaryJobStatusApiRequest {

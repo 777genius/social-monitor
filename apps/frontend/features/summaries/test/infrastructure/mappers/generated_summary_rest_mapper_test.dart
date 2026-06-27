@@ -29,48 +29,55 @@ void main() {
     expect(page.items.single.freshnessLabel, 'Fresh');
   });
 
-  test('maps generated ReaderSummary reader payload into reader summary DTO', () {
-    const mapper = GeneratedSummaryRestMapper();
+  test(
+    'maps generated ReaderSummary reader payload into reader summary DTO',
+    () {
+      const mapper = GeneratedSummaryRestMapper();
 
-    final readerSummary = mapper.readerSummary(_readerSummaryArtifact());
+      final readerSummary = mapper.readerSummary(_readerSummaryArtifact());
 
-    expect(readerSummary.content.headline, 'GitHub daily radar');
-    expect(
-      readerSummary.content.oneLineTakeaway,
-      contains('calesthio/OpenMontage'),
-    );
-    expect(readerSummary.content.qualityState.status, 'limited_sources');
-    expect(
-      readerSummary.content.topReads.single.canonicalUrl,
-      contains('github.com/calesthio/OpenMontage'),
-    );
-    expect(
-      readerSummary.content.topReads.single.providerName,
-      'GitHub Trending',
-    );
-    expect(
-      readerSummary.content.topReads.single.primaryActionKind,
-      'watch_repository',
-    );
-    expect(readerSummary.content.topReads.single.matchedTopicIds, ['ai-tools']);
-    expect(
-      readerSummary.content.topReads.single.providerMetrics.single.value,
-      '#1, +3,703 stars today',
-    );
-    expect(
-      readerSummary.content.sourceMix.single.providerKey,
-      'github-trending-page',
-    );
-    expect(readerSummary.content.sourceMix.single.storyClusterCount, 1);
-    expect(readerSummary.content.nextActions.single.kind, 'watch_repository');
-  });
+      expect(readerSummary.content.headline, 'GitHub daily radar');
+      expect(
+        readerSummary.content.oneLineTakeaway,
+        contains('calesthio/OpenMontage'),
+      );
+      expect(readerSummary.content.qualityState.status, 'limited_sources');
+      expect(
+        readerSummary.content.topReads.single.canonicalUrl,
+        contains('github.com/calesthio/OpenMontage'),
+      );
+      expect(
+        readerSummary.content.topReads.single.providerName,
+        'GitHub Trending',
+      );
+      expect(
+        readerSummary.content.topReads.single.primaryActionKind,
+        'watch_repository',
+      );
+      expect(readerSummary.content.topReads.single.matchedTopicIds, [
+        'ai-tools',
+      ]);
+      expect(
+        readerSummary.content.topReads.single.providerMetrics.single.value,
+        '#1, +3,703 stars today',
+      );
+      expect(
+        readerSummary.content.sourceMix.single.providerKey,
+        'github-trending-page',
+      );
+      expect(readerSummary.content.sourceMix.single.storyClusterCount, 1);
+      expect(readerSummary.content.nextActions.single.kind, 'watch_repository');
+      expect(readerSummary.period.cadence, 'daily');
+    },
+  );
 
   test('maps generated ReaderSummary job request and status DTOs', () {
     const mapper = GeneratedSummaryRestMapper();
     final requested = mapper.requestedReaderSummaryJob(
-      const generated.RequestReaderSummaryResponseDto(
+      generated.RequestReaderSummaryResponseDto(
         readerSummaryJobId: 'readerSummary-job-1',
         created: true,
+        period: _readerSummaryPeriod(),
         status: generated.RequestReaderSummaryResponseDtoStatusStatus.requested,
       ),
     );
@@ -86,10 +93,12 @@ void main() {
         readerSummaryJobId: 'readerSummary-job-1',
         completedAt: completedAt,
         requestedAt: completedAt.subtract(const Duration(minutes: 1)),
+        period: _readerSummaryPeriod(),
         scope: const generated.ReaderSummaryScopeDto(
           type: generated.ReaderSummaryScopeDtoTypeType.workspace,
         ),
-        status: generated.ReaderSummaryJobStatusResponseDtoStatusStatus.completed,
+        status:
+            generated.ReaderSummaryJobStatusResponseDtoStatusStatus.completed,
         timeline: const [],
       ),
     );
@@ -97,7 +106,18 @@ void main() {
     expect(status.status, 'completed');
     expect(status.summaryId, 'readerSummary-1');
     expect(status.completedAt, completedAt);
+    expect(status.period?.cadence, 'daily');
   });
+}
+
+generated.ReaderSummaryPeriodDto _readerSummaryPeriod() {
+  return generated.ReaderSummaryPeriodDto(
+    cadence: generated.ReaderSummaryPeriodDtoCadenceCadence.daily,
+    startedAt: DateTime.utc(2026, 6, 22),
+    endedAt: DateTime.utc(2026, 6, 23),
+    timezone: 'UTC',
+    periodKey: 'daily:2026-06-22T00:00:00.000Z:2026-06-23T00:00:00.000Z:UTC',
+  );
 }
 
 generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
@@ -128,6 +148,7 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
       status: generated.ReaderSummaryFreshnessDtoStatusStatus.fresh,
     ),
     headline: 'AI signal readerSummary',
+    period: _readerSummaryPeriod(),
     lineage: const generated.ReaderSummaryLineageDto(
       evalDatasetVersion: 'reader_summary.eval.mvp.v1',
       modelVersion: 'deterministic-local',
@@ -143,8 +164,9 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
           'calesthio/OpenMontage is the clearest repository signal.',
       bullets: ['calesthio/OpenMontage is worth reading first.'],
       qualityState: generated.ReaderSummaryReaderQualityStateDto(
-        status:
-            generated.ReaderSummaryReaderQualityStateDtoStatusStatus.limitedSources,
+        status: generated
+            .ReaderSummaryReaderQualityStateDtoStatusStatus
+            .limitedSources,
         flags: [
           generated.ReaderSummaryReaderQualityStateDtoFlagsFlags.limitedSources,
         ],
@@ -168,8 +190,9 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
               matchedRules: ['topic:ai-tools', 'provider:github-trending-page'],
               signalScore: 1,
               confidence: generated.ReaderSummaryReaderItemConfidenceDto(
-                level:
-                    generated.ReaderSummaryReaderItemConfidenceDtoLevelLevel.medium,
+                level: generated
+                    .ReaderSummaryReaderItemConfidenceDtoLevelLevel
+                    .medium,
                 score: 0.57,
                 rationale: 'Daily GitHub Trending signal with raw metrics.',
               ),
@@ -214,7 +237,8 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
           matchedRules: ['topic:ai-tools', 'provider:github-trending-page'],
           signalScore: 1,
           confidence: generated.ReaderSummaryReaderItemConfidenceDto(
-            level: generated.ReaderSummaryReaderItemConfidenceDtoLevelLevel.medium,
+            level:
+                generated.ReaderSummaryReaderItemConfidenceDtoLevelLevel.medium,
             score: 0.57,
             rationale: 'Daily GitHub Trending signal with raw metrics.',
           ),

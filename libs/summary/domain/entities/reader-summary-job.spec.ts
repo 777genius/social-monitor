@@ -1,6 +1,16 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
+import type { ReaderSummaryPeriod } from "../value-objects/reader-summary-period";
 import { ReaderSummaryJob } from "./reader-summary-job";
+
+const period: ReaderSummaryPeriod = {
+  cadence: "daily",
+  startedAt: new Date("2026-06-22T00:00:00.000Z"),
+  endedAt: new Date("2026-06-23T00:00:00.000Z"),
+  timezone: "UTC",
+  periodKey:
+    "daily:2026-06-22T00:00:00.000Z:2026-06-23T00:00:00.000Z:UTC",
+};
 
 describe("ReaderSummaryJob", () => {
   it("moves through the request lifecycle with reader summary language", () => {
@@ -13,6 +23,7 @@ describe("ReaderSummaryJob", () => {
       tenantId: tenantId("tenant-reader-summary-job"),
       workspaceId: workspaceId("workspace-reader-summary-job"),
       scope: { type: "workspace" },
+      period,
       idempotencyKey: "reader-summary-job-idempotency-key",
       requestedAt,
     })
@@ -26,6 +37,7 @@ describe("ReaderSummaryJob", () => {
       expect.objectContaining({
         id: "reader-summary-job-1",
         status: "completed",
+        period,
         readerSummaryId: "reader-summary-1",
         requestedAt,
         startedAt,
@@ -42,6 +54,7 @@ describe("ReaderSummaryJob", () => {
       tenantId: tenantId("tenant-reader-summary-job-retry"),
       workspaceId: workspaceId("workspace-reader-summary-job-retry"),
       scope: { type: "topic", topicId: "topic-ai" },
+      period,
       idempotencyKey: "reader-summary-job-retry-key",
       requestedAt,
     });

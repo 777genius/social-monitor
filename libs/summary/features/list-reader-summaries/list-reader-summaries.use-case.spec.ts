@@ -170,6 +170,14 @@ describe("ListReaderSummariesUseCase", () => {
 
 const tenant = tenantId("tenant-reader-summary-list");
 const workspace = workspaceId("workspace-reader-summary-list");
+const period = {
+  cadence: "daily" as const,
+  startedAt: new Date("2026-06-23T00:00:00.000Z"),
+  endedAt: new Date("2026-06-24T00:00:00.000Z"),
+  timezone: "UTC",
+  periodKey:
+    "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
+};
 
 const readerSummaryArtifact = (params: {
   readonly readerSummaryId: string;
@@ -187,6 +195,7 @@ const readerSummaryArtifact = (params: {
     tenantId: tenant,
     workspaceId: workspace,
     scope: params.scope ?? { type: "workspace" },
+    period,
     userId: params.userId,
     subscriptionId: params.subscriptionId,
     sourceWindow: {

@@ -11,6 +11,7 @@ import 'reader_summary_context_artifact_dto.dart';
 import 'reader_summary_coverage_summary_dto.dart';
 import 'reader_summary_freshness_dto.dart';
 import 'reader_summary_lineage_dto.dart';
+import 'reader_summary_period_dto.dart';
 import 'reader_summary_personalization_dto.dart';
 import 'reader_summary_reader_brief_dto.dart';
 import 'reader_summary_repeated_signal_dto.dart';
@@ -34,6 +35,7 @@ class ReaderSummaryArtifactResponseDto {
     required this.freshness,
     required this.headline,
     required this.lineage,
+    required this.period,
     required this.qualityFlags,
     required this.readerBrief,
     required this.readerSummaryId,
@@ -68,6 +70,7 @@ class ReaderSummaryArtifactResponseDto {
   final String headline;
   final ReaderSummaryLineageDto lineage;
   final String? noSignalReason;
+  final ReaderSummaryPeriodDto period;
   final ReaderSummaryPersonalizationDto? personalization;
   final List<ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags>
   qualityFlags;

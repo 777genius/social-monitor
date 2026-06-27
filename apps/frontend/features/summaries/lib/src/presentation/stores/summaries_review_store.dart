@@ -26,7 +26,7 @@ part 'summaries_review_store_reader_action_workflow.dart';
 part 'summaries_review_store_summary_workflow.dart';
 
 typedef SummaryRequestIdempotencyKeyFactory =
-    String Function(WorkspaceScope scope);
+    String Function(WorkspaceScope scope, SummaryPeriod period);
 
 final class SummariesReviewStore extends ChangeNotifier {
   SummariesReviewStore({
@@ -83,6 +83,8 @@ final class SummariesReviewStore extends ChangeNotifier {
   String? _activeReaderActionIdempotencyKey;
   String? _lastReaderActionIdempotencyKey;
   bool _isDisposed = false;
+  SummaryPeriodPreset selectedSummaryPeriodPreset = SummaryPeriodPreset.daily;
+  DateTime? _selectedSummaryPeriodEndedAt;
 
   AsyncViewState<PageResult<GeneratedSummary>> listState =
       const InitialViewState<PageResult<GeneratedSummary>>();
@@ -100,6 +102,23 @@ final class SummariesReviewStore extends ChangeNotifier {
       const InitialViewState<ReaderActionResult>();
 
   WorkspaceScope get scope => _scope;
+
+  SummaryPeriod get selectedSummaryPeriod {
+    return selectedSummaryPeriodPreset.resolve(
+      periodEndedAt: _selectedSummaryPeriodEndedAt,
+    );
+  }
+
+  bool get isSelectedSummaryPeriodCurrent {
+    return selectedSummaryPeriod.endedAt ==
+        selectedSummaryPeriodPreset.currentPeriodEndedAt();
+  }
+
+  bool get canShowNextSummaryPeriod {
+    return selectedSummaryPeriodPreset.canNavigateNext(
+      selectedSummaryPeriod.endedAt,
+    );
+  }
 
   String? get activeReaderActionIdempotencyKey =>
       _activeReaderActionIdempotencyKey;

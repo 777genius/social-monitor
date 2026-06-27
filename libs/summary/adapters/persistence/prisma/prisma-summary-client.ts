@@ -80,6 +80,11 @@ export type PrismaReaderSummaryArtifactMutation = {
   readonly scopeType: string;
   readonly scopeKey: string;
   readonly topicId?: string | null;
+  readonly cadence: string;
+  readonly periodStartedAt: Date;
+  readonly periodEndedAt: Date;
+  readonly periodTimezone: string;
+  readonly periodKey: string;
   readonly userId?: string | null;
   readonly subscriptionId?: string | null;
   readonly modelVersion: string;
@@ -113,6 +118,9 @@ export type PrismaReaderSummaryPolicyMutation = {
   readonly dedupeStrategy: string;
   readonly customInstructions: string | null;
   readonly rulesVersion: string;
+  readonly scheduleEnabled: boolean;
+  readonly scheduleTimezone: string;
+  readonly scheduleCadences: readonly string[];
   readonly updatedAt: Date;
 };
 
@@ -289,6 +297,11 @@ export type PrismaSummaryClient = {
         readonly scopeType: string;
         readonly scopeKey: string;
         readonly topicId?: string | null;
+        readonly cadence: string;
+        readonly periodStartedAt: Date;
+        readonly periodEndedAt: Date;
+        readonly periodTimezone: string;
+        readonly periodKey: string;
         readonly idempotencyKey: string;
         readonly userId?: string | null;
         readonly subscriptionId?: string | null;
@@ -306,6 +319,11 @@ export type PrismaSummaryClient = {
         readonly scopeType: string;
         readonly scopeKey: string;
         readonly topicId?: string | null;
+        readonly cadence: string;
+        readonly periodStartedAt: Date;
+        readonly periodEndedAt: Date;
+        readonly periodTimezone: string;
+        readonly periodKey: string;
         readonly userId?: string | null;
         readonly subscriptionId?: string | null;
         readonly status: PrismaSummaryStatus;
@@ -377,9 +395,20 @@ export type PrismaSummaryClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly scopeKey?: string;
+        readonly cadence?: string;
+        readonly periodStartedAt?:
+          | Date
+          | {
+              readonly equals?: Date;
+              readonly gte?: Date;
+              readonly lt?: Date;
+            };
+        readonly periodEndedAt?: Date;
+        readonly periodTimezone?: string;
         readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
       };
       readonly orderBy: readonly [
+        { readonly periodStartedAt: "desc" },
         { readonly createdAt: "desc" },
         { readonly id: "desc" },
       ];
@@ -391,6 +420,16 @@ export type PrismaSummaryClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly scopeKey?: string;
+        readonly cadence?: string;
+        readonly periodStartedAt?:
+          | Date
+          | {
+              readonly equals?: Date;
+              readonly gte?: Date;
+              readonly lt?: Date;
+            };
+        readonly periodEndedAt?: Date;
+        readonly periodTimezone?: string;
         readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
       };
     }): Promise<number>;
@@ -414,6 +453,18 @@ export type PrismaSummaryClient = {
         readonly scopeKey: string;
       };
     }): Promise<PrismaReaderSummaryPolicyRecord | null>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId?: string;
+        readonly workspaceId?: string;
+        readonly scheduleEnabled: boolean;
+      };
+      readonly orderBy: readonly [
+        { readonly updatedAt: "desc" },
+        { readonly id: "desc" },
+      ];
+      readonly take: number;
+    }): Promise<readonly PrismaReaderSummaryPolicyRecord[]>;
   };
   readonly outboxEvent: {
     create(args: {

@@ -13,6 +13,7 @@ import {
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
 
+import { ReaderSummaryArtifactContextProvider } from "../../adapters/context/reader-summary-artifact-context.provider";
 import { FeedReaderSummaryFreshnessProbe } from "../../adapters/evidence/feed-reader-summary-freshness.probe";
 import { RelevanceReaderSummaryEvidenceSelector } from "../../adapters/evidence/relevance-reader-summary-evidence.selector";
 import { SummaryMemoryReaderSummaryContextProvider } from "../../adapters/memory/summary-memory-reader-summary-context.provider";
@@ -197,11 +198,17 @@ export const summaryReaderSummaryProviders: Provider[] = [
   },
   {
     provide: READER_SUMMARY_CONTEXT_PROVIDER,
-    useFactory: (memory: SummaryMemoryPort): ReaderSummaryContextProviderPort =>
-      memory === undefined
-        ? NOOP_READER_SUMMARY_CONTEXT_PROVIDER
-        : new SummaryMemoryReaderSummaryContextProvider(memory),
-    inject: [SUMMARY_MEMORY],
+    useFactory: (
+      readerSummaries: ReaderSummaryArtifactRepositoryPort,
+      memory: SummaryMemoryPort,
+    ): ReaderSummaryContextProviderPort =>
+      new ReaderSummaryArtifactContextProvider(
+        readerSummaries,
+        memory === undefined
+          ? NOOP_READER_SUMMARY_CONTEXT_PROVIDER
+          : new SummaryMemoryReaderSummaryContextProvider(memory),
+      ),
+    inject: [READER_SUMMARY_ARTIFACT_REPOSITORY, SUMMARY_MEMORY],
   },
   DeterministicReaderSummaryModelAdapter,
   {

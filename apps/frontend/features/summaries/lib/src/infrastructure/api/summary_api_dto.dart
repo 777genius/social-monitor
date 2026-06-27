@@ -239,6 +239,22 @@ final class ReaderSummaryContentApiDto {
   final List<ReaderActionApiDto> nextActions;
 }
 
+final class SummaryPeriodApiDto {
+  const SummaryPeriodApiDto({
+    required this.cadence,
+    required this.startedAt,
+    required this.endedAt,
+    required this.timezone,
+    this.periodKey,
+  });
+
+  final String cadence;
+  final DateTime startedAt;
+  final DateTime endedAt;
+  final String timezone;
+  final String? periodKey;
+}
+
 final class ReaderSummaryApiDto {
   const ReaderSummaryApiDto({
     required this.id,
@@ -249,6 +265,7 @@ final class ReaderSummaryApiDto {
     required this.topStories,
     required this.repeatedSignals,
     required this.citations,
+    required this.period,
     required this.freshnessLabel,
     required this.isDegraded,
   });
@@ -261,6 +278,7 @@ final class ReaderSummaryApiDto {
   final List<SummaryStoryApiDto> topStories;
   final List<RepeatedSignalApiDto> repeatedSignals;
   final List<SummaryCitationApiDto> citations;
+  final SummaryPeriodApiDto period;
   final String freshnessLabel;
   final bool isDegraded;
 }
@@ -282,6 +300,7 @@ final class ReaderSummaryJobApiDto {
     this.startedAt,
     this.completedAt,
     this.failedAt,
+    this.period,
   });
 
   final String id;
@@ -293,4 +312,5 @@ final class ReaderSummaryJobApiDto {
   final DateTime? startedAt;
   final DateTime? completedAt;
   final DateTime? failedAt;
+  final SummaryPeriodApiDto? period;
 }

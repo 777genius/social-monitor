@@ -55,13 +55,20 @@ List<SummaryApiDto> summariesFeatureDemoItems() {
 }
 
 ReaderSummaryApiDto summariesFeatureDemoWorkspaceSummary() {
-  return const ReaderSummaryApiDto(
+  return ReaderSummaryApiDto(
     id: 'summary-demo-1',
     title: 'AI signal summary',
     executiveSummary:
         'GitHub Trending page found concrete repositories worth reviewing today, while Repo Radar should be used for longer-window GH Archive growth checks.',
     userId: 'user-demo',
-    content: ReaderSummaryContentApiDto(
+    period: SummaryPeriodApiDto(
+      cadence: 'daily',
+      startedAt: DateTime.utc(2026, 6, 26),
+      endedAt: DateTime.utc(2026, 6, 27),
+      timezone: 'UTC',
+      periodKey: 'daily:2026-06-26T00:00:00.000Z:2026-06-27T00:00:00.000Z:UTC',
+    ),
+    content: const ReaderSummaryContentApiDto(
       headline: 'GitHub daily radar',
       oneLineTakeaway:
           'GitHub Trending is the daily radar for what is breaking out today; Repo Radar is the historical analytics layer for 7d, 30d and 90d growth.',

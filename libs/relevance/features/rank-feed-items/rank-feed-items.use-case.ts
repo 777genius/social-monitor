@@ -47,8 +47,7 @@ export class RankFeedItemsUseCase {
     private readonly profiles: UserRelevanceProfileRepositoryPort,
     private readonly clock: Clock,
     private readonly rankingPolicy = new RankingPolicy(),
-    private readonly memoryGuidance: RelevanceMemoryGuidanceReaderPort =
-      NOOP_RELEVANCE_MEMORY_GUIDANCE_READER,
+    private readonly memoryGuidance: RelevanceMemoryGuidanceReaderPort = NOOP_RELEVANCE_MEMORY_GUIDANCE_READER,
   ) {}
 
   async execute(
@@ -79,6 +78,7 @@ export class RankFeedItemsUseCase {
       workspaceId: command.workspaceId,
       topicId: normalizeOptional(command.topicId),
       observedAfter: command.observedAfter,
+      observedBefore: command.observedBefore,
       limit: maxCandidateScan,
     });
     const generatedAt = this.clock.now();
@@ -153,9 +153,10 @@ export class RankFeedItemsUseCase {
           keywordPreferenceCount: 0,
           mutedKeywordCount: 0,
           blockedProviderCount: 0,
-          signals: params.userId === undefined
-            ? ["memory_guidance_requires_user"]
-            : ["memory_guidance_requires_candidates"],
+          signals:
+            params.userId === undefined
+              ? ["memory_guidance_requires_user"]
+              : ["memory_guidance_requires_candidates"],
         },
       };
     }
@@ -271,19 +272,24 @@ const memoryGuidanceKeywords = (
   uniqueSorted(
     candidates.flatMap((candidate) =>
       extractSignalKeywords(
-        redactSensitiveText(`${candidate.title} ${candidate.bodyPreview ?? ""}`),
+        redactSensitiveText(
+          `${candidate.title} ${candidate.bodyPreview ?? ""}`,
+        ),
       ),
     ),
   ).slice(0, 30);
 
 const uniqueSorted = (values: readonly string[]): readonly string[] =>
-  [...new Set(values
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0))]
-    .sort((left, right) => left.localeCompare(right));
+  [
+    ...new Set(
+      values.map((value) => value.trim()).filter((value) => value.length > 0),
+    ),
+  ].sort((left, right) => left.localeCompare(right));
 
 const presentMemoryGuidance = (
-  guidance: Awaited<ReturnType<RelevanceMemoryGuidanceReaderPort["buildGuidance"]>>,
+  guidance: Awaited<
+    ReturnType<RelevanceMemoryGuidanceReaderPort["buildGuidance"]>
+  >,
 ): RelevanceMemoryGuidanceView => {
   const providerPreferenceCount = guidance.providerPreferences?.length ?? 0;
   const keywordPreferenceCount = guidance.keywordPreferences?.length ?? 0;
@@ -291,12 +297,10 @@ const presentMemoryGuidance = (
   const blockedProviderCount = guidance.blockedProviderKeys?.length ?? 0;
   const applied =
     guidance.status === "available" &&
-    (
-      providerPreferenceCount > 0 ||
+    (providerPreferenceCount > 0 ||
       keywordPreferenceCount > 0 ||
       mutedKeywordCount > 0 ||
-      blockedProviderCount > 0
-    );
+      blockedProviderCount > 0);
 
   return {
     status: guidance.status,

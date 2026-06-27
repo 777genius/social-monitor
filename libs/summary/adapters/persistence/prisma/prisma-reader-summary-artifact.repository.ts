@@ -38,6 +38,11 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
         where: { id: snapshot.readerSummaryId },
         update: {
           ...scopeFields,
+          cadence: snapshot.period.cadence,
+          periodStartedAt: snapshot.period.startedAt,
+          periodEndedAt: snapshot.period.endedAt,
+          periodTimezone: snapshot.period.timezone,
+          periodKey: snapshot.period.periodKey,
           status,
           userId: snapshot.userId ?? null,
           subscriptionId: snapshot.subscriptionId ?? null,
@@ -54,6 +59,11 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
           tenantId: snapshot.tenantId,
           workspaceId: snapshot.workspaceId,
           ...scopeFields,
+          cadence: snapshot.period.cadence,
+          periodStartedAt: snapshot.period.startedAt,
+          periodEndedAt: snapshot.period.endedAt,
+          periodTimezone: snapshot.period.timezone,
+          periodKey: snapshot.period.periodKey,
           userId: snapshot.userId ?? null,
           subscriptionId: snapshot.subscriptionId ?? null,
           status,
@@ -81,12 +91,16 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
         query.scope === undefined
           ? undefined
           : readerSummaryScopeKey(query.scope),
+      cadence: query.cadence,
+      periodStartedAt: periodStartedAtWhere(query),
+      periodEndedAt: query.periodEndedAt,
+      periodTimezone: query.timezone,
       status: { in: VISIBLE_READER_SUMMARY_STATUSES },
     };
     const [records, total] = await Promise.all([
       this.prisma.readerSummaryArtifact.findMany({
         where,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        orderBy: [{ periodStartedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
         skip: offset,
         take: query.limit,
       }),
@@ -118,3 +132,26 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
     return record === null ? null : readerSummaryArtifactFromPrisma(record);
   }
 }
+
+const periodStartedAtWhere = (query: ListReaderSummaryArtifactsQuery) => {
+  if (
+    query.periodStartedAt === undefined &&
+    query.periodStartedFrom === undefined &&
+    query.periodStartedBefore === undefined
+  ) {
+    return undefined;
+  }
+
+  if (
+    query.periodStartedFrom === undefined &&
+    query.periodStartedBefore === undefined
+  ) {
+    return query.periodStartedAt;
+  }
+
+  return {
+    equals: query.periodStartedAt,
+    gte: query.periodStartedFrom,
+    lt: query.periodStartedBefore,
+  };
+};

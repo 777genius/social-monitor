@@ -1,4 +1,4 @@
-import type { PrismaFeedItemRecord } from './prisma-feed-records';
+import type { PrismaFeedItemRecord } from "./prisma-feed-records";
 
 export type PrismaFeedSignalBaselineSampleRecord = {
   readonly id: string;
@@ -35,7 +35,7 @@ export type PrismaFeedClient = {
         readonly publishedAt: Date;
         readonly observedAt: Date;
         readonly providerMetadata?: Readonly<Record<string, unknown>> | null;
-        readonly status: 'VISIBLE';
+        readonly status: "VISIBLE";
       };
       readonly create: {
         readonly id: string;
@@ -53,19 +53,25 @@ export type PrismaFeedClient = {
         readonly publishedAt: Date;
         readonly observedAt: Date;
         readonly providerMetadata?: Readonly<Record<string, unknown>> | null;
-        readonly status: 'VISIBLE';
+        readonly status: "VISIBLE";
       };
     }): Promise<PrismaFeedItemRecord>;
     findMany(args: {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly status: 'VISIBLE';
+        readonly status: "VISIBLE";
         readonly topicId?: string;
-        readonly observedAt?: { readonly gt: Date };
+        readonly observedAt?: {
+          readonly gt?: Date;
+          readonly lt?: Date;
+        };
         readonly providerKey?: string;
       };
-      readonly orderBy: readonly [{ readonly publishedAt: 'desc' }, { readonly id: 'desc' }];
+      readonly orderBy: readonly [
+        { readonly publishedAt: "desc" },
+        { readonly id: "desc" },
+      ];
       readonly skip: number;
       readonly take: number;
     }): Promise<readonly PrismaFeedItemRecord[]>;
@@ -73,9 +79,12 @@ export type PrismaFeedClient = {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly status: 'VISIBLE';
+        readonly status: "VISIBLE";
         readonly topicId?: string;
-        readonly observedAt?: { readonly gt: Date };
+        readonly observedAt?: {
+          readonly gt?: Date;
+          readonly lt?: Date;
+        };
         readonly providerKey?: string;
       };
     }): Promise<number>;
@@ -84,7 +93,7 @@ export type PrismaFeedClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly id: string;
-        readonly status: 'VISIBLE';
+        readonly status: "VISIBLE";
       };
     }): Promise<PrismaFeedItemRecord | null>;
   };
@@ -132,7 +141,10 @@ export type PrismaFeedClient = {
           readonly contentType: string;
         }[];
       };
-      readonly orderBy: readonly [{ readonly observedAt: 'desc' }, { readonly feedItemId: 'desc' }];
+      readonly orderBy: readonly [
+        { readonly observedAt: "desc" },
+        { readonly feedItemId: "desc" },
+      ];
       readonly take: number;
     }): Promise<readonly PrismaFeedSignalBaselineSampleRecord[]>;
     deleteMany(args: {

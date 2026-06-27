@@ -31,6 +31,9 @@ ReaderSummaryResponseDto _$ReaderSummaryResponseDtoFromJson(
   lineage: ReaderSummaryLineageDto.fromJson(
     json['lineage'] as Map<String, dynamic>,
   ),
+  period: ReaderSummaryPeriodDto.fromJson(
+    json['period'] as Map<String, dynamic>,
+  ),
   qualityFlags: (json['qualityFlags'] as List<dynamic>)
       .map(
         (e) => ReaderSummaryResponseDtoQualityFlagsQualityFlags.fromJson(
@@ -100,6 +103,7 @@ Map<String, dynamic> _$ReaderSummaryResponseDtoToJson(
   'headline': instance.headline,
   'lineage': instance.lineage,
   'noSignalReason': instance.noSignalReason,
+  'period': instance.period,
   'personalization': instance.personalization,
   'qualityFlags': instance.qualityFlags,
   'readerBrief': instance.readerBrief,

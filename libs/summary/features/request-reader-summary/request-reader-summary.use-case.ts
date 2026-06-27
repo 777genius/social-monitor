@@ -11,6 +11,7 @@ import {
   assertReaderSummaryScope,
   ReaderSummaryJob,
   readerSummaryScopeKey,
+  resolveReaderSummaryPeriod,
   type ReaderSummaryJobProps,
 } from "../../domain";
 import type {
@@ -45,6 +46,22 @@ export class RequestReaderSummaryUseCase {
       return err(new DomainError("validation.failed", safeErrorMessage(error)));
     }
 
+    const period = (() => {
+      try {
+        return resolveReaderSummaryPeriod({
+          cadence: command.cadence,
+          period: command.period,
+          timezone: command.timezone,
+          now: this.clock.now(),
+        });
+      } catch (error) {
+        return error instanceof Error ? error : new Error(String(error));
+      }
+    })();
+    if (period instanceof Error) {
+      return err(new DomainError("validation.failed", period.message));
+    }
+
     if (idempotencyKey.length === 0) {
       return err(
         new DomainError(
@@ -75,6 +92,7 @@ export class RequestReaderSummaryUseCase {
       if (
         !isSameIdempotentReaderSummaryRequest(snapshot, {
           scopeKey: readerSummaryScopeKey(command.scope),
+          periodKey: period.periodKey,
           userId,
           subscriptionId,
         })
@@ -90,6 +108,7 @@ export class RequestReaderSummaryUseCase {
 
       return ok({
         readerSummaryJobId: snapshot.id,
+        period: periodToResult(snapshot.period),
         status: snapshot.status,
         created: false,
       });
@@ -127,6 +146,7 @@ export class RequestReaderSummaryUseCase {
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       scope: command.scope,
+      period,
       userId,
       subscriptionId,
       idempotencyKey,
@@ -138,11 +158,20 @@ export class RequestReaderSummaryUseCase {
 
     return ok({
       readerSummaryJobId: snapshot.id,
+      period: periodToResult(snapshot.period),
       status: snapshot.status,
       created: true,
     });
   }
 }
+
+const periodToResult = (period: ReaderSummaryJobProps["period"]) => ({
+  cadence: period.cadence,
+  startedAt: period.startedAt.toISOString(),
+  endedAt: period.endedAt.toISOString(),
+  timezone: period.timezone,
+  periodKey: period.periodKey,
+});
 
 const normalizeOptionalText = (
   value: string | undefined,
@@ -158,11 +187,13 @@ const isSameIdempotentReaderSummaryRequest = (
   snapshot: ReaderSummaryJobProps,
   request: {
     readonly scopeKey: string;
+    readonly periodKey: string;
     readonly userId?: string;
     readonly subscriptionId?: string;
   },
 ): boolean =>
   readerSummaryScopeKey(snapshot.scope) === request.scopeKey &&
+  snapshot.period.periodKey === request.periodKey &&
   snapshot.userId === request.userId &&
   snapshot.subscriptionId === request.subscriptionId;
 

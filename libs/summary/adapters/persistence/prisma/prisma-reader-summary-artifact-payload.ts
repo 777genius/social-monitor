@@ -1,21 +1,24 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
-import type {
-  ReaderSummaryArtifactProps,
-  ReaderSummaryCitation,
-  ReaderSummaryConfidence,
-  ReaderSummaryContent,
-  ReaderSummaryContextArtifact,
-  ReaderSummaryItem,
-  ReaderSummaryLineage,
-  ReaderSummaryRepeatedSignal,
-  ReaderSummaryRisk,
-  ReaderSummaryScope,
-  ReaderSummaryTopicHighlight,
-  ReaderSummaryTopStory,
-  ReaderSummaryUsage,
-  SummaryEvidencePersonalization,
-  StoryCluster,
+import {
+  buildReaderSummaryPeriod,
+  type ReaderSummaryArtifactProps,
+  type ReaderSummaryCadence,
+  type ReaderSummaryCitation,
+  type ReaderSummaryConfidence,
+  type ReaderSummaryContent,
+  type ReaderSummaryContextArtifact,
+  type ReaderSummaryItem,
+  type ReaderSummaryLineage,
+  type ReaderSummaryPeriod,
+  type ReaderSummaryRepeatedSignal,
+  type ReaderSummaryRisk,
+  type ReaderSummaryScope,
+  type ReaderSummaryTopicHighlight,
+  type ReaderSummaryTopStory,
+  type ReaderSummaryUsage,
+  type SummaryEvidencePersonalization,
+  type StoryCluster,
 } from "../../../domain";
 
 export type PrismaReaderSummaryArtifactPayloadFallback = {
@@ -24,6 +27,10 @@ export type PrismaReaderSummaryArtifactPayloadFallback = {
   readonly workspaceId: string;
   readonly scopeType: string;
   readonly topicId: string | null;
+  readonly cadence: string;
+  readonly periodStartedAt: Date;
+  readonly periodEndedAt: Date;
+  readonly periodTimezone: string;
   readonly userId: string | null;
   readonly subscriptionId: string | null;
   readonly headline: string;
@@ -70,6 +77,7 @@ export const normalizeReaderSummaryArtifactPayload = (
   }
   const serializedSourceWindow =
     sourceWindow as SerializedReaderSummarySourceWindow;
+  const period = normalizeReaderSummaryPeriodPayload(value.period, fallback);
 
   return {
     schemaVersion: normalizeReaderSummaryArtifactSchemaVersion(
@@ -79,6 +87,7 @@ export const normalizeReaderSummaryArtifactPayload = (
     tenantId: tenantId(fallback.tenantId),
     workspaceId: workspaceId(fallback.workspaceId),
     scope: readerSummaryScopeFromPrisma(fallback),
+    period,
     userId:
       normalizeOptionalString(value.userId) ?? fallback.userId ?? undefined,
     subscriptionId:
@@ -186,15 +195,63 @@ const normalizeReaderSummaryStoryCluster = (
 const normalizeReaderSummaryContextArtifact = (
   value: SerializedReaderSummaryContextArtifact,
 ): ReaderSummaryContextArtifact => ({
-  ...requireObject<Omit<ReaderSummaryContextArtifact, "generatedAt">>(
+  ...requireObject<Omit<ReaderSummaryContextArtifact, "generatedAt" | "period">>(
     value,
-    "Reader summary context artifact",
+  "Reader summary context artifact",
   ),
+  period: normalizeReaderSummaryPeriodPayload(value.period, {
+    cadence: "daily",
+    periodStartedAt: new Date("1970-01-01T00:00:00.000Z"),
+    periodEndedAt: new Date("1970-01-02T00:00:00.000Z"),
+    periodTimezone: "UTC",
+  }),
   generatedAt: requireDate(
     value.generatedAt,
     "Reader summary context artifact generated date",
   ),
 });
+
+const normalizeReaderSummaryPeriodPayload = (
+  value: unknown,
+  fallback: Pick<
+    PrismaReaderSummaryArtifactPayloadFallback,
+    "cadence" | "periodStartedAt" | "periodEndedAt" | "periodTimezone"
+  >,
+): ReaderSummaryPeriod => {
+  if (value === undefined) {
+    return buildReaderSummaryPeriod({
+      cadence: normalizeReaderSummaryCadence(fallback.cadence),
+      startedAt: fallback.periodStartedAt,
+      endedAt: fallback.periodEndedAt,
+      timezone: fallback.periodTimezone,
+    });
+  }
+
+  const period = requireObject<SerializedReaderSummaryPeriod>(
+    value,
+    "Reader summary period",
+  );
+
+  return buildReaderSummaryPeriod({
+    cadence: normalizeReaderSummaryCadence(period.cadence),
+    startedAt: requireDate(period.startedAt, "Reader summary period start"),
+    endedAt: requireDate(period.endedAt, "Reader summary period end"),
+    timezone: requireString(period.timezone, "Reader summary period timezone"),
+  });
+};
+
+const normalizeReaderSummaryCadence = (value: unknown): ReaderSummaryCadence => {
+  if (
+    value === "daily" ||
+    value === "weekly" ||
+    value === "monthly" ||
+    value === "custom"
+  ) {
+    return value;
+  }
+
+  throw new Error(`Unsupported reader summary cadence "${String(value)}"`);
+};
 
 const normalizeReaderSummaryPersonalization = (
   value: unknown,
@@ -339,13 +396,22 @@ type SerializedReaderSummaryStoryCluster = Omit<
 
 type SerializedReaderSummaryContextArtifact = Omit<
   ReaderSummaryContextArtifact,
-  "generatedAt"
+  "generatedAt" | "period"
 > & {
+  readonly period?: unknown;
   readonly generatedAt?: unknown;
+};
+
+type SerializedReaderSummaryPeriod = {
+  readonly cadence?: unknown;
+  readonly startedAt?: unknown;
+  readonly endedAt?: unknown;
+  readonly timezone?: unknown;
 };
 
 type SerializedReaderSummaryArtifactPayload = {
   readonly schemaVersion?: unknown;
+  readonly period?: unknown;
   readonly userId?: unknown;
   readonly subscriptionId?: unknown;
   readonly sourceWindow?: SerializedReaderSummarySourceWindow | unknown;

@@ -1199,6 +1199,9 @@
           "noSignalReason": {
             "type": "string"
           },
+          "period": {
+            "$ref": "#/components/schemas/ReaderSummaryPeriodDto"
+          },
           "personalization": {
             "$ref": "#/components/schemas/ReaderSummaryPersonalizationDto"
           },
@@ -1284,6 +1287,7 @@
           "tenantId",
           "workspaceId",
           "scope",
+          "period",
           "sourceWindow",
           "storyClusters",
           "contextArtifacts",
@@ -1384,6 +1388,9 @@
             "format": "date-time",
             "type": "string"
           },
+          "period": {
+            "$ref": "#/components/schemas/ReaderSummaryPeriodDto"
+          },
           "scope": {
             "$ref": "#/components/schemas/ReaderSummaryScopeDto"
           },
@@ -1394,6 +1401,7 @@
         "required": [
           "artifactId",
           "scope",
+          "period",
           "summaryText",
           "generatedAt",
           "freshness"
@@ -1532,6 +1540,9 @@
           "failureReason": {
             "type": "string"
           },
+          "period": {
+            "$ref": "#/components/schemas/ReaderSummaryPeriodDto"
+          },
           "readerSummaryId": {
             "type": "string"
           },
@@ -1569,6 +1580,7 @@
         "required": [
           "readerSummaryJobId",
           "scope",
+          "period",
           "status",
           "requestedAt",
           "timeline"
@@ -1690,6 +1702,41 @@
         "required": [
           "startedAt",
           "endedAt"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryPeriodDto": {
+        "properties": {
+          "cadence": {
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "endedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "periodKey": {
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cadence",
+          "startedAt",
+          "endedAt",
+          "timezone",
+          "periodKey"
         ],
         "type": "object"
       },
@@ -2080,6 +2127,9 @@
           "noSignalReason": {
             "type": "string"
           },
+          "period": {
+            "$ref": "#/components/schemas/ReaderSummaryPeriodDto"
+          },
           "personalization": {
             "$ref": "#/components/schemas/ReaderSummaryPersonalizationDto"
           },
@@ -2165,6 +2215,7 @@
           "tenantId",
           "workspaceId",
           "scope",
+          "period",
           "sourceWindow",
           "storyClusters",
           "contextArtifacts",
@@ -2887,12 +2938,48 @@
         ],
         "type": "object"
       },
+      "RequestReaderSummaryPeriodDto": {
+        "properties": {
+          "endedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "startedAt",
+          "endedAt",
+          "timezone"
+        ],
+        "type": "object"
+      },
       "RequestReaderSummaryRequestDto": {
         "properties": {
+          "cadence": {
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "period": {
+            "$ref": "#/components/schemas/RequestReaderSummaryPeriodDto"
+          },
           "scope": {
             "$ref": "#/components/schemas/ReaderSummaryScopeDto"
           },
           "subscriptionId": {
+            "type": "string"
+          },
+          "timezone": {
             "type": "string"
           },
           "userId": {
@@ -2908,6 +2995,9 @@
         "properties": {
           "created": {
             "type": "boolean"
+          },
+          "period": {
+            "$ref": "#/components/schemas/ReaderSummaryPeriodDto"
           },
           "readerSummaryJobId": {
             "type": "string"
@@ -2925,6 +3015,7 @@
         },
         "required": [
           "readerSummaryJobId",
+          "period",
           "status",
           "created"
         ],
@@ -7160,6 +7251,44 @@
             "name": "providerKey",
             "required": false,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timezone",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "periodEndedAt",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "periodStartedAt",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cadence",
+            "required": false,
+            "schema": {
+              "enum": [
+                "daily",
+                "weekly",
+                "monthly",
+                "custom"
+              ],
               "type": "string"
             }
           },

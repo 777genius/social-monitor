@@ -22,6 +22,7 @@ final class SummaryMapper {
   }
 
   ReaderSummary readerSummaryToDomain(ReaderSummaryApiDto dto) {
+    final period = _summaryPeriodToDomain(dto.period);
     return ReaderSummary(
       id: _nonEmpty(dto.id, fallback: 'summary-unknown'),
       title: _nonEmpty(dto.title, fallback: 'Workspace summary'),
@@ -38,7 +39,12 @@ final class SummaryMapper {
           .map(_repeatedSignalToDomain)
           .toList(growable: false),
       citations: dto.citations.map(_citationToDomain).toList(growable: false),
-      summaryWindow: SummaryWindow.current(),
+      period: period,
+      summaryWindow: SummaryWindow(
+        label: period.rangeLabel,
+        startsAt: period.startedAt,
+        endsAt: period.endedAt,
+      ),
       freshnessLabel: _nonEmpty(dto.freshnessLabel, fallback: 'Unknown'),
       isDegraded: dto.isDegraded,
     );
@@ -55,7 +61,28 @@ final class SummaryMapper {
       startedAt: dto.startedAt,
       completedAt: dto.completedAt,
       failedAt: dto.failedAt,
+      period: dto.period == null ? null : _summaryPeriodToDomain(dto.period!),
     );
+  }
+
+  SummaryPeriod _summaryPeriodToDomain(SummaryPeriodApiDto dto) {
+    return SummaryPeriod(
+      cadence: _summaryPeriodCadenceFromApi(dto.cadence),
+      startedAt: dto.startedAt.toUtc(),
+      endedAt: dto.endedAt.toUtc(),
+      timezone: _nonEmpty(dto.timezone, fallback: 'UTC'),
+      periodKey: _nonEmptyOrNull(dto.periodKey),
+    );
+  }
+
+  SummaryPeriodCadence _summaryPeriodCadenceFromApi(String value) {
+    return switch (value.trim().toLowerCase()) {
+      'daily' => SummaryPeriodCadence.daily,
+      'weekly' => SummaryPeriodCadence.weekly,
+      'monthly' => SummaryPeriodCadence.monthly,
+      'custom' => SummaryPeriodCadence.custom,
+      _ => SummaryPeriodCadence.unknown,
+    };
   }
 
   SummaryCitation _citationToDomain(SummaryCitationApiDto dto) {

@@ -52,6 +52,13 @@ export class GetReaderSummaryJobStatusUseCase {
     return ok({
       readerSummaryJobId: snapshot.id,
       scope: snapshot.scope,
+      period: {
+        cadence: snapshot.period.cadence,
+        startedAt: snapshot.period.startedAt.toISOString(),
+        endedAt: snapshot.period.endedAt.toISOString(),
+        timezone: snapshot.period.timezone,
+        periodKey: snapshot.period.periodKey,
+      },
       status: snapshot.status,
       requestedAt: snapshot.requestedAt.toISOString(),
       startedAt: snapshot.startedAt?.toISOString(),

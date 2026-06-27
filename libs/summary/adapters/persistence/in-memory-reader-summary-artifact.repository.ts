@@ -32,7 +32,23 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
           snapshot.workspaceId === query.workspaceId &&
           (query.scope === undefined ||
             readerSummaryScopeKey(snapshot.scope) ===
-              readerSummaryScopeKey(query.scope))
+              readerSummaryScopeKey(query.scope)) &&
+          (query.cadence === undefined ||
+            snapshot.period.cadence === query.cadence) &&
+          (query.periodStartedAt === undefined ||
+            snapshot.period.startedAt.getTime() ===
+              query.periodStartedAt.getTime()) &&
+          (query.periodStartedFrom === undefined ||
+            snapshot.period.startedAt.getTime() >=
+              query.periodStartedFrom.getTime()) &&
+          (query.periodStartedBefore === undefined ||
+            snapshot.period.startedAt.getTime() <
+              query.periodStartedBefore.getTime()) &&
+          (query.periodEndedAt === undefined ||
+            snapshot.period.endedAt.getTime() ===
+              query.periodEndedAt.getTime()) &&
+          (query.timezone === undefined ||
+            snapshot.period.timezone === query.timezone)
         );
       })
       .sort(compareReaderSummaryArtifacts);
@@ -68,8 +84,8 @@ const compareReaderSummaryArtifacts = (
   const leftSnapshot = left.toSnapshot();
   const rightSnapshot = right.toSnapshot();
   const completedWindowDiff =
-    rightSnapshot.sourceWindow.endedAt.getTime() -
-    leftSnapshot.sourceWindow.endedAt.getTime();
+    rightSnapshot.period.startedAt.getTime() -
+    leftSnapshot.period.startedAt.getTime();
 
   if (completedWindowDiff !== 0) {
     return completedWindowDiff;

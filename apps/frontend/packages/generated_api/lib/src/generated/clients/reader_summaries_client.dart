@@ -6,6 +6,7 @@ import 'package:dio/dio.dart' hide Headers;
 import 'package:retrofit/retrofit.dart';
 import 'package:retrofit/error_logger.dart';
 
+import '../models/cadence.dart';
 import '../models/freshness_status.dart';
 import '../models/list_reader_summaries_response_dto.dart';
 import '../models/reader_summary_job_status_response_dto.dart';
@@ -37,6 +38,10 @@ abstract class ReaderSummariesClient {
     @Query('subscriptionId') String? subscriptionId,
     @Query('userId') String? userId,
     @Query('providerKey') String? providerKey,
+    @Query('timezone') String? timezone,
+    @Query('periodEndedAt') String? periodEndedAt,
+    @Query('periodStartedAt') String? periodStartedAt,
+    @Query('cadence') Cadence? cadence,
     @Query('topicId') String? topicId,
     @Query('scopeType') ScopeType? scopeType,
     @Header('authorization') String? authorization,

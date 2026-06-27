@@ -1,5 +1,7 @@
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
+import type { ReaderSummaryPeriod } from "../value-objects/reader-summary-period";
+import { assertReaderSummaryPeriod } from "../value-objects/reader-summary-period";
 import type { ReaderSummaryScope } from "../value-objects/reader-summary-scope";
 import {
   assertReaderSummaryScope,
@@ -18,6 +20,7 @@ export type ReaderSummaryJobProps = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly scope: ReaderSummaryScope;
+  readonly period: ReaderSummaryPeriod;
   readonly userId?: string;
   readonly subscriptionId?: string;
   readonly status: ReaderSummaryJobStatus;
@@ -167,6 +170,7 @@ export class ReaderSummaryJob {
       tenantId: this.props.tenantId,
       workspaceId: this.props.workspaceId,
       scope: this.props.scope,
+      period: this.props.period,
       userId: this.props.userId,
       subscriptionId: this.props.subscriptionId,
       status: "requested",
@@ -177,11 +181,13 @@ export class ReaderSummaryJob {
 
   isSameRequest(params: {
     readonly scope: ReaderSummaryScope;
+    readonly periodKey: string;
     readonly userId?: string;
     readonly subscriptionId?: string;
   }): boolean {
     return (
       sameReaderSummaryScope(this.props.scope, params.scope) &&
+      this.props.period.periodKey === params.periodKey &&
       this.props.userId === params.userId &&
       this.props.subscriptionId === params.subscriptionId
     );
@@ -199,6 +205,7 @@ export class ReaderSummaryJob {
     }
 
     assertReaderSummaryScope(props.scope);
+    assertReaderSummaryPeriod(props.period);
 
     if (props.idempotencyKey.trim().length === 0) {
       throw new Error("Reader summary job idempotency key must be non-empty");

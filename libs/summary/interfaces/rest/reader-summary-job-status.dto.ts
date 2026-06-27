@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
-import { ReaderSummaryScopeDto } from "./reader-summary.dto";
+import { ReaderSummaryPeriodDto, ReaderSummaryScopeDto } from "./reader-summary.dto";
 
 const readerSummaryJobStatuses = [
   "requested",
@@ -27,6 +27,9 @@ export class ReaderSummaryJobStatusResponseDto {
 
   @ApiProperty({ type: () => ReaderSummaryScopeDto })
   declare readonly scope: ReaderSummaryScopeDto;
+
+  @ApiProperty({ type: () => ReaderSummaryPeriodDto })
+  declare readonly period: ReaderSummaryPeriodDto;
 
   @ApiProperty({ enum: readerSummaryJobStatuses })
   declare readonly status: (typeof readerSummaryJobStatuses)[number];

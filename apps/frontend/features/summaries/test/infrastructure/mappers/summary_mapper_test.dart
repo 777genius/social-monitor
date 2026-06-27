@@ -98,7 +98,8 @@ void main() {
       'https://github.com/openai/codex?utm_source=feed',
     );
     expect(summary.content.topReads.single.signalScore.value, 1.23);
-    expect(summary.summaryWindow.label, 'Current summary window');
+    expect(summary.period.cadence.name, 'daily');
+    expect(summary.summaryWindow.label, '2026-06-26 - 2026-06-27');
     expect(
       summary.content.topReads.single.providerMetrics.single.value,
       '54,000',

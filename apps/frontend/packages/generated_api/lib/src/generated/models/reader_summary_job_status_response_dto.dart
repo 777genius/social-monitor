@@ -6,6 +6,7 @@ import 'package:json_annotation/json_annotation.dart';
 
 import 'reader_summary_job_status_response_dto_status_status.dart';
 import 'reader_summary_job_timeline_event_dto.dart';
+import 'reader_summary_period_dto.dart';
 import 'reader_summary_scope_dto.dart';
 
 part 'reader_summary_job_status_response_dto.g.dart';
@@ -13,6 +14,7 @@ part 'reader_summary_job_status_response_dto.g.dart';
 @JsonSerializable()
 class ReaderSummaryJobStatusResponseDto {
   const ReaderSummaryJobStatusResponseDto({
+    required this.period,
     required this.readerSummaryJobId,
     required this.requestedAt,
     required this.scope,
@@ -32,6 +34,7 @@ class ReaderSummaryJobStatusResponseDto {
   final DateTime? completedAt;
   final DateTime? failedAt;
   final String? failureReason;
+  final ReaderSummaryPeriodDto period;
   final String? readerSummaryId;
   final String readerSummaryJobId;
   final DateTime requestedAt;

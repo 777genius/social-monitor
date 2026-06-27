@@ -1,8 +1,8 @@
-import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
-import type { FeedItem } from '../domain';
+import type { FeedItem } from "../domain";
 
-export const FEED_ITEM_READ_REPOSITORY = Symbol('FEED_ITEM_READ_REPOSITORY');
+export const FEED_ITEM_READ_REPOSITORY = Symbol("FEED_ITEM_READ_REPOSITORY");
 
 export type ListFeedItemsQuery = {
   readonly tenantId: TenantId;
@@ -12,6 +12,7 @@ export type ListFeedItemsQuery = {
   readonly topicId?: string;
   readonly searchQuery?: string;
   readonly observedAfter?: Date;
+  readonly observedBefore?: Date;
   readonly providerKey?: string;
   readonly repositoryTrendWindow?: string;
   readonly repositoryLanguage?: string;

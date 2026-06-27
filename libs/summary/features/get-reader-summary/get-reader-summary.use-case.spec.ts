@@ -79,6 +79,14 @@ describe("GetReaderSummaryUseCase", () => {
 
 const tenant = tenantId("tenant-reader-summary-get");
 const workspace = workspaceId("workspace-reader-summary-get");
+const period = {
+  cadence: "daily" as const,
+  startedAt: new Date("2026-06-23T00:00:00.000Z"),
+  endedAt: new Date("2026-06-24T00:00:00.000Z"),
+  timezone: "UTC",
+  periodKey:
+    "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
+};
 
 const readerSummaryArtifact = (
   readerSummaryId: string,
@@ -89,6 +97,7 @@ const readerSummaryArtifact = (
     tenantId: tenant,
     workspaceId: workspace,
     scope: { type: "workspace" },
+    period,
     sourceWindow: {
       windowId: "workspace:get",
       startedAt: new Date("2026-06-23T08:00:00.000Z"),
