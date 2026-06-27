@@ -1,6 +1,11 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import {
+  type GitHubTrendingPageClientPort,
+  type GitHubTrendingPageQuery,
+  type GitHubTrendingPageRepository,
+} from './github-trending-page-client.port';
+import {
   GITHUB_TRENDING_PAGE_REPOSITORY_METADATA_KIND,
   parseGitHubTrendingPageRepositoryMetadata,
 } from '../../../domain';
@@ -78,7 +83,62 @@ describe('GitHubTrendingPageSourceProvider', () => {
       }),
     );
   });
+
+  it('skips repositories with incomplete trending metrics instead of polluting feed evidence', async () => {
+    const provider = new GitHubTrendingPageSourceProvider(
+      new PartiallyInvalidGitHubTrendingPageClient(),
+      { now: () => new Date('2026-06-24T12:00:00.000Z') },
+    );
+    const scanContext = context({ maxItems: 3 });
+
+    const result = await provider.scan(
+      provider.planScan({ mode: 'listing', query: 'daily' }, scanContext),
+      scanContext,
+    );
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      canonicalUrl: 'https://github.com/apple/container',
+      title: 'apple/container is #2 on GitHub Trending',
+    });
+    expect(result.warnings).toEqual([
+      'Some GitHub Trending page repositories had incomplete rank, URL or star metrics and were skipped.',
+    ]);
+  });
 });
+
+class PartiallyInvalidGitHubTrendingPageClient
+  implements GitHubTrendingPageClientPort
+{
+  async listTrendingRepositories(
+    query: GitHubTrendingPageQuery,
+  ): Promise<readonly GitHubTrendingPageRepository[]> {
+    void query;
+
+    return [
+      {
+        fullName: 'calesthio/OpenMontage',
+        url: 'https://github.com/calesthio/OpenMontage',
+        description: 'Parser drift row with missing stars gained.',
+        language: 'Python',
+        totalStars: 18398,
+        forksCount: 2113,
+        starsGained: 0,
+        rank: 1,
+      },
+      {
+        fullName: 'apple/container',
+        url: 'https://github.com/apple/container',
+        description: 'A tool for creating and running Linux containers.',
+        language: 'Swift',
+        totalStars: 41719,
+        forksCount: 1219,
+        starsGained: 1746,
+        rank: 2,
+      },
+    ];
+  }
+}
 
 const context = (
   config: SourceRuntimeConfig = {},

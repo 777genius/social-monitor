@@ -97,9 +97,10 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
       limit: plan.maxItems,
       userAgent: config.userAgent,
     });
+    const validRepositories = repositories.filter(isUsableTrendingRepository);
 
     return {
-      items: repositories.map((repository) =>
+      items: validRepositories.map((repository) =>
         normalizeRepository({
           repository,
           window: config.window,
@@ -108,7 +109,10 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
         }),
       ),
       nextCursor: checkedAt.toISOString(),
-      warnings: [],
+      warnings: githubTrendingPageWarnings({
+        fetchedCount: repositories.length,
+        validCount: validRepositories.length,
+      }),
     };
   }
 
@@ -211,6 +215,41 @@ const normalizeRepository = (params: {
     publishedAt: checkedAt,
     metadata,
   };
+};
+
+const isUsableTrendingRepository = (
+  repository: GitHubTrendingPageRepository,
+): boolean =>
+  repository.fullName.includes('/') &&
+  repository.url.startsWith('https://github.com/') &&
+  Number.isInteger(repository.rank) &&
+  repository.rank > 0 &&
+  Number.isInteger(repository.totalStars) &&
+  repository.totalStars > 0 &&
+  Number.isInteger(repository.forksCount) &&
+  repository.forksCount >= 0 &&
+  Number.isInteger(repository.starsGained) &&
+  repository.starsGained > 0;
+
+const githubTrendingPageWarnings = (params: {
+  readonly fetchedCount: number;
+  readonly validCount: number;
+}): readonly string[] => {
+  const warnings: string[] = [];
+
+  if (params.fetchedCount === 0) {
+    warnings.push(
+      'GitHub Trending page returned no repositories; parser drift or an empty filtered page should be checked.',
+    );
+  }
+
+  if (params.validCount < params.fetchedCount) {
+    warnings.push(
+      'Some GitHub Trending page repositories had incomplete rank, URL or star metrics and were skipped.',
+    );
+  }
+
+  return warnings;
 };
 
 const readWindow = (value: unknown): GitHubTrendingPageWindow | undefined => {

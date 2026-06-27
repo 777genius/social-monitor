@@ -6,9 +6,31 @@ export const parseGitHubTrendingRepositoriesHtml = (
 ): readonly GitHubTrendingPageRepository[] => {
   const articles = html.match(/<article\b[\s\S]*?<\/article>/gu) ?? [];
 
-  return articles
+  const repositories = articles
     .flatMap((article, index) => parseArticle(article, index + 1))
-    .slice(0, normalizeLimit(limit));
+    .filter(firstRepositoryOccurrence);
+
+  return repositories
+    .slice(0, normalizeLimit(limit))
+    .map((repository, index) => ({
+      ...repository,
+      rank: index + 1,
+    }));
+};
+
+const firstRepositoryOccurrence = (
+  repository: GitHubTrendingPageRepository,
+  index: number,
+  repositories: readonly GitHubTrendingPageRepository[],
+): boolean => {
+  const key = repository.fullName.toLocaleLowerCase('en-US');
+
+  return (
+    repositories.findIndex(
+      (candidate) =>
+        candidate.fullName.toLocaleLowerCase('en-US') === key,
+    ) === index
+  );
 };
 
 const parseArticle = (
