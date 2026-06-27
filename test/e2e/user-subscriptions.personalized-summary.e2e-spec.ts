@@ -399,7 +399,9 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
       })
       .expect(400)
       .expect((response) => {
-        expect(response.body.message).toEqual(expect.arrayContaining([
+        expect(response.headers['content-type']).toContain('application/problem+json');
+        expect(response.body.code).toBe('validation.failed');
+        expect(response.body.details.messages).toEqual(expect.arrayContaining([
           expect.stringContaining('schedule should not be null or undefined'),
         ]));
       });
