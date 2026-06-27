@@ -83,6 +83,7 @@
     "check:briefing-workflow",
     "check:summary-worker-command",
     "check:summary-job-polling-loop",
+    "check:auto-summary-scheduler-loop",
     "check:summary-queue-drain-loop",
     "check:summary-ready-projection-handler",
     "check:summary-ready-event-drain-loop",
