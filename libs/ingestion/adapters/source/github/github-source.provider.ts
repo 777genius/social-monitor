@@ -78,9 +78,7 @@ export class GitHubSourceProvider implements SourceProviderPort {
     return {
       items: normalized,
       nextCursor: page.nextCursor,
-      warnings: page.items.length !== normalized.length
-        ? ['Some GitHub issues search items were skipped because they were pull requests or incomplete.']
-        : [],
+      warnings: githubIssueWarnings(page.items),
     };
   }
 
@@ -125,6 +123,12 @@ const normalizeIssue = (issue: GitHubIssueSearchItem) => {
     return [];
   }
 
+  const publishedAt = readDate(issue.createdAt ?? issue.updatedAt);
+
+  if (publishedAt === undefined) {
+    return [];
+  }
+
   return [
     {
       externalId: `github:${issue.nodeId ?? issue.id ?? issue.htmlUrl}`,
@@ -132,19 +136,41 @@ const normalizeIssue = (issue: GitHubIssueSearchItem) => {
       title,
       body,
       authorHandle: issue.userLogin,
-      publishedAt: readDate(issue.createdAt ?? issue.updatedAt),
+      publishedAt,
     },
   ];
 };
 
-const readDate = (value: string | undefined): Date => {
+const githubIssueWarnings = (items: readonly GitHubIssueSearchItem[]): readonly string[] => [
+  ...(
+    items.some((item) => item.isPullRequest === true || item.htmlUrl === undefined || !hasReadableContent(item))
+      ? ['Some GitHub issues search items were skipped because they were pull requests or incomplete.']
+      : []
+  ),
+  ...(
+    items.some(isTimestampMissingCandidate)
+      ? ['Some GitHub issues search items had no valid timestamp; they were skipped.']
+      : []
+  ),
+];
+
+const isTimestampMissingCandidate = (issue: GitHubIssueSearchItem): boolean =>
+  issue.isPullRequest !== true &&
+  issue.htmlUrl !== undefined &&
+  hasReadableContent(issue) &&
+  readDate(issue.createdAt ?? issue.updatedAt) === undefined;
+
+const hasReadableContent = (issue: GitHubIssueSearchItem): boolean =>
+  (issue.title ?? '').trim().length + (issue.body ?? '').trim().length > 0;
+
+const readDate = (value: string | undefined): Date | undefined => {
   if (value === undefined) {
-    return new Date(0);
+    return undefined;
   }
 
   const parsed = new Date(value);
 
-  return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 };
 
 const readOptionalString = (value: unknown): string | undefined =>

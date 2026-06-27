@@ -341,7 +341,7 @@ const proveScheduledGitHubCollection = async ({
     scanFailures,
     scanLeases,
     expectedFeedCount: 1,
-    expectedNextRunAt: '2026-06-06T10:09:00.000Z',
+    expectedNextRunAt: '2026-06-06T10:15:01.000Z',
     signal: 'github-scheduled-smoke-second',
     expectedQueued: false,
   });
@@ -364,7 +364,7 @@ const proveScheduledGitHubCollection = async ({
     scanFailures,
     scanLeases,
     expectedFeedCount: 2,
-    expectedNextRunAt: '2026-06-06T10:19:00.000Z',
+    expectedNextRunAt: '2026-06-06T10:20:01.000Z',
     signal: 'github-scheduled-smoke-third',
   });
 
