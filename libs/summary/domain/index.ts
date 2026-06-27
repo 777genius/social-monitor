@@ -17,6 +17,7 @@ export * from "./events/reader-summary-generated.event";
 export * from "./events/reader-summary-ready.event";
 export * from "./events/summary-ready.event";
 export * from "./policies/reader-action-policy";
+export * from "./policies/reader-summary-schedule-window-policy";
 export * from "./policies/source-mix-quality-policy";
 export * from "./policies/story-ranking-policy";
 export * from "./policies/top-read-selection-policy";

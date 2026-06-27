@@ -37,6 +37,8 @@ void main() {
     await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
     await tester.pumpAndSettle();
 
+    expect(find.textContaining('Shared UTC period:'), findsOneWidget);
+    expect(find.textContaining('00:00 -'), findsOneWidget);
     expect(find.text('GitHub Trending daily summary'), findsWidgets);
     expect(find.text('GitHub daily radar'), findsOneWidget);
     expect(find.text('Top reads'), findsOneWidget);

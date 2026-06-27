@@ -137,6 +137,10 @@ final class SummaryPeriod {
     return '${_dateLabel(startedAt)} - ${_dateLabel(endedAt)}';
   }
 
+  String get utcRangeLabel {
+    return '${_dateTimeUtcLabel(startedAt)} - ${_dateTimeUtcLabel(endedAt)} UTC';
+  }
+
   @override
   bool operator ==(Object other) {
     return other is SummaryPeriod &&
@@ -169,4 +173,11 @@ String _dateLabel(DateTime value) {
   final month = utc.month.toString().padLeft(2, '0');
   final day = utc.day.toString().padLeft(2, '0');
   return '${utc.year}-$month-$day';
+}
+
+String _dateTimeUtcLabel(DateTime value) {
+  final utc = value.toUtc();
+  final hour = utc.hour.toString().padLeft(2, '0');
+  final minute = utc.minute.toString().padLeft(2, '0');
+  return '${_dateLabel(utc)} $hour:$minute';
 }

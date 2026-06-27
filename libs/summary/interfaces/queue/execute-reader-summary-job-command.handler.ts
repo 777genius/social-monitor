@@ -61,9 +61,7 @@ export class ExecuteReaderSummaryJobCommandHandler {
           throw result.error;
         }
 
-        this.recordMetric(
-          result.value.status === "failed" ? "failed" : "succeeded",
-        );
+        this.recordMetric(completionMetricStatus(result.value.status));
         return {
           readerSummaryJobId: result.value.readerSummaryJobId,
           status: result.value.status,
@@ -79,7 +77,7 @@ export class ExecuteReaderSummaryJobCommandHandler {
     });
   }
 
-  private recordMetric(status: "started" | "succeeded" | "failed"): void {
+  private recordMetric(status: ReaderSummaryJobMetricStatus): void {
     this.metrics.incrementCounter({
       name: "summary_jobs_total",
       labels: {
@@ -101,6 +99,23 @@ export class ExecuteReaderSummaryJobCommandHandler {
     });
   }
 }
+
+type ReaderSummaryJobMetricStatus =
+  "started" | "succeeded" | "failed" | "no_signal";
+
+const completionMetricStatus = (
+  status: ReaderSummaryJobStatus,
+): ReaderSummaryJobMetricStatus => {
+  if (status === "failed") {
+    return "failed";
+  }
+
+  if (status === "no_signal") {
+    return "no_signal";
+  }
+
+  return "succeeded";
+};
 
 const classifyFailure = (
   error: unknown,

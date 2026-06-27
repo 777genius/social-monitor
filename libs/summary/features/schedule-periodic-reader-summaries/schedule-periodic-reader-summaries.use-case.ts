@@ -6,6 +6,8 @@ import {
 } from "@social-monitor/shared-kernel";
 
 import {
+  DEFAULT_READER_SUMMARY_TIMEZONE,
+  ReaderSummaryScheduleWindowPolicy,
   completedReaderSummaryPeriodForCadence,
   readerSummaryScopeKey,
   type ReaderSummaryPeriod,
@@ -51,7 +53,10 @@ export class SchedulePeriodicReaderSummariesUseCase {
       );
     }
 
-    if ((command.tenantId === undefined) !== (command.workspaceId === undefined)) {
+    if (
+      (command.tenantId === undefined) !==
+      (command.workspaceId === undefined)
+    ) {
       return err(
         new DomainError(
           "validation.failed",
@@ -71,9 +76,13 @@ export class SchedulePeriodicReaderSummariesUseCase {
       readonly cadence: ScheduledReaderSummaryCadence;
       readonly message: string;
     }[] = [];
+    const scheduleWindow = new ReaderSummaryScheduleWindowPolicy(
+      command.readyAtUtc,
+    );
     let evaluated = 0;
     let scheduled = 0;
     let existing = 0;
+    let notReady = 0;
 
     for (const policy of policies) {
       for (const cadence of policy.toScheduleSettings().cadences) {
@@ -82,6 +91,16 @@ export class SchedulePeriodicReaderSummariesUseCase {
         }
 
         evaluated += 1;
+        if (
+          !scheduleWindow.canSchedule({
+            cadence,
+            now: command.now,
+          })
+        ) {
+          notReady += 1;
+          continue;
+        }
+
         const item = await this.scheduleOne({
           policy,
           cadence,
@@ -111,6 +130,7 @@ export class SchedulePeriodicReaderSummariesUseCase {
       evaluated,
       scheduled,
       existing,
+      notReady,
       failed: failures.length,
       summaries,
       failures,
@@ -123,27 +143,29 @@ export class SchedulePeriodicReaderSummariesUseCase {
     readonly now: Date;
     readonly correlationId: string;
   }): Promise<
-    | { readonly ok: true; readonly value: ScheduledPeriodicReaderSummaryResultItem }
+    | {
+        readonly ok: true;
+        readonly value: ScheduledPeriodicReaderSummaryResultItem;
+      }
     | {
         readonly ok: false;
         readonly failure: SchedulePeriodicReaderSummariesResult["failures"][number];
       }
   > {
     const snapshot = params.policy.toSnapshot();
-    const schedule = params.policy.toScheduleSettings();
     const scopeKey = readerSummaryScopeKey(snapshot.scope);
+    const timezone = DEFAULT_READER_SUMMARY_TIMEZONE;
 
     try {
       const period = completedReaderSummaryPeriodForCadence({
         cadence: params.cadence,
         now: params.now,
-        timezone: schedule.timezone,
+        timezone,
       });
       const idempotencyKey = readerSummaryScheduleIdempotencyKey({
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
         scopeKey,
-        targetKey: readerSummaryScheduleTargetKey(snapshot),
         cadence: params.cadence,
         period,
         policyVersion: snapshot.updatedAt.toISOString(),
@@ -207,7 +229,6 @@ const readerSummaryScheduleIdempotencyKey = (params: {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly scopeKey: string;
-  readonly targetKey: string;
   readonly cadence: ScheduledReaderSummaryCadence;
   readonly period: ReaderSummaryPeriod;
   readonly policyVersion: string;
@@ -217,15 +238,11 @@ const readerSummaryScheduleIdempotencyKey = (params: {
     params.tenantId,
     params.workspaceId,
     params.scopeKey,
-    params.targetKey,
     params.cadence,
     params.period.periodKey,
+    "shared",
     params.policyVersion,
   ].join(":");
-
-const readerSummaryScheduleTargetKey = (
-  policy: ReturnType<ReaderSummaryPolicy["toSnapshot"]>,
-): string => `policy.${policy.id}`;
 
 const periodToResult = (period: ReaderSummaryPeriod) => ({
   startedAt: period.startedAt.toISOString(),

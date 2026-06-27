@@ -28,12 +28,20 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    var selectorWidth = MediaQuery.sizeOf(context).width - AppSpacing.lg;
+    final availableWidth = MediaQuery.sizeOf(context).width - AppSpacing.lg;
+    var selectorWidth = availableWidth;
     if (selectorWidth > 420) {
       selectorWidth = 420;
     }
     if (selectorWidth < 180) {
       selectorWidth = 180;
+    }
+    var headerWidth = availableWidth;
+    if (headerWidth > 520) {
+      headerWidth = 520;
+    }
+    if (headerWidth < 180) {
+      headerWidth = 180;
     }
 
     return Wrap(
@@ -42,21 +50,25 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
       alignment: WrapAlignment.spaceBetween,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Workspace summary',
-              style: textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: headerWidth),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Workspace summary',
+                style: textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                ),
               ),
-            ),
-            Text(
-              selectedPeriod.rangeLabel,
-              style: textTheme.bodySmall?.copyWith(letterSpacing: 0),
-            ),
-          ],
+              Text(
+                'Shared UTC period: ${selectedPeriod.utcRangeLabel}',
+                softWrap: true,
+                style: textTheme.bodySmall?.copyWith(letterSpacing: 0),
+              ),
+            ],
+          ),
         ),
         Wrap(
           spacing: AppSpacing.xs,

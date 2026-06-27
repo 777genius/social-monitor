@@ -24,6 +24,7 @@ export type SchedulePeriodicReaderSummariesResult = {
   readonly evaluated: number;
   readonly scheduled: number;
   readonly existing: number;
+  readonly notReady: number;
   readonly failed: number;
   readonly summaries: readonly ScheduledPeriodicReaderSummaryResultItem[];
   readonly failures: readonly {

@@ -60,6 +60,8 @@ export class PeriodicReaderSummarySchedulerLoop
     this.logger.info("periodic reader summary scheduler loop started", {
       intervalMs: this.options.intervalMs,
       limit: this.options.limit,
+      readyAtUtcHour: this.options.readyAtUtc.hour,
+      readyAtUtcMinute: this.options.readyAtUtc.minute,
       scoped: this.options.tenantId !== undefined,
       worker: "intelligence-worker",
     });
@@ -99,6 +101,7 @@ export class PeriodicReaderSummarySchedulerLoop
           `periodic-reader-summary-${trigger}`,
         ),
         now: this.clock.now(),
+        readyAtUtc: this.options.readyAtUtc,
         ...(this.options.tenantId === undefined
           ? {}
           : {
@@ -122,14 +125,33 @@ export class PeriodicReaderSummarySchedulerLoop
         return;
       }
 
-      this.logger.info("periodic reader summary scheduler loop tick completed", {
-        trigger,
-        evaluated: result.value.evaluated,
-        scheduled: result.value.scheduled,
-        existing: result.value.existing,
-        failed: result.value.failed,
-        worker: "intelligence-worker",
-      });
+      for (const summary of result.value.summaries) {
+        this.logger.info("periodic reader summary scheduler item completed", {
+          trigger,
+          cadence: summary.cadence,
+          periodKey: summary.period.periodKey,
+          scheduled: summary.created,
+          existing: !summary.created,
+          status: summary.status,
+          readerSummaryJobId: summary.readerSummaryJobId,
+          worker: "intelligence-worker",
+        });
+      }
+
+      this.logger.info(
+        "periodic reader summary scheduler loop tick completed",
+        {
+          trigger,
+          evaluated: result.value.evaluated,
+          scheduled: result.value.scheduled,
+          existing: result.value.existing,
+          notReady: result.value.notReady,
+          failed: result.value.failed,
+          readyAtUtcHour: this.options.readyAtUtc.hour,
+          readyAtUtcMinute: this.options.readyAtUtc.minute,
+          worker: "intelligence-worker",
+        },
+      );
     } catch (error) {
       this.logger.error("periodic reader summary scheduler loop tick failed", {
         trigger,
