@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  Optional,
   type OnApplicationShutdown,
   type OnModuleInit,
 } from "@nestjs/common";
@@ -38,6 +39,7 @@ export class PeriodicReaderSummarySchedulerLoop
     private readonly schedulePeriodicReaderSummaries: SchedulePeriodicReaderSummariesUseCase,
     @Inject(INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER_OPTIONS)
     private readonly options: IntelligencePeriodicReaderSummarySchedulerOptions,
+    @Optional()
     private readonly clock: Clock = new SystemClock(),
   ) {}
 

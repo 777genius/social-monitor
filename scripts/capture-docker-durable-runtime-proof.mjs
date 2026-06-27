@@ -203,9 +203,7 @@ function getJson(url) {
 }
 
 function readContainerEnv(composeService) {
-  const containerId = execFileSync('docker', ['compose', '--profile', 'app', 'ps', '-q', composeService], {
-    encoding: 'utf8',
-  }).trim();
+  const containerId = composeServiceContainerId(composeService);
 
   if (containerId.length === 0) {
     throw new Error(`compose service ${composeService} is not created`);
@@ -270,16 +268,58 @@ function classifyUrlKind(value, expectedKind) {
 }
 
 function isComposeServiceRunning(composeService) {
-  const runningServices = execFileSync(
-    'docker',
-    ['compose', '--profile', 'app', 'ps', '--services', '--status', 'running'],
-    { encoding: 'utf8' },
-  )
+  const runningServices = dockerStdout(['compose', 'ps', '--services', '--status', 'running'])
     .split('\n')
     .map((service) => service.trim())
     .filter(Boolean);
 
-  return runningServices.includes(composeService);
+  if (runningServices.includes(composeService)) {
+    return true;
+  }
+
+  const projectName = process.env.COMPOSE_PROJECT_NAME?.trim();
+  if (projectName === undefined || projectName.length === 0) {
+    return false;
+  }
+
+  return dockerStdout([
+    'ps',
+    '-q',
+    '--filter',
+    `label=com.docker.compose.project=${projectName}`,
+    '--filter',
+    `label=com.docker.compose.service=${composeService}`,
+    '--filter',
+    'status=running',
+  ]).trim().length > 0;
+}
+
+function composeServiceContainerId(composeService) {
+  const fromCompose = dockerStdout(['compose', 'ps', '-q', composeService]).trim();
+  if (fromCompose.length > 0) {
+    return fromCompose;
+  }
+
+  const projectName = process.env.COMPOSE_PROJECT_NAME?.trim();
+  if (projectName === undefined || projectName.length === 0) {
+    return '';
+  }
+
+  return dockerStdout([
+    'ps',
+    '-aq',
+    '--filter',
+    `label=com.docker.compose.project=${projectName}`,
+    '--filter',
+    `label=com.docker.compose.service=${composeService}`,
+  ])
+    .split('\n')
+    .map((containerId) => containerId.trim())
+    .filter(Boolean)[0] ?? '';
+}
+
+function dockerStdout(args) {
+  return execFileSync('docker', args, { encoding: 'utf8' });
 }
 
 function findForbiddenSelectorValues(selectors) {
@@ -339,8 +379,12 @@ function assertReadyPayloadMatchesArtifact(ready, artifact) {
   assertEqual(runtime.providers.deliveryWebhook, 'http', 'ready delivery webhook provider');
   assertEqual(runtime.providers.deliveryEnabledChannels, 'webhook', 'ready delivery enabled channels');
 
-  if (artifact.services.some((service) => service.healthCheck.status !== 'passed')) {
-    throw new Error('all docker backend services must be running');
+  const failedServices = artifact.services.filter((service) => service.healthCheck.status !== 'passed');
+  if (failedServices.length > 0) {
+    const serviceList = failedServices
+      .map((service) => `${service.serviceId}:${service.healthCheck.status}`)
+      .join(', ');
+    throw new Error(`all docker backend services must be running; failed=${serviceList}`);
   }
   if (artifact.rollup.forbiddenSelectorsFound) {
     throw new Error('docker runtime selector capture found forbidden selector values');

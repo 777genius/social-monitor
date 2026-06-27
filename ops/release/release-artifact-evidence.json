@@ -100,19 +100,19 @@
       "artifactId": "openapi-snapshot",
       "path": "libs/contracts/rest/openapi.snapshot.json",
       "algorithm": "sha256",
-      "value": "71b3d2b6813169a894b10b0b8fe18ff8265501eaa1bdcd11ac12e6d92b6bc157"
+      "value": "a9830580e1ae63daec0133b74098359aa9a8db236f0b99f7f125217e866166d3"
     },
     {
       "artifactId": "event-catalog",
       "path": "libs/contracts/events/event-catalog.json",
       "algorithm": "sha256",
-      "value": "db443d6c377f52cef6396134ff9f13af7aca8efd1fb4b7292db751d9689facce"
+      "value": "5201ccceaad724c023c8eea9b663ccc0430cf7d4f08f4803bee68b39734a741d"
     },
     {
       "artifactId": "prisma-schema",
       "path": "prisma/schema.prisma",
       "algorithm": "sha256",
-      "value": "53fb09517d90ff10c119abdf3904ce446c6060a123201b0122752eb4c0d6546c"
+      "value": "7da5ecf3d1b2c31dbc6f4782209ddcd864063cc5b8cd99a2561734481f33bb6e"
     }
   ],
   "deploySmokeEvidence": [
