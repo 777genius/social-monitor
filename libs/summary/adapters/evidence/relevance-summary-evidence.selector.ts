@@ -12,12 +12,15 @@ export class RelevanceSummaryEvidenceSelector implements SummaryEvidenceSelector
   async select(
     params: Parameters<SummaryEvidenceSelectorPort['select']>[0],
   ): Promise<SummaryEvidenceSelection> {
+    const evidenceWindow = rollingDailyEvidenceWindow(this.clock);
     const ranked = await this.rankFeedItems.execute({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       userId: params.userId,
       topicId: params.topicId,
       limit: params.maxItems,
+      observedAfter: inclusiveObservedAfter(evidenceWindow.startedAt),
+      observedBefore: inclusiveObservedBefore(evidenceWindow.endedAt),
     });
 
     if (!ranked.ok) {
@@ -46,25 +49,39 @@ export class RelevanceSummaryEvidenceSelector implements SummaryEvidenceSelector
     }));
 
     return {
-      sourceWindow: buildSourceWindow(params, items, this.clock),
+      sourceWindow: buildSourceWindow(params, items, evidenceWindow),
       items,
     };
   }
 }
 
+const dailyEvidenceWindowMs = 24 * 60 * 60 * 1000;
+
+const rollingDailyEvidenceWindow = (clock: Clock) => {
+  const endedAt = clock.now();
+
+  return {
+    startedAt: new Date(endedAt.getTime() - dailyEvidenceWindowMs),
+    endedAt,
+  };
+};
+
+const inclusiveObservedAfter = (startedAt: Date): Date =>
+  new Date(startedAt.getTime() - 1);
+
+const inclusiveObservedBefore = (endedAt: Date): Date =>
+  new Date(endedAt.getTime() + 1);
+
 const buildSourceWindow = (
   params: Parameters<SummaryEvidenceSelectorPort['select']>[0],
   items: readonly SummaryEvidenceItem[],
-  clock: Clock,
+  evidenceWindow: { readonly startedAt: Date; readonly endedAt: Date },
 ) => {
   if (items.length === 0) {
-    const endedAt = clock.now();
-    const startedAt = new Date(endedAt.getTime() - 1);
-
     return {
       windowId: `${params.tenantId}:${params.workspaceId}:${params.topicId}:personalized-empty`,
-      startedAt,
-      endedAt,
+      startedAt: evidenceWindow.startedAt,
+      endedAt: evidenceWindow.endedAt,
       selectedFeedItemIds: [],
     };
   }
