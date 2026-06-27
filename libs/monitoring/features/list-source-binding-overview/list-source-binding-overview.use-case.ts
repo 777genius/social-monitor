@@ -173,12 +173,12 @@ const overviewOperatorAction = (
     return 'bind_source_provider';
   }
 
-  if (items.some((item) => item.schedulerDecision.decision === 'rate_limit_backoff')) {
-    return 'wait_for_provider_rate_limit_backoff';
-  }
-
   if (items.some((item) => item.schedulerDecision.decision === 'provider_failure_backoff')) {
     return 'check_provider_health_or_credentials';
+  }
+
+  if (items.some((item) => item.schedulerDecision.decision === 'rate_limit_backoff')) {
+    return 'wait_for_provider_rate_limit_backoff';
   }
 
   if (items.some((item) => item.schedulerDecision.decision === 'duplicate_window')) {

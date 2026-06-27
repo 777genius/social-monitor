@@ -202,7 +202,7 @@ describe('ListSourceBindingOverviewUseCase', () => {
           providerUnavailableScans: 3,
           attentionRequiredBindings: 3,
           nextEligibleAt: '2026-06-26T00:05:00.000Z',
-          operatorAction: 'wait_for_provider_rate_limit_backoff',
+          operatorAction: 'check_provider_health_or_credentials',
           signals: ['provider_failure_backoff', 'provider_unavailable', 'rate_limit_backoff', 'scan_ready', 'scheduled_later', 'source_down', 'stale_source_data'],
           providerBreakdown: [
             expect.objectContaining({
