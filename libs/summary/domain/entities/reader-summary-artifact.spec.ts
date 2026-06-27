@@ -235,6 +235,91 @@ describe("ReaderSummaryArtifact", () => {
     ).toThrow("Reader summary source mix includes provider outside evidence");
   });
 
+  it("rejects duplicate reader content source mix providers", () => {
+    expect(() =>
+      ReaderSummaryArtifact.create(
+        baseArtifact({
+          content: readerContent({
+            sourceMix: [
+              ...readerContent().sourceMix,
+              {
+                providerKey: "reddit",
+                itemCount: 1,
+                citationCount: 1,
+                storyClusterCount: 1,
+                crossSourceClusterCount: 1,
+                singleSourceOnly: false,
+                topicIds: ["topic-ai"],
+              },
+            ],
+          }),
+        }),
+      ),
+    ).toThrow("Reader summary source mix provider keys must be unique");
+  });
+
+  it("rejects duplicate reader content top reads by normalized repository URL", () => {
+    expect(() =>
+      ReaderSummaryArtifact.create(
+        baseArtifact({
+          content: readerContent({
+            topReads: [
+              readerTopRead({
+                title: "openai/codex",
+                canonicalUrl: "https://github.com/openai/codex",
+              }),
+              readerTopRead({
+                title: "OpenAI Codex repo",
+                canonicalUrl:
+                  "https://github.com/OpenAI/Codex/stargazers?utm_source=reddit#readme",
+              }),
+            ],
+          }),
+        }),
+      ),
+    ).toThrow("Reader summary top reads must not repeat the same reader item");
+  });
+
+  it("rejects repeated reader content topic section items", () => {
+    const repeatedItem = readerTopRead({
+      title: "openai/codex",
+      canonicalUrl: "https://github.com/openai/codex",
+    });
+
+    expect(() =>
+      ReaderSummaryArtifact.create(
+        baseArtifact({
+          content: readerContent({
+            topicSections: [
+              {
+                topicId: "topic-ai",
+                title: "AI tooling",
+                insight: "Codex is the strongest AI tooling read.",
+                items: [repeatedItem],
+                citationIds: ["citation-1"],
+              },
+              {
+                topicId: "topic-devtools",
+                title: "Developer tooling",
+                insight: "The same repo must not be repeated as a new card.",
+                items: [
+                  {
+                    ...repeatedItem,
+                    canonicalUrl:
+                      "https://github.com/OpenAI/Codex?ref=topic-section",
+                  },
+                ],
+                citationIds: ["citation-1"],
+              },
+            ],
+          }),
+        }),
+      ),
+    ).toThrow(
+      "Reader summary topic sections must not repeat the same reader item",
+    );
+  });
+
   it("rejects model citations outside selected primary evidence", () => {
     expect(() =>
       assertReaderSummaryCitationsAgainstEvidence(
