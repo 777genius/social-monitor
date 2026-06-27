@@ -19,6 +19,51 @@
     "check:live-reddit-oauth",
     "capture:live-reddit-oauth"
   ],
+  "requiredScriptSubstrings": [
+    {
+      "scriptName": "check:briefing-workflow",
+      "includes": [
+        "scripts/check-briefing-workflow-smoke.ts",
+        "scripts/check-briefing-rest-smoke.ts"
+      ]
+    },
+    {
+      "scriptName": "check:personalized-relevance-engine",
+      "includes": [
+        "scripts/check-personalized-relevance-engine-smoke.ts"
+      ]
+    },
+    {
+      "scriptName": "check:summary-memory-product-loop",
+      "includes": [
+        "scripts/check-summary-memory-product-loop.ts"
+      ]
+    },
+    {
+      "scriptName": "check:scan-scheduler-loop",
+      "includes": [
+        "scripts/check-scan-scheduler-loop-smoke.ts"
+      ]
+    },
+    {
+      "scriptName": "check:topic-source-daily-history-rest",
+      "includes": [
+        "scripts/check-topic-source-daily-history-rest-smoke.ts"
+      ]
+    },
+    {
+      "scriptName": "check:source-binding-health-rest",
+      "includes": [
+        "scripts/check-source-binding-health-rest-smoke.ts"
+      ]
+    },
+    {
+      "scriptName": "check:source-live-certification-evidence",
+      "includes": [
+        "scripts/check-source-live-certification-evidence.mjs"
+      ]
+    }
+  ],
   "backendScripts": [
     "lint",
     "check:architecture",

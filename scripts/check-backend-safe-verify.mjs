@@ -39,6 +39,41 @@ for (const scriptName of backendScripts) {
   }
 }
 
+for (const requirement of contract.requiredScriptSubstrings ?? []) {
+  const scriptName = String(requirement.scriptName ?? '');
+  const expectedFragments = Array.isArray(requirement.includes) ? requirement.includes : [];
+  const script = String(packageScripts[scriptName] ?? '');
+
+  if (scriptName.length === 0) {
+    violations.push(`${contractPath}: requiredScriptSubstrings entry must name a script`);
+    continue;
+  }
+
+  if (!backendScripts.has(scriptName)) {
+    violations.push(`${contractPath}: requiredScriptSubstrings references non-backend script "${scriptName}"`);
+  }
+
+  if (script.length === 0) {
+    violations.push(`${packagePath}: missing npm script "${scriptName}" required by ${contractPath}`);
+    continue;
+  }
+
+  if (expectedFragments.length === 0) {
+    violations.push(`${contractPath}: ${scriptName} requiredScriptSubstrings entry must include at least one fragment`);
+  }
+
+  for (const fragment of expectedFragments) {
+    if (typeof fragment !== 'string' || fragment.trim().length === 0) {
+      violations.push(`${contractPath}: ${scriptName} includes entries must be non-empty strings`);
+      continue;
+    }
+
+    if (!script.includes(fragment)) {
+      violations.push(`${packagePath}: ${scriptName} must keep required backend-safe subcheck "${fragment}"`);
+    }
+  }
+}
+
 for (const forbidden of contract.forbiddenScriptNames ?? []) {
   if (backendScripts.has(forbidden)) {
     violations.push(`${contractPath}: backend-safe verify must not run forbidden script "${forbidden}"`);

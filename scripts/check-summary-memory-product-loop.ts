@@ -170,7 +170,12 @@ async function main(): Promise<void> {
     assert.equal(memoryBackend.factBodies[0]?.memory_scope_external_ref, topicFeedbackScope(topic.topicId));
     assert.equal(memoryBackend.factBodies[1]?.memory_scope_external_ref, providerQualityScope(topic.topicId, 'reddit'));
     assert.equal(memoryBackend.factBodies[2]?.memory_scope_external_ref, userPreferenceScope(userId));
-    assert.equal(memoryBackend.factBodies[2]?.category, 'relevance_quality');
+    assert.equal(memoryBackend.factBodies[2]?.category, 'user_preferences');
+    assertIncludesAll(
+      memoryBackend.factBodies[2]?.tags,
+      ['user-preference', 'relevance-quality', 'ranking-downrank-provider', 'provider-reddit'],
+      'user preference fact must preserve relevance/downrank tags',
+    );
     assert(
       String(memoryBackend.factBodies[2]?.text ?? '').includes('down-rank similar reddit evidence'),
       'user preference fact must carry ranking guidance for the next briefing',
@@ -635,6 +640,17 @@ async function runSummary(params: {
 function assertProviderCoverage(providers: readonly string[]): void {
   for (const provider of ['github', 'reddit', 'hacker-news', 'rss']) {
     assert(providers.includes(provider), `summary citations must include provider ${provider}`);
+  }
+}
+
+function assertIncludesAll(
+  value: unknown,
+  expectedValues: readonly string[],
+  message: string,
+): void {
+  assert(Array.isArray(value), `${message}: tags must be an array`);
+  for (const expected of expectedValues) {
+    assert(value.includes(expected), `${message}: missing ${expected}`);
   }
 }
 
