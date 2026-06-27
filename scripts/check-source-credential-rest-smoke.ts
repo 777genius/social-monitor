@@ -74,6 +74,11 @@ async function main(): Promise<void> {
       'x-workspace-id': workspaceId('workspace-source-credential-rest-smoke-other'),
       'x-workspace-role': 'admin',
     };
+    const otherTenantHeaders = {
+      'x-tenant-id': tenantId('tenant-source-credential-rest-smoke-other'),
+      'x-workspace-id': workspace,
+      'x-workspace-role': 'admin',
+    };
     const server = app.getHttpServer();
     const readApiKeySecret = await createApiKey({
       server,
@@ -263,6 +268,16 @@ async function main(): Promise<void> {
       'other workspace must not list source credentials',
     );
 
+    const otherTenantList = await request(app.getHttpServer())
+      .get('/source-credentials')
+      .set(otherTenantHeaders)
+      .query({ providerKey: 'reddit', limit: 10 })
+      .expect(200);
+    assert(
+      otherTenantList.body.sourceCredentials.length === 0,
+      'other tenant must not list source credentials',
+    );
+
     await request(app.getHttpServer())
       .get('/source-credentials')
       .set(viewerHeaders)
@@ -309,6 +324,18 @@ async function main(): Promise<void> {
     await request(app.getHttpServer())
       .patch(`/source-credentials/${credential.id}/rotate`)
       .set(otherWorkspaceHeaders)
+      .send({
+        secret: {
+          accessToken: 'rotated-access-token',
+          refreshToken: 'rotated-refresh-token',
+          clientId: 'fixture-client-id',
+        },
+      })
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .patch(`/source-credentials/${credential.id}/rotate`)
+      .set(otherTenantHeaders)
       .send({
         secret: {
           accessToken: 'rotated-access-token',
@@ -372,6 +399,11 @@ async function main(): Promise<void> {
     await request(app.getHttpServer())
       .post(`/source-credentials/${credential.id}/revoke`)
       .set(otherWorkspaceHeaders)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`/source-credentials/${credential.id}/revoke`)
+      .set(otherTenantHeaders)
       .expect(404);
 
     const revoked = await request(app.getHttpServer())
