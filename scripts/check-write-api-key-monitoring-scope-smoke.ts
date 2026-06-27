@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { SubscriptionsRestModule } from '@social-monitor/subscriptions/interfaces/rest/subscriptions-rest.module';
 import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/in-memory-public-api-audit-log';
 import request from 'supertest';
 
@@ -19,7 +20,7 @@ async function main(): Promise<void> {
   process.env.SOURCE_CONFIG_ENCRYPTION_KEY ??= Buffer.alloc(32, 1).toString('base64');
 
   const moduleRef = await Test.createTestingModule({
-    imports: [IdentityRestModule, MonitoringRestModule],
+    imports: [IdentityRestModule, MonitoringRestModule, SubscriptionsRestModule],
     providers: [
       {
         provide: APP_FILTER,
@@ -213,6 +214,50 @@ async function main(): Promise<void> {
       .set('Authorization', `Bearer ${workflowSecret}`)
       .expect(200);
 
+    const activation = await request(server)
+      .post('/user-subscriptions/activate-source')
+      .set(headers)
+      .set('Authorization', `Bearer ${workflowSecret}`)
+      .send({
+        userId: 'api-key-activation-user',
+        providerKey: 'reddit',
+        targetKind: 'subreddit',
+        targetValue: 'programming',
+        schedule: {
+          recipientKey: 'api-key-activation-user',
+          channel: 'in_app',
+          intervalSeconds: 3600,
+          includeNoSignal: true,
+        },
+      });
+
+    assert(
+      activation.status === 201,
+      `write:topics API key must activate source subscriptions, got ${activation.status}: ${JSON.stringify(activation.body)}`,
+    );
+    assert(
+      activation.body.activation?.sourceBindingCreated === true,
+      `write:topics API key activation must create source binding, got ${JSON.stringify(activation.body)}`,
+    );
+
+    await request(server)
+      .post('/user-subscriptions/activate-source')
+      .set(otherTenantHeaders)
+      .set('Authorization', `Bearer ${workflowSecret}`)
+      .send({
+        userId: 'api-key-activation-user',
+        providerKey: 'reddit',
+        targetKind: 'subreddit',
+        targetValue: 'programming',
+        schedule: {
+          recipientKey: 'api-key-activation-user',
+          channel: 'in_app',
+          intervalSeconds: 3600,
+          includeNoSignal: true,
+        },
+      })
+      .expect(403);
+
     await request(server)
       .post('/topics')
       .set(headers)
@@ -221,6 +266,24 @@ async function main(): Promise<void> {
       .send({
         name: 'Forbidden topic',
         query: 'forbidden',
+      })
+      .expect(403);
+
+    await request(server)
+      .post('/user-subscriptions/activate-source')
+      .set(headers)
+      .set('Authorization', `Bearer ${readOnlySecret}`)
+      .send({
+        userId: 'api-key-read-only-activation-user',
+        providerKey: 'reddit',
+        targetKind: 'subreddit',
+        targetValue: 'programming',
+        schedule: {
+          recipientKey: 'api-key-read-only-activation-user',
+          channel: 'in_app',
+          intervalSeconds: 3600,
+          includeNoSignal: true,
+        },
       })
       .expect(403);
 
@@ -237,6 +300,20 @@ async function main(): Promise<void> {
     assert(
       topicWriteAudit.records.some((record) => record.metadata.requiredScope === 'write:topics'),
       'write API key requests must audit required write scope without storing secrets',
+    );
+    const subscriptionWriteAudit = await auditLog.list({
+      tenantId: tenant,
+      workspaceId: workspace,
+      actorType: 'api_key',
+      action: 'user_subscriptions.create',
+      outcome: 'succeeded',
+      resourceType: 'public_api_request',
+      limit: 10,
+    });
+
+    assert(
+      subscriptionWriteAudit.records.some((record) => record.metadata.requiredScope === 'write:topics'),
+      'source activation API key requests must audit required write scope without storing secrets',
     );
 
     console.log('Write API key monitoring scope smoke OK');
