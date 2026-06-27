@@ -553,6 +553,158 @@ async function main(): Promise<void> {
       'topic source daily history provider filter must narrow provider breakdown',
     );
 
+    const schedulerBackoffTopic = await request(app.getHttpServer())
+      .post('/topics')
+      .set(headers)
+      .set('x-workspace-role', 'admin')
+      .set('idempotency-key', 'topic-scheduler-backoff-history')
+      .send({
+        name: 'Scheduler Backoff History',
+        query: 'scheduler freshness backoff history',
+      })
+      .expect(201);
+    const freshSkipBinding = await request(app.getHttpServer())
+      .post(`/topics/${schedulerBackoffTopic.body.topicId}/source-bindings`)
+      .set(headers)
+      .set('x-workspace-role', 'admin')
+      .set('idempotency-key', 'binding-scheduler-fresh-skip-history')
+      .send({
+        providerKey: 'fake-source',
+        config: { mode: 'search', query: 'fresh skip history' },
+      })
+      .expect(201);
+    const providerBackoffBinding = await request(app.getHttpServer())
+      .post(`/topics/${schedulerBackoffTopic.body.topicId}/source-bindings`)
+      .set(headers)
+      .set('x-workspace-role', 'admin')
+      .set('idempotency-key', 'binding-scheduler-provider-backoff-history')
+      .send({
+        providerKey: 'github-issues',
+        config: { mode: 'search', query: 'repo:777genius/social-monitor provider backoff' },
+      })
+      .expect(201);
+    const freshSkipPolicy = await request(app.getHttpServer())
+      .post(`/source-bindings/${freshSkipBinding.body.sourceBindingId}/scan-policy`)
+      .set(headers)
+      .set('x-workspace-role', 'admin')
+      .set('idempotency-key', 'scan-policy-scheduler-fresh-skip-history')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(201);
+    const providerBackoffPolicy = await request(app.getHttpServer())
+      .post(`/source-bindings/${providerBackoffBinding.body.sourceBindingId}/scan-policy`)
+      .set(headers)
+      .set('x-workspace-role', 'admin')
+      .set('idempotency-key', 'scan-policy-scheduler-provider-backoff-history')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(201);
+    const freshnessBackoffCompletedAt = new Date(Date.now() - 20_000);
+    await seedCompletedScan({
+      scanJobs,
+      tenant,
+      workspace,
+      sourceBindingId: freshSkipBinding.body.sourceBindingId,
+      scanPolicyId: freshSkipPolicy.body.scanPolicyId,
+      scanJobId: 'scheduler-history-fresh-success-scan',
+      completedAt: freshnessBackoffCompletedAt,
+    });
+    await recordSchedulerDecision({
+      schedulerDecisions,
+      tenant,
+      workspace,
+      sourceBindingId: freshSkipBinding.body.sourceBindingId,
+      scanPolicyId: freshSkipPolicy.body.scanPolicyId,
+      providerKey: 'fake-source',
+      decisionKey: 'scheduler-history-fresh-success-skip',
+      reason: 'fresh_success',
+      evaluatedAt: new Date(freshnessBackoffCompletedAt.getTime() + 1_000),
+    });
+    await recordSchedulerDecision({
+      schedulerDecisions,
+      tenant,
+      workspace,
+      sourceBindingId: providerBackoffBinding.body.sourceBindingId,
+      scanPolicyId: providerBackoffPolicy.body.scanPolicyId,
+      providerKey: 'github-issues',
+      decisionKey: 'scheduler-history-provider-failure-backoff',
+      reason: 'provider_failure_backoff',
+      evaluatedAt: new Date(freshnessBackoffCompletedAt.getTime() + 2_000),
+    });
+
+    const providerBackoffDailyHistory = await request(app.getHttpServer())
+      .get(`/source-bindings/${providerBackoffBinding.body.sourceBindingId}/scan-requests/daily`)
+      .set(headers)
+      .set('x-workspace-role', 'viewer')
+      .query({ days: 1 })
+      .expect(200);
+    assert(
+      providerBackoffDailyHistory.body.summary.totalScans === 0,
+      'source binding daily history must expose provider backoff even when no scan job ran',
+    );
+    assert(
+      providerBackoffDailyHistory.body.summary.providerHealthState === 'down',
+      'source binding daily history must mark provider failure backoff as down',
+    );
+    assert(
+      providerBackoffDailyHistory.body.summary.schedulerSkippedByReason.providerFailureBackoff === 1,
+      'source binding daily history must expose provider failure backoff skip breakdown',
+    );
+    assert(
+      providerBackoffDailyHistory.body.summary.signals.includes('provider_failure_backoff'),
+      'source binding daily history must expose provider failure backoff signal',
+    );
+
+    const schedulerBackoffTopicHistory = await request(app.getHttpServer())
+      .get(`/topics/${schedulerBackoffTopic.body.topicId}/source-bindings/daily-history`)
+      .set(headers)
+      .set('x-workspace-role', 'viewer')
+      .query({ days: 1 })
+      .expect(200);
+    assert(
+      schedulerBackoffTopicHistory.body.summary.schedulerDecisionCount === 2,
+      'topic source daily history must count fresh-success and provider-backoff scheduler decisions',
+    );
+    assert(
+      schedulerBackoffTopicHistory.body.summary.schedulerSkippedByReason.freshSuccess === 1,
+      'topic source daily history must expose fresh-success skip breakdown',
+    );
+    assert(
+      schedulerBackoffTopicHistory.body.summary.schedulerSkippedByReason.providerFailureBackoff === 1,
+      'topic source daily history must expose provider failure backoff skip breakdown',
+    );
+    assert(
+      schedulerBackoffTopicHistory.body.summary.signals.includes('provider_failure_backoff'),
+      'topic source daily history must expose provider failure backoff signal',
+    );
+    assert(
+      schedulerBackoffTopicHistory.body.summary.providerBreakdown.some(
+        (provider: { providerKey: string; schedulerSkippedByReason: { freshSuccess: number } }) =>
+          provider.providerKey === 'fake-source' &&
+          provider.schedulerSkippedByReason.freshSuccess === 1,
+      ),
+      'topic source daily history must break down fresh-success skips by provider',
+    );
+    assert(
+      schedulerBackoffTopicHistory.body.summary.providerBreakdown.some(
+        (provider: {
+          providerKey: string;
+          providerHealthState: string;
+          schedulerSkippedByReason: { providerFailureBackoff: number };
+        }) =>
+          provider.providerKey === 'github-issues' &&
+          provider.providerHealthState === 'down' &&
+          provider.schedulerSkippedByReason.providerFailureBackoff === 1,
+      ),
+      'topic source daily history must break down provider-failure backoff by provider',
+    );
+
     await request(app.getHttpServer())
       .get('/topics/missing-topic/source-bindings')
       .set(headers)
