@@ -5,7 +5,11 @@ import {
   type Result,
 } from "@social-monitor/shared-kernel";
 
-import { assertReaderSummaryScope, type ReaderSummaryArtifact } from "../../domain";
+import {
+  assertReaderSummaryCadence,
+  assertReaderSummaryScope,
+  type ReaderSummaryArtifact,
+} from "../../domain";
 import type {
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryFreshnessProbePort,
@@ -60,6 +64,26 @@ export class ListReaderSummariesUseCase {
           ),
         );
       }
+    }
+
+    if (query.cadence !== undefined) {
+      try {
+        assertReaderSummaryCadence(query.cadence);
+      } catch (error) {
+        return err(
+          new DomainError(
+            "validation.failed",
+            error instanceof Error
+              ? error.message
+              : "Invalid reader summary cadence",
+          ),
+        );
+      }
+    }
+
+    const periodValidation = validateReaderSummaryPeriodFilters(query);
+    if (!periodValidation.ok) {
+      return err(periodValidation.error);
     }
 
     const filters = normalizeListReaderSummaryFilters(query);
@@ -198,6 +222,60 @@ const normalizeOptionalFilter = (
   return normalized === undefined || normalized.length === 0
     ? undefined
     : normalized;
+};
+
+const validateReaderSummaryPeriodFilters = (
+  query: ListReaderSummariesQuery,
+): Result<void, DomainError> => {
+  if (
+    query.periodStartedAt !== undefined &&
+    Number.isNaN(query.periodStartedAt.getTime())
+  ) {
+    return err(
+      new DomainError(
+        "validation.failed",
+        "Reader summary periodStartedAt must be a valid ISO date",
+      ),
+    );
+  }
+
+  if (
+    query.periodEndedAt !== undefined &&
+    Number.isNaN(query.periodEndedAt.getTime())
+  ) {
+    return err(
+      new DomainError(
+        "validation.failed",
+        "Reader summary periodEndedAt must be a valid ISO date",
+      ),
+    );
+  }
+
+  if (
+    query.periodStartedFrom !== undefined &&
+    Number.isNaN(query.periodStartedFrom.getTime())
+  ) {
+    return err(
+      new DomainError(
+        "validation.failed",
+        "Reader summary periodStartedFrom must be a valid ISO date",
+      ),
+    );
+  }
+
+  if (
+    query.periodStartedBefore !== undefined &&
+    Number.isNaN(query.periodStartedBefore.getTime())
+  ) {
+    return err(
+      new DomainError(
+        "validation.failed",
+        "Reader summary periodStartedBefore must be a valid ISO date",
+      ),
+    );
+  }
+
+  return ok(undefined);
 };
 
 const hasPostPresentationFilters = (

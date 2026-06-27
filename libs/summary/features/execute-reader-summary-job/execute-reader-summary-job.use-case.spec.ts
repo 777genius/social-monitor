@@ -9,6 +9,7 @@ import {
 import {
   type ReaderSummaryArtifact,
   ReaderSummaryJob,
+  type ReaderSummaryPeriod,
   type ReaderSummaryPolicy,
   type SummaryEvidenceSelection,
   topicReaderSummaryScope,
@@ -35,6 +36,15 @@ class StaticIdGenerator implements IdGenerator {
     return "reader-summary-id-1";
   }
 }
+
+const readerSummaryPeriod: ReaderSummaryPeriod = {
+  cadence: "daily",
+  startedAt: new Date("2026-06-26T00:00:00.000Z"),
+  endedAt: new Date("2026-06-27T00:00:00.000Z"),
+  timezone: "UTC",
+  periodKey:
+    "daily:2026-06-26T00:00:00.000Z:2026-06-27T00:00:00.000Z:UTC",
+};
 
 describe("ExecuteReaderSummaryJobUseCase", () => {
   it("rejects empty reader summary job ids with canonical language", async () => {
@@ -79,6 +89,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         tenantId: tenant,
         workspaceId: workspace,
         scope: topicReaderSummaryScope("topic-reader-ai"),
+        period: readerSummaryPeriod,
         userId: "user-1",
         subscriptionId: "subscription-1",
         idempotencyKey: "reader-job-key-1",
@@ -105,6 +116,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
             {
               artifactId: "summary-memory:topic:topic-reader-ai",
               scope: topicReaderSummaryScope("topic-reader-ai"),
+              period: readerSummaryPeriod,
               summaryText:
                 "User prefers risk-first summaries for runtime regressions.",
               generatedAt: requestedAt,
@@ -143,6 +155,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     expect(snapshot).toMatchObject({
       userId: "user-1",
       subscriptionId: "subscription-1",
+      period: readerSummaryPeriod,
       executiveSummary: expect.stringContaining(
         "Focus on runtime regressions.",
       ),
@@ -175,6 +188,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         payload: expect.objectContaining({
           readerSummaryJobId: "reader-job-1",
           readerSummaryId: "reader-summary-id-1",
+          period: readerSummaryPeriod,
           userId: "user-1",
           subscriptionId: "subscription-1",
         }),
@@ -256,6 +270,10 @@ class EmptyReaderSummaryPolicyRepository implements ReaderSummaryPolicyRepositor
 
   async findByScope(): Promise<ReaderSummaryPolicy | null> {
     return null;
+  }
+
+  async listScheduled(): Promise<readonly ReaderSummaryPolicy[]> {
+    return [];
   }
 }
 

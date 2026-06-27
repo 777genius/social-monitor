@@ -35,6 +35,8 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       workspaceId: params.workspaceId,
       topicId: params.scope.type === "topic" ? params.scope.topicId : undefined,
       userId: params.userId,
+      observedAfter: inclusiveObservedAfter(params.period.startedAt),
+      observedBefore: params.period.endedAt,
       limit: expandedCandidateLimit(params.maxItems),
     });
 
@@ -43,7 +45,10 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     }
 
     const items = selectProviderDiverseEvidence(
-      await this.expandRankedItems(params, ranked.value.items),
+      filterItemsByReaderSummaryPeriod(
+        await this.expandRankedItems(params, ranked.value.items),
+        params.period,
+      ),
       params.maxItems,
     );
 
@@ -276,6 +281,19 @@ const selectProviderDiverseEvidence = (
 
   return selected;
 };
+
+const filterItemsByReaderSummaryPeriod = (
+  items: readonly SummaryEvidenceItem[],
+  period: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0]["period"],
+): readonly SummaryEvidenceItem[] =>
+  items.filter(
+    (item) =>
+      item.observedAt.getTime() >= period.startedAt.getTime() &&
+      item.observedAt.getTime() < period.endedAt.getTime(),
+  );
+
+const inclusiveObservedAfter = (startedAt: Date): Date =>
+  new Date(startedAt.getTime() - 1);
 
 const providerFamilyKey = (providerKey: string): string => {
   const normalized = providerKey.toLowerCase();

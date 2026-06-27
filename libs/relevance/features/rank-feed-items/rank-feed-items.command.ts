@@ -1,4 +1,4 @@
-import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 export type RankFeedItemsCommand = {
   readonly tenantId: TenantId;
@@ -7,4 +7,5 @@ export type RankFeedItemsCommand = {
   readonly topicId?: string;
   readonly limit: number;
   readonly observedAfter?: Date;
+  readonly observedBefore?: Date;
 };

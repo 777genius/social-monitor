@@ -1,5 +1,12 @@
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
+import {
+  DEFAULT_READER_SUMMARY_TIMEZONE,
+  assertReaderSummaryTimezone,
+  assertScheduledReaderSummaryCadence,
+  scheduledReaderSummaryCadences,
+  type ScheduledReaderSummaryCadence,
+} from "../value-objects/reader-summary-period";
 import type { ReaderSummaryScope } from "../value-objects/reader-summary-scope";
 import { assertReaderSummaryScope } from "../value-objects/reader-summary-scope";
 
@@ -24,11 +31,18 @@ export type ReaderSummaryGenerationPolicy = {
   readonly rulesVersion: string;
 };
 
+export type ReaderSummaryScheduleSettings = {
+  readonly enabled: boolean;
+  readonly timezone: string;
+  readonly cadences: readonly ScheduledReaderSummaryCadence[];
+};
+
 export type ReaderSummaryPolicyProps = ReaderSummaryGenerationPolicy & {
   readonly id: string;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly scope: ReaderSummaryScope;
+  readonly schedule: ReaderSummaryScheduleSettings;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 };
@@ -66,12 +80,20 @@ export const defaultReaderSummaryGenerationPolicy =
     rulesVersion: "reader_summary.rules.policy.v1",
   });
 
+export const defaultReaderSummaryScheduleSettings =
+  (): ReaderSummaryScheduleSettings => ({
+    enabled: true,
+    timezone: DEFAULT_READER_SUMMARY_TIMEZONE,
+    cadences: [...scheduledReaderSummaryCadences],
+  });
+
 export class ReaderSummaryPolicy {
   private constructor(private readonly props: ReaderSummaryPolicyProps) {}
 
   static create(
-    props: Omit<ReaderSummaryPolicyProps, "rulesVersion"> & {
+    props: Omit<ReaderSummaryPolicyProps, "rulesVersion" | "schedule"> & {
       readonly rulesVersion?: string;
+      readonly schedule?: ReaderSummaryScheduleSettings;
     },
   ): ReaderSummaryPolicy {
     const defaults = defaultReaderSummaryGenerationPolicy();
@@ -80,6 +102,7 @@ export class ReaderSummaryPolicy {
       this.normalize({
         ...props,
         rulesVersion: props.rulesVersion ?? defaults.rulesVersion,
+        schedule: props.schedule ?? defaultReaderSummaryScheduleSettings(),
       }),
     );
   }
@@ -115,6 +138,14 @@ export class ReaderSummaryPolicy {
       dedupeStrategy: this.props.dedupeStrategy,
       customInstructions: this.props.customInstructions,
       rulesVersion: this.props.rulesVersion,
+    };
+  }
+
+  toScheduleSettings(): ReaderSummaryScheduleSettings {
+    return {
+      enabled: this.props.schedule.enabled,
+      timezone: this.props.schedule.timezone,
+      cadences: [...this.props.schedule.cadences],
     };
   }
 
@@ -166,6 +197,8 @@ export class ReaderSummaryPolicy {
       throw new Error("Reader summary policy rules version must be non-empty");
     }
 
+    const schedule = normalizeReaderSummaryScheduleSettings(props.schedule);
+
     if (props.updatedAt.getTime() < props.createdAt.getTime()) {
       throw new Error(
         "Reader summary policy updatedAt must not be before createdAt",
@@ -175,6 +208,7 @@ export class ReaderSummaryPolicy {
     return {
       ...props,
       customInstructions,
+      schedule,
     };
   }
 }
@@ -187,4 +221,29 @@ const normalizeOptionalText = (
   return normalized === undefined || normalized.length === 0
     ? undefined
     : normalized;
+};
+
+const normalizeReaderSummaryScheduleSettings = (
+  schedule: ReaderSummaryScheduleSettings,
+): ReaderSummaryScheduleSettings => {
+  if (typeof schedule.enabled !== "boolean") {
+    throw new Error("Reader summary schedule enabled must be boolean");
+  }
+
+  assertReaderSummaryTimezone(schedule.timezone);
+
+  const cadences = [...new Set(schedule.cadences)];
+  if (cadences.length === 0) {
+    throw new Error("Reader summary schedule must include at least one cadence");
+  }
+
+  for (const cadence of cadences) {
+    assertScheduledReaderSummaryCadence(cadence);
+  }
+
+  return {
+    enabled: schedule.enabled,
+    timezone: schedule.timezone.trim(),
+    cadences,
+  };
 };

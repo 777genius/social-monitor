@@ -28,6 +28,7 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
     if (!intent.isEnabled) {
       return;
     }
+    final period = selectedSummaryPeriod;
     final generation = _summaryGenerationGuard.markOperationStarted();
     final previous = switch (summaryJobState) {
       ReadyViewState<ReaderSummaryJobSnapshot>(:final value) => value,
@@ -44,7 +45,8 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
       RequestWorkspaceSummaryCommand(
         scope: _scope,
         userId: _userId,
-        idempotencyKey: _summaryRequestIdempotencyKeyFactory(_scope),
+        idempotencyKey: _summaryRequestIdempotencyKeyFactory(_scope, period),
+        period: period,
       ),
     );
     if (!_summaryGenerationGuard.isCurrent(generation)) {
@@ -140,6 +142,52 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
       await _loadWorkspaceSummaryForStore(this, generation);
     }
   }
+
+  Future<void> selectWorkspaceSummaryPeriod(
+    SummaryPeriodPreset nextPreset,
+  ) async {
+    if (nextPreset == selectedSummaryPeriodPreset) {
+      return;
+    }
+
+    selectedSummaryPeriodPreset = nextPreset;
+    _selectedSummaryPeriodEndedAt = null;
+    await _reloadSelectedWorkspaceSummaryPeriod();
+  }
+
+  Future<void> showPreviousWorkspaceSummaryPeriod() async {
+    _selectedSummaryPeriodEndedAt = selectedSummaryPeriodPreset
+        .previousPeriodEndedAt(selectedSummaryPeriod.endedAt);
+    await _reloadSelectedWorkspaceSummaryPeriod();
+  }
+
+  Future<void> showCurrentWorkspaceSummaryPeriod() async {
+    if (isSelectedSummaryPeriodCurrent) {
+      return;
+    }
+
+    _selectedSummaryPeriodEndedAt = null;
+    await _reloadSelectedWorkspaceSummaryPeriod();
+  }
+
+  Future<void> showNextWorkspaceSummaryPeriod() async {
+    if (!canShowNextSummaryPeriod) {
+      return;
+    }
+
+    _selectedSummaryPeriodEndedAt = selectedSummaryPeriodPreset
+        .nextPeriodEndedAt(selectedSummaryPeriod.endedAt);
+    await _reloadSelectedWorkspaceSummaryPeriod();
+  }
+
+  Future<void> _reloadSelectedWorkspaceSummaryPeriod() async {
+    _summaryGenerationGuard.invalidate();
+    workspaceSummaryState = const InitialViewState<WorkspaceSummarySnapshot>();
+    summaryJobState = const InitialViewState<ReaderSummaryJobSnapshot>();
+    _notifyStateChanged();
+
+    await loadWorkspaceSummary();
+  }
 }
 
 Future<void> _loadWorkspaceSummaryForStore(
@@ -160,7 +208,12 @@ Future<void> _loadWorkspaceSummaryForStore(
   Result<WorkspaceSummarySnapshot> result;
   try {
     result = await store._dependencies
-        .loadWorkspaceSummary(LoadWorkspaceSummaryQuery(scope: store._scope))
+        .loadWorkspaceSummary(
+          LoadWorkspaceSummaryQuery(
+            scope: store._scope,
+            period: store.selectedSummaryPeriod,
+          ),
+        )
         .timeout(store._workspaceSummaryLoadTimeout);
   } on TimeoutException catch (error) {
     result = Result.failure(
@@ -198,7 +251,15 @@ Future<void> _loadWorkspaceSummaryForStore(
   store._notifyStateChanged();
 }
 
-String _defaultSummaryRequestIdempotencyKey(WorkspaceScope scope) {
-  final timestamp = DateTime.now().microsecondsSinceEpoch;
-  return '${scope.workspaceId}:workspace-summary:$timestamp';
+String _defaultSummaryRequestIdempotencyKey(
+  WorkspaceScope scope,
+  SummaryPeriod period,
+) {
+  return [
+    scope.workspaceId,
+    'workspace-summary',
+    period.cadence.name,
+    period.startedAt.toUtc().toIso8601String(),
+    period.endedAt.toUtc().toIso8601String(),
+  ].join(':');
 }

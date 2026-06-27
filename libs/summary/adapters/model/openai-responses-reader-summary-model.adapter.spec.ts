@@ -185,6 +185,14 @@ const readerSummaryInput = (
   tenantId: tenantId("tenant-openai-reader-summary-adapter"),
   workspaceId: workspaceId("workspace-openai-reader-summary-adapter"),
   scope: { type: "workspace" },
+  period: {
+    cadence: "daily",
+    startedAt: new Date("2026-06-23T00:00:00.000Z"),
+    endedAt: new Date("2026-06-24T00:00:00.000Z"),
+    timezone: "UTC",
+    periodKey:
+      "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
+  },
   evidence: {
     rankingPolicyVersion: "story_ranking_v1",
     sourceWindow: {

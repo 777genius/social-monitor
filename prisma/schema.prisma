@@ -693,6 +693,11 @@ model ReaderSummaryArtifact {
   scopeType       String        @map("scope_type")
   scopeKey        String        @map("scope_key")
   topicId         String?       @map("topic_id") @db.Uuid
+  cadence         String
+  periodStartedAt DateTime     @map("period_started_at") @db.Timestamptz(6)
+  periodEndedAt   DateTime     @map("period_ended_at") @db.Timestamptz(6)
+  periodTimezone  String       @map("period_timezone")
+  periodKey       String       @map("period_key")
   userId          String?       @map("user_id")
   subscriptionId  String?       @map("subscription_id") @db.Uuid
   status          SummaryStatus @default(COMPLETED)
@@ -707,6 +712,7 @@ model ReaderSummaryArtifact {
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  @@index([tenantId, workspaceId, scopeKey, cadence, periodStartedAt], map: "reader_summary_artifacts_period_lookup_idx")
   @@index([tenantId, workspaceId, scopeKey, status, createdAt])
   @@index([tenantId, workspaceId, userId, scopeKey, createdAt])
   @@map("reader_summary_artifacts")
@@ -719,6 +725,11 @@ model ReaderSummaryJob {
   scopeType          String        @map("scope_type")
   scopeKey           String        @map("scope_key")
   topicId            String?       @map("topic_id") @db.Uuid
+  cadence            String
+  periodStartedAt    DateTime      @map("period_started_at") @db.Timestamptz(6)
+  periodEndedAt      DateTime      @map("period_ended_at") @db.Timestamptz(6)
+  periodTimezone     String        @map("period_timezone")
+  periodKey          String        @map("period_key")
   userId             String?       @map("user_id")
   subscriptionId     String?       @map("subscription_id") @db.Uuid
   status             SummaryStatus @default(REQUESTED)
@@ -733,6 +744,7 @@ model ReaderSummaryJob {
   updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, workspaceId, scopeKey, cadence, periodStartedAt], map: "reader_summary_jobs_period_lookup_idx")
   @@index([tenantId, workspaceId, scopeKey, status, createdAt])
   @@index([tenantId, workspaceId, userId, scopeKey, createdAt])
   @@map("reader_summary_jobs")
@@ -755,10 +767,14 @@ model ReaderSummaryPolicy {
   dedupeStrategy         String   @map("dedupe_strategy")
   customInstructions     String?  @map("custom_instructions")
   rulesVersion           String   @map("rules_version")
+  scheduleEnabled        Boolean  @default(true) @map("schedule_enabled")
+  scheduleTimezone       String   @default("UTC") @map("schedule_timezone")
+  scheduleCadences       String[] @map("schedule_cadences")
   createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, workspaceId, scopeKey])
+  @@index([tenantId, workspaceId, scheduleEnabled, updatedAt], map: "reader_summary_policies_schedule_lookup_idx")
   @@index([tenantId, workspaceId, updatedAt])
   @@map("reader_summary_policies")
 }

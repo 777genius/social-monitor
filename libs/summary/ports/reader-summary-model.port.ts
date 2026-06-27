@@ -5,6 +5,7 @@ import type {
   ReaderSummaryContextArtifact,
   ReaderSummaryGenerationPolicy,
   ReaderSummaryLineage,
+  ReaderSummaryPeriod,
   ReaderSummaryScope,
   ReaderSummaryUsage,
   SummaryEvidenceSelection,
@@ -33,6 +34,7 @@ export type ReaderSummaryModelInput = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly scope: ReaderSummaryScope;
+  readonly period: ReaderSummaryPeriod;
   readonly userId?: string;
   readonly subscriptionId?: string;
   readonly evidence: SummaryEvidenceSelection;

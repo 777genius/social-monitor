@@ -11,6 +11,7 @@ describe("GetReaderSummaryJobStatusUseCase", () => {
       tenantId: tenant,
       workspaceId: workspace,
       scope: { type: "workspace" },
+      period,
       idempotencyKey: "reader-summary-1",
       requestedAt: new Date("2026-06-23T08:00:00.000Z"),
     })
@@ -34,6 +35,14 @@ describe("GetReaderSummaryJobStatusUseCase", () => {
       value: {
         readerSummaryJobId: "reader-summary-job-1",
         scope: { type: "workspace" },
+        period: {
+          cadence: "daily",
+          startedAt: "2026-06-23T00:00:00.000Z",
+          endedAt: "2026-06-24T00:00:00.000Z",
+          timezone: "UTC",
+          periodKey:
+            "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
+        },
         status: "completed",
         requestedAt: "2026-06-23T08:00:00.000Z",
         startedAt: "2026-06-23T08:01:00.000Z",
@@ -82,6 +91,14 @@ describe("GetReaderSummaryJobStatusUseCase", () => {
 
 const tenant = tenantId("tenant-reader-summary-job-status");
 const workspace = workspaceId("workspace-reader-summary-job-status");
+const period = {
+  cadence: "daily" as const,
+  startedAt: new Date("2026-06-23T00:00:00.000Z"),
+  endedAt: new Date("2026-06-24T00:00:00.000Z"),
+  timezone: "UTC",
+  periodKey:
+    "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
+};
 
 class FakeReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
   constructor(private readonly jobs: readonly ReaderSummaryJob[]) {}

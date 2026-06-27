@@ -101,6 +101,7 @@ export const requestReaderSummaryResponseFromReaderSummary = (
   result: RequestReaderSummaryResult,
 ): RequestReaderSummaryResponseDto => ({
   readerSummaryJobId: result.readerSummaryJobId,
+  period: result.period,
   status: result.status,
   created: result.created,
 });
@@ -110,6 +111,7 @@ export const readerSummaryJobStatusFromReaderSummary = (
 ): ReaderSummaryJobStatusResponseDto => ({
   readerSummaryJobId: result.readerSummaryJobId,
   scope: result.scope,
+  period: result.period,
   status: result.status,
   requestedAt: result.requestedAt,
   startedAt: result.startedAt,

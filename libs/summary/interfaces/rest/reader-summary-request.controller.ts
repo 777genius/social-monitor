@@ -27,7 +27,11 @@ import {
   type WorkspaceId,
 } from "@social-monitor/shared-kernel";
 
-import type { ReaderSummaryScope } from "../../domain";
+import type {
+  ReaderSummaryCadence,
+  ReaderSummaryPeriodInput,
+  ReaderSummaryScope,
+} from "../../domain";
 import { RequestReaderSummaryUseCase } from "../../features/request-reader-summary/request-reader-summary.use-case";
 import { requestReaderSummaryResponseFromReaderSummary } from "./reader-summary-rest.mapper";
 import {
@@ -86,6 +90,9 @@ export class ReaderSummaryRequestController {
       tenantId: tenantScope.tenantId,
       workspaceId: tenantScope.workspaceId,
       scope: normalizeReaderSummaryScope(body.scope),
+      cadence: normalizeReaderSummaryCadence(body.cadence),
+      period: normalizeReaderSummaryPeriod(body.period),
+      timezone: normalizeOptionalReaderSummaryText(body.timezone),
       userId: body.userId,
       subscriptionId: body.subscriptionId,
       idempotencyKey: requireIdempotencyKeyHeader(idempotencyKey),
@@ -149,4 +156,63 @@ const normalizeReaderSummaryScope = (
     "validation.failed",
     "ReaderSummary scope type must be workspace or topic",
   );
+};
+
+const normalizeReaderSummaryCadence = (
+  value: RequestReaderSummaryRequestDto["cadence"] | undefined,
+): ReaderSummaryCadence | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (
+    value === "daily" ||
+    value === "weekly" ||
+    value === "monthly" ||
+    value === "custom"
+  ) {
+    return value;
+  }
+
+  throw new DomainError(
+    "validation.failed",
+    "ReaderSummary cadence must be daily, weekly, monthly or custom",
+  );
+};
+
+const normalizeReaderSummaryPeriod = (
+  period: RequestReaderSummaryRequestDto["period"] | undefined,
+): ReaderSummaryPeriodInput | undefined => {
+  if (period === undefined) {
+    return undefined;
+  }
+
+  return {
+    startedAt: parseReaderSummaryDate(period.startedAt, "period.startedAt"),
+    endedAt: parseReaderSummaryDate(period.endedAt, "period.endedAt"),
+    timezone: period.timezone,
+  };
+};
+
+const parseReaderSummaryDate = (value: string, name: string): Date => {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new DomainError(
+      "validation.failed",
+      `ReaderSummary ${name} must be a valid ISO date`,
+    );
+  }
+
+  return parsed;
+};
+
+const normalizeOptionalReaderSummaryText = (
+  value: string | undefined,
+): string | undefined => {
+  const normalized = value?.trim();
+
+  return normalized === undefined || normalized.length === 0
+    ? undefined
+    : normalized;
 };

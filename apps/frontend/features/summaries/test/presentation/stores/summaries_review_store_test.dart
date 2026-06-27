@@ -96,6 +96,63 @@ void main() {
     expect(store.isSummaryGenerationInProgress, isFalse);
   });
 
+  test('selects summary period for workspace load and request APIs', () async {
+    final apiClient = InMemorySummariesApiClient(
+      items: [summaryApiDto()],
+      workspaceSummary: readerSummaryApiDto(),
+    );
+    final catalog = GeneratedSummaryReviewCatalog(apiClient: apiClient);
+    final store = _storeFromCatalog(catalog);
+
+    await store.selectWorkspaceSummaryPeriod(SummaryPeriodPreset.weekly);
+    await store.requestWorkspaceSummary();
+
+    expect(store.selectedSummaryPeriodPreset, SummaryPeriodPreset.weekly);
+    expect(
+      apiClient.loadWorkspaceSummaryRequests.last.period.cadence,
+      SummaryPeriodCadence.weekly,
+    );
+    expect(
+      apiClient.requestWorkspaceSummaryRequests.last.period.cadence,
+      SummaryPeriodCadence.weekly,
+    );
+  });
+
+  test(
+    'navigates workspace summary periods through the same load flow',
+    () async {
+      final apiClient = InMemorySummariesApiClient(
+        items: [summaryApiDto()],
+        workspaceSummary: readerSummaryApiDto(),
+      );
+      final catalog = GeneratedSummaryReviewCatalog(apiClient: apiClient);
+      final store = _storeFromCatalog(catalog);
+
+      await store.selectWorkspaceSummaryPeriod(SummaryPeriodPreset.weekly);
+      final currentWeeklyPeriod = store.selectedSummaryPeriod;
+
+      await store.showPreviousWorkspaceSummaryPeriod();
+      final previousWeeklyPeriod = store.selectedSummaryPeriod;
+
+      expect(previousWeeklyPeriod.endedAt, currentWeeklyPeriod.startedAt);
+      expect(store.canShowNextSummaryPeriod, isTrue);
+      expect(
+        apiClient.loadWorkspaceSummaryRequests.last.period,
+        previousWeeklyPeriod,
+      );
+
+      await store.showNextWorkspaceSummaryPeriod();
+
+      expect(store.selectedSummaryPeriod, currentWeeklyPeriod);
+
+      await store.showPreviousWorkspaceSummaryPeriod();
+      await store.showCurrentWorkspaceSummaryPeriod();
+
+      expect(store.selectedSummaryPeriod, currentWeeklyPeriod);
+      expect(store.isSelectedSummaryPeriodCurrent, isTrue);
+    },
+  );
+
   test('submits reader relevance action from summary top read', () async {
     final store = _store([
       summaryApiDto(),
@@ -356,7 +413,7 @@ SummariesReviewStore _storeFromCatalog(
     ),
     scope: summaryWorkspaceScope,
     userId: 'user-test',
-    summaryRequestIdempotencyKeyFactory: (_) => 'summary-test-key',
+    summaryRequestIdempotencyKeyFactory: (_, _) => 'summary-test-key',
     summaryPollInterval: Duration.zero,
     workspaceSummaryLoadTimeout: workspaceSummaryLoadTimeout,
   );

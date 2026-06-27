@@ -23,11 +23,14 @@ import {
   type SummaryMemoryFailureMode,
 } from "../../features/record-summary-feedback/record-summary-feedback.use-case";
 import { RegenerateSummaryUseCase } from "../../features/regenerate-summary/regenerate-summary.use-case";
+import { RequestReaderSummaryUseCase } from "../../features/request-reader-summary/request-reader-summary.use-case";
 import { RequestSummaryUseCase } from "../../features/request-summary/request-summary.use-case";
 import { ScheduleAutoSummariesUseCase } from "../../features/schedule-auto-summaries/schedule-auto-summaries.use-case";
+import { SchedulePeriodicReaderSummariesUseCase } from "../../features/schedule-periodic-reader-summaries/schedule-periodic-reader-summaries.use-case";
 import { UpsertSummaryPolicyUseCase } from "../../features/upsert-summary-policy/upsert-summary-policy.use-case";
 import {
   type AutoSummaryCandidateRepositoryPort,
+  type ReaderSummaryPolicyRepositoryPort,
   type SummaryArtifactRepositoryPort,
   type SummaryEvidenceSelectorPort,
   type SummaryEventPublisherPort,
@@ -137,6 +140,18 @@ import { SummaryController } from "./summary.controller";
         SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY,
         RequestSummaryUseCase,
       ],
+    },
+    {
+      provide: SchedulePeriodicReaderSummariesUseCase,
+      useFactory: (
+        readerSummaryPolicies: ReaderSummaryPolicyRepositoryPort,
+        requestReaderSummary: RequestReaderSummaryUseCase,
+      ) =>
+        new SchedulePeriodicReaderSummariesUseCase(
+          readerSummaryPolicies,
+          requestReaderSummary,
+        ),
+      inject: [READER_SUMMARY_POLICY_REPOSITORY, RequestReaderSummaryUseCase],
     },
     {
       provide: ExecuteSummaryJobUseCase,
@@ -290,6 +305,7 @@ import { SummaryController } from "./summary.controller";
     RegenerateSummaryUseCase,
     RequestSummaryUseCase,
     ScheduleAutoSummariesUseCase,
+    SchedulePeriodicReaderSummariesUseCase,
     UpsertSummaryPolicyUseCase,
   ],
 })

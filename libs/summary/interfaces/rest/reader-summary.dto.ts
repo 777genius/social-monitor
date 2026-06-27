@@ -37,6 +37,23 @@ export class ReaderSummarySourceWindowDto {
   declare readonly storyClusterIds: readonly string[];
 }
 
+export class ReaderSummaryPeriodDto {
+  @ApiProperty({ enum: ["daily", "weekly", "monthly", "custom"] })
+  declare readonly cadence: "daily" | "weekly" | "monthly" | "custom";
+
+  @ApiProperty({ format: "date-time" })
+  declare readonly startedAt: string;
+
+  @ApiProperty({ format: "date-time" })
+  declare readonly endedAt: string;
+
+  @ApiProperty()
+  declare readonly timezone: string;
+
+  @ApiProperty()
+  declare readonly periodKey: string;
+}
+
 export class ReaderSummaryObservedAtRangeDto {
   @ApiProperty({ format: "date-time" })
   declare readonly startedAt: string;
@@ -191,6 +208,9 @@ export class ReaderSummaryContextArtifactDto {
 
   @ApiProperty({ type: () => ReaderSummaryScopeDto })
   declare readonly scope: ReaderSummaryScopeDto;
+
+  @ApiProperty({ type: () => ReaderSummaryPeriodDto })
+  declare readonly period: ReaderSummaryPeriodDto;
 
   @ApiProperty()
   declare readonly summaryText: string;
@@ -367,6 +387,9 @@ export class ReaderSummaryArtifactResponseDto {
 
   @ApiProperty({ type: () => ReaderSummaryScopeDto })
   declare readonly scope: ReaderSummaryScopeDto;
+
+  @ApiProperty({ type: () => ReaderSummaryPeriodDto })
+  declare readonly period: ReaderSummaryPeriodDto;
 
   @ApiPropertyOptional()
   declare readonly userId?: string;

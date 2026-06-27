@@ -5,6 +5,7 @@ import type {
 } from "@social-monitor/shared-kernel";
 
 import type { ReaderSummaryJobStatus } from "../entities/reader-summary-job";
+import type { ReaderSummaryPeriod } from "../value-objects/reader-summary-period";
 import type { ReaderSummaryScope } from "../value-objects/reader-summary-scope";
 
 export type ReaderSummaryReadyEventPayload = {
@@ -13,6 +14,7 @@ export type ReaderSummaryReadyEventPayload = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly scope: ReaderSummaryScope;
+  readonly period: ReaderSummaryPeriod;
   readonly userId?: string;
   readonly subscriptionId?: string;
   readonly status: Extract<ReaderSummaryJobStatus, "completed" | "no_signal">;

@@ -22,6 +22,17 @@ final class LoadWorkspaceSummaryUseCase {
         ),
       );
     }
+    if (!query.period.isValid) {
+      return Future.value(
+        const Result.failure(
+          ValidationFailure(
+            message: 'Summary period is invalid',
+            code: 'summaries.summary_period_invalid',
+            field: 'period',
+          ),
+        ),
+      );
+    }
     return _catalog.loadWorkspaceSummary(query);
   }
 }

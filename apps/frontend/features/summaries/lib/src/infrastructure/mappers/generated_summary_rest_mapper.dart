@@ -16,7 +16,9 @@ final class GeneratedSummaryRestMapper {
     );
   }
 
-  ReaderSummaryApiDto readerSummary(generated.ReaderSummaryArtifactResponseDto dto) {
+  ReaderSummaryApiDto readerSummary(
+    generated.ReaderSummaryArtifactResponseDto dto,
+  ) {
     return ReaderSummaryApiDto(
       id: dto.readerSummaryId,
       title: dto.headline,
@@ -49,6 +51,7 @@ final class GeneratedSummaryRestMapper {
       citations: dto.citations
           .map(_readerSummaryCitation)
           .toList(growable: false),
+      period: _readerSummaryPeriod(dto.period),
       freshnessLabel: _readerSummaryFreshnessLabel(dto.freshness),
       isDegraded: dto.qualityFlags.any(_isDegradedReaderSummaryFlag),
     );
@@ -61,6 +64,7 @@ final class GeneratedSummaryRestMapper {
       id: dto.readerSummaryJobId,
       status: _requestReaderSummaryStatus(dto.status),
       created: dto.created,
+      period: _readerSummaryPeriod(dto.period),
     );
   }
 
@@ -76,6 +80,19 @@ final class GeneratedSummaryRestMapper {
       startedAt: dto.startedAt,
       completedAt: dto.completedAt,
       failedAt: dto.failedAt,
+      period: _readerSummaryPeriod(dto.period),
+    );
+  }
+
+  SummaryPeriodApiDto _readerSummaryPeriod(
+    generated.ReaderSummaryPeriodDto dto,
+  ) {
+    return SummaryPeriodApiDto(
+      cadence: dto.cadence.json ?? 'unknown',
+      startedAt: dto.startedAt,
+      endedAt: dto.endedAt,
+      timezone: dto.timezone,
+      periodKey: dto.periodKey,
     );
   }
 
@@ -228,7 +245,9 @@ final class GeneratedSummaryRestMapper {
     generated.ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags flag,
   ) {
     return switch (flag) {
-      generated.ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags.noSignal ||
+      generated
+          .ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags
+          .noSignal ||
       generated
           .ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags
           .lowConfidence ||
@@ -248,7 +267,9 @@ final class GeneratedSummaryRestMapper {
           .ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags
           .providerFailed =>
         true,
-      generated.ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags.$unknown =>
+      generated
+          .ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags
+          .$unknown =>
         false,
     };
   }
@@ -275,12 +296,17 @@ final class GeneratedSummaryRestMapper {
     generated.RequestReaderSummaryResponseDtoStatusStatus status,
   ) {
     return switch (status) {
-      generated.RequestReaderSummaryResponseDtoStatusStatus.requested => 'requested',
-      generated.RequestReaderSummaryResponseDtoStatusStatus.running => 'running',
-      generated.RequestReaderSummaryResponseDtoStatusStatus.completed => 'completed',
-      generated.RequestReaderSummaryResponseDtoStatusStatus.noSignal => 'no_signal',
+      generated.RequestReaderSummaryResponseDtoStatusStatus.requested =>
+        'requested',
+      generated.RequestReaderSummaryResponseDtoStatusStatus.running =>
+        'running',
+      generated.RequestReaderSummaryResponseDtoStatusStatus.completed =>
+        'completed',
+      generated.RequestReaderSummaryResponseDtoStatusStatus.noSignal =>
+        'no_signal',
       generated.RequestReaderSummaryResponseDtoStatusStatus.failed => 'failed',
-      generated.RequestReaderSummaryResponseDtoStatusStatus.$unknown => 'unknown',
+      generated.RequestReaderSummaryResponseDtoStatusStatus.$unknown =>
+        'unknown',
     };
   }
 
@@ -290,13 +316,16 @@ final class GeneratedSummaryRestMapper {
     return switch (status) {
       generated.ReaderSummaryJobStatusResponseDtoStatusStatus.requested =>
         'requested',
-      generated.ReaderSummaryJobStatusResponseDtoStatusStatus.running => 'running',
+      generated.ReaderSummaryJobStatusResponseDtoStatusStatus.running =>
+        'running',
       generated.ReaderSummaryJobStatusResponseDtoStatusStatus.completed =>
         'completed',
       generated.ReaderSummaryJobStatusResponseDtoStatusStatus.noSignal =>
         'no_signal',
-      generated.ReaderSummaryJobStatusResponseDtoStatusStatus.failed => 'failed',
-      generated.ReaderSummaryJobStatusResponseDtoStatusStatus.$unknown => 'unknown',
+      generated.ReaderSummaryJobStatusResponseDtoStatusStatus.failed =>
+        'failed',
+      generated.ReaderSummaryJobStatusResponseDtoStatusStatus.$unknown =>
+        'unknown',
     };
   }
 

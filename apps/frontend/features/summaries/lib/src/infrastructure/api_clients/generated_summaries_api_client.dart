@@ -4,6 +4,7 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../domain/value_objects/reader_action_target.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
+import '../../domain/value_objects/summary_period.dart';
 import '../api/summary_api_dto.dart';
 import '../mappers/generated_summary_rest_mapper.dart';
 import 'summaries_api_client.dart';
@@ -73,6 +74,10 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
             xWorkspaceId: request.scope.workspaceId,
             xTenantId: request.scope.tenantId,
             scopeType: generated.ScopeType.workspace,
+            timezone: request.period.timezone,
+            periodEndedAt: _queryDate(request.period.endedAt),
+            periodStartedAt: _queryDate(request.period.startedAt),
+            cadence: _listCadence(request.period.cadence),
             limit: 1,
           ),
         );
@@ -95,23 +100,66 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
     final result = await _runtime.client
         .send<generated.RequestReaderSummaryResponseDto>(
           generated.WorkspaceRequest(scope: request.scope),
-          () => _runtime.rest.readerSummaries.readerSummaryRequestControllerCreate(
-            idempotencyKey: request.idempotencyKey,
-            xWorkspaceId: request.scope.workspaceId,
-            xTenantId: request.scope.tenantId,
-            body: generated.RequestReaderSummaryRequestDto(
-              userId: request.userId,
-              scope: const generated.ReaderSummaryScopeDto(
-                type: generated.ReaderSummaryScopeDtoTypeType.workspace,
+          () => _runtime.rest.readerSummaries
+              .readerSummaryRequestControllerCreate(
+                idempotencyKey: request.idempotencyKey,
+                xWorkspaceId: request.scope.workspaceId,
+                xTenantId: request.scope.tenantId,
+                body: generated.RequestReaderSummaryRequestDto(
+                  userId: request.userId,
+                  cadence: _requestCadence(request.period.cadence),
+                  period: _requestPeriod(request.period),
+                  timezone: request.period.timezone,
+                  scope: const generated.ReaderSummaryScopeDto(
+                    type: generated.ReaderSummaryScopeDtoTypeType.workspace,
+                  ),
+                ),
               ),
-            ),
-          ),
         );
     return result.fold(
       onSuccess: (dto) =>
           Result.success(_mapper.requestedReaderSummaryJob(dto)),
       onFailure: Result<ReaderSummaryJobApiDto>.failure,
     );
+  }
+
+  generated.Cadence _listCadence(SummaryPeriodCadence cadence) {
+    return switch (cadence) {
+      SummaryPeriodCadence.daily => generated.Cadence.daily,
+      SummaryPeriodCadence.weekly => generated.Cadence.weekly,
+      SummaryPeriodCadence.monthly => generated.Cadence.monthly,
+      SummaryPeriodCadence.custom => generated.Cadence.custom,
+      SummaryPeriodCadence.unknown => generated.Cadence.$unknown,
+    };
+  }
+
+  generated.RequestReaderSummaryRequestDtoCadenceCadence _requestCadence(
+    SummaryPeriodCadence cadence,
+  ) {
+    return switch (cadence) {
+      SummaryPeriodCadence.daily =>
+        generated.RequestReaderSummaryRequestDtoCadenceCadence.daily,
+      SummaryPeriodCadence.weekly =>
+        generated.RequestReaderSummaryRequestDtoCadenceCadence.weekly,
+      SummaryPeriodCadence.monthly =>
+        generated.RequestReaderSummaryRequestDtoCadenceCadence.monthly,
+      SummaryPeriodCadence.custom =>
+        generated.RequestReaderSummaryRequestDtoCadenceCadence.custom,
+      SummaryPeriodCadence.unknown =>
+        generated.RequestReaderSummaryRequestDtoCadenceCadence.$unknown,
+    };
+  }
+
+  generated.RequestReaderSummaryPeriodDto _requestPeriod(SummaryPeriod period) {
+    return generated.RequestReaderSummaryPeriodDto(
+      startedAt: period.startedAt.toUtc(),
+      endedAt: period.endedAt.toUtc(),
+      timezone: period.timezone,
+    );
+  }
+
+  String _queryDate(DateTime value) {
+    return value.toUtc().toIso8601String();
   }
 
   @override
@@ -121,11 +169,12 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
     final result = await _runtime.client
         .send<generated.ReaderSummaryJobStatusResponseDto>(
           generated.WorkspaceRequest(scope: request.scope),
-          () => _runtime.rest.readerSummaries.readerSummaryJobControllerGetStatus(
-            readerSummaryJobId: request.summaryJobId,
-            xWorkspaceId: request.scope.workspaceId,
-            xTenantId: request.scope.tenantId,
-          ),
+          () =>
+              _runtime.rest.readerSummaries.readerSummaryJobControllerGetStatus(
+                readerSummaryJobId: request.summaryJobId,
+                xWorkspaceId: request.scope.workspaceId,
+                xTenantId: request.scope.tenantId,
+              ),
         );
     return result.fold(
       onSuccess: (dto) => Result.success(_mapper.readerSummaryJobStatus(dto)),

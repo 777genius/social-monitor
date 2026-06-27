@@ -11,11 +11,22 @@ import {
 } from "@social-monitor/shared-kernel";
 
 import { RelevanceReaderSummaryEvidenceSelector } from "./relevance-reader-summary-evidence.selector";
-import type { SummaryEvidenceSelection } from "../../domain";
+import type {
+  ReaderSummaryPeriod,
+  SummaryEvidenceSelection,
+} from "../../domain";
 import type { StoryRankingMetricsPort } from "../../ports";
 
 const clock: Clock = {
   now: () => new Date("2026-06-23T12:00:00.000Z"),
+};
+
+const readerSummaryPeriod: ReaderSummaryPeriod = {
+  cadence: "daily",
+  startedAt: new Date("2026-06-23T00:00:00.000Z"),
+  endedAt: new Date("2026-06-24T00:00:00.000Z"),
+  timezone: "UTC",
+  periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
 };
 
 const rankedItem = (
@@ -129,11 +140,16 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       tenantId: tenantId("tenant-1"),
       workspaceId: workspaceId("workspace-1"),
       scope: { type: "workspace" },
+      period: readerSummaryPeriod,
       maxItems: 5,
     });
 
     expect(rankFeedItems.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 15 }),
+      expect.objectContaining({
+        observedAfter: new Date("2026-06-22T23:59:59.999Z"),
+        observedBefore: readerSummaryPeriod.endedAt,
+        limit: 15,
+      }),
     );
     expect(
       selection.selectedEvidence.map((item) => item.providerKey).sort(),
@@ -225,6 +241,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       tenantId: tenantId("tenant-family"),
       workspaceId: workspaceId("workspace-family"),
       scope: { type: "workspace" },
+      period: readerSummaryPeriod,
       maxItems: 4,
     });
 
@@ -287,6 +304,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       tenantId: tenant,
       workspaceId: workspace,
       scope: { type: "workspace" },
+      period: readerSummaryPeriod,
       maxItems: 3,
     });
 
@@ -307,6 +325,69 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         providerKeys: expect.arrayContaining(["github-repo-radar", "reddit"]),
       }),
     );
+  });
+
+  it("asks relevance ranking for the reader summary period and keeps exact window boundaries", async () => {
+    const rankedItems = [
+      rankedItem({
+        feedItemId: "feed-at-start",
+        providerKey: "reddit",
+        rank: 1,
+        score: 2.5,
+        observedAt: "2026-06-23T00:00:00.000Z",
+      }),
+      rankedItem({
+        feedItemId: "feed-inside",
+        providerKey: "hacker-news",
+        rank: 2,
+        score: 2.4,
+        observedAt: "2026-06-23T23:59:59.999Z",
+      }),
+      rankedItem({
+        feedItemId: "feed-at-end",
+        providerKey: "rss",
+        rank: 3,
+        score: 2.3,
+        observedAt: "2026-06-24T00:00:00.000Z",
+      }),
+    ];
+    const rankFeedItems = {
+      execute: jest.fn(async (command: RankFeedItemsCommand) =>
+        ok({
+          generatedAt: clock.now().toISOString(),
+          profileApplied: false,
+          items: rankedItems.slice(0, command.limit),
+        }),
+      ),
+    } as unknown as RankFeedItemsUseCase;
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      {
+        list: jest.fn(),
+        findById: jest.fn(async () => null),
+      },
+      clock,
+      new FakeStoryRankingMetrics(),
+    );
+
+    const selection = await selector.select({
+      tenantId: tenantId("tenant-period-window"),
+      workspaceId: workspaceId("workspace-period-window"),
+      scope: { type: "workspace" },
+      period: readerSummaryPeriod,
+      maxItems: 5,
+    });
+
+    expect(rankFeedItems.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        observedAfter: new Date("2026-06-22T23:59:59.999Z"),
+        observedBefore: new Date("2026-06-24T00:00:00.000Z"),
+      }),
+    );
+    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
+      "feed-at-start",
+      "feed-inside",
+    ]);
   });
 });
 

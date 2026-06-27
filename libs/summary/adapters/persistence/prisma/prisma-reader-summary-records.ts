@@ -2,6 +2,7 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
   ReaderSummaryArtifact,
+  buildReaderSummaryPeriod,
   type ReaderSummaryDedupeStrategy,
   ReaderSummaryJob,
   type ReaderSummaryJobProps,
@@ -10,8 +11,10 @@ import {
   type ReaderSummaryPolicyFormat,
   type ReaderSummaryPolicyLanguage,
   type ReaderSummaryPolicyProps,
+  type ReaderSummaryScheduleSettings,
   type ReaderSummaryPolicyTone,
   type ReaderSummaryScope,
+  type ScheduledReaderSummaryCadence,
   readerSummaryScopeKey,
 } from "../../../domain";
 import {
@@ -27,6 +30,11 @@ export type PrismaReaderSummaryJobRecord = {
   readonly scopeType: string;
   readonly scopeKey: string;
   readonly topicId: string | null;
+  readonly cadence: string;
+  readonly periodStartedAt: Date;
+  readonly periodEndedAt: Date;
+  readonly periodTimezone: string;
+  readonly periodKey: string;
   readonly userId: string | null;
   readonly subscriptionId: string | null;
   readonly status: PrismaSummaryStatus;
@@ -48,6 +56,11 @@ export type PrismaReaderSummaryArtifactRecord = {
   readonly scopeType: string;
   readonly scopeKey: string;
   readonly topicId: string | null;
+  readonly cadence: string;
+  readonly periodStartedAt: Date;
+  readonly periodEndedAt: Date;
+  readonly periodTimezone: string;
+  readonly periodKey: string;
   readonly userId: string | null;
   readonly subscriptionId: string | null;
   readonly status: PrismaSummaryStatus;
@@ -80,6 +93,9 @@ export type PrismaReaderSummaryPolicyRecord = {
   readonly dedupeStrategy: string;
   readonly customInstructions: string | null;
   readonly rulesVersion: string;
+  readonly scheduleEnabled: boolean;
+  readonly scheduleTimezone: string;
+  readonly scheduleCadences: readonly string[];
   readonly createdAt: Date;
   readonly updatedAt: Date;
 };
@@ -92,6 +108,12 @@ export const readerSummaryJobFromPrisma = (
     tenantId: tenantId(record.tenantId),
     workspaceId: workspaceId(record.workspaceId),
     scope: readerSummaryScopeFromPrisma(record),
+    period: buildReaderSummaryPeriod({
+      cadence: normalizeReaderSummaryCadence(record.cadence),
+      startedAt: record.periodStartedAt,
+      endedAt: record.periodEndedAt,
+      timezone: record.periodTimezone,
+    }),
     userId: record.userId ?? undefined,
     subscriptionId: record.subscriptionId ?? undefined,
     status: readerSummaryJobStatusFromPrisma(record.status),
@@ -129,6 +151,11 @@ export const readerSummaryPolicyFromPrisma = (
     dedupeStrategy: normalizeReaderSummaryDedupeStrategy(record.dedupeStrategy),
     customInstructions: record.customInstructions ?? undefined,
     rulesVersion: record.rulesVersion,
+    schedule: normalizeReaderSummaryScheduleSettings({
+      enabled: record.scheduleEnabled,
+      timezone: record.scheduleTimezone,
+      cadences: record.scheduleCadences,
+    }),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   } satisfies ReaderSummaryPolicyProps);
@@ -169,6 +196,13 @@ export const serializeReaderSummaryArtifact = (
 
   return {
     ...snapshot,
+    period: {
+      cadence: snapshot.period.cadence,
+      startedAt: snapshot.period.startedAt.toISOString(),
+      endedAt: snapshot.period.endedAt.toISOString(),
+      timezone: snapshot.period.timezone,
+      periodKey: snapshot.period.periodKey,
+    },
     sourceWindow: {
       ...snapshot.sourceWindow,
       startedAt: snapshot.sourceWindow.startedAt.toISOString(),
@@ -183,6 +217,13 @@ export const serializeReaderSummaryArtifact = (
     })),
     contextArtifacts: snapshot.contextArtifacts.map((contextArtifact) => ({
       ...contextArtifact,
+      period: {
+        cadence: contextArtifact.period.cadence,
+        startedAt: contextArtifact.period.startedAt.toISOString(),
+        endedAt: contextArtifact.period.endedAt.toISOString(),
+        timezone: contextArtifact.period.timezone,
+        periodKey: contextArtifact.period.periodKey,
+      },
       generatedAt: contextArtifact.generatedAt.toISOString(),
     })),
   };
@@ -274,6 +315,21 @@ const normalizeReaderSummaryPolicyTone = (
   throw new Error(`Unsupported reader summary policy tone "${value}"`);
 };
 
+const normalizeReaderSummaryCadence = (
+  value: string,
+): "daily" | "weekly" | "monthly" | "custom" => {
+  if (
+    value === "daily" ||
+    value === "weekly" ||
+    value === "monthly" ||
+    value === "custom"
+  ) {
+    return value;
+  }
+
+  throw new Error(`Unsupported reader summary cadence "${value}"`);
+};
+
 const normalizeReaderSummaryDedupeStrategy = (
   value: string,
 ): ReaderSummaryDedupeStrategy => {
@@ -282,4 +338,24 @@ const normalizeReaderSummaryDedupeStrategy = (
   }
 
   throw new Error(`Unsupported reader summary dedupe strategy "${value}"`);
+};
+
+const normalizeReaderSummaryScheduleSettings = (value: {
+  readonly enabled: boolean;
+  readonly timezone: string;
+  readonly cadences: readonly string[];
+}): ReaderSummaryScheduleSettings => ({
+  enabled: value.enabled,
+  timezone: value.timezone,
+  cadences: value.cadences.map(normalizeScheduledReaderSummaryCadence),
+});
+
+const normalizeScheduledReaderSummaryCadence = (
+  value: string,
+): ScheduledReaderSummaryCadence => {
+  if (value === "daily" || value === "weekly" || value === "monthly") {
+    return value;
+  }
+
+  throw new Error(`Unsupported scheduled reader summary cadence "${value}"`);
 };

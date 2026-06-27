@@ -149,6 +149,22 @@ class _SummariesBody extends StatelessWidget {
           activeReaderActionIdempotencyKey:
               store.activeReaderActionIdempotencyKey,
           lastReaderActionIdempotencyKey: store.lastReaderActionIdempotencyKey,
+          selectedPeriod: store.selectedSummaryPeriod,
+          selectedPeriodPreset: store.selectedSummaryPeriodPreset,
+          canNavigateToNextPeriod: store.canShowNextSummaryPeriod,
+          isCurrentPeriod: store.isSelectedSummaryPeriodCurrent,
+          onPeriodChanged: (preset) {
+            unawaited(store.selectWorkspaceSummaryPeriod(preset));
+          },
+          onPreviousPeriod: () {
+            unawaited(store.showPreviousWorkspaceSummaryPeriod());
+          },
+          onCurrentPeriod: () {
+            unawaited(store.showCurrentWorkspaceSummaryPeriod());
+          },
+          onNextPeriod: () {
+            unawaited(store.showNextWorkspaceSummaryPeriod());
+          },
           onRetry: () => unawaited(store.loadWorkspaceSummary()),
           onGenerate: () => unawaited(store.requestWorkspaceSummary()),
           intentForAction: store.readerActionIntentFor,

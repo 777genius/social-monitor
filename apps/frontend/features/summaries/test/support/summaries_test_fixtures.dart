@@ -63,6 +63,7 @@ ReaderSummaryApiDto readerSummaryApiDto({
   ],
   List<RepeatedSignalApiDto> repeatedSignals = const [],
   List<SummaryCitationApiDto>? citations,
+  SummaryPeriodApiDto? period,
   String freshnessLabel = 'Fresh',
   bool isDegraded = false,
 }) {
@@ -75,8 +76,26 @@ ReaderSummaryApiDto readerSummaryApiDto({
     topStories: topStories,
     repeatedSignals: repeatedSignals,
     citations: citations ?? [summaryCitationApiDto(id: 'bc-1')],
+    period: period ?? summaryPeriodApiDto(),
     freshnessLabel: freshnessLabel,
     isDegraded: isDegraded,
+  );
+}
+
+SummaryPeriodApiDto summaryPeriodApiDto({
+  String cadence = 'daily',
+  DateTime? startedAt,
+  DateTime? endedAt,
+  String timezone = 'UTC',
+  String? periodKey =
+      'daily:2026-06-26T00:00:00.000Z:2026-06-27T00:00:00.000Z:UTC',
+}) {
+  return SummaryPeriodApiDto(
+    cadence: cadence,
+    startedAt: startedAt ?? DateTime.utc(2026, 6, 26),
+    endedAt: endedAt ?? DateTime.utc(2026, 6, 27),
+    timezone: timezone,
+    periodKey: periodKey,
   );
 }
 

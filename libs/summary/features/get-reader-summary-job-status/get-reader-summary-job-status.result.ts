@@ -1,4 +1,8 @@
-import type { ReaderSummaryJobStatus, ReaderSummaryScope } from "../../domain";
+import type {
+  ReaderSummaryJobStatus,
+  ReaderSummaryPeriod,
+  ReaderSummaryScope,
+} from "../../domain";
 
 export type ReaderSummaryJobTimelineEvent = {
   readonly status: ReaderSummaryJobStatus;
@@ -9,6 +13,13 @@ export type ReaderSummaryJobTimelineEvent = {
 export type GetReaderSummaryJobStatusResult = {
   readonly readerSummaryJobId: string;
   readonly scope: ReaderSummaryScope;
+  readonly period: {
+    readonly cadence: ReaderSummaryPeriod["cadence"];
+    readonly startedAt: string;
+    readonly endedAt: string;
+    readonly timezone: string;
+    readonly periodKey: string;
+  };
   readonly status: ReaderSummaryJobStatus;
   readonly requestedAt: string;
   readonly startedAt?: string;

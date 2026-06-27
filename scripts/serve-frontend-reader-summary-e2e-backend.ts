@@ -210,6 +210,14 @@ const defaultReaderSummaryArtifact = {
   tenantId,
   workspaceId,
   scope: { type: 'workspace' },
+  period: {
+    cadence: 'daily',
+    startedAt: new Date('2026-06-23T00:00:00.000Z'),
+    endedAt: new Date('2026-06-24T00:00:00.000Z'),
+    timezone: 'UTC',
+    periodKey:
+      'daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC',
+  },
   userId,
   sourceWindow: {
     windowId: 'workspace:frontend-reader-summary-e2e',

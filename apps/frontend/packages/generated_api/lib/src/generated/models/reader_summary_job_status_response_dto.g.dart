@@ -9,6 +9,9 @@ part of 'reader_summary_job_status_response_dto.dart';
 ReaderSummaryJobStatusResponseDto _$ReaderSummaryJobStatusResponseDtoFromJson(
   Map<String, dynamic> json,
 ) => ReaderSummaryJobStatusResponseDto(
+  period: ReaderSummaryPeriodDto.fromJson(
+    json['period'] as Map<String, dynamic>,
+  ),
   readerSummaryJobId: json['readerSummaryJobId'] as String,
   requestedAt: DateTime.parse(json['requestedAt'] as String),
   scope: ReaderSummaryScopeDto.fromJson(json['scope'] as Map<String, dynamic>),
@@ -41,6 +44,7 @@ Map<String, dynamic> _$ReaderSummaryJobStatusResponseDtoToJson(
   'completedAt': instance.completedAt?.toIso8601String(),
   'failedAt': instance.failedAt?.toIso8601String(),
   'failureReason': instance.failureReason,
+  'period': instance.period,
   'readerSummaryId': instance.readerSummaryId,
   'readerSummaryJobId': instance.readerSummaryJobId,
   'requestedAt': instance.requestedAt.toIso8601String(),

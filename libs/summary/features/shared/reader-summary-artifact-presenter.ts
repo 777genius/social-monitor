@@ -3,6 +3,7 @@ import type {
   ReaderSummaryArtifactProps,
   ReaderSummaryContextArtifact,
   ReaderSummaryContent,
+  ReaderSummaryPeriod,
   StoryCluster,
 } from "../../domain";
 import { buildReaderSummary } from "../../domain";
@@ -30,15 +31,17 @@ export type ReaderSummaryStoryClusterView = Omit<
 
 export type ReaderSummaryContextArtifactView = Omit<
   ReaderSummaryContextArtifact,
-  "generatedAt"
+  "generatedAt" | "period"
 > & {
+  readonly period: ReaderSummaryPeriodView;
   readonly generatedAt: string;
 };
 
 export type ReaderSummaryArtifactView = Omit<
   ReaderSummaryArtifactProps,
-  "sourceWindow" | "storyClusters" | "contextArtifacts" | "content"
+  "period" | "sourceWindow" | "storyClusters" | "contextArtifacts" | "content"
 > & {
+  readonly period: ReaderSummaryPeriodView;
   readonly content: ReaderSummaryContent;
   readonly sourceWindow: Omit<
     ReaderSummaryArtifactProps["sourceWindow"],
@@ -52,6 +55,14 @@ export type ReaderSummaryArtifactView = Omit<
   readonly citations: readonly ReaderSummaryCitationView[];
   readonly coverage: ReaderSummaryCoverageView;
   readonly freshness: ReaderSummaryFreshnessView;
+};
+
+export type ReaderSummaryPeriodView = {
+  readonly cadence: ReaderSummaryPeriod["cadence"];
+  readonly startedAt: string;
+  readonly endedAt: string;
+  readonly timezone: string;
+  readonly periodKey: string;
 };
 
 export type ReaderSummaryCoverageView = {
@@ -113,6 +124,7 @@ export const presentReaderSummaryArtifact = (
 
   return {
     ...snapshot,
+    period: presentReaderSummaryPeriod(snapshot.period),
     content,
     sourceWindow: {
       ...snapshot.sourceWindow,
@@ -128,6 +140,7 @@ export const presentReaderSummaryArtifact = (
     })),
     contextArtifacts: snapshot.contextArtifacts.map((contextArtifact) => ({
       ...contextArtifact,
+      period: presentReaderSummaryPeriod(contextArtifact.period),
       generatedAt: contextArtifact.generatedAt.toISOString(),
     })),
     citations: snapshot.citationMap.map((citation, index) => ({
@@ -143,6 +156,16 @@ export const presentReaderSummaryArtifact = (
     freshness: freshnessView,
   };
 };
+
+const presentReaderSummaryPeriod = (
+  period: ReaderSummaryPeriod,
+): ReaderSummaryPeriodView => ({
+  cadence: period.cadence,
+  startedAt: period.startedAt.toISOString(),
+  endedAt: period.endedAt.toISOString(),
+  timezone: period.timezone,
+  periodKey: period.periodKey,
+});
 
 const buildCoverageView = (
   snapshot: ReaderSummaryArtifactProps,

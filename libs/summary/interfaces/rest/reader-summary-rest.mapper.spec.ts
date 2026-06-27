@@ -12,6 +12,14 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
       tenantId: tenantId("tenant-1"),
       workspaceId: workspaceId("workspace-1"),
       scope: { type: "workspace" },
+      period: {
+        cadence: "daily",
+        startedAt: new Date("2026-06-06T00:00:00.000Z"),
+        endedAt: new Date("2026-06-07T00:00:00.000Z"),
+        timezone: "UTC",
+        periodKey:
+          "daily:2026-06-06T00:00:00.000Z:2026-06-07T00:00:00.000Z:UTC",
+      },
       sourceWindow: {
         windowId: "window-1",
         startedAt: new Date("2026-06-06T00:00:00.000Z"),

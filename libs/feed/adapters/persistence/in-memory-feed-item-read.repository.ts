@@ -1,14 +1,24 @@
-import { feedSignalBaselineSampleFromItem, type FeedItem, type FeedSignalBaselineSample } from '../../domain';
-import type { FeedItemReadRepositoryPort, ListFeedItemsQuery, ListFeedItemsResult } from '../../ports';
+import {
+  feedSignalBaselineSampleFromItem,
+  type FeedItem,
+  type FeedSignalBaselineSample,
+} from "../../domain";
+import type {
+  FeedItemReadRepositoryPort,
+  ListFeedItemsQuery,
+  ListFeedItemsResult,
+} from "../../ports";
 import type {
   FeedSignalBaselineCohortFilter,
   FeedSignalBaselineRepositoryPort,
   ListFeedSignalBaselineSamplesQuery,
-} from '../../ports/feed-signal-baseline-repository.port';
-import { feedDedupeKeyForItem } from './feed-dedupe-key';
-import { matchesFeedItemReadFilters } from './feed-item-query-filter';
+} from "../../ports/feed-signal-baseline-repository.port";
+import { feedDedupeKeyForItem } from "./feed-dedupe-key";
+import { matchesFeedItemReadFilters } from "./feed-item-query-filter";
 
-export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPort, FeedSignalBaselineRepositoryPort {
+export class InMemoryFeedItemReadRepository
+  implements FeedItemReadRepositoryPort, FeedSignalBaselineRepositoryPort
+{
   private readonly itemsByKey = new Map<string, FeedItem>();
   private readonly itemsById = new Map<string, FeedItem>();
   private readonly itemsByCanonicalUrl = new Map<string, FeedItem>();
@@ -20,7 +30,7 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
       snapshot.workspaceId,
       snapshot.topicId,
       snapshot.sourceItemId,
-    ].join(':');
+    ].join(":");
     const canonicalKey = [
       snapshot.tenantId,
       snapshot.workspaceId,
@@ -29,7 +39,7 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
         canonicalUrl: snapshot.canonicalUrl,
         providerMetadata: snapshot.providerMetadata,
       }),
-    ].join(':');
+    ].join(":");
     const existingCanonicalItem = this.itemsByCanonicalUrl.get(canonicalKey);
 
     if (existingCanonicalItem !== undefined) {
@@ -38,11 +48,10 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
     }
 
     this.itemsByKey.set(key, item);
-    this.itemsById.set([
-      snapshot.tenantId,
-      snapshot.workspaceId,
-      snapshot.id,
-    ].join(':'), item);
+    this.itemsById.set(
+      [snapshot.tenantId, snapshot.workspaceId, snapshot.id].join(":"),
+      item,
+    );
     this.itemsByCanonicalUrl.set(canonicalKey, item);
   }
 
@@ -56,7 +65,10 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
           (query.topicId === undefined || snapshot.topicId === query.topicId) &&
-          (query.observedAfter === undefined || snapshot.observedAt.getTime() > query.observedAfter.getTime()) &&
+          (query.observedAfter === undefined ||
+            snapshot.observedAt.getTime() > query.observedAfter.getTime()) &&
+          (query.observedBefore === undefined ||
+            snapshot.observedAt.getTime() < query.observedBefore.getTime()) &&
           matchesFeedItemReadFilters(item, query)
         );
       })
@@ -66,7 +78,8 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
 
     return {
       items,
-      nextCursor: nextOffset < allItems.length ? encodeCursor(nextOffset) : undefined,
+      nextCursor:
+        nextOffset < allItems.length ? encodeCursor(nextOffset) : undefined,
     };
   }
 
@@ -75,11 +88,9 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
     workspaceId: string;
     feedItemId: string;
   }): Promise<FeedItem | null> {
-    const item = this.itemsById.get([
-      query.tenantId,
-      query.workspaceId,
-      query.feedItemId,
-    ].join(':'));
+    const item = this.itemsById.get(
+      [query.tenantId, query.workspaceId, query.feedItemId].join(":"),
+    );
 
     return item ?? null;
   }
@@ -88,7 +99,8 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
     return [...this.itemsById.values()]
       .flatMap((item) => {
         const snapshot = item.toSnapshot();
-        const inScope = snapshot.tenantId === query.tenantId &&
+        const inScope =
+          snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
           (query.topicId === undefined || snapshot.topicId === query.topicId) &&
           snapshot.observedAt.getTime() > query.observedAfter.getTime();
@@ -101,7 +113,9 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
 
         return sample === undefined ? [] : [sample];
       })
-      .filter((sample) => matchesBaselineCohortFilters(sample, query.cohortFilters ?? []))
+      .filter((sample) =>
+        matchesBaselineCohortFilters(sample, query.cohortFilters ?? []),
+      )
       .sort(compareFeedSignalBaselineSamples)
       .slice(0, query.limit);
   }
@@ -114,7 +128,8 @@ export class InMemoryFeedItemReadRepository implements FeedItemReadRepositoryPor
 const compareFeedItems = (left: FeedItem, right: FeedItem): number => {
   const leftSnapshot = left.toSnapshot();
   const rightSnapshot = right.toSnapshot();
-  const publishedDiff = rightSnapshot.publishedAt.getTime() - leftSnapshot.publishedAt.getTime();
+  const publishedDiff =
+    rightSnapshot.publishedAt.getTime() - leftSnapshot.publishedAt.getTime();
 
   if (publishedDiff !== 0) {
     return publishedDiff;
@@ -141,12 +156,15 @@ const matchesBaselineCohortFilters = (
   filters: readonly FeedSignalBaselineCohortFilter[],
 ): boolean =>
   filters.length === 0 ||
-  filters.some((filter) =>
-    sample.providerKey === filter.providerKey &&
-    sample.sourceKey === filter.sourceKey &&
-    sample.contentType === filter.contentType);
+  filters.some(
+    (filter) =>
+      sample.providerKey === filter.providerKey &&
+      sample.sourceKey === filter.sourceKey &&
+      sample.contentType === filter.contentType,
+  );
 
-const encodeCursor = (offset: number): string => Buffer.from(JSON.stringify({ offset })).toString('base64url');
+const encodeCursor = (offset: number): string =>
+  Buffer.from(JSON.stringify({ offset })).toString("base64url");
 
 const parseCursor = (cursor: string | undefined): number => {
   if (cursor === undefined) {
@@ -154,9 +172,15 @@ const parseCursor = (cursor: string | undefined): number => {
   }
 
   try {
-    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { offset?: unknown };
+    const parsed = JSON.parse(
+      Buffer.from(cursor, "base64url").toString("utf8"),
+    ) as { offset?: unknown };
 
-    if (typeof parsed.offset === 'number' && Number.isInteger(parsed.offset) && parsed.offset >= 0) {
+    if (
+      typeof parsed.offset === "number" &&
+      Number.isInteger(parsed.offset) &&
+      parsed.offset >= 0
+    ) {
       return parsed.offset;
     }
   } catch {

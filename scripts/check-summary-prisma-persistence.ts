@@ -619,6 +619,11 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
           existing?.topicId ??
           args.create.topicId ??
           null,
+        cadence: args.update.cadence,
+        periodStartedAt: args.update.periodStartedAt,
+        periodEndedAt: args.update.periodEndedAt,
+        periodTimezone: args.update.periodTimezone,
+        periodKey: args.update.periodKey,
         userId:
           args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
         subscriptionId:
@@ -705,6 +710,11 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
           existing?.topicId ??
           args.create.topicId ??
           null,
+        cadence: args.update.cadence,
+        periodStartedAt: args.update.periodStartedAt,
+        periodEndedAt: args.update.periodEndedAt,
+        periodTimezone: args.update.periodTimezone,
+        periodKey: args.update.periodKey,
         userId:
           args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
         subscriptionId:
@@ -771,6 +781,9 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         dedupeStrategy: args.update.dedupeStrategy,
         customInstructions: args.update.customInstructions,
         rulesVersion: args.update.rulesVersion,
+        scheduleEnabled: args.update.scheduleEnabled,
+        scheduleTimezone: args.update.scheduleTimezone,
+        scheduleCadences: args.update.scheduleCadences,
         createdAt: existing?.createdAt ?? args.create.createdAt,
         updatedAt: args.update.updatedAt,
       };
@@ -785,6 +798,25 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
           record.workspaceId === args.where.workspaceId &&
           record.scopeKey === args.where.scopeKey,
       ) ?? null,
+    findMany: async (args) =>
+      [...this.readerSummaryPolicies.values()]
+        .filter(
+          (record) =>
+            record.scheduleEnabled === args.where.scheduleEnabled &&
+            (args.where.tenantId === undefined ||
+              record.tenantId === args.where.tenantId) &&
+            (args.where.workspaceId === undefined ||
+              record.workspaceId === args.where.workspaceId),
+        )
+        .sort((left, right) => {
+          const updatedAtDiff =
+            right.updatedAt.getTime() - left.updatedAt.getTime();
+
+          return updatedAtDiff === 0
+            ? right.id.localeCompare(left.id)
+            : updatedAtDiff;
+        })
+        .slice(0, args.take),
   };
 
   readonly outboxEvent: PrismaSummaryClient["outboxEvent"] = {
@@ -849,6 +881,16 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
     readonly tenantId: string;
     readonly workspaceId: string;
     readonly scopeKey?: string;
+    readonly cadence?: string;
+    readonly periodStartedAt?:
+      | Date
+      | {
+          readonly equals?: Date;
+          readonly gte?: Date;
+          readonly lt?: Date;
+        };
+    readonly periodEndedAt?: Date;
+    readonly periodTimezone?: string;
     readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
   }): PrismaReaderSummaryArtifactRecord[] {
     return [...this.readerSummaryArtifacts.values()].filter(
@@ -856,6 +898,15 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         record.tenantId === where.tenantId &&
         record.workspaceId === where.workspaceId &&
         (where.scopeKey === undefined || record.scopeKey === where.scopeKey) &&
+        (where.cadence === undefined || record.cadence === where.cadence) &&
+        readerSummaryPeriodStartedAtMatches(
+          record.periodStartedAt,
+          where.periodStartedAt,
+        ) &&
+        (where.periodEndedAt === undefined ||
+          record.periodEndedAt.getTime() === where.periodEndedAt.getTime()) &&
+        (where.periodTimezone === undefined ||
+          record.periodTimezone === where.periodTimezone) &&
         (where.status === undefined || where.status.in.includes(record.status)),
     );
   }
@@ -891,13 +942,46 @@ const compareReaderSummaryArtifacts = (
   left: PrismaReaderSummaryArtifactRecord,
   right: PrismaReaderSummaryArtifactRecord,
 ): number => {
-  const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
+  const periodDiff =
+    right.periodStartedAt.getTime() - left.periodStartedAt.getTime();
 
+  if (periodDiff !== 0) {
+    return periodDiff;
+  }
+
+  const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
   if (createdDiff !== 0) {
     return createdDiff;
   }
 
   return right.id.localeCompare(left.id);
+};
+
+const readerSummaryPeriodStartedAtMatches = (
+  recordValue: Date,
+  filter:
+    | Date
+    | {
+        readonly equals?: Date;
+        readonly gte?: Date;
+        readonly lt?: Date;
+      }
+    | undefined,
+): boolean => {
+  if (filter === undefined) {
+    return true;
+  }
+
+  if (filter instanceof Date) {
+    return recordValue.getTime() === filter.getTime();
+  }
+
+  return (
+    (filter.equals === undefined ||
+      recordValue.getTime() === filter.equals.getTime()) &&
+    (filter.gte === undefined || recordValue.getTime() >= filter.gte.getTime()) &&
+    (filter.lt === undefined || recordValue.getTime() < filter.lt.getTime())
+  );
 };
 
 const readerSummaryJobStatusMatches = (

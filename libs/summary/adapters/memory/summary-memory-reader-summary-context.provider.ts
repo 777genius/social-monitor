@@ -48,6 +48,7 @@ export class SummaryMemoryReaderSummaryContextProvider implements ReaderSummaryC
       {
         artifactId: `summary-memory:${query.scope.type}:${topicId}`,
         scope: query.scope,
+        period: query.period,
         summaryText,
         generatedAt: context.retrievedAt,
         freshness: memoryContextFreshness(context),

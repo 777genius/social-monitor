@@ -585,6 +585,11 @@ CREATE TABLE "reader_summary_artifacts" (
     "scope_type" TEXT NOT NULL,
     "scope_key" TEXT NOT NULL,
     "topic_id" UUID,
+    "cadence" TEXT NOT NULL,
+    "period_started_at" TIMESTAMPTZ(6) NOT NULL,
+    "period_ended_at" TIMESTAMPTZ(6) NOT NULL,
+    "period_timezone" TEXT NOT NULL,
+    "period_key" TEXT NOT NULL,
     "user_id" TEXT,
     "subscription_id" UUID,
     "status" "SummaryStatus" NOT NULL DEFAULT 'COMPLETED',
@@ -610,6 +615,11 @@ CREATE TABLE "reader_summary_jobs" (
     "scope_type" TEXT NOT NULL,
     "scope_key" TEXT NOT NULL,
     "topic_id" UUID,
+    "cadence" TEXT NOT NULL,
+    "period_started_at" TIMESTAMPTZ(6) NOT NULL,
+    "period_ended_at" TIMESTAMPTZ(6) NOT NULL,
+    "period_timezone" TEXT NOT NULL,
+    "period_key" TEXT NOT NULL,
     "user_id" TEXT,
     "subscription_id" UUID,
     "status" "SummaryStatus" NOT NULL DEFAULT 'REQUESTED',
@@ -644,6 +654,9 @@ CREATE TABLE "reader_summary_policies" (
     "dedupe_strategy" TEXT NOT NULL,
     "custom_instructions" TEXT,
     "rules_version" TEXT NOT NULL,
+    "schedule_enabled" BOOLEAN NOT NULL DEFAULT true,
+    "schedule_timezone" TEXT NOT NULL DEFAULT 'UTC',
+    "schedule_cadences" TEXT[] NOT NULL DEFAULT ARRAY['daily','weekly','monthly']::TEXT[],
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
 
@@ -1194,10 +1207,16 @@ CREATE INDEX "summary_feedback_tenant_id_workspace_id_summary_artifact_id_idx" O
 CREATE UNIQUE INDEX "summary_feedback_tenant_id_idempotency_key_key" ON "summary_feedback"("tenant_id", "idempotency_key");
 
 -- CreateIndex
+CREATE INDEX "reader_summary_artifacts_period_lookup_idx" ON "reader_summary_artifacts"("tenant_id", "workspace_id", "scope_key", "cadence", "period_started_at");
+
+-- CreateIndex
 CREATE INDEX "reader_summary_artifacts_tenant_id_workspace_id_scope_key_status__idx" ON "reader_summary_artifacts"("tenant_id", "workspace_id", "scope_key", "status", "created_at");
 
 -- CreateIndex
 CREATE INDEX "reader_summary_artifacts_tenant_id_workspace_id_user_id_scope_key_idx" ON "reader_summary_artifacts"("tenant_id", "workspace_id", "user_id", "scope_key", "created_at");
+
+-- CreateIndex
+CREATE INDEX "reader_summary_jobs_period_lookup_idx" ON "reader_summary_jobs"("tenant_id", "workspace_id", "scope_key", "cadence", "period_started_at");
 
 -- CreateIndex
 CREATE INDEX "reader_summary_jobs_tenant_id_workspace_id_scope_key_status_creat_idx" ON "reader_summary_jobs"("tenant_id", "workspace_id", "scope_key", "status", "created_at");
@@ -1210,6 +1229,9 @@ CREATE UNIQUE INDEX "reader_summary_jobs_tenant_id_idempotency_key_key" ON "read
 
 -- CreateIndex
 CREATE INDEX "reader_summary_policies_tenant_id_workspace_id_updated_at_idx" ON "reader_summary_policies"("tenant_id", "workspace_id", "updated_at");
+
+-- CreateIndex
+CREATE INDEX "reader_summary_policies_schedule_lookup_idx" ON "reader_summary_policies"("tenant_id", "workspace_id", "schedule_enabled", "updated_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "reader_summary_policies_tenant_id_workspace_id_scope_key_key" ON "reader_summary_policies"("tenant_id", "workspace_id", "scope_key");

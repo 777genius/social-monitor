@@ -14,6 +14,14 @@ const baseArtifact = (
   tenantId: tenantId("tenant-reader-summary-artifact"),
   workspaceId: workspaceId("workspace-reader-summary-artifact"),
   scope: { type: "workspace" },
+  period: {
+    cadence: "daily",
+    startedAt: new Date("2026-06-23T00:00:00.000Z"),
+    endedAt: new Date("2026-06-24T00:00:00.000Z"),
+    timezone: "UTC",
+    periodKey:
+      "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
+  },
   sourceWindow: {
     windowId: "window-1",
     startedAt: new Date("2026-06-23T08:00:00.000Z"),
@@ -164,6 +172,7 @@ describe("ReaderSummaryArtifact", () => {
       schemaVersion: "reader_summary.artifact.v1",
       readerSummaryId: "reader-summary-1",
       scope: { type: "workspace" },
+      period: expect.objectContaining({ cadence: "daily" }),
       topStories: [
         expect.objectContaining({
           storyClusterId: "story:one",
@@ -171,6 +180,19 @@ describe("ReaderSummaryArtifact", () => {
         }),
       ],
     });
+  });
+
+  it("rejects source windows outside the reader summary period", () => {
+    expect(() =>
+      ReaderSummaryArtifact.create(
+        baseArtifact({
+          sourceWindow: {
+            ...baseArtifact().sourceWindow,
+            startedAt: new Date("2026-06-22T23:30:00.000Z"),
+          },
+        }),
+      ),
+    ).toThrow("Reader summary source window must stay inside period");
   });
 
   it("rejects top reads that cite outside the citation map", () => {

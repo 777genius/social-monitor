@@ -39,6 +39,14 @@ export type IntelligenceAutoSummarySchedulerOptions = {
   readonly tenantId?: string;
   readonly workspaceId?: string;
 };
+export type IntelligencePeriodicReaderSummarySchedulerOptions = {
+  readonly enabled: boolean;
+  readonly intervalMs: number;
+  readonly limit: number;
+  readonly runOnStart: boolean;
+  readonly tenantId?: string;
+  readonly workspaceId?: string;
+};
 export type IntelligenceRelevanceMemoryProjectionLoopOptions = {
   readonly enabled: boolean;
   readonly intervalMs: number;
@@ -61,6 +69,8 @@ export const INTELLIGENCE_READER_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS =
   Symbol('INTELLIGENCE_READER_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS');
 export const INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS =
   Symbol('INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS');
+export const INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER_OPTIONS =
+  Symbol('INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER_OPTIONS');
 export const INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LOOP_OPTIONS =
   Symbol('INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LOOP_OPTIONS');
 
@@ -244,6 +254,49 @@ export const resolveIntelligenceAutoSummarySchedulerOptions = (
     minFeedAgeMs: parseBoundedInteger(env.INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_MIN_FEED_AGE_MS, 30_000, 0, 3_600_000),
     limit: parseBoundedInteger(env.INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_LIMIT, 20, 1, 100),
     runOnStart: parseBoolean(env.INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_RUN_ON_START, true),
+    tenantId: tenant,
+    workspaceId: workspace,
+  };
+};
+
+export const resolveIntelligencePeriodicReaderSummarySchedulerOptions = (
+  env: NodeJS.ProcessEnv,
+): IntelligencePeriodicReaderSummarySchedulerOptions => {
+  const loopMode = env.INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER ?? 'disabled';
+
+  if (loopMode !== 'enabled' && loopMode !== 'disabled') {
+    throw new Error(
+      'INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER must be "enabled" or "disabled"',
+    );
+  }
+
+  const tenant = emptyToUndefined(env.INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER_TENANT_ID);
+  const workspace = emptyToUndefined(env.INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER_WORKSPACE_ID);
+
+  if ((tenant === undefined) !== (workspace === undefined)) {
+    throw new Error(
+      'INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER_TENANT_ID and INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER_WORKSPACE_ID must be set together',
+    );
+  }
+
+  return {
+    enabled: loopMode === 'enabled',
+    intervalMs: parseBoundedInteger(
+      env.INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER_INTERVAL_MS,
+      60_000,
+      1_000,
+      3_600_000,
+    ),
+    limit: parseBoundedInteger(
+      env.INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER_LIMIT,
+      20,
+      1,
+      100,
+    ),
+    runOnStart: parseBoolean(
+      env.INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER_RUN_ON_START,
+      true,
+    ),
     tenantId: tenant,
     workspaceId: workspace,
   };

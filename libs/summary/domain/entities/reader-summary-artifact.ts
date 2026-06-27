@@ -14,6 +14,7 @@ import type {
   TopicHighlight,
 } from "./top-read";
 import type { ReaderSummaryScope } from "../value-objects/reader-summary-scope";
+import type { ReaderSummaryPeriod } from "../value-objects/reader-summary-period";
 import type { ProviderMetric } from "../value-objects/provider-metric-label";
 import type {
   ReaderSummaryQualityFlag,
@@ -24,10 +25,8 @@ import type {
   SummaryEvidencePersonalization,
   SummarySourceWindow,
 } from "../value-objects/summary-evidence-item";
-import {
-  assertReaderSummaryArtifactValid,
-  assertReaderSummaryCitationsAgainstEvidence,
-} from "./reader-summary-artifact-validation";
+import { assertReaderSummaryArtifactValid } from "./reader-summary-artifact-validation";
+import { assertReaderSummaryCitationsAgainstEvidence } from "./reader-summary-citation-evidence-validation";
 
 export { assertReaderSummaryCitationsAgainstEvidence };
 
@@ -47,6 +46,7 @@ export type ReaderSummaryContent = ReaderSummarySnapshot;
 export type ReaderSummaryContextArtifact = {
   readonly artifactId: string;
   readonly scope: ReaderSummaryScope;
+  readonly period: ReaderSummaryPeriod;
   readonly summaryText: string;
   readonly generatedAt: Date;
   readonly freshness: "fresh" | "stale" | "unknown";
@@ -80,6 +80,7 @@ export type ReaderSummaryArtifactProps = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly scope: ReaderSummaryScope;
+  readonly period: ReaderSummaryPeriod;
   readonly userId?: string;
   readonly subscriptionId?: string;
   readonly sourceWindow: SummarySourceWindow;
@@ -108,6 +109,7 @@ export type GeneratedReaderSummaryDraft = Omit<
   | "tenantId"
   | "workspaceId"
   | "scope"
+  | "period"
   | "userId"
   | "subscriptionId"
   | "sourceWindow"

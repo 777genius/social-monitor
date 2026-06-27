@@ -14,6 +14,9 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
   final List<SummaryApiDto> _items;
   final ReaderSummaryApiDto? _workspaceSummary;
   final Map<String, ReaderSummaryJobApiDto> _summaryJobs = {};
+  final List<LoadWorkspaceSummaryApiRequest> loadWorkspaceSummaryRequests = [];
+  final List<RequestWorkspaceSummaryApiRequest>
+  requestWorkspaceSummaryRequests = [];
   final List<ReaderActionResult> submittedReaderActions = [];
   final List<SubmitReaderActionApiRequest> submittedReaderActionRequests = [];
 
@@ -52,6 +55,7 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
   Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummary(
     LoadWorkspaceSummaryApiRequest request,
   ) async {
+    loadWorkspaceSummaryRequests.add(request);
     final failure = _workspaceFailure(request.scope);
     if (failure != null) {
       return Result.failure(failure);
@@ -63,6 +67,7 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
   Future<Result<ReaderSummaryJobApiDto>> requestWorkspaceSummary(
     RequestWorkspaceSummaryApiRequest request,
   ) async {
+    requestWorkspaceSummaryRequests.add(request);
     final failure = _workspaceFailure(request.scope);
     if (failure != null) {
       return Result.failure(failure);
@@ -72,6 +77,13 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
       status: 'requested',
       created: true,
       requestedAt: DateTime.now(),
+      period: SummaryPeriodApiDto(
+        cadence: request.period.cadence.name,
+        startedAt: request.period.startedAt,
+        endedAt: request.period.endedAt,
+        timezone: request.period.timezone,
+        periodKey: request.period.periodKey,
+      ),
     );
     _summaryJobs[job.id] = job;
     return Result.success(job);
@@ -103,6 +115,7 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
       requestedAt: current.requestedAt,
       startedAt: current.startedAt ?? DateTime.now(),
       completedAt: DateTime.now(),
+      period: current.period,
     );
     _summaryJobs[current.id] = completed;
     return Result.success(completed);

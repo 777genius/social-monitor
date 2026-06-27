@@ -6,6 +6,7 @@ import '../entities/source_mix_entry.dart';
 import '../entities/summary_citation.dart';
 import '../entities/summary_story.dart';
 import '../entities/top_read.dart';
+import '../value_objects/summary_period.dart';
 import '../value_objects/summary_quality.dart';
 import '../value_objects/summary_window.dart';
 
@@ -18,6 +19,7 @@ export '../entities/summary_story.dart';
 export '../entities/top_read.dart';
 export '../value_objects/provider_metric_label.dart';
 export '../value_objects/signal_score.dart';
+export '../value_objects/summary_period.dart';
 export '../value_objects/summary_quality.dart';
 export '../value_objects/summary_window.dart';
 
@@ -37,6 +39,7 @@ final class ReaderSummary {
     required this.topStories,
     required this.repeatedSignals,
     required this.citations,
+    required this.period,
     required this.summaryWindow,
     required this.freshnessLabel,
     required this.isDegraded,
@@ -50,6 +53,7 @@ final class ReaderSummary {
   final List<SummaryStory> topStories;
   final List<RepeatedSignal> repeatedSignals;
   final List<SummaryCitation> citations;
+  final SummaryPeriod period;
   final SummaryWindow summaryWindow;
   final String freshnessLabel;
   final bool isDegraded;

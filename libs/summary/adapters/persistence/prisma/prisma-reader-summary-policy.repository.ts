@@ -29,6 +29,9 @@ export class PrismaReaderSummaryPolicyRepository implements ReaderSummaryPolicyR
       dedupeStrategy: snapshot.dedupeStrategy,
       customInstructions: snapshot.customInstructions ?? null,
       rulesVersion: snapshot.rulesVersion,
+      scheduleEnabled: snapshot.schedule.enabled,
+      scheduleTimezone: snapshot.schedule.timezone,
+      scheduleCadences: [...snapshot.schedule.cadences],
       updatedAt: snapshot.updatedAt,
     };
 
@@ -65,5 +68,21 @@ export class PrismaReaderSummaryPolicyRepository implements ReaderSummaryPolicyR
     });
 
     return record === null ? null : readerSummaryPolicyFromPrisma(record);
+  }
+
+  async listScheduled(
+    query: Parameters<ReaderSummaryPolicyRepositoryPort["listScheduled"]>[0],
+  ): Promise<readonly ReaderSummaryPolicy[]> {
+    const records = await this.prisma.readerSummaryPolicy.findMany({
+      where: {
+        tenantId: query.tenantId,
+        workspaceId: query.workspaceId,
+        scheduleEnabled: true,
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: query.limit,
+    });
+
+    return records.map(readerSummaryPolicyFromPrisma);
   }
 }

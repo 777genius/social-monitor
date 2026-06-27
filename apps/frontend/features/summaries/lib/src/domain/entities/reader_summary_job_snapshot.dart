@@ -1,3 +1,5 @@
+import '../value_objects/summary_period.dart';
+
 enum ReaderSummaryJobStatus {
   requested,
   running,
@@ -25,6 +27,7 @@ final class ReaderSummaryJobSnapshot {
     this.startedAt,
     this.completedAt,
     this.failedAt,
+    this.period,
   });
 
   final String id;
@@ -36,4 +39,5 @@ final class ReaderSummaryJobSnapshot {
   final DateTime? startedAt;
   final DateTime? completedAt;
   final DateTime? failedAt;
+  final SummaryPeriod? period;
 }

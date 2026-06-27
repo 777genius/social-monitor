@@ -432,6 +432,51 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('period toolbar drives workspace summary period navigation', (
+    tester,
+  ) async {
+    final store = _store([
+      summaryApiDto(),
+    ], workspaceSummary: readerSummaryApiDto());
+
+    await _pumpSizedFeature(
+      tester,
+      store: store,
+      size: const Size(1280, 820),
+      autoload: false,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Week'));
+    await tester.pumpAndSettle();
+    final currentWeeklyPeriod = store.selectedSummaryPeriod;
+
+    expect(store.selectedSummaryPeriodPreset, SummaryPeriodPreset.weekly);
+    expect(currentWeeklyPeriod.cadence, SummaryPeriodCadence.weekly);
+
+    await tester.tap(find.byTooltip('Previous period'));
+    await tester.pumpAndSettle();
+
+    expect(store.canShowNextSummaryPeriod, isTrue);
+    expect(store.selectedSummaryPeriod.endedAt, currentWeeklyPeriod.startedAt);
+
+    await tester.tap(find.byTooltip('Next period'));
+    await tester.pumpAndSettle();
+
+    expect(store.selectedSummaryPeriod, currentWeeklyPeriod);
+
+    await tester.drag(
+      find.byType(SingleChildScrollView).last,
+      const Offset(-360, 0),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Month'));
+    await tester.pumpAndSettle();
+
+    expect(store.selectedSummaryPeriodPreset, SummaryPeriodPreset.monthly);
+    expect(store.selectedSummaryPeriod.cadence, SummaryPeriodCadence.monthly);
+  });
 }
 
 SummariesReviewStore _store(

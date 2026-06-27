@@ -56,6 +56,8 @@ async function main(): Promise<void> {
     const otherWorkspace = workspaceId('workspace-readerSummary-rest-other');
     const userId = 'user-readerSummary-rest-smoke';
     const readerSummaryId = 'readerSummary-rest-smoke-1';
+    const weeklyReaderSummaryId = 'readerSummary-rest-smoke-weekly';
+    const monthlyReaderSummaryId = 'readerSummary-rest-smoke-monthly';
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
@@ -70,151 +72,218 @@ async function main(): Promise<void> {
       { strict: false },
     );
 
-    await repository.save(
-      ReaderSummaryArtifact.create({
-        schemaVersion: 'reader_summary.artifact.v1',
-        readerSummaryId: readerSummaryId,
-        tenantId: tenant,
-        workspaceId: workspace,
-        scope: { type: 'workspace' },
-        userId,
-        sourceWindow: {
-          windowId: 'workspace:readerSummary-rest-smoke',
-          startedAt: new Date('2026-06-23T08:00:00.000Z'),
-          endedAt: new Date('2026-06-23T08:30:00.000Z'),
-          selectedFeedItemIds: ['feed-reddit', 'feed-github'],
-          storyClusterIds: ['story:ai-tooling'],
-        },
-        storyClusters: [
-          {
-            id: 'story:ai-tooling',
-            storyKey: 'url:example.com/ai-tooling',
-            rankingPolicyVersion: 'story_ranking_v1',
-            representativeFeedItemId: 'feed-reddit',
-            duplicateFeedItemIds: ['feed-github'],
-            topicIds: ['topic-ai', 'topic-github'],
-            providerKeys: ['reddit', 'github-repo-radar'],
-            score: 2.4,
-            signalBreakdown: {
-              baseScore: 1,
-              crossProviderSupport: 0.7,
-              sameProviderSupport: 0,
-              providerDiversityBoost: 0.5,
-              topicDiversityBoost: 0.2,
-              freshnessBoost: 0.3,
-              totalScore: 2.4,
-            },
-            observedAtRange: {
-              startedAt: new Date('2026-06-23T08:00:00.000Z'),
-              endedAt: new Date('2026-06-23T08:30:00.000Z'),
-            },
-            whyImportant: [
-              'The same AI tooling story is supported by Reddit and GitHub evidence.',
-            ],
+    const dailyArtifact = ReaderSummaryArtifact.create({
+      schemaVersion: 'reader_summary.artifact.v1',
+      readerSummaryId: readerSummaryId,
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: 'workspace' },
+      period: {
+        cadence: 'daily',
+        startedAt: new Date('2026-06-23T00:00:00.000Z'),
+        endedAt: new Date('2026-06-24T00:00:00.000Z'),
+        timezone: 'UTC',
+        periodKey:
+          'daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC',
+      },
+      userId,
+      sourceWindow: {
+        windowId: 'workspace:readerSummary-rest-smoke',
+        startedAt: new Date('2026-06-23T08:00:00.000Z'),
+        endedAt: new Date('2026-06-23T08:30:00.000Z'),
+        selectedFeedItemIds: ['feed-reddit', 'feed-github'],
+        storyClusterIds: ['story:ai-tooling'],
+      },
+      storyClusters: [
+        {
+          id: 'story:ai-tooling',
+          storyKey: 'url:example.com/ai-tooling',
+          rankingPolicyVersion: 'story_ranking_v1',
+          representativeFeedItemId: 'feed-reddit',
+          duplicateFeedItemIds: ['feed-github'],
+          topicIds: ['topic-ai', 'topic-github'],
+          providerKeys: ['reddit', 'github-repo-radar'],
+          score: 2.4,
+          signalBreakdown: {
+            baseScore: 1,
+            crossProviderSupport: 0.7,
+            sameProviderSupport: 0,
+            providerDiversityBoost: 0.5,
+            topicDiversityBoost: 0.2,
+            freshnessBoost: 0.3,
+            totalScore: 2.4,
           },
-        ],
-        contextArtifacts: [
-          {
-            artifactId: 'memory-context-1',
-            scope: { type: 'workspace' },
-            summaryText:
-              'User prefers practical AI tooling signals with source links and growth metrics.',
-            generatedAt: new Date('2026-06-23T07:55:00.000Z'),
-            freshness: 'fresh',
+          observedAtRange: {
+            startedAt: new Date('2026-06-23T08:00:00.000Z'),
+            endedAt: new Date('2026-06-23T08:30:00.000Z'),
           },
-        ],
-        personalization: {
-          memoryGuidanceStatus: 'available',
-          memoryGuidanceApplied: true,
-          providerPreferenceCount: 2,
-          keywordPreferenceCount: 3,
-          mutedKeywordCount: 0,
-          blockedProviderCount: 0,
-          signals: [
-            'provider:reddit',
-            'provider:github-repo-radar',
-            'keyword:agent tooling',
+          whyImportant: [
+            'The same AI tooling story is supported by Reddit and GitHub evidence.',
           ],
         },
-        headline: 'AI tooling reader readerSummary',
-        executiveSummary:
-          'A practical AI tooling story is repeating across Reddit discussion and GitHub repository growth.',
-        content: readerReaderSummaryContent(),
-        topStories: [
-          {
-            storyClusterId: 'story:ai-tooling',
-            title: 'AI tooling signal repeats across Reddit and GitHub',
-            summary:
-              'Reddit discussion and repo-radar evidence point to the same agent tooling theme.',
-            topicIds: ['topic-ai', 'topic-github'],
-            providerKeys: ['reddit', 'github-repo-radar'],
-            citationIds: ['citation-reddit', 'citation-github'],
+      ],
+      contextArtifacts: [
+        {
+          artifactId: 'memory-context-1',
+          scope: { type: 'workspace' },
+          period: {
+            cadence: 'daily',
+            startedAt: new Date('2026-06-23T00:00:00.000Z'),
+            endedAt: new Date('2026-06-24T00:00:00.000Z'),
+            timezone: 'UTC',
+            periodKey:
+              'daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC',
           },
-        ],
-        topicHighlights: [
-          {
-            topicId: 'topic-ai',
-            title: 'Agent tooling is the strongest AI topic',
-            summary:
-              'The readerSummary is backed by a Reddit source and a GitHub repo-radar source.',
-            citationIds: ['citation-reddit', 'citation-github'],
-          },
-        ],
-        repeatedSignals: [
-          {
-            storyClusterId: 'story:ai-tooling',
-            title: 'Agent tooling repeated across monitored topics',
-            topicIds: ['topic-ai', 'topic-github'],
-            citationIds: ['citation-reddit', 'citation-github'],
-          },
-        ],
-        risksAndUnknowns: [
-          {
-            description:
-              'The trend still needs a later scan to confirm whether attention persists.',
-            citationIds: ['citation-github'],
-            reason: 'insufficient_evidence',
-          },
-        ],
-        citationMap: [
-          {
-            citationId: 'citation-reddit',
-            feedItemId: 'feed-reddit',
-            sourceItemId: 'source-reddit',
-            providerKey: 'reddit',
-            field: 'title',
-            canonicalUrl: 'https://www.reddit.com/r/LocalLLaMA/comments/example',
-          },
-          {
-            citationId: 'citation-github',
-            feedItemId: 'feed-github',
-            sourceItemId: 'source-github',
-            providerKey: 'github-repo-radar',
-            field: 'canonicalUrl',
-            canonicalUrl: 'https://github.com/openai/codex',
-          },
-        ],
-        qualityFlags: [],
-        confidence: {
-          level: 'high',
-          score: 0.86,
-          rationale:
-            'The story has cross-provider support, direct links and personalization context.',
+          summaryText:
+            'User prefers practical AI tooling signals with source links and growth metrics.',
+          generatedAt: new Date('2026-06-23T07:55:00.000Z'),
+          freshness: 'fresh',
         },
-        lineage: {
-          promptVersion: 'reader-summary.prompt.rest-smoke.v1',
-          schemaVersion: 'reader_summary.artifact.v1',
-          modelVersion: 'deterministic-rest-smoke',
-          providerVersion: 'fixture',
-          rulesVersion: 'reader_summary.rules.rest-smoke.v1',
-          evalDatasetVersion: 'reader_summary.eval.rest-smoke.v1',
-          rankingPolicyVersion: 'story_ranking_v1',
+      ],
+      personalization: {
+        memoryGuidanceStatus: 'available',
+        memoryGuidanceApplied: true,
+        providerPreferenceCount: 2,
+        keywordPreferenceCount: 3,
+        mutedKeywordCount: 0,
+        blockedProviderCount: 0,
+        signals: [
+          'provider:reddit',
+          'provider:github-repo-radar',
+          'keyword:agent tooling',
+        ],
+      },
+      headline: 'AI tooling reader readerSummary',
+      executiveSummary:
+        'A practical AI tooling story is repeating across Reddit discussion and GitHub repository growth.',
+      content: readerReaderSummaryContent(),
+      topStories: [
+        {
+          storyClusterId: 'story:ai-tooling',
+          title: 'AI tooling signal repeats across Reddit and GitHub',
+          summary:
+            'Reddit discussion and repo-radar evidence point to the same agent tooling theme.',
+          topicIds: ['topic-ai', 'topic-github'],
+          providerKeys: ['reddit', 'github-repo-radar'],
+          citationIds: ['citation-reddit', 'citation-github'],
         },
-        usage: {
-          inputTokens: 120,
-          outputTokens: 80,
-          estimatedCostUsd: 0,
+      ],
+      topicHighlights: [
+        {
+          topicId: 'topic-ai',
+          title: 'Agent tooling is the strongest AI topic',
+          summary:
+            'The readerSummary is backed by a Reddit source and a GitHub repo-radar source.',
+          citationIds: ['citation-reddit', 'citation-github'],
         },
+      ],
+      repeatedSignals: [
+        {
+          storyClusterId: 'story:ai-tooling',
+          title: 'Agent tooling repeated across monitored topics',
+          topicIds: ['topic-ai', 'topic-github'],
+          citationIds: ['citation-reddit', 'citation-github'],
+        },
+      ],
+      risksAndUnknowns: [
+        {
+          description:
+            'The trend still needs a later scan to confirm whether attention persists.',
+          citationIds: ['citation-github'],
+          reason: 'insufficient_evidence',
+        },
+      ],
+      citationMap: [
+        {
+          citationId: 'citation-reddit',
+          feedItemId: 'feed-reddit',
+          sourceItemId: 'source-reddit',
+          providerKey: 'reddit',
+          field: 'title',
+          canonicalUrl: 'https://www.reddit.com/r/LocalLLaMA/comments/example',
+        },
+        {
+          citationId: 'citation-github',
+          feedItemId: 'feed-github',
+          sourceItemId: 'source-github',
+          providerKey: 'github-repo-radar',
+          field: 'canonicalUrl',
+          canonicalUrl: 'https://github.com/openai/codex',
+        },
+      ],
+      qualityFlags: [],
+      confidence: {
+        level: 'high',
+        score: 0.86,
+        rationale:
+          'The story has cross-provider support, direct links and personalization context.',
+      },
+      lineage: {
+        promptVersion: 'reader-summary.prompt.rest-smoke.v1',
+        schemaVersion: 'reader_summary.artifact.v1',
+        modelVersion: 'deterministic-rest-smoke',
+        providerVersion: 'fixture',
+        rulesVersion: 'reader_summary.rules.rest-smoke.v1',
+        evalDatasetVersion: 'reader_summary.eval.rest-smoke.v1',
+        rankingPolicyVersion: 'story_ranking_v1',
+      },
+      usage: {
+        inputTokens: 120,
+        outputTokens: 80,
+        estimatedCostUsd: 0,
+      },
+    });
+    await repository.save(dailyArtifact);
+
+    const baseArtifact = dailyArtifact.toSnapshot();
+    await repository.save(
+      ReaderSummaryArtifact.create({
+        ...baseArtifact,
+        readerSummaryId: weeklyReaderSummaryId,
+        period: {
+          cadence: 'weekly',
+          startedAt: new Date('2026-06-15T00:00:00.000Z'),
+          endedAt: new Date('2026-06-22T00:00:00.000Z'),
+          timezone: 'UTC',
+          periodKey:
+            'weekly:2026-06-15T00:00:00.000Z:2026-06-22T00:00:00.000Z:UTC',
+        },
+        sourceWindow: {
+          ...baseArtifact.sourceWindow,
+          windowId: 'workspace:readerSummary-rest-smoke-weekly',
+          startedAt: new Date('2026-06-16T08:00:00.000Z'),
+          endedAt: new Date('2026-06-21T08:30:00.000Z'),
+        },
+        storyClusters: baseArtifact.storyClusters.map((cluster) => ({
+          ...cluster,
+          observedAtRange: {
+            startedAt: new Date('2026-06-16T08:00:00.000Z'),
+            endedAt: new Date('2026-06-21T08:30:00.000Z'),
+          },
+        })),
+        headline: 'Weekly AI tooling reader summary',
+      }),
+    );
+
+    await repository.save(
+      ReaderSummaryArtifact.create({
+        ...baseArtifact,
+        readerSummaryId: monthlyReaderSummaryId,
+        period: {
+          cadence: 'monthly',
+          startedAt: new Date('2026-06-01T00:00:00.000Z'),
+          endedAt: new Date('2026-07-01T00:00:00.000Z'),
+          timezone: 'UTC',
+          periodKey:
+            'monthly:2026-06-01T00:00:00.000Z:2026-07-01T00:00:00.000Z:UTC',
+        },
+        sourceWindow: {
+          ...baseArtifact.sourceWindow,
+          windowId: 'workspace:readerSummary-rest-smoke-monthly',
+          startedAt: new Date('2026-06-23T08:00:00.000Z'),
+          endedAt: new Date('2026-06-23T08:30:00.000Z'),
+        },
+        headline: 'Monthly AI tooling reader summary',
       }),
     );
 
@@ -225,6 +294,10 @@ async function main(): Promise<void> {
         providerKey: 'reddit',
         userId,
         memoryGuidanceApplied: 'true',
+        cadence: 'daily',
+        periodStartedAt: '2026-06-23T00:00:00.000Z',
+        periodEndedAt: '2026-06-24T00:00:00.000Z',
+        timezone: 'UTC',
         limit: '5',
       })
       .set(headers)
@@ -236,8 +309,66 @@ async function main(): Promise<void> {
       'reader-summaries REST list must return the seeded personalized artifact',
     );
     assertReaderSummaryResponse(
-      requireValue(listBody.items[0], 'reader-summaries REST list item is missing'),
+      requireValue(
+        listBody.items[0],
+        'reader-summaries REST list item is missing',
+      ),
       readerSummaryId,
+      'daily',
+    );
+
+    const weeklyListResponse = await request(app.getHttpServer())
+      .get('/reader-summaries')
+      .query({
+        scopeType: 'workspace',
+        cadence: 'weekly',
+        periodStartedAt: '2026-06-15T00:00:00.000Z',
+        periodEndedAt: '2026-06-22T00:00:00.000Z',
+        timezone: 'UTC',
+        limit: '5',
+      })
+      .set(headers)
+      .expect(200);
+    const weeklyListBody =
+      weeklyListResponse.body as ReaderSummaryListResponseBody;
+    assert(
+      weeklyListBody.items.length === 1,
+      'reader-summaries REST list must filter weekly artifacts by period',
+    );
+    assertReaderSummaryResponse(
+      requireValue(
+        weeklyListBody.items[0],
+        'weekly reader-summaries REST list item is missing',
+      ),
+      weeklyReaderSummaryId,
+      'weekly',
+    );
+
+    const monthlyListResponse = await request(app.getHttpServer())
+      .get('/reader-summaries')
+      .query({
+        scopeType: 'workspace',
+        cadence: 'monthly',
+        periodStartedAt: '2026-06-01T00:00:00.000Z',
+        periodEndedAt: '2026-07-01T00:00:00.000Z',
+        timezone: 'UTC',
+        limit: '5',
+      })
+      .set(headers)
+      .expect(200);
+    const monthlyListBody =
+      monthlyListResponse.body as ReaderSummaryListResponseBody;
+    assert(
+      monthlyListBody.items.length === 1,
+      'reader-summaries REST list must filter monthly artifacts by period',
+    );
+    assertReaderSummaryResponse(
+      requireValue(
+        monthlyListBody.items[0],
+        'monthly reader-summaries REST list item is missing',
+      ),
+      monthlyReaderSummaryId,
+      'monthly',
     );
 
     const otherTenantListResponse = await request(app.getHttpServer())
@@ -247,13 +378,18 @@ async function main(): Promise<void> {
         providerKey: 'reddit',
         userId,
         memoryGuidanceApplied: 'true',
+        cadence: 'daily',
+        periodStartedAt: '2026-06-23T00:00:00.000Z',
+        periodEndedAt: '2026-06-24T00:00:00.000Z',
+        timezone: 'UTC',
         limit: '5',
       })
       .set(otherTenantHeaders)
       .expect(200);
 
     assert(
-      (otherTenantListResponse.body as ReaderSummaryListResponseBody).items.length === 0,
+      (otherTenantListResponse.body as ReaderSummaryListResponseBody).items
+        .length === 0,
       'reader-summaries REST list must not return artifacts from another tenant',
     );
 
@@ -265,6 +401,27 @@ async function main(): Promise<void> {
     assertReaderSummaryResponse(
       detailResponse.body as ReaderSummaryResponseBody,
       readerSummaryId,
+      'daily',
+    );
+
+    const weeklyDetailResponse = await request(app.getHttpServer())
+      .get(`/reader-summaries/${weeklyReaderSummaryId}`)
+      .set(headers)
+      .expect(200);
+    assertReaderSummaryResponse(
+      weeklyDetailResponse.body as ReaderSummaryResponseBody,
+      weeklyReaderSummaryId,
+      'weekly',
+    );
+
+    const monthlyDetailResponse = await request(app.getHttpServer())
+      .get(`/reader-summaries/${monthlyReaderSummaryId}`)
+      .set(headers)
+      .expect(200);
+    assertReaderSummaryResponse(
+      monthlyDetailResponse.body as ReaderSummaryResponseBody,
+      monthlyReaderSummaryId,
+      'monthly',
     );
 
     const readerSummaryRequestHeaders = {
@@ -280,7 +437,8 @@ async function main(): Promise<void> {
         userId,
       })
       .expect(201);
-    const requestBody = requestResponse.body as RequestReaderSummaryResponseBody;
+    const requestBody =
+      requestResponse.body as RequestReaderSummaryResponseBody;
     const readerSummaryJobId = requireString(
       requestBody.readerSummaryJobId,
       'readerSummary request REST must return a readerSummaryJobId',
@@ -289,6 +447,11 @@ async function main(): Promise<void> {
     assert(
       requestBody.created === true && requestBody.status === 'requested',
       'readerSummary request REST must create a requested job',
+    );
+    assertReaderSummaryPeriod(
+      requestBody.period,
+      'daily',
+      'readerSummary request REST must expose daily default period',
     );
 
     const replayResponse = await request(app.getHttpServer())
@@ -305,6 +468,47 @@ async function main(): Promise<void> {
       replayBody.readerSummaryJobId === readerSummaryJobId &&
         replayBody.created === false,
       'readerSummary request REST must replay idempotent requests without creating another job',
+    );
+
+    const weeklyRequestResponse = await request(app.getHttpServer())
+      .post('/reader-summary-requests')
+      .set({
+        ...readerSummaryRequestHeaders,
+        'idempotency-key': 'readerSummary-rest-smoke-request-weekly',
+      })
+      .send({
+        scope: { type: 'workspace' },
+        userId,
+        cadence: 'weekly',
+      })
+      .expect(201);
+    assertReaderSummaryPeriod(
+      (weeklyRequestResponse.body as RequestReaderSummaryResponseBody).period,
+      'weekly',
+      'readerSummary request REST must expose weekly default period',
+    );
+
+    const monthlyRequestResponse = await request(app.getHttpServer())
+      .post('/reader-summary-requests')
+      .set({
+        ...readerSummaryRequestHeaders,
+        'idempotency-key': 'readerSummary-rest-smoke-request-monthly',
+      })
+      .send({
+        scope: { type: 'workspace' },
+        userId,
+        cadence: 'monthly',
+        period: {
+          startedAt: '2026-06-01T00:00:00.000Z',
+          endedAt: '2026-07-01T00:00:00.000Z',
+          timezone: 'UTC',
+        },
+      })
+      .expect(201);
+    assertReaderSummaryPeriod(
+      (monthlyRequestResponse.body as RequestReaderSummaryResponseBody).period,
+      'monthly',
+      'readerSummary request REST must expose requested monthly period',
     );
 
     await request(app.getHttpServer())
@@ -324,6 +528,7 @@ async function main(): Promise<void> {
     assertReaderSummaryJobStatus(
       statusResponse.body as ReaderSummaryJobStatusResponseBody,
       readerSummaryJobId,
+      'daily',
     );
 
     await request(app.getHttpServer())
@@ -381,7 +586,8 @@ async function main(): Promise<void> {
       .expect(200);
 
     assert(
-      (providerNegative.body as ReaderSummaryListResponseBody).items.length === 0,
+      (providerNegative.body as ReaderSummaryListResponseBody).items.length ===
+        0,
       'reader-summaries REST providerKey filter must exclude unrelated providers',
     );
 
@@ -424,7 +630,8 @@ const readerReaderSummaryContent = (): ReaderSummaryContent => {
     confidence: {
       level: 'high' as const,
       score: 0.86,
-      rationale: 'Cross-provider support and direct canonical links are present.',
+      rationale:
+        'Cross-provider support and direct canonical links are present.',
     },
     confirmedProviderKeys: ['reddit', 'github-repo-radar'],
     providerMetrics: [
@@ -493,8 +700,12 @@ const readerReaderSummaryContent = (): ReaderSummaryContent => {
       repeatedSignals: ['cross-provider AI tooling'],
       fadingSignals: [],
     },
-    openQuestions: ['Will the repository keep gaining attention after the next scan?'],
-    risks: ['This is a live trend candidate, not a long-term adoption proof yet.'],
+    openQuestions: [
+      'Will the repository keep gaining attention after the next scan?',
+    ],
+    risks: [
+      'This is a live trend candidate, not a long-term adoption proof yet.',
+    ],
     nextActions: [
       {
         kind: 'watch_repository',
@@ -514,6 +725,7 @@ type ReaderSummaryListResponseBody = {
 type ReaderSummaryResponseBody = {
   readonly schemaVersion?: unknown;
   readonly readerSummaryId?: unknown;
+  readonly period?: ReaderSummaryPeriodBody;
   readonly readerBrief?: {
     readonly topReads?: readonly {
       readonly title?: unknown;
@@ -549,10 +761,12 @@ type RequestReaderSummaryResponseBody = {
   readonly readerSummaryJobId?: unknown;
   readonly status?: unknown;
   readonly created?: unknown;
+  readonly period?: ReaderSummaryPeriodBody;
 };
 
 type ReaderSummaryJobStatusResponseBody = {
   readonly readerSummaryJobId?: unknown;
+  readonly period?: ReaderSummaryPeriodBody;
   readonly scope?: {
     readonly type?: unknown;
   };
@@ -562,6 +776,14 @@ type ReaderSummaryJobStatusResponseBody = {
     readonly status?: unknown;
     readonly message?: unknown;
   }[];
+};
+
+type ReaderSummaryPeriodBody = {
+  readonly cadence?: unknown;
+  readonly startedAt?: unknown;
+  readonly endedAt?: unknown;
+  readonly timezone?: unknown;
+  readonly periodKey?: unknown;
 };
 
 const requireString = (value: unknown, message: string): string => {
@@ -575,12 +797,21 @@ const requireString = (value: unknown, message: string): string => {
 const assertReaderSummaryResponse = (
   body: ReaderSummaryResponseBody,
   readerSummaryId: string,
+  cadence: 'daily' | 'weekly' | 'monthly',
 ): void => {
   assert(
     body.schemaVersion === 'reader_summary.artifact.v1',
     'reader-summaries REST must map reader summaries to the readerSummary artifact schema',
   );
-  assert(body.readerSummaryId === readerSummaryId, 'reader-summaries REST must expose readerSummaryId');
+  assert(
+    body.readerSummaryId === readerSummaryId,
+    'reader-summaries REST must expose readerSummaryId',
+  );
+  assertReaderSummaryPeriod(
+    body.period,
+    cadence,
+    'reader-summaries REST must expose the artifact period',
+  );
   assert(
     body.personalization?.memoryGuidanceStatus === 'available' &&
       body.personalization.memoryGuidanceApplied === true,
@@ -665,6 +896,7 @@ const assertReaderSummaryResponse = (
 const assertReaderSummaryJobStatus = (
   body: ReaderSummaryJobStatusResponseBody,
   readerSummaryJobId: string,
+  cadence: 'daily' | 'weekly' | 'monthly',
 ): void => {
   assert(
     body.readerSummaryJobId === readerSummaryJobId,
@@ -673,6 +905,11 @@ const assertReaderSummaryJobStatus = (
   assert(
     body.scope?.type === 'workspace',
     'readerSummary job status REST must expose the requested scope',
+  );
+  assertReaderSummaryPeriod(
+    body.period,
+    cadence,
+    'readerSummary job status REST must expose the requested period',
   );
   assert(
     body.status === 'requested',
@@ -685,9 +922,43 @@ const assertReaderSummaryJobStatus = (
   assert(
     body.timeline?.some(
       (event) =>
-        event.status === 'requested' && event.message === 'Reader summary requested',
+        event.status === 'requested' &&
+        event.message === 'Reader summary requested',
     ) === true,
     'reader summary job status REST must expose canonical timeline language',
+  );
+};
+
+const assertReaderSummaryPeriod = (
+  period: ReaderSummaryPeriodBody | undefined,
+  cadence: 'daily' | 'weekly' | 'monthly',
+  message: string,
+): void => {
+  const value = requireValue(period, message);
+  assert(value.cadence === cadence, `${message}: cadence must be ${cadence}`);
+  const startedAt = requireString(
+    value.startedAt,
+    `${message}: startedAt is required`,
+  );
+  const endedAt = requireString(
+    value.endedAt,
+    `${message}: endedAt is required`,
+  );
+  const timezone = requireString(
+    value.timezone,
+    `${message}: timezone is required`,
+  );
+  const periodKey = requireString(
+    value.periodKey,
+    `${message}: periodKey is required`,
+  );
+  assert(
+    Date.parse(startedAt) < Date.parse(endedAt),
+    `${message}: startedAt must be before endedAt`,
+  );
+  assert(
+    periodKey.includes(`${cadence}:`) && periodKey.includes(timezone),
+    `${message}: periodKey must include cadence and timezone`,
   );
 };
 
