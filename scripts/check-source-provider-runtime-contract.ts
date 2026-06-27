@@ -57,6 +57,7 @@ type RuntimeContract = {
 };
 
 const contractPath = 'ops/ingestion/source-provider-runtime-contract.json';
+const externalBetaEvidenceRunnerPath = 'ops/release/external-beta-evidence-runner.json';
 const requiredProviders = new Map([
   [
     'hacker-news',
@@ -243,6 +244,8 @@ function validateContract(): void {
     );
     assertLiveEvidenceSignalsMatchReadiness(providerKey, provider);
   }
+
+  assertSourceLiveEvidenceArtifactsAreRunnable();
 }
 
 function assertLiveEvidenceSignalsMatchReadiness(
@@ -276,6 +279,107 @@ function assertLiveEvidenceSignalsMatchReadiness(
       `${contractPath}: ${providerKey}.liveEvidenceSignals has stale or undeclared signal ${String(signal)}`,
     );
   }
+}
+
+function assertSourceLiveEvidenceArtifactsAreRunnable(): void {
+  const runner = JSON.parse(
+    readFileSync(externalBetaEvidenceRunnerPath, 'utf8'),
+  ) as { readonly jobs?: unknown };
+  assert(
+    Array.isArray(runner.jobs),
+    `${externalBetaEvidenceRunnerPath}: jobs must be an array`,
+  );
+  const sourceLiveCoverage = buildSourceLiveArtifactCoverage(runner.jobs);
+  const enabledProviderKeys = new Set(
+    sourceReadinessProfiles
+      .filter((profile) => profile.state === 'enabled_beta')
+      .map((profile) => profile.providerKey),
+  );
+
+  for (const profile of sourceReadinessProfiles) {
+    if (profile.state !== 'enabled_beta') {
+      continue;
+    }
+
+    for (const requirement of profile.liveEvidenceRequirements) {
+      const artifactEnv = requirement.artifactEnv;
+      assert(
+        artifactEnv !== undefined && artifactEnv.trim().length > 0,
+        `${contractPath}: ${profile.providerKey} live evidence requirement ${requirement.signalId} must declare artifactEnv`,
+      );
+      const coveredProviders = sourceLiveCoverage.get(artifactEnv);
+      assert(
+        coveredProviders !== undefined,
+        `${externalBetaEvidenceRunnerPath}: missing source live output artifact for ${profile.providerKey} artifactEnv ${artifactEnv}`,
+      );
+      assert(
+        coveredProviders.has(profile.providerKey),
+        `${externalBetaEvidenceRunnerPath}: source live artifact ${artifactEnv} must include provider ${profile.providerKey}`,
+      );
+    }
+  }
+
+  for (const [artifactEnv, providerKeys] of sourceLiveCoverage) {
+    for (const providerKey of providerKeys) {
+      assert(
+        enabledProviderKeys.has(providerKey),
+        `${externalBetaEvidenceRunnerPath}: source live artifact ${artifactEnv} references non-enabled provider ${providerKey}`,
+      );
+      const profile = sourceReadinessProfiles.find(
+        (candidate) => candidate.providerKey === providerKey,
+      );
+      assert(
+        profile?.liveEvidenceRequirements.some(
+          (requirement) => requirement.artifactEnv === artifactEnv,
+        ) === true,
+        `${externalBetaEvidenceRunnerPath}: source live artifact ${artifactEnv} is not declared by provider ${providerKey}`,
+      );
+    }
+  }
+}
+
+function buildSourceLiveArtifactCoverage(
+  jobs: readonly unknown[],
+): ReadonlyMap<string, ReadonlySet<string>> {
+  const coverage = new Map<string, Set<string>>();
+
+  for (const job of jobs) {
+    assert(
+      isRecord(job),
+      `${externalBetaEvidenceRunnerPath}: each job must be an object`,
+    );
+    const outputArtifacts = job.outputArtifacts;
+    if (!Array.isArray(outputArtifacts)) {
+      continue;
+    }
+
+    for (const artifact of outputArtifacts) {
+      assert(
+        isRecord(artifact),
+        `${externalBetaEvidenceRunnerPath}: output artifacts must be objects`,
+      );
+      if (artifact.format !== 'source-live-provider-evidence-v1') {
+        continue;
+      }
+      const env = artifact.env;
+      const expectedProviderKeys = artifact.expectedProviderKeys;
+      assert(
+        typeof env === 'string' && env.trim().length > 0,
+        `${externalBetaEvidenceRunnerPath}: source live output artifact env must be a non-empty string`,
+      );
+      assertNonEmptyStringArray(
+        expectedProviderKeys,
+        `${externalBetaEvidenceRunnerPath}: source live output artifact ${env}.expectedProviderKeys`,
+      );
+      const providers = coverage.get(env) ?? new Set<string>();
+      for (const providerKey of expectedProviderKeys as readonly string[]) {
+        providers.add(providerKey);
+      }
+      coverage.set(env, providers);
+    }
+  }
+
+  return coverage;
 }
 
 async function verifyRedditPermanentOAuthRuntime(): Promise<void> {
