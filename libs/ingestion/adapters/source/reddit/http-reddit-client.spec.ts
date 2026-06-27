@@ -48,6 +48,11 @@ describe('HttpRedditClient', () => {
         },
       }), {
         status: 200,
+        headers: {
+          'x-ratelimit-used': '1',
+          'x-ratelimit-remaining': '99',
+          'x-ratelimit-reset': '60',
+        },
       });
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -80,6 +85,12 @@ describe('HttpRedditClient', () => {
         numComments: 58,
         upvoteRatio: 0.94,
       }],
+      rateLimit: {
+        headersObserved: true,
+        used: '1',
+        remaining: '99',
+        reset: '60',
+      },
     });
   });
 

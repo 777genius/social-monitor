@@ -4,6 +4,7 @@ import type {
   RedditListSubredditPostsRequest,
   RedditPost,
   RedditPostListing,
+  RedditRateLimitBudget,
   RedditSearchPostsRequest,
 } from './reddit-client.port';
 
@@ -68,6 +69,7 @@ export class HttpRedditClient implements RedditClientPort {
     return {
       posts,
       after: json.data?.after ?? undefined,
+      rateLimit: readRateLimitBudget(response.headers),
     };
   }
 
@@ -122,6 +124,19 @@ const readNumber = (value: unknown): number | undefined =>
 
 const readBoolean = (value: unknown): boolean | undefined =>
   typeof value === 'boolean' ? value : undefined;
+
+const readRateLimitBudget = (headers: Headers): RedditRateLimitBudget => {
+  const used = headers.get('x-ratelimit-used') ?? undefined;
+  const remaining = headers.get('x-ratelimit-remaining') ?? undefined;
+  const reset = headers.get('x-ratelimit-reset') ?? undefined;
+
+  return {
+    headersObserved: used !== undefined || remaining !== undefined || reset !== undefined,
+    used,
+    remaining,
+    reset,
+  };
+};
 
 export const redditListings: readonly RedditPostListing[] = ['hot', 'new', 'top', 'rising'];
 export const redditTopTimes = ['hour', 'day', 'week', 'month', 'year', 'all'] as const;

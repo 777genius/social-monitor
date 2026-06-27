@@ -22,6 +22,14 @@ export type RedditPost = {
 export type RedditListingPage = {
   readonly posts: readonly RedditPost[];
   readonly after?: string;
+  readonly rateLimit?: RedditRateLimitBudget;
+};
+
+export type RedditRateLimitBudget = {
+  readonly headersObserved: boolean;
+  readonly used?: string;
+  readonly remaining?: string;
+  readonly reset?: string;
 };
 
 export type RedditListSubredditPostsRequest = {

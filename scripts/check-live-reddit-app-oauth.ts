@@ -1,6 +1,12 @@
 import { RedditAppOnlyTokenProvider } from '../libs/ingestion/adapters/source/reddit/app-only-reddit-token-provider';
 import { HttpRedditClient, redditListings } from '../libs/ingestion/adapters/source/reddit/http-reddit-client';
-import type { RedditPostListing } from '../libs/ingestion/adapters/source/reddit/reddit-client.port';
+import type {
+  RedditClientPort,
+  RedditListingPage,
+  RedditListSubredditPostsRequest,
+  RedditPostListing,
+  RedditSearchPostsRequest,
+} from '../libs/ingestion/adapters/source/reddit/reddit-client.port';
 import { RedditSourceProvider } from '../libs/ingestion/adapters/source/reddit/reddit-source.provider';
 import type { SourceRuntimeConfig } from '../libs/ingestion/ports';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
@@ -18,7 +24,8 @@ async function main(): Promise<void> {
     'Live Reddit app-only OAuth smoke requires REDDIT_APP_CLIENT_ID/REDDIT_APP_CLIENT_SECRET or REDDIT_CLIENT_ID/REDDIT_CLIENT_SECRET',
   );
 
-  const provider = new RedditSourceProvider(new HttpRedditClient(), tokenProvider);
+  const redditClient = new RecordingRedditClient(new HttpRedditClient());
+  const provider = new RedditSourceProvider(redditClient, tokenProvider);
   const subreddit = readOptionalEnv('REDDIT_SUBREDDIT') ?? 'programming';
   const listing = readListing(readOptionalEnv('REDDIT_LISTING') ?? 'hot');
   const maxItems = readPositiveInteger(readOptionalEnv('REDDIT_MAX_ITEMS'), 3, 1, 10);
@@ -42,12 +49,48 @@ async function main(): Promise<void> {
   const result = await provider.scan(plan, context);
 
   assert(result.items.length > 0, 'Live Reddit app-only OAuth smoke expected at least one normalized item');
+  assert(result.items.length <= maxItems, 'Live Reddit app-only OAuth smoke must honor maxItems');
+  assert(
+    result.items.every((item) => item.externalId.startsWith('reddit:')),
+    'Live Reddit app-only OAuth smoke must preserve reddit external ids',
+  );
+  assert(
+    result.items.every((item) => item.canonicalUrl.startsWith('https://www.reddit.com/')),
+    'Live Reddit app-only OAuth smoke must expose reddit canonical URLs',
+  );
+  assert(
+    subreddit !== 'programming' || result.warnings.length === 0,
+    'Live Reddit app-only OAuth smoke should be warning-free for default listing',
+  );
+  assert(
+    redditClient.lastPage?.rateLimit?.headersObserved === true,
+    'Live Reddit app-only OAuth smoke must observe Reddit rate-limit headers',
+  );
+  assert(
+    redditClient.lastPage.after !== undefined || result.items.length < maxItems,
+    'Live Reddit app-only OAuth smoke must observe an opaque next cursor when the page is full',
+  );
+
+  const authFailure = provider.classifyError(new Error(
+    'Reddit API returned 401 access_token=leaky-access-token refresh_token=leaky-refresh-token client_secret=leaky-client-secret',
+  ));
+  assert(authFailure.kind === 'auth_failed', 'Reddit app-only auth failures must classify as auth_failed');
+  assert(authFailure.retryable === false, 'Reddit app-only auth failures must fail closed without retries');
+  for (const secret of ['leaky-access-token', 'leaky-refresh-token', 'leaky-client-secret']) {
+    assert(!authFailure.message.includes(secret), `Reddit app-only auth failure leaked ${secret}`);
+  }
+
+  const rateLimitFailure = provider.classifyError(new Error('Reddit API returned 429'));
+  assert(rateLimitFailure.kind === 'rate_limited', 'Reddit 429 failures must classify as rate_limited');
+  assert(rateLimitFailure.retryable === true, 'Reddit 429 failures must remain retryable with backoff');
+
   console.log([
     'Live Reddit app-only OAuth smoke OK',
     `Subreddit: ${subreddit}`,
     `Listing: ${listing}`,
     `Items: ${result.items.length}`,
     `Next cursor: ${result.nextCursor ?? 'none'}`,
+    `Rate-limit headers: ${redditClient.lastPage.rateLimit?.headersObserved === true ? 'present' : 'missing'}`,
     `Warnings: ${result.warnings.length}`,
   ].join('\n'));
 }
@@ -73,6 +116,24 @@ function readPositiveInteger(value: string | undefined, fallback: number, min: n
     throw new Error(`Value must be an integer between ${min} and ${max}`);
   }
   return parsed;
+}
+
+class RecordingRedditClient implements RedditClientPort {
+  lastPage: RedditListingPage | undefined;
+
+  constructor(private readonly inner: RedditClientPort) {}
+
+  async listSubredditPosts(request: RedditListSubredditPostsRequest): Promise<RedditListingPage> {
+    const page = await this.inner.listSubredditPosts(request);
+    this.lastPage = page;
+    return page;
+  }
+
+  async searchPosts(request: RedditSearchPostsRequest): Promise<RedditListingPage> {
+    const page = await this.inner.searchPosts(request);
+    this.lastPage = page;
+    return page;
+  }
 }
 
 void main().catch((error) => {
