@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-import { REDACTED_VALUE, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { REDACTED_VALUE, isSensitiveKey, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { FakeSourceProvider } from '../libs/ingestion/adapters/source/fake-source.provider';
 import { FixtureGitHubClient } from '../libs/ingestion/adapters/source/github/fixture-github-client';
@@ -463,6 +463,7 @@ async function certifyProvider(
       'provider_errors_are_classified',
       'provider_failure_messages_are_redacted',
       'normalized_metadata_excludes_raw_payload_and_secret_keys',
+      'canonical_urls_exclude_userinfo_and_secret_query_params',
       'freshness_guard_declared',
       'minimum_scan_interval_declared',
       'scan_history_required_for_freshness',
@@ -633,6 +634,7 @@ function assertStableItems(
       !canonicalUrls.has(item.canonicalUrl),
       `${providerKey}: duplicate canonicalUrl ${item.canonicalUrl}`,
     );
+    assertCanonicalUrlIsSafe(providerKey, item.canonicalUrl);
     canonicalUrls.add(item.canonicalUrl);
 
     assert(
@@ -771,6 +773,35 @@ function assertProviderMetadataIsSafe(
     violations.length === 0,
     `${providerKey}: provider metadata must not retain raw payload, headers or secret-like keys: ${violations.join(', ')}`,
   );
+}
+
+function assertCanonicalUrlIsSafe(providerKey: string, value: string): void {
+  const violations = canonicalUrlViolations(value);
+  assert(
+    violations.length === 0,
+    `${providerKey}: canonicalUrl must not include userinfo or sensitive query params: ${violations.join(', ')}`,
+  );
+}
+
+function canonicalUrlViolations(value: string): readonly string[] {
+  try {
+    const url = new URL(value);
+    const violations: string[] = [];
+
+    if (url.username.length > 0 || url.password.length > 0) {
+      violations.push('userinfo');
+    }
+
+    for (const key of url.searchParams.keys()) {
+      if (isSensitiveKey(key)) {
+        violations.push(`query.${key}`);
+      }
+    }
+
+    return violations;
+  } catch {
+    return ['invalid_url'];
+  }
 }
 
 function providerMetadataViolations(

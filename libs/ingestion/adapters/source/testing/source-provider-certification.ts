@@ -1,4 +1,4 @@
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { isSensitiveKey, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type {
   ProviderFailureKind,
@@ -61,6 +61,7 @@ export const certifySourceProvider = (config: SourceProviderCertificationConfig)
         expect(item.externalId.trim()).not.toHaveLength(0);
         expect(item.canonicalUrl.trim()).not.toHaveLength(0);
         expect(canonicalUrls.has(item.canonicalUrl)).toBe(false);
+        expect(canonicalUrlViolations(item.canonicalUrl)).toEqual([]);
         canonicalUrls.add(item.canonicalUrl);
         expect(item.title.trim().length + item.body.trim().length).toBeGreaterThan(0);
         expect(item.publishedAt).toBeInstanceOf(Date);
@@ -87,6 +88,27 @@ const makeContext = (): SourceProviderScanContext => ({
   scanJobId: 'scan-job-certification',
   correlationId: 'correlation-certification',
 });
+
+const canonicalUrlViolations = (value: string): readonly string[] => {
+  try {
+    const url = new URL(value);
+    const violations: string[] = [];
+
+    if (url.username.length > 0 || url.password.length > 0) {
+      violations.push('userinfo');
+    }
+
+    for (const key of url.searchParams.keys()) {
+      if (isSensitiveKey(key)) {
+        violations.push(`query.${key}`);
+      }
+    }
+
+    return violations;
+  } catch {
+    return ['invalid_url'];
+  }
+};
 
 const forbiddenMetadataKeys = new Set([
   'authorization',
