@@ -1,7 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { ScanJob } from '@social-monitor/monitoring/domain';
+import { ScanJob, ScanPolicy } from '@social-monitor/monitoring/domain';
 import {
   MONITORING_SCAN_JOB_REPOSITORY,
   MONITORING_SCAN_POLICY_REPOSITORY,
@@ -565,6 +565,94 @@ async function main(): Promise<void> {
     assert(
       scheduledLaterHealth.body.schedulerDecision.nextEligibleAt !== undefined,
       'scheduled-later scheduler decision must expose next eligible time',
+    );
+
+    const repoRadarTopicId = await createTopic({
+      httpServer: app.getHttpServer(),
+      headers: adminHeaders,
+      idempotencyKey: 'topic-repo-radar-cadence',
+      name: 'Repo Radar cadence health',
+      query: 'repo radar cadence floor',
+    });
+    const repoRadarBinding = await request(app.getHttpServer())
+      .post(`/topics/${repoRadarTopicId}/source-bindings`)
+      .set(adminHeaders)
+      .set('idempotency-key', 'binding-repo-radar-cadence')
+      .send({
+        providerKey: 'github-repo-radar',
+        config: {
+          mode: 'search',
+          topics: ['ai'],
+          languages: ['TypeScript'],
+          windows: ['24h', '7d'],
+          maxItems: 10,
+          maxCandidates: 20,
+        },
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/source-bindings/${repoRadarBinding.body.sourceBindingId}/scan-policy`)
+      .set(adminHeaders)
+      .set('idempotency-key', 'policy-repo-radar-too-fast')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(400);
+
+    await scanPolicies.save(
+      ScanPolicy.create({
+        id: 'legacy-repo-radar-cadence-policy',
+        tenantId: tenant,
+        workspaceId: workspace,
+        sourceBindingId: repoRadarBinding.body.sourceBindingId,
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+        nextRunAt: new Date(Date.now() - 1_000),
+        createdAt: new Date(Date.now() - 2_000),
+      }),
+    );
+
+    const repoRadarHealth = await readHealth({
+      httpServer: app.getHttpServer(),
+      topicId: repoRadarTopicId,
+      sourceBindingId: repoRadarBinding.body.sourceBindingId,
+      headers: viewerHeaders,
+    });
+    assert(
+      repoRadarHealth.body.scanPolicy.cadence.minimumIntervalSeconds === 21_600,
+      'repo-radar scan policy must expose provider minimum interval',
+    );
+    assert(
+      repoRadarHealth.body.scanPolicy.cadence.configuredIntervalSeconds === 300,
+      'repo-radar scan policy must expose legacy configured interval',
+    );
+    assert(
+      repoRadarHealth.body.scanPolicy.cadence.effectiveIntervalSeconds === 21_600,
+      'repo-radar scan policy must expose provider-capped effective interval',
+    );
+    assert(
+      repoRadarHealth.body.scanPolicy.cadence.providerMinimumIntervalEnforced === true,
+      'repo-radar scan policy must mark provider minimum enforcement',
+    );
+    assert(
+      repoRadarHealth.body.schedulerDecision.minimumIntervalSeconds === 21_600,
+      'repo-radar health decision must expose provider minimum interval',
+    );
+    assert(
+      repoRadarHealth.body.schedulerDecision.effectiveIntervalSeconds === 21_600,
+      'repo-radar health decision must use provider-capped effective interval',
+    );
+    assert(
+      repoRadarHealth.body.schedulerDecision.providerMinimumIntervalEnforced === true,
+      'repo-radar health decision must mark provider minimum enforcement',
+    );
+    assert(
+      repoRadarHealth.body.schedulerDecision.signals.includes('provider_minimum_interval_enforced'),
+      'repo-radar health decision must expose provider minimum enforcement signal',
     );
 
     const overviewTopicId = await createTopic({
