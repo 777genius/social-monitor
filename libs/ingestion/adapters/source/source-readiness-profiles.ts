@@ -178,7 +178,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     state: 'enabled_beta',
     runtimeReadiness: 'fixture_ready',
     liveBetaBlockers: [
-      'BigQuery GH Archive credentials/quota evidence, npm run check:github-repo-radar-live-smoke, npm run check:github-repo-radar-prisma-live-e2e and GitHub live verification rate-limit budget required before external beta.',
+      'GH Archive access evidence, BigQuery quota evidence for long windows or bounded public HTTP archive evidence for short windows, npm run check:github-repo-radar-live-smoke, npm run check:github-repo-radar-prisma-live-e2e and GitHub live verification rate-limit budget required before external beta.',
     ],
     liveEvidenceRequirements: githubRepoRadarLiveEvidenceRequirements,
     freshnessGuard: {
@@ -199,7 +199,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     acquisitionMode: 'official_or_open_api',
     approvalOwner: 'engineering',
     termsNotes:
-      'Uses GH Archive BigQuery public dataset and GitHub REST repository API; no GitHub UI scraping.',
+      'Uses GH Archive public dataset through BigQuery or bounded hourly HTTP archives, plus GitHub REST repository API; no GitHub UI scraping.',
     credentialOwnership: 'app',
     quotaModel: 'per_app',
     retentionNotes:
@@ -217,14 +217,14 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     estimatedCostPerScan: 'medium_with_bigquery_cost_guard',
     betaEnablementCriteria: [
       'Fixture certification passes',
-      'BigQuery maximumBytesBilled is configured',
+      'BigQuery maximumBytesBilled is configured for long windows or public HTTP archive windows are explicitly bounded',
       'GITHUB_REPO_RADAR_LIVE_SMOKE=1 npm run check:github-repo-radar-live-smoke passes in staging',
       'GITHUB_REPO_RADAR_PRISMA_LIVE_E2E=1 npm run check:github-repo-radar-prisma-live-e2e proves Postgres source/feed/trend persistence',
       'GitHub REST live verifier rate-limit behavior documented',
       'Trend history persistence smoke passes',
     ],
     rollbackPlan:
-      'Pause GitHub repo radar bindings and expose source health bigquery_unavailable or rate_limited.',
+      'Pause GitHub repo radar bindings and expose source health gh_archive_unavailable, bigquery_unavailable or rate_limited.',
   },
   {
     providerKey: 'github-trending-page',

@@ -40,6 +40,7 @@ export type GitHubRepositoryTrendMetadataInput = {
     readonly checkedAt: Date;
     readonly source:
       | 'gh_archive_bigquery_plus_github_live'
+      | 'gh_archive_public_http_plus_github_live'
       | 'fixture_gh_archive_plus_github_live';
   };
   readonly sourceCohort?: {

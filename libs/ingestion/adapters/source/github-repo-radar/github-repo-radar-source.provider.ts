@@ -187,7 +187,7 @@ const parseConfig = (config: SourceProviderScanContext['config'], maxItems: numb
   excludeArchived: readBoolean(config?.excludeArchived, true),
   source: readBoolean(config?.fixtureMode, false)
     ? 'fixture_gh_archive_plus_github_live'
-    : 'gh_archive_bigquery_plus_github_live',
+    : readTrendSource(config?.trendSource) ?? 'gh_archive_bigquery_plus_github_live',
 });
 
 const shouldSearchByRepositoryName = (config: GitHubRepoRadarConfig): boolean =>
@@ -306,6 +306,22 @@ const readWindows = (value: unknown): readonly GitHubRepositoryTrendWindow[] => 
 
 const readBoolean = (value: unknown, fallback: boolean): boolean =>
   typeof value === 'boolean' ? value : fallback;
+
+const readTrendSource = (
+  value: unknown,
+): GitHubRepositoryTrendMetadataInput['trend']['source'] | undefined => {
+  if (value === 'gh_archive_bigquery_plus_github_live') {
+    return value;
+  }
+  if (value === 'gh_archive_public_http_plus_github_live') {
+    return value;
+  }
+  if (value === 'fixture_gh_archive_plus_github_live') {
+    return value;
+  }
+
+  return undefined;
+};
 
 const readPositiveInteger = (
   value: unknown,

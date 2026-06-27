@@ -98,7 +98,7 @@ export const githubIssuesLiveEvidenceRequirements = [
 export const githubRepoRadarLiveEvidenceRequirements = [
   liveEvidenceRequirement(
     'github-repo-radar-gh-archive-query',
-    'GH Archive BigQuery query uses a bounded billing window and returns candidates.',
+    'GH Archive access uses either bounded BigQuery billing or bounded public HTTP hourly archives and returns candidates.',
     repoRadarEvidenceCommand,
     repoRadarEvidenceEnv,
   ),
@@ -122,7 +122,7 @@ export const githubRepoRadarLiveEvidenceRequirements = [
   ),
   liveEvidenceRequirement(
     'github-repo-radar-provider-failure-classification',
-    'Repo Radar failures are classified for BigQuery/GitHub failure modes.',
+    'Repo Radar failures are classified for GH Archive and GitHub failure modes.',
     repoRadarEvidenceCommand,
     repoRadarEvidenceEnv,
   ),

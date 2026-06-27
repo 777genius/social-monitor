@@ -18,6 +18,7 @@ import { BigQueryGitHubRepoRadarClient } from '../libs/ingestion/adapters/source
 import { GitHubRepositoryTrendMetadataProjectionAdapter } from '../libs/ingestion/adapters/source/github-repo-radar/github-repository-trend-metadata-projection.adapter';
 import { GitHubRepositoryLiveVerifierAdapter } from '../libs/ingestion/adapters/source/github-repo-radar/github-repository-live-verifier.adapter';
 import { GitHubRepoRadarSourceProvider } from '../libs/ingestion/adapters/source/github-repo-radar/github-repo-radar-source.provider';
+import { PublicHttpGhArchiveGitHubRepoRadarClient } from '../libs/ingestion/adapters/source/github-repo-radar/public-http-gh-archive-github-repo-radar-client';
 import { HttpGitHubClient } from '../libs/ingestion/adapters/source/github/http-github-client';
 import { InMemorySourceProviderRegistry } from '../libs/ingestion/adapters/source/in-memory-source-provider.registry';
 import { RegistrySourceFetcherAdapter } from '../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
@@ -90,19 +91,31 @@ const main = async (): Promise<void> => {
     const baseCheckedAt = new Date(Date.now() - (scanRuns - 1) * 60_000);
     let currentClockNow = baseCheckedAt;
     const clock = { now: () => new Date(currentClockNow.getTime()) };
-    const tenant = tenantId(randomUUID());
-    const workspace = workspaceId(randomUUID());
-    const topicId = randomUUID();
-    const sourceBindingId = randomUUID();
-    const scanPolicyId = randomUUID();
-    const provider = new GitHubRepoRadarSourceProvider(
-      new BigQueryGitHubRepoRadarClient({
+    const tenant = tenantId(readOptionalEnv('GITHUB_REPO_RADAR_TENANT_ID') ?? randomUUID());
+    const workspace = workspaceId(readOptionalEnv('GITHUB_REPO_RADAR_WORKSPACE_ID') ?? randomUUID());
+    const topicId = readOptionalEnv('GITHUB_REPO_RADAR_TOPIC_ID') ?? randomUUID();
+    const sourceBindingId = readOptionalEnv('GITHUB_REPO_RADAR_SOURCE_BINDING_ID') ?? randomUUID();
+    const scanPolicyId = readOptionalEnv('GITHUB_REPO_RADAR_SCAN_POLICY_ID') ?? randomUUID();
+    const radarClientMode = readOptionalEnv('GITHUB_REPO_RADAR_CLIENT') === 'public-gharchive-http'
+      ? 'public-gharchive-http'
+      : 'bigquery';
+    const expectedTrendSource = radarClientMode === 'public-gharchive-http'
+      ? 'gh_archive_public_http_plus_github_live'
+      : 'gh_archive_bigquery_plus_github_live';
+    const radarClient = radarClientMode === 'public-gharchive-http'
+      ? new PublicHttpGhArchiveGitHubRepoRadarClient({
+        timeoutMs: readPositiveIntegerEnv('GITHUB_REPO_RADAR_PUBLIC_HTTP_TIMEOUT_MS', 30_000, 1_000, 120_000),
+        maxArchiveHours: readPositiveIntegerEnv('GITHUB_REPO_RADAR_PUBLIC_HTTP_MAX_ARCHIVE_HOURS', 24, 1, 48),
+      })
+      : new BigQueryGitHubRepoRadarClient({
         projectId: firstEnv('GITHUB_REPO_RADAR_BIGQUERY_PROJECT_ID', 'GOOGLE_CLOUD_PROJECT', 'GCLOUD_PROJECT'),
         location: readOptionalEnv('GITHUB_REPO_RADAR_BIGQUERY_LOCATION') ?? 'US',
         maximumBytesBilled: readOptionalEnv('GITHUB_REPO_RADAR_BIGQUERY_MAX_BYTES') ?? '5000000000',
         timeoutMs: readPositiveIntegerEnv('GITHUB_REPO_RADAR_BIGQUERY_TIMEOUT_MS', 30_000, 1_000, 120_000),
         jobTimeoutMs: readPositiveIntegerEnv('GITHUB_REPO_RADAR_BIGQUERY_JOB_TIMEOUT_MS', 60_000, 1_000, 180_000),
-      }),
+      });
+    const provider = new GitHubRepoRadarSourceProvider(
+      radarClient,
       new GitHubRepositoryLiveVerifierAdapter(
         new HttpGitHubClient(readPositiveIntegerEnv('GITHUB_REPO_RADAR_GITHUB_TIMEOUT_MS', 10_000, 1_000, 60_000)),
       ),
@@ -118,6 +131,7 @@ const main = async (): Promise<void> => {
       maxItems,
       maxCandidates: readPositiveIntegerEnv('GITHUB_REPO_RADAR_MAX_CANDIDATES', 25, maxItems, 100),
       userAgent: readOptionalEnv('GITHUB_REPO_RADAR_USER_AGENT') ?? 'social-monitor-mvp-repo-radar-prisma-live-e2e/0.1',
+      trendSource: expectedTrendSource,
     };
     const accessToken = readOptionalEnv('GITHUB_ACCESS_TOKEN');
 
@@ -201,7 +215,7 @@ const main = async (): Promise<void> => {
     const metadata = parseGitHubRepositoryTrendMetadata(feedSnapshot?.providerMetadata);
     assert(feedSnapshot !== undefined, 'Prisma live e2e feed snapshot is required');
     assert(metadata !== null, 'Prisma live e2e feed metadata must be typed repository trend metadata');
-    assert(metadata.trend.source === 'gh_archive_bigquery_plus_github_live', 'Prisma live e2e must not use fixture trend data');
+    assert(metadata.trend.source === expectedTrendSource, 'Prisma live e2e must not use fixture trend data');
     assert(metadata.trend.stars48h > 0, 'Prisma live e2e must persist a non-zero 48h GitHub star delta');
 
     const sqlEvidence = await readSqlEvidence(pool, {
@@ -229,8 +243,13 @@ const main = async (): Promise<void> => {
       ),
       'source_items provider_item_id must include repository full name',
     );
-    assert(sqlEvidence.feedProviderMetadata?.kind === 'github_repository_trend', 'feed_items provider_metadata must keep repository trend kind');
-    assert(sqlEvidence.feedProviderMetadata?.trend?.stars48h === metadata.trend.stars48h, 'feed_items provider_metadata must keep 48h star delta');
+    assert(
+      sqlEvidence.feedProviderMetadataList.some((feedMetadata) =>
+        feedMetadata.kind === 'github_repository_trend' &&
+        feedMetadata.trend?.stars48h === metadata.trend.stars48h
+      ),
+      'feed_items provider_metadata must keep 48h star delta',
+    );
     assert(sqlEvidence.trendCandidateStars48hValues.includes(metadata.trend.stars48h), 'trend candidate must keep 48h star delta');
     assert(sqlEvidence.trendSnapshotStars48hValues.includes(metadata.trend.stars48h), 'trend snapshot must keep 48h star delta');
     assert(
@@ -288,15 +307,23 @@ const main = async (): Promise<void> => {
         status: 'passed',
         observedAt,
         evidence: {
-          summary: 'GH Archive BigQuery query returned bounded repository trend candidates.',
+          summary: radarClientMode === 'public-gharchive-http'
+            ? 'Public GH Archive hourly HTTP archives returned bounded repository trend candidates.'
+            : 'GH Archive BigQuery query returned bounded repository trend candidates.',
+          accessMode: radarClientMode,
           repositoryCount: sumScanResults(scanResults, 'fetched'),
           windowsObserved: config.windows,
-          maxBytesBilledConfigured: readOptionalEnv('GITHUB_REPO_RADAR_BIGQUERY_MAX_BYTES') ?? '5000000000',
+          maxBytesBilledConfigured: radarClientMode === 'bigquery'
+            ? readOptionalEnv('GITHUB_REPO_RADAR_BIGQUERY_MAX_BYTES') ?? '5000000000'
+            : `public-http-hourly-archive-cap:${readPositiveIntegerEnv('GITHUB_REPO_RADAR_PUBLIC_HTTP_MAX_ARCHIVE_HOURS', 24, 1, 48)}h`,
           queryBounded: true,
         },
         metrics: {
           fetched: sumScanResults(scanResults, 'fetched'),
           maxCandidates: config.maxCandidates,
+          publicArchiveHours: radarClientMode === 'public-gharchive-http'
+            ? readPositiveIntegerEnv('GITHUB_REPO_RADAR_PUBLIC_HTTP_MAX_ARCHIVE_HOURS', 24, 1, 48)
+            : undefined,
         },
       },
       {
@@ -322,7 +349,7 @@ const main = async (): Promise<void> => {
           fetched: sumScanResults(scanResults, 'fetched'),
           inserted: sumScanResults(scanResults, 'inserted'),
           projected: sumScanResults(scanResults, 'projected'),
-          sourceNotFixture: metadata.trend.source === 'gh_archive_bigquery_plus_github_live',
+          sourceNotFixture: metadata.trend.source === expectedTrendSource,
           summaryHighlightObserved,
         },
         metrics: {
@@ -381,7 +408,9 @@ const main = async (): Promise<void> => {
     const output = {
       status: 'passed',
       providerKey: GITHUB_REPO_RADAR_PROVIDER_KEY,
-      e2e: 'live_bigquery_github_to_prisma_postgres_to_feed_to_summary_repeated_scans',
+      e2e: radarClientMode === 'public-gharchive-http'
+        ? 'live_public_gharchive_http_github_to_prisma_postgres_to_feed_to_summary_repeated_scans'
+        : 'live_bigquery_github_to_prisma_postgres_to_feed_to_summary_repeated_scans',
       signals,
       database: databaseKind(databaseUrl),
       scanRuns,
@@ -395,6 +424,7 @@ const main = async (): Promise<void> => {
       stars24h: metadata.trend.stars24h,
       stars48h: metadata.trend.stars48h,
       primaryWindow: metadata.trend.primaryWindow,
+      trendSource: metadata.trend.source,
       fetched: sumScanResults(scanResults, 'fetched'),
       inserted: sumScanResults(scanResults, 'inserted'),
       projected: sumScanResults(scanResults, 'projected'),
@@ -409,6 +439,9 @@ const main = async (): Promise<void> => {
 
     writeGitHubRepoRadarLiveEvidenceArtifactIfRequested({
       sampledAt: new Date().toISOString(),
+      collectionMethod: radarClientMode === 'public-gharchive-http'
+        ? 'Live GitHub repo radar provider scan with public GH Archive hourly HTTP archives, GitHub REST verifier and Postgres persistence.'
+        : 'Live GitHub repo radar provider scan with GH Archive BigQuery, GitHub REST verifier and Postgres persistence.',
       signals,
     });
 
@@ -438,7 +471,7 @@ type SqlEvidence = {
   readonly sourceItemCount: number;
   readonly sourceProviderItemIds: readonly string[];
   readonly feedItemCount: number;
-  readonly feedProviderMetadata: SqlMetadata | undefined;
+  readonly feedProviderMetadataList: readonly SqlMetadata[];
   readonly trendCandidateCount: number;
   readonly trendCandidateStars48hValues: readonly number[];
   readonly trendSnapshotCount: number;
@@ -509,7 +542,7 @@ const readSqlEvidence = async (pool: Pool, scope: SqlEvidenceScope): Promise<Sql
     sourceItemCount: sourceItems.rowCount ?? 0,
     sourceProviderItemIds: sourceItems.rows.map((row) => row.provider_item_id),
     feedItemCount: feedItems.rowCount ?? 0,
-    feedProviderMetadata: feedItems.rows[0]?.provider_metadata,
+    feedProviderMetadataList: feedItems.rows.map((row) => row.provider_metadata),
     trendCandidateCount: candidates.rowCount ?? 0,
     trendCandidateStars48hValues: candidates.rows.map((row) => row.stars_48h),
     trendSnapshotCount: snapshots.rowCount ?? 0,
@@ -538,6 +571,7 @@ const databaseKind = (databaseUrl: string): string => {
 
 const writeGitHubRepoRadarLiveEvidenceArtifactIfRequested = (input: {
   readonly sampledAt: string;
+  readonly collectionMethod: string;
   readonly signals: ReadonlyArray<{
     readonly signalId: string;
     readonly status: 'passed';
@@ -562,7 +596,7 @@ const writeGitHubRepoRadarLiveEvidenceArtifactIfRequested = (input: {
     sampledAt: input.sampledAt,
     provenance: {
       evidenceKind: 'live_network',
-      collectionMethod: 'Live GitHub repo radar provider scan with GH Archive BigQuery, GitHub REST verifier and Postgres persistence.',
+      collectionMethod: input.collectionMethod,
       runner: 'scripts/check-github-repo-radar-prisma-live-e2e.ts',
       fixtureOnly: false,
     },
