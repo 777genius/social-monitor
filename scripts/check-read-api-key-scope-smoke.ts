@@ -46,11 +46,16 @@ async function main(): Promise<void> {
 
   try {
     const tenant = tenantId('tenant-read-api-key-smoke');
+    const otherTenant = tenantId('tenant-read-api-key-smoke-other');
     const workspace = workspaceId('workspace-read-api-key-smoke');
     const topicId = 'topic-read-api-key-smoke';
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
+    };
+    const otherTenantHeaders = {
+      ...headers,
+      'x-tenant-id': otherTenant,
     };
     const feedItems = moduleRef.get(InMemoryFeedItemReadRepository);
     const auditLog = moduleRef.get(InMemoryPublicApiAuditLog);
@@ -112,6 +117,13 @@ async function main(): Promise<void> {
       feedList.body.items[0].id === 'feed-read-api-key-smoke',
       'read:feed API key must return the expected feed item',
     );
+
+    await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ topicId, limit: 10 })
+      .set(otherTenantHeaders)
+      .set('Authorization', `Bearer ${feedSecret}`)
+      .expect(403);
 
     await request(app.getHttpServer())
       .get('/feed/items/feed-read-api-key-smoke')

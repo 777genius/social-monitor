@@ -41,11 +41,16 @@ async function main(): Promise<void> {
 
   try {
     const tenant = tenantId('tenant-write-api-key-monitoring-smoke');
+    const otherTenant = tenantId('tenant-write-api-key-monitoring-smoke-other');
     const workspace = workspaceId('workspace-write-api-key-monitoring-smoke');
     const server = app.getHttpServer();
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
+    };
+    const otherTenantHeaders = {
+      ...headers,
+      'x-tenant-id': otherTenant,
     };
     const auditLog = moduleRef.get(InMemoryPublicApiAuditLog);
     const workflowSecret = await createApiKey({
@@ -80,6 +85,18 @@ async function main(): Promise<void> {
     );
 
     assert(topic.body.created === true, 'write:topics API key must create a topic');
+
+    await request(server)
+      .post('/topics')
+      .set(otherTenantHeaders)
+      .set('Authorization', `Bearer ${workflowSecret}`)
+      .set('x-request-id', 'write-api-key-monitoring-smoke-wrong-tenant')
+      .set('idempotency-key', 'write-api-key-monitoring-smoke-wrong-tenant')
+      .send({
+        name: 'Wrong tenant topic',
+        query: 'wrong tenant',
+      })
+      .expect(403);
 
     await expectMissingIdempotencyKey({
       request: request(server)

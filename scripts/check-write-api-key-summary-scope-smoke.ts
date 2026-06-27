@@ -38,12 +38,17 @@ async function main(): Promise<void> {
 
   try {
     const tenant = tenantId('tenant-write-api-key-summary-smoke');
+    const otherTenant = tenantId('tenant-write-api-key-summary-smoke-other');
     const workspace = workspaceId('workspace-write-api-key-summary-smoke');
     const topicId = 'topic-write-api-key-summary-smoke';
     const server = app.getHttpServer();
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
+    };
+    const otherTenantHeaders = {
+      ...headers,
+      'x-tenant-id': otherTenant,
     };
     const workflowSecret = await createApiKey({
       server,
@@ -80,6 +85,21 @@ async function main(): Promise<void> {
       .set(headers)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .expect(200);
+
+    await request(server)
+      .put(`/topics/${topicId}/summary-policy`)
+      .set(otherTenantHeaders)
+      .set('Authorization', `Bearer ${workflowSecret}`)
+      .set('x-request-id', 'write-api-key-summary-smoke-wrong-tenant')
+      .send({
+        language: 'en',
+        format: 'bullet_digest',
+        tone: 'concise',
+        maxKeyPoints: 5,
+        includeRisks: true,
+        includeSourceHighlights: true,
+      })
+      .expect(403);
 
     const summary = await request(server)
       .post(`/topics/${topicId}/summary-requests`)
