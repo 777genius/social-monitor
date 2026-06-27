@@ -309,6 +309,71 @@ describe("ReaderSummaryArtifact", () => {
     ).toThrow("Reader summary top reads must not repeat the same reader item");
   });
 
+  it("rejects duplicate reader content top reads by citation repository URL", () => {
+    expect(() =>
+      ReaderSummaryArtifact.create(
+        baseArtifact({
+          storyClusters: [
+            {
+              ...baseArtifact().storyClusters[0]!,
+              providerKeys: ["github-repo-radar"],
+            },
+          ],
+          citationMap: [
+            {
+              citationId: "citation-1",
+              feedItemId: "feed-1",
+              sourceItemId: "source-1",
+              providerKey: "github-repo-radar",
+              field: "title",
+              canonicalUrl: "https://github.com/openai/codex",
+            },
+            {
+              citationId: "citation-2",
+              feedItemId: "feed-2",
+              sourceItemId: "source-2",
+              providerKey: "github-repo-radar",
+              field: "bodyPreview",
+              canonicalUrl:
+                "https://github.com/OpenAI/Codex/stargazers?utm_source=briefing",
+            },
+          ],
+          content: readerContent({
+            sourceMix: [
+              {
+                providerKey: "github-repo-radar",
+                itemCount: 2,
+                citationCount: 2,
+                storyClusterCount: 1,
+                crossSourceClusterCount: 1,
+                singleSourceOnly: false,
+                topicIds: ["topic-ai"],
+              },
+            ],
+            topReads: [
+              readerTopRead({
+                title: "openai/codex growth",
+                providerKey: "github-repo-radar",
+                providerName: "GitHub Repo Radar",
+                confirmedProviderKeys: ["github-repo-radar"],
+                canonicalUrl: undefined,
+                citationIds: ["citation-1"],
+              }),
+              readerTopRead({
+                title: "Codex stargazers jump",
+                providerKey: "github-repo-radar",
+                providerName: "GitHub Repo Radar",
+                confirmedProviderKeys: ["github-repo-radar"],
+                canonicalUrl: undefined,
+                citationIds: ["citation-2"],
+              }),
+            ],
+          }),
+        }),
+      ),
+    ).toThrow("Reader summary top reads must not repeat the same reader item");
+  });
+
   it("rejects repeated reader content topic section items", () => {
     const repeatedItem = readerTopRead({
       title: "openai/codex",

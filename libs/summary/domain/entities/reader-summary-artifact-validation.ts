@@ -8,7 +8,7 @@ import type {
 } from "./reader-summary-artifact";
 import type { ReaderSummaryCitation } from "./citation";
 import {
-  assertUniqueReaderSummaryItems,
+  assertUniqueReaderSummaryContentItems,
   assertUniqueReaderSummarySourceMixProviders,
 } from "./reader-summary-content-identity";
 import { assertReaderSummaryContentShape } from "./reader-summary-content-shape";
@@ -295,11 +295,6 @@ const assertReaderSummaryContent = (
       );
     }
   }
-  assertUniqueReaderSummaryItems(
-    content.topicSections.flatMap((section) => section.items),
-    "Reader summary topic sections",
-  );
-
   for (const item of content.topReads) {
     assertReaderItem(
       item,
@@ -309,7 +304,7 @@ const assertReaderSummaryContent = (
       "Reader summary top read",
     );
   }
-  assertUniqueReaderSummaryItems(content.topReads, "Reader summary top reads");
+  assertUniqueReaderSummaryContentItems(content, citationById);
 
   for (const action of content.nextActions) {
     if (action.label.trim().length === 0 || action.reason.trim().length === 0) {

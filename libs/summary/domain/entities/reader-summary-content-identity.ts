@@ -1,4 +1,5 @@
 import type { SourceMixEntry } from "./source-mix-entry";
+import type { ReaderSummaryCitation } from "./citation";
 import type { TopRead } from "./top-read";
 
 export const assertUniqueReaderSummarySourceMixProviders = (
@@ -20,25 +21,65 @@ export const assertUniqueReaderSummarySourceMixProviders = (
 export const assertUniqueReaderSummaryItems = (
   items: readonly TopRead[],
   label: string,
+  citationById?: ReadonlyMap<string, ReaderSummaryCitation>,
 ): void => {
   const itemKeys = new Set<string>();
 
   for (const item of items) {
-    const key = readerItemIdentityKey(item);
-    if (itemKeys.has(key)) {
-      throw new Error(`${label} must not repeat the same reader item`);
+    const keys = readerItemIdentityKeys(item, citationById);
+    for (const key of keys) {
+      if (itemKeys.has(key)) {
+        throw new Error(`${label} must not repeat the same reader item`);
+      }
     }
-    itemKeys.add(key);
+    for (const key of keys) {
+      itemKeys.add(key);
+    }
   }
 };
 
-const readerItemIdentityKey = (item: TopRead): string => {
-  const canonicalUrlKey = normalizeReaderCanonicalUrlKey(item.canonicalUrl);
-
-  return (
-    canonicalUrlKey ??
-    `provider-title:${normalizeIdentityText(item.providerKey)}:${normalizeIdentityText(item.title)}`
+export const assertUniqueReaderSummaryContentItems = (
+  content: {
+    readonly topReads: readonly TopRead[];
+    readonly topicSections: readonly {
+      readonly items: readonly TopRead[];
+    }[];
+  },
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+): void => {
+  assertUniqueReaderSummaryItems(
+    content.topicSections.flatMap((section) => section.items),
+    "Reader summary topic sections",
+    citationById,
   );
+  assertUniqueReaderSummaryItems(
+    content.topReads,
+    "Reader summary top reads",
+    citationById,
+  );
+};
+
+const readerItemIdentityKeys = (
+  item: TopRead,
+  citationById: ReadonlyMap<string, ReaderSummaryCitation> | undefined,
+): readonly string[] => {
+  const canonicalUrlKey = normalizeReaderCanonicalUrlKey(item.canonicalUrl);
+  const citationKeys =
+    citationById === undefined
+      ? []
+      : item.citationIds
+          .map((citationId) =>
+            normalizeReaderCanonicalUrlKey(
+              citationById.get(citationId)?.canonicalUrl,
+            ),
+          )
+          .filter((key): key is string => key !== undefined);
+
+  return uniqueIdentityKeys([
+    canonicalUrlKey ??
+      `provider-title:${normalizeIdentityText(item.providerKey)}:${normalizeIdentityText(item.title)}`,
+    ...citationKeys,
+  ]);
 };
 
 const normalizeReaderCanonicalUrlKey = (
@@ -103,3 +144,18 @@ const normalizeIdentityPathname = (pathname: string): string => {
 
 const normalizeIdentityText = (value: string): string =>
   value.trim().replace(/\s+/g, " ").toLowerCase();
+
+const uniqueIdentityKeys = (keys: readonly string[]): readonly string[] => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const key of keys) {
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(key);
+  }
+
+  return result;
+};
