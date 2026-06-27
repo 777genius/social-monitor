@@ -476,6 +476,86 @@ describe('RequestScanUseCase', () => {
     ).resolves.toBeNull();
   });
 
+  it('treats the exact freshness deadline as still fresh for manual scan requests', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    await scanJobs.save(
+      ScanJob.request({
+        id: 'fresh-boundary-successful-scan-job',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: 'fresh-boundary-successful-scan',
+        requestedAt: new Date('2026-06-05T00:04:00.000Z'),
+      })
+        .markEnqueued({
+          enqueuedAt: new Date('2026-06-05T00:04:01.000Z'),
+        })
+        .markSucceeded({
+          completedAt: new Date('2026-06-05T00:05:00.000Z'),
+        }),
+    );
+    const queue = new FakeScanQueue();
+    const outbox = new FakeOutbox();
+    const quota = new AllowingScanRequestQuota();
+    const useCase = new RequestScanUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      outbox,
+      new FakeIdempotency(),
+      quota,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T00:20:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'binding-1',
+      idempotencyKey: 'manual-scan-fresh-boundary-skip',
+      correlationId: 'correlation-fresh-boundary-skip',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scanJobId: 'fresh-boundary-successful-scan-job',
+        status: 'succeeded',
+        created: false,
+        requestDecision: {
+          decision: 'fresh_success',
+          reason: 'latest_success_still_fresh',
+          createdNewScan: false,
+          minimumIntervalSeconds: 60,
+          configuredIntervalSeconds: 300,
+          effectiveIntervalSeconds: 300,
+          freshnessSeconds: 900,
+          providerMinimumIntervalEnforced: false,
+          nextEligibleAt: '2026-06-05T00:20:00.000Z',
+          waitSeconds: 0,
+          freshnessDeadlineAt: '2026-06-05T00:20:00.000Z',
+          signals: ['fresh_success'],
+        },
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect(outbox.events).toHaveLength(0);
+    expect(quota.reservationCount).toBe(0);
+    await expect(
+      scanJobs.findByIdempotencyKey({
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        idempotencyKey: 'manual-scan-fresh-boundary-skip',
+      }),
+    ).resolves.toBeNull();
+  });
+
   it('uses provider minimum cadence when blocking duplicate manual scans for legacy policy', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding('reddit'));

@@ -418,6 +418,35 @@ describe('GetSourceBindingHealthUseCase', () => {
     );
   });
 
+  it('keeps health and scheduler decision consistent on the exact freshness deadline', async () => {
+    const useCase = await setupWithCompletedJob(new Date('2026-06-15T23:55:00.000Z'));
+
+    const result = await useCase.execute(baseQuery());
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({
+          healthState: 'healthy',
+          freshness: {
+            isFresh: true,
+            ageSeconds: 900,
+            freshnessDeadlineAt: '2026-06-16T00:10:00.000Z',
+            staleBySeconds: undefined,
+          },
+          schedulerDecision: expect.objectContaining({
+            canScanNow: false,
+            decision: 'fresh_success',
+            reason: 'latest_success_still_fresh',
+            nextEligibleAt: '2026-06-16T00:10:00.000Z',
+            waitSeconds: 0,
+            signals: ['fresh_success'],
+          }),
+        }),
+      }),
+    );
+  });
+
   it('uses bounded transient backoff for high-cadence provider failures', async () => {
     const { useCase, policies, jobs } = await setup(new FakeScanExecutionAttempts(), 'github-repo-radar');
     await policies.save(makePolicy());

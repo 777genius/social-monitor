@@ -1012,6 +1012,90 @@ describe('ScheduleDueScansUseCase', () => {
     });
   });
 
+  it('treats the exact freshness deadline as still fresh for scheduled scans', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding());
+    const policies = new FakeScanPolicies();
+    policies.add(makePolicy());
+    const scanJobs = new FakeScanJobs();
+    await scanJobs.save(
+      ScanJob.request({
+        id: 'fresh-boundary-completed-scan-job',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: 'manual-scan-fresh-boundary',
+        requestedAt: new Date('2026-06-05T11:44:00.000Z'),
+      })
+        .markEnqueued({
+          enqueuedAt: new Date('2026-06-05T11:44:01.000Z'),
+        })
+        .markSucceeded({
+          completedAt: new Date('2026-06-05T11:45:00.000Z'),
+        }),
+    );
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-fresh-boundary',
+      includeDecisions: true,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 0,
+        skipped: 1,
+        skippedByReason: skippedByReason('fresh_success'),
+        decisions: [
+          expect.objectContaining({
+            scanPolicyId: 'policy-1',
+            sourceBindingId: 'binding-1',
+            providerKey: 'fake-source',
+            decision: 'skipped',
+            reason: 'fresh_success',
+            policyDueAt: new Date('2026-06-05T12:00:00.000Z'),
+            nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
+            freshnessSeconds: 900,
+          }),
+        ],
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    await expect(
+      scanJobs.findByIdempotencyKey({
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        idempotencyKey: 'scheduled:policy-1:2026-06-05T12:00:00.000Z',
+      }),
+    ).resolves.toBeNull();
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:05:00.000Z'),
+    });
+  });
+
   it('backs off due policy when latest failed scan was provider rate limited', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding());
