@@ -65,6 +65,7 @@ export const certifySourceProvider = (config: SourceProviderCertificationConfig)
         expect(item.title.trim().length + item.body.trim().length).toBeGreaterThan(0);
         expect(item.publishedAt).toBeInstanceOf(Date);
         expect(item.publishedAt.getTime()).toBeGreaterThan(0);
+        expect(providerMetadataViolations(item.metadata)).toEqual([]);
       }
     });
 
@@ -86,3 +87,51 @@ const makeContext = (): SourceProviderScanContext => ({
   scanJobId: 'scan-job-certification',
   correlationId: 'correlation-certification',
 });
+
+const forbiddenMetadataKeys = new Set([
+  'authorization',
+  'bearer',
+  'cookie',
+  'setcookie',
+  'apikey',
+  'accesstoken',
+  'refreshtoken',
+  'clientsecret',
+  'privatekey',
+  'payload',
+  'request',
+  'response',
+  'headers',
+  'header',
+  'html',
+  'json',
+]);
+
+const providerMetadataViolations = (
+  value: unknown,
+  path = 'metadata',
+): readonly string[] => {
+  if (value === undefined || value === null) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => providerMetadataViolations(item, `${path}[${index}]`));
+  }
+
+  if (typeof value !== 'object') {
+    return [];
+  }
+
+  return Object.entries(value as Readonly<Record<string, unknown>>).flatMap(([key, nested]) => {
+    const normalizedKey = key.toLowerCase().replaceAll(/[^a-z0-9]/g, '');
+    const keyViolations = normalizedKey.startsWith('raw') || forbiddenMetadataKeys.has(normalizedKey)
+      ? [`${path}.${key}`]
+      : [];
+
+    return [
+      ...keyViolations,
+      ...providerMetadataViolations(nested, `${path}.${key}`),
+    ];
+  });
+};

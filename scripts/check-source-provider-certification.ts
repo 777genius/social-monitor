@@ -462,6 +462,7 @@ async function certifyProvider(
       'fixture_repeated_scan_is_deterministic',
       'provider_errors_are_classified',
       'provider_failure_messages_are_redacted',
+      'normalized_metadata_excludes_raw_payload_and_secret_keys',
       'freshness_guard_declared',
       'minimum_scan_interval_declared',
       'scan_history_required_for_freshness',
@@ -650,6 +651,7 @@ function assertStableItems(
       item.publishedAt.getTime() > 0,
       `${providerKey}: item publishedAt must not use an epoch fallback`,
     );
+    assertProviderMetadataIsSafe(providerKey, item.metadata);
   }
 
   if (!options.allowEmpty) {
@@ -739,6 +741,71 @@ function readPackageScripts(): ReadonlySet<string> {
   );
 
   return new Set(Object.keys(scripts));
+}
+
+const forbiddenMetadataKeys = new Set([
+  'authorization',
+  'bearer',
+  'cookie',
+  'setcookie',
+  'apikey',
+  'accesstoken',
+  'refreshtoken',
+  'clientsecret',
+  'privatekey',
+  'payload',
+  'request',
+  'response',
+  'headers',
+  'header',
+  'html',
+  'json',
+]);
+
+function assertProviderMetadataIsSafe(
+  providerKey: string,
+  value: unknown,
+): void {
+  const violations = providerMetadataViolations(value);
+  assert(
+    violations.length === 0,
+    `${providerKey}: provider metadata must not retain raw payload, headers or secret-like keys: ${violations.join(', ')}`,
+  );
+}
+
+function providerMetadataViolations(
+  value: unknown,
+  path = 'metadata',
+): readonly string[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) =>
+      providerMetadataViolations(item, `${path}[${index}]`),
+    );
+  }
+
+  if (typeof value !== 'object') {
+    return [];
+  }
+
+  return Object.entries(value as Readonly<Record<string, unknown>>).flatMap(
+    ([key, nested]) => {
+      const normalizedKey = key.toLowerCase().replaceAll(/[^a-z0-9]/g, '');
+      const keyViolations =
+        normalizedKey.startsWith('raw') ||
+        forbiddenMetadataKeys.has(normalizedKey)
+          ? [`${path}.${key}`]
+          : [];
+
+      return [
+        ...keyViolations,
+        ...providerMetadataViolations(nested, `${path}.${key}`),
+      ];
+    },
+  );
 }
 
 function assert(condition: unknown, message: string): asserts condition {
