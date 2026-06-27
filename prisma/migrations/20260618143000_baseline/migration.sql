@@ -578,7 +578,7 @@ CREATE TABLE "summary_feedback" (
 );
 
 -- CreateTable
-CREATE TABLE "briefing_artifacts" (
+CREATE TABLE "reader_summary_artifacts" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
@@ -599,11 +599,11 @@ CREATE TABLE "briefing_artifacts" (
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
 
-    CONSTRAINT "briefing_artifacts_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "reader_summary_artifacts_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "briefing_jobs" (
+CREATE TABLE "reader_summary_jobs" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
@@ -618,16 +618,16 @@ CREATE TABLE "briefing_jobs" (
     "started_at" TIMESTAMPTZ(6),
     "completed_at" TIMESTAMPTZ(6),
     "failed_at" TIMESTAMPTZ(6),
-    "briefing_artifact_id" UUID,
+    "reader_summary_artifact_id" UUID,
     "failure_reason" TEXT,
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
 
-    CONSTRAINT "briefing_jobs_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "reader_summary_jobs_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "briefing_policies" (
+CREATE TABLE "reader_summary_policies" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
@@ -647,7 +647,7 @@ CREATE TABLE "briefing_policies" (
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
 
-    CONSTRAINT "briefing_policies_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "reader_summary_policies_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1194,25 +1194,25 @@ CREATE INDEX "summary_feedback_tenant_id_workspace_id_summary_artifact_id_idx" O
 CREATE UNIQUE INDEX "summary_feedback_tenant_id_idempotency_key_key" ON "summary_feedback"("tenant_id", "idempotency_key");
 
 -- CreateIndex
-CREATE INDEX "briefing_artifacts_tenant_id_workspace_id_scope_key_status__idx" ON "briefing_artifacts"("tenant_id", "workspace_id", "scope_key", "status", "created_at");
+CREATE INDEX "reader_summary_artifacts_tenant_id_workspace_id_scope_key_status__idx" ON "reader_summary_artifacts"("tenant_id", "workspace_id", "scope_key", "status", "created_at");
 
 -- CreateIndex
-CREATE INDEX "briefing_artifacts_tenant_id_workspace_id_user_id_scope_key_idx" ON "briefing_artifacts"("tenant_id", "workspace_id", "user_id", "scope_key", "created_at");
+CREATE INDEX "reader_summary_artifacts_tenant_id_workspace_id_user_id_scope_key_idx" ON "reader_summary_artifacts"("tenant_id", "workspace_id", "user_id", "scope_key", "created_at");
 
 -- CreateIndex
-CREATE INDEX "briefing_jobs_tenant_id_workspace_id_scope_key_status_creat_idx" ON "briefing_jobs"("tenant_id", "workspace_id", "scope_key", "status", "created_at");
+CREATE INDEX "reader_summary_jobs_tenant_id_workspace_id_scope_key_status_creat_idx" ON "reader_summary_jobs"("tenant_id", "workspace_id", "scope_key", "status", "created_at");
 
 -- CreateIndex
-CREATE INDEX "briefing_jobs_tenant_id_workspace_id_user_id_scope_key_crea_idx" ON "briefing_jobs"("tenant_id", "workspace_id", "user_id", "scope_key", "created_at");
+CREATE INDEX "reader_summary_jobs_tenant_id_workspace_id_user_id_scope_key_crea_idx" ON "reader_summary_jobs"("tenant_id", "workspace_id", "user_id", "scope_key", "created_at");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "briefing_jobs_tenant_id_idempotency_key_key" ON "briefing_jobs"("tenant_id", "idempotency_key");
+CREATE UNIQUE INDEX "reader_summary_jobs_tenant_id_idempotency_key_key" ON "reader_summary_jobs"("tenant_id", "idempotency_key");
 
 -- CreateIndex
-CREATE INDEX "briefing_policies_tenant_id_workspace_id_updated_at_idx" ON "briefing_policies"("tenant_id", "workspace_id", "updated_at");
+CREATE INDEX "reader_summary_policies_tenant_id_workspace_id_updated_at_idx" ON "reader_summary_policies"("tenant_id", "workspace_id", "updated_at");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "briefing_policies_tenant_id_workspace_id_scope_key_key" ON "briefing_policies"("tenant_id", "workspace_id", "scope_key");
+CREATE UNIQUE INDEX "reader_summary_policies_tenant_id_workspace_id_scope_key_key" ON "reader_summary_policies"("tenant_id", "workspace_id", "scope_key");
 
 -- CreateIndex
 CREATE INDEX "delivery_attempts_tenant_id_workspace_id_state_queued_at_idx" ON "delivery_attempts"("tenant_id", "workspace_id", "state", "queued_at");

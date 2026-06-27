@@ -40,7 +40,7 @@ void main() {
 
     expect(find.text('openai/codex is trending on GitHub'), findsWidgets);
     expect(find.text('Today\'s summary'), findsOneWidget);
-    expect(find.textContaining('briefing'), findsNothing);
+    expect(find.textContaining('reader summary'), findsNothing);
     expect(find.text('Repo Radar'), findsWidgets);
     expect(find.textContaining('GH Archive WatchEvent'), findsWidgets);
     expect(find.textContaining('1 hour'), findsWidgets);

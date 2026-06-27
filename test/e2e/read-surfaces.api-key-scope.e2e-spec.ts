@@ -308,13 +308,13 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
       .set('Authorization', `Bearer ${feedKey}`)
       .expect(403);
 
-    const briefingRequest = await request(app.getHttpServer())
-      .post('/briefing-requests')
+    const readerSummaryRequest = await request(app.getHttpServer())
+      .post('/reader-summary-requests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'member')
-      .set('x-request-id', 'read-api-key-briefing-request')
-      .set('idempotency-key', 'read-api-key-briefing-request')
+      .set('x-request-id', 'read-api-key-reader-summary-request')
+      .set('idempotency-key', 'read-api-key-reader-summary-request')
       .send({
         scope: {
           type: 'topic',
@@ -324,40 +324,40 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
       })
       .expect(201);
 
-    const executedBriefing = await app.get(ExecuteReaderSummaryJobUseCase).execute({
+    const executedReaderSummary = await app.get(ExecuteReaderSummaryJobUseCase).execute({
       tenantId: tenant,
       workspaceId: workspace,
-      readerSummaryJobId: briefingRequest.body.briefingJobId,
+      readerSummaryJobId: readerSummaryRequest.body.readerSummaryJobId,
     });
 
-    if (!executedBriefing.ok || executedBriefing.value.readerSummaryId === undefined) {
-      throw new Error('Expected briefing execution to produce a briefing id');
+    if (!executedReaderSummary.ok || executedReaderSummary.value.readerSummaryId === undefined) {
+      throw new Error('Expected reader summary execution to produce a reader summary id');
     }
 
-    const briefingStatus = await request(app.getHttpServer())
-      .get(`/briefing-jobs/${briefingRequest.body.briefingJobId}/status`)
+    const readerSummaryStatus = await request(app.getHttpServer())
+      .get(`/reader-summary-jobs/${readerSummaryRequest.body.readerSummaryJobId}/status`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('Authorization', `Bearer ${summaryKey}`)
       .expect(200);
 
-    expect(briefingStatus.body).toMatchObject({
-      briefingJobId: briefingRequest.body.briefingJobId,
-      briefingId: executedBriefing.value.readerSummaryId,
+    expect(readerSummaryStatus.body).toMatchObject({
+      readerSummaryJobId: readerSummaryRequest.body.readerSummaryJobId,
+      readerSummaryId: executedReaderSummary.value.readerSummaryId,
       status: 'completed',
     });
 
-    const briefingList = await request(app.getHttpServer())
-      .get('/briefings')
+    const readerSummaryList = await request(app.getHttpServer())
+      .get('/reader-summaries')
       .query({ scopeType: 'topic', topicId, limit: 10 })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('Authorization', `Bearer ${summaryKey}`)
       .expect(200);
 
-    expect(briefingList.body.items).toEqual([
+    expect(readerSummaryList.body.items).toEqual([
       expect.objectContaining({
-        briefingId: executedBriefing.value.readerSummaryId,
+        readerSummaryId: executedReaderSummary.value.readerSummaryId,
         scope: {
           type: 'topic',
           topicId,
@@ -365,15 +365,15 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
       }),
     ]);
 
-    const briefingDetail = await request(app.getHttpServer())
-      .get(`/briefings/${executedBriefing.value.readerSummaryId}`)
+    const readerSummaryDetail = await request(app.getHttpServer())
+      .get(`/reader-summaries/${executedReaderSummary.value.readerSummaryId}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('Authorization', `Bearer ${summaryKey}`)
       .expect(200);
 
-    expect(briefingDetail.body).toMatchObject({
-      briefingId: executedBriefing.value.readerSummaryId,
+    expect(readerSummaryDetail.body).toMatchObject({
+      readerSummaryId: executedReaderSummary.value.readerSummaryId,
       readerBrief: {
         sourceMix: [
           expect.objectContaining({
@@ -408,32 +408,32 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
         signals: ['memory_guidance_disabled'],
       },
     });
-    expect(briefingDetail.body.readerBrief.topReads[0].whyNow.trim()).not.toHaveLength(0);
-    expect(briefingDetail.body.readerBrief.oneLineTakeaway.trim()).not.toHaveLength(0);
-    expect(briefingDetail.body.readerBrief.bullets.length).toBeGreaterThan(0);
-    expect(briefingDetail.body.readerBrief.qualityState.status).toMatch(
+    expect(readerSummaryDetail.body.readerBrief.topReads[0].whyNow.trim()).not.toHaveLength(0);
+    expect(readerSummaryDetail.body.readerBrief.oneLineTakeaway.trim()).not.toHaveLength(0);
+    expect(readerSummaryDetail.body.readerBrief.bullets.length).toBeGreaterThan(0);
+    expect(readerSummaryDetail.body.readerBrief.qualityState.status).toMatch(
       /^(ready|partial|limited_sources|low_confidence|no_signal|failed_provider)$/,
     );
-    expect(briefingDetail.body.readerBrief.topReads[0].citationIds).toEqual(
-      expect.arrayContaining([briefingDetail.body.citations[0].citationId]),
+    expect(readerSummaryDetail.body.readerBrief.topReads[0].citationIds).toEqual(
+      expect.arrayContaining([readerSummaryDetail.body.citations[0].citationId]),
     );
 
     await request(app.getHttpServer())
-      .get('/briefing-jobs/missing-read-api-key-briefing-job/status')
+      .get('/reader-summary-jobs/missing-read-api-key-reader-summary-job/status')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('Authorization', `Bearer ${summaryKey}`)
       .expect(404);
 
     await request(app.getHttpServer())
-      .get('/briefings')
+      .get('/reader-summaries')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('Authorization', `Bearer ${feedKey}`)
       .expect(403);
 
     await request(app.getHttpServer())
-      .get(`/briefings/${executedBriefing.value.readerSummaryId}`)
+      .get(`/reader-summaries/${executedReaderSummary.value.readerSummaryId}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('Authorization', `Bearer ${feedKey}`)

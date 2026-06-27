@@ -13,7 +13,7 @@ reader actions, evaluation policy and summary delivery contracts.
 - `ReaderSummaryScope`, `ReaderSummaryPolicy`, `ReaderSummaryJob`: canonical
   domain names for reader-summary request scope, generation policy and job
   lifecycle.
-- `Briefing*`: legacy REST/API persistence language. Keep it behind
+- `ReaderSummary*`: canonical REST/API persistence language. Keep it behind
   compatibility factories, persistence and REST ACLs until full API rename.
   New domain logic must be added to `ReaderSummary*` types first.
 

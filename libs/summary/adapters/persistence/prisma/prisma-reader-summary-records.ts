@@ -35,7 +35,7 @@ export type PrismaReaderSummaryJobRecord = {
   readonly startedAt: Date | null;
   readonly completedAt: Date | null;
   readonly failedAt: Date | null;
-  readonly briefingArtifactId: string | null;
+  readonly readerSummaryArtifactId: string | null;
   readonly failureReason: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -100,7 +100,7 @@ export const readerSummaryJobFromPrisma = (
     startedAt: record.startedAt ?? undefined,
     completedAt: record.completedAt ?? undefined,
     failedAt: record.failedAt ?? undefined,
-    readerSummaryId: record.briefingArtifactId ?? undefined,
+    readerSummaryId: record.readerSummaryArtifactId ?? undefined,
     failureReason: record.failureReason ?? undefined,
   } satisfies ReaderSummaryJobProps);
 

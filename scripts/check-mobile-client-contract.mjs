@@ -29,7 +29,7 @@ const frontendCriticalOperations = [
     requiredResponseSchemaRefs: ['#/components/schemas/ListFeedItemsResponseDto'],
   },
   {
-    operationId: 'BriefingController_list',
+    operationId: 'ReaderSummaryController_list',
     requiredQueryParameters: [
       'cursor',
       'freshnessStatus',
@@ -41,12 +41,12 @@ const frontendCriticalOperations = [
       'topicId',
       'userId',
     ],
-    requiredResponseSchemaRefs: ['#/components/schemas/ListBriefingsResponseDto'],
+    requiredResponseSchemaRefs: ['#/components/schemas/ListReaderSummariesResponseDto'],
   },
   {
-    operationId: 'BriefingController_get',
-    requiredPathParameters: ['briefingId'],
-    requiredResponseSchemaRefs: ['#/components/schemas/BriefingResponseDto'],
+    operationId: 'ReaderSummaryController_get',
+    requiredPathParameters: ['readerSummaryId'],
+    requiredResponseSchemaRefs: ['#/components/schemas/ReaderSummaryResponseDto'],
   },
   {
     operationId: 'SourceBindingController_list',

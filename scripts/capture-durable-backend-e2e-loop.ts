@@ -101,8 +101,8 @@ type AutoSummaryEvidence = {
 };
 
 type ReaderBriefEvidence = {
-  readonly briefingJobId: string;
-  readonly briefingId: string;
+  readonly readerSummaryJobId: string;
+  readonly readerSummaryId: string;
   readonly headline: string;
   readonly topReadCount: number;
   readonly topReadTitles: readonly string[];
@@ -226,7 +226,7 @@ async function main(): Promise<void> {
           "backend-loop-reader-brief",
           {
             summary:
-              "reader briefing was generated from durable feed evidence with top reads, citations and source mix",
+              "reader readerSummary was generated from durable feed evidence with top reads, citations and source mix",
             readerBrief: evidence.readerBrief,
           },
           signalObservedAt,
@@ -375,7 +375,7 @@ async function executeBackendLoop(
   const headers = authHeaders(auth);
   const topicKey = `topic-${runtimeIds.runId}`;
   const summaryKey = `summary-${runtimeIds.runId}`;
-  const briefingKey = `briefing-${runtimeIds.runId}`;
+  const readerSummaryKey = `readerSummary-${runtimeIds.runId}`;
   const feedbackKey = `feedback-${runtimeIds.runId}`;
   const scanTargets = durableScanTargets();
   const topic = await requestJson<JsonRecord>("POST", "/topics", {
@@ -576,7 +576,7 @@ async function executeBackendLoop(
   }
   const readerBrief = await captureReaderBriefEvidence({
     headers,
-    idempotencyKey: briefingKey,
+    idempotencyKey: readerSummaryKey,
     expectedProviderKeys: bindingsWithFeed.map(
       (binding) => binding.providerKey,
     ),
@@ -840,7 +840,7 @@ async function executeBackendLoop(
         scanIdempotencyKey(target.providerKey, runtimeIds.runId),
       ]),
       summaryKey,
-      briefingKey,
+      readerSummaryKey,
       feedbackKey,
     ],
     responseIds: [
@@ -994,7 +994,7 @@ async function captureReaderBriefEvidence(params: {
   readonly idempotencyKey: string;
   readonly expectedProviderKeys: readonly DurableScanProviderKey[];
 }): Promise<ReaderBriefEvidence> {
-  const request = await requestJson<JsonRecord>("POST", "/briefing-requests", {
+  const request = await requestJson<JsonRecord>("POST", "/reader-summary-requests", {
     headers: withIdempotency(params.headers, params.idempotencyKey),
     body: {
       scope: {
@@ -1002,34 +1002,34 @@ async function captureReaderBriefEvidence(params: {
       },
     },
   });
-  const briefingJobId = readString(request, "briefingJobId");
+  const readerSummaryJobId = readString(request, "readerSummaryJobId");
   const status = await pollJson<JsonRecord>(
-    `/briefing-jobs/${encodeURIComponent(briefingJobId)}/status`,
+    `/reader-summary-jobs/${encodeURIComponent(readerSummaryJobId)}/status`,
     params.headers,
     (value) => {
       const jobStatus = readString(value, "status");
       if (jobStatus === "failed") {
         throw new Error(
-          `briefing job ${briefingJobId} failed: ${String(value.failureReason ?? "")}`,
+          `readerSummary job ${readerSummaryJobId} failed: ${String(value.failureReason ?? "")}`,
         );
       }
 
       return jobStatus === "completed" ? value : undefined;
     },
-    { timeoutMs: 120_000, label: "reader briefing completion" },
+    { timeoutMs: 120_000, label: "reader readerSummary completion" },
   );
-  const briefingId = readString(status, "briefingId");
-  const briefing = await requestJson<JsonRecord>(
+  const readerSummaryId = readString(status, "readerSummaryId");
+  const readerSummary = await requestJson<JsonRecord>(
     "GET",
-    `/briefings/${encodeURIComponent(briefingId)}`,
+    `/reader-summaries/${encodeURIComponent(readerSummaryId)}`,
     {
       headers: params.headers,
     },
   );
-  const readerBrief = readRecord(briefing, "readerBrief");
+  const readerBrief = readRecord(readerSummary, "readerBrief");
   const topReads = readObjectArray(readerBrief, "topReads");
   const sourceMix = readObjectArray(readerBrief, "sourceMix");
-  const citations = readObjectArray(briefing, "citations");
+  const citations = readObjectArray(readerSummary, "citations");
   const qualityState = readRecord(readerBrief, "qualityState");
   const sourceMixProviderKeys = [
     ...new Set(sourceMix.map((entry) => readString(entry, "providerKey"))),
@@ -1059,9 +1059,9 @@ async function captureReaderBriefEvidence(params: {
   }
 
   return {
-    briefingJobId,
-    briefingId,
-    headline: readString(briefing, "headline"),
+    readerSummaryJobId,
+    readerSummaryId,
+    headline: readString(readerSummary, "headline"),
     topReadCount: topReads.length,
     topReadTitles: topReads
       .map((item) => readString(item, "title"))

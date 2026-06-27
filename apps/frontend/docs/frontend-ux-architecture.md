@@ -124,12 +124,12 @@ Preferred future patterns:
 
 `Summary` is the product term for the aggregated view of posts, source mix,
 top reads, citations and next actions. Frontend UI must not introduce a second
-visible concept named `Briefing`.
+visible concept named `ReaderSummary`.
 
-`Briefing` may remain as a backend/API artifact name while the backend contract
+`ReaderSummary` may remain as a backend/API artifact name while the backend contract
 is being migrated. Presentation copy, navigation labels and empty/loading/error
 states should say `Summary`. Future cleanup should rename internal
-workspace-level briefing contracts to `WorkspaceSummary` or `ReaderSummary`
+workspace-level reader summary contracts to `WorkspaceSummary` or `ReaderSummary`
 after OpenAPI, generated clients and backend tests can move together.
 
 Query params are allowed only through `RouteQueryContract`.

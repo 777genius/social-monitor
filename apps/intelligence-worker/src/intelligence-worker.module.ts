@@ -17,19 +17,19 @@ import { SystemClock } from "@social-monitor/shared-kernel";
 
 import {
   INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS,
-  INTELLIGENCE_BRIEFING_JOB_LOOP_OPTIONS,
+  INTELLIGENCE_READER_SUMMARY_JOB_LOOP_OPTIONS,
   INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS,
   INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_READER_OPTIONS,
-  INTELLIGENCE_RABBITMQ_BRIEFING_QUEUE_READER_OPTIONS,
+  INTELLIGENCE_RABBITMQ_READER_SUMMARY_QUEUE_READER_OPTIONS,
   INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
-  INTELLIGENCE_BRIEFING_QUEUE_DRAIN_LOOP_OPTIONS,
+  INTELLIGENCE_READER_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
   INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LOOP_OPTIONS,
   INTELLIGENCE_SUMMARY_QUEUE_READER_MODE,
   type IntelligenceSummaryQueueReaderMode,
   resolveIntelligenceAutoSummarySchedulerOptions,
-  resolveIntelligenceBriefingJobLoopOptions,
-  resolveIntelligenceBriefingQueueDrainLoopOptions,
-  resolveIntelligenceRabbitMqBriefingQueueReaderOptions,
+  resolveIntelligenceReaderSummaryJobLoopOptions,
+  resolveIntelligenceReaderSummaryQueueDrainLoopOptions,
+  resolveIntelligenceRabbitMqReaderSummaryQueueReaderOptions,
   resolveIntelligenceRabbitMqSummaryQueueReaderOptions,
   resolveIntelligenceRelevanceMemoryProjectionLoopOptions,
   resolveIntelligenceSummaryJobLoopOptions,
@@ -37,15 +37,15 @@ import {
   resolveIntelligenceSummaryQueueReaderMode,
 } from "./intelligence-worker-provider-tokens";
 import {
-  INTELLIGENCE_BRIEFING_JOB_QUEUE_READER,
+  INTELLIGENCE_READER_SUMMARY_JOB_QUEUE_READER,
   InMemorySummaryJobQueueReader,
   INTELLIGENCE_SUMMARY_JOB_QUEUE_READER,
   RabbitMqSummaryJobQueueReader,
   type SummaryJobQueueReaderPort,
   type RabbitMqSummaryQueueReaderChannelPort,
 } from "./summary-job-queue-reader";
-import { BriefingJobQueueDrainLoop } from "./briefing-job-queue-drain-loop";
-import { BriefingJobPollingLoop } from "./briefing-job-polling-loop";
+import { ReaderSummaryJobQueueDrainLoop } from "./reader-summary-job-queue-drain-loop";
+import { ReaderSummaryJobPollingLoop } from "./reader-summary-job-polling-loop";
 import { SummaryJobQueueDrainLoop } from "./summary-job-queue-drain-loop";
 import { SummaryJobPollingLoop } from "./summary-job-polling-loop";
 import { AutoSummarySchedulerLoop } from "./auto-summary-scheduler-loop";
@@ -67,8 +67,8 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
       useFactory: () => resolveIntelligenceSummaryJobLoopOptions(process.env),
     },
     {
-      provide: INTELLIGENCE_BRIEFING_JOB_LOOP_OPTIONS,
-      useFactory: () => resolveIntelligenceBriefingJobLoopOptions(process.env),
+      provide: INTELLIGENCE_READER_SUMMARY_JOB_LOOP_OPTIONS,
+      useFactory: () => resolveIntelligenceReaderSummaryJobLoopOptions(process.env),
     },
     {
       provide: INTELLIGENCE_AUTO_SUMMARY_SCHEDULER_OPTIONS,
@@ -90,9 +90,9 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
         resolveIntelligenceRabbitMqSummaryQueueReaderOptions(process.env),
     },
     {
-      provide: INTELLIGENCE_RABBITMQ_BRIEFING_QUEUE_READER_OPTIONS,
+      provide: INTELLIGENCE_RABBITMQ_READER_SUMMARY_QUEUE_READER_OPTIONS,
       useFactory: () =>
-        resolveIntelligenceRabbitMqBriefingQueueReaderOptions(process.env),
+        resolveIntelligenceRabbitMqReaderSummaryQueueReaderOptions(process.env),
     },
     {
       provide: INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
@@ -100,9 +100,9 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
         resolveIntelligenceSummaryQueueDrainLoopOptions(process.env),
     },
     {
-      provide: INTELLIGENCE_BRIEFING_QUEUE_DRAIN_LOOP_OPTIONS,
+      provide: INTELLIGENCE_READER_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
       useFactory: () =>
-        resolveIntelligenceBriefingQueueDrainLoopOptions(process.env),
+        resolveIntelligenceReaderSummaryQueueDrainLoopOptions(process.env),
     },
     {
       provide: INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL,
@@ -138,13 +138,13 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
       ],
     },
     {
-      provide: INTELLIGENCE_BRIEFING_JOB_QUEUE_READER,
+      provide: INTELLIGENCE_READER_SUMMARY_JOB_QUEUE_READER,
       useFactory: (
         mode: IntelligenceSummaryQueueReaderMode,
         queue: InMemoryQueuePublisher,
         channel: RabbitMqSummaryQueueReaderChannelPort | null,
         options: ReturnType<
-          typeof resolveIntelligenceRabbitMqBriefingQueueReaderOptions
+          typeof resolveIntelligenceRabbitMqReaderSummaryQueueReaderOptions
         >,
       ) =>
         mode === "rabbitmq"
@@ -157,7 +157,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
         INTELLIGENCE_SUMMARY_QUEUE_READER_MODE,
         InMemoryQueuePublisher,
         INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL,
-        INTELLIGENCE_RABBITMQ_BRIEFING_QUEUE_READER_OPTIONS,
+        INTELLIGENCE_RABBITMQ_READER_SUMMARY_QUEUE_READER_OPTIONS,
       ],
     },
     {
@@ -197,7 +197,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
       ],
     },
     SummaryJobPollingLoop,
-    BriefingJobPollingLoop,
+    ReaderSummaryJobPollingLoop,
     AutoSummarySchedulerLoop,
     RelevanceMemoryProjectionLoop,
     {
@@ -225,16 +225,16 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
       ],
     },
     {
-      provide: BriefingJobQueueDrainLoop,
+      provide: ReaderSummaryJobQueueDrainLoop,
       useFactory: (
         queue: SummaryJobQueueReaderPort,
         handler: ExecuteReaderSummaryJobCommandHandler,
         options: ReturnType<
-          typeof resolveIntelligenceBriefingQueueDrainLoopOptions
+          typeof resolveIntelligenceReaderSummaryQueueDrainLoopOptions
         >,
         metrics: InMemoryMetricsRecorder,
       ) =>
-        new BriefingJobQueueDrainLoop(
+        new ReaderSummaryJobQueueDrainLoop(
           queue,
           handler,
           options,
@@ -242,9 +242,9 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
           new SystemClock(),
         ),
       inject: [
-        INTELLIGENCE_BRIEFING_JOB_QUEUE_READER,
+        INTELLIGENCE_READER_SUMMARY_JOB_QUEUE_READER,
         ExecuteReaderSummaryJobCommandHandler,
-        INTELLIGENCE_BRIEFING_QUEUE_DRAIN_LOOP_OPTIONS,
+        INTELLIGENCE_READER_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
         InMemoryMetricsRecorder,
       ],
     },
@@ -253,9 +253,9 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
     ExecuteSummaryJobCommandHandler,
     ExecuteReaderSummaryJobCommandHandler,
     SummaryJobPollingLoop,
-    BriefingJobPollingLoop,
+    ReaderSummaryJobPollingLoop,
     SummaryJobQueueDrainLoop,
-    BriefingJobQueueDrainLoop,
+    ReaderSummaryJobQueueDrainLoop,
     AutoSummarySchedulerLoop,
     RelevanceMemoryProjectionLoop,
   ],

@@ -202,9 +202,9 @@ assert(
   'reader summary beta model provider',
 );
 assert(
-  resolveReaderSummaryModelProviderMode({ ...betaEnv, BRIEFING_MODEL_PROVIDER: 'openai-responses' }) ===
+  resolveReaderSummaryModelProviderMode({ ...betaEnv, READER_SUMMARY_MODEL_PROVIDER: 'openai-responses' }) ===
     'openai-responses',
-  'legacy briefing beta model provider',
+  'canonical readerSummary beta model provider',
 );
 assert(
   resolveSummaryRabbitMqJobQueueOptions(rabbitMqEnv).routes?.['summary.job.execute']?.queueType === 'quorum',

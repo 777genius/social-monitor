@@ -29,10 +29,10 @@ void main() {
     expect(page.items.single.freshnessLabel, 'Fresh');
   });
 
-  test('maps generated Briefing reader payload into reader summary DTO', () {
+  test('maps generated ReaderSummary reader payload into reader summary DTO', () {
     const mapper = GeneratedSummaryRestMapper();
 
-    final readerSummary = mapper.readerSummary(_briefingArtifact());
+    final readerSummary = mapper.readerSummary(_readerSummaryArtifact());
 
     expect(readerSummary.content.headline, 'GitHub daily radar');
     expect(
@@ -65,117 +65,117 @@ void main() {
     expect(readerSummary.content.nextActions.single.kind, 'watch_repository');
   });
 
-  test('maps generated Briefing job request and status DTOs', () {
+  test('maps generated ReaderSummary job request and status DTOs', () {
     const mapper = GeneratedSummaryRestMapper();
     final requested = mapper.requestedReaderSummaryJob(
-      const generated.RequestBriefingResponseDto(
-        briefingJobId: 'briefing-job-1',
+      const generated.RequestReaderSummaryResponseDto(
+        readerSummaryJobId: 'readerSummary-job-1',
         created: true,
-        status: generated.RequestBriefingResponseDtoStatusStatus.requested,
+        status: generated.RequestReaderSummaryResponseDtoStatusStatus.requested,
       ),
     );
 
-    expect(requested.id, 'briefing-job-1');
+    expect(requested.id, 'readerSummary-job-1');
     expect(requested.status, 'requested');
     expect(requested.created, isTrue);
 
     final completedAt = DateTime.utc(2026, 6, 23, 10);
     final status = mapper.readerSummaryJobStatus(
-      generated.BriefingJobStatusResponseDto(
-        briefingId: 'briefing-1',
-        briefingJobId: 'briefing-job-1',
+      generated.ReaderSummaryJobStatusResponseDto(
+        readerSummaryId: 'readerSummary-1',
+        readerSummaryJobId: 'readerSummary-job-1',
         completedAt: completedAt,
         requestedAt: completedAt.subtract(const Duration(minutes: 1)),
-        scope: const generated.BriefingScopeDto(
-          type: generated.BriefingScopeDtoTypeType.workspace,
+        scope: const generated.ReaderSummaryScopeDto(
+          type: generated.ReaderSummaryScopeDtoTypeType.workspace,
         ),
-        status: generated.BriefingJobStatusResponseDtoStatusStatus.completed,
+        status: generated.ReaderSummaryJobStatusResponseDtoStatusStatus.completed,
         timeline: const [],
       ),
     );
 
     expect(status.status, 'completed');
-    expect(status.summaryId, 'briefing-1');
+    expect(status.summaryId, 'readerSummary-1');
     expect(status.completedAt, completedAt);
   });
 }
 
-generated.BriefingArtifactResponseDto _briefingArtifact() {
+generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
   final now = DateTime.utc(2026, 6, 23, 10, 30);
-  return generated.BriefingArtifactResponseDto(
-    briefingId: 'briefing-1',
+  return generated.ReaderSummaryArtifactResponseDto(
+    readerSummaryId: 'readerSummary-1',
     citations: const [
-      generated.BriefingCitationViewDto(
+      generated.ReaderSummaryCitationViewDto(
         canonicalUrl: 'https://github.com/calesthio/OpenMontage',
         citationId: 'bc-1',
         feedItemId: 'feed-1',
-        field: generated.BriefingCitationViewDtoFieldField.title,
+        field: generated.ReaderSummaryCitationViewDtoFieldField.title,
         label: '[1]',
         providerKey: 'github-trending-page',
         sourceItemId: 'source-1',
       ),
     ],
-    confidence: const generated.BriefingConfidenceDto(
-      level: generated.BriefingConfidenceDtoLevelLevel.medium,
-      rationale: 'Enough evidence for a briefing.',
+    confidence: const generated.ReaderSummaryConfidenceDto(
+      level: generated.ReaderSummaryConfidenceDtoLevelLevel.medium,
+      rationale: 'Enough evidence for a readerSummary.',
       score: 0.7,
     ),
     contextArtifacts: const [],
     executiveSummary:
         'GitHub Trending found concrete AI developer-tool repositories.',
-    freshness: generated.BriefingFreshnessDto(
+    freshness: generated.ReaderSummaryFreshnessDto(
       checkedAt: now,
-      status: generated.BriefingFreshnessDtoStatusStatus.fresh,
+      status: generated.ReaderSummaryFreshnessDtoStatusStatus.fresh,
     ),
-    headline: 'AI signal briefing',
-    lineage: const generated.BriefingLineageDto(
-      evalDatasetVersion: 'briefing.eval.mvp.v1',
+    headline: 'AI signal readerSummary',
+    lineage: const generated.ReaderSummaryLineageDto(
+      evalDatasetVersion: 'reader_summary.eval.mvp.v1',
       modelVersion: 'deterministic-local',
-      promptVersion: 'briefing.prompt.v1',
+      promptVersion: 'reader_summary.prompt.v1',
       providerVersion: 'deterministic-local',
-      rulesVersion: 'briefing.rules.policy.v1',
-      schemaVersion: 'briefing.artifact.v1',
+      rulesVersion: 'reader_summary.rules.policy.v1',
+      schemaVersion: 'reader_summary.artifact.v1',
     ),
     qualityFlags: const [],
-    readerBrief: const generated.BriefingReaderBriefDto(
+    readerBrief: const generated.ReaderSummaryReaderBriefDto(
       headline: 'GitHub daily radar',
       oneLineTakeaway:
           'calesthio/OpenMontage is the clearest repository signal.',
       bullets: ['calesthio/OpenMontage is worth reading first.'],
-      qualityState: generated.BriefingReaderQualityStateDto(
+      qualityState: generated.ReaderSummaryReaderQualityStateDto(
         status:
-            generated.BriefingReaderQualityStateDtoStatusStatus.limitedSources,
+            generated.ReaderSummaryReaderQualityStateDtoStatusStatus.limitedSources,
         flags: [
-          generated.BriefingReaderQualityStateDtoFlagsFlags.limitedSources,
+          generated.ReaderSummaryReaderQualityStateDtoFlagsFlags.limitedSources,
         ],
         warnings: ['Source coverage is limited or single-source.'],
         isSingleSource: true,
       ),
       topicSections: [
-        generated.BriefingReaderTopicSectionDto(
+        generated.ReaderSummaryReaderTopicSectionDto(
           title: 'AI developer tools',
           insight: 'Agent tooling repositories are gaining attention.',
           items: [
-            generated.BriefingReaderItemDto(
+            generated.ReaderSummaryReaderItemDto(
               title: 'calesthio/OpenMontage',
               providerKey: 'github-trending-page',
               providerName: 'GitHub Trending',
               primaryActionKind: generated
-                  .BriefingReaderItemDtoPrimaryActionKindPrimaryActionKind
+                  .ReaderSummaryReaderItemDtoPrimaryActionKindPrimaryActionKind
                   .watchRepository,
               reason: '#1 on github.com/trending today.',
               matchedTopicIds: ['ai-tools'],
               matchedRules: ['topic:ai-tools', 'provider:github-trending-page'],
               signalScore: 1,
-              confidence: generated.BriefingReaderItemConfidenceDto(
+              confidence: generated.ReaderSummaryReaderItemConfidenceDto(
                 level:
-                    generated.BriefingReaderItemConfidenceDtoLevelLevel.medium,
+                    generated.ReaderSummaryReaderItemConfidenceDtoLevelLevel.medium,
                 score: 0.57,
                 rationale: 'Daily GitHub Trending signal with raw metrics.',
               ),
               confirmedProviderKeys: ['github-trending-page'],
               providerMetrics: [
-                generated.BriefingProviderMetricDto(
+                generated.ReaderSummaryProviderMetricDto(
                   label: 'GitHub Trending today',
                   value: '#1, +3,703 stars today',
                 ),
@@ -191,7 +191,7 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
         ),
       ],
       sourceMix: [
-        generated.BriefingSourceMixEntryDto(
+        generated.ReaderSummarySourceMixEntryDto(
           providerKey: 'github-trending-page',
           itemCount: 1,
           citationCount: 1,
@@ -202,25 +202,25 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
         ),
       ],
       topReads: [
-        generated.BriefingReaderItemDto(
+        generated.ReaderSummaryReaderItemDto(
           title: 'calesthio/OpenMontage',
           providerKey: 'github-trending-page',
           providerName: 'GitHub Trending',
           primaryActionKind: generated
-              .BriefingReaderItemDtoPrimaryActionKindPrimaryActionKind
+              .ReaderSummaryReaderItemDtoPrimaryActionKindPrimaryActionKind
               .watchRepository,
           reason: '#1 on github.com/trending today.',
           matchedTopicIds: ['ai-tools'],
           matchedRules: ['topic:ai-tools', 'provider:github-trending-page'],
           signalScore: 1,
-          confidence: generated.BriefingReaderItemConfidenceDto(
-            level: generated.BriefingReaderItemConfidenceDtoLevelLevel.medium,
+          confidence: generated.ReaderSummaryReaderItemConfidenceDto(
+            level: generated.ReaderSummaryReaderItemConfidenceDtoLevelLevel.medium,
             score: 0.57,
             rationale: 'Daily GitHub Trending signal with raw metrics.',
           ),
           confirmedProviderKeys: ['github-trending-page'],
           providerMetrics: [
-            generated.BriefingProviderMetricDto(
+            generated.ReaderSummaryProviderMetricDto(
               label: 'GitHub Trending today',
               value: '#1, +3,703 stars today',
             ),
@@ -232,7 +232,7 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
           citationIds: ['bc-1'],
         ),
       ],
-      trendDelta: generated.BriefingTrendDeltaDto(
+      trendDelta: generated.ReaderSummaryTrendDeltaDto(
         newSignals: ['calesthio/OpenMontage'],
         growingSignals: [],
         repeatedSignals: [],
@@ -241,8 +241,8 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
       openQuestions: [],
       risks: [],
       nextActions: [
-        generated.BriefingNextActionDto(
-          kind: generated.BriefingNextActionDtoKindKind.watchRepository,
+        generated.ReaderSummaryNextActionDto(
+          kind: generated.ReaderSummaryNextActionDtoKindKind.watchRepository,
           label: 'Watch calesthio/OpenMontage',
           reason: 'Track whether growth continues.',
           canonicalUrl: 'https://github.com/calesthio/OpenMontage',
@@ -252,11 +252,11 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
     ),
     repeatedSignals: const [],
     risksAndUnknowns: const [],
-    schemaVersion: 'briefing.artifact.v1',
-    scope: const generated.BriefingScopeDto(
-      type: generated.BriefingScopeDtoTypeType.workspace,
+    schemaVersion: 'reader_summary.artifact.v1',
+    scope: const generated.ReaderSummaryScopeDto(
+      type: generated.ReaderSummaryScopeDtoTypeType.workspace,
     ),
-    sourceWindow: generated.BriefingSourceWindowDto(
+    sourceWindow: generated.ReaderSummarySourceWindowDto(
       endedAt: now,
       selectedFeedItemIds: const ['feed-1'],
       startedAt: now.subtract(const Duration(minutes: 30)),
@@ -264,10 +264,10 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
       windowId: 'window-1',
     ),
     storyClusters: [
-      generated.BriefingStoryClusterDto(
+      generated.ReaderSummaryStoryClusterDto(
         duplicateFeedItemIds: const [],
         id: 'story-1',
-        observedAtRange: generated.BriefingObservedAtRangeDto(
+        observedAtRange: generated.ReaderSummaryObservedAtRangeDto(
           endedAt: now,
           startedAt: now.subtract(const Duration(minutes: 30)),
         ),
@@ -282,7 +282,7 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
     tenantId: 'tenant-1',
     topicHighlights: const [],
     topStories: const [
-      generated.BriefingTopStoryDto(
+      generated.ReaderSummaryTopStoryDto(
         citationIds: ['bc-1'],
         providerKeys: ['github-trending-page'],
         storyClusterId: 'story-1',
@@ -291,7 +291,7 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
         topicIds: ['ai-tools'],
       ),
     ],
-    usage: const generated.BriefingUsageDto(
+    usage: const generated.ReaderSummaryUsageDto(
       estimatedCostUsd: 0,
       inputTokens: 100,
       outputTokens: 40,

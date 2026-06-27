@@ -34,7 +34,7 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
     const scopeFields = readerSummaryScopeToPrisma(snapshot.scope);
 
     await withPrismaWriteRetry(() =>
-      this.prisma.briefingArtifact.upsert({
+      this.prisma.readerSummaryArtifact.upsert({
         where: { id: snapshot.readerSummaryId },
         update: {
           ...scopeFields,
@@ -84,13 +84,13 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
       status: { in: VISIBLE_READER_SUMMARY_STATUSES },
     };
     const [records, total] = await Promise.all([
-      this.prisma.briefingArtifact.findMany({
+      this.prisma.readerSummaryArtifact.findMany({
         where,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         skip: offset,
         take: query.limit,
       }),
-      this.prisma.briefingArtifact.count({ where }),
+      this.prisma.readerSummaryArtifact.count({ where }),
     ]);
     const items = records.map((record) =>
       readerSummaryArtifactFromPrisma(record),
@@ -107,7 +107,7 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
   async findById(
     params: Parameters<ReaderSummaryArtifactRepositoryPort["findById"]>[0],
   ): Promise<ReaderSummaryArtifact | null> {
-    const record = await this.prisma.briefingArtifact.findFirst({
+    const record = await this.prisma.readerSummaryArtifact.findFirst({
       where: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,

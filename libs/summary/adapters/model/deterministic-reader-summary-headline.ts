@@ -14,13 +14,13 @@ export const buildReaderHeadline = (
   const providerLabels = uniqueStrings(selectedEvidence.map(providerLabel));
 
   if (storyCount === 0 || providerLabels.length === 0) {
-    return `${scopeLabel} briefing`;
+    return `${scopeLabel} readerSummary`;
   }
 
   const storyLabel = storyCount === 1 ? "story" : "stories";
   const sourceLabel = providerLabels.length === 1 ? "source" : "sources";
 
-  return `${scopeLabel} briefing: ${storyCount} ${storyLabel} across ${providerLabels.length} ${sourceLabel} (${summarizeProviderLabels(providerLabels)})`;
+  return `${scopeLabel} readerSummary: ${storyCount} ${storyLabel} across ${providerLabels.length} ${sourceLabel} (${summarizeProviderLabels(providerLabels)})`;
 };
 
 const providerLabel = (

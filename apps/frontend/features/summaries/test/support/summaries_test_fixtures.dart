@@ -46,7 +46,7 @@ SummaryApiDto summaryApiDto({
 }
 
 ReaderSummaryApiDto readerSummaryApiDto({
-  String id = 'briefing-1',
+  String id = 'readerSummary-1',
   String title = 'AI workspace summary',
   String executiveSummary =
       'AI model launches and developer tooling changes are the strongest signals.',
@@ -415,7 +415,7 @@ ReaderSummaryApiDto repoRadarTopTenReaderSummaryApiDto() {
   });
 
   return readerSummaryApiDto(
-    title: 'Repo radar top ten briefing',
+    title: 'Repo radar top ten readerSummary',
     executiveSummary:
         'GitHub Repo Radar found ten repositories worth reviewing today.',
     content: readerSummaryContentApiDto(

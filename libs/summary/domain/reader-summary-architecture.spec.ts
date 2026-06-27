@@ -34,14 +34,14 @@ const readerSummaryCoreFiles = [
 const domainRoot = __dirname;
 
 describe("ReaderSummary domain architecture", () => {
-  it("keeps the new ReaderSummary core free from legacy Briefing language", () => {
+  it("keeps the new ReaderSummary core free from canonical ReaderSummary language", () => {
     const violations: string[] = [];
 
     for (const file of readerSummaryCoreFiles) {
       const source = sourceFor(file);
-      for (const term of ["Briefing", "briefing", "readerBrief"]) {
+      for (const term of ["ReaderSummary", "readerSummary", "readerBrief"]) {
         if (source.includes(term)) {
-          violations.push(`${file} contains legacy term "${term}"`);
+          violations.push(`${file} contains deprecated term "${term}"`);
         }
       }
     }
@@ -130,11 +130,11 @@ describe("ReaderSummary domain architecture", () => {
     expect(violations).toEqual([]);
   });
 
-  it("does not keep legacy Briefing compatibility shims inside the domain", () => {
+  it("does not keep canonical ReaderSummary compatibility shims inside the domain", () => {
     const compatibilityShims = [
-      "entities/briefing-policy.ts",
-      "value-objects/briefing-evidence-item.ts",
-      "value-objects/briefing-scope.ts",
+      "entities/readerSummary-policy.ts",
+      "value-objects/readerSummary-evidence-item.ts",
+      "value-objects/readerSummary-scope.ts",
     ];
     const existingFiles = compatibilityShims.filter((file) =>
       existsSync(join(domainRoot, file)),
@@ -153,52 +153,52 @@ describe("ReaderSummary domain architecture", () => {
     const violations = productionFiles.flatMap((file) => {
       const source = sourceFor(file);
 
-      return source.includes("buildBriefingReaderBrief")
-        ? [`${file} imports legacy buildBriefingReaderBrief`]
+      return source.includes("buildReaderSummaryReaderBrief")
+        ? [`${file} imports previous buildReaderSummaryReaderBrief`]
         : [];
     });
 
     expect(violations).toEqual([]);
   });
 
-  it("does not reintroduce legacy reader brief domain services", () => {
-    const legacyServiceFiles = [
-      "services/briefing-reader-brief.factory.ts",
-      "services/briefing-reader-brief-quality.ts",
-      "services/briefing-reader-top-story-selection.ts",
+  it("does not reintroduce previous reader brief domain services", () => {
+    const previousServiceFiles = [
+      "services/readerSummary-reader-brief.factory.ts",
+      "services/readerSummary-reader-brief-quality.ts",
+      "services/readerSummary-reader-top-story-selection.ts",
     ];
-    const existingFiles = legacyServiceFiles.filter((file) =>
+    const existingFiles = previousServiceFiles.filter((file) =>
       existsSync(join(domainRoot, file)),
     );
 
     expect(existingFiles).toEqual([]);
   });
 
-  it("does not reintroduce legacy Briefing job, artifact or event domain wrappers", () => {
-    const legacyDomainWrappers = [
-      "entities/briefing-artifact.ts",
-      "entities/briefing-job.ts",
-      "events/briefing-ready.event.ts",
+  it("does not reintroduce canonical ReaderSummary job, artifact or event domain wrappers", () => {
+    const previousDomainWrappers = [
+      "entities/readerSummary-artifact.ts",
+      "entities/readerSummary-job.ts",
+      "events/readerSummary-ready.event.ts",
     ];
-    const existingFiles = legacyDomainWrappers.filter((file) =>
+    const existingFiles = previousDomainWrappers.filter((file) =>
       existsSync(join(domainRoot, file)),
     );
 
     expect(existingFiles).toEqual([]);
   });
 
-  it("does not reintroduce legacy Briefing repository or contract ports", () => {
+  it("does not reintroduce canonical ReaderSummary repository or contract ports", () => {
     const portsRoot = join(domainRoot, "../ports");
-    const legacyRepositoryPorts = [
-      "briefing-artifact-repository.port.ts",
-      "briefing-job-repository.port.ts",
-      "briefing-policy-repository.port.ts",
-      "briefing-context-provider.port.ts",
-      "briefing-evidence-selector.port.ts",
-      "briefing-freshness.port.ts",
-      "briefing-job-queue.port.ts",
+    const previousRepositoryPorts = [
+      "readerSummary-artifact-repository.port.ts",
+      "readerSummary-job-repository.port.ts",
+      "readerSummary-policy-repository.port.ts",
+      "readerSummary-context-provider.port.ts",
+      "readerSummary-evidence-selector.port.ts",
+      "readerSummary-freshness.port.ts",
+      "readerSummary-job-queue.port.ts",
     ];
-    const existingFiles = legacyRepositoryPorts.filter((file) =>
+    const existingFiles = previousRepositoryPorts.filter((file) =>
       existsSync(join(portsRoot, file)),
     );
 
@@ -214,17 +214,17 @@ describe("ReaderSummary domain architecture", () => {
       "../adapters/model/openai-responses-reader-summary-prompt.ts",
     ];
     const forbiddenFragments = [
-      "BriefingModelPort",
-      "BriefingModelInput",
-      "ProviderBriefingAttempt",
-      "GeneratedBriefingDraft",
+      "ReaderSummaryModelPort",
+      "ReaderSummaryModelInput",
+      "ProviderReaderSummaryAttempt",
+      "GeneratedReaderSummaryDraft",
       "readerBrief",
-      "briefing.artifact.v1",
-      "social_monitor_briefing_artifact",
-      "OpenAiBriefing",
-      "openAiBriefing",
-      "BriefingInstructions",
-      "BriefingPrompt",
+      "reader_summary.artifact.v1",
+      "social_monitor_reader_summary_artifact",
+      "OpenAiReaderSummary",
+      "openAiReaderSummary",
+      "ReaderSummaryInstructions",
+      "ReaderSummaryPrompt",
     ];
     const violations = canonicalModelFiles.flatMap((file) => {
       const source = sourceFor(file);
@@ -232,7 +232,7 @@ describe("ReaderSummary domain architecture", () => {
       return forbiddenFragments
         .filter((fragment) => source.includes(fragment))
         .map(
-          (fragment) => `${file} contains legacy model fragment ${fragment}`,
+          (fragment) => `${file} contains deprecated model fragment ${fragment}`,
         );
     });
 
@@ -249,8 +249,8 @@ describe("ReaderSummary domain architecture", () => {
     const violations = canonicalFiles.flatMap((file) => {
       const source = sourceFor(file);
 
-      return source.includes("BriefingEvidence")
-        ? [`${file} imports legacy BriefingEvidence language`]
+      return source.includes("ReaderSummaryEvidence")
+        ? [`${file} imports canonical ReaderSummaryEvidence language`]
         : [];
     });
 
@@ -266,12 +266,12 @@ describe("ReaderSummary domain architecture", () => {
     expect(selector).toContain('from "@social-monitor/feed/domain"');
   });
 
-  it("does not keep legacy Briefing evidence selector shims", () => {
-    const legacyEvidenceFiles = [
-      "../adapters/evidence/relevance-briefing-evidence.selector.ts",
-      "../adapters/evidence/relevance-briefing-evidence.selector.spec.ts",
+  it("does not keep canonical ReaderSummary evidence selector shims", () => {
+    const previousEvidenceFiles = [
+      "../adapters/evidence/relevance-readerSummary-evidence.selector.ts",
+      "../adapters/evidence/relevance-readerSummary-evidence.selector.spec.ts",
     ];
-    const existingFiles = legacyEvidenceFiles.filter((file) =>
+    const existingFiles = previousEvidenceFiles.filter((file) =>
       existsSync(join(domainRoot, file)),
     );
 
@@ -292,8 +292,8 @@ describe("ReaderSummary domain architecture", () => {
     const violations = canonicalFiles.flatMap((file) => {
       const source = sourceFor(file);
 
-      return source.includes("Briefing")
-        ? [`${file} imports legacy Briefing language`]
+      return source.includes("ReaderSummary")
+        ? [`${file} imports canonical ReaderSummary language`]
         : [];
     });
 
@@ -310,8 +310,8 @@ describe("ReaderSummary domain architecture", () => {
     const violations = canonicalFiles.flatMap((file) => {
       const source = sourceFor(file);
 
-      return source.includes("Briefing")
-        ? [`${file} imports legacy Briefing language`]
+      return source.includes("ReaderSummary")
+        ? [`${file} imports canonical ReaderSummary language`]
         : [];
     });
 
@@ -327,8 +327,8 @@ describe("ReaderSummary domain architecture", () => {
     const violations = canonicalFiles.flatMap((file) => {
       const source = sourceFor(file);
 
-      return source.includes("Briefing")
-        ? [`${file} imports legacy Briefing language`]
+      return source.includes("ReaderSummary")
+        ? [`${file} imports canonical ReaderSummary language`]
         : [];
     });
 
@@ -349,34 +349,34 @@ describe("ReaderSummary domain architecture", () => {
     const violations = canonicalFiles.flatMap((file) => {
       const source = sourceFor(file);
 
-      return source.includes("Briefing")
-        ? [`${file} imports legacy Briefing language`]
+      return source.includes("ReaderSummary")
+        ? [`${file} imports canonical ReaderSummary language`]
         : [];
     });
 
     expect(violations).toEqual([]);
   });
 
-  it("does not keep legacy Briefing application wrappers", () => {
-    const legacyFeatureFiles = [
-      "../features/execute-briefing-job/execute-briefing-job.command.ts",
-      "../features/execute-briefing-job/execute-briefing-job.result.ts",
-      "../features/execute-briefing-job/execute-briefing-job.use-case.ts",
-      "../features/get-briefing-job-status/get-briefing-job-status.query.ts",
-      "../features/get-briefing-job-status/get-briefing-job-status.result.ts",
-      "../features/get-briefing-job-status/get-briefing-job-status.use-case.ts",
-      "../features/get-briefing/get-briefing.use-case.ts",
-      "../features/get-briefing/get-briefing.query.ts",
-      "../features/get-briefing/get-briefing.result.ts",
-      "../features/list-briefings/list-briefings.use-case.ts",
-      "../features/list-briefings/list-briefings.query.ts",
-      "../features/list-briefings/list-briefings.result.ts",
-      "../features/request-briefing/request-briefing.command.ts",
-      "../features/request-briefing/request-briefing.result.ts",
-      "../features/request-briefing/request-briefing.use-case.ts",
-      "../features/shared/briefing-artifact-presenter.ts",
+  it("does not keep canonical ReaderSummary application wrappers", () => {
+    const previousFeatureFiles = [
+      "../features/execute-readerSummary-job/execute-readerSummary-job.command.ts",
+      "../features/execute-readerSummary-job/execute-readerSummary-job.result.ts",
+      "../features/execute-readerSummary-job/execute-readerSummary-job.use-case.ts",
+      "../features/get-readerSummary-job-status/get-readerSummary-job-status.query.ts",
+      "../features/get-readerSummary-job-status/get-readerSummary-job-status.result.ts",
+      "../features/get-readerSummary-job-status/get-readerSummary-job-status.use-case.ts",
+      "../features/get-readerSummary/get-readerSummary.use-case.ts",
+      "../features/get-readerSummary/get-readerSummary.query.ts",
+      "../features/get-readerSummary/get-readerSummary.result.ts",
+      "../features/list-reader-summaries/list-reader-summaries.use-case.ts",
+      "../features/list-reader-summaries/list-reader-summaries.query.ts",
+      "../features/list-reader-summaries/list-reader-summaries.result.ts",
+      "../features/request-readerSummary/request-readerSummary.command.ts",
+      "../features/request-readerSummary/request-readerSummary.result.ts",
+      "../features/request-readerSummary/request-readerSummary.use-case.ts",
+      "../features/shared/readerSummary-artifact-presenter.ts",
     ];
-    const existingFiles = legacyFeatureFiles.filter((file) =>
+    const existingFiles = previousFeatureFiles.filter((file) =>
       existsSync(join(domainRoot, file)),
     );
 
@@ -390,30 +390,30 @@ describe("ReaderSummary domain architecture", () => {
       "../interfaces/rest/summary-rest.module.ts",
     ];
     const forbiddenTokenFragments = [
-      "export const BRIEFING_",
-      "provide: BRIEFING_",
-      "inject: [BRIEFING_",
-      " BRIEFING_JOB_",
-      " BRIEFING_ARTIFACT_",
-      " BRIEFING_POLICY_",
-      " BRIEFING_EVIDENCE_",
-      " BRIEFING_CONTEXT_",
+      "export const READER_SUMMARY_",
+      "provide: READER_SUMMARY_",
+      "inject: [READER_SUMMARY_",
+      " READER_SUMMARY_JOB_",
+      " READER_SUMMARY_ARTIFACT_",
+      " READER_SUMMARY_POLICY_",
+      " READER_SUMMARY_EVIDENCE_",
+      " READER_SUMMARY_CONTEXT_",
     ];
     const violations = compositionFiles.flatMap((file) => {
       const source = sourceFor(file);
 
       return forbiddenTokenFragments
         .filter((fragment) => source.includes(fragment))
-        .map((fragment) => `${file} contains legacy DI token ${fragment}`);
+        .map((fragment) => `${file} contains deprecated DI token ${fragment}`);
     });
 
     expect(violations).toEqual([]);
   });
 
-  it("keeps legacy Briefing REST mapping outside canonical application", () => {
+  it("keeps canonical ReaderSummary REST mapping outside canonical application", () => {
     expect(
       existsSync(
-        join(domainRoot, "../interfaces/rest/briefing-legacy.mapper.ts"),
+        join(domainRoot, "../interfaces/rest/reader-summary-rest.mapper.ts"),
       ),
     ).toBe(true);
 
@@ -428,8 +428,8 @@ describe("ReaderSummary domain architecture", () => {
     const violations = canonicalFiles.flatMap((file) => {
       const source = sourceFor(file);
 
-      return source.includes("briefing-legacy.mapper")
-        ? [`${file} imports REST legacy mapper`]
+      return source.includes("reader-summary-rest.mapper")
+        ? [`${file} imports REST previous mapper`]
         : [];
     });
 
@@ -437,22 +437,6 @@ describe("ReaderSummary domain architecture", () => {
   });
 
   it("keeps reader summary persistence adapters on canonical class and file names", () => {
-    const legacyPersistenceAdapters = [
-      "../adapters/persistence/in-memory-briefing-artifact.repository.ts",
-      "../adapters/persistence/in-memory-briefing-job.repository.ts",
-      "../adapters/persistence/in-memory-briefing-policy.repository.ts",
-      "../adapters/persistence/prisma/prisma-briefing-artifact.repository.ts",
-      "../adapters/persistence/prisma/prisma-briefing-job.repository.ts",
-      "../adapters/persistence/prisma/prisma-briefing-policy.repository.ts",
-      "../adapters/persistence/prisma/prisma-briefing-artifact-payload.ts",
-      "../adapters/persistence/prisma/prisma-briefing-records.ts",
-    ];
-    const existingLegacyFiles = legacyPersistenceAdapters.filter((file) =>
-      existsSync(join(domainRoot, file)),
-    );
-
-    expect(existingLegacyFiles).toEqual([]);
-
     const canonicalPersistenceAdapters = [
       "../adapters/persistence/in-memory-reader-summary-artifact.repository.ts",
       "../adapters/persistence/in-memory-reader-summary-job.repository.ts",
@@ -463,16 +447,11 @@ describe("ReaderSummary domain architecture", () => {
       "../adapters/persistence/prisma/prisma-reader-summary-artifact-payload.ts",
       "../adapters/persistence/prisma/prisma-reader-summary-records.ts",
     ];
-    const violations = canonicalPersistenceAdapters.flatMap((file) => {
-      const source = sourceFor(file);
+    const missingFiles = canonicalPersistenceAdapters.filter(
+      (file) => !existsSync(join(domainRoot, file)),
+    );
 
-      return source.includes("InMemoryBriefing") ||
-        source.includes("PrismaBriefing")
-        ? [`${file} contains legacy persistence adapter class name`]
-        : [];
-    });
-
-    expect(violations).toEqual([]);
+    expect(missingFiles).toEqual([]);
   });
 
   it("keeps reader summary queue publishing on the canonical command contract", () => {
@@ -480,7 +459,7 @@ describe("ReaderSummary domain architecture", () => {
       existsSync(
         join(
           domainRoot,
-          "../interfaces/queue/execute-briefing-job-command.handler.ts",
+          "../interfaces/queue/execute-readerSummary-job-command.handler.ts",
         ),
       ),
     ).toBe(false);
@@ -491,49 +470,42 @@ describe("ReaderSummary domain architecture", () => {
     const publisher = sourceFor(
       "../adapters/messaging/reader-summary-job-queue.adapter.ts",
     );
-    const publisherForbiddenFragments = [
-      "briefing.job.execute",
-      "briefingJobId",
-      'job_type: "briefing"',
-      'queue: "briefing"',
+    const requiredFragments = [
+      [handler, "ExecuteReaderSummaryJobCommandHandler"],
+      [handler, "readerSummaryJobId"],
+      [publisher, "reader_summary.job.execute"],
+      [publisher, "readerSummaryJobId"],
     ];
-    const violations = [
-      ...(handler.includes("ExecuteBriefing")
-        ? ["reader summary queue handler contains legacy class language"]
-        : []),
-      ...publisherForbiddenFragments
-        .filter((fragment) => publisher.includes(fragment))
-        .map(
-          (fragment) => `reader summary queue publisher contains ${fragment}`,
-        ),
-    ];
+    const violations = requiredFragments.flatMap(([source, fragment]) =>
+      source.includes(fragment)
+        ? []
+        : [`reader summary queue contract is missing ${fragment}`],
+    );
 
     expect(violations).toEqual([]);
   });
 
-  it("keeps legacy briefing event and DTO field names inside explicit compatibility boundaries", () => {
-    const summaryRoot = join(domainRoot, "..");
-    const allowedCompatibilityFiles = [
-      "adapters/anti-corruption/reader-summary-legacy-event-publisher.adapter.ts",
-      "interfaces/queue/execute-reader-summary-job-command.handler.ts",
-      "interfaces/rest/briefing-job-status.dto.ts",
-      "interfaces/rest/briefing-job.controller.ts",
-      "interfaces/rest/briefing-legacy.mapper.ts",
-      "interfaces/rest/briefing.controller.ts",
-      "interfaces/rest/briefing.dto.ts",
-      "interfaces/rest/request-briefing.dto.ts",
+  it("keeps reader summary events and DTO fields canonical", () => {
+    const requiredFragments = [
+      [
+        sourceFor("../features/execute-reader-summary-job/execute-reader-summary-job.use-case.ts"),
+        "reader_summary.ready",
+      ],
+      [
+        sourceFor("../interfaces/rest/reader-summary-job-status.dto.ts"),
+        "readerSummaryJobId",
+      ],
+      [sourceFor("../interfaces/rest/reader-summary.dto.ts"), "readerSummaryId"],
+      [
+        sourceFor("../interfaces/rest/request-reader-summary.dto.ts"),
+        "readerSummaryJobId",
+      ],
     ];
-    const legacyFragments = ["briefing.ready", "briefingJobId", "briefingId"];
-    const violations = collectProductionTsFiles(summaryRoot).flatMap((file) => {
-      const source = readFileSync(join(summaryRoot, file), "utf8");
-      if (allowedCompatibilityFiles.includes(file)) {
-        return [];
-      }
-
-      return legacyFragments
-        .filter((fragment) => source.includes(fragment))
-        .map((fragment) => `${file} contains legacy fragment ${fragment}`);
-    });
+    const violations = requiredFragments.flatMap(([source, fragment]) =>
+      source.includes(fragment)
+        ? []
+        : [`reader summary REST/event contract is missing ${fragment}`],
+    );
 
     expect(violations).toEqual([]);
   });

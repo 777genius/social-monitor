@@ -530,10 +530,10 @@
           "status": "passed",
           "observedAt": "2026-06-18T01:10:45.000Z",
           "evidence": {
-            "summary": "redacted reader briefing was generated from durable feed evidence with top reads, citations and source mix",
+            "summary": "redacted reader reader summary was generated from durable feed evidence with top reads, citations and source mix",
             "readerBrief": {
-              "briefingJobId": "briefing-job-e2e-example",
-              "briefingId": "briefing-e2e-example",
+              "readerSummaryJobId": "reader-summary-job-e2e-example",
+              "readerSummaryId": "reader-summary-e2e-example",
               "headline": "GitHub Trending and source signals are ready",
               "topReadCount": 5,
               "topReadTitles": [

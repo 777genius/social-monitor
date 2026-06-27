@@ -8,7 +8,7 @@ import {
 } from './effective-summary-policy';
 
 describe('effective summary policy', () => {
-  it('overlays user preferences onto legacy summary policy', () => {
+  it('overlays user preferences onto previous summary policy', () => {
     expect(resolveEffectiveSummaryPolicy(defaultSummaryGenerationPolicy(), {
       tone: 'analytical',
       maxKeyPoints: 7,

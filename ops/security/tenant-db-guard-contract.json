@@ -4,9 +4,9 @@
   "owner": "security-owner",
   "tenantOwnedTables": [
     "api_keys",
-    "briefing_artifacts",
-    "briefing_jobs",
-    "briefing_policies",
+    "reader_summary_artifacts",
+    "reader_summary_jobs",
+    "reader_summary_policies",
     "cursor_checkpoints",
     "delivery_attempts",
     "digest_schedules",

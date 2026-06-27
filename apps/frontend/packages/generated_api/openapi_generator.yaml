@@ -18,4 +18,4 @@ openapi_generator:
     - feed
     - relevance
     - summaries
-    - briefings
+    - reader-summaries

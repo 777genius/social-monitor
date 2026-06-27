@@ -18,7 +18,7 @@ The app shell registers:
 - `/topics` - monitoring intents and topic coverage
 - `/sources` - source catalog, bindings, credentials health and scan state
 - `/feed` - aggregated provider items, filters and review flows
-- `/summaries` - briefings, digests and insight review workflows
+- `/summaries` - reader-summaries, digests and insight review workflows
 - `/settings` - workspace governance, diagnostics and preferences
 
 ## Run Demo Mode

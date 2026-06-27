@@ -276,7 +276,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
       'HTML parser drift test covers repository name, rank, language, stars and stars gained',
       'npm run check:github-trending-page-html-e2e proves HTML parsing through ingestion and feed projection',
       'Live HTTP smoke records top repositories from github.com/trending?since=daily',
-      'Reader briefing separates GitHub Trending Page from Repo Radar',
+      'Reader reader summary separates GitHub Trending Page from Repo Radar',
     ],
     rollbackPlan:
       'Pause GitHub Trending page bindings and keep GH Archive repo radar enabled.',

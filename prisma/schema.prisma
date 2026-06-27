@@ -686,7 +686,7 @@ model SummaryFeedback {
   @@map("summary_feedback")
 }
 
-model BriefingArtifact {
+model ReaderSummaryArtifact {
   id              String        @id @db.Uuid
   tenantId        String        @map("tenant_id") @db.Uuid
   workspaceId     String        @map("workspace_id") @db.Uuid
@@ -709,10 +709,10 @@ model BriefingArtifact {
 
   @@index([tenantId, workspaceId, scopeKey, status, createdAt])
   @@index([tenantId, workspaceId, userId, scopeKey, createdAt])
-  @@map("briefing_artifacts")
+  @@map("reader_summary_artifacts")
 }
 
-model BriefingJob {
+model ReaderSummaryJob {
   id                 String        @id @db.Uuid
   tenantId           String        @map("tenant_id") @db.Uuid
   workspaceId        String        @map("workspace_id") @db.Uuid
@@ -727,7 +727,7 @@ model BriefingJob {
   startedAt          DateTime?     @map("started_at") @db.Timestamptz(6)
   completedAt        DateTime?     @map("completed_at") @db.Timestamptz(6)
   failedAt           DateTime?     @map("failed_at") @db.Timestamptz(6)
-  briefingArtifactId String?       @map("briefing_artifact_id") @db.Uuid
+  readerSummaryArtifactId String?       @map("reader_summary_artifact_id") @db.Uuid
   failureReason      String?       @map("failure_reason")
   createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -735,10 +735,10 @@ model BriefingJob {
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, workspaceId, scopeKey, status, createdAt])
   @@index([tenantId, workspaceId, userId, scopeKey, createdAt])
-  @@map("briefing_jobs")
+  @@map("reader_summary_jobs")
 }
 
-model BriefingPolicy {
+model ReaderSummaryPolicy {
   id                     String   @id @db.Uuid
   tenantId               String   @map("tenant_id") @db.Uuid
   workspaceId            String   @map("workspace_id") @db.Uuid
@@ -760,7 +760,7 @@ model BriefingPolicy {
 
   @@unique([tenantId, workspaceId, scopeKey])
   @@index([tenantId, workspaceId, updatedAt])
-  @@map("briefing_policies")
+  @@map("reader_summary_policies")
 }
 
 model DeliveryAttempt {

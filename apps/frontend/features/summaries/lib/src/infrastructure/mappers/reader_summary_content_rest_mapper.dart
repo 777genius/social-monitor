@@ -6,7 +6,7 @@ import '../api/summary_api_dto.dart';
 final class ReaderSummaryContentRestMapper {
   const ReaderSummaryContentRestMapper();
 
-  ReaderSummaryContentApiDto map(generated.BriefingReaderBriefDto dto) {
+  ReaderSummaryContentApiDto map(generated.ReaderSummaryReaderBriefDto dto) {
     return ReaderSummaryContentApiDto(
       headline: dto.headline,
       oneLineTakeaway: dto.oneLineTakeaway,
@@ -38,7 +38,7 @@ final class ReaderSummaryContentRestMapper {
   }
 
   ReaderTopicSectionApiDto _topicSection(
-    generated.BriefingReaderTopicSectionDto dto,
+    generated.ReaderSummaryReaderTopicSectionDto dto,
   ) {
     return ReaderTopicSectionApiDto(
       topicId: dto.topicId,
@@ -49,7 +49,7 @@ final class ReaderSummaryContentRestMapper {
     );
   }
 
-  TopReadApiDto _readerItem(generated.BriefingReaderItemDto dto) {
+  TopReadApiDto _readerItem(generated.ReaderSummaryReaderItemDto dto) {
     return TopReadApiDto(
       title: dto.title,
       providerKey: dto.providerKey,
@@ -79,7 +79,7 @@ final class ReaderSummaryContentRestMapper {
   }
 
   SourceMixEntryApiDto _sourceMixEntry(
-    generated.BriefingSourceMixEntryDto dto,
+    generated.ReaderSummarySourceMixEntryDto dto,
   ) {
     return SourceMixEntryApiDto(
       providerKey: dto.providerKey,
@@ -92,7 +92,7 @@ final class ReaderSummaryContentRestMapper {
     );
   }
 
-  ReaderActionApiDto _nextAction(generated.BriefingNextActionDto dto) {
+  ReaderActionApiDto _nextAction(generated.ReaderSummaryNextActionDto dto) {
     return ReaderActionApiDto(
       kind: dto.kind.json ?? 'read_source',
       label: dto.label,

@@ -19,7 +19,7 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
     const scopeFields = readerSummaryScopeToPrisma(snapshot.scope);
 
     await withPrismaWriteRetry(() =>
-      this.prisma.briefingJob.upsert({
+      this.prisma.readerSummaryJob.upsert({
         where: { id: snapshot.id },
         update: {
           ...scopeFields,
@@ -31,7 +31,7 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
           startedAt: snapshot.startedAt ?? null,
           completedAt: snapshot.completedAt ?? null,
           failedAt: snapshot.failedAt ?? null,
-          briefingArtifactId: snapshot.readerSummaryId ?? null,
+          readerSummaryArtifactId: snapshot.readerSummaryId ?? null,
           failureReason: snapshot.failureReason ?? null,
         },
         create: {
@@ -47,7 +47,7 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
           startedAt: snapshot.startedAt ?? null,
           completedAt: snapshot.completedAt ?? null,
           failedAt: snapshot.failedAt ?? null,
-          briefingArtifactId: snapshot.readerSummaryId ?? null,
+          readerSummaryArtifactId: snapshot.readerSummaryId ?? null,
           failureReason: snapshot.failureReason ?? null,
         },
       }),
@@ -59,7 +59,7 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
     workspaceId: WorkspaceId;
     readerSummaryJobId: string;
   }): Promise<ReaderSummaryJob | null> {
-    const record = await this.prisma.briefingJob.findFirst({
+    const record = await this.prisma.readerSummaryJob.findFirst({
       where: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
@@ -75,7 +75,7 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
     workspaceId: WorkspaceId;
     idempotencyKey: string;
   }): Promise<ReaderSummaryJob | null> {
-    const record = await this.prisma.briefingJob.findFirst({
+    const record = await this.prisma.readerSummaryJob.findFirst({
       where: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
@@ -89,7 +89,7 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
   async findRequested(
     params: Parameters<ReaderSummaryJobRepositoryPort["findRequested"]>[0],
   ): Promise<readonly ReaderSummaryJob[]> {
-    const records = await this.prisma.briefingJob.findMany({
+    const records = await this.prisma.readerSummaryJob.findMany({
       where: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
@@ -105,7 +105,7 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
   async claimForExecution(
     params: Parameters<ReaderSummaryJobRepositoryPort["claimForExecution"]>[0],
   ): Promise<ReaderSummaryJob | null> {
-    const record = await this.prisma.briefingJob.findFirst({
+    const record = await this.prisma.readerSummaryJob.findFirst({
       where: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
@@ -119,7 +119,7 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
     }
 
     const update = await withPrismaWriteRetry(() =>
-      this.prisma.briefingJob.updateMany({
+      this.prisma.readerSummaryJob.updateMany({
         where: {
           tenantId: params.tenantId,
           workspaceId: params.workspaceId,
@@ -135,7 +135,7 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
           startedAt: params.startedAt,
           completedAt: null,
           failedAt: null,
-          briefingArtifactId: null,
+          readerSummaryArtifactId: null,
           failureReason: null,
         },
       }),

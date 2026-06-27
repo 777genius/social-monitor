@@ -33,7 +33,7 @@ export class PrismaReaderSummaryPolicyRepository implements ReaderSummaryPolicyR
     };
 
     await withPrismaWriteRetry(() =>
-      this.prisma.briefingPolicy.upsert({
+      this.prisma.readerSummaryPolicy.upsert({
         where: {
           tenantId_workspaceId_scopeKey: {
             tenantId: snapshot.tenantId,
@@ -56,7 +56,7 @@ export class PrismaReaderSummaryPolicyRepository implements ReaderSummaryPolicyR
   async findByScope(
     params: Parameters<ReaderSummaryPolicyRepositoryPort["findByScope"]>[0],
   ): Promise<ReaderSummaryPolicy | null> {
-    const record = await this.prisma.briefingPolicy.findFirst({
+    const record = await this.prisma.readerSummaryPolicy.findFirst({
       where: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,

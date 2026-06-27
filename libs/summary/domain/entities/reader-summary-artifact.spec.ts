@@ -335,7 +335,7 @@ describe("ReaderSummaryArtifact", () => {
               providerKey: "github-repo-radar",
               field: "bodyPreview",
               canonicalUrl:
-                "https://github.com/OpenAI/Codex/stargazers?utm_source=briefing",
+                "https://github.com/OpenAI/Codex/stargazers?utm_source=readerSummary",
             },
           ],
           content: readerContent({

@@ -13,7 +13,6 @@ import {
 } from "../../adapters/model/openai-responses-reader-summary-model.adapter";
 import {
   EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE,
-  LEGACY_EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE,
   type AutoSummaryCandidateRepositoryPort,
   type ReaderSummaryArtifactRepositoryPort,
   type ReaderSummaryContextProviderPort,
@@ -280,7 +279,7 @@ export const resolveReaderSummaryModelProviderMode = (
 ): ReaderSummaryModelProviderMode => {
   const value =
     env.READER_SUMMARY_MODEL_PROVIDER ??
-    env.BRIEFING_MODEL_PROVIDER ??
+    env.READER_SUMMARY_MODEL_PROVIDER ??
     "deterministic";
 
   if (value === "deterministic" || value === "openai-responses") {
@@ -295,7 +294,7 @@ export const resolveReaderSummaryModelProviderMode = (
   }
 
   throw new Error(
-    'READER_SUMMARY_MODEL_PROVIDER or BRIEFING_MODEL_PROVIDER must be "deterministic" or "openai-responses"',
+    'READER_SUMMARY_MODEL_PROVIDER or READER_SUMMARY_MODEL_PROVIDER must be "deterministic" or "openai-responses"',
   );
 };
 
@@ -383,29 +382,10 @@ export const resolveSummaryRabbitMqJobQueueOptions = (
     },
     [EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE]: {
       queue: nonEmptyOrFallback(
-        env.RABBITMQ_READER_SUMMARY_QUEUE ?? env.RABBITMQ_BRIEFING_QUEUE,
+        env.RABBITMQ_READER_SUMMARY_QUEUE,
         "jobs.reader-summary.execute",
       ),
       routingKey: EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE,
-      durable: true,
-      deadLetterExchange: parseRabbitMqDeadLetterExchange(
-        env.RABBITMQ_DEAD_LETTER_EXCHANGE,
-        {
-          runtimeProfile: env.SOCIAL_MONITOR_RUNTIME_PROFILE,
-          settingName: "SUMMARY_JOB_QUEUE_MODE=rabbitmq",
-        },
-      ),
-      queueType: parseRabbitMqQueueType(env.RABBITMQ_QUEUE_TYPE),
-      deliveryLimit: parseRabbitMqDeliveryLimit(
-        env.RABBITMQ_QUEUE_DELIVERY_LIMIT,
-      ),
-    },
-    [LEGACY_EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE]: {
-      queue: nonEmptyOrFallback(
-        env.RABBITMQ_BRIEFING_QUEUE,
-        "jobs.briefing.execute",
-      ),
-      routingKey: LEGACY_EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE,
       durable: true,
       deadLetterExchange: parseRabbitMqDeadLetterExchange(
         env.RABBITMQ_DEAD_LETTER_EXCHANGE,

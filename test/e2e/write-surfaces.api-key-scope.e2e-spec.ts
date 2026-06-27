@@ -233,12 +233,12 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
       .set('Authorization', `Bearer ${workflowSecret}`)
       .expect(200);
 
-    const briefing = await request(app.getHttpServer())
-      .post('/briefing-requests')
+    const readerSummary = await request(app.getHttpServer())
+      .post('/reader-summary-requests')
       .set(headers)
       .set('Authorization', `Bearer ${workflowSecret}`)
-      .set('x-request-id', 'write-summary-api-key-briefing-request')
-      .set('idempotency-key', 'write-summary-api-key-briefing-request')
+      .set('x-request-id', 'write-summary-api-key-reader-summary-request')
+      .set('idempotency-key', 'write-summary-api-key-reader-summary-request')
       .send({
         scope: {
           type: 'topic',
@@ -248,13 +248,13 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
       })
       .expect(201);
 
-    expect(briefing.body).toMatchObject({
-      briefingJobId: expect.any(String),
+    expect(readerSummary.body).toMatchObject({
+      readerSummaryJobId: expect.any(String),
       created: true,
     });
 
     await request(app.getHttpServer())
-      .get(`/briefing-jobs/${briefing.body.briefingJobId}/status`)
+      .get(`/reader-summary-jobs/${readerSummary.body.readerSummaryJobId}/status`)
       .set(headers)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .expect(200);
@@ -327,10 +327,10 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
       .expect(403);
 
     await request(app.getHttpServer())
-      .post('/briefing-requests')
+      .post('/reader-summary-requests')
       .set(headers)
       .set('Authorization', `Bearer ${readOnlySecret}`)
-      .set('idempotency-key', 'write-summary-api-key-briefing-read-only-denied')
+      .set('idempotency-key', 'write-summary-api-key-reader-summary-read-only-denied')
       .send({
         scope: {
           type: 'topic',

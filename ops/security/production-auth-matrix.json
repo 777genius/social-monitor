@@ -102,13 +102,13 @@
         "test/e2e/read-surfaces.api-key-scope.e2e-spec.ts",
         "test/e2e/reader-surfaces.tenant-scope.e2e-spec.ts",
         "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts",
-        "scripts/check-briefing-workflow-smoke.ts"
+        "scripts/check-reader-summary-workflow-smoke.ts"
       ],
       "operations": [
-        { "method": "GET", "path": "/briefing-jobs/{briefingJobId}/status", "action": "briefing_jobs.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "POST", "path": "/briefing-requests", "action": "briefing_requests.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
-        { "method": "GET", "path": "/briefings", "action": "briefings.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "GET", "path": "/briefings/{briefingId}", "action": "briefings.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/reader-summary-jobs/{readerSummaryJobId}/status", "action": "reader_summary_jobs.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/reader-summary-requests", "action": "reader_summary_requests.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
+        { "method": "GET", "path": "/reader-summaries", "action": "reader-summaries.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/reader-summaries/{readerSummaryId}", "action": "reader-summaries.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/summaries", "action": "summaries.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/summaries/{summaryId}", "action": "summaries.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/summaries/{summaryId}/regenerations", "action": "summary_regenerations.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
@@ -242,7 +242,7 @@
     {
       "caseId": "reader-surface-tenant-isolation",
       "evidenceFile": "test/e2e/reader-surfaces.tenant-scope.e2e-spec.ts",
-      "requiredSnippet": "keeps relevance and briefing data isolated by tenant and workspace"
+      "requiredSnippet": "keeps relevance and reader summary data isolated by tenant and workspace"
     }
   ]
 }

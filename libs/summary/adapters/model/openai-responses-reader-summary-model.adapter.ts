@@ -412,20 +412,20 @@ export const resolveOpenAiResponsesReaderSummaryModelOptions = (
     endpointUrl: env.OPENAI_RESPONSES_ENDPOINT_URL,
     model:
       env.OPENAI_READER_SUMMARY_MODEL ??
-      env.OPENAI_BRIEFING_MODEL ??
+      env.OPENAI_READER_SUMMARY_MODEL ??
       env.OPENAI_SUMMARY_MODEL,
     promptVersion:
       env.OPENAI_READER_SUMMARY_PROMPT_VERSION ??
-      env.OPENAI_BRIEFING_PROMPT_VERSION,
+      env.OPENAI_READER_SUMMARY_PROMPT_VERSION,
     evalDatasetVersion:
       env.READER_SUMMARY_EVAL_DATASET_VERSION ??
-      env.BRIEFING_EVAL_DATASET_VERSION,
+      env.READER_SUMMARY_EVAL_DATASET_VERSION,
     timeoutMs: parsePositiveInteger(
-      env.OPENAI_READER_SUMMARY_TIMEOUT_MS ?? env.OPENAI_BRIEFING_TIMEOUT_MS,
+      env.OPENAI_READER_SUMMARY_TIMEOUT_MS ?? env.OPENAI_READER_SUMMARY_TIMEOUT_MS,
     ),
     maxOutputTokens: parsePositiveInteger(
       env.OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS ??
-        env.OPENAI_BRIEFING_MAX_OUTPUT_TOKENS,
+        env.OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS,
     ),
     estimatedInputCostUsdPerMillionTokens: parseNonNegativeNumber(
       env.OPENAI_SUMMARY_INPUT_COST_USD_PER_MILLION_TOKENS,

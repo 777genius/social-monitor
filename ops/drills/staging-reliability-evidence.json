@@ -351,8 +351,8 @@
       "verificationCommand": "npm run capture:durable-backend-e2e-loop",
       "contractArtifact": "scripts/capture-durable-backend-e2e-loop.ts",
       "stagingArtifactId": "durable-backend-e2e-output",
-      "requiredSignal": "reader briefing is generated from durable feed evidence with top reads, citations and source mix across every enabled MVP provider",
-      "exitCondition": "staging artifact records briefing id, top read count, source mix providers and citation providers without raw provider payloads"
+      "requiredSignal": "reader reader summary is generated from durable feed evidence with top reads, citations and source mix across every enabled MVP provider",
+      "exitCondition": "staging artifact records reader summary id, top read count, source mix providers and citation providers without raw provider payloads"
     },
     {
       "signalId": "backend-loop-tenant-isolation",

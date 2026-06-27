@@ -9,10 +9,7 @@ import {
 
 import type { ReaderSummaryJobStatus } from "../../domain";
 import type { ExecuteReaderSummaryJobUseCase } from "../../features/execute-reader-summary-job/execute-reader-summary-job.use-case";
-import {
-  EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE,
-  LEGACY_EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE,
-} from "../../ports";
+import { EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE } from "../../ports";
 
 type ExecuteReaderSummaryJobQueuePayload = {
   readonly tenantId: string;
@@ -86,7 +83,7 @@ export class ExecuteReaderSummaryJobCommandHandler {
     this.metrics.incrementCounter({
       name: "summary_jobs_total",
       labels: {
-        job_type: "briefing",
+        job_type: "readerSummary",
         status,
         worker: "intelligence-worker",
       },
@@ -98,7 +95,7 @@ export class ExecuteReaderSummaryJobCommandHandler {
       name: "summary_job_failures_total",
       labels: {
         failure_class: classifyFailure(error),
-        job_type: "briefing",
+        job_type: "readerSummary",
         worker: "intelligence-worker",
       },
     });
@@ -160,30 +157,24 @@ const parsePayload = (
 ): ExecuteReaderSummaryJobQueuePayload => ({
   tenantId: readTenantScopeString(payload, "tenantId"),
   workspaceId: readTenantScopeString(payload, "workspaceId"),
-  readerSummaryJobId: readStringFallback(payload, [
-    "readerSummaryJobId",
-    "briefingJobId",
-  ]),
+  readerSummaryJobId: readString(payload, "readerSummaryJobId"),
   maxEvidenceItems: readOptionalPositiveInteger(payload, "maxEvidenceItems"),
 });
 
 const isSupportedCommandType = (commandType: string): boolean =>
-  commandType === EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE ||
-  commandType === LEGACY_EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE;
+  commandType === EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE;
 
-const readStringFallback = (
+const readString = (
   payload: Readonly<Record<string, unknown>>,
-  fields: readonly string[],
+  field: string,
 ): string => {
-  for (const field of fields) {
-    const value = payload[field];
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
-    }
+  const value = payload[field];
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
   }
 
   throw new Error(
-    `Invalid execute reader summary job command payload field: ${fields.join(" or ")}`,
+    `Invalid execute reader summary job command payload field: ${field}`,
   );
 };
 

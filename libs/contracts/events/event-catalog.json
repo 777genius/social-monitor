@@ -73,12 +73,12 @@
       "requiredPayloadFields": ["summaryJobId", "summaryId", "tenantId", "workspaceId", "topicId", "status"]
     },
     {
-      "eventType": "briefing.ready",
+      "eventType": "reader_summary.ready",
       "schemaVersion": 1,
       "producer": "summary",
       "tenantScoped": true,
       "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
-      "requiredPayloadFields": ["briefingJobId", "briefingId", "tenantId", "workspaceId", "status"]
+      "requiredPayloadFields": ["readerSummaryJobId", "readerSummaryId", "tenantId", "workspaceId", "status"]
     },
     {
       "eventType": "summary.status.changed.v1",

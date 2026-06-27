@@ -88,9 +88,9 @@ import { RegenerateSummaryUseCase } from "@social-monitor/summary/features/regen
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import { RequestSummaryUseCase } from "@social-monitor/summary/features/request-summary/request-summary.use-case";
 import { UpsertSummaryPolicyUseCase } from "@social-monitor/summary/features/upsert-summary-policy/upsert-summary-policy.use-case";
-import { BriefingController } from "@social-monitor/summary/interfaces/rest/briefing.controller";
-import { BriefingJobController } from "@social-monitor/summary/interfaces/rest/briefing-job.controller";
-import { BriefingRequestController } from "@social-monitor/summary/interfaces/rest/briefing-request.controller";
+import { ReaderSummaryController } from "@social-monitor/summary/interfaces/rest/reader-summary.controller";
+import { ReaderSummaryJobController } from "@social-monitor/summary/interfaces/rest/reader-summary-job.controller";
+import { ReaderSummaryRequestController } from "@social-monitor/summary/interfaces/rest/reader-summary-request.controller";
 import { SummaryFeedbackController } from "@social-monitor/summary/interfaces/rest/summary-feedback.controller";
 import { SummaryJobController } from "@social-monitor/summary/interfaces/rest/summary-job.controller";
 import { SummaryPolicyController } from "@social-monitor/summary/interfaces/rest/summary-policy.controller";
@@ -264,9 +264,9 @@ const useCaseProviders = [
     BetaLaunchSupportController,
     RelevanceController,
     SummaryController,
-    BriefingController,
-    BriefingJobController,
-    BriefingRequestController,
+    ReaderSummaryController,
+    ReaderSummaryJobController,
+    ReaderSummaryRequestController,
     SummaryFeedbackController,
     SummaryJobController,
     SummaryPolicyController,

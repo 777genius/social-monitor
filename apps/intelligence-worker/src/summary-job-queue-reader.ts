@@ -18,7 +18,7 @@ import {
 } from './intelligence-worker-provider-tokens';
 
 export const INTELLIGENCE_SUMMARY_JOB_QUEUE_READER = Symbol('INTELLIGENCE_SUMMARY_JOB_QUEUE_READER');
-export const INTELLIGENCE_BRIEFING_JOB_QUEUE_READER = Symbol('INTELLIGENCE_BRIEFING_JOB_QUEUE_READER');
+export const INTELLIGENCE_READER_SUMMARY_JOB_QUEUE_READER = Symbol('INTELLIGENCE_READER_SUMMARY_JOB_QUEUE_READER');
 
 export type SummaryJobCommandDelivery = {
   readonly command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>;

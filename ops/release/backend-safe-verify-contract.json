@@ -80,7 +80,7 @@
     "check:summary-feedback-rest",
     "check:summary-policy-rest",
     "check:summary-request-queue",
-    "check:briefing-workflow",
+    "check:reader-summary-workflow",
     "check:summary-worker-command",
     "check:summary-job-polling-loop",
     "check:auto-summary-scheduler-loop",

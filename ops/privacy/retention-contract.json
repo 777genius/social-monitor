@@ -284,27 +284,27 @@
       "purgeTrigger": "topic_deleted_or_workspace_offboarding_completed"
     },
     {
-      "table": "briefing_artifacts",
+      "table": "reader_summary_artifacts",
       "dataClass": "ai_generated_content",
       "owner": "summary-owner",
       "retentionDays": 365,
       "deleteMode": "hard_delete_after_retention",
       "exportable": true,
       "legalHoldAware": true,
-      "purgeTrigger": "briefing_retention_expired_or_workspace_offboarding_completed"
+      "purgeTrigger": "reader_summary_retention_expired_or_workspace_offboarding_completed"
     },
     {
-      "table": "briefing_jobs",
+      "table": "reader_summary_jobs",
       "dataClass": "operational_summary_state",
       "owner": "summary-owner",
       "retentionDays": 90,
       "deleteMode": "hard_delete_after_replay_window",
       "exportable": false,
       "legalHoldAware": true,
-      "purgeTrigger": "briefing_job_terminal_and_replay_window_expired"
+      "purgeTrigger": "reader_summary_job_terminal_and_replay_window_expired"
     },
     {
-      "table": "briefing_policies",
+      "table": "reader_summary_policies",
       "dataClass": "user_summary_configuration",
       "owner": "summary-owner",
       "retentionDays": 365,

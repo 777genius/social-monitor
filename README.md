@@ -2,7 +2,7 @@
 
 Social Monitor is a monitoring platform for public social, news, and web signals. It combines a TypeScript/NestJS backend, durable worker runtime, generated API contracts, and a web-first Flutter frontend for analyst and operator workflows.
 
-The project is built for teams that need to collect public signals, normalize them into reliable events, search and analyze them, review feed items, generate summaries or briefings, and route important findings into alerts, reports, dashboards, or downstream AI workflows.
+The project is built for teams that need to collect public signals, normalize them into reliable events, search and analyze them, review feed items, generate summaries or reader-summaries, and route important findings into alerts, reports, dashboards, or downstream AI workflows.
 
 ## What Is In This Repo
 
@@ -20,7 +20,7 @@ Social Monitor is not a hosted SaaS in this repository. It is a full-stack MVP/r
 - News and media intelligence dashboards.
 - Public web and social signal ingestion pipelines.
 - Reputation, risk, and incident monitoring workflows.
-- Analyst review surfaces for feed items, source health, summaries, and briefings.
+- Analyst review surfaces for feed items, source health, summaries, and reader-summaries.
 - Source connector experiments for APIs, feeds, webhooks, queues, and live provider checks.
 - AI-assisted triage, summarization, clustering, relevance feedback, and evaluation pipelines.
 - Internal tools for analysts, operators, support, and engineering teams.
@@ -88,7 +88,7 @@ apps/
       topics/           monitoring intents, queries and topic coverage
       sources/          source catalog, bindings, credentials and scan state
       feed/             aggregated provider items, filters and review flows
-      summaries/        briefings, digests and insight review workflows
+      summaries/        reader-summaries, digests and insight review workflows
       settings/         workspace governance, diagnostics and preferences
 
 libs/
@@ -99,7 +99,7 @@ libs/
   ingestion/            source providers, scan execution, cursors and feed projection
   monitoring/           scan requests and monitoring workflows
   relevance/            feedback, preference and relevance-learning flows
-  summary/              summary jobs, artifacts, briefings, feedback and model adapters
+  summary/              summary jobs, artifacts, reader-summaries, feedback and model adapters
   usage/                audit, quota and rate-limit controls
   platform/             shared platform utilities and infrastructure ports
 

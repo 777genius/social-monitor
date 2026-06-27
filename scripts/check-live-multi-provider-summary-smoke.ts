@@ -116,8 +116,8 @@ type ScanMetrics = {
   readonly skippedDuplicates: number;
 };
 
-type LiveBriefingSmokeResult = {
-  readonly briefingId: string;
+type LiveReaderSummarySmokeResult = {
+  readonly readerSummaryId: string;
   readonly readerHeadline: string;
   readonly selectedProviders: readonly LiveProviderKey[];
   readonly citedProviders: readonly string[];
@@ -533,7 +533,7 @@ const main = async (): Promise<void> => {
     "live multi-provider summary must publish summary.ready",
   );
 
-  const briefing = await runLiveBriefingSmoke({
+  const readerSummary = await runLiveReaderSummarySmoke({
     tenant,
     workspace,
     topicId,
@@ -548,7 +548,7 @@ const main = async (): Promise<void> => {
     tenantId: tenant,
     workspaceId: workspace,
     userId: "user-live-multi-provider-summary-smoke",
-    briefing,
+    readerSummary,
   });
 
   writeOptionalEvidenceArtifact({
@@ -567,7 +567,7 @@ const main = async (): Promise<void> => {
     summaryModelVersion: artifactSnapshot.lineage.modelVersion,
     summaryEstimatedCostUsd: artifactSnapshot.usage.estimatedCostUsd,
     summaryQualityFlags: artifactSnapshot.qualityFlags,
-    briefing,
+    readerSummary,
     targets,
   });
 
@@ -583,16 +583,16 @@ const main = async (): Promise<void> => {
       `Summary model: ${artifactSnapshot.lineage.providerVersion}/${artifactSnapshot.lineage.modelVersion}`,
       `Summary id: ${summary.summaryId}`,
       `Headline: ${artifactSnapshot.headline}`,
-      `Briefing id: ${briefing.briefingId}`,
-      `Briefing headline: ${briefing.readerHeadline}`,
-      `Briefing selected providers: ${briefing.selectedProviders.join(", ")}`,
-      `Briefing reader source mix: ${briefing.readerSourceMixProviders.join(", ")}`,
-      `Briefing top read providers: ${briefing.topReadProviders.join(", ")}`,
+      `ReaderSummary id: ${readerSummary.readerSummaryId}`,
+      `ReaderSummary headline: ${readerSummary.readerHeadline}`,
+      `ReaderSummary selected providers: ${readerSummary.selectedProviders.join(", ")}`,
+      `ReaderSummary reader source mix: ${readerSummary.readerSourceMixProviders.join(", ")}`,
+      `ReaderSummary top read providers: ${readerSummary.topReadProviders.join(", ")}`,
     ].join("\n"),
   );
 };
 
-const runLiveBriefingSmoke = async (params: {
+const runLiveReaderSummarySmoke = async (params: {
   readonly tenant: ReturnType<typeof tenantId>;
   readonly workspace: ReturnType<typeof workspaceId>;
   readonly topicId: string;
@@ -604,18 +604,18 @@ const runLiveBriefingSmoke = async (params: {
   readonly targetBySourceBinding: ReadonlyMap<string, ScanTarget>;
   readonly targets: readonly ScanTarget[];
   readonly clock: Clock;
-}): Promise<LiveBriefingSmokeResult> => {
+}): Promise<LiveReaderSummarySmokeResult> => {
   const readerSummaryJobs = new InMemoryReaderSummaryJobRepository();
   const readerSummaryArtifacts = new InMemoryReaderSummaryArtifactRepository();
   const readerSummaryPolicies = new InMemoryReaderSummaryPolicyRepository();
-  const briefingEvents = new InMemorySummaryEventPublisher();
-  const briefingQueue = new InMemoryReaderSummaryJobQueueAdapter();
-  const briefingIds = new SequenceIdGenerator("live-multi-provider-briefing");
+  const readerSummaryEvents = new InMemorySummaryEventPublisher();
+  const readerSummaryQueue = new InMemoryReaderSummaryJobQueueAdapter();
+  const readerSummaryIds = new SequenceIdGenerator("live-multi-provider-readerSummary");
   const scope = { type: "workspace" } as const;
 
   await readerSummaryPolicies.save(
     ReaderSummaryPolicy.create({
-      id: "briefing-policy-live-multi-provider-smoke",
+      id: "readerSummary-policy-live-multi-provider-smoke",
       tenantId: params.tenant,
       workspaceId: params.workspace,
       scope,
@@ -628,37 +628,37 @@ const runLiveBriefingSmoke = async (params: {
       includeRepeatedSignals: true,
       dedupeStrategy: "canonical_url_then_title",
       customInstructions:
-        "Build a reader-friendly workspace briefing across Reddit, GitHub, Hacker News and RSS.",
+        "Build a reader-friendly workspace readerSummary across Reddit, GitHub, Hacker News and RSS.",
       createdAt: sampledAt,
       updatedAt: sampledAt,
     }),
   );
 
-  const requestBriefing = new RequestReaderSummaryUseCase(
+  const requestReaderSummary = new RequestReaderSummaryUseCase(
     readerSummaryJobs,
-    briefingQueue,
+    readerSummaryQueue,
     new AllowingSummaryQuota(),
-    briefingIds,
+    readerSummaryIds,
     params.clock,
   );
   const request = unwrap(
-    await requestBriefing.execute({
+    await requestReaderSummary.execute({
       tenantId: params.tenant,
       workspaceId: params.workspace,
       scope,
-      idempotencyKey: "live-multi-provider-briefing-idempotency-key",
-      correlationId: "corr-live-multi-provider-briefing-smoke",
+      idempotencyKey: "live-multi-provider-readerSummary-idempotency-key",
+      correlationId: "corr-live-multi-provider-readerSummary-smoke",
     }),
-    "request live multi-provider briefing",
+    "request live multi-provider readerSummary",
   );
 
   assert(
     request.created,
-    "live multi-provider briefing request must create a job",
+    "live multi-provider readerSummary request must create a job",
   );
   assert(
-    briefingQueue.all().length === 1,
-    "live multi-provider briefing request must enqueue one job",
+    readerSummaryQueue.all().length === 1,
+    "live multi-provider readerSummary request must enqueue one job",
   );
 
   const rankFeedItems = new RankFeedItemsUseCase(
@@ -671,43 +671,43 @@ const runLiveBriefingSmoke = async (params: {
     params.feedItems,
     params.clock,
   );
-  const executeBriefing = new ExecuteReaderSummaryJobUseCase(
+  const executeReaderSummary = new ExecuteReaderSummaryJobUseCase(
     readerSummaryJobs,
     readerSummaryArtifacts,
     readerSummaryPolicies,
     evidenceSelector,
     new DeterministicReaderSummaryModelAdapter(),
-    briefingEvents,
-    briefingIds,
+    readerSummaryEvents,
+    readerSummaryIds,
     params.clock,
   );
-  const briefing = unwrap(
-    await executeBriefing.execute({
+  const readerSummary = unwrap(
+    await executeReaderSummary.execute({
       tenantId: params.tenant,
       workspaceId: params.workspace,
       readerSummaryJobId: request.readerSummaryJobId,
       maxEvidenceItems,
     }),
-    "execute live multi-provider briefing",
+    "execute live multi-provider readerSummary",
   );
 
   assert(
-    briefing.status === "completed",
-    `live multi-provider briefing must complete, got ${briefing.status}`,
+    readerSummary.status === "completed",
+    `live multi-provider readerSummary must complete, got ${readerSummary.status}`,
   );
   assert(
-    briefing.readerSummaryId !== undefined,
-    "live multi-provider briefing must produce a briefing id",
+    readerSummary.readerSummaryId !== undefined,
+    "live multi-provider readerSummary must produce a readerSummary id",
   );
 
   const artifact = await readerSummaryArtifacts.findById({
     tenantId: params.tenant,
     workspaceId: params.workspace,
-    readerSummaryId: briefing.readerSummaryId,
+    readerSummaryId: readerSummary.readerSummaryId,
   });
   assert(
     artifact !== null,
-    "live multi-provider briefing artifact must be persisted",
+    "live multi-provider readerSummary artifact must be persisted",
   );
 
   const artifactSnapshot = artifact.toSnapshot();
@@ -731,7 +731,7 @@ const runLiveBriefingSmoke = async (params: {
   const readerBrief = artifactSnapshot.content;
   assert(
     readerBrief !== undefined,
-    "live multi-provider briefing must include reader brief",
+    "live multi-provider readerSummary must include reader brief",
   );
   const readerSourceMixProviders = new Set(
     readerBrief.sourceMix.map((entry) => entry.providerKey),
@@ -742,42 +742,42 @@ const runLiveBriefingSmoke = async (params: {
   const firstTopReadTitle = readerBrief.topReads[0]?.title;
 
   assert(
-    readerBrief.headline.startsWith("Workspace briefing:"),
-    `briefing reader headline must be reader-facing, got ${readerBrief.headline}`,
+    readerBrief.headline.startsWith("Workspace readerSummary:"),
+    `readerSummary reader headline must be reader-facing, got ${readerBrief.headline}`,
   );
   assert(
     firstTopReadTitle === undefined || readerBrief.headline !== firstTopReadTitle,
-    "briefing reader headline must not repeat the first top read title",
+    "readerSummary reader headline must not repeat the first top read title",
   );
 
   for (const target of params.targets) {
     assert(
       selectedProviders.has(target.providerKey),
-      `briefing evidence window must include ${target.providerKey}`,
+      `readerSummary evidence window must include ${target.providerKey}`,
     );
     assert(
       citedProviders.has(target.providerKey),
-      `briefing citation map must include ${target.providerKey}`,
+      `readerSummary citation map must include ${target.providerKey}`,
     );
     assert(
       readerSourceMixProviders.has(target.providerKey),
-      `briefing reader source mix must include ${target.providerKey}`,
+      `readerSummary reader source mix must include ${target.providerKey}`,
     );
     assert(
       topReadProviders.has(target.providerKey),
-      `briefing top reads must include ${target.providerKey}`,
+      `readerSummary top reads must include ${target.providerKey}`,
     );
   }
 
   assert(
-    briefingEvents
+    readerSummaryEvents
       .all()
       .some((event) => event.eventType === "reader_summary.ready"),
-    "live multi-provider briefing must publish briefing.ready",
+    "live multi-provider readerSummary must publish reader_summary.ready",
   );
 
   return {
-    briefingId: briefing.readerSummaryId,
+    readerSummaryId: readerSummary.readerSummaryId,
     readerHeadline: readerBrief.headline,
     selectedProviders: [...selectedProviders].sort(),
     citedProviders: [...citedProviders].sort(),
@@ -898,7 +898,7 @@ const writeOptionalFrontendFixture = (input: {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly userId: string;
-  readonly briefing: LiveBriefingSmokeResult;
+  readonly readerSummary: LiveReaderSummarySmokeResult;
 }): void => {
   const fixturePath = readOptionalEnv(frontendFixturePathEnv);
   if (fixturePath === undefined) {
@@ -908,18 +908,18 @@ const writeOptionalFrontendFixture = (input: {
   const generatedAt = new Date().toISOString();
   const artifact = {
     schemaVersion: 1,
-    format: "frontend-reader-briefing-live-fixture-v1",
+    format: "frontend-reader-summary-live-fixture-v1",
     generatedAt,
     tenantId: input.tenantId,
     workspaceId: input.workspaceId,
     userId: input.userId,
-    briefingArtifact: input.briefing.frontendArtifact,
+    readerSummaryArtifact: input.readerSummary.frontendArtifact,
     evidence: {
-      selectedProviders: input.briefing.selectedProviders,
-      citedProviders: input.briefing.citedProviders,
-      readerSourceMixProviders: input.briefing.readerSourceMixProviders,
-      topReadProviders: input.briefing.topReadProviders,
-      topReadCount: input.briefing.topReadCount,
+      selectedProviders: input.readerSummary.selectedProviders,
+      citedProviders: input.readerSummary.citedProviders,
+      readerSourceMixProviders: input.readerSummary.readerSourceMixProviders,
+      topReadProviders: input.readerSummary.topReadProviders,
+      topReadCount: input.readerSummary.topReadCount,
     },
     redaction: {
       secretsIncluded: false,
@@ -948,7 +948,7 @@ const writeOptionalEvidenceArtifact = (input: {
   readonly summaryModelVersion: string;
   readonly summaryEstimatedCostUsd: number;
   readonly summaryQualityFlags: readonly string[];
-  readonly briefing: LiveBriefingSmokeResult;
+  readonly readerSummary: LiveReaderSummarySmokeResult;
   readonly targets: readonly ScanTarget[];
 }): void => {
   const evidencePath = readOptionalEnv(evidencePathEnv);
@@ -1005,13 +1005,13 @@ const writeOptionalEvidenceArtifact = (input: {
           summaryModelVersion: input.summaryModelVersion,
           summaryEstimatedCostUsd: input.summaryEstimatedCostUsd,
           summaryQualityFlags: input.summaryQualityFlags,
-          briefingSelectedProviders: input.briefing.selectedProviders,
-          briefingCitedProviders: input.briefing.citedProviders,
-          briefingReaderSourceMixProviders:
-            input.briefing.readerSourceMixProviders,
-          briefingTopReadProviders: input.briefing.topReadProviders,
-          briefingTopReadCount: input.briefing.topReadCount,
-          briefingQualityFlags: input.briefing.qualityFlags,
+          readerSummarySelectedProviders: input.readerSummary.selectedProviders,
+          readerSummaryCitedProviders: input.readerSummary.citedProviders,
+          readerSummaryReaderSourceMixProviders:
+            input.readerSummary.readerSourceMixProviders,
+          readerSummaryTopReadProviders: input.readerSummary.topReadProviders,
+          readerSummaryTopReadCount: input.readerSummary.topReadCount,
+          readerSummaryQualityFlags: input.readerSummary.qualityFlags,
         },
       },
     ],
@@ -1024,13 +1024,13 @@ const writeOptionalEvidenceArtifact = (input: {
       summaryModelProvider: input.summaryModelProvider,
       summaryModelVersion: input.summaryModelVersion,
       summaryEstimatedCostUsd: input.summaryEstimatedCostUsd,
-      briefingId: input.briefing.briefingId,
-      briefingSelectedProviders: input.briefing.selectedProviders,
-      briefingCitedProviders: input.briefing.citedProviders,
-      briefingReaderSourceMixProviders: input.briefing.readerSourceMixProviders,
-      briefingTopReadProviders: input.briefing.topReadProviders,
-      briefingTopReadCount: input.briefing.topReadCount,
-      briefingQualityFlags: input.briefing.qualityFlags,
+      readerSummaryId: input.readerSummary.readerSummaryId,
+      readerSummarySelectedProviders: input.readerSummary.selectedProviders,
+      readerSummaryCitedProviders: input.readerSummary.citedProviders,
+      readerSummaryReaderSourceMixProviders: input.readerSummary.readerSourceMixProviders,
+      readerSummaryTopReadProviders: input.readerSummary.topReadProviders,
+      readerSummaryTopReadCount: input.readerSummary.topReadCount,
+      readerSummaryQualityFlags: input.readerSummary.qualityFlags,
     },
     redaction: {
       secretsIncluded: false,

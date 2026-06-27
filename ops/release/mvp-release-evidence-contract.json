@@ -285,8 +285,8 @@
       "blocksRelease": true
     },
     {
-      "gateId": "briefing-workflow",
-      "command": "npm run check:briefing-workflow",
+      "gateId": "reader-summary-workflow",
+      "command": "npm run check:reader-summary-workflow",
       "blocksRelease": true
     },
     {

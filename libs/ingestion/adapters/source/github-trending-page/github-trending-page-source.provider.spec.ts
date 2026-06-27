@@ -30,7 +30,7 @@ describe('GitHubTrendingPageSourceProvider', () => {
     expectedFailureKind: 'unavailable',
   });
 
-  it('returns structured GitHub Trending page metadata for reader briefings', async () => {
+  it('returns structured GitHub Trending page metadata for reader reader-summaries', async () => {
     const provider = new GitHubTrendingPageSourceProvider(
       new FixtureGitHubTrendingPageClient(),
       { now: () => new Date('2026-06-24T12:00:00.000Z') },

@@ -33,7 +33,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
     await app.close();
   });
 
-  it('keeps relevance and briefing data isolated by tenant and workspace', async () => {
+  it('keeps relevance and reader summary data isolated by tenant and workspace', async () => {
     const sourceTenant = tenantId('tenant-reader-scope-source-e2e');
     const otherTenant = tenantId('tenant-reader-scope-other-e2e');
     const sourceWorkspace = workspaceId('workspace-reader-scope-source-e2e');
@@ -69,13 +69,13 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
       scopes: ['read:summaries'],
     });
 
-    const briefingRequest = await request(app.getHttpServer())
-      .post('/briefing-requests')
+    const readerSummaryRequest = await request(app.getHttpServer())
+      .post('/reader-summary-requests')
       .set('x-tenant-id', sourceTenant)
       .set('x-workspace-id', sourceWorkspace)
       .set('x-workspace-role', 'member')
-      .set('x-request-id', 'reader-scope-briefing-request')
-      .set('idempotency-key', 'reader-scope-briefing-request')
+      .set('x-request-id', 'reader-scope-reader-summary-request')
+      .set('idempotency-key', 'reader-scope-reader-summary-request')
       .send({
         scope: {
           type: 'topic',
@@ -85,14 +85,14 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
       })
       .expect(201);
 
-    const executedBriefing = await app.get(ExecuteReaderSummaryJobUseCase).execute({
+    const executedReaderSummary = await app.get(ExecuteReaderSummaryJobUseCase).execute({
       tenantId: sourceTenant,
       workspaceId: sourceWorkspace,
-      readerSummaryJobId: briefingRequest.body.briefingJobId,
+      readerSummaryJobId: readerSummaryRequest.body.readerSummaryJobId,
     });
 
-    if (!executedBriefing.ok || executedBriefing.value.readerSummaryId === undefined) {
-      throw new Error('Expected reader scope briefing execution to produce a briefing id');
+    if (!executedReaderSummary.ok || executedReaderSummary.value.readerSummaryId === undefined) {
+      throw new Error('Expected reader scope reader summary execution to produce a reader summary id');
     }
 
     const sourceFeed = await request(app.getHttpServer())
@@ -139,25 +139,25 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
       items: [],
     });
 
-    const otherTenantBriefings = await request(app.getHttpServer())
-      .get('/briefings')
+    const otherTenantReader summaries = await request(app.getHttpServer())
+      .get('/reader-summaries')
       .query({ scopeType: 'topic', topicId, limit: 10 })
       .set('x-tenant-id', otherTenant)
       .set('x-workspace-id', sourceWorkspace)
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    expect(otherTenantBriefings.body.items).toEqual([]);
+    expect(otherTenantReader summaries.body.items).toEqual([]);
 
     await request(app.getHttpServer())
-      .get(`/briefings/${executedBriefing.value.readerSummaryId}`)
+      .get(`/reader-summaries/${executedReaderSummary.value.readerSummaryId}`)
       .set('x-tenant-id', otherTenant)
       .set('x-workspace-id', sourceWorkspace)
       .set('x-workspace-role', 'viewer')
       .expect(404);
 
     await request(app.getHttpServer())
-      .get(`/briefing-jobs/${briefingRequest.body.briefingJobId}/status`)
+      .get(`/reader-summary-jobs/${readerSummaryRequest.body.readerSummaryJobId}/status`)
       .set('x-tenant-id', otherTenant)
       .set('x-workspace-id', sourceWorkspace)
       .set('x-workspace-role', 'viewer')
@@ -172,7 +172,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
       .expect(403);
 
     await request(app.getHttpServer())
-      .get(`/briefings/${executedBriefing.value.readerSummaryId}`)
+      .get(`/reader-summaries/${executedReaderSummary.value.readerSummaryId}`)
       .set('x-tenant-id', otherTenant)
       .set('x-workspace-id', sourceWorkspace)
       .set('Authorization', `Bearer ${summaryKey}`)
@@ -181,7 +181,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
 
   it('returns controlled tenant scope errors for reader surfaces', async () => {
     await request(app.getHttpServer())
-      .get('/briefings')
+      .get('/reader-summaries')
       .set('x-workspace-id', workspaceId('workspace-reader-scope-missing-e2e'))
       .expect(400)
       .expect((response) => {
@@ -192,7 +192,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
       });
 
     await request(app.getHttpServer())
-      .get('/briefings/briefing-reader-scope-missing')
+      .get('/reader-summaries/reader-summary-reader-scope-missing')
       .set('x-tenant-id', tenantId('tenant-reader-scope-missing-e2e'))
       .expect(400)
       .expect((response) => {
@@ -203,7 +203,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
       });
 
     await request(app.getHttpServer())
-      .get('/briefing-jobs/briefing-job-reader-scope-missing/status')
+      .get('/reader-summary-jobs/reader-summary-job-reader-scope-missing/status')
       .set('x-tenant-id', tenantId('tenant-reader-scope-missing-e2e'))
       .expect(400)
       .expect((response) => {

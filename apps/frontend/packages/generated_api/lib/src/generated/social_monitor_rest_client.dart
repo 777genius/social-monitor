@@ -4,8 +4,8 @@
 
 import 'package:dio/dio.dart' hide Headers;
 
-import 'clients/briefings_client.dart';
 import 'clients/feed_client.dart';
+import 'clients/reader_summaries_client.dart';
 import 'clients/relevance_client.dart';
 import 'clients/scan_requests_client.dart';
 import 'clients/scan_policies_client.dart';
@@ -28,8 +28,8 @@ class SocialMonitorRestClient {
 
   static String get version => '0.1.0';
 
-  BriefingsClient? _briefings;
   FeedClient? _feed;
+  ReaderSummariesClient? _readerSummaries;
   RelevanceClient? _relevance;
   ScanRequestsClient? _scanRequests;
   ScanPoliciesClient? _scanPolicies;
@@ -39,10 +39,10 @@ class SocialMonitorRestClient {
   TopicsClient? _topics;
   SourceBindingsClient? _sourceBindings;
 
-  BriefingsClient get briefings =>
-      _briefings ??= BriefingsClient(_dio, baseUrl: _baseUrl);
-
   FeedClient get feed => _feed ??= FeedClient(_dio, baseUrl: _baseUrl);
+
+  ReaderSummariesClient get readerSummaries =>
+      _readerSummaries ??= ReaderSummariesClient(_dio, baseUrl: _baseUrl);
 
   RelevanceClient get relevance =>
       _relevance ??= RelevanceClient(_dio, baseUrl: _baseUrl);

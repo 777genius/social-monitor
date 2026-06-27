@@ -24,14 +24,14 @@ language.
 - Reader Action: explicit action proposed to the user, such as reading a source,
   watching a repository or marking a top read relevant/not relevant.
 - Digest: scheduled collection of summaries for a workspace or user.
-- Briefing: legacy backend/API term for a workspace-level generated summary
+- ReaderSummary: canonical backend/API term for a workspace-level generated summary
   artifact. Frontend domain/application/presentation must say Summary.
 - Insight: notable claim or pattern derived from monitored items.
 
 ## Forbidden Synonyms
 
 - Do not expose model provider terms as summary domain language.
-- Do not expose Briefing as a separate user-facing concept next to Summary.
+- Do not expose ReaderSummary as a separate user-facing concept next to Summary.
 - Do not put normalized ranking labels like `Story signal`, `Base signal`,
   `Cross-source support`, `Confirmed by` or `Evidence items` into
   `ProviderMetric[]`.
@@ -39,11 +39,11 @@ language.
 
 ## Rename Backlog
 
-- Keep current backend/API `Briefing*` names until the contract can move safely.
-- Future target: rename workspace-level briefing contract language to
+- Keep current backend/API `ReaderSummary*` names until the contract can move safely.
+- Future target: rename workspace-level readerSummary contract language to
   `WorkspaceSummary` or `ReaderSummary` across backend DTOs, OpenAPI,
   generated_api, mappers and tests.
-- Until that migration lands, frontend presentation maps backend Briefing data
+- Until that migration lands, frontend presentation maps backend ReaderSummary data
   to Summary copy through infrastructure ACL mappers.
 
 ## Open Questions

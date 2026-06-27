@@ -605,7 +605,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
       ) ?? null,
   };
 
-  readonly briefingJob: PrismaSummaryClient["briefingJob"] = {
+  readonly readerSummaryJob: PrismaSummaryClient["readerSummaryJob"] = {
     upsert: async (args) => {
       const existing = this.readerSummaryJobs.get(args.where.id);
       const record: PrismaReaderSummaryJobRecord = {
@@ -632,7 +632,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         startedAt: args.update.startedAt ?? null,
         completedAt: args.update.completedAt ?? null,
         failedAt: args.update.failedAt ?? null,
-        briefingArtifactId: args.update.briefingArtifactId ?? null,
+        readerSummaryArtifactId: args.update.readerSummaryArtifactId ?? null,
         failureReason: args.update.failureReason ?? null,
         createdAt: existing?.createdAt ?? clock.now(),
         updatedAt: clock.now(),
@@ -691,7 +691,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         .slice(0, args.take),
   };
 
-  readonly briefingArtifact: PrismaSummaryClient["briefingArtifact"] = {
+  readonly readerSummaryArtifact: PrismaSummaryClient["readerSummaryArtifact"] = {
     upsert: async (args) => {
       const existing = this.readerSummaryArtifacts.get(args.where.id);
       const record: PrismaReaderSummaryArtifactRecord = {
@@ -742,7 +742,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
     count: async (args) => this.filterReaderSummaryArtifacts(args.where).length,
   };
 
-  readonly briefingPolicy: PrismaSummaryClient["briefingPolicy"] = {
+  readonly readerSummaryPolicy: PrismaSummaryClient["readerSummaryPolicy"] = {
     upsert: async (args) => {
       const key = [
         args.where.tenantId_workspaceId_scopeKey.tenantId,

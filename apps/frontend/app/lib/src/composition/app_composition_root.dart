@@ -137,7 +137,7 @@ final class AppCompositionRoot {
       _RouteFeatureDescriptor(
         id: 'summaries',
         title: 'Summaries',
-        description: 'Briefings, digests, and insight review workflows.',
+        description: 'Reader summaries, digests, and insight review workflows.',
         route: FeatureRouteContract(
           id: AppRouteId('summaries'),
           path: '/summaries',

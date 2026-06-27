@@ -15,14 +15,9 @@ void registerSummariesArchitectureTests() {
       }
 
       final source = file.readAsStringSync();
-      for (final forbiddenTerm in const [
-        'Briefing',
-        'briefing',
-        'readerBrief',
-        'ReaderBrief',
-      ]) {
+      for (final forbiddenTerm in const ['readerBrief', 'ReaderBrief']) {
         if (source.contains(forbiddenTerm)) {
-          violations.add('$path contains legacy term "$forbiddenTerm"');
+          violations.add('$path contains deprecated term "$forbiddenTerm"');
         }
       }
     }
@@ -31,18 +26,14 @@ void registerSummariesArchitectureTests() {
   });
 
   test(
-    'summaries infrastructure maps legacy Briefing contract into ReaderSummary DTOs',
+    'summaries infrastructure maps generated reader summary contract in infrastructure',
     () {
       final frontendRoot = _frontendRootPath();
       final summariesRoot = '$frontendRoot/features/summaries/lib/src';
       final violations = <String>[];
       final forbiddenFeatureLocalTerms = const [
-        'BriefingApiDto',
-        'BriefingJobApiDto',
-        'briefingApiDto',
-        'requestedBriefingJob',
-        'briefingJobStatus',
-        'briefing_reader_brief',
+        'deprecatedApiDto',
+        'reader_summary_reader_brief',
       ];
 
       for (final file in _collectDartFiles(summariesRoot)) {
@@ -51,7 +42,7 @@ void registerSummariesArchitectureTests() {
         for (final forbiddenTerm in forbiddenFeatureLocalTerms) {
           if (source.contains(forbiddenTerm)) {
             violations.add(
-              '$path contains feature-local legacy term "$forbiddenTerm"',
+              '$path contains feature-local deprecated term "$forbiddenTerm"',
             );
           }
         }

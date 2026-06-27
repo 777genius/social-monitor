@@ -15,7 +15,6 @@ import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
 
 import { FeedReaderSummaryFreshnessProbe } from "../../adapters/evidence/feed-reader-summary-freshness.probe";
 import { RelevanceReaderSummaryEvidenceSelector } from "../../adapters/evidence/relevance-reader-summary-evidence.selector";
-import { ReaderSummaryLegacyEventPublisherAdapter } from "../../adapters/anti-corruption/reader-summary-legacy-event-publisher.adapter";
 import { SummaryMemoryReaderSummaryContextProvider } from "../../adapters/memory/summary-memory-reader-summary-context.provider";
 import { StoryRankingMetricsRecorder } from "../../adapters/metrics/story-ranking-metrics.recorder";
 import { ReaderSummaryJobQueuePublisherAdapter } from "../../adapters/messaging/reader-summary-job-queue.adapter";
@@ -270,7 +269,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
         readerSummaryPolicies,
         evidenceSelector,
         readerSummaryModel,
-        new ReaderSummaryLegacyEventPublisherAdapter(events),
+        events,
         new CryptoIdGenerator(),
         new SystemClock(),
         contextProvider,

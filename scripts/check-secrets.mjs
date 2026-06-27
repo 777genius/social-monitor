@@ -76,7 +76,7 @@ if ([...'EMPTY_TOKEN=\nNEXT_KEY=\n'.matchAll(envSecretPattern)].length > 0) {
 if ([...'EMPTY_TOKEN=prod.token\n'.matchAll(envSecretPattern)].length !== 1) {
   violations.push(`${allowlistPath}: populated secret-like env vars must be scanned on the same line`);
 }
-if ([...'OPENAI_BRIEFING_MAX_OUTPUT_TOKENS=2500\n'.matchAll(envSecretPattern)].length > 0) {
+if ([...'OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS=2500\n'.matchAll(envSecretPattern)].length > 0) {
   violations.push(`${allowlistPath}: non-secret token-count env vars must not be scanned as secrets`);
 }
 

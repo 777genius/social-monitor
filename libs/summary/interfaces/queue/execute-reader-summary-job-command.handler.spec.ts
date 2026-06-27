@@ -21,9 +21,9 @@ class FakeExecuteReaderSummaryJobUseCase {
     return {
       ok: true,
       value: {
-        readerSummaryJobId: "briefing-job-1",
+        readerSummaryJobId: "readerSummary-job-1",
         status: "completed",
-        readerSummaryId: "briefing-1",
+        readerSummaryId: "readerSummary-1",
       },
     };
   }
@@ -54,9 +54,9 @@ describe("ExecuteReaderSummaryJobCommandHandler", () => {
     });
 
     expect(result).toEqual({
-      readerSummaryJobId: "briefing-job-1",
+      readerSummaryJobId: "readerSummary-job-1",
       status: "completed",
-      readerSummaryId: "briefing-1",
+      readerSummaryId: "readerSummary-1",
     } satisfies ExecuteReaderSummaryJobQueueResult);
     expect(executeReaderSummaryJob.commands).toEqual([
       {
@@ -68,14 +68,14 @@ describe("ExecuteReaderSummaryJobCommandHandler", () => {
     ]);
     expect(
       metrics.counterValue("summary_jobs_total", {
-        job_type: "briefing",
+        job_type: "readerSummary",
         status: "started",
         worker: "intelligence-worker",
       }),
     ).toBe(1);
     expect(
       metrics.counterValue("summary_jobs_total", {
-        job_type: "briefing",
+        job_type: "readerSummary",
         status: "succeeded",
         worker: "intelligence-worker",
       }),
@@ -94,12 +94,12 @@ describe("ExecuteReaderSummaryJobCommandHandler", () => {
         runtime,
       ).handle({
         commandId: "command-1",
-        commandType: "briefing.job.execute",
+        commandType: "reader_summary.job.execute",
         schemaVersion: 1,
         correlationId: "correlation-1",
         payload: {
           workspaceId: "workspace-1",
-          briefingJobId: "briefing-job-1",
+          readerSummaryJobId: "readerSummary-job-1",
         },
       }),
     ).rejects.toEqual(
@@ -110,34 +110,4 @@ describe("ExecuteReaderSummaryJobCommandHandler", () => {
     expect(executeReaderSummaryJob.commands).toEqual([]);
   });
 
-  it("accepts legacy queued briefing payloads for already published messages", async () => {
-    const executeReaderSummaryJob = new FakeExecuteReaderSummaryJobUseCase();
-    const runtime = new WorkerRuntime({ serviceName: "intelligence-worker" });
-    runtime.onModuleInit();
-
-    await new ExecuteReaderSummaryJobCommandHandler(
-      executeReaderSummaryJob as unknown as ExecuteReaderSummaryJobUseCase,
-      new InMemoryMetricsRecorder(),
-      runtime,
-    ).handle({
-      commandId: "command-1",
-      commandType: "briefing.job.execute",
-      schemaVersion: 1,
-      correlationId: "correlation-1",
-      payload: {
-        tenantId: "tenant-1",
-        workspaceId: "workspace-1",
-        briefingJobId: "legacy-briefing-job-1",
-      },
-    });
-
-    expect(executeReaderSummaryJob.commands).toEqual([
-      {
-        tenantId: tenantId("tenant-1"),
-        workspaceId: workspaceId("workspace-1"),
-        readerSummaryJobId: "legacy-briefing-job-1",
-        maxEvidenceItems: undefined,
-      },
-    ]);
-  });
 });

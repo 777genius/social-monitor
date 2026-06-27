@@ -289,7 +289,7 @@ const normalizeReaderSummaryArtifactSchemaVersion = (
 ): "reader_summary.artifact.v1" => {
   if (
     value === "reader_summary.artifact.v1" ||
-    value === "briefing.artifact.v1"
+    value === "reader_summary.artifact.v1"
   ) {
     return "reader_summary.artifact.v1";
   }

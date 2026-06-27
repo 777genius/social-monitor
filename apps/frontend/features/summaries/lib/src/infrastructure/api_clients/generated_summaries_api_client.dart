@@ -67,9 +67,9 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
     LoadWorkspaceSummaryApiRequest request,
   ) async {
     final result = await _runtime.client
-        .send<generated.ListBriefingsResponseDto>(
+        .send<generated.ListReaderSummariesResponseDto>(
           generated.WorkspaceRequest(scope: request.scope),
-          () => _runtime.rest.briefings.briefingControllerList(
+          () => _runtime.rest.readerSummaries.readerSummaryControllerList(
             xWorkspaceId: request.scope.workspaceId,
             xTenantId: request.scope.tenantId,
             scopeType: generated.ScopeType.workspace,
@@ -93,16 +93,16 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
     RequestWorkspaceSummaryApiRequest request,
   ) async {
     final result = await _runtime.client
-        .send<generated.RequestBriefingResponseDto>(
+        .send<generated.RequestReaderSummaryResponseDto>(
           generated.WorkspaceRequest(scope: request.scope),
-          () => _runtime.rest.briefings.briefingRequestControllerCreate(
+          () => _runtime.rest.readerSummaries.readerSummaryRequestControllerCreate(
             idempotencyKey: request.idempotencyKey,
             xWorkspaceId: request.scope.workspaceId,
             xTenantId: request.scope.tenantId,
-            body: generated.RequestBriefingRequestDto(
+            body: generated.RequestReaderSummaryRequestDto(
               userId: request.userId,
-              scope: const generated.BriefingScopeDto(
-                type: generated.BriefingScopeDtoTypeType.workspace,
+              scope: const generated.ReaderSummaryScopeDto(
+                type: generated.ReaderSummaryScopeDtoTypeType.workspace,
               ),
             ),
           ),
@@ -119,10 +119,10 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
     LoadWorkspaceSummaryJobStatusApiRequest request,
   ) async {
     final result = await _runtime.client
-        .send<generated.BriefingJobStatusResponseDto>(
+        .send<generated.ReaderSummaryJobStatusResponseDto>(
           generated.WorkspaceRequest(scope: request.scope),
-          () => _runtime.rest.briefings.briefingJobControllerGetStatus(
-            briefingJobId: request.summaryJobId,
+          () => _runtime.rest.readerSummaries.readerSummaryJobControllerGetStatus(
+            readerSummaryJobId: request.summaryJobId,
             xWorkspaceId: request.scope.workspaceId,
             xTenantId: request.scope.tenantId,
           ),

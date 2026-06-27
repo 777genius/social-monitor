@@ -281,7 +281,7 @@ export type PrismaSummaryClient = {
       };
     }): Promise<PrismaSummaryPolicyRecord | null>;
   };
-  readonly briefingJob: {
+  readonly readerSummaryJob: {
     upsert(args: {
       readonly where: { readonly id: string };
       readonly update: {
@@ -296,7 +296,7 @@ export type PrismaSummaryClient = {
         readonly startedAt?: Date | null;
         readonly completedAt?: Date | null;
         readonly failedAt?: Date | null;
-        readonly briefingArtifactId?: string | null;
+        readonly readerSummaryArtifactId?: string | null;
         readonly failureReason?: string | null;
       };
       readonly create: {
@@ -314,7 +314,7 @@ export type PrismaSummaryClient = {
         readonly startedAt?: Date | null;
         readonly completedAt?: Date | null;
         readonly failedAt?: Date | null;
-        readonly briefingArtifactId?: string | null;
+        readonly readerSummaryArtifactId?: string | null;
         readonly failureReason?: string | null;
       };
     }): Promise<PrismaReaderSummaryJobRecord>;
@@ -342,7 +342,7 @@ export type PrismaSummaryClient = {
         readonly startedAt: Date;
         readonly completedAt: Date | null;
         readonly failedAt: Date | null;
-        readonly briefingArtifactId: string | null;
+        readonly readerSummaryArtifactId: string | null;
         readonly failureReason: string | null;
       };
     }): Promise<{ readonly count: number }>;
@@ -359,7 +359,7 @@ export type PrismaSummaryClient = {
       readonly take: number;
     }): Promise<readonly PrismaReaderSummaryJobRecord[]>;
   };
-  readonly briefingArtifact: {
+  readonly readerSummaryArtifact: {
     upsert(args: {
       readonly where: { readonly id: string };
       readonly update: PrismaReaderSummaryArtifactMutation;
@@ -395,7 +395,7 @@ export type PrismaSummaryClient = {
       };
     }): Promise<number>;
   };
-  readonly briefingPolicy: {
+  readonly readerSummaryPolicy: {
     upsert(args: {
       readonly where: {
         readonly tenantId_workspaceId_scopeKey: {

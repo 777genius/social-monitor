@@ -155,7 +155,7 @@
         },
         {
           "kind": "command",
-          "command": "npm run check:briefing-workflow"
+          "command": "npm run check:reader-summary-workflow"
         },
         {
           "kind": "command",

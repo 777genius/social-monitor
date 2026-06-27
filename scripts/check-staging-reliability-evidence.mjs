@@ -356,8 +356,8 @@ const requiredEvidenceShapeBySignalId = new Map([
     "backend-loop-reader-brief",
     [
       ["summary", "non_empty_string"],
-      ["readerBrief.briefingJobId", "non_empty_string"],
-      ["readerBrief.briefingId", "non_empty_string"],
+      ["readerBrief.readerSummaryJobId", "non_empty_string"],
+      ["readerBrief.readerSummaryId", "non_empty_string"],
       ["readerBrief.headline", "non_empty_string"],
       ["readerBrief.topReadCount", "at_least_three_integer"],
       ["readerBrief.topReadTitles", "non_empty_string_array"],

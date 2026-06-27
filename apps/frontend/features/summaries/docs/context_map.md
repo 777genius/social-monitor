@@ -7,7 +7,7 @@
 
 ## Upstream Contexts
 
-- Backend Summary APIs provide generated summaries, legacy Briefing DTOs,
+- Backend Summary APIs provide generated summaries, canonical ReaderSummary DTOs,
   citations and feedback state.
 - Feed provides selected feed items, normalized signal score and provider-native
   metrics.
@@ -25,9 +25,9 @@
 
 - Do not import feed or settings feature packages directly.
 - Keep generated summary DTOs and provider-specific language in infrastructure.
-- Map backend/API Briefing terminology to Summary before it reaches
+- Map backend/API ReaderSummary terminology to Summary before it reaches
   user-facing presentation copy.
 - Summary domain consumes `signalScore` and `providerMetrics`; it must not know
   Reddit score, HN points, GitHub stars or X likes calculation rules.
-- `Briefing*Dto -> ReaderSummary` is an anti-corruption mapper until the backend
+- `ReaderSummary*Dto -> ReaderSummary` is an anti-corruption mapper until the backend
   REST contract is renamed.

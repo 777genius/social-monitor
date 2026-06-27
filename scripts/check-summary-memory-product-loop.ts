@@ -173,7 +173,7 @@ async function main(): Promise<void> {
     assert.equal(memoryBackend.factBodies[2]?.category, 'relevance_quality');
     assert(
       String(memoryBackend.factBodies[2]?.text ?? '').includes('down-rank similar reddit evidence'),
-      'user preference fact must carry ranking guidance for the next briefing',
+      'user preference fact must carry ranking guidance for the next readerSummary',
     );
   }
 

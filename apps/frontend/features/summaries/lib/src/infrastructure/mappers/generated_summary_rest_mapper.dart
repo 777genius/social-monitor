@@ -16,9 +16,9 @@ final class GeneratedSummaryRestMapper {
     );
   }
 
-  ReaderSummaryApiDto readerSummary(generated.BriefingArtifactResponseDto dto) {
+  ReaderSummaryApiDto readerSummary(generated.ReaderSummaryArtifactResponseDto dto) {
     return ReaderSummaryApiDto(
-      id: dto.briefingId,
+      id: dto.readerSummaryId,
       title: dto.headline,
       executiveSummary: _readerSummaryBodyText(
         executiveSummary: dto.executiveSummary,
@@ -55,22 +55,22 @@ final class GeneratedSummaryRestMapper {
   }
 
   ReaderSummaryJobApiDto requestedReaderSummaryJob(
-    generated.RequestBriefingResponseDto dto,
+    generated.RequestReaderSummaryResponseDto dto,
   ) {
     return ReaderSummaryJobApiDto(
-      id: dto.briefingJobId,
+      id: dto.readerSummaryJobId,
       status: _requestReaderSummaryStatus(dto.status),
       created: dto.created,
     );
   }
 
   ReaderSummaryJobApiDto readerSummaryJobStatus(
-    generated.BriefingJobStatusResponseDto dto,
+    generated.ReaderSummaryJobStatusResponseDto dto,
   ) {
     return ReaderSummaryJobApiDto(
-      id: dto.briefingJobId,
+      id: dto.readerSummaryJobId,
       status: _readerSummaryJobStatus(dto.status),
-      summaryId: dto.briefingId,
+      summaryId: dto.readerSummaryId,
       failureReason: dto.failureReason,
       requestedAt: dto.requestedAt,
       startedAt: dto.startedAt,
@@ -136,7 +136,7 @@ final class GeneratedSummaryRestMapper {
   }
 
   SummaryCitationApiDto _readerSummaryCitation(
-    generated.BriefingCitationViewDto dto,
+    generated.ReaderSummaryCitationViewDto dto,
   ) {
     final field = dto.field.json ?? 'evidence';
     return SummaryCitationApiDto(
@@ -225,30 +225,30 @@ final class GeneratedSummaryRestMapper {
   }
 
   bool _isDegradedReaderSummaryFlag(
-    generated.BriefingArtifactResponseDtoQualityFlagsQualityFlags flag,
+    generated.ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags flag,
   ) {
     return switch (flag) {
-      generated.BriefingArtifactResponseDtoQualityFlagsQualityFlags.noSignal ||
+      generated.ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags.noSignal ||
       generated
-          .BriefingArtifactResponseDtoQualityFlagsQualityFlags
+          .ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags
           .lowConfidence ||
       generated
-          .BriefingArtifactResponseDtoQualityFlagsQualityFlags
+          .ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags
           .conflictingEvidence ||
       generated
-          .BriefingArtifactResponseDtoQualityFlagsQualityFlags
+          .ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags
           .limitedSources ||
       generated
-          .BriefingArtifactResponseDtoQualityFlagsQualityFlags
+          .ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags
           .partialEvidence ||
       generated
-          .BriefingArtifactResponseDtoQualityFlagsQualityFlags
+          .ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags
           .contextUnavailable => true,
       generated
-          .BriefingArtifactResponseDtoQualityFlagsQualityFlags
+          .ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags
           .providerFailed =>
         true,
-      generated.BriefingArtifactResponseDtoQualityFlagsQualityFlags.$unknown =>
+      generated.ReaderSummaryArtifactResponseDtoQualityFlagsQualityFlags.$unknown =>
         false,
     };
   }
@@ -262,41 +262,41 @@ final class GeneratedSummaryRestMapper {
   }
 
   String _readerSummaryFreshnessLabel(
-    generated.BriefingFreshnessDto freshness,
+    generated.ReaderSummaryFreshnessDto freshness,
   ) {
     return switch (freshness.status) {
-      generated.BriefingFreshnessDtoStatusStatus.fresh => 'Fresh',
-      generated.BriefingFreshnessDtoStatusStatus.stale => 'Stale',
-      generated.BriefingFreshnessDtoStatusStatus.$unknown => 'Unknown',
+      generated.ReaderSummaryFreshnessDtoStatusStatus.fresh => 'Fresh',
+      generated.ReaderSummaryFreshnessDtoStatusStatus.stale => 'Stale',
+      generated.ReaderSummaryFreshnessDtoStatusStatus.$unknown => 'Unknown',
     };
   }
 
   String _requestReaderSummaryStatus(
-    generated.RequestBriefingResponseDtoStatusStatus status,
+    generated.RequestReaderSummaryResponseDtoStatusStatus status,
   ) {
     return switch (status) {
-      generated.RequestBriefingResponseDtoStatusStatus.requested => 'requested',
-      generated.RequestBriefingResponseDtoStatusStatus.running => 'running',
-      generated.RequestBriefingResponseDtoStatusStatus.completed => 'completed',
-      generated.RequestBriefingResponseDtoStatusStatus.noSignal => 'no_signal',
-      generated.RequestBriefingResponseDtoStatusStatus.failed => 'failed',
-      generated.RequestBriefingResponseDtoStatusStatus.$unknown => 'unknown',
+      generated.RequestReaderSummaryResponseDtoStatusStatus.requested => 'requested',
+      generated.RequestReaderSummaryResponseDtoStatusStatus.running => 'running',
+      generated.RequestReaderSummaryResponseDtoStatusStatus.completed => 'completed',
+      generated.RequestReaderSummaryResponseDtoStatusStatus.noSignal => 'no_signal',
+      generated.RequestReaderSummaryResponseDtoStatusStatus.failed => 'failed',
+      generated.RequestReaderSummaryResponseDtoStatusStatus.$unknown => 'unknown',
     };
   }
 
   String _readerSummaryJobStatus(
-    generated.BriefingJobStatusResponseDtoStatusStatus status,
+    generated.ReaderSummaryJobStatusResponseDtoStatusStatus status,
   ) {
     return switch (status) {
-      generated.BriefingJobStatusResponseDtoStatusStatus.requested =>
+      generated.ReaderSummaryJobStatusResponseDtoStatusStatus.requested =>
         'requested',
-      generated.BriefingJobStatusResponseDtoStatusStatus.running => 'running',
-      generated.BriefingJobStatusResponseDtoStatusStatus.completed =>
+      generated.ReaderSummaryJobStatusResponseDtoStatusStatus.running => 'running',
+      generated.ReaderSummaryJobStatusResponseDtoStatusStatus.completed =>
         'completed',
-      generated.BriefingJobStatusResponseDtoStatusStatus.noSignal =>
+      generated.ReaderSummaryJobStatusResponseDtoStatusStatus.noSignal =>
         'no_signal',
-      generated.BriefingJobStatusResponseDtoStatusStatus.failed => 'failed',
-      generated.BriefingJobStatusResponseDtoStatusStatus.$unknown => 'unknown',
+      generated.ReaderSummaryJobStatusResponseDtoStatusStatus.failed => 'failed',
+      generated.ReaderSummaryJobStatusResponseDtoStatusStatus.$unknown => 'unknown',
     };
   }
 
