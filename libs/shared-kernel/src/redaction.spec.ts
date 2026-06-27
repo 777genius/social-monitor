@@ -65,7 +65,7 @@ describe('redaction helpers', () => {
 
   it('counts sensitive text fragments with the shared redaction policy', () => {
     expect(countSensitiveTextFragments(
-      'token=plain-token Bearer bearer-token {"client_secret":"json-secret"} https://user:pass@example.test/feed safe text',
+      'token=plain-token Bearer token-value {"client_secret":"json-secret"} https://user:pass@example.test/feed safe text',
     )).toBe(4);
   });
 
