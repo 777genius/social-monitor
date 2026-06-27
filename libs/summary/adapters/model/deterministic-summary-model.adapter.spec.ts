@@ -100,6 +100,8 @@ describe('DeterministicSummaryModelAdapter', () => {
 
     const attempt = await adapter.summarize(input, route);
 
+    expect(attempt.draft.headline).toBe('Topic summary: 1 item across 1 source (GitHub)');
+    expect(attempt.draft.headline).not.toBe('Agents runtime improves orchestration');
     expect(attempt.draft.sourceHighlights[0]).toContain('Matches memory preference');
     expect(attempt.draft.sourceHighlights[0]).toContain('Strong source engagement signal');
   });

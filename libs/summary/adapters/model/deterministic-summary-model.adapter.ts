@@ -9,6 +9,7 @@ import type {
   SummaryModelRoute,
   SummaryModelValidationResult,
 } from '../../ports';
+import { buildSummaryHeadline } from './deterministic-summary-headline';
 
 const route: SummaryModelRoute = {
   provider: 'deterministic-local',
@@ -126,7 +127,7 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
     return {
       route: selectedRoute,
       draft: {
-        headline: firstItem.title,
+        headline: buildSummaryHeadline(selectedItems),
         executiveSummary: buildExecutiveSummary(input),
         keyPoints,
         risksAndUnknowns: input.policy.includeRisks

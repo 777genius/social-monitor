@@ -479,6 +479,16 @@ const main = async (): Promise<void> => {
   );
 
   const artifactSnapshot = artifact.toSnapshot();
+  const firstKeyPointClaim = artifactSnapshot.keyPoints[0]?.claim;
+  assert(
+    artifactSnapshot.headline.startsWith("Topic summary:"),
+    `summary headline must be topic-level, got ${artifactSnapshot.headline}`,
+  );
+  assert(
+    firstKeyPointClaim === undefined ||
+      artifactSnapshot.headline !== firstKeyPointClaim,
+    "summary headline must not repeat the first key point claim",
+  );
   const feedById = new Map(feedSnapshots.map((item) => [item.id, item]));
   const selectedProviders = new Set(
     artifactSnapshot.sourceWindow.selectedFeedItemIds
