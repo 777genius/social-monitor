@@ -20,6 +20,7 @@ prisma/generated/
 __pycache__/
 *.pyc
 .pytest_cache/
+*.egg-info/
 apps/x-collector/.venv/
 apps/x-collector/var/
 

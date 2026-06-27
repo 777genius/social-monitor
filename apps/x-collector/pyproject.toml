@@ -26,4 +26,6 @@ where = ["src"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-q"
-
+markers = [
+  "real_e2e: live X/Twitter collector tests requiring cookies and network",
+]

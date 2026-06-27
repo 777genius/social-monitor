@@ -58,6 +58,9 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                 daily_tweets_limit=settings.scweet_daily_tweets_limit,
                 requests_per_min=settings.scweet_requests_per_minute,
                 min_delay_s=settings.scweet_min_delay_seconds,
+                n_splits=settings.scweet_n_splits,
+                api_page_size=settings.scweet_api_page_size,
+                max_empty_pages=settings.scweet_max_empty_pages,
             )
             return Scweet(
                 cookies_file=settings.scweet_cookies_file,

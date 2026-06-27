@@ -20,6 +20,9 @@ class XCollectorSettings:
     scweet_daily_tweets_limit: int
     scweet_requests_per_minute: int
     scweet_min_delay_seconds: float
+    scweet_n_splits: int
+    scweet_api_page_size: int
+    scweet_max_empty_pages: int
 
     @classmethod
     def from_env(
@@ -79,6 +82,27 @@ class XCollectorSettings:
                 0.1,
                 120.0,
             ),
+            scweet_n_splits=read_int(
+                source,
+                "X_COLLECTOR_SCWEET_N_SPLITS",
+                5,
+                1,
+                24,
+            ),
+            scweet_api_page_size=read_int(
+                source,
+                "X_COLLECTOR_SCWEET_API_PAGE_SIZE",
+                20,
+                1,
+                100,
+            ),
+            scweet_max_empty_pages=read_int(
+                source,
+                "X_COLLECTOR_SCWEET_MAX_EMPTY_PAGES",
+                1,
+                1,
+                10,
+            ),
         )
 
     def ensure_runtime_paths(self) -> None:
@@ -131,4 +155,3 @@ def read_float(
         return fallback
 
     return min(max(parsed, minimum), maximum)
-
