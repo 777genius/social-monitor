@@ -71,7 +71,7 @@ export class RssSourceProvider implements SourceProviderPort {
     const feed = await this.client.readFeed(plan.query.query, plan.maxItems, decodeCursor(plan.cursor));
 
     return {
-      items: feed.items.flatMap((item, index) => normalizeItem(item, plan.query.query, index)),
+      items: feed.items.flatMap((item, index) => normalizeItem(item, index)),
       nextCursor: encodeCursor(feed, plan.cursor),
       warnings: rssWarnings(feed.items),
     };
@@ -98,7 +98,7 @@ export class RssSourceProvider implements SourceProviderPort {
   }
 }
 
-const normalizeItem = (item: RssFeedItem, feedUrl: string, index: number) => {
+const normalizeItem = (item: RssFeedItem, index: number) => {
   const title = item.title ?? '';
   const body = item.content ?? '';
 
@@ -110,7 +110,11 @@ const normalizeItem = (item: RssFeedItem, feedUrl: string, index: number) => {
     return [];
   }
 
-  const canonicalUrl = item.link ?? feedUrl;
+  const canonicalUrl = canonicalLinkForItem(item);
+
+  if (canonicalUrl === undefined) {
+    return [];
+  }
 
   return [
     {
@@ -135,10 +139,21 @@ const rssWarnings = (items: readonly RssFeedItem[]): readonly string[] => [
       ? ['Some RSS items had no published timestamp; they were skipped.']
       : []
   ),
+  ...(
+    items.some((item) => hasReadableContent(item) && item.publishedAt !== undefined && canonicalLinkForItem(item) === undefined)
+      ? ['Some RSS items had no canonical link; they were skipped.']
+      : []
+  ),
 ];
 
 const hasReadableContent = (item: RssFeedItem): boolean =>
   (item.title ?? '').trim().length + (item.content ?? '').trim().length > 0;
+
+const canonicalLinkForItem = (item: RssFeedItem): string | undefined => {
+  const link = item.link?.trim();
+
+  return link === undefined || link.length === 0 ? undefined : link;
+};
 
 const decodeCursor = (cursor: string | undefined) => {
   if (cursor === undefined) {

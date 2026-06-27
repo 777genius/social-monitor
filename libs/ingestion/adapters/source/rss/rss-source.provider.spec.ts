@@ -161,4 +161,43 @@ describe('RssSourceProvider', () => {
     expect(result.items[0]?.publishedAt).toEqual(new Date('2026-06-05T10:03:00.000Z'));
     expect(result.warnings).toEqual(['Some RSS items had no published timestamp; they were skipped.']);
   });
+
+  it('skips readable RSS entries without a canonical link', async () => {
+    const client = {
+      async readFeed() {
+        return {
+          items: [
+            {
+              guid: 'missing-link',
+              title: 'Readable but missing link',
+              content: 'This entry must not cite the feed URL as the article URL.',
+              publishedAt: new Date('2026-06-05T10:04:00.000Z'),
+            },
+            {
+              guid: 'valid-link',
+              link: 'https://example.test/rss/valid-link',
+              title: 'Readable with link',
+              content: 'This entry has a stable citation URL.',
+              publishedAt: new Date('2026-06-05T10:05:00.000Z'),
+            },
+          ],
+        };
+      },
+    } satisfies RssClientPort;
+    const provider = new RssSourceProvider(client);
+    const context = {
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'rss-binding-1',
+      scanJobId: 'scan-job-1',
+      correlationId: 'correlation-1',
+    };
+    const query = { mode: 'url' as const, query: 'https://example.test/feed.xml' };
+
+    const result = await provider.scan(provider.planScan(query, context), context);
+
+    expect(result.items.map((item) => item.externalId)).toEqual(['valid-link']);
+    expect(result.items[0]?.canonicalUrl).toBe('https://example.test/rss/valid-link');
+    expect(result.warnings).toEqual(['Some RSS items had no canonical link; they were skipped.']);
+  });
 });
