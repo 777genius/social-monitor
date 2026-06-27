@@ -34,6 +34,15 @@ describe('formatLogMessage', () => {
     ).toBe('request failed header=[REDACTED] generatedApiKey=[REDACTED] webhookSigningKey=[REDACTED] databaseUrl=[REDACTED]');
   });
 
+  it('redacts inline secret fragments inside generic string fields', () => {
+    expect(
+      formatLogMessage('request failed', {
+        reason: 'token=plain-token',
+        response: '{"client_secret":"json-secret"}',
+      }),
+    ).toBe('request failed reason=[REDACTED] response=[REDACTED]');
+  });
+
   it('normalizes unsafe string fields to safe label values', () => {
     expect(
       formatLogMessage('source failed', {
@@ -42,6 +51,6 @@ describe('formatLogMessage', () => {
         userEmail: 'user@example.com',
         prompt: 'free form prompt text',
       }),
-    ).toBe('source failed provider=fake-source sourceUrl=unknown userEmail=unknown prompt=unknown');
+    ).toBe('source failed provider=fake-source sourceUrl=[REDACTED] userEmail=unknown prompt=unknown');
   });
 });

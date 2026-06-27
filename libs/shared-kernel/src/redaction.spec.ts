@@ -27,17 +27,19 @@ describe('redaction helpers', () => {
       accessToken: 'plain-token',
       nested: {
         url: 'https://user:pass@example.test/path',
+        message: 'provider rejected access_token=raw-token',
         count: 3,
       },
-      values: ['safe', 'smk_generated_secret'],
+      values: ['safe', 'smk_generated_secret', 'Authorization: Bearer token-value'],
     })).toEqual({
       provider: 'reddit',
       accessToken: REDACTED_VALUE,
       nested: {
         url: REDACTED_VALUE,
+        message: `provider rejected access_token=${REDACTED_VALUE}`,
         count: 3,
       },
-      values: ['safe', REDACTED_VALUE],
+      values: ['safe', REDACTED_VALUE, `Authorization=${REDACTED_VALUE}`],
     });
   });
 
@@ -46,12 +48,14 @@ describe('redaction helpers', () => {
       action: 'api_key.created',
       authorization: 'Bearer token-value',
       attempts: 2,
-      evidence: ['safe', 'whsec_generated_secret'],
+      errorMessage: 'credential exchange failed client_secret=raw-client-secret',
+      evidence: ['safe', 'whsec_generated_secret', 'Authorization: Bearer token-value'],
     })).toEqual({
       action: 'api_key.created',
       authorization: REDACTED_VALUE,
       attempts: 2,
-      evidence: ['safe', REDACTED_VALUE],
+      errorMessage: `credential exchange failed client_secret=${REDACTED_VALUE}`,
+      evidence: ['safe', REDACTED_VALUE, `Authorization=${REDACTED_VALUE}`],
     });
   });
 

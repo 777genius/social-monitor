@@ -34,8 +34,8 @@ export const isSensitiveString = (value: string): boolean =>
 export const redactSensitiveText = (value: string): string =>
   value
     .replace(inlineJsonCredentialPattern, (_match, key: string) => `"${key}":"${REDACTED_VALUE}"`)
-    .replace(inlineCredentialPattern, (_match, key: string) => `${key}=${REDACTED_VALUE}`)
     .replace(inlineBearerPattern, REDACTED_VALUE)
+    .replace(inlineCredentialPattern, (_match, key: string) => `${key}=${REDACTED_VALUE}`)
     .replace(inlineGeneratedSecretPattern, REDACTED_VALUE)
     .replace(inlineUrlWithPasswordPattern, (_match, protocol: string) => `${protocol}${REDACTED_VALUE}@`);
 
@@ -65,7 +65,7 @@ export const redactSensitiveValue = (key: string, value: unknown): unknown => {
   }
 
   if (typeof value === 'string') {
-    return isSensitiveString(value) ? REDACTED_VALUE : value;
+    return redactSensitiveStringValue(value);
   }
 
   if (Array.isArray(value)) {
@@ -104,12 +104,15 @@ const redactSensitiveMetadataValue = (
   }
 
   if (typeof value === 'string') {
-    return isSensitiveString(value) ? REDACTED_VALUE : value;
+    return redactSensitiveStringValue(value);
   }
 
   if (Array.isArray(value)) {
-    return value.map((item) => isSensitiveString(item) ? REDACTED_VALUE : item);
+    return value.map(redactSensitiveStringValue);
   }
 
   return value;
 };
+
+const redactSensitiveStringValue = (value: string): string =>
+  isSensitiveString(value) ? REDACTED_VALUE : redactSensitiveText(value);

@@ -1,4 +1,9 @@
-import { REDACTED_VALUE, isSensitiveKey, isSensitiveString } from '@social-monitor/shared-kernel';
+import {
+  REDACTED_VALUE,
+  isSensitiveKey,
+  isSensitiveString,
+  redactSensitiveText,
+} from '@social-monitor/shared-kernel';
 
 import { safeLabelValue } from './safe-label';
 
@@ -28,6 +33,10 @@ const formatLogValue = (key: string, value: string | number | boolean): string =
   }
 
   if (isSensitiveString(value)) {
+    return REDACTED_VALUE;
+  }
+
+  if (redactSensitiveText(value) !== value) {
     return REDACTED_VALUE;
   }
 
