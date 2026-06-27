@@ -534,6 +534,36 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
       });
   });
 
+  it('rejects inline credential material in source activation target config without echoing secrets', async () => {
+    await request(app.getHttpServer())
+      .post('/user-subscriptions/activate-source')
+      .set('x-tenant-id', 'tenant-source-activation-secret-boundary-e2e')
+      .set('x-workspace-id', 'workspace-source-activation-secret-boundary-e2e')
+      .set('x-workspace-role', 'member')
+      .send({
+        userId: 'user-source-activation-secret-boundary',
+        providerKey: 'reddit',
+        targetKind: 'subreddit',
+        targetValue: 'programming',
+        targetConfig: {
+          listing: 'hot',
+          accessToken: 'raw-activation-token',
+        },
+        schedule: {
+          recipientKey: 'user-source-activation-secret-boundary',
+          channel: 'in_app',
+          intervalSeconds: 3600,
+          includeNoSignal: true,
+        },
+      })
+      .expect(400)
+      .expect((response) => {
+        expect(response.body.code).toBe('validation.failed');
+        expect(response.body.detail).toContain('inline credential field: accessToken');
+        expect(JSON.stringify(response.body)).not.toContain('raw-activation-token');
+      });
+  });
+
   it('rejects subscription-scoped summary requests without a user id', async () => {
     await request(app.getHttpServer())
       .post('/topics/topic-subscription-scope-validation-e2e/summary-requests')

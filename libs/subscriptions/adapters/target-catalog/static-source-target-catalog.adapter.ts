@@ -1,3 +1,5 @@
+import { isSensitiveKey } from '@social-monitor/shared-kernel';
+
 import type {
   SourceTargetCatalogPort,
   SourceTargetDescriptor,
@@ -61,6 +63,14 @@ export class StaticSourceTargetCatalogAdapter implements SourceTargetCatalogPort
     const normalizedValue = rule.normalize(params.targetValue);
     if (normalizedValue === null) {
       return { ok: false, reason: `Invalid ${providerKey} ${targetKind} target value` };
+    }
+
+    const inlineCredentialField = findInlineCredentialField(params.config);
+    if (inlineCredentialField !== null) {
+      return {
+        ok: false,
+        reason: `Source target config must reference stored credentials instead of inline credential field: ${inlineCredentialField}`,
+      };
     }
 
     return {
@@ -151,3 +161,67 @@ const normalizeConfigValue = (value: unknown): unknown => {
 
   return String(value);
 };
+
+const findInlineCredentialField = (
+  config: Readonly<Record<string, unknown>>,
+): string | null => {
+  for (const [key, value] of Object.entries(config)) {
+    const field = findInlineCredentialFieldValue(key, value);
+    if (field !== null) {
+      return field;
+    }
+  }
+
+  return null;
+};
+
+const findInlineCredentialFieldValue = (key: string, value: unknown): string | null => {
+  if (key === 'sourceCredentialId') {
+    return null;
+  }
+
+  if (key === 'credentialRef') {
+    return validateCredentialRef(value);
+  }
+
+  if (isSensitiveKey(key)) {
+    return key;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const field = findInlineCredentialFieldValue(key, item);
+      if (field !== null) {
+        return field;
+      }
+    }
+  }
+
+  if (isRecord(value)) {
+    for (const [nestedKey, nestedValue] of Object.entries(value)) {
+      const field = findInlineCredentialFieldValue(`${key}.${nestedKey}`, nestedValue);
+      if (field !== null) {
+        return field;
+      }
+    }
+  }
+
+  return null;
+};
+
+const validateCredentialRef = (value: unknown): string | null => {
+  if (!isRecord(value)) {
+    return 'credentialRef';
+  }
+
+  for (const key of Object.keys(value)) {
+    if (key !== 'id' && key !== 'sourceCredentialId') {
+      return `credentialRef.${key}`;
+    }
+  }
+
+  return null;
+};
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);

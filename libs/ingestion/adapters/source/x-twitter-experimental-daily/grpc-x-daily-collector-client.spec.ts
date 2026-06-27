@@ -60,7 +60,7 @@ describe('GrpcXDailyCollectorClient', () => {
     const client = new GrpcXDailyCollectorClient(
       grpcClient as never,
       { now: () => new Date('2026-06-27T00:00:00.000Z') },
-      { timeoutMs: 1_000, serviceToken: 'token' },
+      { timeoutMs: 1_000, serviceToken: 'token-value' },
     );
 
     await expect(client.collectDailySearch({
@@ -106,7 +106,7 @@ describe('GrpcXDailyCollectorClient', () => {
         minLikes: 5,
       }),
       correlationId: ['corr-1'],
-      authorization: ['Bearer token'],
+      authorization: ['Bearer token-value'],
       deadline: '2026-06-27T00:00:01.000Z',
     }]);
   });
