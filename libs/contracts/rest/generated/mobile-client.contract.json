@@ -76,8 +76,8 @@
     "enumStrings": "preserve_raw_value_and_map_to_unknown_in_ui_layer",
     "additionalJsonProperties": "ignore_for_strong_models_preserve_in_raw_payload_when_available"
   },
-  "operationCount": 69,
-  "mobileReadyOperationCount": 69,
+  "operationCount": 70,
+  "mobileReadyOperationCount": 70,
   "devOnlyWorkspaceRoleOperations": [],
   "mobileReadyOperations": [
     "ApiKeysController_create",
@@ -140,6 +140,7 @@
     "SummaryRequestController_create",
     "TopicController_create",
     "TopicController_list",
+    "UserSubscriptionsController_activateSource",
     "UserSubscriptionsController_create",
     "UserSubscriptionsController_list",
     "UserSubscriptionsController_upsertSummaryPreference",
@@ -2154,6 +2155,32 @@
       "usesDevOnlyWorkspaceRoleHeader": true,
       "devOnlyWorkspaceRoleRequired": false,
       "requestBodySchemaRef": "#/components/schemas/UpsertUserSummaryPreferenceRequestDto",
+      "successResponseSchemaRefs": []
+    },
+    {
+      "operationId": "UserSubscriptionsController_activateSource",
+      "clientName": "UserSubscriptionsController_activateSource",
+      "method": "POST",
+      "path": "/user-subscriptions/activate-source",
+      "tags": [
+        "user-subscriptions"
+      ],
+      "summary": "Create a user subscription and activate its monitoring source pipeline.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": "#/components/schemas/ActivateTopicSourceRequestDto",
       "successResponseSchemaRefs": []
     }
   ]

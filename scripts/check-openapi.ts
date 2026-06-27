@@ -320,6 +320,7 @@ class OpenApiContractModule {}
 
 async function main(): Promise<void> {
   const current = await generateOpenApiSnapshot();
+  assertFrontendReadyRequestSchemas(current);
   const serialized = `${JSON.stringify(sortJson(current), null, 2)}\n`;
 
   if (shouldUpdate) {
@@ -388,6 +389,57 @@ function sortJson(value: unknown): unknown {
   }
 
   return value;
+}
+
+function assertFrontendReadyRequestSchemas(document: OpenAPIObject): void {
+  assertSchemaHasProperties(document, "CreateUserSubscriptionRequestDto", [
+    "userId",
+    "providerKey",
+    "targetKind",
+    "targetValue",
+    "targetConfig",
+    "schedule",
+    "summaryPreference",
+  ]);
+  assertSchemaHasProperties(document, "ActivateTopicSourceRequestDto", [
+    "userId",
+    "providerKey",
+    "targetKind",
+    "targetValue",
+    "targetConfig",
+    "schedule",
+    "summaryPreference",
+    "scanPolicy",
+  ]);
+  assertSchemaHasProperties(document, "UserSubscriptionScheduleRequestDto", [
+    "recipientKey",
+    "channel",
+    "intervalSeconds",
+    "includeNoSignal",
+    "nextRunAt",
+  ]);
+  assertSchemaHasProperties(document, "ActivateTopicSourceScanPolicyRequestDto", [
+    "intervalSeconds",
+    "freshnessSeconds",
+    "retryBudget",
+  ]);
+}
+
+function assertSchemaHasProperties(
+  document: OpenAPIObject,
+  schemaName: string,
+  requiredProperties: readonly string[],
+): void {
+  const schema = document.components?.schemas?.[schemaName];
+  if (schema === undefined || !("properties" in schema) || schema.properties === undefined) {
+    throw new Error(`OpenAPI schema ${schemaName} must expose frontend-ready request properties`);
+  }
+
+  const properties = schema.properties;
+  const missing = requiredProperties.filter((property) => !(property in properties));
+  if (missing.length > 0) {
+    throw new Error(`OpenAPI schema ${schemaName} is missing properties: ${missing.join(", ")}`);
+  }
 }
 
 void main().catch((error) => {

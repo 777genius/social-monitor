@@ -2,7 +2,70 @@
   "components": {
     "schemas": {
       "ActivateTopicSourceRequestDto": {
-        "properties": {},
+        "properties": {
+          "providerKey": {
+            "description": "Canonical provider key or supported legacy alias.",
+            "examples": [
+              "reddit",
+              "github-issues",
+              "github-trending-page",
+              "x-twitter"
+            ],
+            "minLength": 2,
+            "type": "string"
+          },
+          "scanPolicy": {
+            "$ref": "#/components/schemas/ActivateTopicSourceScanPolicyRequestDto"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/UserSubscriptionScheduleRequestDto"
+          },
+          "summaryPreference": {
+            "$ref": "#/components/schemas/UserSummaryPreferenceRequestDto"
+          },
+          "targetConfig": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "targetKind": {
+            "description": "Provider-specific target kind, for example subreddit, search_query, account or url.",
+            "minLength": 2,
+            "type": "string"
+          },
+          "targetValue": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "userId": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "providerKey",
+          "targetKind",
+          "targetValue",
+          "schedule"
+        ],
+        "type": "object"
+      },
+      "ActivateTopicSourceScanPolicyRequestDto": {
+        "properties": {
+          "freshnessSeconds": {
+            "minimum": 60,
+            "type": "number"
+          },
+          "intervalSeconds": {
+            "minimum": 60,
+            "type": "number"
+          },
+          "retryBudget": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
         "type": "object"
       },
       "BindSourceRequestDto": {
@@ -166,7 +229,49 @@
         "type": "object"
       },
       "CreateUserSubscriptionRequestDto": {
-        "properties": {},
+        "properties": {
+          "providerKey": {
+            "description": "Canonical provider key or supported legacy alias.",
+            "examples": [
+              "reddit",
+              "github-issues",
+              "github-trending-page",
+              "x-twitter"
+            ],
+            "minLength": 2,
+            "type": "string"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/UserSubscriptionScheduleRequestDto"
+          },
+          "summaryPreference": {
+            "$ref": "#/components/schemas/UserSummaryPreferenceRequestDto"
+          },
+          "targetConfig": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "targetKind": {
+            "description": "Provider-specific target kind, for example subreddit, search_query, account or url.",
+            "minLength": 2,
+            "type": "string"
+          },
+          "targetValue": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "userId": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "providerKey",
+          "targetKind",
+          "targetValue",
+          "schedule"
+        ],
         "type": "object"
       },
       "CreateWebhookEndpointRequestDto": {
@@ -5716,7 +5821,54 @@
         "type": "object"
       },
       "UpsertTopicUserSummaryPreferenceRequestDto": {
-        "properties": {},
+        "properties": {
+          "customInstructions": {
+            "maxLength": 1200,
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "executive_brief",
+              "bullet_digest",
+              "risk_brief"
+            ],
+            "type": "string"
+          },
+          "includeRisks": {
+            "type": "boolean"
+          },
+          "includeSourceHighlights": {
+            "type": "boolean"
+          },
+          "language": {
+            "enum": [
+              "auto",
+              "en",
+              "ru"
+            ],
+            "type": "string"
+          },
+          "maxKeyPoints": {
+            "maximum": 10,
+            "minimum": 1,
+            "type": "number"
+          },
+          "tone": {
+            "enum": [
+              "neutral",
+              "concise",
+              "analytical"
+            ],
+            "type": "string"
+          },
+          "userId": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId"
+        ],
         "type": "object"
       },
       "UpsertUserRelevanceProfileRequestDto": {
@@ -5770,7 +5922,54 @@
         "type": "object"
       },
       "UpsertUserSummaryPreferenceRequestDto": {
-        "properties": {},
+        "properties": {
+          "customInstructions": {
+            "maxLength": 1200,
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "executive_brief",
+              "bullet_digest",
+              "risk_brief"
+            ],
+            "type": "string"
+          },
+          "includeRisks": {
+            "type": "boolean"
+          },
+          "includeSourceHighlights": {
+            "type": "boolean"
+          },
+          "language": {
+            "enum": [
+              "auto",
+              "en",
+              "ru"
+            ],
+            "type": "string"
+          },
+          "maxKeyPoints": {
+            "maximum": 10,
+            "minimum": 1,
+            "type": "number"
+          },
+          "tone": {
+            "enum": [
+              "neutral",
+              "concise",
+              "analytical"
+            ],
+            "type": "string"
+          },
+          "userId": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId"
+        ],
         "type": "object"
       },
       "UserRelevanceProfileDto": {
@@ -5830,6 +6029,84 @@
           "rulesVersion",
           "updatedAt"
         ],
+        "type": "object"
+      },
+      "UserSubscriptionScheduleRequestDto": {
+        "properties": {
+          "channel": {
+            "enum": [
+              "in_app",
+              "email",
+              "webhook"
+            ],
+            "type": "string"
+          },
+          "includeNoSignal": {
+            "type": "boolean"
+          },
+          "intervalSeconds": {
+            "minimum": 60,
+            "type": "number"
+          },
+          "nextRunAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "recipientKey": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipientKey",
+          "channel",
+          "intervalSeconds",
+          "includeNoSignal"
+        ],
+        "type": "object"
+      },
+      "UserSummaryPreferenceRequestDto": {
+        "properties": {
+          "customInstructions": {
+            "maxLength": 1200,
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "executive_brief",
+              "bullet_digest",
+              "risk_brief"
+            ],
+            "type": "string"
+          },
+          "includeRisks": {
+            "type": "boolean"
+          },
+          "includeSourceHighlights": {
+            "type": "boolean"
+          },
+          "language": {
+            "enum": [
+              "auto",
+              "en",
+              "ru"
+            ],
+            "type": "string"
+          },
+          "maxKeyPoints": {
+            "maximum": 10,
+            "minimum": 1,
+            "type": "number"
+          },
+          "tone": {
+            "enum": [
+              "neutral",
+              "concise",
+              "analytical"
+            ],
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "XPostProviderMetricsDto": {

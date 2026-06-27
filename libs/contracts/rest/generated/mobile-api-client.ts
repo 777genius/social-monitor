@@ -2070,6 +2070,32 @@ export const mobileApiOperations = [
     "devOnlyWorkspaceRoleRequired": false,
     "requestBodySchemaRef": "#/components/schemas/UpsertUserSummaryPreferenceRequestDto",
     "successResponseSchemaRefs": []
+  },
+  {
+    "operationId": "UserSubscriptionsController_activateSource",
+    "clientName": "UserSubscriptionsController_activateSource",
+    "method": "POST",
+    "path": "/user-subscriptions/activate-source",
+    "tags": [
+      "user-subscriptions"
+    ],
+    "summary": "Create a user subscription and activate its monitoring source pipeline.",
+    "pathParameters": [],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/ActivateTopicSourceRequestDto",
+    "successResponseSchemaRefs": []
   }
 ] as const;
 
