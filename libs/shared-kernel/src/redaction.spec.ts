@@ -1,5 +1,6 @@
 import {
   REDACTED_VALUE,
+  countSensitiveTextFragments,
   isSensitiveKey,
   isSensitiveString,
   redactSensitiveMetadataRecord,
@@ -56,10 +57,16 @@ describe('redaction helpers', () => {
 
   it('redacts inline credentials before text leaves the trust boundary', () => {
     expect(redactSensitiveText(
-      'See token=memory-leak, secret=another-leak, private_key=key-leak and https://user:pass@example.test/feed.',
+      'See token=memory-leak, secret=another-leak, private_key=key-leak, {"access_token":"json-leak"} and https://user:pass@example.test/feed.',
     )).toBe(
-      `See token=${REDACTED_VALUE}, secret=${REDACTED_VALUE}, private_key=${REDACTED_VALUE} and https://${REDACTED_VALUE}@example.test/feed.`,
+      `See token=${REDACTED_VALUE}, secret=${REDACTED_VALUE}, private_key=${REDACTED_VALUE}, {"access_token":"${REDACTED_VALUE}"} and https://${REDACTED_VALUE}@example.test/feed.`,
     );
+  });
+
+  it('counts sensitive text fragments with the shared redaction policy', () => {
+    expect(countSensitiveTextFragments(
+      'token=plain-token Bearer bearer-token {"client_secret":"json-secret"} https://user:pass@example.test/feed safe text',
+    )).toBe(4);
   });
 
   it('redacts JSON and plain response credentials before error text leaves the trust boundary', () => {

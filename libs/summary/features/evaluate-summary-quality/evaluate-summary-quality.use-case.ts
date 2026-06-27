@@ -1,4 +1,4 @@
-import { redactSensitiveText } from '@social-monitor/shared-kernel';
+import { countSensitiveTextFragments } from '@social-monitor/shared-kernel';
 
 import { SummaryArtifact } from '../../domain';
 import type { ProviderSummaryAttempt, SummaryModelPort } from '../../ports';
@@ -112,7 +112,7 @@ export class EvaluateSummaryQualityUseCase {
   ): QualityGateMetrics {
     const draft = attempt.draft;
     const grounding = evaluateGroundedKeyPoints(attempt, fixture);
-    const secretLeakCount = countSensitiveLeaks(visibleOutputFor(draft));
+    const secretLeakCount = countSensitiveTextFragments(visibleOutputFor(draft));
 
     for (const failure of grounding.failures) {
       failures.push(failure);
@@ -210,19 +210,6 @@ const visibleOutputFor = (draft: ProviderSummaryAttempt['draft']): string =>
     ...draft.risksAndUnknowns.map((risk) => risk.description),
     ...draft.sourceHighlights,
   ].join('\n');
-
-const countSensitiveLeaks = (value: string): number => {
-  const redacted = redactSensitiveText(value);
-
-  if (redacted === value) {
-    return 0;
-  }
-
-  return [...value.matchAll(sensitiveLeakPattern)].length || 1;
-};
-
-const sensitiveLeakPattern =
-  /\b(?:(?:access|refresh|id)[_-]?token|api[_-]?key|client[_-]?secret|authorization|password|session|cookie|signature)\s*[:=]\s*[^\s'",<>{}]+|\b(?:bearer|basic)\s+[A-Za-z0-9._~+/-]+=*|\b(?:smk|whsec)_[A-Za-z0-9_-]+\b/gi;
 
 const evaluateGroundedKeyPoints = (
   attempt: ProviderSummaryAttempt,

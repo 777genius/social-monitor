@@ -9,10 +9,19 @@ const generatedSecretPattern = /^(?:smk|whsec)_[A-Za-z0-9_-]+/;
 const urlWithPasswordPattern = /^[a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:[^@\s]+@/i;
 const inlineCredentialPattern =
   /\b((?:access|refresh|id)?[_-]?token|api[_-]?key|client[_-]?secret|secret|credential|authorization|password|session|cookie|signature|private[_-]?key)\s*[:=]\s*([^\s'",<>{}]+)/gi;
+const inlineJsonCredentialPattern =
+  /"((?:access|refresh|id)?[_-]?token|api[_-]?key|client[_-]?secret|secret|credential|authorization|password|session|cookie|signature|private[_-]?key)"\s*:\s*"[^"]+"/gi;
 const inlineBearerPattern = /\b(?:bearer|basic)\s+[A-Za-z0-9._~+/-]+=*/gi;
 const inlineGeneratedSecretPattern = /\b(?:smk|whsec)_[A-Za-z0-9_-]+\b/g;
 const inlineUrlWithPasswordPattern =
   /\b([a-z][a-z0-9+.-]*:\/\/)([^:\s/@]+):([^@\s]+)@/gi;
+const sensitiveTextFragmentPatterns = [
+  inlineJsonCredentialPattern,
+  inlineCredentialPattern,
+  inlineBearerPattern,
+  inlineGeneratedSecretPattern,
+  inlineUrlWithPasswordPattern,
+] as const;
 
 export const isSensitiveKey = (key: string): boolean => sensitiveKeyPattern.test(key);
 
@@ -24,10 +33,17 @@ export const isSensitiveString = (value: string): boolean =>
 
 export const redactSensitiveText = (value: string): string =>
   value
+    .replace(inlineJsonCredentialPattern, (_match, key: string) => `"${key}":"${REDACTED_VALUE}"`)
     .replace(inlineCredentialPattern, (_match, key: string) => `${key}=${REDACTED_VALUE}`)
     .replace(inlineBearerPattern, REDACTED_VALUE)
     .replace(inlineGeneratedSecretPattern, REDACTED_VALUE)
     .replace(inlineUrlWithPasswordPattern, (_match, protocol: string) => `${protocol}${REDACTED_VALUE}@`);
+
+export const countSensitiveTextFragments = (value: string): number =>
+  sensitiveTextFragmentPatterns.reduce(
+    (count, pattern) => count + [...value.matchAll(pattern)].length,
+    0,
+  );
 
 export const redactSensitiveResponseText = (value: string, maxLength = 500): string =>
   redactSensitiveText(value
