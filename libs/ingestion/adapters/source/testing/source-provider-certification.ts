@@ -1,4 +1,4 @@
-import { isSensitiveKey, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { isSensitiveKey, redactSensitiveText, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type {
   ProviderFailureKind,
@@ -55,6 +55,8 @@ export const certifySourceProvider = (config: SourceProviderCertificationConfig)
 
       expect(plan.maxItems).toBeGreaterThan(0);
       expect(result.warnings).toEqual(expect.any(Array));
+      expect(result.warnings.every((warning) => warning.trim().length > 0)).toBe(true);
+      expect(result.warnings.map(redactSensitiveText)).toEqual(result.warnings);
 
       const canonicalUrls = new Set<string>();
       for (const item of result.items) {

@@ -1,7 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-import { REDACTED_VALUE, isSensitiveKey, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import {
+  REDACTED_VALUE,
+  isSensitiveKey,
+  redactSensitiveText,
+  tenantId,
+  workspaceId,
+} from '@social-monitor/shared-kernel';
 
 import { FakeSourceProvider } from '../libs/ingestion/adapters/source/fake-source.provider';
 import { FixtureGitHubClient } from '../libs/ingestion/adapters/source/github/fixture-github-client';
@@ -384,6 +390,7 @@ async function certifyProvider(
   assertStableItems(providerCase.expectedProviderKey, result.items, {
     allowEmpty: false,
   });
+  assertWarningsAreSafe(providerCase.expectedProviderKey, result.warnings);
 
   if (profile.cursorModel !== 'none') {
     assert(
@@ -399,6 +406,7 @@ async function certifyProvider(
   assertStableItems(providerCase.expectedProviderKey, repeatedResult.items, {
     allowEmpty: true,
   });
+  assertWarningsAreSafe(providerCase.expectedProviderKey, repeatedResult.warnings);
   assert(
     repeatedResult.nextCursor === undefined ||
       repeatedResult.nextCursor.trim().length > 0,
@@ -462,6 +470,7 @@ async function certifyProvider(
       'fixture_repeated_scan_is_deterministic',
       'provider_errors_are_classified',
       'provider_failure_messages_are_redacted',
+      'provider_warnings_are_redacted',
       'normalized_metadata_excludes_raw_payload_and_secret_keys',
       'canonical_urls_exclude_userinfo_and_secret_query_params',
       'freshness_guard_declared',
@@ -773,6 +782,22 @@ function assertProviderMetadataIsSafe(
     violations.length === 0,
     `${providerKey}: provider metadata must not retain raw payload, headers or secret-like keys: ${violations.join(', ')}`,
   );
+}
+
+function assertWarningsAreSafe(
+  providerKey: string,
+  warnings: readonly string[],
+): void {
+  for (const warning of warnings) {
+    assert(
+      warning.trim().length > 0,
+      `${providerKey}: provider warnings must be non-empty`,
+    );
+    assert(
+      redactSensitiveText(warning) === warning,
+      `${providerKey}: provider warning leaked secret material`,
+    );
+  }
 }
 
 function assertCanonicalUrlIsSafe(providerKey: string, value: string): void {
