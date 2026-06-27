@@ -36,6 +36,10 @@ import {
   resolveRelevancePersistenceMode,
 } from '../libs/relevance/interfaces/rest/relevance-provider-tokens';
 import {
+  resolveSubscriptionsPersistenceMode,
+  resolveUserSummaryPreferenceMemoryProjectorMode,
+} from '../libs/subscriptions/interfaces/rest/subscriptions-provider-tokens';
+import {
   resolveSummaryJobQueueMode,
   resolveSummaryMemoryMode,
   resolveSummaryModelProviderMode,
@@ -237,6 +241,38 @@ assert(
     SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER: 'google-gemini',
   }) === 'google-gemini',
   'summary YouTube provider accepts google-gemini in beta runtime',
+);
+assertThrows(
+  () => resolveSubscriptionsPersistenceMode(betaEnv),
+  'SUBSCRIPTIONS_PERSISTENCE must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveSubscriptionsPersistenceMode({
+    ...databaseEnv,
+    SUBSCRIPTIONS_PERSISTENCE: 'prisma',
+  }) === 'prisma',
+  'subscriptions beta persistence',
+);
+assert(
+  resolveUserSummaryPreferenceMemoryProjectorMode(betaEnv) === 'disabled',
+  'user summary preference memory projector may stay disabled in beta runtime',
+);
+assert(
+  resolveUserSummaryPreferenceMemoryProjectorMode({
+    ...betaEnv,
+    SUMMARY_MEMORY_MODE: 'memo-stack',
+    INFINITY_CONTEXT_URL: 'https://memory.example.test',
+    INFINITY_CONTEXT_TOKEN: 'test-token',
+  }) === 'memo-stack',
+  'user summary preference memory projector accepts memo-stack mode',
+);
+assertThrows(
+  () =>
+    resolveUserSummaryPreferenceMemoryProjectorMode({
+      ...betaEnv,
+      SUMMARY_MEMORY_MODE: 'typo',
+    }),
+  'user summary preference memory projector must reject invalid SUMMARY_MEMORY_MODE',
 );
 assertThrows(
   () => resolveIntelligenceSummaryQueueReaderMode(betaEnv),

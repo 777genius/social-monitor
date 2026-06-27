@@ -11,6 +11,9 @@ import type {
 } from '../../ports';
 
 export type SubscriptionsPersistenceMode = 'in-memory' | 'prisma';
+export type UserSummaryPreferenceMemoryProjectorMode =
+  | 'disabled'
+  | 'memo-stack';
 
 export const SUBSCRIPTIONS_PERSISTENCE_MODE = Symbol('SUBSCRIPTIONS_PERSISTENCE_MODE');
 export const SUBSCRIPTIONS_PRISMA_CLIENT = Symbol('SUBSCRIPTIONS_PRISMA_CLIENT');
@@ -22,6 +25,8 @@ export const SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY =
   Symbol('SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY');
 export const SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR =
   Symbol('SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR');
+export const SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR_MODE =
+  Symbol('SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR_MODE');
 export const SUBSCRIPTIONS_SOURCE_TARGET_CATALOG = Symbol('SUBSCRIPTIONS_SOURCE_TARGET_CATALOG');
 
 export type SubscriptionsProviderTokenMap = {
@@ -31,6 +36,7 @@ export type SubscriptionsProviderTokenMap = {
   readonly [SUBSCRIPTIONS_USER_SUBSCRIPTION_REPOSITORY]: UserSubscriptionRepositoryPort;
   readonly [SUBSCRIPTIONS_USER_SUBSCRIPTION_SCHEDULE_REPOSITORY]: UserSubscriptionScheduleRepositoryPort;
   readonly [SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY]: UserSummaryPreferenceRepositoryPort;
+  readonly [SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR_MODE]: UserSummaryPreferenceMemoryProjectorMode;
   readonly [SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR]: UserSummaryPreferenceMemoryProjectorPort;
   readonly [SUBSCRIPTIONS_SOURCE_TARGET_CATALOG]: SourceTargetCatalogPort;
 };
@@ -70,4 +76,28 @@ export const resolveSubscriptionsPersistenceMode = (env: NodeJS.ProcessEnv): Sub
   }
 
   throw new Error('SUBSCRIPTIONS_PERSISTENCE must be "in-memory" or "prisma"');
+};
+
+export const resolveUserSummaryPreferenceMemoryProjectorMode = (
+  env: NodeJS.ProcessEnv,
+): UserSummaryPreferenceMemoryProjectorMode => {
+  const value = env.SUMMARY_MEMORY_MODE ?? 'disabled';
+
+  if (value === 'disabled' || value === 'memo-stack') {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: 'SUMMARY_MEMORY_MODE',
+      selectedMode: value,
+      durableModes: ['disabled', 'memo-stack'],
+    });
+
+    return value;
+  }
+
+  throw new Error('SUMMARY_MEMORY_MODE must be "disabled" or "memo-stack"');
+};
+
+export const userSummaryPreferenceMemoryProjectorModeProvider: Provider<UserSummaryPreferenceMemoryProjectorMode> = {
+  provide: SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR_MODE,
+  useFactory: () => resolveUserSummaryPreferenceMemoryProjectorMode(process.env),
 };

@@ -36,9 +36,12 @@ import {
   SUBSCRIPTIONS_USER_SUBSCRIPTION_REPOSITORY,
   SUBSCRIPTIONS_USER_SUBSCRIPTION_SCHEDULE_REPOSITORY,
   SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR,
+  SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR_MODE,
   SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_REPOSITORY,
   type SubscriptionsPersistenceMode,
+  type UserSummaryPreferenceMemoryProjectorMode,
   subscriptionsPersistenceModeProvider,
+  userSummaryPreferenceMemoryProjectorModeProvider,
 } from './subscriptions-provider-tokens';
 import { UserSummaryPreferencesController } from './user-summary-preferences.controller';
 import { UserSubscriptionsController } from './user-subscriptions.controller';
@@ -48,6 +51,7 @@ import { UserSubscriptionsController } from './user-subscriptions.controller';
   controllers: [UserSubscriptionsController, UserSummaryPreferencesController],
   providers: [
     subscriptionsPersistenceModeProvider,
+    userSummaryPreferenceMemoryProjectorModeProvider,
     {
       provide: SUBSCRIPTIONS_PRISMA_CLIENT,
       useFactory: (mode: SubscriptionsPersistenceMode): PrismaSubscriptionsClient | null =>
@@ -117,10 +121,11 @@ import { UserSubscriptionsController } from './user-subscriptions.controller';
     },
     {
       provide: SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR,
-      useFactory: (): UserSummaryPreferenceMemoryProjectorPort =>
-        process.env.SUMMARY_MEMORY_MODE === 'memo-stack'
+      useFactory: (mode: UserSummaryPreferenceMemoryProjectorMode): UserSummaryPreferenceMemoryProjectorPort =>
+        mode === 'memo-stack'
           ? new MemoStackUserSummaryPreferenceMemoryProjector(resolveMemoStackSummaryMemoryOptions(process.env))
           : NOOP_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR,
+      inject: [SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR_MODE],
     },
     {
       provide: CreateUserSubscriptionUseCase,
