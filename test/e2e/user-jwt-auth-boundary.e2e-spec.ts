@@ -342,6 +342,34 @@ describe('User JWT auth boundary (e2e)', () => {
 
   it('binds source activation writes to the authenticated JWT subject', async () => {
     const memberToken = tokenFor({ subject: 'activation-user', roles: ['member'] });
+    const viewerToken = tokenFor({ subject: 'activation-viewer', roles: ['viewer'] });
+
+    await request(app.getHttpServer())
+      .post('/user-subscriptions/activate-source')
+      .set(jwtHeaders(viewerToken))
+      .send({
+        userId: 'activation-viewer',
+        providerKey: 'reddit',
+        targetKind: 'subreddit',
+        targetValue: 'programming',
+        schedule: {
+          recipientKey: 'activation-viewer',
+          channel: 'in_app',
+          intervalSeconds: 3600,
+          includeNoSignal: true,
+        },
+      })
+      .expect(403)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'authorization.denied',
+          detail: 'Workspace role is not allowed for this action',
+          details: {
+            action: 'user_subscriptions.create',
+            requiredRoles: ['owner', 'admin', 'member'],
+          },
+        });
+      });
 
     await request(app.getHttpServer())
       .post('/user-subscriptions/activate-source')
