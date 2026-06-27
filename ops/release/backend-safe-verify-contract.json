@@ -68,6 +68,7 @@
     "check:source-config-protector",
     "check:source-credential-lifecycle",
     "check:source-config-reader-boundary",
+    "check:reddit-credential-ref",
     "check:scan-status-attempt-rest",
     "check:scan-scheduler-command",
     "check:scan-scheduler-loop",
