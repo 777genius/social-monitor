@@ -106,6 +106,136 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
   });
 
+  it("repairs model story cluster ids through cited evidence", async () => {
+    const adapter = new OpenAiResponsesReaderSummaryModelAdapter({
+      apiKey: "test-openai-key",
+      fetchFn: async () =>
+        jsonResponse({
+          output_text: JSON.stringify({
+            headline: "Workspace AI tooling signal",
+            executiveSummary:
+              "AI tooling is repeating across monitored sources.",
+            topStories: [
+              {
+                storyClusterId: "model-invented-cluster",
+                title: "AI tooling library is trending",
+                summary: "Developers are discussing a new AI tooling library.",
+                topicIds: ["topic-ai"],
+                providerKeys: ["reddit"],
+                citationIds: ["c1"],
+              },
+            ],
+            topicHighlights: [],
+            repeatedSignals: [],
+            risksAndUnknowns: [],
+            citationMap: [
+              {
+                citationId: "c1",
+                feedItemId: "feed-reddit",
+                sourceItemId: "source-reddit",
+                providerKey: "reddit",
+                field: "title",
+              },
+            ],
+            qualityFlags: [],
+            confidence: {
+              level: "medium",
+              score: 0.7,
+              rationale: "Primary evidence is cited.",
+            },
+            noSignalReason: null,
+          }),
+        }),
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "openai-responses",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 2_500,
+        maxEstimatedCostUsd: 1,
+      },
+      {
+        remainingTokens: 32_000,
+        remainingCostUsd: 2,
+      },
+    );
+
+    const attempt = await adapter.generate(input, route);
+
+    expect(attempt.draft.topStories[0]?.storyClusterId).toBe(
+      "story:ai-tooling",
+    );
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it("removes contradictory no-signal markers when cited top stories survive normalization", async () => {
+    const adapter = new OpenAiResponsesReaderSummaryModelAdapter({
+      apiKey: "test-openai-key",
+      fetchFn: async () =>
+        jsonResponse({
+          output_text: JSON.stringify({
+            headline: "Workspace AI tooling signal",
+            executiveSummary:
+              "AI tooling has a cited story and should remain a signal.",
+            topStories: [
+              {
+                storyClusterId: "story:ai-tooling",
+                title: "AI tooling library is trending",
+                summary: "Developers are discussing a new AI tooling library.",
+                topicIds: ["topic-ai"],
+                providerKeys: ["reddit"],
+                citationIds: ["c1"],
+              },
+            ],
+            topicHighlights: [],
+            repeatedSignals: [],
+            risksAndUnknowns: [],
+            citationMap: [
+              {
+                citationId: "c1",
+                feedItemId: "feed-reddit",
+                sourceItemId: "source-reddit",
+                providerKey: "reddit",
+                field: "title",
+              },
+            ],
+            qualityFlags: ["no_signal", "limited_sources"],
+            confidence: {
+              level: "none",
+              score: 0,
+              rationale:
+                "Model marked no signal even though cited evidence exists.",
+            },
+            noSignalReason: "Incorrect model no-signal marker.",
+          }),
+        }),
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "openai-responses",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 2_500,
+        maxEstimatedCostUsd: 1,
+      },
+      {
+        remainingTokens: 32_000,
+        remainingCostUsd: 2,
+      },
+    );
+
+    const attempt = await adapter.generate(input, route);
+
+    expect(attempt.draft.qualityFlags).not.toContain("no_signal");
+    expect(attempt.draft.noSignalReason).toBeUndefined();
+    expect(attempt.draft.confidence.level).toBe("low");
+    expect(attempt.draft.content?.topReads).toHaveLength(1);
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
   it("does not call OpenAI when selected evidence is empty", async () => {
     let called = false;
     const adapter = new OpenAiResponsesReaderSummaryModelAdapter({
@@ -149,6 +279,30 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
     ).toThrow(
       "READER_SUMMARY_MODEL_PROVIDER=openai-responses requires OPENAI_API_KEY or OPENAI_API_KEY_FILE",
     );
+  });
+
+  it("routes full reader briefings without exceeding the application output budget", () => {
+    const adapter = new OpenAiResponsesReaderSummaryModelAdapter({
+      apiKey: "test-openai-key",
+      maxOutputTokens: 8_000,
+    });
+    const input = readerSummaryInput();
+
+    expect(() =>
+      adapter.route(
+        input,
+        {
+          preferredProvider: "openai-responses",
+          maxInputTokens: 24_000,
+          maxOutputTokens: 4_000,
+          maxEstimatedCostUsd: 1,
+        },
+        {
+          remainingTokens: 32_000,
+          remainingCostUsd: 2,
+        },
+      ),
+    ).not.toThrow();
   });
 
   it("reads an OpenAI API key from a private key file for live-safe smoke runs", () => {

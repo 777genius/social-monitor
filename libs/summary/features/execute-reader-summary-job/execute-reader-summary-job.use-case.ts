@@ -52,7 +52,7 @@ type ReaderSummaryContextBuildResult = {
 const defaultModelPolicy: ReaderSummaryModelPolicy = {
   preferredProvider: "deterministic-local",
   maxInputTokens: 24_000,
-  maxOutputTokens: 2_500,
+  maxOutputTokens: 4_000,
   maxEstimatedCostUsd: 1,
 };
 

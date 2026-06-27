@@ -128,6 +128,47 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
     ).not.toThrow();
   });
 
+  it('normalizes nullable OpenAI no-signal reasons into domain-safe reasons', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          ...validProviderDraft(),
+          keyPoints: [],
+          risksAndUnknowns: [],
+          sourceHighlights: [],
+          citationMap: [],
+          qualityFlags: ['no_signal', 'limited_sources'],
+          confidence: {
+            level: 'none',
+            score: 0,
+            rationale: 'No eligible evidence passed the model threshold.',
+          },
+          noSignalReason: null,
+        }),
+      }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(attempt.draft.qualityFlags).toContain('no_signal');
+    expect(attempt.draft.noSignalReason).toBe(
+      'No eligible evidence items selected for this topic.',
+    );
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
   it('does not call OpenAI when selected evidence is empty', async () => {
     const fetchFn = jest.fn();
     const adapter = new OpenAiResponsesSummaryModelAdapter({

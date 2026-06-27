@@ -51,6 +51,8 @@ const defaultEndpointUrl = 'https://api.openai.com/v1/responses';
 const defaultTimeoutMs = 60_000;
 const defaultMaxOutputTokens = 4_000;
 const defaultInputTokenDivisor = 4;
+const defaultNoSignalReason =
+  'No eligible evidence items selected for this topic.';
 
 const qualityFlags = new Set<SummaryQualityFlag>([
   'no_signal',
@@ -475,6 +477,7 @@ const normalizeOpenAiDraft = (
   usage: SummaryModelEstimate,
   evalDatasetVersion: string,
 ): GeneratedSummaryDraft => {
+  const normalizedQualityFlags = normalizeQualityFlags(raw.qualityFlags);
   const draft = {
     headline: requiredString(raw.headline, 'headline'),
     executiveSummary: requiredString(raw.executiveSummary, 'executiveSummary'),
@@ -488,11 +491,14 @@ const normalizeOpenAiDraft = (
       normalizeCitationMap(raw.citationMap),
       input.evidence.items,
     ),
-    qualityFlags: normalizeQualityFlags(raw.qualityFlags),
+    qualityFlags: normalizedQualityFlags,
     confidence: normalizeConfidence(raw.confidence),
     lineage: buildLineage(input, selectedRoute, evalDatasetVersion),
     usage,
-    noSignalReason: optionalString(raw.noSignalReason),
+    noSignalReason: normalizeNoSignalReason(
+      raw.noSignalReason,
+      normalizedQualityFlags,
+    ),
   };
 
   assertDraftShape(draft);
@@ -616,6 +622,22 @@ const normalizeQualityFlags = (
   }
 
   return values as readonly SummaryQualityFlag[];
+};
+
+const normalizeNoSignalReason = (
+  value: unknown,
+  normalizedQualityFlags: readonly SummaryQualityFlag[],
+): string | undefined => {
+  const reason = optionalString(value);
+
+  if (
+    reason !== undefined ||
+    !normalizedQualityFlags.includes('no_signal')
+  ) {
+    return reason;
+  }
+
+  return defaultNoSignalReason;
 };
 
 const normalizeConfidence = (value: unknown): SummaryConfidence => {

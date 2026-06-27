@@ -2,6 +2,7 @@ import { createPrivateKey, randomUUID, sign as signJwt } from "node:crypto";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
+import { minimumScanIntervalSecondsForProvider } from "@social-monitor/monitoring/features/shared/scan-cadence-policy";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { defaultMemoStackTimeoutMs } from "@social-monitor/summary/adapters/memory/memo-stack-memory-client";
 import { MemoStackSummaryMemoryAdapter } from "@social-monitor/summary/adapters/memory/memo-stack-summary-memory.adapter";
@@ -108,7 +109,15 @@ type ReaderBriefEvidence = {
   readonly topReadTitles: readonly string[];
   readonly sourceMixProviderKeys: readonly string[];
   readonly citationProviderKeys: readonly string[];
+  readonly citationCoverage: ProviderCitationCoverage;
   readonly qualityStatus: string;
+};
+
+type ProviderCitationCoverage = {
+  readonly expectedProviderKeys: readonly string[];
+  readonly citedProviderKeys: readonly string[];
+  readonly uncitedProviderKeys: readonly string[];
+  readonly minimumCitedProviderCount: number;
 };
 
 type SummaryMemoryEvidence = {
@@ -135,6 +144,9 @@ const ids: RuntimeIds = {
 };
 const pool = new Pool({ connectionString: config.databaseUrl });
 const startedAt = nowIso();
+const DIGEST_EVIDENCE_FIRST_RUN_DELAY_MS = 3_000;
+const DIGEST_EVIDENCE_WINDOW_PADDING_MS = 30_000;
+const MIN_DIGEST_EVIDENCE_INTERVAL_SECONDS = 60;
 
 void main().catch(async (error: unknown) => {
   await pool.end().catch(() => undefined);
@@ -192,6 +204,7 @@ async function main(): Promise<void> {
             feedItemIds: evidence.feedItemIds,
             summaryId: evidence.summaryId,
             summaryCitationProviderKeys: evidence.summaryCitationProviderKeys,
+            summaryCitationCoverage: evidence.summaryCitationCoverage,
             feedbackId: evidence.feedbackId,
             feedbackProviderKey: evidence.feedbackProviderKey,
             digestId: evidence.digestId,
@@ -356,6 +369,7 @@ async function executeBackendLoop(
   readonly feedItemIds: readonly string[];
   readonly summaryId: string;
   readonly summaryCitationProviderKeys: readonly string[];
+  readonly summaryCitationCoverage: ProviderCitationCoverage;
   readonly readerBrief: ReaderBriefEvidence;
   readonly feedbackId: string;
   readonly feedbackProviderKey: string;
@@ -372,6 +386,7 @@ async function executeBackendLoop(
   readonly responseIds: readonly string[];
   readonly stableDurableCounts: JsonRecord;
 }> {
+  const loopStartedAt = new Date();
   const headers = authHeaders(auth);
   const topicKey = `topic-${runtimeIds.runId}`;
   const summaryKey = `summary-${runtimeIds.runId}`;
@@ -556,24 +571,18 @@ async function executeBackendLoop(
       citations.map((citation) => readString(citation, "providerKey")),
     ),
   ].sort();
-  for (const binding of bindingsWithFeed) {
-    if (!summaryCitationProviderKeys.includes(binding.providerKey)) {
-      throw new Error(
-        `summary citations must include provider key ${binding.providerKey}: ${JSON.stringify(
-          {
-            expectedProviders: bindingsWithFeed.map((item) => item.providerKey),
-            providerFeedCounts: bindingsWithFeed.map((item) => ({
-              providerKey: item.providerKey,
-              feedItemCount: item.feedItemCount,
-              feedProviderKeys: item.feedProviderKeys,
-            })),
-            summaryCitationProviderKeys,
-            citationCount: citations.length,
-          },
-        )}`,
-      );
-    }
-  }
+  const summaryCitationCoverage = providerCitationCoverage(
+    bindingsWithFeed.map((item) => item.providerKey),
+    summaryCitationProviderKeys,
+  );
+  assertProviderCitationCoverage("summary", summaryCitationCoverage, {
+    providerFeedCounts: bindingsWithFeed.map((item) => ({
+      providerKey: item.providerKey,
+      feedItemCount: item.feedItemCount,
+      feedProviderKeys: item.feedProviderKeys,
+    })),
+    citationCount: citations.length,
+  });
   const readerBrief = await captureReaderBriefEvidence({
     headers,
     idempotencyKey: briefingKey,
@@ -656,6 +665,10 @@ async function executeBackendLoop(
   );
   const webhookEndpoint = readRecord(webhook, "endpoint");
   const webhookEndpointId = readString(webhookEndpoint, "id");
+  const digestScheduleWindow = durableDeliveryDigestScheduleWindow({
+    loopStartedAt,
+    scheduledAt: new Date(),
+  });
 
   await requestJson<JsonRecord>("POST", "/delivery/digest-schedules", {
     headers,
@@ -663,9 +676,9 @@ async function executeBackendLoop(
       recipientKey: webhookEndpointId,
       channel: "webhook",
       topicIds: [topicId],
-      intervalSeconds: 60,
+      intervalSeconds: digestScheduleWindow.intervalSeconds,
       includeNoSignal: true,
-      nextRunAt: new Date(Date.now() + 3_000).toISOString(),
+      nextRunAt: digestScheduleWindow.nextRunAt.toISOString(),
     },
   });
 
@@ -799,6 +812,7 @@ async function executeBackendLoop(
     feedItemIds,
     summaryId,
     summaryCitationProviderKeys,
+    summaryCitationCoverage,
     readerBrief,
     feedbackId,
     feedbackProviderKey,
@@ -881,6 +895,7 @@ async function createSourceBindingAndScan(params: {
     },
   );
   const sourceBindingId = readString(binding, "sourceBindingId");
+  const scanCadence = durableScanPolicyCadence(params.target.providerKey);
   const policy = await requestJson<JsonRecord>(
     "POST",
     `/source-bindings/${encodeURIComponent(sourceBindingId)}/scan-policy`,
@@ -890,8 +905,8 @@ async function createSourceBindingAndScan(params: {
         policyIdempotencyKey(params.target.providerKey, params.runId),
       ),
       body: {
-        intervalSeconds: 60,
-        freshnessSeconds: 300,
+        intervalSeconds: scanCadence.intervalSeconds,
+        freshnessSeconds: scanCadence.freshnessSeconds,
         retryBudget: 3,
       },
     },
@@ -957,6 +972,7 @@ async function createScheduledSourceBindingAndWait(params: {
     },
   );
   const sourceBindingId = readString(binding, "sourceBindingId");
+  const scanCadence = durableScanPolicyCadence(params.target.providerKey);
   const policy = await requestJson<JsonRecord>(
     "POST",
     `/source-bindings/${encodeURIComponent(sourceBindingId)}/scan-policy`,
@@ -966,8 +982,8 @@ async function createScheduledSourceBindingAndWait(params: {
         scheduledPolicyIdempotencyKey(params.runId),
       ),
       body: {
-        intervalSeconds: 60,
-        freshnessSeconds: 300,
+        intervalSeconds: scanCadence.intervalSeconds,
+        freshnessSeconds: scanCadence.freshnessSeconds,
         retryBudget: 3,
       },
     },
@@ -1039,6 +1055,10 @@ async function captureReaderBriefEvidence(params: {
       citations.map((citation) => readString(citation, "providerKey")),
     ),
   ].sort();
+  const citationCoverage = providerCitationCoverage(
+    params.expectedProviderKeys,
+    citationProviderKeys,
+  );
 
   if (topReads.length < 3) {
     throw new Error(
@@ -1051,12 +1071,11 @@ async function captureReaderBriefEvidence(params: {
         `reader brief source mix must include ${providerKey}: ${JSON.stringify(sourceMixProviderKeys)}`,
       );
     }
-    if (!citationProviderKeys.includes(providerKey)) {
-      throw new Error(
-        `reader brief citations must include ${providerKey}: ${JSON.stringify(citationProviderKeys)}`,
-      );
-    }
   }
+  assertProviderCitationCoverage("reader brief", citationCoverage, {
+    sourceMixProviderKeys,
+    citationCount: citations.length,
+  });
 
   return {
     briefingJobId,
@@ -1068,8 +1087,49 @@ async function captureReaderBriefEvidence(params: {
       .slice(0, 10),
     sourceMixProviderKeys,
     citationProviderKeys,
+    citationCoverage,
     qualityStatus: readString(qualityState, "status"),
   };
+}
+
+function providerCitationCoverage(
+  expectedProviderKeys: readonly string[],
+  citedProviderKeys: readonly string[],
+): ProviderCitationCoverage {
+  const expected = [...new Set(expectedProviderKeys)].sort();
+  const cited = [...new Set(citedProviderKeys)].sort();
+  const minimumCitedProviderCount = Math.min(
+    expected.length,
+    Math.max(2, expected.length - 1),
+  );
+
+  return {
+    expectedProviderKeys: expected,
+    citedProviderKeys: cited,
+    uncitedProviderKeys: expected.filter((providerKey) =>
+      !cited.includes(providerKey),
+    ),
+    minimumCitedProviderCount,
+  };
+}
+
+function assertProviderCitationCoverage(
+  label: string,
+  coverage: ProviderCitationCoverage,
+  diagnostics: JsonRecord,
+): void {
+  if (
+    coverage.citedProviderKeys.length < coverage.minimumCitedProviderCount
+  ) {
+    throw new Error(
+      `${label} citations must include at least ${coverage.minimumCitedProviderCount} provider families: ${JSON.stringify(
+        {
+          ...coverage,
+          ...diagnostics,
+        },
+      )}`,
+    );
+  }
 }
 
 async function assertReady(): Promise<void> {
@@ -1712,6 +1772,41 @@ function withIdempotency(
   return {
     ...headers,
     "idempotency-key": key,
+  };
+}
+
+function durableScanPolicyCadence(providerKey: DurableScanProviderKey): {
+  readonly intervalSeconds: number;
+  readonly freshnessSeconds: number;
+} {
+  const intervalSeconds = minimumScanIntervalSecondsForProvider(providerKey);
+
+  return {
+    intervalSeconds,
+    freshnessSeconds: Math.max(intervalSeconds, 300),
+  };
+}
+
+function durableDeliveryDigestScheduleWindow(params: {
+  readonly loopStartedAt: Date;
+  readonly scheduledAt: Date;
+}): {
+  readonly intervalSeconds: number;
+  readonly nextRunAt: Date;
+} {
+  const nextRunAt = new Date(
+    params.scheduledAt.getTime() + DIGEST_EVIDENCE_FIRST_RUN_DELAY_MS,
+  );
+  const intervalMs = Math.max(
+    MIN_DIGEST_EVIDENCE_INTERVAL_SECONDS * 1000,
+    nextRunAt.getTime() -
+      params.loopStartedAt.getTime() +
+      DIGEST_EVIDENCE_WINDOW_PADDING_MS,
+  );
+
+  return {
+    intervalSeconds: Math.ceil(intervalMs / 1000),
+    nextRunAt,
   };
 }
 

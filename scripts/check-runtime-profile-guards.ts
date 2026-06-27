@@ -13,6 +13,7 @@ import {
   resolveIngestionWorkerPersistenceMode,
 } from '../apps/ingestion-worker/src/ingestion-worker-provider-tokens';
 import {
+  resolveIntelligenceRabbitMqBriefingQueueReaderOptions,
   resolveIntelligenceRabbitMqSummaryQueueReaderOptions,
   resolveIntelligenceSummaryQueueReaderMode,
 } from '../apps/intelligence-worker/src/intelligence-worker-provider-tokens';
@@ -209,6 +210,22 @@ assert(
 assert(
   resolveSummaryRabbitMqJobQueueOptions(rabbitMqEnv).routes?.['summary.job.execute']?.queueType === 'quorum',
   'summary beta RabbitMQ publisher must carry quorum queue type',
+);
+assert(
+  resolveSummaryRabbitMqJobQueueOptions(rabbitMqEnv).routes?.['reader_summary.job.execute']?.queue ===
+    resolveIntelligenceRabbitMqBriefingQueueReaderOptions(rabbitMqEnv).queue,
+  'reader summary RabbitMQ publisher and intelligence worker reader must share the default queue',
+);
+assert(
+  resolveSummaryRabbitMqJobQueueOptions({
+    ...rabbitMqEnv,
+    RABBITMQ_READER_SUMMARY_QUEUE: 'jobs.reader-summary.custom',
+  }).routes?.['reader_summary.job.execute']?.queue ===
+    resolveIntelligenceRabbitMqBriefingQueueReaderOptions({
+      ...rabbitMqEnv,
+      RABBITMQ_READER_SUMMARY_QUEUE: 'jobs.reader-summary.custom',
+    }).queue,
+  'reader summary RabbitMQ publisher and intelligence worker reader must share explicit reader queue',
 );
 assert(resolveSummaryMemoryMode(betaEnv) === 'disabled', 'summary memory must default to disabled');
 assertThrows(
