@@ -57,6 +57,7 @@ const realArtifactMarkerGuardFormats = new Set([
   'staging-reliability-artifact-v1',
   'source-credential-rotation-redacted-v1',
   'webhook-secret-rotation-redacted-v1',
+  'relevance-memory-runtime-canary-v1',
   'security-final-sweep-staging-artifact-v1',
   'source-live-provider-evidence-v1',
   'reddit-credential-lifecycle-redacted-v1',
@@ -814,7 +815,7 @@ function hasSatisfiedCapturedArtifactAlternative(job) {
 }
 
 function hasOnlyLocalRuntimeEnvViolations(job, preflightViolations) {
-  if (!['staging_artifact', 'staging_deploy'].includes(job.mode)) {
+  if (!['live_network', 'staging_artifact', 'staging_deploy'].includes(job.mode)) {
     return false;
   }
   return preflightViolations.length > 0 && preflightViolations.every((violation) => {
@@ -1254,7 +1255,7 @@ function rabbitmqUrlEnvNames() {
 }
 
 function localRuntimeEnvNames() {
-  return new Set(['API_BASE_URL', 'DATABASE_URL', 'RABBITMQ_URL', 'RABBITMQ_MANAGEMENT_URL']);
+  return new Set(['API_BASE_URL', 'DATABASE_URL', 'INFINITY_CONTEXT_URL', 'RABBITMQ_URL', 'RABBITMQ_MANAGEMENT_URL']);
 }
 
 function isLocalRuntimeEnvValue(value) {
@@ -1273,6 +1274,7 @@ function isLocalRuntimeEnvValue(value) {
 
 function httpsEvidenceUrlEnvNames() {
   return new Set([
+    'INFINITY_CONTEXT_URL',
     'JWKS_URL',
     'OIDC_ISSUER',
     'RABBITMQ_MANAGEMENT_URL',
@@ -1283,6 +1285,7 @@ function httpsEvidenceUrlEnvNames() {
 function tokenEvidenceEnvNames() {
   return new Set([
     'GITHUB_ACCESS_TOKEN',
+    'INFINITY_CONTEXT_TOKEN',
     'REDDIT_ACCESS_TOKEN',
     'REDDIT_APP_CLIENT_SECRET',
     'REDDIT_CLIENT_SECRET',

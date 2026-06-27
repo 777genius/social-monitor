@@ -73,6 +73,7 @@ function validateRunnerSource() {
     'INFINITY_CONTEXT_TOKEN',
     'RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH',
     'writeLiveEvidenceArtifactAtomically',
+    'artifactFormat: "relevance-memory-runtime-canary-v1"',
     'artifactId: "relevance-memory-runtime-canary-v1"',
     'tokenIncluded: false',
     'rawAuthorizationHeaderIncluded: false',
@@ -92,6 +93,12 @@ function validateExpectedArtifactContract() {
   }
   if (expected?.schemaVersion !== 1) {
     violations.push(`${contractPath}: expectedArtifact.schemaVersion must be 1`);
+  }
+
+  for (const field of ['artifactFormat', 'persistenceMode']) {
+    if (!Array.isArray(expected?.requiredTopLevelFields) || !expected.requiredTopLevelFields.includes(field)) {
+      violations.push(`${contractPath}: expectedArtifact.requiredTopLevelFields must include ${field}`);
+    }
   }
 
   for (const field of [
@@ -149,6 +156,12 @@ function validateRuntimeArtifactIfProvided() {
   }
   if (artifact.artifactId !== 'relevance-memory-runtime-canary-v1') {
     violations.push(`${artifactPath}: artifactId must be relevance-memory-runtime-canary-v1`);
+  }
+  if (artifact.artifactFormat !== 'relevance-memory-runtime-canary-v1') {
+    violations.push(`${artifactPath}: artifactFormat must be relevance-memory-runtime-canary-v1`);
+  }
+  if (artifact.persistenceMode !== 'prisma') {
+    violations.push(`${artifactPath}: persistenceMode must be prisma for external beta evidence`);
   }
   if (artifact.result?.projectedCount !== 1) {
     violations.push(`${artifactPath}: result.projectedCount must be 1`);

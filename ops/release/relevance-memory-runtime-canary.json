@@ -15,6 +15,10 @@
   "expectedArtifact": {
     "artifactId": "relevance-memory-runtime-canary-v1",
     "schemaVersion": 1,
+    "requiredTopLevelFields": [
+      "artifactFormat",
+      "persistenceMode"
+    ],
     "requiredResultFields": [
       "projectedCount",
       "pendingAfterProjection",
@@ -32,6 +36,6 @@
       "rawSourceTextIncluded": false
     }
   },
-  "exitCondition": "A real memo-stack runtime canary records relevance feedback, projects a user preference fact, retrieves it through context build, and emits a private redacted artifact.",
+  "exitCondition": "A real memo-stack runtime canary records relevance feedback through Prisma persistence, projects a user preference fact, retrieves it through context build, and emits a private redacted artifact.",
   "blockingForExternalBeta": true
 }

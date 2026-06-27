@@ -74,6 +74,7 @@
       "durable-runtime-selector-artifact-v1",
       "source-live-provider-evidence-v1",
       "reddit-credential-lifecycle-redacted-v1",
+      "relevance-memory-runtime-canary-v1",
       "source-credential-rotation-redacted-v1",
       "webhook-secret-rotation-redacted-v1",
       "staging-reliability-artifact-v1",
@@ -94,6 +95,10 @@
     {
       "format": "reddit-credential-lifecycle-redacted-v1",
       "path": "ops/ingestion/fixtures/reddit-credential-lifecycle-redacted.example.json"
+    },
+    {
+      "format": "relevance-memory-runtime-canary-v1",
+      "path": "ops/release/fixtures/relevance-memory-runtime-canary-artifact-examples.json"
     },
     {
       "format": "source-credential-rotation-redacted-v1",
@@ -566,6 +571,35 @@
         }
       ],
       "exitCondition": "Topic to source binding to scheduled scans across Reddit/GitHub/Hacker News/RSS to feed to summary to memo-stack memory to feedback to digest/webhook/realtime to audit passes on durable runtime with tenant isolation."
+    },
+    {
+      "jobId": "relevance-memory-runtime-canary",
+      "evidenceGroupId": "durable-backend-e2e-loop",
+      "requirementId": "durable-backend-e2e-loop",
+      "mode": "live_network",
+      "runPolicy": "live_command",
+      "owner": "backend-lead",
+      "blocksExternalBeta": true,
+      "runnerCommand": "npm run check:relevance-memory-runtime-canary",
+      "validationCommands": [
+        "npm run check:relevance-memory-runtime-canary-evidence"
+      ],
+      "requiredEnv": [
+        "DATABASE_URL",
+        "INFINITY_CONTEXT_URL",
+        "INFINITY_CONTEXT_TOKEN",
+        "RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH",
+        "RELEVANCE_MEMORY_RUNTIME_CANARY_PERSISTENCE"
+      ],
+      "optionalEnv": [],
+      "outputArtifacts": [
+        {
+          "env": "RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH",
+          "format": "relevance-memory-runtime-canary-v1",
+          "expectedArtifactId": "relevance-memory-runtime-canary-v1"
+        }
+      ],
+      "exitCondition": "Prisma-backed relevance feedback is projected to memo-stack and retrieved through context build with redacted evidence."
     },
     {
       "jobId": "summary-real-feedback-import",

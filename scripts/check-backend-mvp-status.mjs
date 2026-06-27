@@ -527,6 +527,8 @@ function validateLocalRuntimeStatusSmoke() {
         INFINITY_CONTEXT_URL: 'http://127.0.0.1:27788',
         RABBITMQ_URL: 'amqp://status_user:...@127.0.0.1:56729/social_monitor',
         REDDIT_ACCESS_TOKEN: 'reddit-status-access-value-1234567890',
+        RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH: join(tempDirectory, 'relevance-memory-runtime-canary.json'),
+        RELEVANCE_MEMORY_RUNTIME_CANARY_PERSISTENCE: 'prisma',
         STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
       },
     });
@@ -570,6 +572,8 @@ function validateEnvFileStatusSmoke() {
       INFINITY_CONTEXT_URL: 'http://127.0.0.1:27788',
       RABBITMQ_URL: 'amqp://status_env_file_user:...@127.0.0.1:56739/social_monitor',
       REDDIT_ACCESS_TOKEN: 'reddit-status-env-file-access-value-1234567890',
+      RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH: join(tempDirectory, 'relevance-memory-runtime-canary.json'),
+      RELEVANCE_MEMORY_RUNTIME_CANARY_PERSISTENCE: 'prisma',
       STAGING_ENVIRONMENT_ID: 'docker-alpha-env-file-1',
     });
 

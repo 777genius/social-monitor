@@ -145,6 +145,16 @@ const requiredJobEnvNames = new Map([
     ],
   ],
   [
+    'relevance-memory-runtime-canary',
+    [
+      'DATABASE_URL',
+      'INFINITY_CONTEXT_URL',
+      'INFINITY_CONTEXT_TOKEN',
+      'RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH',
+      'RELEVANCE_MEMORY_RUNTIME_CANARY_PERSISTENCE',
+    ],
+  ],
+  [
     'release-deploy-smoke',
     [
       'RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH',
@@ -391,6 +401,17 @@ const requiredJobOutputArtifacts = new Map([
         ref: 'DURABLE_BACKEND_E2E_ARTIFACT_PATH',
         format: 'staging-reliability-artifact-v1',
         expectedArtifactId: 'durable-backend-e2e-output',
+      },
+    ],
+  ],
+  [
+    'relevance-memory-runtime-canary',
+    [
+      {
+        kind: 'env',
+        ref: 'RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH',
+        format: 'relevance-memory-runtime-canary-v1',
+        expectedArtifactId: 'relevance-memory-runtime-canary-v1',
       },
     ],
   ],
@@ -2895,7 +2916,7 @@ function validateRunnerEnvFileSmokes() {
     const positiveResult = runRunnerOutputSmoke(['--summary', '--env-file', envFilePath], {});
     if (positiveResult.exitCode !== 0) {
       violations.push(`${contract.runnerFile}: runner env-file summary smoke must accept private env file: ${smokeOutputSnippet(positiveResult.output)}`);
-    } else if (!positiveResult.output.includes('External evidence env readiness: 12/12 live/manual jobs (100%)')) {
+    } else if (!positiveResult.output.includes('External evidence env readiness: 13/13 live/manual jobs (100%)')) {
       violations.push(`${contract.runnerFile}: runner env-file summary smoke must load required env values`);
     }
 
@@ -3208,6 +3229,8 @@ function completeExternalEvidencePreflightEnv(tempDirectory) {
     REDDIT_ACCESS_TOKEN: 'reddit-live-access-value-1234567890',
     REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: join(tempDirectory, 'reddit-credential-lifecycle.json'),
     REDDIT_LIVE_EVIDENCE_PATH: join(tempDirectory, 'reddit-live-evidence.json'),
+    RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH: join(tempDirectory, 'relevance-memory-runtime-canary.json'),
+    RELEVANCE_MEMORY_RUNTIME_CANARY_PERSISTENCE: 'prisma',
     RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: join(tempDirectory, 'release-deploy-smoke.json'),
     SECURITY_FINAL_SWEEP_ARTIFACT_PATH: join(tempDirectory, 'security-final-sweep.json'),
     SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: join(tempDirectory, 'source-credential-rotation.json'),

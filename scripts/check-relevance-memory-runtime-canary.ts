@@ -294,6 +294,7 @@ function writeOptionalEvidenceArtifact(input: EvidenceArtifactInput): void {
     `${JSON.stringify(
       {
         schemaVersion: 1,
+        artifactFormat: "relevance-memory-runtime-canary-v1",
         artifactId: "relevance-memory-runtime-canary-v1",
         generatedAt: new Date().toISOString(),
         runId,

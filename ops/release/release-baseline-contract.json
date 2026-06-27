@@ -143,6 +143,10 @@
       "path": "ops/ingestion/fixtures/reddit-credential-lifecycle-redacted.example.json"
     },
     {
+      "artifactId": "relevance-memory-runtime-canary-artifact-examples",
+      "path": "ops/release/fixtures/relevance-memory-runtime-canary-artifact-examples.json"
+    },
+    {
       "artifactId": "staging-reliability-evidence",
       "path": "ops/drills/staging-reliability-evidence.json"
     },
