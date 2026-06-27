@@ -29,6 +29,7 @@ const coveredSignalIds: readonly RedditLiveSignalId[] = [
   'reddit-credential-lifecycle',
 ];
 type RedditCredentialMode = 'access_token' | 'refresh_token';
+type RedditEvidenceCredentialMode = 'short_lived_oauth_credential' | 'durable_oauth_refresh_grant';
 
 type RedditCredentialPlan = {
   readonly credentialMode: RedditCredentialMode;
@@ -127,7 +128,7 @@ async function main(): Promise<void> {
             observedAt: sampledAt,
             evidence: {
               summary: 'Tenant-owned Reddit OAuth credential returned normalized listing items.',
-              credentialMode: credential.credentialMode,
+              credentialMode: redditEvidenceCredentialMode(credential.credentialMode),
               subreddit,
               listing,
               itemCount: result.items.length,
@@ -135,7 +136,7 @@ async function main(): Promise<void> {
               warningCount: result.warnings.length,
             },
             metrics: {
-              credentialMode: credential.credentialMode,
+              credentialMode: redditEvidenceCredentialMode(credential.credentialMode),
               subreddit,
               listing,
               itemCount: result.items.length,
@@ -263,6 +264,14 @@ const redditCredentialPlan = (userAgent: string): RedditCredentialPlan => {
         userAgent,
       }),
   };
+};
+
+const redditEvidenceCredentialMode = (mode: RedditCredentialMode): RedditEvidenceCredentialMode => {
+  if (mode === 'access_token') {
+    return 'short_lived_oauth_credential';
+  }
+
+  return 'durable_oauth_refresh_grant';
 };
 
 const refreshAccessTokenForRateLimit = (
