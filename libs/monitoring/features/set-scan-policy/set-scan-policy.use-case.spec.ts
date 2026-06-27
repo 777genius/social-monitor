@@ -286,40 +286,46 @@ describe('SetScanPolicyUseCase', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('rejects scan intervals below provider cadence minimum', async () => {
-    const bindings = new FakeSourceBindings();
-    bindings.add(makeBinding('github-repo-radar'));
+  it.each([
+    ['github-trending-page', 3_600],
+    ['github-repo-radar', 21_600],
+  ])(
+    'rejects scan intervals below %s provider cadence minimum',
+    async (providerKey, minimumIntervalSeconds) => {
+      const bindings = new FakeSourceBindings();
+      bindings.add(makeBinding(providerKey));
 
-    const result = await new SetScanPolicyUseCase(
-      bindings,
-      new FakeScanPolicies(),
-      new FakeOutbox(),
-      new FakeIdempotency(),
-      new SequenceIdGenerator(),
-      new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
-    ).execute({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      sourceBindingId: 'binding-1',
-      intervalSeconds: 300,
-      freshnessSeconds: 900,
-      retryBudget: 3,
-      idempotencyKey: 'scan-policy-too-aggressive',
-      correlationId: 'correlation-1',
-    });
+      const result = await new SetScanPolicyUseCase(
+        bindings,
+        new FakeScanPolicies(),
+        new FakeOutbox(),
+        new FakeIdempotency(),
+        new SequenceIdGenerator(),
+        new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
+      ).execute({
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+        idempotencyKey: 'scan-policy-too-aggressive',
+        correlationId: 'correlation-1',
+      });
 
-    expect(result).toEqual({
-      ok: false,
-      error: expect.objectContaining({
-        code: 'validation.failed',
-        details: {
-          providerKey: 'github-repo-radar',
-          intervalSeconds: 300,
-          minimumIntervalSeconds: 21_600,
-        },
-      }),
-    });
-  });
+      expect(result).toEqual({
+        ok: false,
+        error: expect.objectContaining({
+          code: 'validation.failed',
+          details: {
+            providerKey,
+            intervalSeconds: 300,
+            minimumIntervalSeconds,
+          },
+        }),
+      });
+    },
+  );
 
   it('rejects freshness windows smaller than the scan interval without throwing', async () => {
     const bindings = new FakeSourceBindings();
