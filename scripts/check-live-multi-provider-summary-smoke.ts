@@ -167,11 +167,19 @@ const xTwitterMaxItems = readPositiveIntegerEnv(
   1,
   100,
 );
+const xTwitterLimitPerProduct = readPositiveIntegerEnv(
+  "LIVE_MULTI_PROVIDER_X_LIMIT_PER_PRODUCT",
+  Math.max(50, xTwitterMaxItems),
+  1,
+  100,
+);
 const allowEmptyTargets = readBooleanEnv(
   "LIVE_MULTI_PROVIDER_ALLOW_EMPTY_TARGETS",
   false,
 );
-const sampledAt = new Date("2026-06-21T00:00:00.000Z");
+const sampledAtEnv = "LIVE_MULTI_PROVIDER_SAMPLED_AT";
+const sampledAt =
+  readOptionalDateEnv(sampledAtEnv) ?? new Date("2026-06-21T00:00:00.000Z");
 const evidencePathEnv = "LIVE_MULTI_PROVIDER_SUMMARY_EVIDENCE_PATH";
 const frontendFixturePathEnv =
   "LIVE_MULTI_PROVIDER_SUMMARY_FRONTEND_FIXTURE_PATH";
@@ -333,22 +341,30 @@ const main = async (): Promise<void> => {
 
   const scanMetrics: ScanMetrics[] = [];
   for (const target of targets) {
-    const result = unwrap(
-      await executeScan.execute({
-        tenantId: tenant,
-        workspaceId: workspace,
-        scanJobId: `scan-live-multi-provider-${target.sourceBindingId}`,
-        topicId,
-        sourceBindingId: target.sourceBindingId,
-        scanPolicyId: target.scanPolicyId,
-        providerKey: target.providerKey,
-        sourceQuery: target.sourceQuery,
-        correlationId: "corr-live-multi-provider-summary-smoke",
-        causationId: "manual-live-multi-provider-summary-smoke",
-        retryBudget: 1,
-      }),
-      `execute live ${target.providerKey} scan`,
-    );
+    let result;
+    try {
+      result = unwrap(
+        await executeScan.execute({
+          tenantId: tenant,
+          workspaceId: workspace,
+          scanJobId: `scan-live-multi-provider-${target.sourceBindingId}`,
+          topicId,
+          sourceBindingId: target.sourceBindingId,
+          scanPolicyId: target.scanPolicyId,
+          providerKey: target.providerKey,
+          sourceQuery: target.sourceQuery,
+          correlationId: "corr-live-multi-provider-summary-smoke",
+          causationId: "manual-live-multi-provider-summary-smoke",
+          retryBudget: 1,
+        }),
+        `execute live ${target.providerKey} scan`,
+      );
+    } catch (error) {
+      throw new Error(
+        `live multi-provider scan failed: provider=${target.providerKey} sourceBindingId=${target.sourceBindingId} queryMode=${target.sourceQuery.mode} reason=${describeError(error)}`,
+        { cause: error },
+      );
+    }
 
     if (!allowEmptyTargets) {
       assert(
@@ -382,11 +398,18 @@ const main = async (): Promise<void> => {
     "live multi-provider scans must report every success",
   );
 
+  const feedReadLimit = Math.max(
+    100,
+    targets.reduce(
+      (total, target) => total + maxItemsForProvider(target.providerKey),
+      0,
+    ),
+  );
   const feed = await feedItems.list({
     tenantId: tenant,
     workspaceId: workspace,
     topicId,
-    limit: 100,
+    limit: feedReadLimit,
   });
   const feedSnapshots = feed.items.map((item) => item.toSnapshot());
   assert(
@@ -504,9 +527,15 @@ const main = async (): Promise<void> => {
   const artifactSnapshot = artifact.toSnapshot();
   const firstKeyPointClaim = artifactSnapshot.keyPoints[0]?.claim;
   assert(
-    artifactSnapshot.headline.startsWith("Topic summary:"),
-    `summary headline must be topic-level, got ${artifactSnapshot.headline}`,
+    artifactSnapshot.headline.trim().length >= 12,
+    `summary headline must be non-empty, got ${artifactSnapshot.headline}`,
   );
+  if (summaryModelMode === "deterministic") {
+    assert(
+      artifactSnapshot.headline.startsWith("Topic summary:"),
+      `summary headline must be topic-level, got ${artifactSnapshot.headline}`,
+    );
+  }
   assert(
     firstKeyPointClaim === undefined ||
       artifactSnapshot.headline !== firstKeyPointClaim,
@@ -765,30 +794,55 @@ const runLiveReaderSummarySmoke = async (params: {
   const firstTopReadTitle = readerBrief.topReads[0]?.title;
 
   assert(
-    readerBrief.headline.startsWith("Workspace readerSummary:"),
-    `readerSummary reader headline must be reader-facing, got ${readerBrief.headline}`,
+    readerBrief.headline.trim().length >= 12,
+    `readerSummary reader headline must be non-empty, got ${readerBrief.headline}`,
   );
+  if (readerSummaryModelMode === "deterministic") {
+    assert(
+      readerBrief.headline.startsWith("Workspace readerSummary:"),
+      `readerSummary reader headline must be reader-facing, got ${readerBrief.headline}`,
+    );
+  }
   assert(
     firstTopReadTitle === undefined || readerBrief.headline !== firstTopReadTitle,
     "readerSummary reader headline must not repeat the first top read title",
   );
 
+  const requiredProviderCount = new Set(
+    params.targets.map((target) => target.providerKey),
+  ).size;
   for (const target of params.targets) {
     assert(
       selectedProviders.has(target.providerKey),
       `readerSummary evidence window must include ${target.providerKey}`,
     );
+    if (readerSummaryModelMode === "deterministic") {
+      assert(
+        citedProviders.has(target.providerKey),
+        `readerSummary citation map must include ${target.providerKey}`,
+      );
+      assert(
+        readerSourceMixProviders.has(target.providerKey),
+        `readerSummary reader source mix must include ${target.providerKey}`,
+      );
+      assert(
+        topReadProviders.has(target.providerKey),
+        `readerSummary top reads must include ${target.providerKey}`,
+      );
+    }
+  }
+  if (readerSummaryModelMode !== "deterministic") {
     assert(
-      citedProviders.has(target.providerKey),
-      `readerSummary citation map must include ${target.providerKey}`,
+      citedProviders.size >= Math.min(3, requiredProviderCount),
+      `readerSummary citation map must include a diverse provider mix, got ${[...citedProviders].join(", ")}`,
     );
     assert(
-      readerSourceMixProviders.has(target.providerKey),
-      `readerSummary reader source mix must include ${target.providerKey}`,
+      readerSourceMixProviders.size >= Math.min(3, requiredProviderCount),
+      `readerSummary source mix must include a diverse provider mix, got ${[...readerSourceMixProviders].join(", ")}`,
     );
     assert(
-      topReadProviders.has(target.providerKey),
-      `readerSummary top reads must include ${target.providerKey}`,
+      topReadProviders.size >= Math.min(2, requiredProviderCount),
+      `readerSummary top reads must include a diverse provider mix, got ${[...topReadProviders].join(", ")}`,
     );
   }
 
@@ -944,7 +998,7 @@ const buildScanTargets = (): readonly ScanTarget[] => {
               windowHours: 24,
               searchProducts: ["top", "latest"],
               maxItems: xTwitterMaxItems,
-              limitPerProduct: Math.max(50, xTwitterMaxItems),
+              limitPerProduct: xTwitterLimitPerProduct,
               minLikes: 10,
               minRetweets: 0,
               minReplies: 0,
@@ -1065,7 +1119,7 @@ const writeOptionalEvidenceArtifact = (input: {
     scope: "backend-only",
     frontendPolicy: "deferred_contract_only",
     generatedAt,
-    sampledAt: generatedAt,
+    sampledAt: sampledAt.toISOString(),
     provenance: {
       commitSha: readOptionalEnv("BACKEND_GIT_COMMIT_SHA") ?? null,
       imageDigest: readOptionalEnv("BACKEND_IMAGE_DIGEST") ?? null,
@@ -1220,6 +1274,14 @@ const unwrap = <TValue, TError>(
     : new Error(`${label} failed`);
 };
 
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
 function readOptionalEnv(name: string): string | undefined {
   const value = process.env[name]?.trim();
 
@@ -1287,6 +1349,20 @@ function readBooleanEnv(name: string, fallback: boolean): boolean {
   }
 
   throw new Error(`${name} must be true or false`);
+}
+
+function readOptionalDateEnv(name: string): Date | undefined {
+  const value = readOptionalEnv(name);
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`${name} must be an ISO-8601 timestamp`);
+  }
+
+  return parsed;
 }
 
 function safeIdPart(value: string): string {

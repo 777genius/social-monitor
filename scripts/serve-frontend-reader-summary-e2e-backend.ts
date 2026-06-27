@@ -196,6 +196,8 @@ const summaryArtifact = {
     schemaVersion: 'summary.artifact.v1',
     modelVersion: 'deterministic-e2e',
     providerVersion: 'fixture',
+    rulesVersion: 'summary.rules.e2e.v1',
+    evalDatasetVersion: 'summary-e2e.v1',
   },
   usage: {
     inputTokens: 0,
@@ -429,7 +431,25 @@ function loadFrontendFixtureReaderSummaryArtifact(): JsonObject | null {
     throw new Error('readerSummaryArtifact.readerSummaryId must be a string');
   }
 
-  return parsed.readerSummaryArtifact;
+  return normalizeReaderSummaryArtifactForGeneratedApi(
+    parsed.readerSummaryArtifact,
+  );
+}
+
+function normalizeReaderSummaryArtifactForGeneratedApi(
+  artifact: JsonObject,
+): JsonObject {
+  if (isJsonObject(artifact.readerBrief)) {
+    return artifact;
+  }
+  if (!isJsonObject(artifact.content)) {
+    return artifact;
+  }
+
+  return {
+    ...artifact,
+    readerBrief: artifact.content,
+  };
 }
 
 const server = createServer((request, response) => {
