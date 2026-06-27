@@ -31,7 +31,12 @@ export const selectUniqueTopReadCandidates = (
     result.push(story);
   }
 
-  return result;
+  return diversifyByProviderCoverage(
+    result,
+    citationById,
+    evidenceByFeedItemId,
+    clusterById,
+  );
 };
 
 const storyDeduplicationKeys = (
@@ -142,4 +147,66 @@ const githubRepositoryKeyFromTitle = (value: string): string | undefined => {
   return owner === undefined || repo === undefined
     ? undefined
     : `${owner.toLowerCase()}/${repo.toLowerCase()}`;
+};
+
+const diversifyByProviderCoverage = (
+  stories: readonly TopReadCandidate[],
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
+  clusterById: ReadonlyMap<string, StoryCluster>,
+): readonly TopReadCandidate[] => {
+  const coveredProviderKeys = new Set<string>();
+  const selected = new Set<TopReadCandidate>();
+  const diversified: TopReadCandidate[] = [];
+
+  for (const story of stories) {
+    const providerKeys = storyProviderKeys(
+      story,
+      citationById,
+      evidenceByFeedItemId,
+      clusterById,
+    );
+    if (
+      diversified.length > 0 &&
+      providerKeys.every((providerKey) => coveredProviderKeys.has(providerKey))
+    ) {
+      continue;
+    }
+    diversified.push(story);
+    selected.add(story);
+    for (const providerKey of providerKeys) {
+      coveredProviderKeys.add(providerKey);
+    }
+  }
+
+  for (const story of stories) {
+    if (!selected.has(story)) {
+      diversified.push(story);
+    }
+  }
+
+  return diversified;
+};
+
+const storyProviderKeys = (
+  story: TopReadCandidate,
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
+  clusterById: ReadonlyMap<string, StoryCluster>,
+): readonly string[] => {
+  const citations = story.citationIds
+    .map((citationId) => citationById.get(citationId))
+    .filter(
+      (citation): citation is ReaderSummaryCitation => citation !== undefined,
+    );
+
+  return compactUnique([
+    ...story.providerKeys,
+    ...(clusterById.get(story.storyClusterId)?.providerKeys ?? []),
+    ...citations.map((citation) => citation.providerKey),
+    ...citations.map(
+      (citation) => evidenceByFeedItemId.get(citation.feedItemId)?.providerKey,
+    ),
+    story.providerKeys[0] ?? "unknown",
+  ]);
 };

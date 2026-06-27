@@ -220,6 +220,135 @@ describe("buildReaderSummary", () => {
     );
   });
 
+  it("diversifies reader top reads across providers before filling same-provider follow-ups", () => {
+    const input = readerTopReadFixture(12);
+    const providerOverrides = new Map<
+      number,
+      {
+        readonly providerKey: string;
+        readonly providerName: string;
+        readonly title: string;
+        readonly canonicalUrl: string;
+        readonly readerActionKind: "read_source" | "watch_repository";
+      }
+    >([
+      [
+        7,
+        {
+          providerKey: "reddit",
+          providerName: "Reddit",
+          title: "Reddit discusses agent debugging friction",
+          canonicalUrl: "https://reddit.com/r/ClaudeCode/comments/project_7",
+          readerActionKind: "read_source",
+        },
+      ],
+      [
+        8,
+        {
+          providerKey: "hacker-news",
+          providerName: "Hacker News",
+          title: "HN compares repository agents",
+          canonicalUrl: "https://news.ycombinator.com/item?id=8",
+          readerActionKind: "read_source",
+        },
+      ],
+      [
+        9,
+        {
+          providerKey: "rss",
+          providerName: "RSS",
+          title: "RSS explains agent workflow releases",
+          canonicalUrl: "https://example.test/agent-workflow-releases",
+          readerActionKind: "read_source",
+        },
+      ],
+    ]);
+    const override = (index: number) => providerOverrides.get(index);
+
+    const readerSummary = buildReaderSummary({
+      ...input,
+      topStories: input.topStories.map((story, offset) => {
+        const index = offset + 1;
+        const replacement = override(index);
+
+        return replacement === undefined
+          ? story
+          : {
+              ...story,
+              title: replacement.title,
+              providerKeys: [replacement.providerKey],
+            };
+      }),
+      citationMap: input.citationMap.map((citation, offset) => {
+        const index = offset + 1;
+        const replacement = override(index);
+
+        return replacement === undefined
+          ? citation
+          : {
+              ...citation,
+              providerKey: replacement.providerKey,
+              canonicalUrl: replacement.canonicalUrl,
+            };
+      }),
+      storyClusters: input.storyClusters.map((cluster, offset) => {
+        const index = offset + 1;
+        const replacement = override(index);
+
+        return replacement === undefined
+          ? cluster
+          : {
+              ...cluster,
+              storyKey: `${replacement.providerKey}:project-${index}`,
+              providerKeys: [replacement.providerKey],
+            };
+      }),
+      selectedEvidence: input.selectedEvidence.map((item, offset) => {
+        const index = offset + 1;
+        const replacement = override(index);
+
+        return replacement === undefined
+          ? item
+          : {
+              ...item,
+              providerKey: replacement.providerKey,
+              providerName: replacement.providerName,
+              canonicalUrl: replacement.canonicalUrl,
+              title: replacement.title,
+              readerActionKind: replacement.readerActionKind,
+            };
+      }),
+    });
+
+    expect(readerSummary.topReads).toHaveLength(10);
+    expect(
+      readerSummary.topReads.slice(0, 4).map((item) => ({
+        title: item.title,
+        providerKey: item.providerKey,
+      })),
+    ).toEqual([
+      {
+        title: "repo-radar/project-1",
+        providerKey: "github-repo-radar",
+      },
+      {
+        title: "Reddit discusses agent debugging friction",
+        providerKey: "reddit",
+      },
+      {
+        title: "HN compares repository agents",
+        providerKey: "hacker-news",
+      },
+      {
+        title: "RSS explains agent workflow releases",
+        providerKey: "rss",
+      },
+    ]);
+    expect(readerSummary.topReads.map((item) => item.title)).toContain(
+      "repo-radar/project-2",
+    );
+  });
+
   it("deduplicates model top story repeats before applying the reader top read limit", () => {
     const input = readerTopReadFixture(11);
     const repeatedStory = input.topStories[0];
