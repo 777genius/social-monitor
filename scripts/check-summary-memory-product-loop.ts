@@ -65,6 +65,7 @@ type ProductLoopMode = 'fixture' | 'live';
 const mode = resolveProductLoopMode(process.env);
 const runId = readOptionalEnv('SUMMARY_MEMORY_PRODUCT_LOOP_RUN_ID') ??
   (mode === 'live' ? `summary-memory-live-${Date.now()}` : 'summary-memory-e2e');
+const requirePostgresEvidence = readBooleanEnv('SUMMARY_MEMORY_PRODUCT_LOOP_REQUIRE_POSTGRES', false);
 const tenant = tenantId(`tenant-${runId}`);
 const workspace = workspaceId(`workspace-${runId}`);
 const userId = `user-${runId}`;
@@ -73,6 +74,7 @@ const providerKeys = ['github', 'reddit', 'hacker-news', 'rss'] as const;
 type FixtureProviderKey = typeof providerKeys[number];
 
 async function main(): Promise<void> {
+  assertProductLoopEvidenceRequirements();
   const clock = new FixedClock(now);
   const ids = new SequenceIdGenerator(runId);
   const topics = new InMemoryTopicRepository();
@@ -278,6 +280,9 @@ async function maybeCheckLivePostgresEvidence(params: {
 }): Promise<PostgresEvidence | undefined> {
   const databaseUrl = readOptionalEnv('SUMMARY_MEMORY_PRODUCT_LOOP_POSTGRES_URL');
   if (databaseUrl === undefined) {
+    if (requirePostgresEvidence) {
+      throw new Error('SUMMARY_MEMORY_PRODUCT_LOOP_POSTGRES_URL is required when SUMMARY_MEMORY_PRODUCT_LOOP_REQUIRE_POSTGRES=true');
+    }
     return undefined;
   }
 
@@ -789,6 +794,18 @@ function resolveProductLoopMode(env: NodeJS.ProcessEnv): ProductLoopMode {
   throw new Error('SUMMARY_MEMORY_PRODUCT_LOOP_MODE must be fixture or live');
 }
 
+function assertProductLoopEvidenceRequirements(): void {
+  if (requirePostgresEvidence && mode !== 'live') {
+    throw new Error('SUMMARY_MEMORY_PRODUCT_LOOP_REQUIRE_POSTGRES=true requires SUMMARY_MEMORY_PRODUCT_LOOP_MODE=live');
+  }
+  if (
+    requirePostgresEvidence &&
+    readOptionalEnv('SUMMARY_MEMORY_PRODUCT_LOOP_POSTGRES_URL') === undefined
+  ) {
+    throw new Error('SUMMARY_MEMORY_PRODUCT_LOOP_POSTGRES_URL is required when SUMMARY_MEMORY_PRODUCT_LOOP_REQUIRE_POSTGRES=true');
+  }
+}
+
 function requiredEnv(name: string): string {
   const value = readOptionalEnv(name);
   if (value === undefined) {
@@ -796,6 +813,21 @@ function requiredEnv(name: string): string {
   }
 
   return value;
+}
+
+function readBooleanEnv(name: string, fallback: boolean): boolean {
+  const value = readOptionalEnv(name);
+  if (value === undefined) {
+    return fallback;
+  }
+  if (['1', 'true', 'yes'].includes(value.toLocaleLowerCase('en-US'))) {
+    return true;
+  }
+  if (['0', 'false', 'no'].includes(value.toLocaleLowerCase('en-US'))) {
+    return false;
+  }
+
+  throw new Error(`${name} must be true or false`);
 }
 
 function readOptionalEnv(name: string, env: NodeJS.ProcessEnv = process.env): string | undefined {

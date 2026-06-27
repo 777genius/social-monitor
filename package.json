@@ -153,7 +153,7 @@
     "check:summary-memory-review-loop": "node scripts/check-summary-memory-review-loop.mjs",
     "check:summary-memory-redaction": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-summary-memory-redaction.ts",
     "check:summary-memory-product-loop": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-summary-memory-product-loop.ts",
-    "check:summary-memory-live-product-loop": "SUMMARY_MEMORY_PRODUCT_LOOP_MODE=live node scripts/run-with-timeout.mjs --timeout-ms 90000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-summary-memory-product-loop.ts",
+    "check:summary-memory-live-product-loop": "SUMMARY_MEMORY_PRODUCT_LOOP_MODE=live SUMMARY_MEMORY_PRODUCT_LOOP_REQUIRE_POSTGRES=true node scripts/run-with-timeout.mjs --timeout-ms 90000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-summary-memory-product-loop.ts",
     "check:summary-memory-full-runtime-preflight": "node scripts/check-summary-memory-full-runtime-preflight.mjs",
     "check:summary-memory-full-runtime-capabilities": "node scripts/check-summary-memory-full-runtime-capabilities.mjs",
     "check:summary-memory-runtime-canary": "node scripts/run-with-timeout.mjs --timeout-ms 90000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-summary-memory-runtime-canary.ts",
