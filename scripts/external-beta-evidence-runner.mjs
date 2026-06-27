@@ -1284,6 +1284,7 @@ function tokenEvidenceEnvNames() {
   return new Set([
     'GITHUB_ACCESS_TOKEN',
     'REDDIT_ACCESS_TOKEN',
+    'REDDIT_APP_CLIENT_SECRET',
     'REDDIT_CLIENT_SECRET',
     'REDDIT_REFRESH_TOKEN',
   ]);

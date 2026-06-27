@@ -184,6 +184,8 @@ const requiredJobOptionalEnvNames = new Map([
   [
     'live-reddit-oauth',
     [
+      'REDDIT_APP_CLIENT_ID',
+      'REDDIT_APP_CLIENT_SECRET',
       'REDDIT_CLIENT_ID',
       'REDDIT_CLIENT_SECRET',
       'REDDIT_REFRESH_TOKEN',
@@ -237,6 +239,12 @@ const requiredJobEnvAlternatives = new Map([
     {
       label: 'reddit_refresh_token_flow',
       env: ['REDDIT_CLIENT_ID', 'REDDIT_CLIENT_SECRET', 'REDDIT_REFRESH_TOKEN'],
+      coversEnv: ['REDDIT_ACCESS_TOKEN'],
+      mode: 'live_command_credential',
+    },
+    {
+      label: 'reddit_app_refresh_token_flow',
+      env: ['REDDIT_APP_CLIENT_ID', 'REDDIT_APP_CLIENT_SECRET', 'REDDIT_REFRESH_TOKEN'],
       coversEnv: ['REDDIT_ACCESS_TOKEN'],
       mode: 'live_command_credential',
     },
@@ -3126,6 +3134,21 @@ function validateRunnerPreflightPositiveSmoke() {
     }
   } finally {
     rmSync(redditTempDirectory, { recursive: true, force: true });
+  }
+
+  const redditAppTempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-preflight-reddit-app-refresh-positive-'));
+  try {
+    const result = runRunnerPreflightPositiveSmoke(redditOAuthPreflightEnv(redditAppTempDirectory, {
+      REDDIT_ACCESS_TOKEN: '',
+      REDDIT_APP_CLIENT_ID: 'reddit-app-client-id-prod-1',
+      REDDIT_APP_CLIENT_SECRET: 'reddit-app-client-secret-value-1234567890',
+      REDDIT_REFRESH_TOKEN: 'reddit-refresh-token-value-1234567890',
+    }), 'live-reddit-oauth');
+    if (result.exitCode !== 0) {
+      violations.push(`${contract.runnerFile}: runner positive preflight smoke must accept Reddit app refresh-token auth alternative: ${smokeOutputSnippet(result.output)}`);
+    }
+  } finally {
+    rmSync(redditAppTempDirectory, { recursive: true, force: true });
   }
 }
 

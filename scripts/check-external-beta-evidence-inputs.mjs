@@ -117,7 +117,7 @@ function validateClassifications() {
       violations.push(`${matrixPath}: ${envName} must be classified as artifact_path`);
     }
   }
-  for (const envName of ['GITHUB_ACCESS_TOKEN', 'REDDIT_ACCESS_TOKEN', 'REDDIT_CLIENT_SECRET', 'REDDIT_REFRESH_TOKEN']) {
+  for (const envName of ['GITHUB_ACCESS_TOKEN', 'REDDIT_ACCESS_TOKEN', 'REDDIT_APP_CLIENT_SECRET', 'REDDIT_CLIENT_SECRET', 'REDDIT_REFRESH_TOKEN']) {
     if (classifications.get(envName) !== 'secret_value') {
       violations.push(`${matrixPath}: ${envName} must be classified as secret_value`);
     }
