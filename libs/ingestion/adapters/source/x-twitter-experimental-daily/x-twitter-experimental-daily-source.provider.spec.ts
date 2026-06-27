@@ -1,16 +1,16 @@
 import { status } from '@grpc/grpc-js';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { XTwitterExperimentalDailySourceProvider } from './x-twitter-experimental-daily-source.provider';
+import { XTwitterSourceProvider } from './x-twitter-experimental-daily-source.provider';
 import type {
   XDailyCollectorClientPort,
   XDailyCollectorRequest,
 } from './x-daily-collector-client.port';
 
-describe('XTwitterExperimentalDailySourceProvider', () => {
+describe('XTwitterSourceProvider', () => {
   it('plans and scans through the collector client without leaking gRPC details', async () => {
     const collector = new RecordingCollector();
-    const provider = new XTwitterExperimentalDailySourceProvider(
+    const provider = new XTwitterSourceProvider(
       collector,
       { now: () => new Date('2026-06-27T00:00:00.000Z') },
     );
@@ -51,15 +51,32 @@ describe('XTwitterExperimentalDailySourceProvider', () => {
       nextCursor: 'cursor-1',
       warnings: ['partial: one page skipped'],
       items: [{
-        externalId: 'x-twitter-experimental-daily:123',
+        externalId: 'x-twitter:123',
         canonicalUrl: 'https://x.com/a/status/123',
         authorHandle: 'a',
+        metadata: expect.objectContaining({
+          kind: 'x_post',
+          provider: 'x-twitter',
+          tweetId: '123',
+          searchQuery: 'ai agents',
+          likes: 100,
+          retweets: 10,
+          replies: 4,
+          publicMetrics: expect.objectContaining({
+            like_count: 100,
+            retweet_count: 10,
+            reply_count: 4,
+          }),
+        }),
       }],
     });
+    expect(hasUndefinedValue(result.items[0]?.metadata)).toBe(false);
+    expect(result.items[0]?.metadata).not.toHaveProperty('quotes');
+    expect(result.items[0]?.metadata).not.toHaveProperty('impressions');
   });
 
   it('keeps invalid bindings non-retryable through validation', () => {
-    const provider = new XTwitterExperimentalDailySourceProvider(
+    const provider = new XTwitterSourceProvider(
       new RecordingCollector(),
       { now: () => new Date('2026-06-27T00:00:00.000Z') },
     );
@@ -70,12 +87,12 @@ describe('XTwitterExperimentalDailySourceProvider', () => {
     });
     expect(provider.validateBinding({ mode: 'search', query: 'a' })).toEqual({
       ok: false,
-      reason: 'X experimental daily search query must be 2-500 characters',
+      reason: 'X/Twitter search query must be 2-500 characters',
     });
   });
 
   it('classifies gRPC status codes into source provider failures', () => {
-    const provider = new XTwitterExperimentalDailySourceProvider(
+    const provider = new XTwitterSourceProvider(
       new RecordingCollector(),
       { now: () => new Date('2026-06-27T00:00:00.000Z') },
     );
@@ -94,6 +111,22 @@ describe('XTwitterExperimentalDailySourceProvider', () => {
     });
   });
 });
+
+const hasUndefinedValue = (value: unknown): boolean => {
+  if (value === undefined) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.some(hasUndefinedValue);
+  }
+
+  if (value !== null && typeof value === 'object') {
+    return Object.values(value).some(hasUndefinedValue);
+  }
+
+  return false;
+};
 
 class RecordingCollector implements XDailyCollectorClientPort {
   readonly requests: XDailyCollectorRequest[] = [];

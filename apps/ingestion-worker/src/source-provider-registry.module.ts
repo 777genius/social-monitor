@@ -34,7 +34,11 @@ import { RssSourceProvider } from '@social-monitor/ingestion/adapters/source/rss
 import { sourceReadinessProfiles } from '@social-monitor/ingestion/adapters/source/source-readiness-profiles';
 import { selectRuntimeSourceProviders } from '@social-monitor/ingestion/adapters/source/source-provider-runtime-scope';
 import { GrpcXDailyCollectorClient } from '@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/grpc-x-daily-collector-client';
-import { XTwitterExperimentalDailySourceProvider } from '@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/x-twitter-experimental-daily-source.provider';
+import {
+  X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER_KEY,
+  X_TWITTER_PROVIDER_KEY,
+  XTwitterSourceProvider,
+} from '@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/x-twitter-experimental-daily-source.provider';
 import type { SourceConfigReaderPort, SourceProviderPort } from '@social-monitor/ingestion/ports';
 
 import { githubRepoRadarProviders } from './github-repo-radar.module';
@@ -133,7 +137,7 @@ export const sourceProviderRegistryProviders: Provider[] = [
         },
       });
 
-      return new XTwitterExperimentalDailySourceProvider(
+      return new XTwitterSourceProvider(
         collectorClient,
         clock,
       );
@@ -172,6 +176,10 @@ export const sourceProviderRegistryProviders: Provider[] = [
           {
             providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
             canonicalProviderKey: GITHUB_ISSUES_PROVIDER_KEY,
+          },
+          {
+            providerKey: X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER_KEY,
+            canonicalProviderKey: X_TWITTER_PROVIDER_KEY,
           },
         ],
       ),
@@ -239,7 +247,7 @@ type XCollectorRuntimeConfig = {
 const resolveXCollectorConfig = (
   env: NodeJS.ProcessEnv,
 ): XCollectorRuntimeConfig | null => {
-  if (env.X_COLLECTOR_EXPERIMENTAL_ENABLED !== '1') {
+  if (env.X_COLLECTOR_ENABLED !== '1' && env.X_COLLECTOR_EXPERIMENTAL_ENABLED !== '1') {
     return null;
   }
 

@@ -399,7 +399,7 @@ This directory stores architecture decisions for the social monitoring platform.
 - `390-creator-crowdfunding-source-family.md` - creator/crowdfunding source family model and visibility rules.
 - `391-video-creator-source-roadmap-2026.md` - roadmap for video, live and creator platform sources.
 - `392-source-token-setup-minimal-permissions-2026.md` - minimal GitHub, Reddit and X/Twitter credential setup rules.
-- `393-x-collector-grpc-architecture.md` - separate Python x-collector service, protobuf contract and experimental X provider boundaries.
+- `393-x-collector-grpc-architecture.md` - separate Python x-collector service, protobuf contract and canonical X provider boundaries.
 
 ## Core Definition
 

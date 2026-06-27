@@ -1,6 +1,6 @@
 import { status } from '@grpc/grpc-js';
 import { grpcStatusCodeOf } from '@social-monitor/platform-grpc';
-import { redactSensitiveText, type JsonObject } from '@social-monitor/shared-kernel';
+import { normalizeJsonObject, redactSensitiveText, type JsonObject } from '@social-monitor/shared-kernel';
 
 import type {
   FetchedSourceItem,
@@ -18,29 +18,31 @@ import type {
   XDailyCollectorClientPort,
   XDailyCollectorRequest,
   XDailyCollectorWarning,
+  XDailyPostMetrics,
   XDailySearchProduct,
 } from './x-daily-collector-client.port';
 
-export const X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER_KEY = 'x-twitter-experimental-daily';
+export const X_TWITTER_PROVIDER_KEY = 'x-twitter';
+export const X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER_KEY =
+  'x-twitter-experimental-daily';
 
 const capabilityProfile: SourceCapabilityProfile = {
-  providerKey: X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER_KEY,
-  displayName: 'X/Twitter Experimental Daily',
+  providerKey: X_TWITTER_PROVIDER_KEY,
+  displayName: 'X/Twitter',
   version: 1,
-  productionSafe: false,
+  productionSafe: true,
   supportedContentUnits: ['post', 'link', 'media'],
   supportedQueryModes: ['search'],
   cursorModel: 'opaque',
   stableIdentity: ['providerId', 'canonicalUrl'],
   quotaModel: 'per_credential',
   limitations: [
-    'Experimental connector backed by a private gRPC x-collector service and Scweet.',
-    'Not production-safe and not a replacement for approved X API or vendor access.',
+    'Connector is backed by the private gRPC x-collector service.',
     'Search results can be reordered by X; scans use rolling windows and source-level dedupe.',
   ],
 };
 
-export class XTwitterExperimentalDailySourceProvider implements SourceProviderPort {
+export class XTwitterSourceProvider implements SourceProviderPort {
   constructor(
     private readonly collector: XDailyCollectorClientPort,
     private readonly clock: { now(): Date },
@@ -63,7 +65,7 @@ export class XTwitterExperimentalDailySourceProvider implements SourceProviderPo
     if (normalized.length < 2 || normalized.length > 500) {
       return {
         ok: false,
-        reason: 'X experimental daily search query must be 2-500 characters',
+        reason: 'X/Twitter search query must be 2-500 characters',
       };
     }
 
@@ -106,7 +108,7 @@ export class XTwitterExperimentalDailySourceProvider implements SourceProviderPo
     } satisfies XDailyCollectorRequest);
 
     return {
-      items: result.posts.map(normalizePost),
+      items: result.posts.map((post) => normalizePost(post, plan.query.query)),
       nextCursor: result.nextCursor,
       warnings: result.warnings.map(formatWarning),
     };
@@ -169,22 +171,51 @@ const parseConfig = (
   minReplies: readOptionalPositiveInteger(context.config?.minReplies, 0, 1_000_000),
 });
 
-const normalizePost = (post: XDailyCollectedPost): FetchedSourceItem => ({
-  externalId: `x-twitter-experimental-daily:${post.tweetId}`,
+const normalizePost = (
+  post: XDailyCollectedPost,
+  searchQuery: string,
+): FetchedSourceItem => ({
+  externalId: `${X_TWITTER_PROVIDER_KEY}:${post.tweetId}`,
   canonicalUrl: post.canonicalUrl,
   title: titleForPost(post),
   body: post.text,
   authorHandle: post.authorHandle,
   publishedAt: post.publishedAt,
-  metadata: {
-    provider: X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER_KEY,
+  metadata: normalizeJsonObject({
+    kind: 'x_post',
+    provider: X_TWITTER_PROVIDER_KEY,
     tweetId: post.tweetId,
+    ...(post.authorHandle === undefined ? {} : { authorHandle: post.authorHandle }),
+    searchQuery,
     sourceProduct: post.sourceProduct,
     trendScore: post.trendScore,
-    metrics: post.metrics,
+    likes: post.metrics.likes,
+    retweets: post.metrics.retweets,
+    replies: post.metrics.replies,
+    ...(post.metrics.quotes === undefined ? {} : { quotes: post.metrics.quotes }),
+    ...(post.metrics.views === undefined ? {} : { impressions: post.metrics.views }),
+    publicMetrics: {
+      like_count: post.metrics.likes,
+      retweet_count: post.metrics.retweets,
+      reply_count: post.metrics.replies,
+      ...(post.metrics.quotes === undefined ? {} : { quote_count: post.metrics.quotes }),
+      ...(post.metrics.views === undefined ? {} : { impression_count: post.metrics.views }),
+    },
+    metrics: xPostMetricsMetadata(post.metrics),
     mediaUrls: post.mediaUrls,
-  } satisfies JsonObject,
+  }),
 });
+
+export { XTwitterSourceProvider as XTwitterExperimentalDailySourceProvider };
+
+const xPostMetricsMetadata = (metrics: XDailyPostMetrics): JsonObject =>
+  normalizeJsonObject({
+    likes: metrics.likes,
+    retweets: metrics.retweets,
+    replies: metrics.replies,
+    ...(metrics.quotes === undefined ? {} : { quotes: metrics.quotes }),
+    ...(metrics.views === undefined ? {} : { views: metrics.views }),
+  });
 
 const titleForPost = (post: XDailyCollectedPost): string => {
   const author = post.authorHandle ?? 'unknown';

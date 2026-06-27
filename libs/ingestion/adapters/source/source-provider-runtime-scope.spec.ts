@@ -62,6 +62,36 @@ describe('source provider runtime scope', () => {
       'unknown-provider',
     ]);
   });
+
+  it('allows the canonical X provider in beta only when x-collector is explicitly enabled', () => {
+    const providers = [
+      provider('hacker-news'),
+      provider('x-twitter'),
+      provider('unknown-provider'),
+    ];
+
+    const selected = selectRuntimeSourceProviders(providers, {
+      SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+      X_COLLECTOR_ENABLED: '1',
+    });
+
+    expect(selected.map((item) => item.key())).toEqual([
+      'hacker-news',
+      'x-twitter',
+    ]);
+  });
+
+  it('keeps the legacy x-collector flag as a compatibility alias', () => {
+    const selected = selectRuntimeSourceProviders(
+      [provider('x-twitter')],
+      {
+        SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+        X_COLLECTOR_EXPERIMENTAL_ENABLED: '1',
+      },
+    );
+
+    expect(selected.map((item) => item.key())).toEqual(['x-twitter']);
+  });
 });
 
 const provider = (providerKey: string): SourceProviderPort => ({

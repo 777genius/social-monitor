@@ -57,6 +57,13 @@ const redditProfile: SourceCapabilityProfile = {
   supportsCursor: true,
 };
 
+const xTwitterProfile: SourceCapabilityProfile = {
+  providerKey: 'x-twitter',
+  version: 1,
+  productionSafe: true,
+  supportsCursor: true,
+};
+
 const sourceProfiles = new Map([
   [fakeSourceProfile.providerKey, fakeSourceProfile],
   [hackerNewsProfile.providerKey, hackerNewsProfile],
@@ -65,9 +72,13 @@ const sourceProfiles = new Map([
   [githubRepoRadarProfile.providerKey, githubRepoRadarProfile],
   [githubTrendingPageProfile.providerKey, githubTrendingPageProfile],
   [redditProfile.providerKey, redditProfile],
+  [xTwitterProfile.providerKey, xTwitterProfile],
 ]);
 
-const providerAliases = new Map([['github', 'github-issues']]);
+const providerAliases = new Map([
+  ['github', 'github-issues'],
+  ['x-twitter-experimental-daily', 'x-twitter'],
+]);
 
 type FakeSourceCatalogAdapterOptions = {
   readonly includeFixtureProviders?: boolean;
@@ -273,6 +284,46 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
       return integerValidation ?? { ok: true };
     }
 
+    if (canonicalKey === 'x-twitter') {
+      const mode = firstNonEmptyString(config.mode) ?? 'search';
+
+      if (mode !== 'search') {
+        return {
+          ok: false,
+          reason: `Unsupported X/Twitter query mode: ${mode}`,
+        };
+      }
+
+      const query = firstNonEmptyString(config.query, config.term);
+      if (query === undefined || query.length < 2 || query.length > 500) {
+        return {
+          ok: false,
+          reason: 'X/Twitter search source requires query or term between 2 and 500 characters.',
+        };
+      }
+
+      const products = readStringArray(config.searchProducts);
+      const unsupportedProduct = products.find(
+        (product) => !xTwitterSearchProducts.has(product),
+      );
+      if (unsupportedProduct !== undefined) {
+        return {
+          ok: false,
+          reason: `Unsupported X/Twitter search product: ${unsupportedProduct}`,
+        };
+      }
+
+      const integerValidation =
+        validateBoundedInteger(config.windowHours, 'windowHours', 1, 72) ??
+        validateBoundedInteger(config.maxItems, 'maxItems', 1, 100) ??
+        validateBoundedInteger(config.limitPerProduct, 'limitPerProduct', 1, 100) ??
+        validateBoundedInteger(config.minLikes, 'minLikes', 0, 1_000_000) ??
+        validateBoundedInteger(config.minRetweets, 'minRetweets', 0, 1_000_000) ??
+        validateBoundedInteger(config.minReplies, 'minReplies', 0, 1_000_000);
+
+      return integerValidation ?? { ok: true };
+    }
+
     const mode = firstNonEmptyString(config.mode) ?? 'search';
     if (mode !== 'search' && mode !== 'listing') {
       return { ok: false, reason: `Unsupported source query mode: ${mode}` };
@@ -317,6 +368,7 @@ const githubTrendingPageWindows = new Set([
   'week',
   'month',
 ]);
+const xTwitterSearchProducts = new Set(['top', 'latest']);
 
 const firstNonEmptyString = (
   ...values: readonly unknown[]

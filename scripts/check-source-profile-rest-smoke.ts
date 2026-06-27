@@ -393,15 +393,15 @@ async function main(): Promise<void> {
     );
     assert(
       xTwitter.readinessState === 'provider_only',
-      'X/Twitter readiness must stay provider-only before paid API/vendor approval',
+      'X/Twitter readiness must stay provider-only until x-collector runtime is configured',
     );
     assert(
       xTwitter.runtimeReadiness === 'deferred',
       'X/Twitter runtime readiness must stay deferred',
     );
     assert(
-      xTwitter.acquisitionMode === 'approved_paid_api_or_vendor',
-      'X/Twitter must require approved paid API or vendor acquisition',
+      xTwitter.acquisitionMode === 'x_collector_scweet',
+      'X/Twitter must use the canonical x-collector acquisition model',
     );
     assert(
       xTwitter.supportedQueryModes.length === 0,
@@ -413,9 +413,9 @@ async function main(): Promise<void> {
     );
     assert(
       xTwitter.liveBetaBlockers.some((blocker) =>
-        blocker.toLowerCase().includes('paid x api'),
+        blocker.toLowerCase().includes('x-collector'),
       ),
-      'X/Twitter profile must explain paid API blocker',
+      'X/Twitter profile must explain x-collector runtime blocker',
     );
 
     assert(

@@ -1,18 +1,18 @@
 # x-collector
 
-Private Python gRPC service for experimental X/Twitter daily search collection.
+Private Python gRPC service for X/Twitter daily search collection.
 
 The service is intentionally separate from the NestJS workers:
 
 - protobuf owns the service-to-service contract in `libs/contracts/grpc`;
-- this app owns unofficial Scweet execution, account state and proxy concerns;
+- this app owns Scweet execution, account state and proxy concerns as implementation detail;
 - TypeScript ingestion sees only the generated gRPC contract and its own source-provider port.
 
 ## Status
 
-This is an experimental research connector, not production X/Twitter support.
+This is the private runtime behind the canonical `x-twitter` source provider.
 Use dedicated research accounts only. Do not use personal X/Twitter accounts.
-The production path still requires an approved X API or vendor decision.
+Keep production rollout behind explicit enablement, daily caps, health checks and rate-limit evidence.
 
 ## Setup
 
@@ -37,6 +37,15 @@ cd ../..
 npm run x-collector:test
 ```
 
+Run gated live X e2e locally:
+
+```sh
+cd apps/x-collector
+X_COLLECTOR_REAL_E2E=1 \
+X_COLLECTOR_SCWEET_COOKIES_FILE=/secure/path/cookies.json \
+python3 -m pytest tests/test_real_e2e.py
+```
+
 Run locally:
 
 ```sh
@@ -49,14 +58,17 @@ python -m x_collector
 Then enable the TypeScript ingestion adapter:
 
 ```sh
-X_COLLECTOR_EXPERIMENTAL_ENABLED=1
+X_COLLECTOR_ENABLED=1
 X_COLLECTOR_GRPC_ADDRESS=127.0.0.1:50051
 X_COLLECTOR_SERVICE_TOKEN=local-dev-token
 ```
 
+`X_COLLECTOR_EXPERIMENTAL_ENABLED=1` remains accepted as a legacy compatibility alias.
+
 ## Runtime Env
 
 - `X_COLLECTOR_GRPC_BIND`, default `[::]:50051`
+- `X_COLLECTOR_ENABLED`, TypeScript worker opt-in flag for the canonical `x-twitter` provider
 - `X_COLLECTOR_SERVICE_TOKEN`, optional bearer token required from callers
 - `X_COLLECTOR_SCWEET_COOKIES_FILE`, recommended multi-account cookies file
 - `X_COLLECTOR_SCWEET_AUTH_TOKEN`, one-account quickstart fallback

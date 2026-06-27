@@ -13,7 +13,7 @@ an ingestion anti-corruption port:
 
 ```text
 monitoring scan -> SourceProviderPort
-  -> XTwitterExperimentalDailySourceProvider
+  -> XTwitterSourceProvider
   -> XDailyCollectorClientPort
   -> GrpcXDailyCollectorClient
   -> x-collector gRPC service
@@ -43,10 +43,12 @@ toolchain here because the boundary is service-to-service and likely to grow.
 
 ## Runtime Controls
 
-- TypeScript provider key: `x-twitter-experimental-daily`.
-- Runtime registration is opt-in via `X_COLLECTOR_EXPERIMENTAL_ENABLED=1` and
+- TypeScript provider key: `x-twitter`.
+- `x-twitter-experimental-daily` is retained only as a deprecated alias.
+- Runtime registration is opt-in via `X_COLLECTOR_ENABLED=1` and
   `X_COLLECTOR_GRPC_ADDRESS`.
-- The provider remains `provider_only` and `runtimeReadiness: deferred`.
+- `X_COLLECTOR_EXPERIMENTAL_ENABLED=1` remains accepted as a legacy compatibility alias.
+- Public source bindings use canonical `providerKey: x-twitter`.
 - Scheduler cadence floor is 86,400 seconds for this provider.
 - Optional bearer auth is passed through `X_COLLECTOR_SERVICE_TOKEN`.
 - Raw Scweet/X payloads are not returned to TypeScript.
@@ -67,12 +69,9 @@ and richer media as future protobuf versions.
 
 ## Risk Posture
 
-Scweet is an unofficial X web GraphQL collector. It is useful for controlled
-research and canary data, but it is not production-safe X/Twitter support.
-Production enablement still requires legal/product approval and either official
-X API access or an approved vendor.
+Scweet is an unofficial X web GraphQL collector. Product code must treat it as
+replaceable runtime behind `x-collector`, not as a public domain/provider model.
 
 The current architecture contains the risk by isolating Scweet in one Python
-service, keeping the provider out of beta runtime, enforcing daily cadence, and
-making rollback an environment change.
-
+service, requiring explicit runtime opt-in, enforcing daily cadence, and making
+rollback an environment change.
