@@ -391,12 +391,17 @@ const buildOpenQuestions = (
       "Is this signal confirmed outside the currently monitored sources?",
     );
   }
+  if (sourceMix.length === 1) {
+    questions.push(
+      `Is this signal confirmed outside ${providerNameForKey(sourceMix[0]?.providerKey, topReads)}?`,
+    );
+  }
   if (
-    sourceMix.length === 1 ||
+    sourceMix.length > 1 &&
     sourceMix.every((source) => source.singleSourceOnly)
   ) {
     questions.push(
-      `Is this signal confirmed outside ${providerNameForKey(sourceMix[0]?.providerKey, topReads)}?`,
+      "Which single-source top reads need confirmation from another monitored source?",
     );
   }
   if (qualityFlags.includes("conflicting_evidence")) {

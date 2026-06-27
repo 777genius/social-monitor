@@ -350,6 +350,9 @@ describe("buildReaderSummary", () => {
     expect(readerSummary.trendDelta.newSignals).toEqual([
       "10 multi-source items selected",
     ]);
+    expect(readerSummary.openQuestions).toContain(
+      "Which single-source top reads need confirmation from another monitored source?",
+    );
   });
 
   it("deduplicates model top story repeats before applying the reader top read limit", () => {
