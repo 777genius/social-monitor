@@ -414,6 +414,38 @@ describe("ReaderSummaryArtifact", () => {
     );
   });
 
+  it("rejects repeated reader content across top reads and topic sections", () => {
+    expect(() =>
+      ReaderSummaryArtifact.create(
+        baseArtifact({
+          content: readerContent({
+            topReads: [
+              readerTopRead({
+                title: "openai/codex",
+                canonicalUrl: "https://github.com/openai/codex",
+              }),
+            ],
+            topicSections: [
+              {
+                topicId: "topic-ai",
+                title: "AI tooling",
+                insight: "Codex is the strongest AI tooling read.",
+                items: [
+                  readerTopRead({
+                    title: "OpenAI Codex repo",
+                    canonicalUrl:
+                      "https://github.com/OpenAI/Codex?utm_source=topic",
+                  }),
+                ],
+                citationIds: ["citation-1"],
+              },
+            ],
+          }),
+        }),
+      ),
+    ).toThrow("Reader summary content must not repeat the same reader item");
+  });
+
   it("rejects model citations outside selected primary evidence", () => {
     expect(() =>
       assertReaderSummaryCitationsAgainstEvidence(

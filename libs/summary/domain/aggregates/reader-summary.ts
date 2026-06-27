@@ -119,7 +119,7 @@ export class ReaderSummary {
         "Review the latest monitored signals.",
       bullets: buildReaderSummaryBullets(readerInput, topReads),
       qualityState,
-      topicSections: buildTopicSections(readerInput, topReads),
+      topicSections: buildTopicSections(readerInput),
       sourceMix,
       topReads,
       trendDelta: buildTrendDelta(readerInput, topReads, sourceMix),

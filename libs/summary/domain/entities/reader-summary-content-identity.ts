@@ -57,6 +57,14 @@ export const assertUniqueReaderSummaryContentItems = (
     "Reader summary top reads",
     citationById,
   );
+  assertUniqueReaderSummaryItems(
+    [
+      ...content.topReads,
+      ...content.topicSections.flatMap((section) => section.items),
+    ],
+    "Reader summary content",
+    citationById,
+  );
 };
 
 const readerItemIdentityKeys = (

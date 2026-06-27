@@ -430,7 +430,7 @@ const readerBriefingContent = (): ReaderSummaryContent => {
         title: 'AI tooling',
         insight:
           'The useful story is not one isolated post but a repeated provider-backed signal.',
-        items: [topRead],
+        items: [],
         citationIds: ['citation-reddit', 'citation-github'],
       },
     ],

@@ -391,13 +391,7 @@ describe("buildReaderSummary", () => {
     expect(readerSummary.topReads.map((item) => item.title)).not.toContain(
       "repo-radar/project-1 repeated model output",
     );
-    expect(
-      readerSummary.topicSections[0]?.items.map((item) => item.title),
-    ).toEqual([
-      "repo-radar/project-1",
-      "repo-radar/project-2",
-      "repo-radar/project-3",
-    ]);
+    expect(readerSummary.topicSections[0]?.items).toEqual([]);
   });
 
   it("deduplicates top reads by normalized canonical repository URLs", () => {
@@ -448,7 +442,7 @@ describe("buildReaderSummary", () => {
     ]);
   });
 
-  it("does not repeat the same top read across topic sections", () => {
+  it("keeps topic sections citation-only so top reads are not repeated", () => {
     const input = readerTopReadFixture(3);
     const readerSummary = buildReaderSummary({
       ...input,
@@ -473,9 +467,12 @@ describe("buildReaderSummary", () => {
       readerSummary.topicSections.map((section) =>
         section.items.map((item) => item.title),
       ),
+    ).toEqual([[], []]);
+    expect(
+      readerSummary.topicSections.map((section) => section.citationIds),
     ).toEqual([
-      ["repo-radar/project-1", "repo-radar/project-2"],
-      ["repo-radar/project-3"],
+      ["citation-1", "citation-2"],
+      ["citation-1", "citation-3"],
     ]);
   });
 
