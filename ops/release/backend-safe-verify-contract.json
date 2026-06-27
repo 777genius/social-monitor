@@ -103,6 +103,7 @@
     "check:notification-preference-rest",
     "check:personalized-relevance-engine",
     "check:relevance-persistence",
+    "check:relevance-memory-runtime-canary-evidence",
     "check:load-cost",
     "check:source-certification",
     "check:source-provider-runtime-contract",

@@ -89,6 +89,7 @@ const requiredGateIds = new Set([
   'notification-preference-rest',
   'personalized-relevance-engine',
   'relevance-prisma-persistence',
+  'relevance-memory-runtime-canary-evidence',
   'load-cost-guardrail',
   'source-provider-certification',
   'source-provider-runtime-contract',

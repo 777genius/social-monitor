@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { InfinityContextClient } from "@infinity-context/sdk";
@@ -24,6 +24,9 @@ import type {
   RelevanceMemoryProjectionRepositoryPort,
 } from "@social-monitor/relevance/ports";
 
+import { writeLiveEvidenceArtifactAtomically } from "./lib/live-evidence-artifact";
+
+const evidencePathEnv = "RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH";
 const baseUrl = requiredEnv("INFINITY_CONTEXT_URL");
 const token = requiredEnv("INFINITY_CONTEXT_TOKEN");
 const runId =
@@ -126,13 +129,18 @@ async function main(): Promise<void> {
       0,
       "batch must not leave failed projections",
     );
+    const pendingAfterProjection = await persistence.countDue([
+      "pending",
+      "failed",
+    ]);
     assert.equal(
-      await persistence.countDue(["pending", "failed"]),
+      pendingAfterProjection,
       0,
       "batch must drain pending/failed projections",
     );
+    const projectedAfterProjection = await persistence.countDue(["projected"]);
     assert.equal(
-      await persistence.countDue(["projected"]),
+      projectedAfterProjection,
       1,
       "projection must be marked projected",
     );
@@ -149,6 +157,14 @@ async function main(): Promise<void> {
     });
     const fact = await waitForProjectedFact(client);
     const context = await waitForProjectedContext(client);
+
+    writeOptionalEvidenceArtifact({
+      projectedCount: batch.value.projected,
+      pendingAfterProjection,
+      projectedAfterProjection,
+      fact,
+      contextMatched: context.matched,
+    });
 
     console.log(
       [
@@ -257,6 +273,54 @@ function factsFromResponse(response: unknown): readonly unknown[] {
   }
 
   return [];
+}
+
+type EvidenceArtifactInput = {
+  readonly projectedCount: number;
+  readonly pendingAfterProjection: number;
+  readonly projectedAfterProjection: number;
+  readonly fact: unknown;
+  readonly contextMatched: boolean;
+};
+
+function writeOptionalEvidenceArtifact(input: EvidenceArtifactInput): void {
+  const path = readOptionalEnv(evidencePathEnv);
+  if (path === undefined) {
+    return;
+  }
+
+  writeLiveEvidenceArtifactAtomically(
+    path,
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        artifactId: "relevance-memory-runtime-canary-v1",
+        generatedAt: new Date().toISOString(),
+        runId,
+        baseUrlOrigin: safeOrigin(baseUrl),
+        persistenceMode,
+        result: {
+          projectedCount: input.projectedCount,
+          pendingAfterProjection: input.pendingAfterProjection,
+          projectedAfterProjection: input.projectedAfterProjection,
+          projectedFactMatched: projectedFactMatches(input.fact),
+          projectedFactCategory: factCategory(input.fact),
+          contextMatched: input.contextMatched,
+          spaceSlugHash: hashForEvidence(space),
+          memoryScopeHash: hashForEvidence(memoryScope),
+        },
+        redaction: {
+          tokenIncluded: false,
+          rawAuthorizationHeaderIncluded: false,
+          rawMemoryTextIncluded: false,
+          rawSourceTextIncluded: false,
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    evidencePathEnv,
+  );
 }
 
 function factId(fact: unknown): string {
@@ -418,6 +482,18 @@ function createPersistence(): CanaryPersistence {
 
 function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/u, "");
+}
+
+function safeOrigin(value: string): string {
+  try {
+    return new URL(normalizeBaseUrl(value)).origin;
+  } catch {
+    return "invalid-url-redacted";
+  }
+}
+
+function hashForEvidence(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
 function spaceSlug(tenantValue: string, workspaceValue: string): string {

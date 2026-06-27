@@ -214,6 +214,10 @@
         {
           "kind": "command",
           "command": "npm run check:mvp-core-loop"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:relevance-memory-runtime-canary-evidence"
         }
       ]
     },

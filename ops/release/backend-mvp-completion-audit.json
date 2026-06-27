@@ -222,6 +222,7 @@
         "libs/contracts/rest/openapi.snapshot.json",
         "ops/release/e2e-acceptance-traceability.json",
         "ops/release/autonomous-monitoring-loop-evidence.json",
+        "ops/release/relevance-memory-runtime-canary.json",
         "ops/drills/staging-reliability-evidence.json"
       ],
       "backendSafeVerificationCommands": [
@@ -229,6 +230,7 @@
         "npm run check:autonomous-monitoring-loop",
         "npm run check:openapi",
         "npm run check:topic-source-daily-history-rest",
+        "npm run check:relevance-memory-runtime-canary-evidence",
         "npm run check:e2e-traceability",
         "npm run check:staging-reliability-evidence"
       ],
@@ -238,6 +240,7 @@
         "autonomous-monitoring-loop",
         "openapi-drift",
         "topic-source-daily-history-rest",
+        "relevance-memory-runtime-canary-evidence",
         "staging-reliability-evidence"
       ],
       "exitCondition": "topic to source bindings to scheduler to Reddit/GitHub/Hacker News/RSS scans to feed to summary to memo-stack memory to feedback to digest/webhook/realtime to audit passes on durable runtime",

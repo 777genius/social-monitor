@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "contractId": "relevance-memory-runtime-canary-v1",
+  "externalBetaStatus": "hold_until_runtime_canary_evidence",
+  "scope": "backend-relevance-memory",
+  "runnerCommand": "npm run check:relevance-memory-runtime-canary",
+  "runnerFile": "scripts/check-relevance-memory-runtime-canary.ts",
+  "checkCommand": "npm run check:relevance-memory-runtime-canary-evidence",
+  "checkFile": "scripts/check-relevance-memory-runtime-canary-evidence.mjs",
+  "artifactEnv": "RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH",
+  "requiredRuntimeEnv": [
+    "INFINITY_CONTEXT_URL",
+    "INFINITY_CONTEXT_TOKEN"
+  ],
+  "expectedArtifact": {
+    "artifactId": "relevance-memory-runtime-canary-v1",
+    "schemaVersion": 1,
+    "requiredResultFields": [
+      "projectedCount",
+      "pendingAfterProjection",
+      "projectedAfterProjection",
+      "projectedFactMatched",
+      "projectedFactCategory",
+      "contextMatched",
+      "spaceSlugHash",
+      "memoryScopeHash"
+    ],
+    "requiredRedactionFlags": {
+      "tokenIncluded": false,
+      "rawAuthorizationHeaderIncluded": false,
+      "rawMemoryTextIncluded": false,
+      "rawSourceTextIncluded": false
+    }
+  },
+  "exitCondition": "A real memo-stack runtime canary records relevance feedback, projects a user preference fact, retrieves it through context build, and emits a private redacted artifact.",
+  "blockingForExternalBeta": true
+}

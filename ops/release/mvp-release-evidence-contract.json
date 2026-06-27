@@ -400,6 +400,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "relevance-memory-runtime-canary-evidence",
+      "command": "npm run check:relevance-memory-runtime-canary-evidence",
+      "blocksRelease": true
+    },
+    {
       "gateId": "load-cost-guardrail",
       "command": "npm run check:load-cost",
       "blocksRelease": true
