@@ -1,4 +1,5 @@
 import type { ScanJobStatus } from '../../domain';
+import type { ScanProviderHealthState } from '../shared/scan-provider-health-summary';
 
 export type RequestScanDecision =
   | 'created'
@@ -22,6 +23,7 @@ export type RequestScanDecisionView = {
   readonly freshnessDeadlineAt?: string;
   readonly rateLimitBackoffUntil?: string;
   readonly providerFailureBackoffUntil?: string;
+  readonly providerHealthState?: ScanProviderHealthState;
   readonly signals: readonly string[];
 };
 

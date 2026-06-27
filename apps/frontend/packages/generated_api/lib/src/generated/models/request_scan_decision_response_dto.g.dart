@@ -28,6 +28,11 @@ RequestScanDecisionResponseDto _$RequestScanDecisionResponseDtoFromJson(
   providerFailureBackoffUntil: json['providerFailureBackoffUntil'] == null
       ? null
       : DateTime.parse(json['providerFailureBackoffUntil'] as String),
+  providerHealthState: json['providerHealthState'] == null
+      ? null
+      : RequestScanDecisionResponseDtoProviderHealthStateProviderHealthState.fromJson(
+          json['providerHealthState'] as String,
+        ),
   providerMinimumIntervalEnforced:
       json['providerMinimumIntervalEnforced'] as bool?,
   rateLimitBackoffUntil: json['rateLimitBackoffUntil'] == null
@@ -49,6 +54,7 @@ Map<String, dynamic> _$RequestScanDecisionResponseDtoToJson(
   'nextEligibleAt': instance.nextEligibleAt?.toIso8601String(),
   'providerFailureBackoffUntil': instance.providerFailureBackoffUntil
       ?.toIso8601String(),
+  'providerHealthState': instance.providerHealthState,
   'providerMinimumIntervalEnforced': instance.providerMinimumIntervalEnforced,
   'rateLimitBackoffUntil': instance.rateLimitBackoffUntil?.toIso8601String(),
   'reason': instance.reason,

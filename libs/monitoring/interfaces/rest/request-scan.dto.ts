@@ -71,6 +71,9 @@ export class RequestScanDecisionResponseDto implements RequestScanDecisionView {
   @ApiPropertyOptional({ format: 'date-time' })
   declare readonly providerFailureBackoffUntil?: string;
 
+  @ApiPropertyOptional({ enum: scanProviderHealthStateValues })
+  declare readonly providerHealthState?: ScanProviderHealthState;
+
   @ApiProperty({ type: String, isArray: true })
   declare readonly signals: readonly string[];
 }

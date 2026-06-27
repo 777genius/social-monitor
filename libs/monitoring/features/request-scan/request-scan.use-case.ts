@@ -29,6 +29,7 @@ import {
   providerFailureBackoffUntil,
   rateLimitBackoffUntil,
 } from '../shared/scan-freshness-guard';
+import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summary';
 import { sourceBindingScanQuery } from '../shared/source-binding-scan-query';
 
 type RequestScanFailure = DomainError | Error;
@@ -183,6 +184,7 @@ export class RequestScanUseCase {
     if (latestJob !== null && rateLimitBackoff !== null) {
       const snapshot = latestJob.toSnapshot();
       const rateLimitBackoffUntil = rateLimitBackoff.toISOString();
+      const providerHealth = summarizeScanProviderHealth(providerHealthInputs(recentJobs.scanJobs));
       const result = withRequestDecision({
         scanJobId: snapshot.id,
         status: snapshot.status,
@@ -195,6 +197,7 @@ export class RequestScanUseCase {
           nextEligibleAt: rateLimitBackoffUntil,
           waitSeconds: secondsUntil(rateLimitBackoffUntil, now),
           rateLimitBackoffUntil,
+          providerHealthState: providerHealth.providerHealthState,
           signals: cadenceSignals('rate_limit_backoff', cadence.providerMinimumIntervalEnforced),
         },
       });
@@ -209,6 +212,7 @@ export class RequestScanUseCase {
     if (latestJob !== null && providerFailureBackoff !== null) {
       const snapshot = latestJob.toSnapshot();
       const providerFailureBackoffUntilIso = providerFailureBackoff.toISOString();
+      const providerHealth = summarizeScanProviderHealth(providerHealthInputs(recentJobs.scanJobs));
       const result = withRequestDecision({
         scanJobId: snapshot.id,
         status: snapshot.status,
@@ -221,6 +225,7 @@ export class RequestScanUseCase {
           nextEligibleAt: providerFailureBackoffUntilIso,
           waitSeconds: secondsUntil(providerFailureBackoffUntilIso, now),
           providerFailureBackoffUntil: providerFailureBackoffUntilIso,
+          providerHealthState: providerHealth.providerHealthState,
           signals: cadenceSignals('provider_failure_backoff', cadence.providerMinimumIntervalEnforced),
         },
       });
@@ -342,6 +347,18 @@ const cadenceSignals = (primarySignal: string, providerMinimumIntervalEnforced: 
   providerMinimumIntervalEnforced
     ? [primarySignal, 'provider_minimum_interval_enforced']
     : [primarySignal];
+
+const providerHealthInputs = (
+  jobs: readonly ScanJob[],
+): Parameters<typeof summarizeScanProviderHealth>[0] =>
+  jobs.map((job) => {
+    const snapshot = job.toSnapshot();
+
+    return {
+      status: snapshot.status,
+      failureReason: snapshot.failureReason,
+    };
+  });
 
 const cadenceDecisionFields = (
   policySnapshot: { readonly intervalSeconds: number },

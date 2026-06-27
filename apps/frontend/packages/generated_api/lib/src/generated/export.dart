@@ -202,6 +202,7 @@ export 'models/relevance_feedback_target_dto_feedback_reason_feedback_reason.dar
 export 'models/relevance_memory_guidance_dto_status_status.dart';
 export 'models/request_briefing_response_dto_status_status.dart';
 export 'models/request_scan_decision_response_dto_decision_decision.dart';
+export 'models/request_scan_decision_response_dto_provider_health_state_provider_health_state.dart';
 export 'models/request_scan_response_dto_status_status.dart';
 export 'models/request_summary_response_dto_status_status.dart';
 export 'models/scan_execution_attempt_response_dto_status_status.dart';

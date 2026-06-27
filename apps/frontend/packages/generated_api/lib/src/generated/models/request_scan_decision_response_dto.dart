@@ -5,6 +5,7 @@
 import 'package:json_annotation/json_annotation.dart';
 
 import 'request_scan_decision_response_dto_decision_decision.dart';
+import 'request_scan_decision_response_dto_provider_health_state_provider_health_state.dart';
 
 part 'request_scan_decision_response_dto.g.dart';
 
@@ -22,6 +23,7 @@ class RequestScanDecisionResponseDto {
     this.minimumIntervalSeconds,
     this.nextEligibleAt,
     this.providerFailureBackoffUntil,
+    this.providerHealthState,
     this.providerMinimumIntervalEnforced,
     this.rateLimitBackoffUntil,
     this.waitSeconds,
@@ -39,6 +41,8 @@ class RequestScanDecisionResponseDto {
   final num? minimumIntervalSeconds;
   final DateTime? nextEligibleAt;
   final DateTime? providerFailureBackoffUntil;
+  final RequestScanDecisionResponseDtoProviderHealthStateProviderHealthState?
+  providerHealthState;
   final bool? providerMinimumIntervalEnforced;
   final DateTime? rateLimitBackoffUntil;
   final String reason;
