@@ -373,7 +373,7 @@ function problemDetailsErrorModel() {
       title: 'string',
       status: 'number',
       detail: 'string',
-      code: 'DomainErrorCode',
+      code: 'ProblemCode',
       requestId: 'string',
       correlationId: 'string',
       causationId: 'string optional',
@@ -382,13 +382,16 @@ function problemDetailsErrorModel() {
     problemCodes: [
       { code: 'validation.failed', status: 400 },
       { code: 'tenant.scope_missing', status: 400 },
+      { code: 'authentication.required', status: 401 },
       { code: 'authorization.denied', status: 403 },
       { code: 'resource.not_found', status: 404 },
       { code: 'operation.conflict', status: 409 },
+      { code: 'request.too_large', status: 413 },
       { code: 'operation.backpressure', status: 429 },
       { code: 'operation.quota_exceeded', status: 429 },
       { code: 'operation.rate_limited', status: 429 },
       { code: 'external.dependency_unavailable', status: 503 },
+      { code: 'internal.unexpected', status: 500 },
     ],
   };
 }

@@ -7,7 +7,7 @@ export const mobileApiErrorModel = {
     "title": "string",
     "status": "number",
     "detail": "string",
-    "code": "DomainErrorCode",
+    "code": "ProblemCode",
     "requestId": "string",
     "correlationId": "string",
     "causationId": "string optional",
@@ -23,6 +23,10 @@ export const mobileApiErrorModel = {
       "status": 400
     },
     {
+      "code": "authentication.required",
+      "status": 401
+    },
+    {
       "code": "authorization.denied",
       "status": 403
     },
@@ -33,6 +37,10 @@ export const mobileApiErrorModel = {
     {
       "code": "operation.conflict",
       "status": 409
+    },
+    {
+      "code": "request.too_large",
+      "status": 413
     },
     {
       "code": "operation.backpressure",
@@ -49,6 +57,10 @@ export const mobileApiErrorModel = {
     {
       "code": "external.dependency_unavailable",
       "status": 503
+    },
+    {
+      "code": "internal.unexpected",
+      "status": 500
     }
   ]
 } as const;

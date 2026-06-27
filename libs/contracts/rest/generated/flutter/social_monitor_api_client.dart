@@ -8,7 +8,7 @@ const socialMonitorApiErrorModel = <String, Object?>{
     'title': 'string',
     'status': 'number',
     'detail': 'string',
-    'code': 'DomainErrorCode',
+    'code': 'ProblemCode',
     'requestId': 'string',
     'correlationId': 'string',
     'causationId': 'string optional',
@@ -24,6 +24,10 @@ const socialMonitorApiErrorModel = <String, Object?>{
       'status': 400,
     },
     {
+      'code': 'authentication.required',
+      'status': 401,
+    },
+    {
       'code': 'authorization.denied',
       'status': 403,
     },
@@ -34,6 +38,10 @@ const socialMonitorApiErrorModel = <String, Object?>{
     {
       'code': 'operation.conflict',
       'status': 409,
+    },
+    {
+      'code': 'request.too_large',
+      'status': 413,
     },
     {
       'code': 'operation.backpressure',
@@ -50,6 +58,10 @@ const socialMonitorApiErrorModel = <String, Object?>{
     {
       'code': 'external.dependency_unavailable',
       'status': 503,
+    },
+    {
+      'code': 'internal.unexpected',
+      'status': 500,
     },
   ],
 };
