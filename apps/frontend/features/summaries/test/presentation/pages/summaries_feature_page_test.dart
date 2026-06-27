@@ -468,11 +468,6 @@ void main() {
 
     expect(store.selectedSummaryPeriod, currentWeeklyPeriod);
 
-    await tester.drag(
-      find.byType(SingleChildScrollView).last,
-      const Offset(-360, 0),
-    );
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Month'));
     await tester.pumpAndSettle();
 
