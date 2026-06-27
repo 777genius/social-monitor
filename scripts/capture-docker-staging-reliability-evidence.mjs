@@ -200,11 +200,14 @@ async function captureRabbitMqArtifact() {
   await publishPersistent(channel, exchange, routingKey, poisonMessageId);
   await channel.waitForConfirms();
   const poisonDelivery = await getRequired(channel, queue, poisonMessageId);
-  channel.nack(poisonDelivery, false, false);
-  const deadLettered = await pollMessage(channel, dlq, poisonMessageId);
-  if (deadLettered === undefined) {
-    throw new Error('RabbitMQ poison message did not reach DLX');
-  }
+  const poisonRejectedAtMs = Date.now();
+  channel.reject(poisonDelivery, false);
+  const deadLettered = await getRequiredDeadLetter(channel, {
+    sourceQueue: queue,
+    deadLetterQueue: dlq,
+    expectedMessageId: poisonMessageId,
+    timeoutMs: 45_000,
+  });
   const sourceQueueAfterDeadLetter = await channel.checkQueue(queue);
   channel.ack(deadLettered);
   signalResults.push(signalResult('rabbitmq-poison-message-dlx', {
@@ -214,6 +217,7 @@ async function captureRabbitMqArtifact() {
     deliveryAttemptId: `delivery-attempt-${runId}-poison`,
     dlqMessageId: String(deadLettered.properties.messageId ?? ''),
     sourceQueueDepthAfterDeadLetter: sourceQueueAfterDeadLetter.messageCount,
+    deadLetterWaitMs: Date.now() - poisonRejectedAtMs,
     deadLetteredAt: nowIso(),
   }));
 
@@ -289,6 +293,7 @@ function capturePostgresArtifact() {
   const backupPath = `/tmp/${backupId}.dump`;
   const releaseCommitSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
+  pauseWorkerServices();
   const seed = seedPostgresDrillRows(postgresContainer, backupId);
   const beforeCounts = operationalCounts(postgresContainer, 'social_monitor');
   const beforeFingerprints = operationalFingerprints(postgresContainer, 'social_monitor', seed);
@@ -304,9 +309,6 @@ function capturePostgresArtifact() {
   });
 
   const restoreStartedAt = nowIso();
-  execFileSync('docker', ['compose', '--profile', 'app', 'stop', 'ingestion-worker', 'intelligence-worker', 'delivery-service', 'event-relay'], {
-    stdio: 'ignore',
-  });
   execFileSync('docker', ['exec', postgresContainer, 'dropdb', '-U', 'social_monitor', '--if-exists', restoreDatabase], {
     stdio: 'ignore',
   });
@@ -323,9 +325,7 @@ function capturePostgresArtifact() {
   const validation = validationCounts(postgresContainer, restoreDatabase);
   const validationHash = hashJson(validation);
 
-  execFileSync('docker', ['compose', '--profile', 'app', 'start', 'event-relay', 'ingestion-worker', 'intelligence-worker', 'delivery-service'], {
-    stdio: 'ignore',
-  });
+  startWorkerServices();
   for (const service of ['event-relay', 'ingestion-worker', 'intelligence-worker', 'delivery-service']) {
     waitForComposeService(service);
   }
@@ -361,6 +361,7 @@ function capturePostgresArtifact() {
         restoreCompletedAt,
         rpoMinutes: 1,
         rtoMinutes: Math.max(1, Math.ceil((Date.parse(restoreCompletedAt) - Date.parse(restoreStartedAt)) / 60_000)),
+        workersPausedBeforeBackup: true,
         workersPausedBeforeRestore: true,
       }, signalObservedAt),
       signalResult('postgres-migration-version', {
@@ -500,6 +501,26 @@ async function getRequired(channel, queue, expectedMessageId) {
   }
 
   return message;
+}
+
+async function getRequiredDeadLetter(channel, params) {
+  const message = await pollMessage(
+    channel,
+    params.deadLetterQueue,
+    params.expectedMessageId,
+    params.timeoutMs,
+  );
+  if (message !== undefined) {
+    return message;
+  }
+
+  const [sourceQueueState, deadLetterQueueState] = await Promise.all([
+    channel.checkQueue(params.sourceQueue),
+    channel.checkQueue(params.deadLetterQueue),
+  ]);
+  throw new Error(
+    `RabbitMQ poison message ${params.expectedMessageId} did not reach DLX ${params.deadLetterQueue}; sourceQueueDepth=${sourceQueueState.messageCount}; deadLetterQueueDepth=${deadLetterQueueState.messageCount}`,
+  );
 }
 
 async function pollMessage(channel, queue, expectedMessageId, timeoutMs = 10_000) {
@@ -845,12 +866,22 @@ function isComposeServiceRunning(service, options = {}) {
 
 function restoreWorkerServices() {
   try {
-    execFileSync('docker', ['compose', '--profile', 'app', 'start', 'event-relay', 'ingestion-worker', 'intelligence-worker', 'delivery-service'], {
-      stdio: 'ignore',
-    });
+    startWorkerServices();
   } catch {
     return;
   }
+}
+
+function pauseWorkerServices() {
+  execFileSync('docker', ['compose', '--profile', 'app', 'stop', 'ingestion-worker', 'intelligence-worker', 'delivery-service', 'event-relay'], {
+    stdio: 'ignore',
+  });
+}
+
+function startWorkerServices() {
+  execFileSync('docker', ['compose', '--profile', 'app', 'start', 'event-relay', 'ingestion-worker', 'intelligence-worker', 'delivery-service'], {
+    stdio: 'ignore',
+  });
 }
 
 function inspectImageDigest(imageName) {

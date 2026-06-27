@@ -66,7 +66,7 @@ const requiredGateIds = new Set([
   'summary-feedback-rest',
   'summary-policy-rest',
   'summary-request-queue',
-  'readerSummary-workflow',
+  'reader-summary-workflow',
   'summary-worker-command',
   'summary-job-polling-loop',
   'summary-queue-drain-loop',
