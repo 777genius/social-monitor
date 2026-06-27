@@ -133,6 +133,7 @@
         { "method": "PUT", "path": "/topics/{topicId}/user-summary-preference", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
         { "method": "GET", "path": "/user-subscriptions", "action": "user_subscriptions.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/user-subscriptions", "action": "user_subscriptions.create", "apiKeyScope": "write:topics", "roles": ["owner", "admin", "member"] },
+        { "method": "POST", "path": "/user-subscriptions/activate-source", "action": "user_subscriptions.create", "apiKeyScope": "write:topics", "roles": ["owner", "admin", "member"] },
         { "method": "PUT", "path": "/user-subscriptions/{subscriptionId}/summary-preference", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
         { "method": "PUT", "path": "/relevance/users/{userId}/profile", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
         { "method": "POST", "path": "/relevance/users/{userId}/feedback", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
