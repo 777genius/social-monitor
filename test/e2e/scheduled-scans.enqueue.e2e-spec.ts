@@ -136,6 +136,73 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
     });
   });
 
+  it('enqueues due X scan from activated product source pipeline', async () => {
+    const tenant = 'tenant-scheduled-x-e2e';
+    const workspace = 'workspace-scheduled-x-e2e';
+    const userId = 'user-scheduled-x';
+    const initialQueueLength = queue.all().length;
+
+    const activated = await request(app.getHttpServer())
+      .post('/user-subscriptions/activate-source')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
+      .send({
+        userId,
+        providerKey: 'x-twitter',
+        targetKind: 'search_query',
+        targetValue: 'OpenAI Agents',
+        targetConfig: {
+          language: 'en',
+          maxItems: 25,
+        },
+        schedule: {
+          recipientKey: userId,
+          channel: 'in_app',
+          intervalSeconds: 3600,
+          includeNoSignal: true,
+        },
+        scanPolicy: {
+          intervalSeconds: 3600,
+          freshnessSeconds: 3600,
+          retryBudget: 3,
+        },
+      })
+      .expect(201);
+
+    const result = await scheduler.execute({
+      tenantId: tenantId(tenant),
+      workspaceId: workspaceId(workspace),
+      limit: 10,
+      correlationId: 'scheduler-tick-x-e2e',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value).toMatchObject({
+      evaluated: 1,
+      enqueued: 1,
+      skipped: 0,
+    });
+    expect(queue.all()).toHaveLength(initialQueueLength + 1);
+    expect(queue.all().at(-1)).toMatchObject({
+      commandType: 'ingestion.scan.execute',
+      correlationId: 'scheduler-tick-x-e2e',
+      payload: {
+        tenantId: tenant,
+        workspaceId: workspace,
+        topicId: activated.body.topicId,
+        sourceBindingId: activated.body.sourceBindingId,
+        scanPolicyId: activated.body.scanPolicyId,
+        providerKey: 'x-twitter',
+        sourceQuery: {
+          mode: 'search',
+          query: 'openai agents',
+        },
+        retryBudget: 3,
+      },
+    });
+  });
+
   it('skips due scheduled scan when manual scan is already active for source binding', async () => {
     const tenant = 'tenant-scheduled-overlap-e2e';
     const workspace = 'workspace-scheduled-overlap-e2e';
