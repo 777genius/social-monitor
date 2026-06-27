@@ -2,6 +2,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { certifySourceProvider } from '../testing/source-provider-certification';
 import { FixtureHackerNewsClient } from './fixture-hacker-news-client';
+import type { HackerNewsClientPort } from './hacker-news-client.port';
 import { HackerNewsSourceProvider } from './hacker-news-source.provider';
 
 describe('HackerNewsSourceProvider', () => {
@@ -94,6 +95,52 @@ describe('HackerNewsSourceProvider', () => {
 
     expect(result.items).toHaveLength(1);
     expect(result.items[0]?.externalId).toBe('hn:1001');
+  });
+
+  it('skips readable stories without a valid time timestamp', async () => {
+    const client = {
+      async searchStories() {
+        return [
+          {
+            id: 2001,
+            title: 'Readable but missing HN time',
+            text: 'This story must not be ingested with an epoch fallback.',
+            by: 'timestampless',
+            score: 15,
+            comments: 4,
+          },
+          {
+            id: 2002,
+            title: 'Readable with HN time',
+            text: 'This story is safe to ingest.',
+            by: 'timely',
+            time: 1_780_000_180,
+            score: 30,
+            comments: 8,
+          },
+        ];
+      },
+      async listStories() {
+        return [];
+      },
+    } satisfies HackerNewsClientPort;
+    const provider = new HackerNewsSourceProvider(client);
+    const context = {
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'hn-binding-1',
+      scanJobId: 'scan-job-1',
+      correlationId: 'correlation-1',
+    };
+    const query = { mode: 'search' as const, query: 'monitoring' };
+
+    const result = await provider.scan(provider.planScan(query, context), context);
+
+    expect(result.items.map((item) => item.externalId)).toEqual(['hn:2002']);
+    expect(result.items[0]?.publishedAt).toEqual(new Date(1_780_000_180 * 1000));
+    expect(result.warnings).toEqual([
+      'Some Hacker News stories had no valid time timestamp; they were skipped.',
+    ]);
   });
 
   it('rejects unsupported listing names before provider calls', () => {

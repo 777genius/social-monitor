@@ -81,9 +81,7 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
     return {
       items,
       nextCursor: encodeTimeCursor(items, plan.cursor),
-      warnings: stories.some((story) => story.deleted || story.dead)
-        ? ['Some Hacker News stories were deleted/dead and skipped.']
-        : [],
+      warnings: hackerNewsWarnings(stories),
     };
   }
 
@@ -138,10 +136,13 @@ const normalizeStory = (story: HackerNewsStory, sourceKey: string) => {
     return [];
   }
 
+  const publishedAt = publishedAtForStory(story);
+
+  if (publishedAt === undefined) {
+    return [];
+  }
+
   const canonicalUrl = story.url ?? `https://news.ycombinator.com/item?id=${story.id}`;
-  const publishedAt = typeof story.time === 'number'
-    ? new Date(story.time * 1000)
-    : new Date(0);
 
   return [
     {
@@ -154,6 +155,35 @@ const normalizeStory = (story: HackerNewsStory, sourceKey: string) => {
       metadata: hackerNewsStoryMetadata(story, sourceKey),
     },
   ];
+};
+
+const hackerNewsWarnings = (stories: readonly HackerNewsStory[]): readonly string[] => [
+  ...(
+    stories.some((story) => story.deleted || story.dead)
+      ? ['Some Hacker News stories were deleted/dead and skipped.']
+      : []
+  ),
+  ...(
+    stories.some(isTimestampMissingCandidate)
+      ? ['Some Hacker News stories had no valid time timestamp; they were skipped.']
+      : []
+  ),
+];
+
+const isTimestampMissingCandidate = (story: HackerNewsStory): boolean =>
+  !story.deleted &&
+  !story.dead &&
+  story.title !== undefined &&
+  publishedAtForStory(story) === undefined;
+
+const publishedAtForStory = (story: HackerNewsStory): Date | undefined => {
+  if (story.time === undefined || !Number.isFinite(story.time) || story.time <= 0) {
+    return undefined;
+  }
+
+  const publishedAt = new Date(story.time * 1000);
+
+  return Number.isNaN(publishedAt.getTime()) ? undefined : publishedAt;
 };
 
 const hackerNewsStoryMetadata = (story: HackerNewsStory, sourceKey: string) => ({
