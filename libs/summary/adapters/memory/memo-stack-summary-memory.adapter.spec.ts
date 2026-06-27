@@ -217,7 +217,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
       memory_scope_external_ref: topicFeedbackScope('topic-1'),
       kind: 'user_preference',
       classification: 'internal',
-      category: 'citation_quality',
+      category: 'user_preferences',
       ttl_policy: 'durable',
       tags: [
         'summary-feedback',
@@ -284,7 +284,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
       memory_scope_external_ref: providerQualityScope('topic-1', 'github'),
       kind: 'user_preference',
       classification: 'internal',
-      category: 'provider_quality',
+      category: 'user_preferences',
       ttl_policy: 'durable',
       tags: [
         'summary-feedback',
@@ -332,7 +332,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
       space_slug: spaceSlug('tenant-1', 'workspace-1'),
       memory_scope_external_ref: userPreferenceScope('user-1'),
       kind: 'user_preference',
-      category: 'relevance_quality',
+      category: 'user_preferences',
       ttl_policy: 'durable',
       tags: [
         'summary-feedback',

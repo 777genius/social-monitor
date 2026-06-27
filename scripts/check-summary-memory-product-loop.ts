@@ -376,7 +376,9 @@ async function maybeCheckLivePostgresEvidence(params: {
         and s.external_ref = $2
         and f.status = 'active'
         and f.ttl_policy = 'durable'
-        and f.category = 'relevance_quality'
+        and f.category = 'user_preferences'
+        and f.tags_json ? 'relevance-quality'
+        and f.tags_json ? 'ranking-downrank-provider'
     `, [memorySpaceSlug, userScopeRef]);
     const sourceTypes = await readSourceTypes(pool, memorySpaceSlug, providerScopeRef);
     const userPreferenceSourceTypes = await readSourceTypes(pool, memorySpaceSlug, userScopeRef);

@@ -54,6 +54,7 @@ export type MemoStackSummaryMemoryAdapterOptions = {
 const contextTokenBudget = 900;
 const maxMemoryFacts = 12;
 const maxMemoryChunks = 8;
+const memoStackUserPreferenceFactCategory = 'user_preferences';
 
 export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
   private readonly client: MemoStackSummaryMemoryClient;
@@ -156,7 +157,7 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
       rememberAsFact: true,
       factText: memoryText,
       factKind: mapping.factKind,
-      factCategory: mapping.factCategory,
+      factCategory: memoStackUserPreferenceFactCategory,
       factTags: feedbackTags(command, mapping),
       factTtlPolicy: 'durable',
       factMemoryScopeExternalRef: topicFeedbackScope(command.topicId),
@@ -229,7 +230,7 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
       rememberAsFact: true,
       factText: memoryText,
       factKind: 'user_preference',
-      factCategory: 'provider_quality',
+      factCategory: memoStackUserPreferenceFactCategory,
       factTags: providerQualityTags(command, providerQuality),
       factTtlPolicy: 'durable',
       factMemoryScopeExternalRef: providerScope,
@@ -276,7 +277,7 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
       rememberAsFact: true,
       factText: memoryText,
       factKind: 'user_preference',
-      factCategory: userPreference.factCategory,
+      factCategory: memoStackUserPreferenceFactCategory,
       factTags: userPreferenceTags(command, userPreference),
       factTtlPolicy: 'durable',
       factMemoryScopeExternalRef: userScope,
