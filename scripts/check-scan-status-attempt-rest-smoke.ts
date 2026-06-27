@@ -84,6 +84,11 @@ async function main(): Promise<void> {
       'x-workspace-id': workspaceId('workspace-scan-status-attempt-rest-smoke-other'),
       'x-workspace-role': 'admin',
     };
+    const otherTenantHeaders = {
+      'x-tenant-id': tenantId('tenant-scan-status-attempt-rest-smoke-other'),
+      'x-workspace-id': workspace,
+      'x-workspace-role': 'admin',
+    };
 
     const topic = await request(app.getHttpServer())
       .post('/topics')
@@ -152,6 +157,10 @@ async function main(): Promise<void> {
     await request(app.getHttpServer())
       .get(`/scan-requests/${scan.body.scanJobId}/status`)
       .set(otherWorkspaceHeaders)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`/scan-requests/${scan.body.scanJobId}/status`)
+      .set(otherTenantHeaders)
       .expect(404);
 
     console.log('Scan status attempt REST smoke OK');
