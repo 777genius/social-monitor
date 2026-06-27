@@ -567,6 +567,108 @@ async function main(): Promise<void> {
       'scheduled-later scheduler decision must expose next eligible time',
     );
 
+    const trendingPageTopicId = await createTopic({
+      httpServer: app.getHttpServer(),
+      headers: adminHeaders,
+      idempotencyKey: 'topic-trending-page-cadence',
+      name: 'GitHub Trending cadence health',
+      query: 'github trending cadence floor',
+    });
+    const trendingPageBinding = await request(app.getHttpServer())
+      .post(`/topics/${trendingPageTopicId}/source-bindings`)
+      .set(adminHeaders)
+      .set('idempotency-key', 'binding-trending-page-cadence')
+      .send({
+        providerKey: 'github-trending-page',
+        config: {
+          spokenLanguage: 'en',
+          language: 'TypeScript',
+          since: 'daily',
+          maxItems: 10,
+        },
+      })
+      .expect(201);
+
+    const tooFastTrendingPagePolicy = await request(app.getHttpServer())
+      .post(`/source-bindings/${trendingPageBinding.body.sourceBindingId}/scan-policy`)
+      .set(adminHeaders)
+      .set('idempotency-key', 'policy-trending-page-too-fast')
+      .send({
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+      })
+      .expect(400);
+    assert(
+      tooFastTrendingPagePolicy.body.code === 'validation.failed',
+      'too-fast GitHub Trending page scan policy must return validation problem code',
+    );
+    assert(
+      tooFastTrendingPagePolicy.body.details.providerKey === 'github-trending-page',
+      'too-fast GitHub Trending page scan policy problem must expose provider key',
+    );
+    assert(
+      tooFastTrendingPagePolicy.body.details.intervalSeconds === 300,
+      'too-fast GitHub Trending page scan policy problem must expose configured interval',
+    );
+    assert(
+      tooFastTrendingPagePolicy.body.details.minimumIntervalSeconds === 3_600,
+      'too-fast GitHub Trending page scan policy problem must expose provider minimum interval',
+    );
+
+    await scanPolicies.save(
+      ScanPolicy.create({
+        id: 'legacy-trending-page-cadence-policy',
+        tenantId: tenant,
+        workspaceId: workspace,
+        sourceBindingId: trendingPageBinding.body.sourceBindingId,
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+        nextRunAt: new Date(Date.now() - 1_000),
+        createdAt: new Date(Date.now() - 2_000),
+      }),
+    );
+
+    const trendingPageHealth = await readHealth({
+      httpServer: app.getHttpServer(),
+      topicId: trendingPageTopicId,
+      sourceBindingId: trendingPageBinding.body.sourceBindingId,
+      headers: viewerHeaders,
+    });
+    assert(
+      trendingPageHealth.body.scanPolicy.cadence.minimumIntervalSeconds === 3_600,
+      'GitHub Trending page scan policy must expose provider minimum interval',
+    );
+    assert(
+      trendingPageHealth.body.scanPolicy.cadence.configuredIntervalSeconds === 300,
+      'GitHub Trending page scan policy must expose legacy configured interval',
+    );
+    assert(
+      trendingPageHealth.body.scanPolicy.cadence.effectiveIntervalSeconds === 3_600,
+      'GitHub Trending page scan policy must expose provider-capped effective interval',
+    );
+    assert(
+      trendingPageHealth.body.scanPolicy.cadence.providerMinimumIntervalEnforced === true,
+      'GitHub Trending page scan policy must mark provider minimum enforcement',
+    );
+    assert(
+      trendingPageHealth.body.schedulerDecision.minimumIntervalSeconds === 3_600,
+      'GitHub Trending page health decision must expose provider minimum interval',
+    );
+    assert(
+      trendingPageHealth.body.schedulerDecision.effectiveIntervalSeconds === 3_600,
+      'GitHub Trending page health decision must use provider-capped effective interval',
+    );
+    assert(
+      trendingPageHealth.body.schedulerDecision.providerMinimumIntervalEnforced === true,
+      'GitHub Trending page health decision must mark provider minimum enforcement',
+    );
+    assert(
+      trendingPageHealth.body.schedulerDecision.signals.includes('provider_minimum_interval_enforced'),
+      'GitHub Trending page health decision must expose provider minimum enforcement signal',
+    );
+
     const repoRadarTopicId = await createTopic({
       httpServer: app.getHttpServer(),
       headers: adminHeaders,
