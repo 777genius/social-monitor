@@ -368,6 +368,9 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
                 scannedSourceBindingCount: 1,
                 unscannedSourceBindingCount: 0,
                 scanCoverageState: "complete",
+                signals: expect.arrayContaining([
+                  "provider_minimum_interval_enforced",
+                ]),
                 failedScans: 1,
               }),
               expect.objectContaining({
@@ -376,6 +379,12 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
                 unscannedSourceBindingCount: 1,
                 scanCoverageState: "none_scanned",
                 totalScans: 0,
+                signals: expect.arrayContaining([
+                  "no_recent_scans",
+                  "unscanned_source_bindings",
+                  "no_scan_coverage",
+                  "provider_minimum_interval_enforced",
+                ]),
               }),
             ],
           }),
@@ -387,6 +396,10 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
             totalScans: 1,
             succeededScans: 1,
             fetched: 20,
+            signals: expect.arrayContaining([
+              "partial_scan_coverage",
+              "unscanned_source_bindings",
+            ]),
             providerBreakdown: [
               expect.objectContaining({
                 providerKey: "github-trending-page",
@@ -394,12 +407,22 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
                 unscannedSourceBindingCount: 1,
                 scanCoverageState: "none_scanned",
                 totalScans: 0,
+                signals: expect.arrayContaining([
+                  "no_recent_scans",
+                  "unscanned_source_bindings",
+                  "no_scan_coverage",
+                  "provider_minimum_interval_enforced",
+                ]),
               }),
               expect.objectContaining({
                 providerKey: "reddit",
                 scannedSourceBindingCount: 1,
                 unscannedSourceBindingCount: 0,
                 scanCoverageState: "complete",
+                signals: expect.arrayContaining([
+                  "recent_success",
+                  "provider_minimum_interval_enforced",
+                ]),
                 succeededScans: 1,
               }),
             ],
@@ -564,6 +587,13 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
           scannedSourceBindingCount: 1,
           unscannedSourceBindingCount: 1,
           scanCoverageState: "partial",
+          operatorAction: "create_scan_policy_for_unconfigured_source_bindings",
+          signals: expect.arrayContaining([
+            "partial_scan_coverage",
+            "paused_source_bindings",
+            "unconfigured_source_bindings",
+            "unscanned_source_bindings",
+          ]),
           providerBreakdown: [
             expect.objectContaining({
               providerKey: "github-trending-page",
@@ -576,6 +606,14 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
               unscannedSourceBindingCount: 1,
               scanCoverageState: "none_scanned",
               cadenceSummary: undefined,
+              operatorAction: "create_scan_policy_for_unconfigured_source_bindings",
+              signals: expect.arrayContaining([
+                "no_recent_scans",
+                "paused_source_bindings",
+                "unconfigured_source_bindings",
+                "unscanned_source_bindings",
+                "no_scan_coverage",
+              ]),
               totalScans: 0,
             }),
             expect.objectContaining({
@@ -606,6 +644,13 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
             scannedSourceBindingCount: 1,
             unscannedSourceBindingCount: 1,
             scanCoverageState: "partial",
+            operatorAction: "create_scan_policy_for_unconfigured_source_bindings",
+            signals: expect.arrayContaining([
+              "partial_scan_coverage",
+              "paused_source_bindings",
+              "unconfigured_source_bindings",
+              "unscanned_source_bindings",
+            ]),
             providerBreakdown: [
               expect.objectContaining({
                 providerKey: "github-trending-page",
@@ -614,6 +659,12 @@ describe("ListTopicSourceDailyHistoryUseCase", () => {
                 scannedSourceBindingCount: 0,
                 unscannedSourceBindingCount: 1,
                 scanCoverageState: "none_scanned",
+                signals: expect.arrayContaining([
+                  "no_scan_coverage",
+                  "unscanned_source_bindings",
+                  "unconfigured_source_bindings",
+                  "paused_source_bindings",
+                ]),
               }),
               expect.objectContaining({
                 providerKey: "reddit",

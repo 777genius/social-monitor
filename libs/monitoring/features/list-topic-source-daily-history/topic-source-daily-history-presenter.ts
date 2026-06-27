@@ -192,9 +192,15 @@ const buildProviderView = (
   attempts: ReadonlyMap<string, ScanExecutionAttemptSnapshot | null>,
   scanPoliciesByBindingId: ReadonlyMap<string, ScanPolicy>,
 ): TopicSourceDailyHistoryProviderView => {
+  const enabledSourceBindingCount = countBindingsByStatus(bindings, 'enabled');
+  const pausedSourceBindingCount = countBindingsByStatus(bindings, 'paused');
   const configuredSourceBindingCount = countConfiguredBindings(bindings, scanPoliciesByBindingId);
   const scannedSourceBindingCount = countScannedBindings(bindings, jobs);
   const unscannedSourceBindingCount = bindings.length - scannedSourceBindingCount;
+  const coverageState = scanCoverageState({
+    sourceBindingCount: bindings.length,
+    scannedSourceBindingCount,
+  });
   const snapshots = jobs
     .map((job) => job.toSnapshot())
     .sort((left, right) => {
@@ -214,26 +220,33 @@ const buildProviderView = (
   const latestAttempts = snapshots
     .map((snapshot) => attempts.get(snapshot.id))
     .filter((attempt): attempt is NonNullable<typeof attempt> => attempt !== null && attempt !== undefined);
+  const cadenceSummary = summarizeProviderCadence(bindings, scanPoliciesByBindingId);
+  const signals = dailyHistorySignals({
+    healthSignals: health.signals,
+    sourceBindingCount: bindings.length,
+    pausedSourceBindingCount,
+    unconfiguredSourceBindingCount: bindings.length - configuredSourceBindingCount,
+    unscannedSourceBindingCount,
+    scanCoverageState: coverageState,
+    cadenceSummary,
+  });
 
   return {
     providerKey,
     sourceBindingCount: bindings.length,
-    enabledSourceBindingCount: countBindingsByStatus(bindings, 'enabled'),
-    pausedSourceBindingCount: countBindingsByStatus(bindings, 'paused'),
+    enabledSourceBindingCount,
+    pausedSourceBindingCount,
     configuredSourceBindingCount,
     unconfiguredSourceBindingCount: bindings.length - configuredSourceBindingCount,
     scannedSourceBindingCount,
     unscannedSourceBindingCount,
-    scanCoverageState: scanCoverageState({
-      sourceBindingCount: bindings.length,
-      scannedSourceBindingCount,
-    }),
+    scanCoverageState: coverageState,
     schedulerDecisionCount: schedulerSummary.schedulerDecisionCount,
     schedulerEnqueuedCount: schedulerSummary.schedulerEnqueuedCount,
     schedulerSkippedCount: schedulerSummary.schedulerSkippedCount,
     schedulerSkippedByReason: schedulerSummary.schedulerSkippedByReason,
     lastSchedulerEvaluatedAt: schedulerSummary.lastSchedulerEvaluatedAt,
-    cadenceSummary: summarizeProviderCadence(bindings, scanPoliciesByBindingId),
+    cadenceSummary,
     providerHealthState: health.providerHealthState,
     totalScans: health.totalScans,
     succeededScans: health.succeededScans,
@@ -251,9 +264,77 @@ const buildProviderView = (
       .map((snapshot) => snapshot.completedAt)
       .find((completedAt): completedAt is Date => completedAt !== undefined)
       ?.toISOString(),
-    operatorAction: health.operatorAction,
-    signals: health.signals,
+    operatorAction: dailyHistoryOperatorAction({
+      healthOperatorAction: health.operatorAction,
+      healthState: health.providerHealthState,
+      pausedSourceBindingCount,
+      unconfiguredSourceBindingCount: bindings.length - configuredSourceBindingCount,
+      scanCoverageState: coverageState,
+    }),
+    signals,
   };
+};
+
+const dailyHistorySignals = (params: {
+  readonly healthSignals: readonly string[];
+  readonly sourceBindingCount: number;
+  readonly pausedSourceBindingCount: number;
+  readonly unconfiguredSourceBindingCount: number;
+  readonly unscannedSourceBindingCount: number;
+  readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
+  readonly cadenceSummary?: TopicSourceDailyHistoryCadenceSummaryView;
+}): readonly string[] => {
+  const signals = [...params.healthSignals];
+
+  if (params.sourceBindingCount === 0) {
+    signals.push('no_source_bindings');
+  }
+  if (params.pausedSourceBindingCount > 0) {
+    signals.push('paused_source_bindings');
+  }
+  if (params.unconfiguredSourceBindingCount > 0) {
+    signals.push('unconfigured_source_bindings');
+  }
+  if (params.unscannedSourceBindingCount > 0) {
+    signals.push('unscanned_source_bindings');
+  }
+  if (params.scanCoverageState === 'none_scanned') {
+    signals.push('no_scan_coverage');
+  }
+  if (params.scanCoverageState === 'partial') {
+    signals.push('partial_scan_coverage');
+  }
+  if (params.cadenceSummary?.providerMinimumIntervalEnforced === true) {
+    signals.push('provider_minimum_interval_enforced');
+  }
+
+  return [...new Set(signals)];
+};
+
+const dailyHistoryOperatorAction = (params: {
+  readonly healthOperatorAction: string;
+  readonly healthState: 'unknown' | 'operational' | 'degraded' | 'down';
+  readonly pausedSourceBindingCount: number;
+  readonly unconfiguredSourceBindingCount: number;
+  readonly scanCoverageState: TopicSourceDailyHistoryScanCoverageState;
+}): string => {
+  if (params.healthState === 'down' || params.healthState === 'degraded') {
+    return params.healthOperatorAction;
+  }
+
+  if (params.unconfiguredSourceBindingCount > 0) {
+    return 'create_scan_policy_for_unconfigured_source_bindings';
+  }
+
+  if (params.pausedSourceBindingCount > 0 && params.scanCoverageState === 'partial') {
+    return 'resume_paused_sources_or_confirm_they_are_excluded';
+  }
+
+  if (params.scanCoverageState === 'partial') {
+    return 'inspect_unscanned_source_bindings_before_claiming_freshness';
+  }
+
+  return params.healthOperatorAction;
 };
 
 const countBindingsByStatus = (

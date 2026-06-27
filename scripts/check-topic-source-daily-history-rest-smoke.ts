@@ -217,6 +217,14 @@ async function main(): Promise<void> {
       providerKey: 'rss',
       config: { feedUrl: 'https://example.com/feed.xml' },
     });
+    await createBindingWithPolicy({
+      httpServer: app.getHttpServer(),
+      topicId,
+      headers: adminHeaders,
+      idempotencyKey: 'hacker-news',
+      providerKey: 'hacker-news',
+      config: { mode: 'listing', listing: 'top' },
+    });
     const completedAt = new Date(Date.now() - 30_000);
 
     await seedCompletedScan({
@@ -281,10 +289,19 @@ async function main(): Promise<void> {
 
     assert(history.body.topicId === topicId, 'topic source daily history must preserve topic id');
     assert(history.body.days.length === 1, 'topic source daily history must honor days query');
-    assert(history.body.summary.sourceBindingCount === 2, 'topic source daily history must count source bindings');
-    assert(history.body.summary.configuredSourceBindingCount === 2, 'topic source daily history must count configured bindings');
+    assert(history.body.summary.sourceBindingCount === 3, 'topic source daily history must count source bindings');
+    assert(history.body.summary.configuredSourceBindingCount === 3, 'topic source daily history must count configured bindings');
     assert(history.body.summary.scannedSourceBindingCount === 2, 'topic source daily history must count scanned bindings');
-    assert(history.body.summary.scanCoverageState === 'complete', 'topic source daily history must expose complete scan coverage');
+    assert(history.body.summary.unscannedSourceBindingCount === 1, 'topic source daily history must count unscanned bindings');
+    assert(history.body.summary.scanCoverageState === 'partial', 'topic source daily history must expose partial scan coverage');
+    assert(
+      history.body.summary.signals.includes('partial_scan_coverage'),
+      'topic source daily history must signal partial scan coverage',
+    );
+    assert(
+      history.body.summary.signals.includes('unscanned_source_bindings'),
+      'topic source daily history must signal unscanned source bindings',
+    );
     assert(history.body.summary.succeededScans === 1, 'topic source daily history must count successful scans');
     assert(history.body.summary.failedScans === 1, 'topic source daily history must count failed scans');
     assert(history.body.summary.rateLimitedScans === 1, 'topic source daily history must classify rate limits');
@@ -306,6 +323,21 @@ async function main(): Promise<void> {
       history.body.summary.providerBreakdown.some(
         (provider: {
           providerKey: string;
+          scanCoverageState: string;
+          signals: readonly string[];
+          totalScans: number;
+        }) =>
+          provider.providerKey === 'hacker-news' &&
+          provider.scanCoverageState === 'none_scanned' &&
+          provider.totalScans === 0 &&
+          provider.signals.includes('no_scan_coverage'),
+      ),
+      'topic source daily history must expose unscanned Hacker News provider breakdown',
+    );
+    assert(
+      history.body.summary.providerBreakdown.some(
+        (provider: {
+          providerKey: string;
           failedScans: number;
           rateLimitedScans: number;
           schedulerSkippedByReason: { rateLimitBackoff: number };
@@ -318,7 +350,7 @@ async function main(): Promise<void> {
       'topic source daily history must expose RSS rate-limit provider breakdown',
     );
     assert(
-      history.body.days[0].providerBreakdown.length === 2,
+      history.body.days[0].providerBreakdown.length === 3,
       'topic source daily history day view must expose per-provider breakdown',
     );
 
