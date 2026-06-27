@@ -208,7 +208,7 @@ async function main(): Promise<void> {
     sourceBindingId: 'fresh-source-binding-scheduler-loop-smoke',
   });
   assert(
-    freshPolicy?.toSnapshot().nextRunAt.toISOString() === '2026-06-06T10:04:30.000Z',
+    freshPolicy?.toSnapshot().nextRunAt.toISOString() === '2026-06-06T10:10:00.000Z',
     `fresh source binding policy must advance next run without enqueueing, got ${freshPolicy?.toSnapshot().nextRunAt.toISOString()}`,
   );
 

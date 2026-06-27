@@ -37,3 +37,21 @@ export const nextScanPolicyRunAfterQueueBackpressure = (params: {
 
   return new Date(params.now.getTime() + retrySeconds * 1000);
 };
+
+export const nextScanPolicyRunAfterFreshSuccess = (params: {
+  readonly dueAt: Date;
+  readonly intervalSeconds: number;
+  readonly freshnessDeadlineAt: Date;
+  readonly now: Date;
+}): Date => {
+  const intervalNextRunAt = nextScanPolicyRunAfterDecision({
+    dueAt: params.dueAt,
+    intervalSeconds: params.intervalSeconds,
+    now: params.now,
+    backoffUntil: null,
+  });
+
+  return params.freshnessDeadlineAt.getTime() > intervalNextRunAt.getTime()
+    ? params.freshnessDeadlineAt
+    : intervalNextRunAt;
+};

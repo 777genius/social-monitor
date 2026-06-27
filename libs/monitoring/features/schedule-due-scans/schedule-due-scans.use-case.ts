@@ -34,6 +34,7 @@ import {
 } from '../shared/scan-freshness-guard';
 import {
   nextScanPolicyRunAfterDecision,
+  nextScanPolicyRunAfterFreshSuccess,
   nextScanPolicyRunAfterQueueBackpressure,
   scheduledScanIdempotencyKey,
 } from '../shared/scan-scheduler-decision-policy';
@@ -192,6 +193,19 @@ export class ScheduleDueScansUseCase {
         freshnessSeconds: cadence.freshnessSeconds,
         now,
       });
+      const latestJobSnapshot = latestJob?.toSnapshot();
+      const freshSuccessNextRunAt =
+        freshSuccess && latestJobSnapshot?.completedAt !== undefined
+          ? nextScanPolicyRunAfterFreshSuccess({
+              dueAt: policySnapshot.nextRunAt,
+              intervalSeconds: cadence.intervalSeconds,
+              freshnessDeadlineAt: new Date(
+                latestJobSnapshot.completedAt.getTime() +
+                  cadence.freshnessSeconds * 1000,
+              ),
+              now,
+            })
+          : null;
       const providerFailureBackoff = providerFailureBackoffUntil({
         recentJobs: recentJobs.scanJobs,
         backoffSeconds: cadence.intervalSeconds,
@@ -305,12 +319,14 @@ export class ScheduleDueScansUseCase {
             decision: 'skipped',
             reason: skipReason,
             policyDueAt: policySnapshot.nextRunAt,
-            nextRunAt: nextScanPolicyRunAfterDecision({
-              dueAt: policySnapshot.nextRunAt,
-              intervalSeconds: cadence.intervalSeconds,
-              now,
-              backoffUntil: rateLimitBackoff ?? providerFailureBackoff,
-            }),
+            nextRunAt:
+              freshSuccessNextRunAt ??
+              nextScanPolicyRunAfterDecision({
+                dueAt: policySnapshot.nextRunAt,
+                intervalSeconds: cadence.intervalSeconds,
+                now,
+                backoffUntil: rateLimitBackoff ?? providerFailureBackoff,
+              }),
             configuredIntervalSeconds: policySnapshot.intervalSeconds,
             effectiveIntervalSeconds: cadence.intervalSeconds,
             freshnessSeconds: cadence.freshnessSeconds,
@@ -323,12 +339,14 @@ export class ScheduleDueScansUseCase {
 
       await this.scanPolicies.save(
         policy.scheduleNext({
-          nextRunAt: nextScanPolicyRunAfterDecision({
-            dueAt: policySnapshot.nextRunAt,
-            intervalSeconds: cadence.intervalSeconds,
-            now,
-            backoffUntil: rateLimitBackoff ?? providerFailureBackoff,
-          }),
+          nextRunAt:
+            freshSuccessNextRunAt ??
+            nextScanPolicyRunAfterDecision({
+              dueAt: policySnapshot.nextRunAt,
+              intervalSeconds: cadence.intervalSeconds,
+              now,
+              backoffUntil: rateLimitBackoff ?? providerFailureBackoff,
+            }),
         }),
       );
     }
