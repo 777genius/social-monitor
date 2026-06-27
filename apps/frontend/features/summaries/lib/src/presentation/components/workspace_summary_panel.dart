@@ -24,6 +24,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     required this.onPreviousPeriod,
     required this.onCurrentPeriod,
     required this.onNextPeriod,
+    required this.onCalendarDateSelected,
     required this.onRetry,
     required this.onGenerate,
     required this.intentForAction,
@@ -43,6 +44,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
   final VoidCallback onPreviousPeriod;
   final VoidCallback onCurrentPeriod;
   final VoidCallback onNextPeriod;
+  final ValueChanged<DateTime> onCalendarDateSelected;
   final VoidCallback onRetry;
   final VoidCallback onGenerate;
   final UserActionIntent Function(ReaderSummary summary, ReaderAction action)
@@ -173,6 +175,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
       onPreviousPeriod: onPreviousPeriod,
       onCurrentPeriod: onCurrentPeriod,
       onNextPeriod: onNextPeriod,
+      onCalendarDateSelected: onCalendarDateSelected,
       child: child,
     );
   }
@@ -223,6 +226,7 @@ class _WorkspaceSummaryPeriodShell extends StatelessWidget {
     required this.onPreviousPeriod,
     required this.onCurrentPeriod,
     required this.onNextPeriod,
+    required this.onCalendarDateSelected,
     required this.child,
   });
 
@@ -234,6 +238,7 @@ class _WorkspaceSummaryPeriodShell extends StatelessWidget {
   final VoidCallback onPreviousPeriod;
   final VoidCallback onCurrentPeriod;
   final VoidCallback onNextPeriod;
+  final ValueChanged<DateTime> onCalendarDateSelected;
   final Widget child;
 
   @override
@@ -250,6 +255,7 @@ class _WorkspaceSummaryPeriodShell extends StatelessWidget {
           onPreviousPeriod: onPreviousPeriod,
           onCurrentPeriod: onCurrentPeriod,
           onNextPeriod: onNextPeriod,
+          onCalendarDateSelected: onCalendarDateSelected,
         ),
         const SizedBox(height: AppSpacing.sm),
         child,

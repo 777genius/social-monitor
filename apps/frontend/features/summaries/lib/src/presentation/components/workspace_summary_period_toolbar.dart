@@ -14,6 +14,8 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
     required this.onPreviousPeriod,
     required this.onCurrentPeriod,
     required this.onNextPeriod,
+    required this.onCalendarDateSelected,
+    this.calendarNow,
   });
 
   final SummaryPeriod selectedPeriod;
@@ -24,16 +26,26 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
   final VoidCallback onPreviousPeriod;
   final VoidCallback onCurrentPeriod;
   final VoidCallback onNextPeriod;
+  final ValueChanged<DateTime> onCalendarDateSelected;
+  final DateTime? calendarNow;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    var selectorWidth = MediaQuery.sizeOf(context).width - AppSpacing.lg;
+    final availableWidth = MediaQuery.sizeOf(context).width - AppSpacing.lg;
+    var selectorWidth = availableWidth;
     if (selectorWidth > 420) {
       selectorWidth = 420;
     }
     if (selectorWidth < 180) {
       selectorWidth = 180;
+    }
+    var headerWidth = availableWidth;
+    if (headerWidth > 520) {
+      headerWidth = 520;
+    }
+    if (headerWidth < 180) {
+      headerWidth = 180;
     }
 
     return Wrap(
@@ -42,21 +54,25 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
       alignment: WrapAlignment.spaceBetween,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Workspace summary',
-              style: textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: headerWidth),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Workspace summary',
+                style: textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                ),
               ),
-            ),
-            Text(
-              selectedPeriod.rangeLabel,
-              style: textTheme.bodySmall?.copyWith(letterSpacing: 0),
-            ),
-          ],
+              Text(
+                'Shared UTC period: ${selectedPeriod.utcRangeLabel}',
+                softWrap: true,
+                style: textTheme.bodySmall?.copyWith(letterSpacing: 0),
+              ),
+            ],
+          ),
         ),
         Wrap(
           spacing: AppSpacing.xs,
@@ -72,6 +88,12 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
               tooltip: 'Current period',
               icon: const Icon(Icons.today_outlined),
               onPressed: isCurrentPeriod ? null : onCurrentPeriod,
+            ),
+            IconButton(
+              key: const ValueKey('workspace-summary-period-calendar'),
+              tooltip: 'Choose period date',
+              icon: const Icon(Icons.calendar_today_outlined),
+              onPressed: () => _choosePeriodDate(context),
             ),
             IconButton(
               tooltip: 'Next period',
@@ -106,4 +128,45 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
       ],
     );
   }
+
+  Future<void> _choosePeriodDate(BuildContext context) async {
+    final lastDate = _datePickerDate(
+      selectedPreset.latestSelectableCalendarDate(now: calendarNow),
+    );
+    final firstDate = DateTime(2020);
+    final initialDate = _clampDate(
+      _datePickerDate(selectedPeriod.calendarFocusDate),
+      firstDate,
+      lastDate,
+    );
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      helpText: 'Choose ${selectedPreset.label.toLowerCase()} period',
+      fieldLabelText: 'Summary period date',
+    );
+
+    if (picked != null) {
+      onCalendarDateSelected(picked);
+    }
+  }
+}
+
+DateTime _datePickerDate(DateTime value) {
+  final utc = value.toUtc();
+  return DateTime(utc.year, utc.month, utc.day);
+}
+
+DateTime _clampDate(DateTime value, DateTime firstDate, DateTime lastDate) {
+  if (value.isBefore(firstDate)) {
+    return firstDate;
+  }
+
+  if (value.isAfter(lastDate)) {
+    return lastDate;
+  }
+
+  return value;
 }

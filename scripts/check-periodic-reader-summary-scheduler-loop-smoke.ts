@@ -89,6 +89,7 @@ async function main(): Promise<void> {
       intervalMs: 60_000,
       limit: 10,
       runOnStart: true,
+      readyAtUtc: { hour: 6, minute: 0 },
       tenantId: tenant,
       workspaceId: workspace,
     },

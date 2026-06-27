@@ -204,6 +204,7 @@ describe("SchedulePeriodicReaderSummariesUseCase", () => {
     expect(first.ok).toBe(true);
     expect(first.ok ? first.value.evaluated : 0).toBe(2);
     expect(first.ok ? first.value.scheduled : 0).toBe(2);
+    expect(first.ok ? first.value.notReady : 0).toBe(0);
     expect(
       first.ok ? first.value.summaries.map((item) => item.cadence) : [],
     ).toEqual(["weekly", "monthly"]);
@@ -223,9 +224,9 @@ describe("SchedulePeriodicReaderSummariesUseCase", () => {
         tenant,
         workspace,
         "workspace",
-        "policy.reader-summary-policy-periodic",
         "weekly",
         "weekly:2026-07-06T00:00:00.000Z:2026-07-13T00:00:00.000Z:UTC",
+        "shared",
         "2026-06-01T00:00:00.000Z",
       ].join(":"),
       [
@@ -233,9 +234,9 @@ describe("SchedulePeriodicReaderSummariesUseCase", () => {
         tenant,
         workspace,
         "workspace",
-        "policy.reader-summary-policy-periodic",
         "monthly",
         "monthly:2026-06-01T00:00:00.000Z:2026-07-01T00:00:00.000Z:UTC",
+        "shared",
         "2026-06-01T00:00:00.000Z",
       ].join(":"),
     ]);
@@ -252,7 +253,95 @@ describe("SchedulePeriodicReaderSummariesUseCase", () => {
     expect(second.ok).toBe(true);
     expect(second.ok ? second.value.scheduled : 0).toBe(0);
     expect(second.ok ? second.value.existing : 0).toBe(2);
+    expect(second.ok ? second.value.notReady : 0).toBe(0);
     expect(dependencies.queue.all()).toHaveLength(2);
+  });
+
+  it("waits until 06:00 UTC before scheduling the daily reader summary", async () => {
+    const dependencies = makeDependencies();
+    await dependencies.policies.save(
+      ReaderSummaryPolicy.create({
+        id: "reader-summary-policy-daily-ready-time",
+        tenantId: tenant,
+        workspaceId: workspace,
+        scope: { type: "workspace" },
+        ...defaultReaderSummaryGenerationPolicy(),
+        schedule: {
+          enabled: true,
+          timezone: "UTC",
+          cadences: ["daily"],
+        },
+        createdAt: new Date("2026-07-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+      }),
+    );
+
+    const beforeReady = await dependencies.useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      now: new Date("2026-07-15T05:59:59.999Z"),
+      limit: 10,
+      correlationId: "periodic-reader-summary-before-ready",
+    });
+
+    expect(beforeReady.ok).toBe(true);
+    expect(beforeReady.ok ? beforeReady.value.evaluated : 0).toBe(1);
+    expect(beforeReady.ok ? beforeReady.value.notReady : 0).toBe(1);
+    expect(beforeReady.ok ? beforeReady.value.scheduled : 0).toBe(0);
+    expect(dependencies.queue.all()).toHaveLength(0);
+
+    const ready = await dependencies.useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      now: new Date("2026-07-15T06:00:00.000Z"),
+      limit: 10,
+      correlationId: "periodic-reader-summary-ready",
+    });
+
+    expect(ready.ok).toBe(true);
+    expect(ready.ok ? ready.value.notReady : 0).toBe(0);
+    expect(ready.ok ? ready.value.scheduled : 0).toBe(1);
+    expect(
+      ready.ok ? ready.value.summaries[0]?.period.periodKey : undefined,
+    ).toBe("daily:2026-07-14T00:00:00.000Z:2026-07-15T00:00:00.000Z:UTC");
+    expect(dependencies.queue.all()).toHaveLength(1);
+  });
+
+  it("uses shared UTC periods even when an older policy has a non-UTC timezone", async () => {
+    const dependencies = makeDependencies();
+    await dependencies.policies.save(
+      ReaderSummaryPolicy.create({
+        id: "reader-summary-policy-legacy-timezone",
+        tenantId: tenant,
+        workspaceId: workspace,
+        scope: { type: "workspace" },
+        ...defaultReaderSummaryGenerationPolicy(),
+        schedule: {
+          enabled: true,
+          timezone: "Europe/Kiev",
+          cadences: ["weekly"],
+        },
+        createdAt: new Date("2026-07-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+      }),
+    );
+
+    const result = await dependencies.useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      now: new Date("2026-07-13T06:00:00.000Z"),
+      limit: 10,
+      correlationId: "periodic-reader-summary-shared-utc",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok ? result.value.scheduled : 0).toBe(1);
+    expect(result.ok ? result.value.summaries[0]?.period : undefined).toEqual({
+      startedAt: "2026-07-06T00:00:00.000Z",
+      endedAt: "2026-07-13T00:00:00.000Z",
+      timezone: "UTC",
+      periodKey: "weekly:2026-07-06T00:00:00.000Z:2026-07-13T00:00:00.000Z:UTC",
+    });
   });
 
   it("skips disabled scheduled policies", async () => {
