@@ -156,6 +156,10 @@
         {
           "kind": "command",
           "command": "npm run check:briefing-workflow"
+        },
+        {
+          "kind": "command",
+          "command": "npm run check:reader-surface-tenant-isolation"
         }
       ]
     },

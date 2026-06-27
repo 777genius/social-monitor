@@ -34,6 +34,7 @@
     "check:auth-boundary",
     "check:user-auth-boundary",
     "check:production-auth-matrix",
+    "check:reader-surface-tenant-isolation",
     "check:production-secret-boundary",
     "check:credential-secret-runtime-flow",
     "check:backend-ops-readiness",

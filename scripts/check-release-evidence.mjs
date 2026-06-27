@@ -25,6 +25,7 @@ const requiredGateIds = new Set([
   'auth-boundary',
   'user-auth-boundary',
   'production-auth-matrix',
+  'reader-surface-tenant-isolation',
   'credential-secret-runtime-flow',
   'production-secret-boundary',
   'backend-ops-readiness',

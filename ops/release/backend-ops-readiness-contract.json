@@ -14,13 +14,24 @@
   "requiredDomains": [
     {
       "domainId": "auth-boundary",
-      "gates": ["check:auth-boundary", "check:user-auth-boundary", "check:production-auth-matrix"],
-      "releaseGateIds": ["auth-boundary", "user-auth-boundary", "production-auth-matrix"],
+      "gates": [
+        "check:auth-boundary",
+        "check:user-auth-boundary",
+        "check:production-auth-matrix",
+        "check:reader-surface-tenant-isolation"
+      ],
+      "releaseGateIds": [
+        "auth-boundary",
+        "user-auth-boundary",
+        "production-auth-matrix",
+        "reader-surface-tenant-isolation"
+      ],
       "artifacts": [
         ".env.example",
         "docker-compose.yml",
         "test/e2e/user-jwt-auth-boundary.e2e-spec.ts",
         "test/e2e/production-auth-boundary-matrix.e2e-spec.ts",
+        "test/e2e/reader-surfaces.tenant-scope.e2e-spec.ts",
         "ops/security/production-auth-matrix.json"
       ]
     },
