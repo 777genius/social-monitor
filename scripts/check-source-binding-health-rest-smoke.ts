@@ -189,6 +189,11 @@ async function main(): Promise<void> {
       'x-workspace-id': workspaceId('workspace-source-health-rest-smoke-other'),
       'x-workspace-role': 'admin',
     };
+    const otherTenantHeaders = {
+      'x-tenant-id': tenantId('tenant-source-health-rest-smoke-other'),
+      'x-workspace-id': workspace,
+      'x-workspace-role': 'admin',
+    };
 
     const topic = await request(app.getHttpServer())
       .post('/topics')
@@ -218,6 +223,10 @@ async function main(): Promise<void> {
     await request(app.getHttpServer())
       .get(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)
       .set(otherWorkspaceHeaders)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)
+      .set(otherTenantHeaders)
       .expect(404);
 
     assert(
@@ -282,6 +291,11 @@ async function main(): Promise<void> {
       .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
       .set(otherWorkspaceHeaders)
       .set('idempotency-key', 'scan-other-workspace')
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`/source-bindings/${binding.body.sourceBindingId}/scan-requests`)
+      .set(otherTenantHeaders)
+      .set('idempotency-key', 'scan-other-tenant')
       .expect(404);
 
     const healthDuringScan = await request(app.getHttpServer())
@@ -884,6 +898,10 @@ async function main(): Promise<void> {
     await request(app.getHttpServer())
       .get(`/topics/${overviewTopicId}/source-bindings/overview`)
       .set(otherWorkspaceHeaders)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`/topics/${overviewTopicId}/source-bindings/overview`)
+      .set(otherTenantHeaders)
       .expect(404);
 
     assert(overview.body.items.length === 4, 'source overview must expose every provider binding health item');
