@@ -628,6 +628,10 @@ function assertStableItems(
       isHttpUrl(item.canonicalUrl),
       `${providerKey}: item canonicalUrl must be http(s): ${item.canonicalUrl}`,
     );
+    assert(
+      !canonicalUrls.has(item.canonicalUrl),
+      `${providerKey}: duplicate canonicalUrl ${item.canonicalUrl}`,
+    );
     canonicalUrls.add(item.canonicalUrl);
 
     assert(

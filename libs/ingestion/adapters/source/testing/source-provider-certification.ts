@@ -56,9 +56,12 @@ export const certifySourceProvider = (config: SourceProviderCertificationConfig)
       expect(plan.maxItems).toBeGreaterThan(0);
       expect(result.warnings).toEqual(expect.any(Array));
 
+      const canonicalUrls = new Set<string>();
       for (const item of result.items) {
         expect(item.externalId.trim()).not.toHaveLength(0);
         expect(item.canonicalUrl.trim()).not.toHaveLength(0);
+        expect(canonicalUrls.has(item.canonicalUrl)).toBe(false);
+        canonicalUrls.add(item.canonicalUrl);
         expect(item.title.trim().length + item.body.trim().length).toBeGreaterThan(0);
         expect(item.publishedAt).toBeInstanceOf(Date);
         expect(item.publishedAt.getTime()).toBeGreaterThan(0);
