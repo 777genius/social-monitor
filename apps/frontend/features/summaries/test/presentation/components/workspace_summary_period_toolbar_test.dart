@@ -5,6 +5,44 @@ import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.da
 import 'package:social_monitor_summaries/src/presentation/components/workspace_summary_period_toolbar.dart';
 
 void main() {
+  testWidgets('keeps every period segment visible on compact width', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: WorkspaceSummaryPeriodToolbar(
+              selectedPeriod: SummaryPeriodPreset.daily.resolve(
+                now: DateTime.utc(2026, 6, 27, 12),
+              ),
+              selectedPreset: SummaryPeriodPreset.daily,
+              canNavigateToNextPeriod: false,
+              isCurrentPeriod: true,
+              calendarNow: DateTime.utc(2026, 6, 27, 12),
+              onPeriodChanged: (_) {},
+              onPreviousPeriod: () {},
+              onCurrentPeriod: () {},
+              onNextPeriod: () {},
+              onCalendarDateSelected: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    final monthRect = tester.getRect(find.text('Month'));
+    expect(monthRect.right, lessThanOrEqualTo(390));
+  });
+
   testWidgets('opens material calendar and returns the selected period date', (
     tester,
   ) async {
