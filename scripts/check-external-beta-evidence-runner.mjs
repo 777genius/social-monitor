@@ -771,6 +771,9 @@ function validateRunnerImplementation() {
     'manualArtifactJobCount',
     'executableLiveJobCount',
     'validateArtifacts',
+    'contractSmokeArtifactOnly',
+    '--contract-smoke-artifact-only',
+    '!contractSmokeArtifactOnly',
     'artifactValidationViolations',
     'Refusing to validate external beta evidence artifacts',
     'planPreflightViolations',
@@ -1135,7 +1138,7 @@ function validateRunnerPositiveArtifactSmoke() {
       { mode: 0o600 },
     );
 
-    const result = runRunnerArtifactSmoke(artifactPath);
+    const result = runRunnerArtifactSmoke(artifactPath, { contractSmokeArtifactOnly: true });
     if (result.exitCode !== 0) {
       violations.push(`${contract.runnerFile}: runner positive artifact smoke must accept valid live-open-connectors evidence: ${smokeOutputSnippet(result.output)}`);
     }
@@ -1148,7 +1151,7 @@ function validateRunnerPositiveDurableRuntimeArtifactSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-durable-positive-'));
   try {
     const artifactPath = writeDurableRuntimeSelectorArtifact(tempDirectory);
-    const result = runRunnerDurableRuntimeArtifactSmoke(artifactPath);
+    const result = runRunnerDurableRuntimeArtifactSmoke(artifactPath, { contractSmokeArtifactOnly: true });
     if (result.exitCode !== 0) {
       violations.push(`${contract.runnerFile}: runner positive durable runtime artifact smoke must accept a valid runtime selector artifact: ${smokeOutputSnippet(result.output)}`);
     }
@@ -1286,7 +1289,7 @@ function validateRunnerPositiveStagingReliabilityArtifactSmokes() {
     const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-staging-reliability-positive-'));
     try {
       const artifactPath = writeStagingReliabilityArtifact(tempDirectory, config);
-      const result = runRunnerStagingReliabilityArtifactSmoke(config, artifactPath);
+      const result = runRunnerStagingReliabilityArtifactSmoke(config, artifactPath, { contractSmokeArtifactOnly: true });
       if (result.exitCode !== 0) {
         violations.push(`${contract.runnerFile}: runner positive staging reliability smoke must accept valid ${config.artifactId} evidence: ${smokeOutputSnippet(result.output)}`);
       }
@@ -1558,7 +1561,7 @@ function validateRunnerPositiveSummaryFeedbackArtifactSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-summary-feedback-positive-'));
   try {
     const artifactPath = writeSummaryFeedbackSamplesArtifact(tempDirectory);
-    const result = runRunnerSummaryFeedbackArtifactSmoke(artifactPath);
+    const result = runRunnerSummaryFeedbackArtifactSmoke(artifactPath, { contractSmokeArtifactOnly: true });
     if (result.exitCode !== 0) {
       violations.push(`${contract.runnerFile}: runner positive summary feedback artifact smoke must accept valid redacted feedback samples: ${smokeOutputSnippet(result.output)}`);
     }
@@ -1777,7 +1780,7 @@ function validateRunnerPositiveReleaseDeployArtifactSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-release-deploy-positive-'));
   try {
     const artifactPath = writeReleaseDeploySmokeArtifact(tempDirectory);
-    const result = runRunnerReleaseDeployArtifactSmoke(artifactPath);
+    const result = runRunnerReleaseDeployArtifactSmoke(artifactPath, { contractSmokeArtifactOnly: true });
     if (result.exitCode !== 0) {
       violations.push(`${contract.runnerFile}: runner positive release deploy artifact smoke must accept valid deploy smoke evidence: ${smokeOutputSnippet(result.output)}`);
     }
@@ -1929,7 +1932,7 @@ function validateRunnerPositiveCredentialRotationArtifactSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-rotation-positive-'));
   try {
     const { sourceArtifactPath, webhookArtifactPath } = writeCredentialRotationArtifactPair(tempDirectory);
-    const result = runRunnerCredentialRotationArtifactSmoke(sourceArtifactPath, webhookArtifactPath);
+    const result = runRunnerCredentialRotationArtifactSmoke(sourceArtifactPath, webhookArtifactPath, { contractSmokeArtifactOnly: true });
     if (result.exitCode !== 0) {
       violations.push(`${contract.runnerFile}: runner positive credential rotation artifact smoke must accept valid redacted rotation artifacts: ${smokeOutputSnippet(result.output)}`);
     }
@@ -2093,7 +2096,7 @@ function validateRunnerPositiveSecurityFinalSweepArtifactSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-security-positive-'));
   try {
     const { artifactPath, exportPaths } = writeSecurityFinalSweepArtifact(tempDirectory);
-    const result = runRunnerSecurityFinalSweepArtifactSmoke(artifactPath, exportPaths);
+    const result = runRunnerSecurityFinalSweepArtifactSmoke(artifactPath, exportPaths, { contractSmokeArtifactOnly: true });
     if (result.exitCode !== 0) {
       violations.push(`${contract.runnerFile}: runner positive security final sweep artifact smoke must accept valid redacted export evidence: ${smokeOutputSnippet(result.output)}`);
     }
@@ -2402,7 +2405,7 @@ function validateRunnerPositiveRedditArtifactSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-reddit-positive-'));
   try {
     const { liveArtifactPath, lifecyclePath } = writeRedditArtifactPair(tempDirectory);
-    const result = runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath);
+    const result = runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath, { contractSmokeArtifactOnly: true });
     if (result.exitCode !== 0) {
       violations.push(`${contract.runnerFile}: runner positive Reddit artifact smoke must accept valid live Reddit evidence and lifecycle pair: ${smokeOutputSnippet(result.output)}`);
     }
@@ -2418,7 +2421,7 @@ function validateRunnerPositiveRedditArtifactSmoke() {
         artifact.commitSha = 'c'.repeat(40);
       },
     });
-    const result = runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath);
+    const result = runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath, { contractSmokeArtifactOnly: true });
     if (result.exitCode !== 0) {
       violations.push(`${contract.runnerFile}: runner positive Reddit artifact smoke must accept a durable lifecycle artifact from a previous release image: ${smokeOutputSnippet(result.output)}`);
     }
@@ -2539,59 +2542,59 @@ function runRunnerNegativeSmoke(artifactPath) {
   return runRunnerArtifactSmoke(artifactPath);
 }
 
-function runRunnerSecurityFinalSweepArtifactSmoke(artifactPath, exportPaths) {
+function runRunnerSecurityFinalSweepArtifactSmoke(artifactPath, exportPaths, options = {}) {
   return runRunnerValidateArtifactsSmoke('security-final-sweep-staging', {
     LOG_EXPORT_PATH: exportPaths.logs.path,
     METRICS_EXPORT_PATH: exportPaths.metrics.path,
     PUBLIC_ERROR_EXPORT_PATH: exportPaths.publicErrors.path,
     AUDIT_EVENT_EXPORT_PATH: exportPaths.auditMetadata.path,
     SECURITY_FINAL_SWEEP_ARTIFACT_PATH: artifactPath,
-  });
+  }, options);
 }
 
-function runRunnerCredentialRotationArtifactSmoke(sourceArtifactPath, webhookArtifactPath) {
+function runRunnerCredentialRotationArtifactSmoke(sourceArtifactPath, webhookArtifactPath, options = {}) {
   return runRunnerValidateArtifactsSmoke('credential-secret-rotation-drill', {
     SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: sourceArtifactPath,
     STAGING_SECRET_STORE_ID: 'secret-store-staging-alpha-1',
     WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: webhookArtifactPath,
-  });
+  }, options);
 }
 
-function runRunnerDurableRuntimeArtifactSmoke(artifactPath) {
+function runRunnerDurableRuntimeArtifactSmoke(artifactPath, options = {}) {
   const imageDigest = `sha256:${'d'.repeat(64)}`;
   return runRunnerValidateArtifactsSmoke('durable-runtime-staging-proof', {
     API_BASE_URL: 'https://api.staging.social-monitor.invalid',
     BACKEND_IMAGE_DIGEST: imageDigest,
     DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: artifactPath,
     STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
-  });
+  }, options);
 }
 
-function runRunnerStagingReliabilityArtifactSmoke(config, artifactPath) {
+function runRunnerStagingReliabilityArtifactSmoke(config, artifactPath, options = {}) {
   return runRunnerValidateArtifactsSmoke(config.jobId, {
     BACKEND_IMAGE_DIGEST: config.imageDigest,
     STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
     [config.envName]: artifactPath,
     ...config.requiredEnv,
-  });
+  }, options);
 }
 
-function runRunnerSummaryFeedbackArtifactSmoke(artifactPath) {
+function runRunnerSummaryFeedbackArtifactSmoke(artifactPath, options = {}) {
   return runRunnerValidateArtifactsSmoke('summary-real-feedback-import', {
     SUMMARY_REAL_FEEDBACK_SAMPLES_PATH: artifactPath,
-  });
+  }, options);
 }
 
-function runRunnerReleaseDeployArtifactSmoke(artifactPath) {
+function runRunnerReleaseDeployArtifactSmoke(artifactPath, options = {}) {
   return runRunnerValidateArtifactsSmoke('release-deploy-smoke', {
     API_BASE_URL: 'https://api.staging.social-monitor.invalid',
     BACKEND_IMAGE_DIGEST: releaseDeploySmokeImageDigest(),
     RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: artifactPath,
     STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
-  });
+  }, options);
 }
 
-function runRunnerArtifactSmoke(artifactPath) {
+function runRunnerArtifactSmoke(artifactPath, options = {}) {
   const imageDigest = `sha256:${'a'.repeat(64)}`;
   const commitSha = 'a'.repeat(40);
   return runRunnerValidateArtifactsSmoke('live-open-connectors', {
@@ -2600,10 +2603,10 @@ function runRunnerArtifactSmoke(artifactPath) {
     LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: artifactPath,
     SOURCE_LIVE_ENVIRONMENT_ID: 'source-prod-alpha',
     SOURCE_LIVE_OPERATOR: 'release-operator-1',
-  });
+  }, options);
 }
 
-function runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath) {
+function runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath, options = {}) {
   const imageDigest = `sha256:${'b'.repeat(64)}`;
   const commitSha = 'b'.repeat(40);
   return runRunnerValidateArtifactsSmoke('live-reddit-oauth', {
@@ -2614,20 +2617,25 @@ function runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath) {
     REDDIT_LIVE_EVIDENCE_PATH: liveArtifactPath,
     SOURCE_LIVE_ENVIRONMENT_ID: 'source-reddit-alpha',
     SOURCE_LIVE_OPERATOR: 'source-operator-1',
-  });
+  }, options);
 }
 
-function runRunnerValidateArtifactsSmoke(jobId, env) {
+function runRunnerValidateArtifactsSmoke(jobId, env, options = {}) {
+  const args = [
+    contract.runnerFile,
+    '--validate-artifacts',
+    '--require-env',
+    '--job',
+    jobId,
+  ];
+  if (options.contractSmokeArtifactOnly === true) {
+    args.splice(2, 0, '--contract-smoke-artifact-only');
+  }
+
   try {
     execFileSync(
       process.execPath,
-      [
-        contract.runnerFile,
-        '--validate-artifacts',
-        '--require-env',
-        '--job',
-        jobId,
-      ],
+      args,
       {
         env: {
           PATH: process.env.PATH ?? '',

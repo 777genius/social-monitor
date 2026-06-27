@@ -94,6 +94,7 @@ const forbiddenArtifactKeyPatterns = [
 const args = process.argv.slice(2);
 const execute = args.includes('--execute');
 const validateArtifacts = args.includes('--validate-artifacts');
+const contractSmokeArtifactOnly = args.includes('--contract-smoke-artifact-only');
 const requireEnv = args.includes('--require-env');
 const json = args.includes('--json');
 const summary = args.includes('--summary');
@@ -101,6 +102,10 @@ const handoff = args.includes('--handoff');
 const handoffJson = args.includes('--handoff-json');
 if (execute && validateArtifacts) {
   console.error('Choose either --execute or --validate-artifacts, not both.');
+  process.exit(1);
+}
+if (contractSmokeArtifactOnly && !validateArtifacts) {
+  console.error('Use --contract-smoke-artifact-only only with --validate-artifacts.');
   process.exit(1);
 }
 if (summary && (execute || validateArtifacts || json || handoff || handoffJson)) {
@@ -197,9 +202,11 @@ if (validateArtifacts) {
     process.exit(1);
   }
 
-  for (const job of jobs) {
-    for (const command of job.validationCommands) {
-      runCommand(command, `${job.jobId}: artifact validation`);
+  if (!contractSmokeArtifactOnly) {
+    for (const job of jobs) {
+      for (const command of job.validationCommands) {
+        runCommand(command, `${job.jobId}: artifact validation`);
+      }
     }
   }
   process.exit(0);
