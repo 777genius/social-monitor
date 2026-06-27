@@ -24,10 +24,15 @@ BriefingReaderItemDto _$BriefingReaderItemDtoFromJson(
   matchedTopicIds: (json['matchedTopicIds'] as List<dynamic>)
       .map((e) => e as String)
       .toList(),
+  primaryActionKind:
+      BriefingReaderItemDtoPrimaryActionKindPrimaryActionKind.fromJson(
+        json['primaryActionKind'] as String,
+      ),
   providerKey: json['providerKey'] as String,
   providerMetrics: (json['providerMetrics'] as List<dynamic>)
       .map((e) => BriefingProviderMetricDto.fromJson(e as Map<String, dynamic>))
       .toList(),
+  providerName: json['providerName'] as String,
   reason: json['reason'] as String,
   signalScore: json['signalScore'] as num,
   title: json['title'] as String,
@@ -47,8 +52,10 @@ Map<String, dynamic> _$BriefingReaderItemDtoToJson(
   'confirmedProviderKeys': instance.confirmedProviderKeys,
   'matchedRules': instance.matchedRules,
   'matchedTopicIds': instance.matchedTopicIds,
+  'primaryActionKind': instance.primaryActionKind,
   'providerKey': instance.providerKey,
   'providerMetrics': instance.providerMetrics,
+  'providerName': instance.providerName,
   'reason': instance.reason,
   'signalScore': instance.signalScore,
   'title': instance.title,

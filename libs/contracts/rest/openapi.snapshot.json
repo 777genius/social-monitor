@@ -750,6 +750,13 @@
             },
             "type": "array"
           },
+          "primaryActionKind": {
+            "enum": [
+              "read_source",
+              "watch_repository"
+            ],
+            "type": "string"
+          },
           "providerKey": {
             "type": "string"
           },
@@ -758,6 +765,9 @@
               "$ref": "#/components/schemas/BriefingProviderMetricDto"
             },
             "type": "array"
+          },
+          "providerName": {
+            "type": "string"
           },
           "reason": {
             "type": "string"
@@ -781,6 +791,8 @@
         "required": [
           "title",
           "providerKey",
+          "providerName",
+          "primaryActionKind",
           "reason",
           "matchedTopicIds",
           "matchedRules",

@@ -27,6 +27,10 @@ export const briefingNextActionKinds = [
   "mark_relevant",
   "mark_not_relevant",
 ] as const;
+export const briefingReaderPrimaryActionKinds = [
+  "read_source",
+  "watch_repository",
+] as const;
 export const briefingReaderQualityStatuses = [
   "ready",
   "partial",

@@ -12,6 +12,13 @@ void main() {
         scanJobId: 'scan-job-1',
         status: generated.RequestScanResponseDtoStatusStatus.enqueued,
         created: true,
+        requestDecision: generated.RequestScanDecisionResponseDto(
+          createdNewScan: true,
+          decision:
+              generated.RequestScanDecisionResponseDtoDecisionDecision.created,
+          reason: 'Scan requested.',
+          signals: ['manual_request'],
+        ),
       ),
     );
 

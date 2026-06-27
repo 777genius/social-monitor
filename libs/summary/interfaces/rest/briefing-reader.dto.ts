@@ -3,6 +3,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   briefingNextActionKinds,
   briefingQualityFlags,
+  briefingReaderPrimaryActionKinds,
   briefingReaderQualityStatuses,
 } from "./briefing-contract.constants";
 
@@ -31,6 +32,12 @@ export class BriefingReaderItemDto {
 
   @ApiProperty()
   declare readonly providerKey: string;
+
+  @ApiProperty()
+  declare readonly providerName: string;
+
+  @ApiProperty({ enum: briefingReaderPrimaryActionKinds })
+  declare readonly primaryActionKind: (typeof briefingReaderPrimaryActionKinds)[number];
 
   @ApiProperty()
   declare readonly reason: string;

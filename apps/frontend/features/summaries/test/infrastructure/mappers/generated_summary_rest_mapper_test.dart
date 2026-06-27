@@ -44,6 +44,14 @@ void main() {
       readerSummary.content.topReads.single.canonicalUrl,
       contains('github.com/calesthio/OpenMontage'),
     );
+    expect(
+      readerSummary.content.topReads.single.providerName,
+      'GitHub Trending',
+    );
+    expect(
+      readerSummary.content.topReads.single.primaryActionKind,
+      'watch_repository',
+    );
     expect(readerSummary.content.topReads.single.matchedTopicIds, ['ai-tools']);
     expect(
       readerSummary.content.topReads.single.providerMetrics.single.value,
@@ -151,6 +159,10 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
             generated.BriefingReaderItemDto(
               title: 'calesthio/OpenMontage',
               providerKey: 'github-trending-page',
+              providerName: 'GitHub Trending',
+              primaryActionKind: generated
+                  .BriefingReaderItemDtoPrimaryActionKindPrimaryActionKind
+                  .watchRepository,
               reason: '#1 on github.com/trending today.',
               matchedTopicIds: ['ai-tools'],
               matchedRules: ['topic:ai-tools', 'provider:github-trending-page'],
@@ -193,6 +205,10 @@ generated.BriefingArtifactResponseDto _briefingArtifact() {
         generated.BriefingReaderItemDto(
           title: 'calesthio/OpenMontage',
           providerKey: 'github-trending-page',
+          providerName: 'GitHub Trending',
+          primaryActionKind: generated
+              .BriefingReaderItemDtoPrimaryActionKindPrimaryActionKind
+              .watchRepository,
           reason: '#1 on github.com/trending today.',
           matchedTopicIds: ['ai-tools'],
           matchedRules: ['topic:ai-tools', 'provider:github-trending-page'],

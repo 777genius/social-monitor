@@ -73,6 +73,8 @@ final class TopReadApiDto {
     required this.providerKey,
     required this.reason,
     required this.citationIds,
+    this.providerName,
+    this.primaryActionKind = 'read_source',
     this.matchedTopicIds = const [],
     this.matchedRules = const [],
     this.signalScore = 0,
@@ -90,6 +92,8 @@ final class TopReadApiDto {
 
   final String title;
   final String providerKey;
+  final String? providerName;
+  final String primaryActionKind;
   final String reason;
   final List<String> matchedTopicIds;
   final List<String> matchedRules;

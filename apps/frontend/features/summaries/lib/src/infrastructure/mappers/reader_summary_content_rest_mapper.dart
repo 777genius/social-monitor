@@ -53,6 +53,8 @@ final class ReaderSummaryContentRestMapper {
     return TopReadApiDto(
       title: dto.title,
       providerKey: dto.providerKey,
+      providerName: dto.providerName,
+      primaryActionKind: dto.primaryActionKind.json ?? 'read_source',
       reason: dto.reason,
       matchedTopicIds: dto.matchedTopicIds,
       matchedRules: dto.matchedRules,

@@ -486,6 +486,8 @@ type BriefingResponseBody = {
     readonly topReads?: readonly {
       readonly title?: unknown;
       readonly canonicalUrl?: unknown;
+      readonly providerName?: unknown;
+      readonly primaryActionKind?: unknown;
       readonly whyNow?: unknown;
       readonly citationIds?: readonly unknown[];
       readonly confirmedProviderKeys?: readonly unknown[];
@@ -581,6 +583,14 @@ const assertBriefingResponse = (
   assert(
     topRead.canonicalUrl === 'https://github.com/openai/codex',
     'briefings REST top reads must include canonical URLs',
+  );
+  assert(
+    topRead.providerName === 'GitHub Repo Radar',
+    'briefings REST top reads must expose provider display names',
+  );
+  assert(
+    topRead.primaryActionKind === 'watch_repository',
+    'briefings REST top reads must expose the primary reader action',
   );
   assert(
     typeof topRead.whyNow === 'string' &&

@@ -37,6 +37,16 @@ void main() {
             .healthy,
         operatorAction: 'No action needed.',
         evaluatedAt: DateTime.utc(2026, 6, 23, 12, 5),
+        schedulerDecision:
+            const generated.SourceBindingHealthSchedulerDecisionResponseDto(
+              canScanNow: true,
+              decision: generated
+                  .SourceBindingHealthSchedulerDecisionResponseDtoDecisionDecision
+                  .ready,
+              minimumIntervalSeconds: 300,
+              reason: 'Ready for scan.',
+              signals: ['freshness_due'],
+            ),
         freshness: const generated.SourceBindingHealthFreshnessResponseDto(
           isFresh: true,
           ageSeconds: 120,
