@@ -260,6 +260,13 @@ export const resolveSummaryModelProviderMode = (
   const value = env.SUMMARY_MODEL_PROVIDER ?? "deterministic";
 
   if (value === "deterministic" || value === "openai-responses") {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: "SUMMARY_MODEL_PROVIDER",
+      selectedMode: value,
+      durableModes: ["openai-responses"],
+    });
+
     return value;
   }
 
@@ -277,6 +284,13 @@ export const resolveReaderSummaryModelProviderMode = (
     "deterministic";
 
   if (value === "deterministic" || value === "openai-responses") {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: "READER_SUMMARY_MODEL_PROVIDER",
+      selectedMode: value,
+      durableModes: ["openai-responses"],
+    });
+
     return value;
   }
 
@@ -321,6 +335,13 @@ export const resolveSummaryYoutubeVideoSummaryProviderMode = (
     value === "deterministic" ||
     value === "google-gemini"
   ) {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: "SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER",
+      selectedMode: value,
+      durableModes: ["disabled", "google-gemini"],
+    });
+
     return value;
   }
 

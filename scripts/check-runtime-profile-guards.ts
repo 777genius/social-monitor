@@ -38,8 +38,11 @@ import {
 import {
   resolveSummaryJobQueueMode,
   resolveSummaryMemoryMode,
+  resolveSummaryModelProviderMode,
   resolveSummaryRabbitMqJobQueueOptions,
   resolveSummaryPersistenceMode,
+  resolveReaderSummaryModelProviderMode,
+  resolveSummaryYoutubeVideoSummaryProviderMode,
 } from '../libs/summary/interfaces/rest/summary-provider-tokens';
 import { resolveUsagePersistenceMode } from '../libs/usage/interfaces/rest/usage-provider-tokens';
 
@@ -177,6 +180,28 @@ assert(
   resolveSummaryJobQueueMode({ ...rabbitMqEnv, SUMMARY_JOB_QUEUE_MODE: 'rabbitmq' }) === 'rabbitmq',
   'summary beta job queue',
 );
+assertThrows(
+  () => resolveSummaryModelProviderMode(betaEnv),
+  'SUMMARY_MODEL_PROVIDER must reject deterministic mode in beta runtime',
+);
+assert(
+  resolveSummaryModelProviderMode({ ...betaEnv, SUMMARY_MODEL_PROVIDER: 'openai-responses' }) === 'openai-responses',
+  'summary beta model provider',
+);
+assertThrows(
+  () => resolveReaderSummaryModelProviderMode(betaEnv),
+  'READER_SUMMARY_MODEL_PROVIDER must reject deterministic mode in beta runtime',
+);
+assert(
+  resolveReaderSummaryModelProviderMode({ ...betaEnv, READER_SUMMARY_MODEL_PROVIDER: 'openai-responses' }) ===
+    'openai-responses',
+  'reader summary beta model provider',
+);
+assert(
+  resolveReaderSummaryModelProviderMode({ ...betaEnv, BRIEFING_MODEL_PROVIDER: 'openai-responses' }) ===
+    'openai-responses',
+  'legacy briefing beta model provider',
+);
 assert(
   resolveSummaryRabbitMqJobQueueOptions(rabbitMqEnv).routes?.['summary.job.execute']?.queueType === 'quorum',
   'summary beta RabbitMQ publisher must carry quorum queue type',
@@ -194,6 +219,24 @@ assert(
     INFINITY_CONTEXT_TOKEN: 'test-token',
   }) === 'memo-stack',
   'summary memory must accept explicit memo-stack mode with URL and token',
+);
+assert(
+  resolveSummaryYoutubeVideoSummaryProviderMode(betaEnv) === 'disabled',
+  'summary YouTube provider may stay disabled in beta runtime',
+);
+assertThrows(
+  () => resolveSummaryYoutubeVideoSummaryProviderMode({
+    ...betaEnv,
+    SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER: 'deterministic',
+  }),
+  'SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER must reject deterministic mode in beta runtime',
+);
+assert(
+  resolveSummaryYoutubeVideoSummaryProviderMode({
+    ...betaEnv,
+    SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER: 'google-gemini',
+  }) === 'google-gemini',
+  'summary YouTube provider accepts google-gemini in beta runtime',
 );
 assertThrows(
   () => resolveIntelligenceSummaryQueueReaderMode(betaEnv),
