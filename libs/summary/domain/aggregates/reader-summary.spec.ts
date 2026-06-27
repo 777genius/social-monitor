@@ -347,6 +347,9 @@ describe("buildReaderSummary", () => {
     expect(readerSummary.topReads.map((item) => item.title)).toContain(
       "repo-radar/project-2",
     );
+    expect(readerSummary.trendDelta.newSignals).toEqual([
+      "10 multi-source items selected",
+    ]);
   });
 
   it("deduplicates model top story repeats before applying the reader top read limit", () => {
@@ -703,6 +706,9 @@ describe("buildReaderSummary", () => {
         singleSourceOnly: false,
         topicIds: ["ai-agents"],
       },
+    ]);
+    expect(readerSummary.trendDelta.newSignals).toEqual([
+      "1 cross-source item selected",
     ]);
     expect(readerSummary.topReads[0]?.whyNow).toBe(
       "Current summary window has cross-source coverage from Repo Radar, Reddit and clustered 1 related item.",

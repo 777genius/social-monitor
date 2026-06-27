@@ -363,7 +363,7 @@ const buildTrendDelta = (
       ? undefined
       : sourceMix.length === 1
         ? `${totalReads} ${providerNameForKey(sourceMix[0]?.providerKey, topReads)} item${plural(totalReads)} selected`
-        : `${totalReads} cross-source item${plural(totalReads)} selected`;
+        : `${totalReads} ${sourceMixSignalLabel(sourceMix)} item${plural(totalReads)} selected`;
 
   return {
     newSignals: compactUnique([newSignal]),
@@ -374,6 +374,11 @@ const buildTrendDelta = (
     fadingSignals: [],
   };
 };
+
+const sourceMixSignalLabel = (sourceMix: readonly SourceMixEntry[]): string =>
+  sourceMix.some((source) => source.crossSourceClusterCount > 0)
+    ? "cross-source"
+    : "multi-source";
 
 const buildOpenQuestions = (
   qualityFlags: readonly ReaderSummaryQualityFlag[],
