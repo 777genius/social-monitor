@@ -350,8 +350,13 @@ const expectedCertificationArtifactEnvs = new Map([
   ['reddit', 'REDDIT_LIVE_EVIDENCE_PATH'],
 ]);
 const forbiddenEvidenceFragments = [
+  'authorization',
   'bearer ',
   'basic ',
+  'cookie',
+  'set-cookie',
+  'x-api-key',
+  'api_key',
   '://user:',
   'access_token',
   'refresh_token',
