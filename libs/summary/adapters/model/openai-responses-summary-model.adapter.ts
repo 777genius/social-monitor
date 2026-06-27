@@ -478,19 +478,29 @@ const normalizeOpenAiDraft = (
   evalDatasetVersion: string,
 ): GeneratedSummaryDraft => {
   const normalizedQualityFlags = normalizeQualityFlags(raw.qualityFlags);
+  const citationMap = withEvidenceBackedCitations(
+    normalizeCitationMap(raw.citationMap),
+    input.evidence.items,
+  );
+  const knownCitationIds = new Set(
+    citationMap.map((citation) => citation.citationId),
+  );
   const draft = {
     headline: requiredString(raw.headline, 'headline'),
     executiveSummary: requiredString(raw.executiveSummary, 'executiveSummary'),
-    keyPoints: normalizeKeyPoints(raw.keyPoints),
-    risksAndUnknowns: normalizeRisks(raw.risksAndUnknowns),
+    keyPoints: withKnownCitationIds(
+      normalizeKeyPoints(raw.keyPoints),
+      knownCitationIds,
+    ),
+    risksAndUnknowns: withKnownRiskCitationIds(
+      normalizeRisks(raw.risksAndUnknowns),
+      knownCitationIds,
+    ),
     sourceHighlights: normalizeStringArray(
       raw.sourceHighlights,
       'sourceHighlights',
     ),
-    citationMap: withEvidenceBackedCitations(
-      normalizeCitationMap(raw.citationMap),
-      input.evidence.items,
-    ),
+    citationMap,
     qualityFlags: normalizedQualityFlags,
     confidence: normalizeConfidence(raw.confidence),
     lineage: buildLineage(input, selectedRoute, evalDatasetVersion),
@@ -593,21 +603,65 @@ const withEvidenceBackedCitations = (
     evidenceItems.map((item, index) => [`c${index + 1}`, item] as const),
   );
 
-  return citations.map((citation) => {
+  return citations.flatMap((citation) => {
     const evidence = evidenceByCitationId.get(citation.citationId);
 
     if (evidence === undefined) {
-      return citation;
+      return [];
     }
 
-    return {
+    return [{
       ...citation,
       feedItemId: evidence.feedItemId,
       sourceItemId: evidence.sourceItemId,
       providerKey: evidence.providerKey,
       canonicalUrl: evidence.canonicalUrl,
+    }];
+  });
+};
+
+const withKnownCitationIds = (
+  keyPoints: readonly SummaryKeyPoint[],
+  knownCitationIds: ReadonlySet<string>,
+): readonly SummaryKeyPoint[] =>
+  keyPoints
+    .map((keyPoint) => ({
+      ...keyPoint,
+      citationIds: knownStringSubset(keyPoint.citationIds, knownCitationIds),
+    }))
+    .filter((keyPoint) => keyPoint.citationIds.length > 0);
+
+const withKnownRiskCitationIds = (
+  risks: readonly SummaryRisk[],
+  knownCitationIds: ReadonlySet<string>,
+): readonly SummaryRisk[] =>
+  risks.map((risk) => {
+    if (risk.citationIds === undefined) {
+      return risk;
+    }
+
+    const citationIds = knownStringSubset(risk.citationIds, knownCitationIds);
+
+    return {
+      ...risk,
+      citationIds: citationIds.length === 0 ? undefined : citationIds,
     };
   });
+
+const knownStringSubset = (
+  values: readonly string[],
+  knownValues: ReadonlySet<string>,
+): readonly string[] => {
+  const result: string[] = [];
+  for (const value of values) {
+    if (!knownValues.has(value) || result.includes(value)) {
+      continue;
+    }
+
+    result.push(value);
+  }
+
+  return result;
 };
 
 const normalizeQualityFlags = (
