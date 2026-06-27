@@ -10,7 +10,12 @@ import {
   REQUEST_ID_HEADER,
   buildRequestContext,
 } from '@social-monitor/platform-request-context';
-import { DomainError, redactSensitiveRecord, type DomainErrorCode } from '@social-monitor/shared-kernel';
+import {
+  DomainError,
+  redactSensitiveRecord,
+  redactSensitiveText,
+  type DomainErrorCode,
+} from '@social-monitor/shared-kernel';
 
 type ProblemDetails = {
   readonly type: string;
@@ -57,7 +62,7 @@ export class DomainErrorFilter implements ExceptionFilter<DomainError> {
       type: `https://social-monitor.local/problems/${exception.code}`,
       title: titleForDomainError(exception.code),
       status,
-      detail: exception.message,
+      detail: redactProblemDetail(exception.message),
       code: exception.code,
       requestId: requestContext.requestId,
       correlationId: requestContext.correlationId,
@@ -70,6 +75,9 @@ export class DomainErrorFilter implements ExceptionFilter<DomainError> {
 export const redactProblemDetails = (
   details: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> => redactSensitiveRecord(details);
+
+export const redactProblemDetail = (detail: string): string =>
+  redactSensitiveText(detail);
 
 export const buildProblemRequestContext = (
   request: ProblemHttpRequest,

@@ -1,4 +1,21 @@
-import { buildProblemRequestContext, redactProblemDetails } from './domain-error.filter';
+import {
+  buildProblemRequestContext,
+  redactProblemDetail,
+  redactProblemDetails,
+} from './domain-error.filter';
+
+describe('redactProblemDetail', () => {
+  it('redacts inline credentials from public problem messages', () => {
+    const detail = redactProblemDetail(
+      'Provider rejected access_token=raw-token and Authorization: Bearer smk_secret',
+    );
+
+    expect(detail).toContain('[REDACTED]');
+    expect(detail).not.toContain('raw-token');
+    expect(detail).not.toContain('smk_secret');
+    expect(detail).not.toContain('Bearer');
+  });
+});
 
 describe('redactProblemDetails', () => {
   it('redacts secret-like keys and values recursively before returning problem details', () => {
