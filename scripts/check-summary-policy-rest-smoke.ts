@@ -37,11 +37,16 @@ async function main(): Promise<void> {
 
   try {
     const tenant = tenantId('tenant-summary-policy-rest-smoke');
+    const otherTenant = tenantId('tenant-summary-policy-rest-other');
     const workspace = workspaceId('workspace-summary-policy-rest-smoke');
     const topicId = 'topic-summary-policy-rest-smoke';
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
+    };
+    const otherTenantHeaders = {
+      ...headers,
+      'x-tenant-id': otherTenant,
     };
 
     const defaultPolicy = await request(app.getHttpServer())
@@ -88,6 +93,21 @@ async function main(): Promise<void> {
     assert(upserted.body.policy.maxKeyPoints === 7, 'summary policy REST must persist max key points');
     assert(upserted.body.policy.includeSourceHighlights === false, 'summary policy REST must persist highlights flag');
 
+    await request(app.getHttpServer())
+      .put(`/topics/${topicId}/summary-policy`)
+      .set(otherTenantHeaders)
+      .set('x-workspace-role', 'admin')
+      .send({
+        language: 'en',
+        format: 'risk_brief',
+        tone: 'concise',
+        maxKeyPoints: 3,
+        includeRisks: true,
+        includeSourceHighlights: true,
+        customInstructions: 'Track reliability risk only.',
+      })
+      .expect(200);
+
     const stored = await request(app.getHttpServer())
       .get(`/topics/${topicId}/summary-policy`)
       .set(headers)
@@ -98,6 +118,17 @@ async function main(): Promise<void> {
     assert(
       stored.body.policy.customInstructions === 'Track launch, pricing and reliability signals.',
       'summary policy REST must preserve custom instructions',
+    );
+
+    const otherTenantStored = await request(app.getHttpServer())
+      .get(`/topics/${topicId}/summary-policy`)
+      .set(otherTenantHeaders)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    assert(
+      otherTenantStored.body.policy.customInstructions === 'Track reliability risk only.',
+      'summary policy REST must keep same topic ids isolated by tenant',
     );
 
     await request(app.getHttpServer())
