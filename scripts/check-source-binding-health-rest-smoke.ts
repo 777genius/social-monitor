@@ -591,7 +591,7 @@ async function main(): Promise<void> {
       })
       .expect(201);
 
-    await request(app.getHttpServer())
+    const tooFastRepoRadarPolicy = await request(app.getHttpServer())
       .post(`/source-bindings/${repoRadarBinding.body.sourceBindingId}/scan-policy`)
       .set(adminHeaders)
       .set('idempotency-key', 'policy-repo-radar-too-fast')
@@ -601,6 +601,22 @@ async function main(): Promise<void> {
         retryBudget: 3,
       })
       .expect(400);
+    assert(
+      tooFastRepoRadarPolicy.body.code === 'validation.failed',
+      'too-fast repo-radar scan policy must return validation problem code',
+    );
+    assert(
+      tooFastRepoRadarPolicy.body.details.providerKey === 'github-repo-radar',
+      'too-fast repo-radar scan policy problem must expose provider key',
+    );
+    assert(
+      tooFastRepoRadarPolicy.body.details.intervalSeconds === 300,
+      'too-fast repo-radar scan policy problem must expose configured interval',
+    );
+    assert(
+      tooFastRepoRadarPolicy.body.details.minimumIntervalSeconds === 21_600,
+      'too-fast repo-radar scan policy problem must expose provider minimum interval',
+    );
 
     await scanPolicies.save(
       ScanPolicy.create({
