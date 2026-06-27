@@ -10,6 +10,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import 'reflect-metadata';
 
 import { IntelligenceWorkerModule } from '../apps/intelligence-worker/src/intelligence-worker.module';
+import { INTELLIGENCE_WORKER_METRICS_RECORDER } from '../apps/intelligence-worker/src/intelligence-worker-provider-tokens';
 
 const assert = (condition: unknown, message: string): void => {
   if (!condition) {
@@ -51,7 +52,9 @@ async function main(): Promise<void> {
     assert(result.status === 'no_signal', 'summary worker command must complete no-signal jobs without evidence');
     assert(typeof result.summaryId === 'string', 'summary worker command must persist a summary artifact id');
 
-    const metrics = app.get(InMemoryMetricsRecorder);
+    const metrics = app.get<InMemoryMetricsRecorder>(
+      INTELLIGENCE_WORKER_METRICS_RECORDER,
+    );
     assert(
       metrics.counterValue('summary_jobs_total', {
         job_type: 'summary',

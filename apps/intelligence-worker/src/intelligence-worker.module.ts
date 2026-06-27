@@ -26,6 +26,7 @@ import {
   INTELLIGENCE_RELEVANCE_MEMORY_PROJECTION_LOOP_OPTIONS,
   INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER_OPTIONS,
   INTELLIGENCE_SUMMARY_QUEUE_READER_MODE,
+  INTELLIGENCE_WORKER_METRICS_RECORDER,
   type IntelligenceSummaryQueueReaderMode,
   resolveIntelligenceAutoSummarySchedulerOptions,
   resolveIntelligencePeriodicReaderSummarySchedulerOptions,
@@ -91,6 +92,11 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
     {
       provide: INTELLIGENCE_SUMMARY_QUEUE_READER_MODE,
       useFactory: () => resolveIntelligenceSummaryQueueReaderMode(process.env),
+    },
+    {
+      provide: INTELLIGENCE_WORKER_METRICS_RECORDER,
+      useFactory: (metrics: InMemoryMetricsRecorder) => metrics,
+      inject: [InMemoryMetricsRecorder],
     },
     {
       provide: INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_READER_OPTIONS,
@@ -182,7 +188,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
         ),
       inject: [
         ExecuteSummaryJobUseCase,
-        InMemoryMetricsRecorder,
+        INTELLIGENCE_WORKER_METRICS_RECORDER,
         WorkerRuntime,
       ],
     },
@@ -200,7 +206,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
         ),
       inject: [
         ExecuteReaderSummaryJobUseCase,
-        InMemoryMetricsRecorder,
+        INTELLIGENCE_WORKER_METRICS_RECORDER,
         WorkerRuntime,
       ],
     },
@@ -230,7 +236,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
         INTELLIGENCE_SUMMARY_JOB_QUEUE_READER,
         ExecuteSummaryJobCommandHandler,
         INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
-        InMemoryMetricsRecorder,
+        INTELLIGENCE_WORKER_METRICS_RECORDER,
       ],
     },
     {
@@ -254,11 +260,12 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
         INTELLIGENCE_READER_SUMMARY_JOB_QUEUE_READER,
         ExecuteReaderSummaryJobCommandHandler,
         INTELLIGENCE_READER_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
-        InMemoryMetricsRecorder,
+        INTELLIGENCE_WORKER_METRICS_RECORDER,
       ],
     },
   ],
   exports: [
+    INTELLIGENCE_WORKER_METRICS_RECORDER,
     ExecuteSummaryJobCommandHandler,
     ExecuteReaderSummaryJobCommandHandler,
     SummaryJobPollingLoop,
