@@ -1,21 +1,126 @@
 import { DomainError } from '@social-monitor/shared-kernel';
 
-const providerMinimumScanIntervalSeconds = new Map<string, number>([
-  ['fake-source', 60],
-  ['hacker-news', 300],
-  ['rss', 300],
-  ['github', 300],
-  ['github-issues', 300],
-  ['reddit', 900],
-  ['github-trending-page', 3_600],
-  ['github-repo-radar', 21_600],
-  ['x-twitter', 86_400],
-  ['x-twitter-experimental-daily', 86_400],
-  ['telegram', 3_600],
+export type ProviderScanCadenceProfile = {
+  readonly minimumIntervalSeconds: number;
+  readonly defaultIntervalSeconds: number;
+  readonly defaultFreshnessSeconds: number;
+  readonly defaultRetryBudget: number;
+};
+
+const fallbackProviderScanCadenceProfile: ProviderScanCadenceProfile = {
+  minimumIntervalSeconds: 900,
+  defaultIntervalSeconds: 1_800,
+  defaultFreshnessSeconds: 1_800,
+  defaultRetryBudget: 2,
+};
+
+const providerScanCadenceProfiles = new Map<string, ProviderScanCadenceProfile>([
+  [
+    'fake-source',
+    {
+      minimumIntervalSeconds: 60,
+      defaultIntervalSeconds: 300,
+      defaultFreshnessSeconds: 300,
+      defaultRetryBudget: 2,
+    },
+  ],
+  [
+    'hacker-news',
+    {
+      minimumIntervalSeconds: 300,
+      defaultIntervalSeconds: 900,
+      defaultFreshnessSeconds: 900,
+      defaultRetryBudget: 2,
+    },
+  ],
+  [
+    'rss',
+    {
+      minimumIntervalSeconds: 300,
+      defaultIntervalSeconds: 1_800,
+      defaultFreshnessSeconds: 1_800,
+      defaultRetryBudget: 2,
+    },
+  ],
+  [
+    'github',
+    {
+      minimumIntervalSeconds: 300,
+      defaultIntervalSeconds: 1_800,
+      defaultFreshnessSeconds: 1_800,
+      defaultRetryBudget: 2,
+    },
+  ],
+  [
+    'github-issues',
+    {
+      minimumIntervalSeconds: 300,
+      defaultIntervalSeconds: 1_800,
+      defaultFreshnessSeconds: 1_800,
+      defaultRetryBudget: 2,
+    },
+  ],
+  [
+    'reddit',
+    {
+      minimumIntervalSeconds: 900,
+      defaultIntervalSeconds: 1_800,
+      defaultFreshnessSeconds: 1_800,
+      defaultRetryBudget: 3,
+    },
+  ],
+  [
+    'github-trending-page',
+    {
+      minimumIntervalSeconds: 3_600,
+      defaultIntervalSeconds: 3_600,
+      defaultFreshnessSeconds: 3_600,
+      defaultRetryBudget: 1,
+    },
+  ],
+  [
+    'github-repo-radar',
+    {
+      minimumIntervalSeconds: 21_600,
+      defaultIntervalSeconds: 21_600,
+      defaultFreshnessSeconds: 21_600,
+      defaultRetryBudget: 1,
+    },
+  ],
+  [
+    'x-twitter',
+    {
+      minimumIntervalSeconds: 86_400,
+      defaultIntervalSeconds: 86_400,
+      defaultFreshnessSeconds: 86_400,
+      defaultRetryBudget: 3,
+    },
+  ],
+  [
+    'x-twitter-experimental-daily',
+    {
+      minimumIntervalSeconds: 86_400,
+      defaultIntervalSeconds: 86_400,
+      defaultFreshnessSeconds: 86_400,
+      defaultRetryBudget: 3,
+    },
+  ],
+  [
+    'telegram',
+    {
+      minimumIntervalSeconds: 3_600,
+      defaultIntervalSeconds: 3_600,
+      defaultFreshnessSeconds: 3_600,
+      defaultRetryBudget: 2,
+    },
+  ],
 ]);
 
 export const minimumScanIntervalSecondsForProvider = (providerKey: string): number =>
-  providerMinimumScanIntervalSeconds.get(providerKey) ?? 900;
+  providerScanCadenceProfile(providerKey).minimumIntervalSeconds;
+
+export const providerScanCadenceProfile = (providerKey: string): ProviderScanCadenceProfile =>
+  providerScanCadenceProfiles.get(providerKey) ?? fallbackProviderScanCadenceProfile;
 
 export type EffectiveProviderScanCadence = {
   readonly minimumIntervalSeconds: number;

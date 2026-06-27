@@ -110,6 +110,69 @@ describe('ActivateTopicSourceUseCase', () => {
     }));
   });
 
+  it('uses provider default scan cadence when activation has no explicit scan policy', async () => {
+    const workflows = recordingWorkflows();
+    const useCase = new ActivateTopicSourceUseCase(
+      workflows.createSubscription,
+      workflows.createTopic,
+      workflows.bindSource,
+      workflows.setScanPolicy,
+      new FakeProviderTargetCatalog(),
+    );
+
+    const result = await useCase.execute(command({
+      providerKey: 'reddit',
+      targetKind: 'subreddit',
+      targetValue: 'OpenAI',
+      schedule: {
+        recipientKey: 'user-1',
+        channel: 'in_app',
+        intervalSeconds: 86_400,
+        includeNoSignal: true,
+      },
+    }));
+
+    expect(result.ok).toBe(true);
+    expect(workflows.setScanPolicy.commands).toEqual([
+      expect.objectContaining({
+        intervalSeconds: 1_800,
+        freshnessSeconds: 1_800,
+        retryBudget: 3,
+      }),
+    ]);
+  });
+
+  it('clamps explicit activation scan policy to the provider minimum interval', async () => {
+    const workflows = recordingWorkflows();
+    const useCase = new ActivateTopicSourceUseCase(
+      workflows.createSubscription,
+      workflows.createTopic,
+      workflows.bindSource,
+      workflows.setScanPolicy,
+      new FakeProviderTargetCatalog(),
+    );
+
+    const result = await useCase.execute(command({
+      providerKey: 'github-trending-page',
+      targetKind: 'search_query',
+      targetValue: 'ai agents',
+      scanPolicy: {
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 1,
+      },
+    }));
+
+    expect(result.ok).toBe(true);
+    expect(workflows.setScanPolicy.commands).toEqual([
+      expect.objectContaining({
+        intervalSeconds: 3_600,
+        freshnessSeconds: 3_600,
+        retryBudget: 1,
+      }),
+    ]);
+  });
+
   it('rejects unsupported targets before creating downstream resources', async () => {
     const workflows = recordingWorkflows();
     const useCase = new ActivateTopicSourceUseCase(
@@ -263,6 +326,21 @@ class FakeXTargetCatalog implements SourceTargetCatalogPort {
         targetKind,
         targetValue,
         normalizedKey: `x-twitter:${targetKind}:${targetValue}`,
+        config: params.config,
+      },
+    };
+  }
+}
+
+class FakeProviderTargetCatalog implements SourceTargetCatalogPort {
+  validateTarget(params: Parameters<SourceTargetCatalogPort['validateTarget']>[0]) {
+    return {
+      ok: true as const,
+      descriptor: {
+        providerKey: params.providerKey,
+        targetKind: params.targetKind as 'search_query' | 'account' | 'subreddit',
+        targetValue: params.targetValue.trim().replace(/\s+/gu, ' ').toLowerCase(),
+        normalizedKey: `${params.providerKey}:${params.targetKind}:${params.targetValue.trim().toLowerCase()}`,
         config: params.config,
       },
     };

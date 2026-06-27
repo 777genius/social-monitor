@@ -6,7 +6,9 @@ import {
 } from '@social-monitor/shared-kernel';
 import { BindSourceUseCase } from '@social-monitor/monitoring/features/bind-source/bind-source.use-case';
 import { CreateTopicUseCase } from '@social-monitor/monitoring/features/create-topic/create-topic.use-case';
-import { minimumScanIntervalSecondsForProvider } from '@social-monitor/monitoring/features/shared/scan-cadence-policy';
+import {
+  providerScanCadenceProfile,
+} from '@social-monitor/monitoring/features/shared/scan-cadence-policy';
 import { SetScanPolicyUseCase } from '@social-monitor/monitoring/features/set-scan-policy/set-scan-policy.use-case';
 import type {
   SourceBindingConfig,
@@ -78,17 +80,14 @@ export class ActivateTopicSourceUseCase {
       return err(bindingResult.error);
     }
 
-    const intervalSeconds = scanIntervalSeconds(command, descriptor.providerKey);
+    const scanPolicy = activationScanPolicy(command, descriptor.providerKey);
     const policyResult = await this.setScanPolicy.execute({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       sourceBindingId: bindingResult.value.sourceBindingId,
-      intervalSeconds,
-      freshnessSeconds: Math.max(
-        command.scanPolicy?.freshnessSeconds ?? intervalSeconds,
-        intervalSeconds,
-      ),
-      retryBudget: command.scanPolicy?.retryBudget ?? 3,
+      intervalSeconds: scanPolicy.intervalSeconds,
+      freshnessSeconds: scanPolicy.freshnessSeconds,
+      retryBudget: scanPolicy.retryBudget,
       idempotencyKey: scopedKey(command.idempotencyKey, 'scan-policy', descriptor.normalizedKey),
       correlationId: command.correlationId,
     });
@@ -172,16 +171,27 @@ const xTwitterSourceBindingConfig = (
     : { language: readOptionalString(config.language) }),
 });
 
-const scanIntervalSeconds = (
+const activationScanPolicy = (
   command: ActivateTopicSourceCommand,
   providerKey: string,
-): number => {
-  const minimum = minimumScanIntervalSecondsForProvider(providerKey);
-  const requested =
-    command.scanPolicy?.intervalSeconds ??
-    (providerKey === 'x-twitter' ? 86_400 : command.schedule.intervalSeconds);
+): {
+  readonly intervalSeconds: number;
+  readonly freshnessSeconds: number;
+  readonly retryBudget: number;
+} => {
+  const profile = providerScanCadenceProfile(providerKey);
+  const requestedInterval =
+    command.scanPolicy?.intervalSeconds ?? profile.defaultIntervalSeconds;
+  const intervalSeconds = Math.max(requestedInterval, profile.minimumIntervalSeconds);
 
-  return Math.max(requested, minimum);
+  return {
+    intervalSeconds,
+    freshnessSeconds: Math.max(
+      command.scanPolicy?.freshnessSeconds ?? profile.defaultFreshnessSeconds,
+      intervalSeconds,
+    ),
+    retryBudget: command.scanPolicy?.retryBudget ?? profile.defaultRetryBudget,
+  };
 };
 
 const scopedKey = (

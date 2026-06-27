@@ -1,5 +1,6 @@
 import {
   minimumScanIntervalSecondsForProvider,
+  providerScanCadenceProfile,
   validateProviderScanCadence,
 } from './scan-cadence-policy';
 
@@ -20,5 +21,26 @@ describe('scan cadence policy', () => {
       providerKey: 'x-twitter',
       intervalSeconds: 86_400,
     })).toBeNull();
+  });
+
+  it('exposes conservative default scan cadences without coupling scan cadence to digest cadence', () => {
+    expect(providerScanCadenceProfile('reddit')).toEqual({
+      minimumIntervalSeconds: 900,
+      defaultIntervalSeconds: 1_800,
+      defaultFreshnessSeconds: 1_800,
+      defaultRetryBudget: 3,
+    });
+    expect(providerScanCadenceProfile('github-trending-page')).toEqual({
+      minimumIntervalSeconds: 3_600,
+      defaultIntervalSeconds: 3_600,
+      defaultFreshnessSeconds: 3_600,
+      defaultRetryBudget: 1,
+    });
+    expect(providerScanCadenceProfile('unknown-provider')).toEqual({
+      minimumIntervalSeconds: 900,
+      defaultIntervalSeconds: 1_800,
+      defaultFreshnessSeconds: 1_800,
+      defaultRetryBudget: 2,
+    });
   });
 });
