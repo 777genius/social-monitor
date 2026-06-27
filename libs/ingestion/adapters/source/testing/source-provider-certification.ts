@@ -61,6 +61,7 @@ export const certifySourceProvider = (config: SourceProviderCertificationConfig)
         expect(item.canonicalUrl.trim()).not.toHaveLength(0);
         expect(item.title.trim().length + item.body.trim().length).toBeGreaterThan(0);
         expect(item.publishedAt).toBeInstanceOf(Date);
+        expect(item.publishedAt.getTime()).toBeGreaterThan(0);
       }
     });
 

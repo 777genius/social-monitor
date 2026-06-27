@@ -131,6 +131,47 @@ describe('RedditSourceProvider', () => {
     expect(result.items).toHaveLength(1);
   });
 
+  it('skips readable Reddit posts without a valid created timestamp', async () => {
+    const client = new CapturingRedditClient({
+      posts: [
+        {
+          id: 'post-missing-created',
+          name: 't3_post_missing_created',
+          subreddit: 'ClaudeAI',
+          title: 'Readable but missing created timestamp',
+          selftext: 'This post must not be ingested with an epoch fallback.',
+          permalink: '/r/ClaudeAI/comments/post_missing_created/readable_missing_timestamp/',
+          score: 420,
+        },
+        {
+          id: 'post-valid-created',
+          name: 't3_post_valid_created',
+          subreddit: 'ClaudeAI',
+          title: 'Readable with created timestamp',
+          selftext: 'This post is safe to ingest.',
+          permalink: '/r/ClaudeAI/comments/post_valid_created/readable_with_timestamp/',
+          createdUtc: 1_782_230_000,
+          score: 430,
+        },
+      ],
+    });
+    const provider = new RedditSourceProvider(client, new StaticTokenProvider('reddit-app-only-token'));
+    const context = scanContext({
+      subreddit: 'ClaudeAI',
+      listing: 'hot',
+      minScore: 100,
+    });
+    const plan = provider.planScan({ mode: 'listing', query: 'ClaudeAI:hot' }, context);
+
+    const result = await provider.scan(plan, context);
+
+    expect(result.items.map((item) => item.externalId)).toEqual(['reddit:t3_post_valid_created']);
+    expect(result.items[0]?.publishedAt).toEqual(new Date(1_782_230_000 * 1000));
+    expect(result.warnings).toEqual([
+      'Some Reddit posts had no valid created_utc timestamp; they were skipped.',
+    ]);
+  });
+
   it('fails closed when a refresh token is present without client credentials', async () => {
     const provider = new RedditSourceProvider(
       new CapturingRedditClient(),

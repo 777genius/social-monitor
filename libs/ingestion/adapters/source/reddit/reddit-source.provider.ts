@@ -110,9 +110,7 @@ export class RedditSourceProvider implements SourceProviderPort {
     return {
       items: normalized,
       nextCursor: page.after,
-      warnings: page.posts.some((post) => post.over18 || post.removedByCategory !== undefined)
-        ? ['Some Reddit posts were skipped because they were adult or removed.']
-        : [],
+      warnings: redditWarnings(page.posts, minScore),
     };
   }
 
@@ -205,6 +203,12 @@ const normalizePost = (post: RedditPost, minScore: number | undefined) => {
     return [];
   }
 
+  const publishedAt = publishedAtForPost(post);
+
+  if (publishedAt === undefined) {
+    return [];
+  }
+
   return [
     {
       externalId: `reddit:${post.name ?? post.id}`,
@@ -212,10 +216,54 @@ const normalizePost = (post: RedditPost, minScore: number | undefined) => {
       title,
       body,
       authorHandle: post.author,
-      publishedAt: post.createdUtc === undefined ? new Date(0) : new Date(post.createdUtc * 1000),
+      publishedAt,
       metadata: redditPostMetadata(post),
     },
   ];
+};
+
+const redditWarnings = (
+  posts: readonly RedditPost[],
+  minScore: number | undefined,
+): readonly string[] => [
+  ...(
+    posts.some((post) => post.over18 || post.removedByCategory !== undefined)
+      ? ['Some Reddit posts were skipped because they were adult or removed.']
+      : []
+  ),
+  ...(
+    posts.some((post) => isTimestampMissingCandidate(post, minScore))
+      ? ['Some Reddit posts had no valid created_utc timestamp; they were skipped.']
+      : []
+  ),
+];
+
+const isTimestampMissingCandidate = (
+  post: RedditPost,
+  minScore: number | undefined,
+): boolean => {
+  if (post.over18 || post.removedByCategory !== undefined) {
+    return false;
+  }
+
+  if (minScore !== undefined && post.score !== undefined && post.score < minScore) {
+    return false;
+  }
+
+  const title = post.title?.trim() ?? '';
+  const body = post.selftext?.trim() ?? '';
+
+  return title.length + body.length > 0 && publishedAtForPost(post) === undefined;
+};
+
+const publishedAtForPost = (post: RedditPost): Date | undefined => {
+  if (post.createdUtc === undefined || !Number.isFinite(post.createdUtc) || post.createdUtc <= 0) {
+    return undefined;
+  }
+
+  const publishedAt = new Date(post.createdUtc * 1000);
+
+  return Number.isNaN(publishedAt.getTime()) ? undefined : publishedAt;
 };
 
 const canonicalUrl = (post: RedditPost): string => {

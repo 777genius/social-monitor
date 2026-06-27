@@ -642,6 +642,10 @@ function assertStableItems(
       !Number.isNaN(item.publishedAt.getTime()),
       `${providerKey}: item publishedAt must be valid`,
     );
+    assert(
+      item.publishedAt.getTime() > 0,
+      `${providerKey}: item publishedAt must not use an epoch fallback`,
+    );
   }
 
   if (!options.allowEmpty) {

@@ -73,9 +73,7 @@ export class RssSourceProvider implements SourceProviderPort {
     return {
       items: feed.items.flatMap((item, index) => normalizeItem(item, plan.query.query, index)),
       nextCursor: encodeCursor(feed, plan.cursor),
-      warnings: feed.items.some((item) => item.guid === undefined)
-        ? ['Some RSS items had no GUID; canonical URL fallback was used.']
-        : [],
+      warnings: rssWarnings(feed.items),
     };
   }
 
@@ -104,7 +102,11 @@ const normalizeItem = (item: RssFeedItem, feedUrl: string, index: number) => {
   const title = item.title ?? '';
   const body = item.content ?? '';
 
-  if (title.trim().length === 0 && body.trim().length === 0) {
+  if (!hasReadableContent(item)) {
+    return [];
+  }
+
+  if (item.publishedAt === undefined) {
     return [];
   }
 
@@ -117,10 +119,26 @@ const normalizeItem = (item: RssFeedItem, feedUrl: string, index: number) => {
       title,
       body,
       authorHandle: item.author,
-      publishedAt: item.publishedAt ?? new Date(0),
+      publishedAt: item.publishedAt,
     },
   ];
 };
+
+const rssWarnings = (items: readonly RssFeedItem[]): readonly string[] => [
+  ...(
+    items.some((item) => hasReadableContent(item) && item.publishedAt !== undefined && item.guid === undefined)
+      ? ['Some RSS items had no GUID; canonical URL fallback was used.']
+      : []
+  ),
+  ...(
+    items.some((item) => hasReadableContent(item) && item.publishedAt === undefined)
+      ? ['Some RSS items had no published timestamp; they were skipped.']
+      : []
+  ),
+];
+
+const hasReadableContent = (item: RssFeedItem): boolean =>
+  (item.title ?? '').trim().length + (item.content ?? '').trim().length > 0;
 
 const decodeCursor = (cursor: string | undefined) => {
   if (cursor === undefined) {
