@@ -63,7 +63,7 @@ const packageResult = packageEvidenceEnvFiles(selectedInputSpecs, expectedCommit
 assertExpectedCommitSha(packageResult.entries, expectedCommitSha);
 
 if (packageResult.includedEnvFiles.length === 0) {
-  throw new Error('No current external beta evidence env files were found to package');
+  throw new Error(noCurrentEvidenceEnvFilesMessage(packageResult, expectedCommitSha));
 }
 
 const writtenEnvFilePath = writeEvidenceEnvFile(
@@ -289,6 +289,30 @@ function formatRequiredAlternativeGroups(groups) {
       return `${group.jobId}:${group.label}[missing ${missing}]`;
     })
     .join('; ');
+}
+
+function noCurrentEvidenceEnvFilesMessage(packageResult, expectedCommitSha) {
+  const lines = [
+    'No current external beta evidence env files were found to package.',
+    `Expected BACKEND_GIT_COMMIT_SHA: ${expectedCommitSha}.`,
+    'Regenerate Docker/live evidence for the current release commit or pass explicit *_ENV_PATH overrides.',
+  ];
+
+  if (packageResult.skippedStaleEnvFiles.length > 0) {
+    lines.push('Skipped stale env files:');
+    for (const skipped of packageResult.skippedStaleEnvFiles) {
+      lines.push(`- ${skipped.path} (${skipped.source}): BACKEND_GIT_COMMIT_SHA=${skipped.packagedCommitSha}`);
+    }
+  }
+
+  if (packageResult.skippedMissingEnvFiles.length > 0) {
+    lines.push('Skipped missing env files:');
+    for (const path of packageResult.skippedMissingEnvFiles) {
+      lines.push(`- ${path}`);
+    }
+  }
+
+  return lines.join('\n');
 }
 
 function packagedEvidenceArtifactIntegrityRecords(entries) {

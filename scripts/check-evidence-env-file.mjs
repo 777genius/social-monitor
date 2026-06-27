@@ -25,6 +25,7 @@ try {
   validatePrivateEnvRead();
   validateCurrentEvidencePackage();
   validateCurrentEvidencePackageSkipsStaleDefaultEvidence();
+  validateCurrentEvidencePackageRejectsEmptyInputs();
   validateCurrentEvidencePackageRejectsStaleCommit();
 } finally {
   rmSync(tempDirectory, { recursive: true, force: true });
@@ -469,13 +470,60 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
   }
 }
 
+function validateCurrentEvidencePackageRejectsEmptyInputs() {
+  const artifactDir = join(tempDirectory, 'empty-current-package');
+  mkdirSync(artifactDir, { recursive: true });
+  const staleEnvPath = join(artifactDir, 'live-open-connectors.env');
+  const outputEnvPath = join(artifactDir, 'empty-current-package.env');
+  const outputReportPath = join(artifactDir, 'empty-current-package-report.json');
+  const expectedCommitSha = 'a'.repeat(40);
+  const staleCommitSha = 'b'.repeat(40);
+
+  writeEvidenceEnvFile(staleEnvPath, [
+    ['BACKEND_GIT_COMMIT_SHA', staleCommitSha],
+    ['LIVE_OPEN_CONNECTORS_EVIDENCE_PATH', join(artifactDir, 'stale-live-open.json')],
+  ]);
+
+  assertRejectedWithMessages(
+    () => execFileSync('node', ['scripts/package-current-external-beta-evidence.mjs'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        EXTERNAL_BETA_CURRENT_PACKAGE_ARTIFACT_DIR: artifactDir,
+        EXTERNAL_BETA_CURRENT_ENV_PATH: outputEnvPath,
+        EXTERNAL_BETA_CURRENT_REPORT_PATH: outputReportPath,
+        EXTERNAL_BETA_CURRENT_PACKAGE_EXPECTED_COMMIT_SHA: expectedCommitSha,
+        EXTERNAL_BETA_ADDITIONAL_ENV_PATHS: '',
+      },
+    }),
+    'empty current evidence package inputs',
+    [
+      'No current external beta evidence env files were found to package.',
+      `Expected BACKEND_GIT_COMMIT_SHA: ${expectedCommitSha}`,
+      'Regenerate Docker/live evidence for the current release commit',
+      'Skipped stale env files:',
+      staleEnvPath,
+      `BACKEND_GIT_COMMIT_SHA=${staleCommitSha}`,
+      'Skipped missing env files:',
+    ],
+  );
+}
+
 function assertRejected(fn, label, expectedMessage) {
+  assertRejectedWithMessages(fn, label, [expectedMessage]);
+}
+
+function assertRejectedWithMessages(fn, label, expectedMessages) {
   try {
     fn();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes(expectedMessage)) {
-      violations.push(`expected ${label} rejection to include "${expectedMessage}"`);
+    for (const expectedMessage of expectedMessages) {
+      if (!message.includes(expectedMessage)) {
+        violations.push(`expected ${label} rejection to include "${expectedMessage}"`);
+      }
     }
     return;
   }
