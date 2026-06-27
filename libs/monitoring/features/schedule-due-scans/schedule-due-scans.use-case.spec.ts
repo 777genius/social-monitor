@@ -1106,6 +1106,100 @@ describe('ScheduleDueScansUseCase', () => {
     });
   });
 
+  it('retries high-cadence provider rate limits with bounded transient backoff', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding('github-repo-radar'));
+    const policies = new FakeScanPolicies();
+    policies.add(
+      ScanPolicy.create({
+        id: 'policy-1',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+        nextRunAt: new Date('2026-06-05T11:55:00.000Z'),
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
+    const scanJobs = new FakeScanJobs();
+    await scanJobs.save(
+      ScanJob.request({
+        id: 'repo-radar-rate-limited-scan-job',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        scanPolicyId: 'policy-1',
+        idempotencyKey: 'manual-repo-radar-rate-limited',
+        requestedAt: new Date('2026-06-05T11:57:00.000Z'),
+      })
+        .markEnqueued({
+          enqueuedAt: new Date('2026-06-05T11:57:01.000Z'),
+        })
+        .markFailed({
+          completedAt: new Date('2026-06-05T11:58:00.000Z'),
+          failureReason: 'Provider rate limit 429',
+        }),
+    );
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-repo-radar-rate-limit-backoff',
+      includeDecisions: true,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 0,
+        skipped: 1,
+        skippedByReason: skippedByReason('rate_limit_backoff'),
+        decisions: [
+          {
+            scanPolicyId: 'policy-1',
+            sourceBindingId: 'binding-1',
+            providerKey: 'github-repo-radar',
+            decision: 'skipped',
+            reason: 'rate_limit_backoff',
+            policyDueAt: new Date('2026-06-05T11:55:00.000Z'),
+            nextRunAt: new Date('2026-06-05T12:13:00.000Z'),
+            configuredIntervalSeconds: 300,
+            effectiveIntervalSeconds: 21_600,
+            freshnessSeconds: 21_600,
+            providerMinimumIntervalEnforced: true,
+            backoffUntil: new Date('2026-06-05T12:13:00.000Z'),
+          },
+        ],
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:13:00.000Z'),
+    });
+  });
+
   it('backs off due policy after repeated provider auth failures', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding('reddit'));
@@ -1236,6 +1330,113 @@ describe('ScheduleDueScansUseCase', () => {
         causationId: 'scheduled:policy-1:2026-06-05T11:55:00.000Z',
       }),
     ]);
+  });
+
+  it('retries high-cadence provider failures with bounded transient backoff', async () => {
+    const bindings = new FakeSourceBindings();
+    bindings.add(makeBinding('github-repo-radar'));
+    const policies = new FakeScanPolicies();
+    policies.add(
+      ScanPolicy.create({
+        id: 'policy-1',
+        tenantId: tenantId('tenant-1'),
+        workspaceId: workspaceId('workspace-1'),
+        sourceBindingId: 'binding-1',
+        intervalSeconds: 300,
+        freshnessSeconds: 900,
+        retryBudget: 3,
+        nextRunAt: new Date('2026-06-05T11:55:00.000Z'),
+        createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      }),
+    );
+    const scanJobs = new FakeScanJobs();
+    for (const [id, requestedAt, completedAt] of [
+      [
+        'repo-radar-unavailable-scan-job-2',
+        '2026-06-05T11:57:00.000Z',
+        '2026-06-05T11:58:00.000Z',
+      ],
+      [
+        'repo-radar-unavailable-scan-job-1',
+        '2026-06-05T11:56:00.000Z',
+        '2026-06-05T11:57:00.000Z',
+      ],
+    ] as const) {
+      await scanJobs.save(
+        ScanJob.request({
+          id,
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+          scanPolicyId: 'policy-1',
+          idempotencyKey: `manual-${id}`,
+          requestedAt: new Date(requestedAt),
+        })
+          .markEnqueued({
+            enqueuedAt: new Date(new Date(requestedAt).getTime() + 1_000),
+          })
+          .markFailed({
+            completedAt: new Date(completedAt),
+            failureReason: 'Provider unavailable while reading repo radar',
+          }),
+      );
+    }
+    const queue = new FakeScanQueue();
+    const useCase = new ScheduleDueScansUseCase(
+      bindings,
+      policies,
+      scanJobs,
+      queue,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      limit: 10,
+      correlationId: 'scheduler-tick-repo-radar-provider-failure-backoff',
+      includeDecisions: true,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        scannedAt: new Date('2026-06-05T12:00:00.000Z'),
+        evaluated: 1,
+        enqueued: 0,
+        skipped: 1,
+        skippedByReason: skippedByReason('provider_failure_backoff'),
+        decisions: [
+          {
+            scanPolicyId: 'policy-1',
+            sourceBindingId: 'binding-1',
+            providerKey: 'github-repo-radar',
+            decision: 'skipped',
+            reason: 'provider_failure_backoff',
+            policyDueAt: new Date('2026-06-05T11:55:00.000Z'),
+            nextRunAt: new Date('2026-06-05T12:28:00.000Z'),
+            configuredIntervalSeconds: 300,
+            effectiveIntervalSeconds: 21_600,
+            freshnessSeconds: 21_600,
+            providerMinimumIntervalEnforced: true,
+            backoffUntil: new Date('2026-06-05T12:28:00.000Z'),
+          },
+        ],
+      },
+    });
+    expect(queue.commands).toHaveLength(0);
+    expect(
+      (
+        await policies.findBySourceBinding({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          sourceBindingId: 'binding-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
+      nextRunAt: new Date('2026-06-05T12:28:00.000Z'),
+    });
   });
 
   it('skips due policy and advances next run when source binding is paused', async () => {

@@ -2,8 +2,6 @@ import {
   type Clock,
   DomainError,
   type IdGenerator,
-  type TenantId,
-  type WorkspaceId,
   err,
   ok,
   type Result,
@@ -15,7 +13,6 @@ import type {
   ScanJobHistoryReadPort,
   ScanPolicyRepositoryPort,
   ScanSchedulerDecisionHistoryPort,
-  ScanSchedulerDecisionRecord,
   ScanQueuePort,
   SourceBindingRepositoryPort,
 } from '../../ports';
@@ -23,11 +20,20 @@ import type { ScheduleDueScansCommand } from './schedule-due-scans.command';
 import type {
   ScheduleDueScansDecision,
   ScheduleDueScansResult,
-  ScheduleDueScansSkipBreakdown,
-  ScheduleDueScansSkipReason,
 } from './schedule-due-scans.result';
+import {
+  appliedSchedulerBackoffUntil,
+  emptySkipBreakdown,
+  recordDecision,
+  recordSkipped,
+  schedulerDecisionRecordFromDecision,
+  schedulerSkipReason,
+  totalSkipped,
+  type RecordedScheduleDueScansDecision,
+} from './schedule-due-scans-decision-support';
 import { effectiveProviderScanCadence } from '../shared/scan-cadence-policy';
 import {
+  boundedTransientProviderBackoffSeconds,
   isFreshSuccessfulScan,
   providerFailureBackoffUntil,
   rateLimitBackoffUntil,
@@ -45,12 +51,6 @@ type ScanJobRecentHistoryReadPort = Pick<
   ScanJobHistoryReadPort,
   'listBySourceBinding'
 >;
-type RecordedScheduleDueScansDecision = {
-  readonly tenantId: TenantId;
-  readonly workspaceId: WorkspaceId;
-  readonly causationId?: string;
-  readonly decision: ScheduleDueScansDecision;
-};
 
 export class ScheduleDueScansUseCase {
   constructor(
@@ -183,9 +183,13 @@ export class ScheduleDueScansUseCase {
         intervalSeconds: policySnapshot.intervalSeconds,
         freshnessSeconds: policySnapshot.freshnessSeconds,
       });
+      const transientProviderBackoffSeconds =
+        boundedTransientProviderBackoffSeconds({
+          intervalSeconds: cadence.intervalSeconds,
+        });
       const rateLimitBackoff = rateLimitBackoffUntil({
         latestJob,
-        backoffSeconds: cadence.intervalSeconds,
+        backoffSeconds: transientProviderBackoffSeconds,
         now,
       });
       const freshSuccess = isFreshSuccessfulScan({
@@ -208,13 +212,18 @@ export class ScheduleDueScansUseCase {
           : null;
       const providerFailureBackoff = providerFailureBackoffUntil({
         recentJobs: recentJobs.scanJobs,
-        backoffSeconds: cadence.intervalSeconds,
+        backoffSeconds: transientProviderBackoffSeconds,
         now,
       });
       const skipReason = schedulerSkipReason({
         activeJob,
         existingJob,
         freshSuccess,
+        rateLimitBackoff,
+        providerFailureBackoff,
+      });
+      const appliedSkipBackoffUntil = appliedSchedulerBackoffUntil({
+        skipReason,
         rateLimitBackoff,
         providerFailureBackoff,
       });
@@ -306,8 +315,16 @@ export class ScheduleDueScansUseCase {
         });
       } else {
         recordSkipped(skippedByReason, skipReason);
-        const backoffUntil =
-          rateLimitBackoff ?? providerFailureBackoff ?? undefined;
+        const backoffUntil = appliedSkipBackoffUntil ?? undefined;
+        const nextRunAt =
+          freshSuccessNextRunAt ??
+          appliedSkipBackoffUntil ??
+          nextScanPolicyRunAfterDecision({
+            dueAt: policySnapshot.nextRunAt,
+            intervalSeconds: cadence.intervalSeconds,
+            now,
+            backoffUntil: null,
+          });
         recordDecision(decisions, recordedDecisions, {
           tenantId: policySnapshot.tenantId,
           workspaceId: policySnapshot.workspaceId,
@@ -319,14 +336,7 @@ export class ScheduleDueScansUseCase {
             decision: 'skipped',
             reason: skipReason,
             policyDueAt: policySnapshot.nextRunAt,
-            nextRunAt:
-              freshSuccessNextRunAt ??
-              nextScanPolicyRunAfterDecision({
-                dueAt: policySnapshot.nextRunAt,
-                intervalSeconds: cadence.intervalSeconds,
-                now,
-                backoffUntil: rateLimitBackoff ?? providerFailureBackoff,
-              }),
+            nextRunAt,
             configuredIntervalSeconds: policySnapshot.intervalSeconds,
             effectiveIntervalSeconds: cadence.intervalSeconds,
             freshnessSeconds: cadence.freshnessSeconds,
@@ -341,11 +351,12 @@ export class ScheduleDueScansUseCase {
         policy.scheduleNext({
           nextRunAt:
             freshSuccessNextRunAt ??
+            appliedSkipBackoffUntil ??
             nextScanPolicyRunAfterDecision({
               dueAt: policySnapshot.nextRunAt,
               intervalSeconds: cadence.intervalSeconds,
               now,
-              backoffUntil: rateLimitBackoff ?? providerFailureBackoff,
+              backoffUntil: null,
             }),
         }),
       );
@@ -372,7 +383,10 @@ export class ScheduleDueScansUseCase {
     readonly evaluatedAt: Date;
     readonly correlationId: string;
   }): Promise<void> {
-    if (this.schedulerDecisions === undefined || params.decisions.length === 0) {
+    if (
+      this.schedulerDecisions === undefined ||
+      params.decisions.length === 0
+    ) {
       return;
     }
 
@@ -388,112 +402,3 @@ export class ScheduleDueScansUseCase {
     });
   }
 }
-
-const recordDecision = (
-  decisions: ScheduleDueScansDecision[] | undefined,
-  recordedDecisions: RecordedScheduleDueScansDecision[],
-  decision: RecordedScheduleDueScansDecision,
-): void => {
-  decisions?.push(decision.decision);
-  recordedDecisions.push(decision);
-};
-
-const schedulerDecisionRecordFromDecision = (params: {
-  readonly id: string;
-  readonly decision: RecordedScheduleDueScansDecision;
-  readonly evaluatedAt: Date;
-  readonly correlationId: string;
-}): ScanSchedulerDecisionRecord => {
-  const decision = params.decision.decision;
-
-  return {
-    id: params.id,
-    tenantId: params.decision.tenantId,
-    workspaceId: params.decision.workspaceId,
-    decisionKey: schedulerDecisionKey(decision),
-    scanPolicyId: decision.scanPolicyId,
-    sourceBindingId: decision.sourceBindingId,
-    ...(decision.providerKey === undefined
-      ? {}
-      : { providerKey: decision.providerKey }),
-    decision: decision.decision,
-    reason: decision.reason,
-    ...(decision.decision === 'enqueued' ? { scanJobId: decision.scanJobId } : {}),
-    policyDueAt: decision.policyDueAt,
-    evaluatedAt: params.evaluatedAt,
-    nextRunAt: decision.nextRunAt,
-    configuredIntervalSeconds: decision.configuredIntervalSeconds,
-    ...(decision.effectiveIntervalSeconds === undefined
-      ? {}
-      : { effectiveIntervalSeconds: decision.effectiveIntervalSeconds }),
-    ...(decision.freshnessSeconds === undefined
-      ? {}
-      : { freshnessSeconds: decision.freshnessSeconds }),
-    ...(decision.providerMinimumIntervalEnforced === undefined
-      ? {}
-      : {
-          providerMinimumIntervalEnforced:
-            decision.providerMinimumIntervalEnforced,
-        }),
-    ...(decision.decision === 'skipped' && decision.backoffUntil !== undefined
-      ? { backoffUntil: decision.backoffUntil }
-      : {}),
-    correlationId: params.correlationId,
-    ...(params.decision.causationId === undefined
-      ? {}
-      : { causationId: params.decision.causationId }),
-  };
-};
-
-const schedulerDecisionKey = (decision: ScheduleDueScansDecision): string =>
-  `scan-policy:${decision.scanPolicyId}:due-at:${decision.policyDueAt.toISOString()}`;
-
-const emptySkipBreakdown = (): Record<ScheduleDueScansSkipReason, number> => ({
-  active_scan: 0,
-  duplicate_window: 0,
-  fresh_success: 0,
-  provider_failure_backoff: 0,
-  queue_backpressure: 0,
-  rate_limit_backoff: 0,
-  source_unavailable: 0,
-});
-
-const recordSkipped = (
-  breakdown: Record<ScheduleDueScansSkipReason, number>,
-  reason: ScheduleDueScansSkipReason,
-): void => {
-  breakdown[reason] += 1;
-};
-
-const totalSkipped = (breakdown: ScheduleDueScansSkipBreakdown): number =>
-  Object.values(breakdown).reduce((total, value) => total + value, 0);
-
-const schedulerSkipReason = (params: {
-  readonly activeJob: ScanJob | null;
-  readonly existingJob: ScanJob | null;
-  readonly freshSuccess: boolean;
-  readonly rateLimitBackoff: Date | null;
-  readonly providerFailureBackoff: Date | null;
-}): ScheduleDueScansSkipReason | null => {
-  if (params.activeJob !== null) {
-    return 'active_scan';
-  }
-
-  if (params.existingJob !== null) {
-    return 'duplicate_window';
-  }
-
-  if (params.freshSuccess) {
-    return 'fresh_success';
-  }
-
-  if (params.rateLimitBackoff !== null) {
-    return 'rate_limit_backoff';
-  }
-
-  if (params.providerFailureBackoff !== null) {
-    return 'provider_failure_backoff';
-  }
-
-  return null;
-};

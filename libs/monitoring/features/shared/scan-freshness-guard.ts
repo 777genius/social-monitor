@@ -1,6 +1,16 @@
 import type { ScanJob } from '../../domain';
 import { buildScanStatusView } from './scan-status-view';
 
+const maximumTransientProviderBackoffSeconds = 900;
+
+export const boundedTransientProviderBackoffSeconds = (params: {
+  readonly intervalSeconds: number;
+}): number =>
+  Math.min(
+    Math.max(1, params.intervalSeconds),
+    maximumTransientProviderBackoffSeconds,
+  );
+
 export const isFreshSuccessfulScan = (params: {
   readonly latestJob: ScanJob | null;
   readonly freshnessSeconds: number;
@@ -11,7 +21,8 @@ export const isFreshSuccessfulScan = (params: {
   return (
     latestSnapshot?.status === 'succeeded' &&
     latestSnapshot.completedAt !== undefined &&
-    latestSnapshot.completedAt.getTime() + params.freshnessSeconds * 1000 > params.now.getTime()
+    latestSnapshot.completedAt.getTime() + params.freshnessSeconds * 1000 >
+      params.now.getTime()
   );
 };
 
@@ -33,7 +44,9 @@ export const rateLimitBackoffUntil = (params: {
     return null;
   }
 
-  const backoffUntil = new Date(latestSnapshot.completedAt.getTime() + params.backoffSeconds * 1000);
+  const backoffUntil = new Date(
+    latestSnapshot.completedAt.getTime() + params.backoffSeconds * 1000,
+  );
 
   return backoffUntil.getTime() > params.now.getTime() ? backoffUntil : null;
 };
@@ -80,8 +93,14 @@ export const providerFailureBackoffUntil = (params: {
     return null;
   }
 
-  const multiplier = Math.min(consecutiveProviderFailures, maxBackoffMultiplier);
-  const backoffUntil = new Date(latestProviderFailureCompletedAt.getTime() + params.backoffSeconds * multiplier * 1000);
+  const multiplier = Math.min(
+    consecutiveProviderFailures,
+    maxBackoffMultiplier,
+  );
+  const backoffUntil = new Date(
+    latestProviderFailureCompletedAt.getTime() +
+      params.backoffSeconds * multiplier * 1000,
+  );
 
   return backoffUntil.getTime() > params.now.getTime() ? backoffUntil : null;
 };
