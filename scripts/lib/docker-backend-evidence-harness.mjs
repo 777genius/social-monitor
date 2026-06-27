@@ -91,6 +91,10 @@ export async function withDockerBackendEvidenceStack(options, callback) {
   const composeFile = ["docker-compose.yml", overridePath].join(delimiter);
   const composeEnv = {
     ...process.env,
+    NODE_ENV: "staging",
+    SOCIAL_MONITOR_RUNTIME_PROFILE: "beta",
+    TRUSTED_WORKSPACE_ROLE_HEADER: "disabled",
+    SOCIAL_MONITOR_USER_AUTH_MODE: "oidc-jwt",
     API_PORT: apiPort,
     POSTGRES_PORT: postgresPort,
     RABBITMQ_PORT: rabbitMqPort,
