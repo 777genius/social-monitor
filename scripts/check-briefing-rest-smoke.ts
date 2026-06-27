@@ -51,6 +51,7 @@ async function main(): Promise<void> {
 
   try {
     const tenant = tenantId('tenant-briefing-rest-smoke');
+    const otherTenant = tenantId('tenant-briefing-rest-other');
     const workspace = workspaceId('workspace-briefing-rest-smoke');
     const otherWorkspace = workspaceId('workspace-briefing-rest-other');
     const userId = 'user-briefing-rest-smoke';
@@ -59,6 +60,10 @@ async function main(): Promise<void> {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
       'x-workspace-role': 'viewer',
+    };
+    const otherTenantHeaders = {
+      ...headers,
+      'x-tenant-id': otherTenant,
     };
     const repository = moduleRef.get<ReaderSummaryArtifactRepositoryPort>(
       READER_SUMMARY_ARTIFACT_REPOSITORY,
@@ -235,6 +240,23 @@ async function main(): Promise<void> {
       briefingId,
     );
 
+    const otherTenantListResponse = await request(app.getHttpServer())
+      .get('/briefings')
+      .query({
+        scopeType: 'workspace',
+        providerKey: 'reddit',
+        userId,
+        memoryGuidanceApplied: 'true',
+        limit: '5',
+      })
+      .set(otherTenantHeaders)
+      .expect(200);
+
+    assert(
+      (otherTenantListResponse.body as BriefingListResponseBody).items.length === 0,
+      'briefings REST list must not return artifacts from another tenant',
+    );
+
     const detailResponse = await request(app.getHttpServer())
       .get(`/briefings/${briefingId}`)
       .set(headers)
@@ -313,6 +335,11 @@ async function main(): Promise<void> {
       .expect(404);
 
     await request(app.getHttpServer())
+      .get(`/briefing-jobs/${briefingJobId}/status`)
+      .set(otherTenantHeaders)
+      .expect(404);
+
+    await request(app.getHttpServer())
       .post('/briefing-requests')
       .set({
         ...headers,
@@ -370,6 +397,11 @@ async function main(): Promise<void> {
         ...headers,
         'x-workspace-id': otherWorkspace,
       })
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(`/briefings/${briefingId}`)
+      .set(otherTenantHeaders)
       .expect(404);
 
     console.log('Briefing REST smoke OK');
