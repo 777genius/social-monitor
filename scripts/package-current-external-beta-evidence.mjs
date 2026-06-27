@@ -451,9 +451,11 @@ function defaultInputSpecs() {
         : 'default_reddit_live_oauth_env',
     },
     {
-      path: feedbackOverridePath,
+      path: feedbackOverridePath || join(resolvedArtifactDir, 'summary-feedback-samples.env'),
       staleCommitPolicy: feedbackOverridePath ? 'reject' : 'skip',
-      source: 'summary_feedback_samples_env',
+      source: feedbackOverridePath
+        ? 'summary_feedback_samples_env_override'
+        : 'default_summary_feedback_samples_env',
     },
   ];
 }

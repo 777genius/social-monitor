@@ -46,6 +46,7 @@ async function main() {
 
   const writtenEnvFilePath = writeEvidenceEnvFile(envFileTarget, [
     [outputPathEnv, outputTarget],
+    ...optionalCommitEnvEntries(),
   ], {
     usageLines: [
       'Load this file before validating summary-real-feedback-import evidence.',
@@ -56,6 +57,18 @@ async function main() {
 
   console.log(`${outputPathEnv}=${outputTarget}`);
   console.log(`SUMMARY_FEEDBACK_SAMPLES_ENV_PATH=${writtenEnvFilePath}`);
+}
+
+function optionalCommitEnvEntries() {
+  const commitSha = readOptionalEnv('BACKEND_GIT_COMMIT_SHA');
+  if (commitSha === undefined) {
+    return [];
+  }
+  if (!/^[0-9a-f]{40}$/.test(commitSha)) {
+    throw new Error('BACKEND_GIT_COMMIT_SHA must be a full 40-character lowercase git commit SHA');
+  }
+
+  return [['BACKEND_GIT_COMMIT_SHA', commitSha]];
 }
 
 function buildArtifact(source) {
