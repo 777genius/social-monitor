@@ -305,7 +305,7 @@
       "runPolicy": "live_command",
       "owner": "source-owner",
       "blocksExternalBeta": true,
-      "runnerCommand": "npm run check:github-trending-page-live-smoke",
+      "runnerCommand": "npm run capture:live-github-trending-page",
       "validationCommands": [
         "npm run check:source-live-certification-evidence",
         "npm run check:source-certification"

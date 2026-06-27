@@ -350,7 +350,7 @@
       "status": "pending_live_evidence",
       "requiredForExternalBeta": true,
       "owner": "source-owner",
-      "liveSmokeCommand": "npm run check:github-trending-page-live-smoke",
+      "liveSmokeCommand": "npm run capture:live-github-trending-page",
       "stagingArtifactPath": null,
       "environmentId": null,
       "imageDigest": null,

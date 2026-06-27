@@ -230,28 +230,28 @@
         {
           "signalId": "github-trending-page-live-smoke",
           "description": "GitHub Trending page returns normalized repositories with stars gained.",
-          "verificationCommand": "npm run check:github-trending-page-live-smoke",
+          "verificationCommand": "npm run capture:live-github-trending-page",
           "artifactEnv": "GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH",
           "requiredFor": "external_beta"
         },
         {
           "signalId": "github-trending-page-parser-drift",
           "description": "Parser drift checks cover repository identity, rank, star-gain fields and warning-free parsing.",
-          "verificationCommand": "npm run check:github-trending-page-live-smoke",
+          "verificationCommand": "npm run capture:live-github-trending-page",
           "artifactEnv": "GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH",
           "requiredFor": "external_beta"
         },
         {
           "signalId": "github-trending-page-rate-limit-budget",
           "description": "Page fetch timeout and rate-limit behavior are recorded.",
-          "verificationCommand": "npm run check:github-trending-page-live-smoke",
+          "verificationCommand": "npm run capture:live-github-trending-page",
           "artifactEnv": "GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH",
           "requiredFor": "external_beta"
         },
         {
           "signalId": "github-trending-page-provider-failure-classification",
           "description": "Trending page failures are classified without raw HTML retention.",
-          "verificationCommand": "npm run check:github-trending-page-live-smoke",
+          "verificationCommand": "npm run capture:live-github-trending-page",
           "artifactEnv": "GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH",
           "requiredFor": "external_beta"
         }

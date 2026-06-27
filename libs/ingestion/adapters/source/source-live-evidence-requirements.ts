@@ -19,7 +19,7 @@ const repoRadarEvidenceCommand =
   'npm run check:github-repo-radar-prisma-live-e2e';
 const repoRadarEvidenceEnv = 'GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH';
 const trendingPageEvidenceCommand =
-  'npm run check:github-trending-page-live-smoke';
+  'npm run capture:live-github-trending-page';
 const trendingPageEvidenceEnv = 'GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH';
 const redditEvidenceCommand = 'npm run capture:live-reddit-oauth';
 const redditEvidenceEnv = 'REDDIT_LIVE_EVIDENCE_PATH';

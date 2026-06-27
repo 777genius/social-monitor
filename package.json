@@ -50,6 +50,7 @@
     "capture:security-final-sweep": "node scripts/capture-security-final-sweep.mjs",
     "capture:release-deploy-smoke": "node scripts/capture-release-deploy-smoke.mjs",
     "capture:live-open-connectors": "node scripts/capture-live-open-connectors.mjs",
+    "capture:live-github-trending-page": "node scripts/capture-live-github-trending-page.mjs",
     "capture:live-reddit-oauth": "node scripts/capture-live-reddit-oauth.mjs",
     "reddit:oauth:local-callback": "node scripts/reddit-oauth-local-callback.mjs",
     "capture:github-live-summary-smoke": "node scripts/capture-github-live-summary-smoke.mjs",

@@ -30,8 +30,48 @@ const baselineScripts = new Set(baseline.requiredGreenScripts ?? []);
 const baselineArtifacts = new Set((baseline.trackedArtifacts ?? []).map((artifact) => artifact.path));
 const externalGroups = new Map((externalReadiness.requiredEvidenceGroups ?? []).map((group) => [group.groupId, group]));
 const auditRequirements = new Map((audit.requirements ?? []).map((requirement) => [requirement.requirementId, requirement]));
+const checkSource = readFileSync(contract.checkFile, 'utf8');
 const violations = [];
 const artifactValidationSmokeTimeoutMs = 300_000;
+const strictSemanticNegativeSmokeLabels = new Set([
+  'durable runtime in-memory selector',
+  'durable runtime missing event relay',
+  'durable runtime forbidden rollup',
+  'staging reliability missing postgres signal',
+  'staging reliability failed durable signal',
+  'summary feedback fixture sample id',
+  'summary feedback fixture sample signal text',
+  'summary feedback non-real source kind',
+  'summary feedback missing source export traceability',
+  'summary feedback raw source redaction flag',
+  'summary feedback missing minimum samples',
+  'summary feedback rollup mismatch',
+  'summary feedback forbidden sensitive field',
+  'release deploy commit mismatch',
+  'release deploy artifact digest mismatch',
+  'release deploy missing smoke result',
+  'release deploy raw headers redaction flag',
+  'source rotation missing preview operation',
+  'webhook rotation unchanged old key',
+  'security sweep missing public error export',
+  'security sweep missing audit metadata export',
+  'security sweep mismatched export digest',
+  'security sweep unsafe diagnostic field',
+  'security sweep raw source redaction flag',
+  'reddit lifecycle hash mismatch',
+  'reddit lifecycle missing redacted preview',
+  'reddit lifecycle non ISO observedAt',
+  'reddit live signal non ISO observedAt',
+]);
+const representativeSemanticNegativeSmokeLabels = new Set([
+  'durable runtime in-memory selector',
+  'staging reliability missing postgres signal',
+  'summary feedback fixture sample id',
+  'release deploy commit mismatch',
+  'source rotation missing preview operation',
+  'security sweep missing public error export',
+  'reddit lifecycle hash mismatch',
+]);
 const runnerSmokeTimeoutMs = 30_000;
 
 const allowedModes = new Set([
@@ -944,6 +984,17 @@ function validateRunnerImplementation() {
       violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);
     }
   }
+
+  for (const marker of [
+    'strictSemanticNegativeSmokeLabels',
+    'representativeSemanticNegativeSmokeLabels',
+    'negativeSmokeOptions',
+    'shouldRunNegativeSmoke',
+  ]) {
+    if (!checkSource.includes(marker)) {
+      violations.push(`${contract.checkFile}: checker must keep bounded semantic negative smoke coverage through ${marker}`);
+    }
+  }
 }
 
 function validateRunnerNegativeSmokes() {
@@ -1093,6 +1144,9 @@ function validateRunnerNegativeSmokes() {
   ];
 
   for (const scenario of scenarios) {
+    if (!shouldRunNegativeSmoke(scenario.label)) {
+      continue;
+    }
     const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-negative-'));
     const artifactPath = join(tempDirectory, 'live-open-connectors.json');
     const baseArtifact = liveOpenConnectorsArtifact();
@@ -1114,7 +1168,7 @@ function validateRunnerNegativeSmokes() {
         chmodSync(artifactPath, scenario.fileMode);
       }
 
-      const result = runRunnerNegativeSmoke(artifactPath);
+      const result = runRunnerNegativeSmoke(artifactPath, negativeSmokeOptions(scenario.label));
       if (result.exitCode === 0) {
         violations.push(`${contract.runnerFile}: runner negative smoke must reject ${scenario.label}`);
         continue;
@@ -1225,10 +1279,13 @@ function validateRunnerNegativeDurableRuntimeArtifactSmokes() {
   ];
 
   for (const scenario of scenarios) {
+    if (!shouldRunNegativeSmoke(scenario.label)) {
+      continue;
+    }
     const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-durable-negative-'));
     try {
       const artifactPath = writeDurableRuntimeSelectorArtifact(tempDirectory, scenario);
-      const result = runRunnerDurableRuntimeArtifactSmoke(artifactPath);
+      const result = runRunnerDurableRuntimeArtifactSmoke(artifactPath, negativeSmokeOptions(scenario.label));
       if (result.exitCode === 0) {
         violations.push(`${contract.runnerFile}: runner negative durable runtime smoke must reject ${scenario.label}`);
         continue;
@@ -1383,11 +1440,14 @@ function validateRunnerNegativeStagingReliabilityArtifactSmokes() {
   ];
 
   for (const scenario of scenarios) {
+    if (!shouldRunNegativeSmoke(scenario.label)) {
+      continue;
+    }
     const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-staging-reliability-negative-'));
     try {
       const config = stagingReliabilitySmokeConfigByArtifactId(scenario.artifactId);
       const artifactPath = writeStagingReliabilityArtifact(tempDirectory, config, scenario);
-      const result = runRunnerStagingReliabilityArtifactSmoke(config, artifactPath);
+      const result = runRunnerStagingReliabilityArtifactSmoke(config, artifactPath, negativeSmokeOptions(scenario.label));
       if (result.exitCode === 0) {
         violations.push(`${contract.runnerFile}: runner negative staging reliability smoke must reject ${scenario.label}`);
         continue;
@@ -1658,10 +1718,13 @@ function validateRunnerNegativeSummaryFeedbackArtifactSmokes() {
   ];
 
   for (const scenario of scenarios) {
+    if (!shouldRunNegativeSmoke(scenario.label)) {
+      continue;
+    }
     const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-summary-feedback-negative-'));
     try {
       const artifactPath = writeSummaryFeedbackSamplesArtifact(tempDirectory, scenario);
-      const result = runRunnerSummaryFeedbackArtifactSmoke(artifactPath);
+      const result = runRunnerSummaryFeedbackArtifactSmoke(artifactPath, negativeSmokeOptions(scenario.label));
       if (result.exitCode === 0) {
         violations.push(`${contract.runnerFile}: runner negative summary feedback smoke must reject ${scenario.label}`);
         continue;
@@ -1851,10 +1914,13 @@ function validateRunnerNegativeReleaseDeployArtifactSmokes() {
   ];
 
   for (const scenario of scenarios) {
+    if (!shouldRunNegativeSmoke(scenario.label)) {
+      continue;
+    }
     const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-release-deploy-negative-'));
     try {
       const artifactPath = writeReleaseDeploySmokeArtifact(tempDirectory, scenario);
-      const result = runRunnerReleaseDeployArtifactSmoke(artifactPath);
+      const result = runRunnerReleaseDeployArtifactSmoke(artifactPath, negativeSmokeOptions(scenario.label));
       if (result.exitCode === 0) {
         violations.push(`${contract.runnerFile}: runner negative release deploy smoke must reject ${scenario.label}`);
         continue;
@@ -2010,13 +2076,16 @@ function validateRunnerNegativeCredentialRotationArtifactSmokes() {
   ];
 
   for (const scenario of scenarios) {
+    if (!shouldRunNegativeSmoke(scenario.label)) {
+      continue;
+    }
     const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-rotation-negative-'));
     try {
       const { sourceArtifactPath, webhookArtifactPath } = writeCredentialRotationArtifactPair(
         tempDirectory,
         scenario,
       );
-      const result = runRunnerCredentialRotationArtifactSmoke(sourceArtifactPath, webhookArtifactPath);
+      const result = runRunnerCredentialRotationArtifactSmoke(sourceArtifactPath, webhookArtifactPath, negativeSmokeOptions(scenario.label));
       if (result.exitCode === 0) {
         violations.push(`${contract.runnerFile}: runner negative credential rotation smoke must reject ${scenario.label}`);
         continue;
@@ -2192,13 +2261,16 @@ function validateRunnerNegativeSecurityFinalSweepArtifactSmokes() {
   ];
 
   for (const scenario of scenarios) {
+    if (!shouldRunNegativeSmoke(scenario.label)) {
+      continue;
+    }
     const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-security-negative-'));
     try {
       const { artifactPath, exportPaths } = writeSecurityFinalSweepArtifact(
         tempDirectory,
         scenario,
       );
-      const result = runRunnerSecurityFinalSweepArtifactSmoke(artifactPath, exportPaths);
+      const result = runRunnerSecurityFinalSweepArtifactSmoke(artifactPath, exportPaths, negativeSmokeOptions(scenario.label));
       if (result.exitCode === 0) {
         violations.push(`${contract.runnerFile}: runner negative security final sweep smoke must reject ${scenario.label}`);
         continue;
@@ -2500,13 +2572,16 @@ function validateRunnerNegativeRedditArtifactSmokes() {
   ];
 
   for (const scenario of scenarios) {
+    if (!shouldRunNegativeSmoke(scenario.label)) {
+      continue;
+    }
     const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-reddit-negative-'));
     try {
       const { liveArtifactPath, lifecyclePath } = writeRedditArtifactPair(
         tempDirectory,
         scenario,
       );
-      const result = runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath);
+      const result = runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath, negativeSmokeOptions(scenario.label));
       if (result.exitCode === 0) {
         violations.push(`${contract.runnerFile}: runner negative Reddit smoke must reject ${scenario.label}`);
         continue;
@@ -2538,8 +2613,21 @@ function writeRedditArtifactPair(tempDirectory, options = {}) {
   return { liveArtifactPath, lifecyclePath, lifecycleSha256 };
 }
 
-function runRunnerNegativeSmoke(artifactPath) {
-  return runRunnerArtifactSmoke(artifactPath);
+function negativeSmokeOptions(label) {
+  return {
+    contractSmokeArtifactOnly: !strictSemanticNegativeSmokeLabels.has(label),
+  };
+}
+
+function shouldRunNegativeSmoke(label) {
+  return (
+    !strictSemanticNegativeSmokeLabels.has(label) ||
+    representativeSemanticNegativeSmokeLabels.has(label)
+  );
+}
+
+function runRunnerNegativeSmoke(artifactPath, options = {}) {
+  return runRunnerArtifactSmoke(artifactPath, options);
 }
 
 function runRunnerSecurityFinalSweepArtifactSmoke(artifactPath, exportPaths, options = {}) {

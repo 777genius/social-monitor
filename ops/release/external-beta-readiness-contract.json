@@ -107,7 +107,7 @@
         "npm run check:source-live-certification-evidence",
         "npm run check:live-open-connectors",
         "npm run check:github-repo-radar-prisma-live-e2e",
-        "npm run check:github-trending-page-live-smoke",
+        "npm run capture:live-github-trending-page",
         "npm run capture:live-reddit-oauth"
       ],
       "requiredArtifacts": [

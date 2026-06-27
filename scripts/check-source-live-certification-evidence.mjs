@@ -25,6 +25,7 @@ const redditOAuthLocalCallbackScriptPath = 'scripts/reddit-oauth-local-callback.
 const githubRepoRadarLiveScriptPath = 'scripts/check-github-repo-radar-live-smoke.ts';
 const githubRepoRadarPrismaLiveE2eScriptPath = 'scripts/check-github-repo-radar-prisma-live-e2e.ts';
 const githubTrendingPageLiveScriptPath = 'scripts/check-github-trending-page-live-smoke.ts';
+const githubTrendingPageCaptureScriptPath = 'scripts/capture-live-github-trending-page.mjs';
 const redditSourceProviderPath = 'libs/ingestion/adapters/source/reddit/reddit-source.provider.ts';
 const redditRefreshTokenProviderPath = 'libs/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider.ts';
 const liveEvidenceArtifactHelperPath = 'scripts/lib/live-evidence-artifact.ts';
@@ -330,7 +331,7 @@ const expectedLiveCommands = new Map([
   ['rss', 'npm run check:live-open-connectors'],
   ['github-issues', 'npm run check:live-open-connectors'],
   ['github-repo-radar', 'npm run check:github-repo-radar-prisma-live-e2e'],
-  ['github-trending-page', 'npm run check:github-trending-page-live-smoke'],
+  ['github-trending-page', 'npm run capture:live-github-trending-page'],
   ['reddit', 'npm run capture:live-reddit-oauth'],
 ]);
 const expectedCertificationRequirementCommands = new Map([
@@ -338,7 +339,7 @@ const expectedCertificationRequirementCommands = new Map([
   ['rss', 'npm run capture:live-open-connectors'],
   ['github-issues', 'npm run capture:live-open-connectors'],
   ['github-repo-radar', 'npm run check:github-repo-radar-prisma-live-e2e'],
-  ['github-trending-page', 'npm run check:github-trending-page-live-smoke'],
+  ['github-trending-page', 'npm run capture:live-github-trending-page'],
   ['reddit', 'npm run capture:live-reddit-oauth'],
 ]);
 const expectedCertificationArtifactEnvs = new Map([
@@ -554,6 +555,7 @@ function validateLiveSmokeScripts() {
   const githubRepoRadarLiveScript = readFileSync(githubRepoRadarLiveScriptPath, 'utf8');
   const githubRepoRadarPrismaLiveE2eScript = readFileSync(githubRepoRadarPrismaLiveE2eScriptPath, 'utf8');
   const githubTrendingPageLiveScript = readFileSync(githubTrendingPageLiveScriptPath, 'utf8');
+  const githubTrendingPageCaptureScript = readFileSync(githubTrendingPageCaptureScriptPath, 'utf8');
   const redditSourceProviderScript = readFileSync(redditSourceProviderPath, 'utf8');
   const redditRefreshTokenProviderScript = readFileSync(redditRefreshTokenProviderPath, 'utf8');
   const liveEvidenceArtifactHelper = readFileSync(liveEvidenceArtifactHelperPath, 'utf8');
@@ -696,6 +698,20 @@ function validateLiveSmokeScripts() {
   if (!githubTrendingPageLiveScript.includes('GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH')) {
     violations.push(`${githubTrendingPageLiveScriptPath}: GitHub Trending Page live smoke must support redacted evidence artifact output`);
   }
+  if (!githubTrendingPageCaptureScript.includes('GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_ENV_PATH')) {
+    violations.push(`${githubTrendingPageCaptureScriptPath}: GitHub Trending Page capture must write an evidence env handoff`);
+  }
+  for (const marker of ['writeEvidenceEnvFile', 'validateEvidenceEnvFilePath', 'validateEvidenceJsonFilePath', 'GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH', 'SOURCE_LIVE_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST', 'BACKEND_GIT_COMMIT_SHA', 'SOURCE_LIVE_OPERATOR']) {
+    if (!githubTrendingPageCaptureScript.includes(marker)) {
+      violations.push(`${githubTrendingPageCaptureScriptPath}: GitHub Trending Page env handoff must include ${marker}`);
+    }
+  }
+  if (!githubTrendingPageCaptureScript.includes('intentionally does not export credentials')) {
+    violations.push(`${githubTrendingPageCaptureScriptPath}: GitHub Trending Page env handoff must document that credentials stay out of the handoff`);
+  }
+  if (!githubTrendingPageCaptureScript.includes('must not use local, fixture, example, mock or test identifiers')) {
+    violations.push(`${githubTrendingPageCaptureScriptPath}: GitHub Trending Page capture must reject non-beta evidence identity values`);
+  }
   if (!githubTrendingPageLiveScript.includes(liveArtifactFormat)) {
     violations.push(`${githubTrendingPageLiveScriptPath}: GitHub Trending Page live smoke must emit ${liveArtifactFormat}`);
   }
@@ -737,6 +753,7 @@ function validateLiveSmokeScripts() {
   }
   for (const [scriptPath, scriptSource] of [
     [liveOpenCaptureScriptPath, liveOpenCaptureScript],
+    [githubTrendingPageCaptureScriptPath, githubTrendingPageCaptureScript],
     [redditLiveCaptureScriptPath, redditLiveCaptureScript],
   ]) {
     for (const marker of ['writeEvidenceEnvFile', 'validateEvidenceJsonFilePath']) {
@@ -766,6 +783,24 @@ function validateCaptureOutputPathGuards() {
   }
   if (existsSync(openWorkspaceArtifactPath)) {
     violations.push(`${liveOpenCaptureScriptPath}: workspace artifact path rejection must not create ${openWorkspaceArtifactPath}`);
+  }
+
+  const githubTrendingPageWorkspaceArtifactPath = resolve('github-trending-page-live-workspace-output.json');
+  const githubTrendingPageResult = runCaptureExpectingFailure(githubTrendingPageCaptureScriptPath, {
+    GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH: githubTrendingPageWorkspaceArtifactPath,
+    GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_ENV_PATH: '/tmp/social-monitor-live-github-trending-page.env',
+    SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
+    BACKEND_IMAGE_DIGEST: `sha256:${'c'.repeat(64)}`,
+    BACKEND_GIT_COMMIT_SHA: 'c'.repeat(40),
+    SOURCE_LIVE_OPERATOR: 'source-owner-1',
+  });
+  if (githubTrendingPageResult.exitCode === 0) {
+    violations.push(`${githubTrendingPageCaptureScriptPath}: capture must reject workspace GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH`);
+  } else if (!githubTrendingPageResult.output.includes('GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH must not write release evidence into the git workspace')) {
+    violations.push(`${githubTrendingPageCaptureScriptPath}: workspace artifact path rejection must explain evidence path policy`);
+  }
+  if (existsSync(githubTrendingPageWorkspaceArtifactPath)) {
+    violations.push(`${githubTrendingPageCaptureScriptPath}: workspace artifact path rejection must not create ${githubTrendingPageWorkspaceArtifactPath}`);
   }
 
   const redditWorkspaceArtifactPath = resolve('live-reddit-oauth-workspace-output.json');
