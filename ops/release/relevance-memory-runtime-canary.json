@@ -9,8 +9,10 @@
   "checkFile": "scripts/check-relevance-memory-runtime-canary-evidence.mjs",
   "artifactEnv": "RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH",
   "requiredRuntimeEnv": [
+    "DATABASE_URL",
     "INFINITY_CONTEXT_URL",
-    "INFINITY_CONTEXT_TOKEN"
+    "INFINITY_CONTEXT_TOKEN",
+    "RELEVANCE_MEMORY_RUNTIME_CANARY_PERSISTENCE"
   ],
   "expectedArtifact": {
     "artifactId": "relevance-memory-runtime-canary-v1",

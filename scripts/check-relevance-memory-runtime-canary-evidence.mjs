@@ -49,7 +49,12 @@ if (contract.artifactEnv !== 'RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH') {
   violations.push(`${contractPath}: artifactEnv must be RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH`);
 }
 
-for (const envName of ['INFINITY_CONTEXT_URL', 'INFINITY_CONTEXT_TOKEN']) {
+for (const envName of [
+  'DATABASE_URL',
+  'INFINITY_CONTEXT_URL',
+  'INFINITY_CONTEXT_TOKEN',
+  'RELEVANCE_MEMORY_RUNTIME_CANARY_PERSISTENCE',
+]) {
   if (!Array.isArray(contract.requiredRuntimeEnv) || !contract.requiredRuntimeEnv.includes(envName)) {
     violations.push(`${contractPath}: requiredRuntimeEnv must include ${envName}`);
   }
@@ -71,7 +76,9 @@ function validateRunnerSource() {
   for (const marker of [
     'INFINITY_CONTEXT_URL',
     'INFINITY_CONTEXT_TOKEN',
+    'DATABASE_URL',
     'RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH',
+    'RELEVANCE_MEMORY_RUNTIME_CANARY_PERSISTENCE',
     'writeLiveEvidenceArtifactAtomically',
     'artifactFormat: "relevance-memory-runtime-canary-v1"',
     'artifactId: "relevance-memory-runtime-canary-v1"',
