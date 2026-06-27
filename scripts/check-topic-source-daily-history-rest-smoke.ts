@@ -196,6 +196,11 @@ async function main(): Promise<void> {
       'x-workspace-id': workspaceId('workspace-topic-source-daily-history-rest-smoke-other'),
       'x-workspace-role': 'viewer',
     };
+    const otherTenantHeaders = {
+      'x-tenant-id': tenantId('tenant-topic-source-daily-history-rest-smoke-other'),
+      'x-workspace-id': workspace,
+      'x-workspace-role': 'viewer',
+    };
 
     const topicId = await createTopic({
       httpServer: app.getHttpServer(),
@@ -279,6 +284,11 @@ async function main(): Promise<void> {
     await request(app.getHttpServer())
       .get(`/topics/${topicId}/source-bindings/daily-history`)
       .set(otherWorkspaceHeaders)
+      .query({ days: 1 })
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`/topics/${topicId}/source-bindings/daily-history`)
+      .set(otherTenantHeaders)
       .query({ days: 1 })
       .expect(404);
     await request(app.getHttpServer())

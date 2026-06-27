@@ -131,6 +131,11 @@ async function main(): Promise<void> {
       'x-workspace-id': workspaceId('workspace-monitoring-read-rest-smoke-other'),
       'x-workspace-role': 'viewer',
     };
+    const otherTenantHeaders = {
+      'x-tenant-id': tenantId('tenant-monitoring-read-rest-smoke-other'),
+      'x-workspace-id': workspace,
+      'x-workspace-role': 'viewer',
+    };
 
     await request(app.getHttpServer())
       .get('/topics')
@@ -348,6 +353,16 @@ async function main(): Promise<void> {
       dailyHistory.body.summary.schedulerSkippedByReason.queueBackpressure === 0,
       'source binding daily history must expose empty scheduler skip breakdown',
     );
+    await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-requests/daily`)
+      .set(otherWorkspaceHeaders)
+      .query({ days: 1 })
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`/source-bindings/${binding.body.sourceBindingId}/scan-requests/daily`)
+      .set(otherTenantHeaders)
+      .query({ days: 1 })
+      .expect(404);
 
     const rssBinding = await request(app.getHttpServer())
       .post(`/topics/${newTopic.body.topicId}/source-bindings`)
@@ -441,6 +456,11 @@ async function main(): Promise<void> {
     await request(app.getHttpServer())
       .get(`/topics/${newTopic.body.topicId}/source-bindings/daily-history`)
       .set(otherWorkspaceHeaders)
+      .query({ days: 1 })
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`/topics/${newTopic.body.topicId}/source-bindings/daily-history`)
+      .set(otherTenantHeaders)
       .query({ days: 1 })
       .expect(404);
     await request(app.getHttpServer())
