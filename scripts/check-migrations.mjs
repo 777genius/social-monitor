@@ -33,6 +33,8 @@ const commands = [
 
 let migrationSql = '';
 const migrationFiles = globSync('prisma/migrations/*/migration.sql').sort();
+const repairMigrationFiles = migrationFiles.filter((file) => file.includes('_repair_'));
+const canonicalMigrationFiles = migrationFiles.filter((file) => !repairMigrationFiles.includes(file));
 
 for (const command of commands) {
   const result =
@@ -65,7 +67,9 @@ for (const command of commands) {
 }
 
 const violations = [];
-const committedMigrationSql = migrationFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
+const canonicalMigrationSql = canonicalMigrationFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
+const repairMigrationSql = repairMigrationFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
+const committedMigrationSql = [canonicalMigrationSql, repairMigrationSql].filter((sql) => sql.length > 0).join('\n');
 
 if (!migrationSql.includes('CREATE TABLE')) {
   violations.push('clean migration diff must create tables from the current Prisma schema');
@@ -97,8 +101,24 @@ for (const tableName of mappedTables()) {
   }
 }
 
-if (migrationFiles.length > 0 && normalizeSql(committedMigrationSql) !== normalizeSql(migrationSql)) {
+if (canonicalMigrationFiles.length > 0 && normalizeSql(canonicalMigrationSql) !== normalizeSql(migrationSql)) {
   violations.push('committed migration history must match the current Prisma schema clean diff');
+}
+
+for (const file of repairMigrationFiles) {
+  const sql = readFileSync(file, 'utf8');
+  if (!sql.includes('@social-monitor-repair-migration')) {
+    violations.push(`${file} must include @social-monitor-repair-migration marker`);
+  }
+  if (/CREATE\s+TABLE(?!\s+IF\s+NOT\s+EXISTS)/i.test(sql)) {
+    violations.push(`${file} repair migration CREATE TABLE statements must use IF NOT EXISTS`);
+  }
+  if (/CREATE\s+(?:UNIQUE\s+)?INDEX(?!\s+IF\s+NOT\s+EXISTS)/i.test(sql)) {
+    violations.push(`${file} repair migration CREATE INDEX statements must use IF NOT EXISTS`);
+  }
+  if (/ALTER\s+TABLE[\s\S]*?\sADD\s+COLUMN(?!\s+IF\s+NOT\s+EXISTS)/i.test(sql)) {
+    violations.push(`${file} repair migration ADD COLUMN statements must use IF NOT EXISTS`);
+  }
 }
 
 if (violations.length > 0) {
