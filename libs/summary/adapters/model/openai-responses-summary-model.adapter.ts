@@ -1,12 +1,4 @@
 import type {
-  SummaryCitation,
-  SummaryConfidence,
-  SummaryKeyPoint,
-  SummaryQualityFlag,
-  SummaryRisk,
-} from '../../domain';
-import type {
-  GeneratedSummaryDraft,
   ProviderSummaryAttempt,
   SummaryModelBudget,
   SummaryModelEstimate,
@@ -22,10 +14,33 @@ import {
   buildPromptPayload,
 } from './openai-responses-summary-prompt';
 import {
+  assertOpenAiSummaryDraftShape,
+  buildOpenAiSummaryLineage,
+  normalizeOpenAiSummaryDraft,
+} from './openai-responses-summary-draft-normalizer';
+import {
   openAiApiKeySourceDescription,
   resolveOpenAiApiKey,
 } from './openai-api-key-source';
+import {
+  classifyOpenAiHttpFailure,
+  readOpenAiResponseBody,
+  SummaryModelProviderError,
+} from './openai-responses-summary-model-error';
+import {
+  extractOpenAiSummaryOutputText,
+  parseOpenAiSummaryJsonObject,
+  resolveOpenAiSummaryUsage,
+} from './openai-responses-summary-response-parser';
 import { openAiSummaryJsonSchema } from './openai-responses-summary-schema';
+import {
+  asRecord,
+  nonEmptyOrFallback,
+  nonNegativeNumberOrFallback,
+  parseNonNegativeNumber,
+  parsePositiveInteger,
+  positiveIntegerOrFallback,
+} from './openai-responses-summary-json';
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -51,31 +66,6 @@ const defaultEndpointUrl = 'https://api.openai.com/v1/responses';
 const defaultTimeoutMs = 60_000;
 const defaultMaxOutputTokens = 4_000;
 const defaultInputTokenDivisor = 4;
-const defaultNoSignalReason =
-  'No eligible evidence items selected for this topic.';
-
-const qualityFlags = new Set<SummaryQualityFlag>([
-  'no_signal',
-  'low_confidence',
-  'conflicting_evidence',
-  'limited_sources',
-]);
-const confidenceLevels = new Set<SummaryConfidence['level']>([
-  'none',
-  'low',
-  'medium',
-  'high',
-]);
-const citationFields = new Set<SummaryCitation['field']>([
-  'title',
-  'bodyPreview',
-  'canonicalUrl',
-]);
-const riskReasons = new Set<NonNullable<SummaryRisk['reason']>>([
-  'insufficient_evidence',
-  'conflicting_evidence',
-  'source_limit',
-]);
 
 export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
   private readonly apiKey: string;
@@ -215,7 +205,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
     };
 
     const responseJson = await this.createResponse(request);
-    const outputText = extractOutputText(responseJson);
+    const outputText = extractOpenAiSummaryOutputText(responseJson);
 
     if (outputText === undefined) {
       throw new SummaryModelProviderError({
@@ -225,12 +215,12 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
       });
     }
 
-    const rawDraft = parseJsonObject(outputText);
-    const usage = resolveUsage(
+    const rawDraft = parseOpenAiSummaryJsonObject(outputText);
+    const usage = resolveOpenAiSummaryUsage(
       responseJson,
       this.estimate(input, selectedRoute),
     );
-    const draft = normalizeOpenAiDraft(
+    const draft = normalizeOpenAiSummaryDraft(
       rawDraft,
       input,
       selectedRoute,
@@ -248,7 +238,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
     attempt: ProviderSummaryAttempt,
   ): SummaryModelValidationResult {
     try {
-      assertDraftShape(attempt.draft);
+      assertOpenAiSummaryDraftShape(attempt.draft);
 
       if (attempt.route.schemaVersion !== 'summary.artifact.v1') {
         throw new Error('Unsupported summary schema version');
@@ -357,7 +347,11 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
           score: 0,
           rationale: 'No evidence was selected for the summary window.',
         },
-        lineage: buildLineage(input, selectedRoute, this.evalDatasetVersion),
+        lineage: buildOpenAiSummaryLineage(
+          input,
+          selectedRoute,
+          this.evalDatasetVersion,
+        ),
         usage: this.estimate(input, selectedRoute),
         noSignalReason: 'No eligible evidence items selected for this topic.',
       },
@@ -380,7 +374,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
         body: JSON.stringify(request),
         signal: controller.signal,
       });
-      const body = await readResponseBody(response);
+      const body = await readOpenAiResponseBody(response);
 
       if (!response.ok) {
         throw new SummaryModelProviderError(
@@ -448,628 +442,4 @@ export const resolveOpenAiResponsesSummaryModelOptions = (
       env.OPENAI_SUMMARY_OUTPUT_COST_USD_PER_MILLION_TOKENS,
     ),
   };
-};
-
-class SummaryModelProviderError extends Error {
-  constructor(readonly failure: SummaryModelFailure) {
-    super(failure.message);
-  }
-}
-
-const buildLineage = (
-  input: SummaryModelInput,
-  selectedRoute: SummaryModelRoute,
-  evalDatasetVersion: string,
-) =>
-  ({
-    promptVersion: selectedRoute.promptVersion,
-    schemaVersion: selectedRoute.schemaVersion,
-    modelVersion: selectedRoute.model,
-    providerVersion: selectedRoute.provider,
-    rulesVersion: input.policy.rulesVersion,
-    evalDatasetVersion,
-  }) as const;
-
-const normalizeOpenAiDraft = (
-  raw: Record<string, unknown>,
-  input: SummaryModelInput,
-  selectedRoute: SummaryModelRoute,
-  usage: SummaryModelEstimate,
-  evalDatasetVersion: string,
-): GeneratedSummaryDraft => {
-  const normalizedQualityFlags = normalizeQualityFlags(raw.qualityFlags);
-  const citationMap = withEvidenceBackedCitations(
-    normalizeCitationMap(raw.citationMap),
-    input.evidence.items,
-  );
-  const knownCitationIds = new Set(
-    citationMap.map((citation) => citation.citationId),
-  );
-  const draft = {
-    headline: requiredString(raw.headline, 'headline'),
-    executiveSummary: requiredString(raw.executiveSummary, 'executiveSummary'),
-    keyPoints: withKnownCitationIds(
-      normalizeKeyPoints(raw.keyPoints),
-      knownCitationIds,
-    ),
-    risksAndUnknowns: withKnownRiskCitationIds(
-      normalizeRisks(raw.risksAndUnknowns),
-      knownCitationIds,
-    ),
-    sourceHighlights: normalizeStringArray(
-      raw.sourceHighlights,
-      'sourceHighlights',
-    ),
-    citationMap,
-    qualityFlags: normalizedQualityFlags,
-    confidence: normalizeConfidence(raw.confidence),
-    lineage: buildLineage(input, selectedRoute, evalDatasetVersion),
-    usage,
-    noSignalReason: normalizeNoSignalReason(
-      raw.noSignalReason,
-      normalizedQualityFlags,
-    ),
-  };
-
-  assertDraftShape(draft);
-
-  return draft;
-};
-
-const normalizeKeyPoints = (value: unknown): readonly SummaryKeyPoint[] => {
-  const values = requiredArray(value, 'keyPoints');
-
-  return values.map((item, index) => {
-    const record = requiredRecord(item, `keyPoints[${index}]`);
-
-    return {
-      claim: requiredString(record.claim, `keyPoints[${index}].claim`),
-      citationIds: normalizeStringArray(
-        record.citationIds,
-        `keyPoints[${index}].citationIds`,
-      ),
-    };
-  });
-};
-
-const normalizeRisks = (value: unknown): readonly SummaryRisk[] => {
-  const values = requiredArray(value, 'risksAndUnknowns');
-
-  return values.map((item, index) => {
-    const record = requiredRecord(item, `risksAndUnknowns[${index}]`);
-    const reason = optionalString(record.reason);
-
-    if (
-      reason !== undefined &&
-      !riskReasons.has(reason as NonNullable<SummaryRisk['reason']>)
-    ) {
-      throw new Error(
-        `Invalid summary risk reason at risksAndUnknowns[${index}].reason`,
-      );
-    }
-
-    return {
-      description: requiredString(
-        record.description,
-        `risksAndUnknowns[${index}].description`,
-      ),
-      citationIds:
-        record.citationIds === null
-          ? undefined
-          : normalizeOptionalStringArray(record.citationIds),
-      reason: reason as SummaryRisk['reason'],
-    };
-  });
-};
-
-const normalizeCitationMap = (value: unknown): readonly SummaryCitation[] => {
-  const values = requiredArray(value, 'citationMap');
-
-  return values.map((item, index) => {
-    const record = requiredRecord(item, `citationMap[${index}]`);
-    const field = requiredString(record.field, `citationMap[${index}].field`);
-
-    if (!citationFields.has(field as SummaryCitation['field'])) {
-      throw new Error(`Invalid citation field at citationMap[${index}].field`);
-    }
-
-    return {
-      citationId: requiredString(
-        record.citationId,
-        `citationMap[${index}].citationId`,
-      ),
-      feedItemId: requiredString(
-        record.feedItemId,
-        `citationMap[${index}].feedItemId`,
-      ),
-      sourceItemId: requiredString(
-        record.sourceItemId,
-        `citationMap[${index}].sourceItemId`,
-      ),
-      providerKey: requiredString(
-        record.providerKey,
-        `citationMap[${index}].providerKey`,
-      ),
-      field: field as SummaryCitation['field'],
-    };
-  });
-};
-
-const withEvidenceBackedCitations = (
-  citations: readonly SummaryCitation[],
-  evidenceItems: SummaryModelInput['evidence']['items'],
-): readonly SummaryCitation[] => {
-  const evidenceByCitationId = new Map<string, SummaryModelInput['evidence']['items'][number]>(
-    evidenceItems.map((item, index) => [`c${index + 1}`, item] as const),
-  );
-
-  return citations.flatMap((citation) => {
-    const evidence = evidenceByCitationId.get(citation.citationId);
-
-    if (evidence === undefined) {
-      return [];
-    }
-
-    return [{
-      ...citation,
-      feedItemId: evidence.feedItemId,
-      sourceItemId: evidence.sourceItemId,
-      providerKey: evidence.providerKey,
-      canonicalUrl: evidence.canonicalUrl,
-    }];
-  });
-};
-
-const withKnownCitationIds = (
-  keyPoints: readonly SummaryKeyPoint[],
-  knownCitationIds: ReadonlySet<string>,
-): readonly SummaryKeyPoint[] =>
-  keyPoints
-    .map((keyPoint) => ({
-      ...keyPoint,
-      citationIds: knownStringSubset(keyPoint.citationIds, knownCitationIds),
-    }))
-    .filter((keyPoint) => keyPoint.citationIds.length > 0);
-
-const withKnownRiskCitationIds = (
-  risks: readonly SummaryRisk[],
-  knownCitationIds: ReadonlySet<string>,
-): readonly SummaryRisk[] =>
-  risks.map((risk) => {
-    if (risk.citationIds === undefined) {
-      return risk;
-    }
-
-    const citationIds = knownStringSubset(risk.citationIds, knownCitationIds);
-
-    return {
-      ...risk,
-      citationIds: citationIds.length === 0 ? undefined : citationIds,
-    };
-  });
-
-const knownStringSubset = (
-  values: readonly string[],
-  knownValues: ReadonlySet<string>,
-): readonly string[] => {
-  const result: string[] = [];
-  for (const value of values) {
-    if (!knownValues.has(value) || result.includes(value)) {
-      continue;
-    }
-
-    result.push(value);
-  }
-
-  return result;
-};
-
-const normalizeQualityFlags = (
-  value: unknown,
-): readonly SummaryQualityFlag[] => {
-  const values = normalizeStringArray(value, 'qualityFlags');
-
-  for (const flag of values) {
-    if (!qualityFlags.has(flag as SummaryQualityFlag)) {
-      throw new Error(`Invalid summary quality flag ${flag}`);
-    }
-  }
-
-  return values as readonly SummaryQualityFlag[];
-};
-
-const normalizeNoSignalReason = (
-  value: unknown,
-  normalizedQualityFlags: readonly SummaryQualityFlag[],
-): string | undefined => {
-  const reason = optionalString(value);
-
-  if (
-    reason !== undefined ||
-    !normalizedQualityFlags.includes('no_signal')
-  ) {
-    return reason;
-  }
-
-  return defaultNoSignalReason;
-};
-
-const normalizeConfidence = (value: unknown): SummaryConfidence => {
-  const record = requiredRecord(value, 'confidence');
-  const level = requiredString(record.level, 'confidence.level');
-  const score = requiredNumber(record.score, 'confidence.score');
-
-  if (!confidenceLevels.has(level as SummaryConfidence['level'])) {
-    throw new Error('Invalid summary confidence level');
-  }
-
-  return {
-    level: level as SummaryConfidence['level'],
-    score,
-    rationale: requiredString(record.rationale, 'confidence.rationale'),
-  };
-};
-
-const assertDraftShape = (draft: GeneratedSummaryDraft): void => {
-  if (draft.headline.trim().length === 0) {
-    throw new Error('Summary headline must be non-empty');
-  }
-
-  if (draft.executiveSummary.trim().length === 0) {
-    throw new Error('Summary executive summary must be non-empty');
-  }
-
-  const citationIds = new Set<string>();
-
-  for (const citation of draft.citationMap) {
-    if (citation.citationId.trim().length === 0) {
-      throw new Error('Summary citation id must be non-empty');
-    }
-
-    if (citationIds.has(citation.citationId)) {
-      throw new Error(`Duplicate summary citation id ${citation.citationId}`);
-    }
-
-    citationIds.add(citation.citationId);
-  }
-
-  for (const keyPoint of draft.keyPoints) {
-    if (
-      keyPoint.claim.trim().length === 0 ||
-      keyPoint.citationIds.length === 0
-    ) {
-      throw new Error('Summary key point must include a claim and citations');
-    }
-
-    for (const citationId of keyPoint.citationIds) {
-      if (!citationIds.has(citationId)) {
-        throw new Error(
-          `Summary key point cites unknown citation ${citationId}`,
-        );
-      }
-    }
-  }
-
-  for (const risk of draft.risksAndUnknowns) {
-    if (risk.description.trim().length === 0) {
-      throw new Error('Summary risk description must be non-empty');
-    }
-
-    for (const citationId of risk.citationIds ?? []) {
-      if (!citationIds.has(citationId)) {
-        throw new Error(`Summary risk cites unknown citation ${citationId}`);
-      }
-    }
-  }
-
-  for (const flag of draft.qualityFlags) {
-    if (!qualityFlags.has(flag)) {
-      throw new Error(`Invalid summary quality flag ${flag}`);
-    }
-  }
-
-  if (
-    draft.keyPoints.length === 0 &&
-    !draft.qualityFlags.includes('no_signal')
-  ) {
-    throw new Error('No-signal summary must include no_signal quality flag');
-  }
-
-  if (
-    draft.qualityFlags.includes('no_signal') &&
-    (draft.noSignalReason ?? '').trim().length === 0
-  ) {
-    throw new Error('No-signal summary must include a reason');
-  }
-
-  if (draft.confidence.score < 0 || draft.confidence.score > 1) {
-    throw new Error('Summary confidence score must be between 0 and 1');
-  }
-
-  if (
-    draft.usage.inputTokens < 0 ||
-    draft.usage.outputTokens < 0 ||
-    draft.usage.estimatedCostUsd < 0
-  ) {
-    throw new Error('Summary usage values must be non-negative');
-  }
-};
-
-const resolveUsage = (
-  responseJson: Record<string, unknown>,
-  estimate: SummaryModelEstimate,
-): SummaryModelEstimate => {
-  const usage = asRecord(responseJson.usage);
-
-  if (usage === null) {
-    return estimate;
-  }
-
-  return {
-    inputTokens:
-      optionalNonNegativeInteger(usage.input_tokens) ?? estimate.inputTokens,
-    outputTokens:
-      optionalNonNegativeInteger(usage.output_tokens) ?? estimate.outputTokens,
-    estimatedCostUsd: estimate.estimatedCostUsd,
-  };
-};
-
-const extractOutputText = (
-  responseJson: Record<string, unknown>,
-): string | undefined => {
-  if (
-    typeof responseJson.output_text === 'string' &&
-    responseJson.output_text.trim().length > 0
-  ) {
-    return responseJson.output_text;
-  }
-
-  const output = responseJson.output;
-
-  if (!Array.isArray(output)) {
-    return undefined;
-  }
-
-  for (const outputItem of output) {
-    const outputRecord = asRecord(outputItem);
-
-    if (outputRecord === null) {
-      continue;
-    }
-
-    const content = outputRecord.content;
-
-    if (!Array.isArray(content)) {
-      continue;
-    }
-
-    for (const contentItem of content) {
-      const contentRecord = asRecord(contentItem);
-
-      if (contentRecord === null) {
-        continue;
-      }
-
-      if (
-        typeof contentRecord.text === 'string' &&
-        contentRecord.text.trim().length > 0
-      ) {
-        return contentRecord.text;
-      }
-    }
-  }
-
-  return undefined;
-};
-
-const parseJsonObject = (value: string): Record<string, unknown> => {
-  try {
-    return requiredRecord(JSON.parse(value), 'OpenAI summary output');
-  } catch (error) {
-    throw new SummaryModelProviderError({
-      kind: 'invalid_schema',
-      retryable: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : 'OpenAI summary output must be JSON',
-    });
-  }
-};
-
-const classifyOpenAiHttpFailure = (
-  status: number,
-  body: unknown,
-): SummaryModelFailure => {
-  const message =
-    extractOpenAiErrorMessage(body) ??
-    `OpenAI summary request failed with HTTP ${status}`;
-
-  if (status === 429) {
-    return {
-      kind: 'provider_rate_limited',
-      retryable: true,
-      message,
-    };
-  }
-
-  if (status === 400 || status === 413) {
-    return {
-      kind: 'context_too_large',
-      retryable: false,
-      message,
-    };
-  }
-
-  if (status === 401 || status === 403) {
-    return {
-      kind: 'provider_unavailable',
-      retryable: false,
-      message,
-    };
-  }
-
-  if (status >= 500) {
-    return {
-      kind: 'provider_unavailable',
-      retryable: true,
-      message,
-    };
-  }
-
-  return {
-    kind: 'provider_unavailable',
-    retryable: false,
-    message,
-  };
-};
-
-const readResponseBody = async (response: Response): Promise<unknown> => {
-  const text = await response.text();
-
-  if (text.trim().length === 0) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { error: { message: text } };
-  }
-};
-
-const extractOpenAiErrorMessage = (body: unknown): string | undefined => {
-  const record = asRecord(body);
-  const error = asRecord(record?.error);
-  const message = error?.message;
-
-  return typeof message === 'string' && message.trim().length > 0
-    ? message
-    : undefined;
-};
-
-const requiredString = (value: unknown, fieldName: string): string => {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`${fieldName} must be a non-empty string`);
-  }
-
-  return value.trim();
-};
-
-const optionalString = (value: unknown): string | undefined => {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  if (typeof value !== 'string') {
-    throw new Error('Optional summary string value must be a string');
-  }
-
-  const trimmed = value.trim();
-
-  return trimmed.length === 0 ? undefined : trimmed;
-};
-
-const requiredNumber = (value: unknown, fieldName: string): number => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`${fieldName} must be a finite number`);
-  }
-
-  return value;
-};
-
-const requiredArray = (
-  value: unknown,
-  fieldName: string,
-): readonly unknown[] => {
-  if (!Array.isArray(value)) {
-    throw new Error(`${fieldName} must be an array`);
-  }
-
-  return value;
-};
-
-const normalizeStringArray = (
-  value: unknown,
-  fieldName: string,
-): readonly string[] => {
-  const values = requiredArray(value, fieldName);
-
-  return values.map((item, index) =>
-    requiredString(item, `${fieldName}[${index}]`),
-  );
-};
-
-const normalizeOptionalStringArray = (
-  value: unknown,
-): readonly string[] | undefined => {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  return normalizeStringArray(value, 'optionalStringArray');
-};
-
-const requiredRecord = (
-  value: unknown,
-  fieldName: string,
-): Record<string, unknown> => {
-  const record = asRecord(value);
-
-  if (record === null) {
-    throw new Error(`${fieldName} must be an object`);
-  }
-
-  return record;
-};
-
-const asRecord = (value: unknown): Record<string, unknown> | null =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-
-const optionalNonNegativeInteger = (value: unknown): number | undefined =>
-  typeof value === 'number' && Number.isInteger(value) && value >= 0
-    ? value
-    : undefined;
-
-const nonEmptyOrFallback = (
-  value: string | undefined,
-  fallback: string,
-): string => {
-  const trimmed = value?.trim();
-
-  return trimmed === undefined || trimmed.length === 0 ? fallback : trimmed;
-};
-
-const positiveIntegerOrFallback = (
-  value: number | undefined,
-  fallback: number,
-): number =>
-  Number.isInteger(value) && value !== undefined && value > 0
-    ? value
-    : fallback;
-
-const nonNegativeNumberOrFallback = (
-  value: number | undefined,
-  fallback: number,
-): number =>
-  typeof value === 'number' && Number.isFinite(value) && value >= 0
-    ? value
-    : fallback;
-
-const parsePositiveInteger = (
-  value: string | undefined,
-): number | undefined => {
-  const parsed = Number(value);
-
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-};
-
-const parseNonNegativeNumber = (
-  value: string | undefined,
-): number | undefined => {
-  const parsed = Number(value);
-
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 };
