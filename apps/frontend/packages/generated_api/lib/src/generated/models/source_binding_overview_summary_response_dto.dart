@@ -14,6 +14,7 @@ class SourceBindingOverviewSummaryResponseDto {
     required this.attentionRequiredBindings,
     required this.canScanNowBindings,
     required this.degradedBindings,
+    required this.downBindings,
     required this.freshSuccessSkips,
     required this.healthyBindings,
     required this.notConfiguredBindings,
@@ -38,6 +39,7 @@ class SourceBindingOverviewSummaryResponseDto {
   final num attentionRequiredBindings;
   final num canScanNowBindings;
   final num degradedBindings;
+  final num downBindings;
   final num freshSuccessSkips;
   final num healthyBindings;
   final DateTime? nextEligibleAt;

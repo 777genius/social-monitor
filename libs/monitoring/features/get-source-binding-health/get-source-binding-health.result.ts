@@ -12,7 +12,8 @@ export type SourceBindingHealthState =
   | 'scanning'
   | 'healthy'
   | 'stale'
-  | 'degraded';
+  | 'degraded'
+  | 'down';
 
 export type SourceBindingHealthAttemptView = {
   readonly sourceBindingId: string;

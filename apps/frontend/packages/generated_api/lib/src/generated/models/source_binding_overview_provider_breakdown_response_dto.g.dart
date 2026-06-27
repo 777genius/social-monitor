@@ -12,6 +12,7 @@ _$SourceBindingOverviewProviderBreakdownResponseDtoFromJson(
 ) => SourceBindingOverviewProviderBreakdownResponseDto(
   canScanNowBindings: json['canScanNowBindings'] as num,
   degradedBindings: json['degradedBindings'] as num,
+  downBindings: json['downBindings'] as num,
   freshSuccessSkips: json['freshSuccessSkips'] as num,
   healthyBindings: json['healthyBindings'] as num,
   notConfiguredBindings: json['notConfiguredBindings'] as num,
@@ -35,6 +36,7 @@ Map<String, dynamic> _$SourceBindingOverviewProviderBreakdownResponseDtoToJson(
 ) => <String, dynamic>{
   'canScanNowBindings': instance.canScanNowBindings,
   'degradedBindings': instance.degradedBindings,
+  'downBindings': instance.downBindings,
   'freshSuccessSkips': instance.freshSuccessSkips,
   'healthyBindings': instance.healthyBindings,
   'nextEligibleAt': instance.nextEligibleAt?.toIso8601String(),

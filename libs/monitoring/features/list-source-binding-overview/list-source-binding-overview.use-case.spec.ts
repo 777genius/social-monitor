@@ -117,7 +117,8 @@ describe('ListSourceBindingOverviewUseCase', () => {
         })))
         .mockResolvedValueOnce(ok(makeHealthView({
           sourceBinding: makeSourceBindingView({ id: 'binding-rate-limited', providerKey: 'reddit' }),
-          healthState: 'degraded',
+          healthState: 'down',
+          operatorAction: 'pause_or_backoff_provider_until_recovery',
           schedulerDecision: {
             canScanNow: false,
             decision: 'rate_limit_backoff',
@@ -194,20 +195,22 @@ describe('ListSourceBindingOverviewUseCase', () => {
           totalBindings: 4,
           canScanNowBindings: 1,
           staleBindings: 1,
-          degradedBindings: 2,
+          degradedBindings: 1,
+          downBindings: 1,
           rateLimitedBindings: 1,
           providerFailureBackoffSkips: 1,
           providerUnavailableScans: 3,
           attentionRequiredBindings: 3,
           nextEligibleAt: '2026-06-26T00:05:00.000Z',
           operatorAction: 'wait_for_provider_rate_limit_backoff',
-          signals: ['provider_failure_backoff', 'provider_unavailable', 'rate_limit_backoff', 'scan_ready', 'scheduled_later', 'stale_source_data'],
+          signals: ['provider_failure_backoff', 'provider_unavailable', 'rate_limit_backoff', 'scan_ready', 'scheduled_later', 'source_down', 'stale_source_data'],
           providerBreakdown: [
             expect.objectContaining({
               providerKey: 'reddit',
               totalBindings: 3,
               staleBindings: 1,
-              degradedBindings: 2,
+              degradedBindings: 1,
+              downBindings: 1,
               rateLimitBackoffSkips: 1,
               providerFailureBackoffSkips: 1,
               providerUnavailableScans: 3,

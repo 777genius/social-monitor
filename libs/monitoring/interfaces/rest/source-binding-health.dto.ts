@@ -26,6 +26,7 @@ export const sourceBindingHealthStateValues = [
   'healthy',
   'stale',
   'degraded',
+  'down',
 ] as const satisfies readonly SourceBindingHealthState[];
 
 const scanJobStatusValues = ['requested', 'enqueued', 'succeeded', 'failed'] as const satisfies readonly ScanJobStatus[];

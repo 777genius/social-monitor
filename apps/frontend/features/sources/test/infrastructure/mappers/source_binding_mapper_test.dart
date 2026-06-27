@@ -40,4 +40,20 @@ void main() {
     expect(health.healthState, SourceBindingHealthState.unknown);
     expect(health.healthState.isHealthy, isFalse);
   });
+
+  test('maps provider-down health state explicitly', () {
+    const mapper = SourceBindingMapper();
+
+    final health = mapper.healthToDomain(
+      SourceBindingHealthApiDto(
+        sourceBinding: sourceBindingApiDto(),
+        healthState: 'down',
+        operatorAction: 'pause_or_backoff_provider_until_recovery',
+        evaluatedAt: DateTime.utc(2026, 6, 23),
+      ),
+    );
+
+    expect(health.healthState, SourceBindingHealthState.down);
+    expect(health.healthState.isHealthy, isFalse);
+  });
 }

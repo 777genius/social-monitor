@@ -74,6 +74,7 @@ const buildOverviewSummary = (
     healthyBindings: summary.healthyBindings,
     staleBindings: summary.staleBindings,
     degradedBindings: summary.degradedBindings,
+    downBindings: summary.downBindings,
     scanningBindings: summary.scanningBindings,
     pausedBindings: summary.pausedBindings,
     notConfiguredBindings: summary.notConfiguredBindings,
@@ -118,6 +119,7 @@ const buildProviderBreakdown = (
   healthyBindings: countByHealthState(items, 'healthy'),
   staleBindings: countByHealthState(items, 'stale'),
   degradedBindings: countByHealthState(items, 'degraded'),
+  downBindings: countByHealthState(items, 'down'),
   scanningBindings: countByHealthState(items, 'scanning'),
   pausedBindings: countByHealthState(items, 'paused'),
   notConfiguredBindings: countByHealthState(items, 'not_configured'),
@@ -157,6 +159,7 @@ const attentionRequiredBindingCount = (
   items.filter((item) =>
     item.healthState === 'stale' ||
     item.healthState === 'degraded' ||
+    item.healthState === 'down' ||
     item.healthState === 'not_configured' ||
     item.schedulerDecision.decision === 'rate_limit_backoff' ||
     item.schedulerDecision.decision === 'provider_failure_backoff' ||
@@ -184,6 +187,7 @@ const overviewOperatorAction = (
 
   if (items.some((item) =>
     (item.recentWindow?.providerUnavailableScans ?? 0) > 0 ||
+    item.healthState === 'down' ||
     item.healthState === 'degraded',
   )) {
     return 'check_provider_health_or_credentials';
@@ -232,6 +236,9 @@ const overviewSignals = (
   }
   if (items.some((item) => (item.recentWindow?.providerUnavailableScans ?? 0) > 0)) {
     signals.add('provider_unavailable');
+  }
+  if (items.some((item) => item.healthState === 'down')) {
+    signals.add('source_down');
   }
   if (items.some((item) => item.healthState === 'stale')) {
     signals.add('stale_source_data');

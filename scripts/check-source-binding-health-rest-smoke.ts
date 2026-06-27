@@ -499,6 +499,32 @@ async function main(): Promise<void> {
       'source health recent window must expose consecutive failure signal',
     );
 
+    await seedCompletedScan({
+      scanJobs,
+      tenant,
+      workspace,
+      sourceBindingId: providerFailure.sourceBindingId,
+      scanPolicyId: providerFailure.scanPolicyId,
+      scanJobId: 'provider-failure-scan-3',
+      completedAt: new Date(Date.now() - 10_000),
+      failureReason: 'kind=auth_failed provider credential rejected',
+    });
+
+    const providerDownHealth = await readHealth({
+      httpServer: app.getHttpServer(),
+      topicId: providerFailureTopicId,
+      sourceBindingId: providerFailure.sourceBindingId,
+      headers: viewerHeaders,
+    });
+    assert(
+      providerDownHealth.body.healthState === 'down',
+      `source health must promote repeated provider failures to down, got ${providerDownHealth.body.healthState}`,
+    );
+    assert(
+      providerDownHealth.body.operatorAction === 'pause_or_backoff_provider_until_recovery',
+      'source health must expose provider-down operator action',
+    );
+
     const scheduledLaterTopicId = await createTopic({
       httpServer: app.getHttpServer(),
       headers: adminHeaders,
@@ -627,6 +653,16 @@ async function main(): Promise<void> {
       completedAt: new Date(Date.now() - 30_000),
       failureReason: 'kind=auth_failed provider credential rejected',
     });
+    await seedCompletedScan({
+      scanJobs,
+      tenant,
+      workspace,
+      sourceBindingId: overviewGithubIssues.sourceBindingId,
+      scanPolicyId: overviewGithubIssues.scanPolicyId,
+      scanJobId: 'overview-github-provider-failure-3',
+      completedAt: new Date(Date.now() - 10_000),
+      failureReason: 'kind=auth_failed provider credential rejected',
+    });
     await movePolicyNextRunForward({
       scanPolicies,
       tenant,
@@ -647,7 +683,8 @@ async function main(): Promise<void> {
     assert(overview.body.items.length === 4, 'source overview must expose every provider binding health item');
     assert(overview.body.summary.totalBindings === 4, 'source overview must count all bindings');
     assert(overview.body.summary.healthyBindings === 1, 'source overview must count healthy bindings');
-    assert(overview.body.summary.degradedBindings === 2, 'source overview must count degraded bindings');
+    assert(overview.body.summary.degradedBindings === 1, 'source overview must count degraded bindings');
+    assert(overview.body.summary.downBindings === 1, 'source overview must count down bindings');
     assert(overview.body.summary.scheduledBindings === 1, 'source overview must count scheduled bindings');
     assert(overview.body.summary.freshSuccessSkips === 1, 'source overview must count fresh-success skips');
     assert(overview.body.summary.rateLimitedBindings === 1, 'source overview must count rate-limited bindings');
@@ -656,7 +693,7 @@ async function main(): Promise<void> {
       'source overview must count provider failure backoff skips',
     );
     assert(
-      overview.body.summary.providerUnavailableScans === 2,
+      overview.body.summary.providerUnavailableScans === 3,
       'source overview must aggregate provider unavailable scans',
     );
     assert(
@@ -674,6 +711,10 @@ async function main(): Promise<void> {
     assert(
       overview.body.summary.signals.includes('provider_unavailable'),
       'source overview must expose provider unavailable signal',
+    );
+    assert(
+      overview.body.summary.signals.includes('source_down'),
+      'source overview must expose source down signal',
     );
     assert(
       overview.body.summary.signals.includes('scheduled_later'),
@@ -704,10 +745,12 @@ async function main(): Promise<void> {
         (provider: {
           providerKey: string;
           degradedBindings: number;
+          downBindings: number;
           providerFailureBackoffSkips: number;
         }) =>
           provider.providerKey === 'github-issues' &&
-          provider.degradedBindings === 1 &&
+          provider.degradedBindings === 0 &&
+          provider.downBindings === 1 &&
           provider.providerFailureBackoffSkips === 1,
       ),
       'source overview must break down GitHub provider failure state',

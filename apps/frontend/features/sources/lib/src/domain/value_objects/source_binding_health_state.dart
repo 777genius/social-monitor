@@ -6,6 +6,7 @@ enum SourceBindingHealthState {
   healthy,
   stale,
   degraded,
+  down,
   unknown;
 
   bool get isHealthy => this == SourceBindingHealthState.healthy;

@@ -59,4 +59,42 @@ void main() {
     expect(health.healthState, 'healthy');
     expect(health.freshness?.ageSeconds, 120);
   });
+
+  test('maps generated provider-down health state', () {
+    const mapper = GeneratedSourceBindingRestMapper();
+    final binding = generated.SourceBindingResponseDto(
+      id: 'binding-reddit',
+      tenantId: 'tenant-demo',
+      workspaceId: 'workspace-demo',
+      topicId: 'topic-competitor',
+      providerKey: 'reddit',
+      capabilityProfileVersion: 1,
+      status: generated.SourceBindingResponseDtoStatusStatus.enabled,
+      configPreview: const {'mode': 'listing', 'subreddit': 'OpenAI'},
+      createdAt: DateTime.utc(2026, 6, 23, 12),
+    );
+
+    final health = mapper.health(
+      generated.SourceBindingHealthResponseDto(
+        sourceBinding: binding,
+        healthState:
+            generated.SourceBindingHealthResponseDtoHealthStateHealthState.down,
+        operatorAction: 'pause_or_backoff_provider_until_recovery',
+        evaluatedAt: DateTime.utc(2026, 6, 23, 12, 5),
+        schedulerDecision:
+            const generated.SourceBindingHealthSchedulerDecisionResponseDto(
+              canScanNow: false,
+              decision: generated
+                  .SourceBindingHealthSchedulerDecisionResponseDtoDecisionDecision
+                  .providerFailureBackoff,
+              minimumIntervalSeconds: 900,
+              reason: 'provider_failure_backoff_active',
+              signals: ['provider_failure_backoff'],
+            ),
+      ),
+    );
+
+    expect(health.healthState, 'down');
+    expect(health.operatorAction, 'pause_or_backoff_provider_until_recovery');
+  });
 }

@@ -70,6 +70,7 @@ final class SourceBindingMapper {
       'healthy' => SourceBindingHealthState.healthy,
       'stale' => SourceBindingHealthState.stale,
       'degraded' => SourceBindingHealthState.degraded,
+      'down' => SourceBindingHealthState.down,
       _ => SourceBindingHealthState.unknown,
     };
   }

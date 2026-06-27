@@ -3734,7 +3734,8 @@
               "scanning",
               "healthy",
               "stale",
-              "degraded"
+              "degraded",
+              "down"
             ],
             "type": "string"
           },
@@ -3905,6 +3906,9 @@
           "degradedBindings": {
             "type": "number"
           },
+          "downBindings": {
+            "type": "number"
+          },
           "freshSuccessSkips": {
             "type": "number"
           },
@@ -3958,6 +3962,7 @@
           "healthyBindings",
           "staleBindings",
           "degradedBindings",
+          "downBindings",
           "scanningBindings",
           "pausedBindings",
           "notConfiguredBindings",
@@ -3980,6 +3985,9 @@
             "type": "number"
           },
           "degradedBindings": {
+            "type": "number"
+          },
+          "downBindings": {
             "type": "number"
           },
           "freshSuccessSkips": {
@@ -4040,6 +4048,7 @@
           "healthyBindings",
           "staleBindings",
           "degradedBindings",
+          "downBindings",
           "scanningBindings",
           "pausedBindings",
           "notConfiguredBindings",

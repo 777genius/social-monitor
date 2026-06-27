@@ -23,6 +23,9 @@ export class SourceBindingOverviewProviderBreakdownResponseDto implements Source
   declare readonly degradedBindings: number;
 
   @ApiProperty()
+  declare readonly downBindings: number;
+
+  @ApiProperty()
   declare readonly scanningBindings: number;
 
   @ApiProperty()
@@ -68,6 +71,9 @@ export class SourceBindingOverviewSummaryResponseDto implements SourceBindingOve
 
   @ApiProperty()
   declare readonly degradedBindings: number;
+
+  @ApiProperty()
+  declare readonly downBindings: number;
 
   @ApiProperty()
   declare readonly scanningBindings: number;

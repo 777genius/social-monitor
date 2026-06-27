@@ -6,6 +6,7 @@ export type SourceBindingOverviewProviderBreakdownView = {
   readonly healthyBindings: number;
   readonly staleBindings: number;
   readonly degradedBindings: number;
+  readonly downBindings: number;
   readonly scanningBindings: number;
   readonly pausedBindings: number;
   readonly notConfiguredBindings: number;
@@ -24,6 +25,7 @@ export type SourceBindingOverviewSummaryView = {
   readonly healthyBindings: number;
   readonly staleBindings: number;
   readonly degradedBindings: number;
+  readonly downBindings: number;
   readonly scanningBindings: number;
   readonly pausedBindings: number;
   readonly notConfiguredBindings: number;

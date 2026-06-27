@@ -527,6 +527,8 @@ describe('GetSourceBindingHealthUseCase', () => {
         operatorAction: 'pause_or_backoff_provider_until_recovery',
         signals: ['recent_failure', 'provider_unavailable', 'consecutive_failures'],
       }));
+      expect(result.value.healthState).toBe('down');
+      expect(result.value.operatorAction).toBe('pause_or_backoff_provider_until_recovery');
     }
   });
 });

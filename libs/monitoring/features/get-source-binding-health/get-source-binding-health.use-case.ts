@@ -33,6 +33,7 @@ import type {
   SourceBindingHealthRecentWindowView,
   SourceBindingHealthSchedulerDecisionView,
   SourceBindingHealthState,
+  SourceBindingProviderHealthState,
 } from './get-source-binding-health.result';
 
 type GetSourceBindingHealthFailure = DomainError;
@@ -136,11 +137,16 @@ export class GetSourceBindingHealthUseCase {
           workspaceId: query.workspaceId,
           scanJobId: latestScanSnapshot.id,
         });
+    const recentWindow = buildRecentWindow({
+      jobs: recentScanJobs.scanJobs,
+      now,
+    });
     const healthState = determineHealthState({
       bindingStatus: bindingSnapshot.status,
       hasScanPolicy: scanPolicy !== null,
       latestScanStatus: latestScanSnapshot?.status,
       freshness,
+      recentProviderHealthState: recentWindow.providerHealthState,
     });
 
     return ok({
@@ -194,10 +200,7 @@ export class GetSourceBindingHealthUseCase {
                 },
           },
       freshness,
-      recentWindow: buildRecentWindow({
-        jobs: recentScanJobs.scanJobs,
-        now,
-      }),
+      recentWindow,
     });
   }
 }
@@ -207,6 +210,7 @@ const determineHealthState = (params: {
   readonly hasScanPolicy: boolean;
   readonly latestScanStatus?: 'requested' | 'enqueued' | 'succeeded' | 'failed';
   readonly freshness?: SourceBindingHealthFreshnessView;
+  readonly recentProviderHealthState: SourceBindingProviderHealthState;
 }): SourceBindingHealthState => {
   if (params.bindingStatus === 'paused') {
     return 'paused';
@@ -221,7 +225,7 @@ const determineHealthState = (params: {
   }
 
   if (params.latestScanStatus === 'failed') {
-    return 'degraded';
+    return params.recentProviderHealthState === 'down' ? 'down' : 'degraded';
   }
 
   if (params.latestScanStatus === 'succeeded') {
@@ -473,5 +477,7 @@ const operatorActionForHealth = (state: SourceBindingHealthState): string => {
       return 'trigger_manual_scan_or_reduce_scan_interval';
     case 'degraded':
       return 'inspect_latest_scan_failure_and_retry_budget';
+    case 'down':
+      return 'pause_or_backoff_provider_until_recovery';
   }
 };

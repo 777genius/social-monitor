@@ -118,6 +118,8 @@ final class GeneratedSourceBindingRestMapper {
         'stale',
       generated.SourceBindingHealthResponseDtoHealthStateHealthState.degraded =>
         'degraded',
+      generated.SourceBindingHealthResponseDtoHealthStateHealthState.down =>
+        'down',
       generated.SourceBindingHealthResponseDtoHealthStateHealthState.$unknown =>
         'unknown',
     };

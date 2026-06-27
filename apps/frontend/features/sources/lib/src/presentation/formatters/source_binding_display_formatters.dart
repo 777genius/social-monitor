@@ -52,6 +52,7 @@ String sourceBindingHealthLabel(SourceBindingHealthState state) {
     SourceBindingHealthState.healthy => 'Healthy',
     SourceBindingHealthState.stale => 'Stale',
     SourceBindingHealthState.degraded => 'Degraded',
+    SourceBindingHealthState.down => 'Down',
     SourceBindingHealthState.unknown => 'Unknown',
   };
 }
@@ -62,6 +63,7 @@ AppStatusTone sourceBindingHealthTone(SourceBindingHealthState state) {
     SourceBindingHealthState.stale ||
     SourceBindingHealthState.degraded ||
     SourceBindingHealthState.notConfigured => AppStatusTone.warning,
+    SourceBindingHealthState.down => AppStatusTone.danger,
     SourceBindingHealthState.paused ||
     SourceBindingHealthState.scheduled ||
     SourceBindingHealthState.scanning ||
