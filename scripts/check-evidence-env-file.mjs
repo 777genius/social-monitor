@@ -137,6 +137,7 @@ function validateCurrentEvidencePackage() {
   const liveOpenEnvPath = join(tempDirectory, 'live-open.env');
   const githubRepoRadarEnvPath = join(tempDirectory, 'live-github-repo-radar.env');
   const githubTrendingPageEnvPath = join(tempDirectory, 'live-github-trending-page.env');
+  const relevanceMemoryEnvPath = join(tempDirectory, 'relevance-memory-runtime-canary.env');
   const securityFinalSweepEnvPath = join(tempDirectory, 'security-final-sweep.env');
   const redditEnvPath = join(tempDirectory, 'live-reddit-oauth.env');
   const outputEnvPath = join(tempDirectory, 'current-package.env');
@@ -199,6 +200,14 @@ function validateCurrentEvidencePackage() {
     ['BACKEND_GIT_COMMIT_SHA', commitSha],
     ['BACKEND_IMAGE_DIGEST', imageDigest],
   ]);
+  writeEvidenceEnvFile(relevanceMemoryEnvPath, [
+    ['BACKEND_GIT_COMMIT_SHA', commitSha],
+    ['DATABASE_URL', 'postgresql://credential-user:...@db.internal/social_monitor'],
+    ['INFINITY_CONTEXT_TOKEN', 'memo-stack-token-value-1234567890'],
+    ['INFINITY_CONTEXT_URL', 'https://memory.staging.social-monitor.invalid'],
+    ['RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH', artifactPath('relevance-memory-runtime-canary')],
+    ['RELEVANCE_MEMORY_RUNTIME_CANARY_PERSISTENCE', 'prisma'],
+  ]);
   writeEvidenceEnvFile(securityFinalSweepEnvPath, [
     ['SECURITY_FINAL_SWEEP_ARTIFACT_PATH', securityFinalSweepArtifactPath],
     ['LOG_EXPORT_PATH', securityLogsExportPath],
@@ -216,6 +225,7 @@ function validateCurrentEvidencePackage() {
       LIVE_OPEN_CONNECTORS_EVIDENCE_ENV_PATH: liveOpenEnvPath,
       GITHUB_REPO_RADAR_LIVE_EVIDENCE_ENV_PATH: githubRepoRadarEnvPath,
       GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_ENV_PATH: githubTrendingPageEnvPath,
+      RELEVANCE_MEMORY_RUNTIME_CANARY_ENV_PATH: relevanceMemoryEnvPath,
       SECURITY_FINAL_SWEEP_ENV_PATH: securityFinalSweepEnvPath,
       REDDIT_LIVE_EVIDENCE_ENV_PATH: redditEnvPath,
       EXTERNAL_BETA_CURRENT_ENV_PATH: outputEnvPath,
@@ -237,11 +247,17 @@ function validateCurrentEvidencePackage() {
   if (!packagedEnv.includes('GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH=')) {
     violations.push('current evidence package must merge GitHub Trending Page evidence env');
   }
+  if (!packagedEnv.includes('RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH=')) {
+    violations.push('current evidence package must merge relevance memory canary evidence env');
+  }
+  if (!packagedEnv.includes('RELEVANCE_MEMORY_RUNTIME_CANARY_PERSISTENCE=')) {
+    violations.push('current evidence package must merge relevance memory canary persistence mode');
+  }
   if (!packagedEnv.includes('SECURITY_FINAL_SWEEP_ARTIFACT_PATH=')) {
     violations.push('current evidence package must merge security final sweep evidence env');
   }
-  if (packagedEnv.includes('DATABASE_URL=') || packagedEnv.includes('RABBITMQ_URL=')) {
-    violations.push('current evidence package must not write secret DB/RabbitMQ URL values');
+  if (packagedEnv.includes('DATABASE_URL=') || packagedEnv.includes('RABBITMQ_URL=') || packagedEnv.includes('INFINITY_CONTEXT_TOKEN=')) {
+    violations.push('current evidence package must not write secret DB/RabbitMQ/memo token values');
   }
   const report = JSON.parse(readFileSync(outputReportPath, 'utf8'));
   if (report.artifactFormat !== 'external-beta-current-evidence-package-v1') {
@@ -253,7 +269,7 @@ function validateCurrentEvidencePackage() {
   if (report.commitPolicy?.expectedCommitSha !== commitSha || report.commitPolicy?.packagedCommitSha !== commitSha) {
     violations.push('current evidence package report must expose the expected and packaged commit SHA');
   }
-  if (!Array.isArray(report.artifactIntegrity?.inputEnvFiles) || report.artifactIntegrity.inputEnvFiles.length !== 5) {
+  if (!Array.isArray(report.artifactIntegrity?.inputEnvFiles) || report.artifactIntegrity.inputEnvFiles.length !== 6) {
     violations.push('current evidence package report must include input env file integrity records');
   }
   if (!Array.isArray(report.artifactIntegrity?.packagedEvidenceArtifacts) || report.artifactIntegrity.packagedEvidenceArtifacts.length === 0) {
@@ -281,11 +297,17 @@ function validateCurrentEvidencePackage() {
   if (!artifactIntegrityEnvNames.has('GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH')) {
     violations.push('current evidence package report must hash GitHub Trending Page evidence artifact');
   }
+  if (!artifactIntegrityEnvNames.has('RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH')) {
+    violations.push('current evidence package report must hash relevance memory canary evidence artifact');
+  }
   if (!artifactIntegrityEnvNames.has('SECURITY_FINAL_SWEEP_ARTIFACT_PATH')) {
     violations.push('current evidence package report must hash security final sweep evidence artifact');
   }
   if (!report.inputPolicy?.secretEnvNamesWithheld?.includes('DATABASE_URL')) {
     violations.push('current evidence package report must list withheld DATABASE_URL');
+  }
+  if (!report.inputPolicy?.secretEnvNamesWithheld?.includes('INFINITY_CONTEXT_TOKEN')) {
+    violations.push('current evidence package report must list withheld INFINITY_CONTEXT_TOKEN');
   }
   if (!Array.isArray(report.remaining?.requiredEnv)) {
     violations.push('current evidence package report must include remaining required env names');
@@ -352,6 +374,7 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
   const liveOpenDefaultEnvPath = join(artifactDir, 'live-open-connectors.env');
   const githubRepoRadarDefaultEnvPath = join(artifactDir, 'live-github-repo-radar.env');
   const githubTrendingPageDefaultEnvPath = join(artifactDir, 'live-github-trending-page.env');
+  const relevanceMemoryDefaultEnvPath = join(artifactDir, 'relevance-memory-runtime-canary.env');
   const securityFinalSweepDefaultEnvPath = join(artifactDir, 'security-final-sweep.env');
   const redditDefaultEnvPath = join(artifactDir, 'live-reddit-oauth.env');
   const artifactPath = (name) => {
@@ -385,6 +408,11 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
     ['BACKEND_GIT_COMMIT_SHA', staleCommitSha],
     ['BACKEND_IMAGE_DIGEST', staleImageDigest],
   ]);
+  writeEvidenceEnvFile(relevanceMemoryDefaultEnvPath, [
+    ['RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH', artifactPath('relevance-memory-stale')],
+    ['BACKEND_GIT_COMMIT_SHA', staleCommitSha],
+    ['INFINITY_CONTEXT_URL', 'https://memory.staging.social-monitor.invalid'],
+  ]);
   writeEvidenceEnvFile(securityFinalSweepDefaultEnvPath, [
     ['SECURITY_FINAL_SWEEP_ARTIFACT_PATH', artifactPath('security-final-sweep-stale')],
     ['BACKEND_GIT_COMMIT_SHA', staleCommitSha],
@@ -405,6 +433,7 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
       GITHUB_REPO_RADAR_LIVE_EVIDENCE_ENV_PATH: '',
       GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_ENV_PATH: '',
       GITHUB_LIVE_SUMMARY_EVIDENCE_ENV_PATH: '',
+      RELEVANCE_MEMORY_RUNTIME_CANARY_ENV_PATH: '',
       SECURITY_FINAL_SWEEP_ENV_PATH: '',
       REDDIT_LIVE_EVIDENCE_ENV_PATH: '',
       SUMMARY_FEEDBACK_SAMPLES_ENV_PATH: '',
@@ -420,6 +449,7 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
   if (packagedEnv.includes('LIVE_OPEN_CONNECTORS_EVIDENCE_PATH=')
     || packagedEnv.includes('GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH=')
     || packagedEnv.includes('GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH=')
+    || packagedEnv.includes('RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH=')
     || packagedEnv.includes('SECURITY_FINAL_SWEEP_ARTIFACT_PATH=')
     || packagedEnv.includes('REDDIT_LIVE_EVIDENCE_PATH=')) {
     violations.push('current evidence package must not merge stale default evidence env files');
@@ -429,6 +459,7 @@ function validateCurrentEvidencePackageSkipsStaleDefaultEvidence() {
   if (!skippedStalePaths.has(liveOpenDefaultEnvPath)
     || !skippedStalePaths.has(githubRepoRadarDefaultEnvPath)
     || !skippedStalePaths.has(githubTrendingPageDefaultEnvPath)
+    || !skippedStalePaths.has(relevanceMemoryDefaultEnvPath)
     || !skippedStalePaths.has(securityFinalSweepDefaultEnvPath)
     || !skippedStalePaths.has(redditDefaultEnvPath)) {
     violations.push('current evidence package report must list skipped stale default evidence env files');

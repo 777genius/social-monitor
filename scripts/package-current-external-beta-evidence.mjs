@@ -27,6 +27,7 @@ const additionalInputPaths = (process.env.EXTERNAL_BETA_ADDITIONAL_ENV_PATHS ?? 
   .filter((path) => path.length > 0);
 const secretValueEnvNames = new Set([
   'DATABASE_URL',
+  'INFINITY_CONTEXT_TOKEN',
   'RABBITMQ_URL',
   'RABBITMQ_MANAGEMENT_URL',
   'REDDIT_ACCESS_TOKEN',
@@ -365,6 +366,7 @@ function defaultInputSpecs() {
   const githubRepoRadarOverridePath = process.env.GITHUB_REPO_RADAR_LIVE_EVIDENCE_ENV_PATH?.trim();
   const githubTrendingPageOverridePath = process.env.GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_ENV_PATH?.trim();
   const githubSummaryOverridePath = process.env.GITHUB_LIVE_SUMMARY_EVIDENCE_ENV_PATH?.trim();
+  const relevanceMemoryOverridePath = process.env.RELEVANCE_MEMORY_RUNTIME_CANARY_ENV_PATH?.trim();
   const securityFinalSweepOverridePath = process.env.SECURITY_FINAL_SWEEP_ENV_PATH?.trim();
   const feedbackOverridePath = process.env.SUMMARY_FEEDBACK_SAMPLES_ENV_PATH?.trim();
   const resolvedArtifactDir = resolve(artifactDir);
@@ -402,6 +404,13 @@ function defaultInputSpecs() {
       path: githubSummaryOverridePath,
       staleCommitPolicy: githubSummaryOverridePath ? 'reject' : 'skip',
       source: 'legacy_github_live_summary_env',
+    },
+    {
+      path: relevanceMemoryOverridePath || join(resolvedArtifactDir, 'relevance-memory-runtime-canary.env'),
+      staleCommitPolicy: relevanceMemoryOverridePath ? 'reject' : 'skip',
+      source: relevanceMemoryOverridePath
+        ? 'relevance_memory_runtime_canary_env_override'
+        : 'default_relevance_memory_runtime_canary_env',
     },
     {
       path: securityFinalSweepOverridePath || join(resolvedArtifactDir, 'security-final-sweep.env'),
