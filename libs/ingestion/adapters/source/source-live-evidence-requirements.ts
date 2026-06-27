@@ -135,7 +135,7 @@ export const githubTrendingPageLiveEvidenceRequirements = [
   ),
   liveEvidenceRequirement(
     'github-trending-page-parser-drift',
-    'Parser drift checks cover repository identity, rank and star-gain fields.',
+    'Parser drift checks cover repository identity, rank, star-gain fields and warning-free parsing.',
     trendingPageEvidenceCommand,
     trendingPageEvidenceEnv,
   ),

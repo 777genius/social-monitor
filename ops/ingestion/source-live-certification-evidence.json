@@ -365,7 +365,7 @@
         {
           "signalId": "github-trending-page-parser-drift",
           "status": "pending_live_evidence",
-          "requiredSignal": "parser drift evidence covers repository name, rank, language, stars and stars gained"
+          "requiredSignal": "parser drift evidence covers repository name, rank, language, stars, stars gained and warning-free parsing"
         },
         {
           "signalId": "github-trending-page-rate-limit-budget",

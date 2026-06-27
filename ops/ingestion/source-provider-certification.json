@@ -227,7 +227,7 @@
         },
         {
           "signalId": "github-trending-page-parser-drift",
-          "description": "Parser drift checks cover repository identity, rank and star-gain fields.",
+          "description": "Parser drift checks cover repository identity, rank, star-gain fields and warning-free parsing.",
           "verificationCommand": "npm run check:github-trending-page-live-smoke",
           "artifactEnv": "GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH",
           "requiredFor": "external_beta"

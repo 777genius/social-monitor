@@ -391,6 +391,8 @@
                 "repositoryCount": 5,
                 "topRankIsOne": true,
                 "canonicalUrlsObserved": true,
+                "warningCount": 0,
+                "warningsAbsent": true,
                 "window": "daily"
               },
               "metrics": {
@@ -407,7 +409,9 @@
                 "rankObserved": true,
                 "languageObserved": true,
                 "starsObserved": true,
-                "starsGainedObserved": true
+                "starsGainedObserved": true,
+                "warningCount": 0,
+                "warningsAbsent": true
               },
               "metrics": {
                 "parserVersion": "fixture-example"

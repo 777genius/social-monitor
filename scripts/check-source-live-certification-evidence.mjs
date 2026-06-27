@@ -249,6 +249,7 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['repositoryCount', 'positive_integer'],
       ['topRankIsOne', 'boolean_true'],
       ['canonicalUrlsObserved', 'boolean_true'],
+      ['warningsAbsent', 'boolean_true'],
       ['window', 'non_empty_string'],
     ],
   ],
@@ -260,6 +261,7 @@ const requiredEvidenceShapeBySignalId = new Map([
       ['languageObserved', 'boolean_true'],
       ['starsObserved', 'boolean_true'],
       ['starsGainedObserved', 'boolean_true'],
+      ['warningsAbsent', 'boolean_true'],
     ],
   ],
   [

@@ -54,6 +54,10 @@ async function main(): Promise<void> {
     result.items.length >= Math.min(3, maxItems),
     'GitHub Trending page live smoke must expose at least top-3 repositories',
   );
+  assert(
+    result.warnings.length === 0,
+    `GitHub Trending page live smoke returned parser/provider warnings: ${result.warnings.join('; ')}`,
+  );
 
   const first = result.items[0];
   const parsedRepositories = result.items.map((item) => {
@@ -127,6 +131,8 @@ async function main(): Promise<void> {
         topThreeStarsGainedObserved: parsedRepositories
           .slice(0, Math.min(3, parsedRepositories.length))
           .every((repository) => repository.metadata.trending.starsGained > 0),
+        warningCount: result.warnings.length,
+        warningsAbsent: result.warnings.length === 0,
         sampledRepositories: topRepositories,
         window: metadata.trending.window,
       },
@@ -141,6 +147,8 @@ async function main(): Promise<void> {
         languageObserved: metadata.repository.language !== undefined,
         starsObserved: metadata.repository.totalStars > 0,
         starsGainedObserved: metadata.trending.starsGained > 0,
+        warningCount: result.warnings.length,
+        warningsAbsent: result.warnings.length === 0,
         topSampleSize: topRepositories.length,
       },
     },
