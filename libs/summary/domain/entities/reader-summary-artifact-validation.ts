@@ -11,6 +11,7 @@ import {
   assertUniqueReaderSummaryItems,
   assertUniqueReaderSummarySourceMixProviders,
 } from "./reader-summary-content-identity";
+import { assertReaderSummaryContentShape } from "./reader-summary-content-shape";
 
 export const assertReaderSummaryArtifactValid = (
   props: ReaderSummaryArtifactProps,
@@ -242,6 +243,7 @@ const assertReaderSummaryContent = (
       "Reader summary content must include headline, takeaway and non-empty bullets",
     );
   }
+  assertReaderSummaryContentShape(content);
 
   for (const source of content.sourceMix) {
     if (

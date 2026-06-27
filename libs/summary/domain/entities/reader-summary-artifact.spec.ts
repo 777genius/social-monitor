@@ -258,6 +258,35 @@ describe("ReaderSummaryArtifact", () => {
     ).toThrow("Reader summary source mix provider keys must be unique");
   });
 
+  it("rejects reader content with signal but no top reads", () => {
+    expect(() =>
+      ReaderSummaryArtifact.create(
+        baseArtifact({
+          content: readerContent({
+            topReads: [],
+          }),
+        }),
+      ),
+    ).toThrow("Reader summary content with signal must include top reads");
+  });
+
+  it("rejects no-signal reader content that still includes top reads", () => {
+    expect(() =>
+      ReaderSummaryArtifact.create(
+        baseArtifact({
+          content: readerContent({
+            qualityState: {
+              status: "no_signal",
+              flags: ["no_signal"],
+              warnings: ["No cited source evidence passed selection."],
+              isSingleSource: false,
+            },
+          }),
+        }),
+      ),
+    ).toThrow("No-signal reader summary content must not include top reads");
+  });
+
   it("rejects duplicate reader content top reads by normalized repository URL", () => {
     expect(() =>
       ReaderSummaryArtifact.create(
