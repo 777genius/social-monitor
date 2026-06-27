@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 final class AppShellRuntime {
   const AppShellRuntime({
     required this.session,
     required this.workspace,
+    required this.availableWorkspaces,
     required this.capabilities,
     required this.observability,
     required this.correlationId,
@@ -12,6 +14,7 @@ final class AppShellRuntime {
 
   final AppSessionSnapshot session;
   final AppWorkspaceSnapshot workspace;
+  final List<AppWorkspaceSnapshot> availableWorkspaces;
   final FeatureFlagSet capabilities;
   final FrontendObservability observability;
   final String correlationId;
@@ -36,6 +39,9 @@ final class AppShellRuntime {
     return AppShellRuntime(
       session: session,
       workspace: workspace,
+      availableWorkspaces: workspace.isAvailable
+          ? List<AppWorkspaceSnapshot>.unmodifiable([workspace])
+          : const [],
       capabilities: capabilities,
       observability: observability,
       correlationId: correlationId,
@@ -52,6 +58,7 @@ final class AppShellRuntime {
         userLabel: 'Runtime not configured',
       ),
       workspace: AppWorkspaceSnapshot.missing(),
+      availableWorkspaces: [],
       capabilities: FeatureFlagSet({
         'topics': FeatureCapability(
           key: 'topics',
@@ -96,8 +103,21 @@ final class AppShellRuntime {
         tenantName: 'Acme',
         workspaceName: 'Acme alerts',
         statusLabel: 'Active',
+        workspaceRole: 'Owner',
         scope: WorkspaceScope(tenantId: 'tenant-demo', workspaceId: 'ws-demo'),
       ),
+      availableWorkspaces: [
+        AppWorkspaceSnapshot(
+          tenantName: 'Acme',
+          workspaceName: 'Acme alerts',
+          statusLabel: 'Active',
+          workspaceRole: 'Owner',
+          scope: WorkspaceScope(
+            tenantId: 'tenant-demo',
+            workspaceId: 'ws-demo',
+          ),
+        ),
+      ],
       capabilities: FeatureFlagSet({
         'topics': FeatureCapability(key: 'topics', isEnabled: true),
         'sources': FeatureCapability(key: 'sources', isEnabled: true),
@@ -119,6 +139,7 @@ final class AppShellRuntime {
         userLabel: 'Signed out',
       ),
       workspace: AppWorkspaceSnapshot.missing(),
+      availableWorkspaces: [],
       capabilities: FeatureFlagSet({}),
       observability: NoopFrontendObservability(),
       correlationId: 'frontend-signed-out',
@@ -130,6 +151,44 @@ final class AppShellRuntime {
       correlationId: correlationId,
       screenId: screenId,
     );
+  }
+
+  AppShellRuntime copyWith({
+    AppSessionSnapshot? session,
+    AppWorkspaceSnapshot? workspace,
+    List<AppWorkspaceSnapshot>? availableWorkspaces,
+    FeatureFlagSet? capabilities,
+    FrontendObservability? observability,
+    String? correlationId,
+    Object? generatedApiRuntime,
+  }) {
+    return AppShellRuntime(
+      session: session ?? this.session,
+      workspace: workspace ?? this.workspace,
+      availableWorkspaces: availableWorkspaces ?? this.availableWorkspaces,
+      capabilities: capabilities ?? this.capabilities,
+      observability: observability ?? this.observability,
+      correlationId: correlationId ?? this.correlationId,
+      generatedApiRuntime: generatedApiRuntime ?? this.generatedApiRuntime,
+    );
+  }
+}
+
+final class AppRuntimeController extends ChangeNotifier {
+  AppRuntimeController(AppShellRuntime runtime) : _runtime = runtime;
+
+  AppShellRuntime _runtime;
+
+  AppShellRuntime get runtime => _runtime;
+
+  void selectWorkspace(WorkspaceScope scope) {
+    for (final workspace in _runtime.availableWorkspaces) {
+      if (workspace.scope == scope) {
+        _runtime = _runtime.copyWith(workspace: workspace);
+        notifyListeners();
+        return;
+      }
+    }
   }
 }
 
@@ -152,6 +211,7 @@ final class AppWorkspaceSnapshot {
     required this.tenantName,
     required this.workspaceName,
     required this.statusLabel,
+    required this.workspaceRole,
     required this.scope,
   });
 
@@ -159,11 +219,13 @@ final class AppWorkspaceSnapshot {
     : tenantName = 'No tenant',
       workspaceName = 'Workspace required',
       statusLabel = 'Missing',
+      workspaceRole = 'Unknown',
       scope = null;
 
   final String tenantName;
   final String workspaceName;
   final String statusLabel;
+  final String workspaceRole;
   final WorkspaceScope? scope;
 
   bool get isAvailable => scope != null;

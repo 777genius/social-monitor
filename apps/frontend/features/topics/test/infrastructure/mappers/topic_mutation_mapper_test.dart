@@ -43,5 +43,6 @@ void main() {
     expect(update.id, 'topic-market-risk');
     expect(update.query, 'risk');
     expect(archive.id, 'topic-market-risk');
+    expect(archive.scope, testWorkspaceScope);
   });
 }

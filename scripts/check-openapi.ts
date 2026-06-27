@@ -46,6 +46,7 @@ import { ListScanDeadLettersUseCase } from "@social-monitor/ingestion/features/l
 import { ListSourceProfilesUseCase } from "@social-monitor/ingestion/features/list-source-profiles/list-source-profiles.use-case";
 import { GetBetaLaunchSupportUseCase } from "@social-monitor/launch/features/get-beta-launch-support/get-beta-launch-support.use-case";
 import { BetaLaunchSupportController } from "@social-monitor/launch/interfaces/rest/beta-launch-support.controller";
+import { ArchiveTopicUseCase } from "@social-monitor/monitoring/features/archive-topic/archive-topic.use-case";
 import { BindSourceUseCase } from "@social-monitor/monitoring/features/bind-source/bind-source.use-case";
 import { ChangeSourceBindingStatusUseCase } from "@social-monitor/monitoring/features/change-source-binding-status/change-source-binding-status.use-case";
 import { CreateSourceCredentialUseCase } from "@social-monitor/monitoring/features/create-source-credential/create-source-credential.use-case";
@@ -64,6 +65,7 @@ import { RequestScanUseCase } from "@social-monitor/monitoring/features/request-
 import { RevokeSourceCredentialUseCase } from "@social-monitor/monitoring/features/revoke-source-credential/revoke-source-credential.use-case";
 import { RotateSourceCredentialUseCase } from "@social-monitor/monitoring/features/rotate-source-credential/rotate-source-credential.use-case";
 import { SetScanPolicyUseCase } from "@social-monitor/monitoring/features/set-scan-policy/set-scan-policy.use-case";
+import { UpdateTopicUseCase } from "@social-monitor/monitoring/features/update-topic/update-topic.use-case";
 import { ScanPolicyController } from "@social-monitor/monitoring/interfaces/rest/scan-policy.controller";
 import { ScanRequestController } from "@social-monitor/monitoring/interfaces/rest/scan-request.controller";
 import { ScanStatusController } from "@social-monitor/monitoring/interfaces/rest/scan-status.controller";
@@ -226,6 +228,7 @@ const useCaseProviders = [
   ListWebhookEndpointsUseCase,
   BuildPersonalizedDigestUseCase,
   ActivateTopicSourceUseCase,
+  ArchiveTopicUseCase,
   CreateUserSubscriptionUseCase,
   GetEffectiveUserSummaryPreferenceUseCase,
   RankFeedItemsUseCase,
@@ -245,6 +248,7 @@ const useCaseProviders = [
   ListUserSubscriptionsUseCase,
   UpsertUserRelevanceProfileUseCase,
   UpsertSummaryPolicyUseCase,
+  UpdateTopicUseCase,
   UpsertUserSummaryPreferenceUseCase,
 ].map((provider) => ({
   provide: provider,

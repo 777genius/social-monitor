@@ -12,6 +12,7 @@ TopicResponseDto _$TopicResponseDtoFromJson(Map<String, dynamic> json) =>
       id: json['id'] as String,
       name: json['name'] as String,
       query: json['query'] as String,
+      status: TopicResponseDtoStatusStatus.fromJson(json['status'] as String),
       tenantId: json['tenantId'],
       workspaceId: json['workspaceId'],
     );
@@ -22,6 +23,7 @@ Map<String, dynamic> _$TopicResponseDtoToJson(TopicResponseDto instance) =>
       'id': instance.id,
       'name': instance.name,
       'query': instance.query,
+      'status': instance.status,
       'tenantId': instance.tenantId,
       'workspaceId': instance.workspaceId,
     };

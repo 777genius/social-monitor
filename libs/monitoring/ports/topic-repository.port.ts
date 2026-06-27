@@ -14,8 +14,16 @@ export type ListTopicsResult = {
   readonly nextCursor?: string;
 };
 
+export type ArchiveTopicParams = {
+  readonly tenantId: TenantId;
+  readonly workspaceId: WorkspaceId;
+  readonly topicId: string;
+  readonly archivedAt: Date;
+};
+
 export interface TopicRepositoryPort {
   save(topic: Topic): Promise<void>;
+  archive?(params: ArchiveTopicParams): Promise<void>;
   findByName(params: {
     tenantId: TenantId;
     workspaceId: WorkspaceId;

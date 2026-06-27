@@ -4,6 +4,8 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'topic_response_dto_status_status.dart';
+
 part 'topic_response_dto.g.dart';
 
 @JsonSerializable()
@@ -13,6 +15,7 @@ class TopicResponseDto {
     required this.id,
     required this.name,
     required this.query,
+    required this.status,
     required this.tenantId,
     required this.workspaceId,
   });
@@ -24,6 +27,7 @@ class TopicResponseDto {
   final String id;
   final String name;
   final String query;
+  final TopicResponseDtoStatusStatus status;
   final dynamic tenantId;
   final dynamic workspaceId;
 

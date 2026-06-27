@@ -425,7 +425,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   readonly idempotencyKeys = new Map<string, PrismaIdempotencyKeyRecord>();
   readonly outboxEvents = new Map<string, PrismaOutboxEventRecord>();
 
-  readonly topic: PrismaMonitoringClient['topic'] = {
+ readonly topic: PrismaMonitoringClient['topic'] = {
     upsert: async (args) => {
       const existing = this.topics.get(args.where.id);
       const record: PrismaTopicRecord = {
@@ -434,22 +434,48 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
         name: existing === undefined ? args.create.name : args.update.name,
         query: existing === undefined ? args.create.query : args.update.query,
+        status: existing === undefined ? (args.create.status ?? 'ENABLED') : (args.update.status ?? existing.status),
         createdAt: existing?.createdAt ?? clock.now(),
+        deletedAt: existing === undefined ? (args.create.deletedAt ?? null) : (args.update.deletedAt ?? existing.deletedAt),
       };
       this.topics.set(record.id, record);
 
       return record;
+    },
+    updateMany: async (args) => {
+      const existing = this.topics.get(args.where.id);
+      if (
+        existing === undefined ||
+        existing.tenantId !== args.where.tenantId ||
+        existing.workspaceId !== args.where.workspaceId ||
+        (existing.deletedAt ?? null) !== args.where.deletedAt
+      ) {
+        return { count: 0 };
+      }
+
+      this.topics.set(existing.id, {
+        ...existing,
+        status: args.data.status,
+        deletedAt: args.data.deletedAt,
+      });
+
+      return { count: 1 };
     },
     findFirst: async (args) =>
       [...this.topics.values()].find((record) => (
         record.tenantId === args.where.tenantId &&
         record.workspaceId === args.where.workspaceId &&
         (args.where.id === undefined || record.id === args.where.id) &&
-        (args.where.name === undefined || record.name === args.where.name)
+        (args.where.name === undefined || record.name === args.where.name) &&
+        (record.deletedAt ?? null) === args.where.deletedAt
       )) ?? null,
     findMany: async (args) =>
       [...this.topics.values()]
-        .filter((record) => record.tenantId === args.where.tenantId && record.workspaceId === args.where.workspaceId)
+        .filter((record) => (
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          (record.deletedAt ?? null) === args.where.deletedAt
+        ))
         .sort(compareRecordsByCreationDesc)
         .slice(args.skip, args.skip + args.take),
   };

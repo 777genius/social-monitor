@@ -27,7 +27,9 @@ export type PrismaTopicRecord = {
   readonly workspaceId: string;
   readonly name: string;
   readonly query: string;
+  readonly status?: 'ENABLED' | 'DISABLED' | 'ARCHIVED';
   readonly createdAt: Date;
+  readonly deletedAt?: Date | null;
 };
 
 export type PrismaSourceBindingRecord = {

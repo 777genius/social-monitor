@@ -37,8 +37,8 @@ final class TopicsFeatureModule extends Module {
     required this.generatedApiRuntime,
     required this.scope,
     this.onOpenTopicSources,
-  }) : showLifecycleFilters = false,
-       showEditArchiveActions = false;
+  }) : showLifecycleFilters = true,
+       showEditArchiveActions = true;
 
   final Object? generatedApiRuntime;
   final WorkspaceScope scope;

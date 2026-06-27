@@ -29,7 +29,8 @@ final class UpdateTopicApiRequestDto {
 }
 
 final class ArchiveTopicApiRequestDto {
-  const ArchiveTopicApiRequestDto({required this.id});
+  const ArchiveTopicApiRequestDto({required this.scope, required this.id});
 
+  final WorkspaceScope scope;
   final String id;
 }

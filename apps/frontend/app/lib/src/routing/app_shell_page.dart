@@ -46,19 +46,10 @@ class AppShellPage extends StatelessWidget {
       header: AppShellHeader(
         runtime: runtime,
         themeModeController: themeModeController,
-        onOpenSettings: () => context.go(_settingsPath),
+        onOpenWorkspace: () => context.go('/auth'),
       ),
       child: child,
     );
-  }
-
-  String get _settingsPath {
-    for (final feature in features) {
-      if (feature.id == 'settings') {
-        return feature.route.path;
-      }
-    }
-    return '/';
   }
 }
 
@@ -185,7 +176,7 @@ class FeatureOverviewPage extends StatelessWidget {
                   title: feature.title,
                   description: feature.description,
                   icon: feature.icon,
-                  status: feature.status,
+                  status: _featureStatus(feature, runtime),
                   onTap: () => context.go(feature.route.path),
                 );
               },
@@ -195,6 +186,28 @@ class FeatureOverviewPage extends StatelessWidget {
       ),
     );
   }
+}
+
+String _featureStatus(AppFeatureDescriptor feature, AppShellRuntime runtime) {
+  if (feature.status == 'Shell') {
+    return feature.status;
+  }
+  if (feature.id == 'auth') {
+    if (runtime.session.isSignedIn && runtime.workspace.isAvailable) {
+      return 'Runtime';
+    }
+    return runtime.availableWorkspaces.isEmpty
+        ? 'Runtime not configured'
+        : 'Workspace required';
+  }
+  final capability = runtime.capabilities.capability(feature.id);
+  if (runtime.workspace.scope == null) {
+    return 'Workspace required';
+  }
+  if (capability.isDisabled) {
+    return capability.disabledReasonCode ?? 'Disabled';
+  }
+  return feature.id == 'settings' ? 'Runtime' : 'API';
 }
 
 class UnknownRoutePage extends StatelessWidget {

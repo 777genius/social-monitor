@@ -83,11 +83,22 @@ final class GeneratedTopicsApiClient implements TopicsApiClient {
   Future<Result<TopicSummaryApiDto>> updateTopic(
     UpdateTopicApiRequestDto request,
   ) async {
-    return const Result.failure(
-      ValidationFailure(
-        message: 'Topic update is not available in the current API contract',
-        code: 'topics.update_unavailable',
-      ),
+    final scope = request.scope;
+    final result = await _runtime.client.send<generated.TopicResponseDto>(
+      generated.WorkspaceRequest(scope: scope),
+      () {
+        return _runtime.rest.topics.topicControllerUpdate(
+          topicId: request.id,
+          xWorkspaceId: scope.workspaceId,
+          xTenantId: scope.tenantId,
+          body: _mapper.updateTopic(request),
+        );
+      },
+    );
+
+    return result.fold(
+      onSuccess: (dto) => Result.success(_mapper.topic(dto)),
+      onFailure: Result<TopicSummaryApiDto>.failure,
     );
   }
 
@@ -95,11 +106,21 @@ final class GeneratedTopicsApiClient implements TopicsApiClient {
   Future<Result<TopicSummaryApiDto>> archiveTopic(
     ArchiveTopicApiRequestDto request,
   ) async {
-    return const Result.failure(
-      ValidationFailure(
-        message: 'Topic archive is not available in the current API contract',
-        code: 'topics.archive_unavailable',
-      ),
+    final scope = request.scope;
+    final result = await _runtime.client.send<generated.TopicResponseDto>(
+      generated.WorkspaceRequest(scope: scope),
+      () {
+        return _runtime.rest.topics.topicControllerArchive(
+          topicId: request.id,
+          xWorkspaceId: scope.workspaceId,
+          xTenantId: scope.tenantId,
+        );
+      },
+    );
+
+    return result.fold(
+      onSuccess: (dto) => Result.success(_mapper.topic(dto)),
+      onFailure: Result<TopicSummaryApiDto>.failure,
     );
   }
 

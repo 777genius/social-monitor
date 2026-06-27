@@ -1,7 +1,7 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { Topic } from '../../domain';
-import type { ListTopicsQuery, ListTopicsResult, TopicRepositoryPort } from '../../ports';
+import type { ArchiveTopicParams, ListTopicsQuery, ListTopicsResult, TopicRepositoryPort } from '../../ports';
 import { encodeOffsetCursor, parseOffsetCursor } from './offset-pagination';
 
 export class InMemoryTopicRepository implements TopicRepositoryPort {
@@ -10,6 +10,10 @@ export class InMemoryTopicRepository implements TopicRepositoryPort {
   async save(topic: Topic): Promise<void> {
     const snapshot = topic.toSnapshot();
     this.topics.set(this.key(snapshot.tenantId, snapshot.workspaceId, snapshot.id), topic);
+  }
+
+  async archive(params: ArchiveTopicParams): Promise<void> {
+    this.topics.delete(this.key(params.tenantId, params.workspaceId, params.topicId));
   }
 
   async findByName(params: {

@@ -76,8 +76,8 @@
     "enumStrings": "preserve_raw_value_and_map_to_unknown_in_ui_layer",
     "additionalJsonProperties": "ignore_for_strong_models_preserve_in_raw_payload_when_available"
   },
-  "operationCount": 70,
-  "mobileReadyOperationCount": 70,
+  "operationCount": 72,
+  "mobileReadyOperationCount": 72,
   "devOnlyWorkspaceRoleOperations": [],
   "mobileReadyOperations": [
     "ApiKeysController_create",
@@ -138,8 +138,10 @@
     "SummaryPolicyController_get",
     "SummaryPolicyController_upsert",
     "SummaryRequestController_create",
+    "TopicController_archive",
     "TopicController_create",
     "TopicController_list",
+    "TopicController_update",
     "UserSubscriptionsController_activateSource",
     "UserSubscriptionsController_create",
     "UserSubscriptionsController_list",
@@ -1694,6 +1696,66 @@
       "requestBodySchemaRef": "#/components/schemas/CreateTopicRequestDto",
       "successResponseSchemaRefs": [
         "#/components/schemas/CreateTopicResponseDto"
+      ]
+    },
+    {
+      "operationId": "TopicController_archive",
+      "clientName": "TopicController_archive",
+      "method": "DELETE",
+      "path": "/topics/{topicId}",
+      "tags": [
+        "topics"
+      ],
+      "summary": "Archive a topic inside the current tenant/workspace.",
+      "pathParameters": [
+        "topicId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": [
+        "#/components/schemas/TopicResponseDto"
+      ]
+    },
+    {
+      "operationId": "TopicController_update",
+      "clientName": "TopicController_update",
+      "method": "PATCH",
+      "path": "/topics/{topicId}",
+      "tags": [
+        "topics"
+      ],
+      "summary": "Update a topic inside the current tenant/workspace.",
+      "pathParameters": [
+        "topicId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": "#/components/schemas/UpdateTopicRequestDto",
+      "successResponseSchemaRefs": [
+        "#/components/schemas/TopicResponseDto"
       ]
     },
     {

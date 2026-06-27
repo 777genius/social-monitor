@@ -5435,6 +5435,13 @@
           "query": {
             "type": "string"
           },
+          "status": {
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "type": "string"
+          },
           "tenantId": {
             "type": "object"
           },
@@ -5448,6 +5455,7 @@
           "workspaceId",
           "name",
           "query",
+          "status",
           "createdAt"
         ],
         "type": "object"
@@ -5988,6 +5996,23 @@
           "operatorAction",
           "signals",
           "providerBreakdown"
+        ],
+        "type": "object"
+      },
+      "UpdateTopicRequestDto": {
+        "properties": {
+          "name": {
+            "minLength": 2,
+            "type": "string"
+          },
+          "query": {
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "query"
         ],
         "type": "object"
       },
@@ -9864,6 +9889,144 @@
           }
         },
         "summary": "Create a topic inside the current tenant/workspace.",
+        "tags": [
+          "topics"
+        ]
+      }
+    },
+    "/topics/{topicId}": {
+      "delete": {
+        "operationId": "TopicController_archive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topicId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:topics. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Topic archives require owner or admin. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Archive a topic inside the current tenant/workspace.",
+        "tags": [
+          "topics"
+        ]
+      },
+      "patch": {
+        "operationId": "TopicController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topicId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:topics. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Topic updates require owner or admin. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTopicRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Update a topic inside the current tenant/workspace.",
         "tags": [
           "topics"
         ]

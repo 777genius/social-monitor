@@ -36,6 +36,17 @@ export class Topic {
     });
   }
 
+  updateDetails(props: {
+    readonly name: string;
+    readonly query: string;
+  }): Topic {
+    return Topic.create({
+      ...this.props,
+      name: props.name,
+      query: props.query,
+    });
+  }
+
   toSnapshot(): TopicProps {
     return { ...this.props };
   }

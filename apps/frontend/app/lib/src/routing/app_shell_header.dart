@@ -9,12 +9,12 @@ class AppShellHeader extends StatelessWidget {
     super.key,
     required this.runtime,
     required this.themeModeController,
-    required this.onOpenSettings,
+    required this.onOpenWorkspace,
   });
 
   final AppShellRuntime runtime;
   final AppThemeModeController themeModeController;
-  final VoidCallback onOpenSettings;
+  final VoidCallback onOpenWorkspace;
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +31,7 @@ class AppShellHeader extends StatelessWidget {
                 ? AppStatusTone.success
                 : AppStatusTone.warning,
           ),
-          onPressed: onOpenSettings,
+          onPressed: onOpenWorkspace,
         ),
         const SizedBox(height: AppSpacing.sm),
         _ThemeModeSwitcher(controller: themeModeController),

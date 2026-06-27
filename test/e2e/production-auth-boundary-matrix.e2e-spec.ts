@@ -26,8 +26,10 @@ import { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/c
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import { RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
 import { ok, SystemClock, tenantId, userId, workspaceId } from '@social-monitor/shared-kernel';
+import { ArchiveTopicUseCase } from '@social-monitor/monitoring/features/archive-topic/archive-topic.use-case';
 import { CreateTopicUseCase } from '@social-monitor/monitoring/features/create-topic/create-topic.use-case';
 import { ListTopicsUseCase } from '@social-monitor/monitoring/features/list-topics/list-topics.use-case';
+import { UpdateTopicUseCase } from '@social-monitor/monitoring/features/update-topic/update-topic.use-case';
 import { TopicController } from '@social-monitor/monitoring/interfaces/rest/topic.controller';
 import request from 'supertest';
 
@@ -239,6 +241,23 @@ const createHarness = async (params: {
       nextCursor: undefined,
     })),
   };
+  const topicView = {
+    id: 'topic-production-auth-boundary-matrix',
+    tenantId: tenant,
+    workspaceId: workspace,
+    name: 'Production auth boundary',
+    query: 'production auth boundary',
+    status: 'active' as const,
+  };
+  const updateTopic = {
+    execute: jest.fn().mockResolvedValue(ok(topicView)),
+  };
+  const archiveTopic = {
+    execute: jest.fn().mockResolvedValue(ok({
+      ...topicView,
+      status: 'archived' as const,
+    })),
+  };
   const membershipVerifier = {
     verify: jest.fn().mockResolvedValue(params.membership),
   };
@@ -262,6 +281,14 @@ const createHarness = async (params: {
       {
         provide: ListTopicsUseCase,
         useValue: listTopics,
+      },
+      {
+        provide: UpdateTopicUseCase,
+        useValue: updateTopic,
+      },
+      {
+        provide: ArchiveTopicUseCase,
+        useValue: archiveTopic,
       },
       {
         provide: VerifyApiKeyUseCase,

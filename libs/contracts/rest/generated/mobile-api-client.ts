@@ -1611,6 +1611,66 @@ export const mobileApiOperations = [
     ]
   },
   {
+    "operationId": "TopicController_archive",
+    "clientName": "TopicController_archive",
+    "method": "DELETE",
+    "path": "/topics/{topicId}",
+    "tags": [
+      "topics"
+    ],
+    "summary": "Archive a topic inside the current tenant/workspace.",
+    "pathParameters": [
+      "topicId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/TopicResponseDto"
+    ]
+  },
+  {
+    "operationId": "TopicController_update",
+    "clientName": "TopicController_update",
+    "method": "PATCH",
+    "path": "/topics/{topicId}",
+    "tags": [
+      "topics"
+    ],
+    "summary": "Update a topic inside the current tenant/workspace.",
+    "pathParameters": [
+      "topicId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/UpdateTopicRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/TopicResponseDto"
+    ]
+  },
+  {
     "operationId": "SourceBindingController_list",
     "clientName": "SourceBindingController_list",
     "method": "GET",

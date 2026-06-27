@@ -2,7 +2,7 @@ import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { Topic } from '../../../domain';
-import type { ListTopicsQuery, ListTopicsResult, TopicRepositoryPort } from '../../../ports';
+import type { ArchiveTopicParams, ListTopicsQuery, ListTopicsResult, TopicRepositoryPort } from '../../../ports';
 import { encodeOffsetCursor, parseOffsetCursor } from '../offset-pagination';
 import type { PrismaMonitoringClient } from './prisma-monitoring-client';
 import { topicFromPrisma } from './prisma-monitoring-records';
@@ -18,6 +18,8 @@ export class PrismaTopicRepository implements TopicRepositoryPort {
       update: {
         name: snapshot.name,
         query: snapshot.query,
+        status: 'ENABLED',
+        deletedAt: null,
       },
       create: {
         id: snapshot.id,
@@ -25,6 +27,21 @@ export class PrismaTopicRepository implements TopicRepositoryPort {
         workspaceId: snapshot.workspaceId,
         name: snapshot.name,
         query: snapshot.query,
+      },
+    }));
+  }
+
+  async archive(params: ArchiveTopicParams): Promise<void> {
+    await withPrismaWriteRetry(() => this.prisma.topic.updateMany({
+      where: {
+        id: params.topicId,
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        deletedAt: null,
+      },
+      data: {
+        status: 'ARCHIVED',
+        deletedAt: params.archivedAt,
       },
     }));
   }

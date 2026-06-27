@@ -18,6 +18,9 @@ export class TopicResponseDto implements TopicView {
   @ApiProperty()
   declare readonly query: string;
 
+  @ApiProperty({ enum: ['active', 'archived'] })
+  declare readonly status: TopicView['status'];
+
   @ApiProperty({ format: 'date-time' })
   declare readonly createdAt: string;
 }

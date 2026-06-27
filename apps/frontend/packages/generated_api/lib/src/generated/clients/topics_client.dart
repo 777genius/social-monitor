@@ -9,6 +9,8 @@ import 'package:retrofit/error_logger.dart';
 import '../models/create_topic_request_dto.dart';
 import '../models/create_topic_response_dto.dart';
 import '../models/list_topics_response_dto.dart';
+import '../models/topic_response_dto.dart';
+import '../models/update_topic_request_dto.dart';
 
 part 'topics_client.g.dart';
 
@@ -44,6 +46,37 @@ abstract class TopicsClient {
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
     @Body() required CreateTopicRequestDto body,
+    @Header('authorization') String? authorization,
+    @Header('x-workspace-role') String? xWorkspaceRole,
+  });
+
+  /// Archive a topic inside the current tenant/workspace.
+  ///
+  /// [authorization] - Optional Bearer API key. Requires write:topics. If supplied, x-workspace-role is not required.
+  ///
+  /// [xWorkspaceRole] - Comma-separated workspace roles. Topic archives require owner or admin. Required when Authorization bearer API key is not supplied.
+  @DELETE('/topics/{topicId}')
+  Future<TopicResponseDto> topicControllerArchive({
+    @Path('topicId') required String topicId,
+    @Header('x-workspace-id') required String xWorkspaceId,
+    @Header('x-tenant-id') required String xTenantId,
+    @Header('authorization') String? authorization,
+    @Header('x-workspace-role') String? xWorkspaceRole,
+  });
+
+  /// Update a topic inside the current tenant/workspace.
+  ///
+  /// [authorization] - Optional Bearer API key. Requires write:topics. If supplied, x-workspace-role is not required.
+  ///
+  /// [xWorkspaceRole] - Comma-separated workspace roles. Topic updates require owner or admin. Required when Authorization bearer API key is not supplied.
+  ///
+  /// [body] - Name not received - field will be skipped.
+  @PATCH('/topics/{topicId}')
+  Future<TopicResponseDto> topicControllerUpdate({
+    @Path('topicId') required String topicId,
+    @Header('x-workspace-id') required String xWorkspaceId,
+    @Header('x-tenant-id') required String xTenantId,
+    @Body() required UpdateTopicRequestDto body,
     @Header('authorization') String? authorization,
     @Header('x-workspace-role') String? xWorkspaceRole,
   });

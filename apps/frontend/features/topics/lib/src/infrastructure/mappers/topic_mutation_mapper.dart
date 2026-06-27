@@ -25,6 +25,9 @@ final class TopicMutationMapper {
   }
 
   ArchiveTopicApiRequestDto archiveRequest(ArchiveTopicCommand command) {
-    return ArchiveTopicApiRequestDto(id: command.topicId.value);
+    return ArchiveTopicApiRequestDto(
+      scope: command.scope,
+      id: command.topicId.value,
+    );
   }
 }

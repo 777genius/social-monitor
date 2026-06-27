@@ -14,15 +14,17 @@ final class AppCompositionRoot {
     required this.router,
     required this.features,
     required this.routeObserver,
-    required this.runtime,
+    required this.runtimeController,
     required this.themeModeController,
   });
 
   final GoRouter router;
   final List<AppFeatureDescriptor> features;
   final RouteObserver<ModalRoute<dynamic>> routeObserver;
-  final AppShellRuntime runtime;
+  final AppRuntimeController runtimeController;
   final AppThemeModeController themeModeController;
+
+  AppShellRuntime get runtime => runtimeController.runtime;
 
   factory AppCompositionRoot.production({
     AppShellRuntime? runtime,
@@ -71,7 +73,8 @@ final class AppCompositionRoot {
     required bool useDemoRoutes,
     required String initialLocation,
   }) {
-    final resolvedRuntime = runtime;
+    final runtimeController = AppRuntimeController(runtime);
+    final resolvedRuntime = runtimeController.runtime;
     final resolvedThemeModeController =
         themeModeController ?? AppThemeModeController();
     final routeObserver = RouteObserver<ModalRoute<dynamic>>();
@@ -86,8 +89,13 @@ final class AppCompositionRoot {
           requiresWorkspace: false,
         ),
         icon: Icons.verified_user_outlined,
-        status: useDemoRoutes ? 'Shell' : 'Not configured',
-        builder: authFeatureBuilder(useDemoRoutes: useDemoRoutes),
+        status: useDemoRoutes
+            ? 'Shell'
+            : _authFeatureStatus(runtimeController.runtime),
+        builder: authFeatureBuilder(
+          useDemoRoutes: useDemoRoutes,
+          runtimeController: runtimeController,
+        ),
       ),
       _RouteFeatureDescriptor(
         id: 'topics',
@@ -100,7 +108,7 @@ final class AppCompositionRoot {
             : _runtimeFeatureStatus(resolvedRuntime, 'topics'),
         builder: topicsFeatureBuilder(
           useDemoRoutes: useDemoRoutes,
-          runtime: resolvedRuntime,
+          runtimeController: runtimeController,
         ),
       ),
       _RouteFeatureDescriptor(
@@ -117,7 +125,7 @@ final class AppCompositionRoot {
             : _runtimeFeatureStatus(resolvedRuntime, 'sources'),
         builder: sourcesFeatureBuilder(
           useDemoRoutes: useDemoRoutes,
-          runtime: resolvedRuntime,
+          runtimeController: runtimeController,
         ),
       ),
       _RouteFeatureDescriptor(
@@ -131,7 +139,7 @@ final class AppCompositionRoot {
             : _runtimeFeatureStatus(resolvedRuntime, 'feed'),
         builder: feedFeatureBuilder(
           useDemoRoutes: useDemoRoutes,
-          runtime: resolvedRuntime,
+          runtimeController: runtimeController,
         ),
       ),
       _RouteFeatureDescriptor(
@@ -148,7 +156,7 @@ final class AppCompositionRoot {
             : _runtimeFeatureStatus(resolvedRuntime, 'summaries'),
         builder: summariesFeatureBuilder(
           useDemoRoutes: useDemoRoutes,
-          runtime: resolvedRuntime,
+          runtimeController: runtimeController,
         ),
       ),
       _RouteFeatureDescriptor(
@@ -160,9 +168,12 @@ final class AppCompositionRoot {
           path: '/settings',
         ),
         icon: Icons.tune_outlined,
-        status: useDemoRoutes ? 'Shell' : 'Not configured',
+        status: useDemoRoutes
+            ? 'Shell'
+            : _runtimeSettingsStatus(resolvedRuntime),
         builder: settingsFeatureBuilder(
           useDemoRoutes: useDemoRoutes,
+          runtimeController: runtimeController,
           themeModeController: resolvedThemeModeController,
         ),
       ),
@@ -171,17 +182,27 @@ final class AppCompositionRoot {
     return AppCompositionRoot._(
       features: features,
       routeObserver: routeObserver,
-      runtime: resolvedRuntime,
+      runtimeController: runtimeController,
       themeModeController: resolvedThemeModeController,
       router: createAppRouter(
         features: features,
         observers: [routeObserver],
-        runtime: resolvedRuntime,
+        runtimeController: runtimeController,
         themeModeController: resolvedThemeModeController,
         initialLocation: initialLocation,
       ),
     );
   }
+}
+
+String _authFeatureStatus(AppShellRuntime runtime) {
+  if (runtime.session.isSignedIn && runtime.workspace.isAvailable) {
+    return 'Runtime';
+  }
+  if (runtime.availableWorkspaces.isNotEmpty) {
+    return 'Workspace required';
+  }
+  return 'Runtime not configured';
 }
 
 String _runtimeFeatureStatus(AppShellRuntime runtime, String featureKey) {
@@ -196,6 +217,17 @@ String _runtimeFeatureStatus(AppShellRuntime runtime, String featureKey) {
     return capability.disabledReasonCode ?? 'Disabled';
   }
   return 'API';
+}
+
+String _runtimeSettingsStatus(AppShellRuntime runtime) {
+  final capability = runtime.capabilities.capability('settings');
+  if (runtime.workspace.scope == null) {
+    return 'Workspace required';
+  }
+  if (capability.isDisabled) {
+    return capability.disabledReasonCode ?? 'Disabled';
+  }
+  return 'Runtime';
 }
 
 final class _RouteFeatureDescriptor implements AppFeatureDescriptor {

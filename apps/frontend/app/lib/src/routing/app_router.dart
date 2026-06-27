@@ -9,14 +9,16 @@ import 'feature_catalog.dart';
 GoRouter createAppRouter({
   required List<AppFeatureDescriptor> features,
   required List<NavigatorObserver> observers,
-  required AppShellRuntime runtime,
+  required AppRuntimeController runtimeController,
   required AppThemeModeController themeModeController,
   String initialLocation = AppRoutes.dashboard,
 }) {
   return GoRouter(
     initialLocation: initialLocation,
     observers: observers,
+    refreshListenable: runtimeController,
     redirect: (context, state) {
+      final runtime = runtimeController.runtime;
       final path = state.uri.path;
       if (!runtime.session.isSignedIn && path != AppRoutes.auth) {
         return AppRoutes.auth;
@@ -36,6 +38,7 @@ GoRouter createAppRouter({
     routes: [
       ShellRoute(
         builder: (context, state, child) {
+          final runtime = runtimeController.runtime;
           return AppShellPage(
             features: features,
             runtime: runtime,
@@ -49,7 +52,10 @@ GoRouter createAppRouter({
             path: AppRoutes.dashboard,
             pageBuilder: (context, state) => NoTransitionPage<void>(
               key: state.pageKey,
-              child: FeatureOverviewPage(features: features, runtime: runtime),
+              child: FeatureOverviewPage(
+                features: features,
+                runtime: runtimeController.runtime,
+              ),
             ),
           ),
           for (final feature in features)

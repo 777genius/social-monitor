@@ -14,70 +14,116 @@ import 'runtime_unavailable_feature_page.dart';
 
 typedef AppRouteWidgetBuilder = Widget Function(BuildContext context, Uri uri);
 
-AppRouteWidgetBuilder authFeatureBuilder({required bool useDemoRoutes}) {
-  return _featureBuilder(
-    useDemoRoutes: useDemoRoutes,
-    demoBuilder: (context) => const AuthFeatureRoute(),
-    title: 'Auth',
-  );
+AppRouteWidgetBuilder authFeatureBuilder({
+  required bool useDemoRoutes,
+  required AppRuntimeController runtimeController,
+}) {
+  if (useDemoRoutes) {
+    return (context, uri) => const AuthFeatureRoute();
+  }
+
+  return (context, uri) {
+    final runtime = runtimeController.runtime;
+    return AuthFeatureRoute.runtime(
+      userLabel: runtime.session.userLabel,
+      selectedScope: runtime.workspace.scope,
+      workspaces: [
+        for (final workspace in runtime.availableWorkspaces)
+          if (workspace.scope case final scope?)
+            (
+              scope: scope,
+              tenantName: workspace.tenantName,
+              workspaceName: workspace.workspaceName,
+              statusLabel: workspace.statusLabel,
+            ),
+      ],
+      onWorkspaceSelected: (scope) {
+        runtimeController.selectWorkspace(scope);
+        GoRouter.of(context).go('/');
+      },
+    );
+  };
 }
 
 AppRouteWidgetBuilder settingsFeatureBuilder({
   required bool useDemoRoutes,
+  required AppRuntimeController runtimeController,
   required AppThemeModeController themeModeController,
 }) {
-  return _featureBuilder(
-    useDemoRoutes: useDemoRoutes,
-    demoBuilder: (context) => AnimatedBuilder(
+  if (useDemoRoutes) {
+    return (context, uri) => AnimatedBuilder(
       animation: themeModeController,
       builder: (context, _) => SettingsFeatureRoute(
         themeMode: themeModeController.themeMode,
         onThemeModeChanged: themeModeController.setThemeMode,
       ),
-    ),
-    title: 'Settings',
-  );
+    );
+  }
+
+  return (context, uri) {
+    final runtime = runtimeController.runtime;
+    final scope = runtime.workspace.scope;
+    final capability = runtime.capabilities.capability('settings');
+    if (scope == null || capability.isDisabled) {
+      return const RuntimeUnavailableFeaturePage(title: 'Settings');
+    }
+    return AnimatedBuilder(
+      animation: themeModeController,
+      builder: (context, _) => SettingsFeatureRoute.runtime(
+        scope: scope,
+        workspaceRole: runtime.workspace.workspaceRole,
+        traceId: runtime.correlationId,
+        featureSnapshot: _featureSnapshot(runtime),
+        themeMode: themeModeController.themeMode,
+        onThemeModeChanged: themeModeController.setThemeMode,
+      ),
+    );
+  };
 }
 
 AppRouteWidgetBuilder topicsFeatureBuilder({
   required bool useDemoRoutes,
-  required AppShellRuntime runtime,
+  required AppRuntimeController runtimeController,
 }) {
   if (useDemoRoutes) {
     final demoBuilder = buildDemoTopicsFeature();
     return (context, uri) => demoBuilder(context);
   }
 
-  final scope = runtime.workspace.scope;
-  final generatedApiRuntime = runtime.generatedApiRuntime;
-  final capability = runtime.capabilities.capability('topics');
-  if (scope != null && generatedApiRuntime != null && capability.isEnabled) {
-    return (context, uri) => TopicsFeatureRoute.generatedApi(
-      generatedApiRuntime: generatedApiRuntime,
-      scope: scope,
-      onOpenTopicSources: (topicId, topicTitle) {
-        GoRouter.of(context).go(_topicSourcesPath(topicId, topicTitle));
-      },
-    );
-  }
+  return (context, uri) {
+    final runtime = runtimeController.runtime;
+    final scope = runtime.workspace.scope;
+    final generatedApiRuntime = runtime.generatedApiRuntime;
+    final capability = runtime.capabilities.capability('topics');
+    if (scope != null && generatedApiRuntime != null && capability.isEnabled) {
+      return TopicsFeatureRoute.generatedApi(
+        generatedApiRuntime: generatedApiRuntime,
+        scope: scope,
+        onOpenTopicSources: (topicId, topicTitle) {
+          GoRouter.of(context).go(_topicSourcesPath(topicId, topicTitle));
+        },
+      );
+    }
 
-  return (context, uri) => const RuntimeUnavailableFeaturePage(title: 'Topics');
+    return const RuntimeUnavailableFeaturePage(title: 'Topics');
+  };
 }
 
 AppRouteWidgetBuilder sourcesFeatureBuilder({
   required bool useDemoRoutes,
-  required AppShellRuntime runtime,
+  required AppRuntimeController runtimeController,
 }) {
   if (useDemoRoutes) {
     final demoBuilder = buildDemoSourcesFeature();
     return (context, uri) => demoBuilder(context);
   }
 
-  final scope = runtime.workspace.scope;
-  final generatedApiRuntime = runtime.generatedApiRuntime;
-  final capability = runtime.capabilities.capability('sources');
-  if (scope != null && generatedApiRuntime != null && capability.isEnabled) {
-    return (context, uri) {
+  return (context, uri) {
+    final runtime = runtimeController.runtime;
+    final scope = runtime.workspace.scope;
+    final generatedApiRuntime = runtime.generatedApiRuntime;
+    final capability = runtime.capabilities.capability('sources');
+    if (scope != null && generatedApiRuntime != null && capability.isEnabled) {
       final topicId = uri.queryParameters['topicId']?.trim();
       if (topicId != null && topicId.isNotEmpty) {
         return SourcesFeatureRoute.sourceBindings(
@@ -94,26 +140,26 @@ AppRouteWidgetBuilder sourcesFeatureBuilder({
         generatedApiRuntime: generatedApiRuntime,
         scope: scope,
       );
-    };
-  }
+    }
 
-  return (context, uri) =>
-      const RuntimeUnavailableFeaturePage(title: 'Sources');
+    return const RuntimeUnavailableFeaturePage(title: 'Sources');
+  };
 }
 
 AppRouteWidgetBuilder feedFeatureBuilder({
   required bool useDemoRoutes,
-  required AppShellRuntime runtime,
+  required AppRuntimeController runtimeController,
 }) {
   if (useDemoRoutes) {
     return (context, uri) => FeedFeatureRoute();
   }
 
-  final scope = runtime.workspace.scope;
-  final generatedApiRuntime = runtime.generatedApiRuntime;
-  final capability = runtime.capabilities.capability('feed');
-  if (scope != null && generatedApiRuntime != null && capability.isEnabled) {
-    return (context, uri) {
+  return (context, uri) {
+    final runtime = runtimeController.runtime;
+    final scope = runtime.workspace.scope;
+    final generatedApiRuntime = runtime.generatedApiRuntime;
+    final capability = runtime.capabilities.capability('feed');
+    if (scope != null && generatedApiRuntime != null && capability.isEnabled) {
       final topicId = uri.queryParameters['topicId']?.trim();
       final topicTitle = uri.queryParameters['topicTitle']?.trim();
       return FeedFeatureRoute.generatedApi(
@@ -124,44 +170,35 @@ AppRouteWidgetBuilder feedFeatureBuilder({
             ? topicTitle
             : null,
       );
-    };
-  }
+    }
 
-  return (context, uri) => const RuntimeUnavailableFeaturePage(title: 'Feed');
+    return const RuntimeUnavailableFeaturePage(title: 'Feed');
+  };
 }
 
 AppRouteWidgetBuilder summariesFeatureBuilder({
   required bool useDemoRoutes,
-  required AppShellRuntime runtime,
+  required AppRuntimeController runtimeController,
 }) {
   if (useDemoRoutes) {
     return (context, uri) => SummariesFeatureRoute();
   }
 
-  final scope = runtime.workspace.scope;
-  final generatedApiRuntime = runtime.generatedApiRuntime;
-  final capability = runtime.capabilities.capability('summaries');
-  if (scope != null && generatedApiRuntime != null && capability.isEnabled) {
-    return (context, uri) => SummariesFeatureRoute.generatedApi(
-      generatedApiRuntime: generatedApiRuntime,
-      scope: scope,
-      userId: runtime.session.userId,
-    );
-  }
+  return (context, uri) {
+    final runtime = runtimeController.runtime;
+    final scope = runtime.workspace.scope;
+    final generatedApiRuntime = runtime.generatedApiRuntime;
+    final capability = runtime.capabilities.capability('summaries');
+    if (scope != null && generatedApiRuntime != null && capability.isEnabled) {
+      return SummariesFeatureRoute.generatedApi(
+        generatedApiRuntime: generatedApiRuntime,
+        scope: scope,
+        userId: runtime.session.userId,
+      );
+    }
 
-  return (context, uri) =>
-      const RuntimeUnavailableFeaturePage(title: 'Summaries');
-}
-
-AppRouteWidgetBuilder _featureBuilder({
-  required bool useDemoRoutes,
-  required WidgetBuilder demoBuilder,
-  required String title,
-}) {
-  if (useDemoRoutes) {
-    return (context, uri) => demoBuilder(context);
-  }
-  return (context, uri) => RuntimeUnavailableFeaturePage(title: title);
+    return const RuntimeUnavailableFeaturePage(title: 'Summaries');
+  };
 }
 
 String _topicSourcesPath(String topicId, String topicTitle) {
@@ -169,4 +206,12 @@ String _topicSourcesPath(String topicId, String topicTitle) {
     path: '/sources',
     queryParameters: {'topicId': topicId, 'topicTitle': topicTitle},
   ).toString();
+}
+
+String _featureSnapshot(AppShellRuntime runtime) {
+  return runtime.capabilities.capabilities.entries
+      .where((entry) => entry.value.isEnabled)
+      .map((entry) => entry.key)
+      .toList(growable: false)
+      .join(',');
 }

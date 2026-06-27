@@ -19,6 +19,7 @@ void main() {
             workspaceId: 'workspace-demo',
             name: 'Competitor pricing',
             query: 'pricing OR plan change',
+            status: generated.TopicResponseDtoStatusStatus.active,
             createdAt: DateTime.utc(2026, 6, 23),
           ),
         ],
@@ -54,5 +55,20 @@ void main() {
     expect(generatedRequest.query, 'launch OR beta');
     expect(created.id, 'topic-created');
     expect(created.query, 'launch OR beta');
+  });
+
+  test('maps update request DTOs', () {
+    const mapper = GeneratedTopicRestMapper();
+    const request = UpdateTopicApiRequestDto(
+      scope: testWorkspaceScope,
+      id: 'topic-pricing',
+      name: 'Competitor pricing',
+      query: 'pricing OR plan',
+    );
+
+    final generatedRequest = mapper.updateTopic(request);
+
+    expect(generatedRequest.name, 'Competitor pricing');
+    expect(generatedRequest.query, 'pricing OR plan');
   });
 }

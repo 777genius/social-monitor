@@ -178,6 +178,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
 
   readonly topic: PrismaMonitoringClient['topic'] = {
     upsert: async () => unsupported('topic.upsert'),
+    updateMany: async () => unsupported('topic.updateMany'),
     findFirst: async () => unsupported('topic.findFirst'),
     findMany: async () => unsupported('topic.findMany'),
   };

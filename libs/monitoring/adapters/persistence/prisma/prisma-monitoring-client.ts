@@ -30,6 +30,8 @@ type PrismaScanSchedulerDecisionWriteData = {
   readonly causationId?: string | null;
 };
 
+type PrismaTopicStatus = 'ENABLED' | 'DISABLED' | 'ARCHIVED';
+
 export type PrismaMonitoringClient = {
   readonly topic: {
     upsert(args: {
@@ -37,6 +39,8 @@ export type PrismaMonitoringClient = {
       readonly update: {
         readonly name: string;
         readonly query: string;
+        readonly status?: PrismaTopicStatus;
+        readonly deletedAt?: Date | null;
       };
       readonly create: {
         readonly id: string;
@@ -44,8 +48,22 @@ export type PrismaMonitoringClient = {
         readonly workspaceId: string;
         readonly name: string;
         readonly query: string;
+        readonly status?: PrismaTopicStatus;
+        readonly deletedAt?: Date | null;
       };
     }): Promise<PrismaTopicRecord>;
+    updateMany(args: {
+      readonly where: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly deletedAt: null;
+      };
+      readonly data: {
+        readonly status: PrismaTopicStatus;
+        readonly deletedAt: Date;
+      };
+    }): Promise<unknown>;
     findFirst(args: {
       readonly where: {
         readonly tenantId: string;

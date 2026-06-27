@@ -48,6 +48,7 @@ import {
   FakeSourceCatalogAdapter,
   shouldIncludeFixtureSourceCatalogEntries,
 } from '../../adapters/source-catalog/fake-source-catalog.adapter';
+import { ArchiveTopicUseCase } from '../../features/archive-topic/archive-topic.use-case';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
 import { CreateSourceCredentialUseCase } from '../../features/create-source-credential/create-source-credential.use-case';
@@ -68,6 +69,7 @@ import { RevokeSourceCredentialUseCase } from '../../features/revoke-source-cred
 import { RotateSourceCredentialUseCase } from '../../features/rotate-source-credential/rotate-source-credential.use-case';
 import { ScheduleDueScansUseCase } from '../../features/schedule-due-scans/schedule-due-scans.use-case';
 import { SetScanPolicyUseCase } from '../../features/set-scan-policy/set-scan-policy.use-case';
+import { UpdateTopicUseCase } from '../../features/update-topic/update-topic.use-case';
 import {
   defaultMonitoringCapacityLimits,
   type MonitoringCapacityLimits,
@@ -344,6 +346,17 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
     {
       provide: ListTopicsUseCase,
       useFactory: (topics: TopicRepositoryPort) => new ListTopicsUseCase(topics),
+      inject: [MONITORING_TOPIC_REPOSITORY],
+    },
+    {
+      provide: UpdateTopicUseCase,
+      useFactory: (topics: TopicRepositoryPort) => new UpdateTopicUseCase(topics),
+      inject: [MONITORING_TOPIC_REPOSITORY],
+    },
+    {
+      provide: ArchiveTopicUseCase,
+      useFactory: (topics: TopicRepositoryPort) =>
+        new ArchiveTopicUseCase(topics, new SystemClock()),
       inject: [MONITORING_TOPIC_REPOSITORY],
     },
     {

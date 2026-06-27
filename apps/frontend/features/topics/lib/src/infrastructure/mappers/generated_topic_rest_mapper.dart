@@ -19,7 +19,7 @@ final class GeneratedTopicRestMapper {
       id: dto.id,
       name: dto.name,
       query: dto.query,
-      status: 'active',
+      status: dto.status.json ?? 'unknown',
       weeklyMentionCount: null,
     );
   }
@@ -43,6 +43,15 @@ final class GeneratedTopicRestMapper {
       query: request.query,
       status: dto.created ? 'active' : 'active',
       weeklyMentionCount: null,
+    );
+  }
+
+  generated.UpdateTopicRequestDto updateTopic(
+    UpdateTopicApiRequestDto request,
+  ) {
+    return generated.UpdateTopicRequestDto(
+      name: request.name,
+      query: request.query,
     );
   }
 }

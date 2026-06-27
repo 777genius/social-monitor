@@ -85,6 +85,7 @@ final class AppFrontendRuntimeConfig {
         tenantName: tenantName.trim(),
         workspaceName: workspaceName.trim(),
         statusLabel: 'Active',
+        workspaceRole: workspaceRole.trim(),
         scope: WorkspaceScope(
           tenantId: tenantId.trim(),
           workspaceId: workspaceId.trim(),
@@ -102,11 +103,7 @@ final class AppFrontendRuntimeConfig {
         'sources': FeatureCapability(key: 'sources', isEnabled: true),
         'feed': FeatureCapability(key: 'feed', isEnabled: true),
         'summaries': FeatureCapability(key: 'summaries', isEnabled: true),
-        'settings': FeatureCapability(
-          key: 'settings',
-          isEnabled: false,
-          disabledReasonCode: 'frontend_slice_pending',
-        ),
+        'settings': FeatureCapability(key: 'settings', isEnabled: true),
       }),
       correlationId: correlationId.trim(),
     );

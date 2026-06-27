@@ -29,7 +29,11 @@ void main() {
     composition.router.go('/auth');
     await tester.pumpAndSettle();
 
-    expect(find.text('Auth data is not connected yet'), findsOneWidget);
+    expect(find.text('Session restore failed'), findsOneWidget);
+    expect(
+      find.text('Runtime session is not configured with workspace access'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('redirects signed out users to auth route', (tester) async {
