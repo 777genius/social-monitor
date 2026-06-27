@@ -20,6 +20,12 @@ void main() {
     expect((result as ResultSuccess<String>).value, 'loaded');
   });
 
+  test('exposes source credential operations from the generated root client', () {
+    final restClient = SocialMonitorRestClient(Dio());
+
+    expect(restClient.sourceCredentials, isA<SourceCredentialsClient>());
+  });
+
   test('fails closed when workspace scope is missing', () async {
     var operationCalled = false;
 
