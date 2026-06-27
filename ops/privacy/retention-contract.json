@@ -194,6 +194,16 @@
       "purgeTrigger": "scan_lease_expired"
     },
     {
+      "table": "scan_scheduler_decisions",
+      "dataClass": "operational_scheduler_history",
+      "owner": "ingestion-owner",
+      "retentionDays": 90,
+      "deleteMode": "hard_delete_after_scheduler_history_window",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "scheduler_decision_history_window_expired"
+    },
+    {
       "table": "feed_items",
       "dataClass": "derived_content_index",
       "owner": "feed-owner",

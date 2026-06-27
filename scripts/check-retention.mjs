@@ -80,6 +80,7 @@ for (const operationalTable of [
   'scan_failure_queue_entries',
   'scan_attempts',
   'scan_leases',
+  'scan_scheduler_decisions',
   'summary_jobs',
   'realtime_events',
   'webhook_replay_deliveries',

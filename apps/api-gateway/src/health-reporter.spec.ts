@@ -9,6 +9,7 @@ const readinessProfiles: readonly SourceReadinessProfile[] = [
     state: 'enabled_beta',
     runtimeReadiness: 'fixture_ready',
     liveBetaBlockers: ['live credentials pending'],
+    liveEvidenceRequirements: [],
     freshnessGuard: makeFreshnessGuard({
       maxStalenessSeconds: 900,
       minimumScanIntervalSeconds: 900,
@@ -33,6 +34,7 @@ const readinessProfiles: readonly SourceReadinessProfile[] = [
     state: 'profiled',
     runtimeReadiness: 'deferred',
     liveBetaBlockers: ['scope pending'],
+    liveEvidenceRequirements: [],
     freshnessGuard: makeFreshnessGuard({
       maxStalenessSeconds: 86_400,
       minimumScanIntervalSeconds: 3_600,

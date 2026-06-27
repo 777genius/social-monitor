@@ -76,10 +76,21 @@ describe('Manual scan request workspace authorization (e2e)', () => {
       .set('idempotency-key', 'scan-request-auth-member')
       .expect(201);
 
-    expect(member.body).toEqual({
+    expect(member.body).toMatchObject({
       scanJobId: expect.any(String),
       status: 'enqueued',
       created: true,
+      requestDecision: {
+        decision: 'created',
+        reason: 'manual_scan_enqueued',
+        createdNewScan: true,
+        configuredIntervalSeconds: 300,
+        minimumIntervalSeconds: 60,
+        effectiveIntervalSeconds: 300,
+        freshnessSeconds: 900,
+        providerMinimumIntervalEnforced: false,
+        signals: ['manual_scan_enqueued'],
+      },
     });
   });
 
@@ -140,12 +151,24 @@ describe('Manual scan request workspace authorization (e2e)', () => {
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    expect(viewer.body).toEqual({
+    expect(viewer.body).toMatchObject({
       sourceBindingId: bindingId,
+      topicId: expect.any(String),
+      providerKey: 'fake-source',
+      sourceBindingStatus: 'enabled',
       windowStartedAt: expect.any(String),
       windowEndedAt: expect.any(String),
       truncated: false,
       maxScanJobs: 200,
+      cadence: {
+        providerKey: 'fake-source',
+        configuredIntervalSeconds: 300,
+        minimumIntervalSeconds: 60,
+        effectiveIntervalSeconds: 300,
+        configuredFreshnessSeconds: 900,
+        effectiveFreshnessSeconds: 900,
+        providerMinimumIntervalEnforced: false,
+      },
       summary: {
         providerHealthState: 'unknown',
         totalScans: 0,
@@ -162,6 +185,18 @@ describe('Manual scan request workspace authorization (e2e)', () => {
         daysWithScans: 0,
         daysWithFailures: 0,
         daysWithRateLimits: 0,
+        schedulerDecisionCount: 0,
+        schedulerEnqueuedCount: 0,
+        schedulerSkippedCount: 0,
+        schedulerSkippedByReason: {
+          activeScan: 0,
+          duplicateWindow: 0,
+          freshSuccess: 0,
+          providerFailureBackoff: 0,
+          queueBackpressure: 0,
+          rateLimitBackoff: 0,
+          sourceUnavailable: 0,
+        },
         operatorAction: 'wait_for_next_scan_or_trigger_manual_scan',
         signals: ['no_recent_scans'],
       },
