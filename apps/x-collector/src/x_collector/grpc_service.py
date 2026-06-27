@@ -22,6 +22,7 @@ from .domain import (
     XCollectorWarning,
     XPostMetrics,
 )
+from .health import XCollectorHealthMonitor
 from .ports import DailySearchCollectorPort
 
 
@@ -30,9 +31,11 @@ class XCollectorGrpcService(x_collector_pb2_grpc.XCollectorServiceServicer):
         self,
         collector: DailySearchCollectorPort,
         service_token: str | None = None,
+        health_monitor: XCollectorHealthMonitor | None = None,
     ) -> None:
         self._collector = collector
         self._service_token = service_token
+        self._health_monitor = health_monitor
 
     def CollectDailySearch(
         self,
@@ -51,7 +54,9 @@ class XCollectorGrpcService(x_collector_pb2_grpc.XCollectorServiceServicer):
                 "X collector unavailable",
             )
 
-        return response_to_proto(result)
+        return response_to_proto(
+            result_with_health_warnings(result, self._health_monitor),
+        )
 
     def CheckHealth(
         self,
@@ -61,12 +66,22 @@ class XCollectorGrpcService(x_collector_pb2_grpc.XCollectorServiceServicer):
         del request
         require_service_token(context, self._service_token)
 
+        warnings = (
+            self._health_monitor.warnings()
+            if self._health_monitor is not None
+            else ()
+        )
+        status = (
+            x_collector_pb2.X_COLLECTOR_HEALTH_STATUS_DEGRADED
+            if warnings
+            else x_collector_pb2.X_COLLECTOR_HEALTH_STATUS_SERVING
+        )
+
         return x_collector_pb2.CheckHealthResponse(
-            status=(
-                x_collector_pb2.X_COLLECTOR_HEALTH_STATUS_SERVING
-            ),
+            status=status,
             collector_engine="scweet",
             collector_version="scweet-5.3",
+            warnings=[warning_to_proto(warning) for warning in warnings],
         )
 
 
@@ -131,6 +146,25 @@ def response_to_proto(
         next_cursor=result.next_cursor or "",
         warnings=[warning_to_proto(warning) for warning in result.warnings],
         run=run_to_proto(result.run),
+    )
+
+
+def result_with_health_warnings(
+    result: DailySearchResult,
+    health_monitor: XCollectorHealthMonitor | None,
+) -> DailySearchResult:
+    if health_monitor is None:
+        return result
+
+    health_warnings = health_monitor.warnings()
+    if not health_warnings:
+        return result
+
+    return DailySearchResult(
+        posts=result.posts,
+        next_cursor=result.next_cursor,
+        warnings=(*result.warnings, *health_warnings),
+        run=result.run,
     )
 
 
@@ -245,4 +279,3 @@ def abort_collector_error(
         context.abort(grpc.StatusCode.UNAVAILABLE, str(exc))
 
     context.abort(grpc.StatusCode.UNKNOWN, "X collector failed")
-

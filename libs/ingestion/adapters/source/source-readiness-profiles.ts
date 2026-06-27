@@ -6,7 +6,9 @@ import {
   hackerNewsLiveEvidenceRequirements,
   redditLiveEvidenceRequirements,
   rssLiveEvidenceRequirements,
+  xTwitterLiveEvidenceRequirements,
 } from './source-live-evidence-requirements';
+import { isXCollectorRuntimeConfigured } from './x-twitter-experimental-daily/x-collector-runtime-config';
 
 export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   {
@@ -414,3 +416,25 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     rollbackPlan: 'Disable automation and keep manual import path only.',
   },
 ];
+
+export const sourceReadinessProfilesForRuntime = (
+  env: NodeJS.ProcessEnv,
+): readonly SourceReadinessProfile[] =>
+  sourceReadinessProfiles.map((profile) =>
+    profile.providerKey === 'x-twitter' && isXCollectorRuntimeConfigured(env)
+      ? xTwitterRuntimeReadyProfile(profile)
+      : profile,
+  );
+
+const xTwitterRuntimeReadyProfile = (
+  profile: SourceReadinessProfile,
+): SourceReadinessProfile => ({
+  ...profile,
+  state: 'enabled_beta',
+  runtimeReadiness: 'live_beta_ready',
+  liveBetaBlockers: [
+    'Daily account caps, x-collector health and rate-limit backoff evidence must be captured before broad rollout.',
+    'Rollback must disable X_COLLECTOR_ENABLED or remove X_COLLECTOR_GRPC_ADDRESS.',
+  ],
+  liveEvidenceRequirements: xTwitterLiveEvidenceRequirements,
+});

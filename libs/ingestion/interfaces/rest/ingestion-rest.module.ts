@@ -27,8 +27,10 @@ import { RedditSourceProvider } from '../../adapters/source/reddit/reddit-source
 import { StaticRedditTokenProvider } from '../../adapters/source/reddit/static-reddit-token-provider';
 import { FixtureRssClient } from '../../adapters/source/rss/fixture-rss-client';
 import { RssSourceProvider } from '../../adapters/source/rss/rss-source.provider';
-import { sourceReadinessProfiles } from '../../adapters/source/source-readiness-profiles';
+import { sourceReadinessProfilesForRuntime } from '../../adapters/source/source-readiness-profiles';
 import { selectRuntimeSourceProviders } from '../../adapters/source/source-provider-runtime-scope';
+import { isXCollectorRuntimeConfigured } from '../../adapters/source/x-twitter-experimental-daily/x-collector-runtime-config';
+import { xTwitterCapabilityProfile } from '../../adapters/source/x-twitter-experimental-daily/x-twitter-experimental-daily-source.provider';
 import { ListScanDeadLettersUseCase } from '../../features/list-scan-dead-letters/list-scan-dead-letters.use-case';
 import { ListSourceProfilesUseCase } from '../../features/list-source-profiles/list-source-profiles.use-case';
 import type { ScanFailureInspectionPort } from '../../ports';
@@ -170,13 +172,16 @@ import { SourceProfileController } from './source-profile.controller';
             ],
             process.env,
           ),
-          sourceReadinessProfiles,
+          sourceReadinessProfilesForRuntime(process.env),
           [
             {
               providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
               canonicalProviderKey: GITHUB_ISSUES_PROVIDER_KEY,
             },
           ],
+          isXCollectorRuntimeConfigured(process.env)
+            ? [xTwitterCapabilityProfile]
+            : [],
         ),
       inject: [
         FakeSourceProvider,

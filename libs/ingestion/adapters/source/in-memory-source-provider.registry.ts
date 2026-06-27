@@ -10,11 +10,13 @@ export class InMemorySourceProviderRegistry implements SourceProviderRegistryPor
   private readonly providers = new Map<ProviderKey, SourceProviderPort>();
   private readonly providerAliases = new Map<ProviderKey, ProviderKey>();
   private readonly readinessProfiles = new Map<ProviderKey, SourceReadinessProfile>();
+  private readonly capabilityProfiles = new Map<ProviderKey, SourceCapabilityProfile>();
 
   constructor(
     providers: readonly SourceProviderPort[],
     readinessProfiles: readonly SourceReadinessProfile[],
     aliases: readonly SourceProviderAlias[] = [],
+    capabilityProfiles: readonly SourceCapabilityProfile[] = [],
   ) {
     for (const provider of providers) {
       this.providers.set(provider.key(), provider);
@@ -27,6 +29,10 @@ export class InMemorySourceProviderRegistry implements SourceProviderRegistryPor
     for (const profile of readinessProfiles) {
       this.readinessProfiles.set(profile.providerKey, profile);
     }
+
+    for (const profile of capabilityProfiles) {
+      this.capabilityProfiles.set(profile.providerKey, profile);
+    }
   }
 
   async getProvider(providerKey: ProviderKey): Promise<SourceProviderPort | null> {
@@ -34,7 +40,12 @@ export class InMemorySourceProviderRegistry implements SourceProviderRegistryPor
   }
 
   async listCapabilityProfiles(): Promise<readonly SourceCapabilityProfile[]> {
-    return [...this.providers.values()].map((provider) => provider.capabilityProfile());
+    const profiles = new Map(this.capabilityProfiles);
+    for (const provider of this.providers.values()) {
+      profiles.set(provider.key(), provider.capabilityProfile());
+    }
+
+    return [...profiles.values()];
   }
 
   async getReadinessProfile(providerKey: ProviderKey): Promise<SourceReadinessProfile | null> {

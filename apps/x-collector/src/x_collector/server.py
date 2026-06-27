@@ -10,10 +10,16 @@ from x_collector.v1 import x_collector_pb2_grpc
 
 from .config import XCollectorSettings
 from .grpc_service import XCollectorGrpcService
+from .health import (
+    XCollectorHealthMonitor,
+    install_scweet_manifest_health_monitor,
+)
 from .scweet_adapter import ScweetDailySearchCollector
 
 
 def create_server(settings: XCollectorSettings) -> grpc.Server:
+    health_monitor = XCollectorHealthMonitor()
+    install_scweet_manifest_health_monitor(health_monitor)
     collector = ScweetDailySearchCollector.from_settings(settings)
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=settings.max_workers),
@@ -22,6 +28,7 @@ def create_server(settings: XCollectorSettings) -> grpc.Server:
         XCollectorGrpcService(
             collector,
             service_token=settings.service_token,
+            health_monitor=health_monitor,
         ),
         server,
     )
@@ -46,4 +53,3 @@ def main() -> None:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     server.wait_for_termination()
-

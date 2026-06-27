@@ -48,4 +48,35 @@ describe('InMemorySourceProviderRegistry', () => {
       expect.objectContaining({ providerKey: 'fake-source' }),
     );
   });
+
+  it('can expose runtime capability profiles without registering a scan provider', async () => {
+    const registry = new InMemorySourceProviderRegistry(
+      [],
+      sourceReadinessProfiles,
+      [],
+      [
+        {
+          providerKey: 'x-twitter',
+          displayName: 'X/Twitter',
+          version: 1,
+          productionSafe: true,
+          supportedContentUnits: ['post'],
+          supportedQueryModes: ['search'],
+          cursorModel: 'opaque',
+          stableIdentity: ['providerId'],
+          quotaModel: 'per_credential',
+          limitations: ['Backed by x-collector runtime.'],
+        },
+      ],
+    );
+
+    await expect(registry.getProvider('x-twitter')).resolves.toBeNull();
+    await expect(registry.listCapabilityProfiles()).resolves.toEqual([
+      expect.objectContaining({
+        providerKey: 'x-twitter',
+        productionSafe: true,
+        supportedQueryModes: ['search'],
+      }),
+    ]);
+  });
 });

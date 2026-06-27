@@ -5,7 +5,7 @@ describe('aiDeveloperSignalSourcePreset', () => {
   it('contains valid source targets for the subscription catalog', () => {
     const catalog = new StaticSourceTargetCatalogAdapter();
 
-    expect(aiDeveloperSignalSourcePreset.entries).toHaveLength(24);
+    expect(aiDeveloperSignalSourcePreset.entries).toHaveLength(32);
     for (const entry of aiDeveloperSignalSourcePreset.entries) {
       expect(catalog.validateTarget({
         providerKey: entry.providerKey,

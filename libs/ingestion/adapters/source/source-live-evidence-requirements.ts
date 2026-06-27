@@ -23,6 +23,8 @@ const trendingPageEvidenceCommand =
 const trendingPageEvidenceEnv = 'GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH';
 const redditEvidenceCommand = 'npm run capture:live-reddit-oauth';
 const redditEvidenceEnv = 'REDDIT_LIVE_EVIDENCE_PATH';
+const xTwitterEvidenceCommand = 'X_COLLECTOR_REAL_E2E=1 npm run x-collector:test';
+const xTwitterEvidenceEnv = 'X_COLLECTOR_LIVE_EVIDENCE_PATH';
 
 export const hackerNewsLiveEvidenceRequirements = [
   liveEvidenceRequirement(
@@ -177,5 +179,26 @@ export const redditLiveEvidenceRequirements = [
     'Reddit refresh-token create, rotate, revoke and redacted preview are proven.',
     redditEvidenceCommand,
     redditEvidenceEnv,
+  ),
+] as const;
+
+export const xTwitterLiveEvidenceRequirements = [
+  liveEvidenceRequirement(
+    'x-collector-live-search-smoke',
+    'x-collector returns normalized top/latest public X posts for a configured search topic.',
+    xTwitterEvidenceCommand,
+    xTwitterEvidenceEnv,
+  ),
+  liveEvidenceRequirement(
+    'x-collector-rate-limit-backoff',
+    'Daily account caps, cooldowns and retryable rate-limit behavior are recorded.',
+    xTwitterEvidenceCommand,
+    xTwitterEvidenceEnv,
+  ),
+  liveEvidenceRequirement(
+    'x-collector-provider-failure-classification',
+    'gRPC failures are classified without leaking cookies, tokens or raw provider payloads.',
+    xTwitterEvidenceCommand,
+    xTwitterEvidenceEnv,
   ),
 ] as const;

@@ -10,6 +10,7 @@ import { InMemoryUserRelevanceProfileRepository } from "@social-monitor/relevanc
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import {
   FixedClock,
+  SystemClock,
   type Clock,
   type DomainError,
   type IdGenerator,
@@ -79,6 +80,8 @@ import { HttpRssClient } from "../libs/ingestion/adapters/source/rss/http-rss-cl
 import { RssSourceProvider } from "../libs/ingestion/adapters/source/rss/rss-source.provider";
 import { RegistrySourceFetcherAdapter } from "../libs/ingestion/adapters/source/registry-source-fetcher.adapter";
 import { sourceReadinessProfiles } from "../libs/ingestion/adapters/source/source-readiness-profiles";
+import { GrpcXDailyCollectorClient } from "../libs/ingestion/adapters/source/x-twitter-experimental-daily/grpc-x-daily-collector-client";
+import { XTwitterSourceProvider } from "../libs/ingestion/adapters/source/x-twitter-experimental-daily/x-twitter-experimental-daily-source.provider";
 import { ExecuteScanUseCase } from "../libs/ingestion/features/execute-scan/execute-scan.use-case";
 import type {
   FetchSourceItemsCommand,
@@ -98,7 +101,8 @@ type LiveProviderKey =
   | "github-issues"
   | "github-trending-page"
   | "hacker-news"
-  | "rss";
+  | "rss"
+  | "x-twitter";
 
 type ScanTarget = {
   readonly providerKey: LiveProviderKey;
@@ -151,6 +155,12 @@ const maxSummaryKeyPoints = readPositiveIntegerEnv(
   10,
   1,
   10,
+);
+const xTwitterMaxItems = readPositiveIntegerEnv(
+  "LIVE_MULTI_PROVIDER_X_MAX_ITEMS",
+  30,
+  1,
+  100,
 );
 const allowEmptyTargets = readBooleanEnv(
   "LIVE_MULTI_PROVIDER_ALLOW_EMPTY_TARGETS",
@@ -266,6 +276,7 @@ const main = async (): Promise<void> => {
   const clock = new FixedClock(sampledAt);
   const scanIds = new SequenceIdGenerator("live-multi-provider-source-item");
   const targets = buildScanTargets();
+  const xTwitterProvider = buildXTwitterProvider();
   const targetBySourceBinding = new Map(
     targets.map((target) => [target.sourceBindingId, target]),
   );
@@ -284,6 +295,7 @@ const main = async (): Promise<void> => {
           ),
           new HackerNewsSourceProvider(new HttpHackerNewsClient(timeoutMs)),
           new RssSourceProvider(new HttpRssClient(timeoutMs)),
+          ...(xTwitterProvider === undefined ? [] : [xTwitterProvider]),
         ],
         sourceReadinessProfiles,
       ),
@@ -293,7 +305,12 @@ const main = async (): Promise<void> => {
         ),
       ),
     ),
-    new Map(targets.map((target) => [target.providerKey, maxItemsPerProvider])),
+    new Map(
+      targets.map((target) => [
+        target.providerKey,
+        maxItemsForProvider(target.providerKey),
+      ]),
+    ),
   );
   const executeScan = new ExecuteScanUseCase(
     sourceFetcher,
@@ -314,7 +331,7 @@ const main = async (): Promise<void> => {
       await executeScan.execute({
         tenantId: tenant,
         workspaceId: workspace,
-        scanJobId: `scan-live-multi-provider-${target.providerKey}`,
+        scanJobId: `scan-live-multi-provider-${target.sourceBindingId}`,
         topicId,
         sourceBindingId: target.sourceBindingId,
         scanPolicyId: target.scanPolicyId,
@@ -405,7 +422,7 @@ const main = async (): Promise<void> => {
       includeRisks: true,
       includeSourceHighlights: true,
       customInstructions:
-        "Compare signals across Reddit, GitHub, Hacker News and RSS for the selected monitoring topic.",
+        "Compare signals across Reddit, GitHub, Hacker News, RSS and X/Twitter for the selected monitoring topic.",
       createdAt: sampledAt,
       updatedAt: sampledAt,
     }),
@@ -628,7 +645,7 @@ const runLiveReaderSummarySmoke = async (params: {
       includeRepeatedSignals: true,
       dedupeStrategy: "canonical_url_then_title",
       customInstructions:
-        "Build a reader-friendly workspace readerSummary across Reddit, GitHub, Hacker News and RSS.",
+        "Build a reader-friendly workspace readerSummary across Reddit, GitHub, Hacker News, RSS and X/Twitter.",
       createdAt: sampledAt,
       updatedAt: sampledAt,
     }),
@@ -828,6 +845,12 @@ const buildScanTargets = (): readonly ScanTarget[] => {
     readOptionalEnv("LIVE_MULTI_PROVIDER_RSS_URL") ??
     "https://hnrss.org/frontpage";
   const githubAccessToken = readOptionalEnv("GITHUB_ACCESS_TOKEN");
+  const includeXTwitter = shouldIncludeXTwitterTargets();
+  const xTwitterQueries = readCsvEnv("LIVE_MULTI_PROVIDER_X_QUERIES") ?? [
+    "openai",
+    "claude ai",
+    "ai coding agents",
+  ];
 
   return [
     ...subreddits.map(
@@ -891,8 +914,68 @@ const buildScanTargets = (): readonly ScanTarget[] => {
       sourceQuery: { mode: "url", query: rssFeedUrl },
       config: {},
     },
+    ...(
+      includeXTwitter
+        ? xTwitterQueries.map((query, index): ScanTarget => ({
+            providerKey: "x-twitter",
+            sourceBindingId: `source-binding-live-multi-provider-x-twitter-${index + 1}-${safeIdPart(query)}`,
+            scanPolicyId: `scan-policy-live-multi-provider-x-twitter-${index + 1}-${safeIdPart(query)}`,
+            sourceQuery: { mode: "search", query },
+            config: {
+              language: "en",
+              windowHours: 24,
+              searchProducts: ["top", "latest"],
+              maxItems: xTwitterMaxItems,
+              limitPerProduct: Math.max(50, xTwitterMaxItems),
+              minLikes: 10,
+              minRetweets: 0,
+              minReplies: 0,
+            },
+          }))
+        : []
+    ),
   ];
 };
+
+const buildXTwitterProvider = (): XTwitterSourceProvider | undefined => {
+  if (!shouldIncludeXTwitterTargets()) {
+    return undefined;
+  }
+
+  const address = readOptionalEnv("X_COLLECTOR_GRPC_ADDRESS");
+  if (address === undefined) {
+    throw new Error(
+      "X_COLLECTOR_GRPC_ADDRESS is required when X/Twitter live summary targets are enabled",
+    );
+  }
+
+  const clock = new SystemClock();
+  return new XTwitterSourceProvider(
+    GrpcXDailyCollectorClient.connect({
+      address,
+      clock,
+      options: {
+        timeoutMs: readPositiveIntegerEnv(
+          "X_COLLECTOR_GRPC_TIMEOUT_MS",
+          120_000,
+          1_000,
+          300_000,
+        ),
+        serviceToken: readOptionalEnv("X_COLLECTOR_SERVICE_TOKEN"),
+      },
+    }),
+    clock,
+  );
+};
+
+const shouldIncludeXTwitterTargets = (): boolean =>
+  readBooleanEnv(
+    "LIVE_MULTI_PROVIDER_INCLUDE_X_TWITTER",
+    readOptionalEnv("X_COLLECTOR_GRPC_ADDRESS") !== undefined,
+  );
+
+const maxItemsForProvider = (providerKey: LiveProviderKey): number =>
+  providerKey === "x-twitter" ? xTwitterMaxItems : maxItemsPerProvider;
 
 const writeOptionalFrontendFixture = (input: {
   readonly tenantId: string;

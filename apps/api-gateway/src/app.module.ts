@@ -3,7 +3,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { DeliveryRestModule } from '@social-monitor/delivery/interfaces/rest/delivery-rest.module';
 import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.module';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
-import { sourceReadinessProfiles } from '@social-monitor/ingestion/adapters/source/source-readiness-profiles';
+import { sourceReadinessProfilesForRuntime } from '@social-monitor/ingestion/adapters/source/source-readiness-profiles';
 import { IngestionRestModule } from '@social-monitor/ingestion/interfaces/rest/ingestion-rest.module';
 import { LaunchRestModule } from '@social-monitor/launch/interfaces/rest/launch-rest.module';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
@@ -52,7 +52,8 @@ import { RequestContextMiddleware } from './request-context.middleware';
     },
     {
       provide: API_GATEWAY_SOURCE_READINESS_PROFILES,
-      useValue: sourceReadinessProfiles,
+      useFactory: (): ReturnType<typeof sourceReadinessProfilesForRuntime> =>
+        sourceReadinessProfilesForRuntime(process.env),
     },
     {
       provide: APP_FILTER,

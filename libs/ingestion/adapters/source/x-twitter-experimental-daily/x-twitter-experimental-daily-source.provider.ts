@@ -26,7 +26,7 @@ export const X_TWITTER_PROVIDER_KEY = 'x-twitter';
 export const X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER_KEY =
   'x-twitter-experimental-daily';
 
-const capabilityProfile: SourceCapabilityProfile = {
+export const xTwitterCapabilityProfile: SourceCapabilityProfile = {
   providerKey: X_TWITTER_PROVIDER_KEY,
   displayName: 'X/Twitter',
   version: 1,
@@ -49,11 +49,11 @@ export class XTwitterSourceProvider implements SourceProviderPort {
   ) {}
 
   key(): string {
-    return capabilityProfile.providerKey;
+    return xTwitterCapabilityProfile.providerKey;
   }
 
   capabilityProfile(): SourceCapabilityProfile {
-    return capabilityProfile;
+    return xTwitterCapabilityProfile;
   }
 
   validateBinding(query: SourceQuery): SourceProviderValidationResult {

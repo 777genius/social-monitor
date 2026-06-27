@@ -41,6 +41,17 @@ const rssConfig = {
   maxItems: 15,
 } as const;
 
+const xTwitterDailyConfig = {
+  language: 'en',
+  windowHours: 24,
+  searchProducts: ['top', 'latest'],
+  maxItems: 30,
+  limitPerProduct: 50,
+  minLikes: 10,
+  minRetweets: 0,
+  minReplies: 0,
+} as const;
+
 export const aiDeveloperSignalSourcePreset = {
   presetId: 'ai-developer-signal-v1',
   displayName: 'AI developer signal',
@@ -89,6 +100,21 @@ export const aiDeveloperSignalSourcePreset = {
       targetKind: 'search_query',
       targetValue: query,
       targetConfig: hnSearchConfig,
+    })),
+    ...[
+      'openai',
+      'claude ai',
+      'ai coding agents',
+      'claude code codex cursor',
+      'flutter dart',
+      'javascript node',
+      'python developer tools',
+      'cybersecurity',
+    ].map((query): SourceTargetPresetEntry => ({
+      providerKey: 'x-twitter',
+      targetKind: 'search_query',
+      targetValue: query,
+      targetConfig: xTwitterDailyConfig,
     })),
     ...[
       'https://hnrss.org/best',

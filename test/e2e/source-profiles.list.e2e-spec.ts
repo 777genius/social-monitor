@@ -75,4 +75,63 @@ describe('Source profiles list (e2e)', () => {
       ]),
     );
   });
+
+  it('exposes X/Twitter capability when x-collector runtime is configured', async () => {
+    const previousEnabled = process.env.X_COLLECTOR_ENABLED;
+    const previousAddress = process.env.X_COLLECTOR_GRPC_ADDRESS;
+    process.env.X_COLLECTOR_ENABLED = '1';
+    process.env.X_COLLECTOR_GRPC_ADDRESS = '127.0.0.1:50051';
+
+    let runtimeApp: INestApplication | undefined;
+    try {
+      const moduleRef = await Test.createTestingModule({
+        imports: [AppModule],
+      }).compile();
+
+      runtimeApp = moduleRef.createNestApplication();
+      runtimeApp.useGlobalPipes(
+        new ValidationPipe({
+          whitelist: true,
+          forbidNonWhitelisted: true,
+          transform: true,
+        }),
+      );
+      await runtimeApp.init();
+
+      const response = await request(runtimeApp.getHttpServer())
+        .get('/sources/profiles')
+        .expect(200);
+
+      expect(response.body.sources).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            providerKey: 'x-twitter',
+            displayName: 'X/Twitter',
+            productionSafe: true,
+            readinessState: 'enabled_beta',
+            runtimeReadiness: 'live_beta_ready',
+            supportedQueryModes: ['search'],
+            liveEvidenceRequirements: expect.arrayContaining([
+              expect.objectContaining({
+                signalId: 'x-collector-live-search-smoke',
+              }),
+            ]),
+          }),
+        ]),
+      );
+    } finally {
+      await runtimeApp?.close();
+      restoreEnvValue('X_COLLECTOR_ENABLED', previousEnabled);
+      restoreEnvValue('X_COLLECTOR_GRPC_ADDRESS', previousAddress);
+    }
+  });
 });
+
+const restoreEnvValue = (key: string, value: string | undefined): void => {
+  if (value === undefined) {
+    delete process.env[key];
+    return;
+  }
+
+  process.env[key] = value;
+};
