@@ -40,16 +40,22 @@ async function main(): Promise<void> {
 
   try {
     const tenant = tenantId('tenant-summary-feedback-rest-smoke');
+    const otherTenant = tenantId('tenant-summary-feedback-rest-other');
     const workspace = workspaceId('workspace-summary-feedback-rest-smoke');
     const summaryId = 'summary-feedback-rest-smoke';
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
     };
+    const otherTenantHeaders = {
+      ...headers,
+      'x-tenant-id': otherTenant,
+    };
     const summaries = moduleRef.get(InMemorySummaryArtifactRepository);
     const feedback = moduleRef.get(InMemorySummaryFeedbackRepository);
 
     await summaries.save(createSummary({ tenantId: tenant, workspaceId: workspace, summaryId }));
+    await summaries.save(createSummary({ tenantId: otherTenant, workspaceId: workspace, summaryId }));
     await feedback.save(createFeedback({
       id: 'feedback-rest-older',
       tenantId: tenant,
@@ -70,6 +76,13 @@ async function main(): Promise<void> {
       workspaceId: workspaceId('workspace-summary-feedback-rest-other'),
       summaryId,
       createdAt: new Date('2026-06-06T12:00:00.000Z'),
+    }));
+    await feedback.save(createFeedback({
+      id: 'feedback-rest-other-tenant',
+      tenantId: otherTenant,
+      workspaceId: workspace,
+      summaryId,
+      createdAt: new Date('2026-06-06T13:00:00.000Z'),
     }));
 
     const firstPage = await request(app.getHttpServer())
@@ -99,6 +112,19 @@ async function main(): Promise<void> {
       'summary feedback REST cursor must not leak other workspace feedback',
     );
     assert(secondPage.body.nextCursor === undefined, 'summary feedback REST final page must omit cursor');
+
+    const otherTenantPage = await request(app.getHttpServer())
+      .get(`/summaries/${summaryId}/feedback`)
+      .query({ limit: 10 })
+      .set(otherTenantHeaders)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    assert(
+      otherTenantPage.body.items.length === 1 &&
+        otherTenantPage.body.items[0].feedbackId === 'feedback-rest-other-tenant',
+      'summary feedback REST must keep same summary ids isolated by tenant',
+    );
 
     await request(app.getHttpServer())
       .get(`/summaries/${summaryId}/feedback`)

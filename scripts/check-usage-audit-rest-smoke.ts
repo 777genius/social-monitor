@@ -38,10 +38,15 @@ async function main(): Promise<void> {
 
   try {
     const tenant = tenantId('tenant-usage-audit-rest-smoke');
+    const otherTenant = tenantId('tenant-usage-audit-rest-other');
     const workspace = workspaceId('workspace-usage-audit-rest-smoke');
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
+    };
+    const otherTenantHeaders = {
+      ...headers,
+      'x-tenant-id': otherTenant,
     };
     const auditLog = moduleRef.get(InMemoryPublicApiAuditLog);
 
@@ -84,6 +89,18 @@ async function main(): Promise<void> {
       metadata: { source: 'rest-smoke' },
       occurredAt: new Date('2026-06-07T12:00:00.000Z'),
     });
+    await auditLog.append({
+      id: 'audit-rest-other-tenant',
+      tenantId: otherTenant,
+      workspaceId: workspace,
+      actorType: 'api_key',
+      actorId: 'api-key-1',
+      action: 'feed.list',
+      outcome: 'succeeded',
+      resourceType: 'feed',
+      metadata: { source: 'rest-smoke' },
+      occurredAt: new Date('2026-06-07T13:00:00.000Z'),
+    });
 
     const firstPage = await request(app.getHttpServer())
       .get('/usage/audit-events')
@@ -120,6 +137,19 @@ async function main(): Promise<void> {
     assert(
       secondPage.body.auditEvents[0].id === 'audit-rest-older',
       'usage audit REST cursor must not leak other workspace events',
+    );
+
+    const otherTenantPage = await request(app.getHttpServer())
+      .get('/usage/audit-events')
+      .query({ actorType: 'api_key', actorId: 'api-key-1', action: 'feed.list', limit: 10 })
+      .set(otherTenantHeaders)
+      .set('x-workspace-role', 'admin')
+      .expect(200);
+
+    assert(
+      otherTenantPage.body.auditEvents.length === 1 &&
+        otherTenantPage.body.auditEvents[0].id === 'audit-rest-other-tenant',
+      'usage audit REST must keep same actor/action events isolated by tenant',
     );
 
     await request(app.getHttpServer())
