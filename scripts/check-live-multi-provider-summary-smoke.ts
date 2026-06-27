@@ -118,6 +118,7 @@ type ScanMetrics = {
 
 type LiveBriefingSmokeResult = {
   readonly briefingId: string;
+  readonly readerHeadline: string;
   readonly selectedProviders: readonly LiveProviderKey[];
   readonly citedProviders: readonly string[];
   readonly readerSourceMixProviders: readonly string[];
@@ -573,6 +574,7 @@ const main = async (): Promise<void> => {
       `Summary id: ${summary.summaryId}`,
       `Headline: ${artifactSnapshot.headline}`,
       `Briefing id: ${briefing.briefingId}`,
+      `Briefing headline: ${briefing.readerHeadline}`,
       `Briefing selected providers: ${briefing.selectedProviders.join(", ")}`,
       `Briefing reader source mix: ${briefing.readerSourceMixProviders.join(", ")}`,
       `Briefing top read providers: ${briefing.topReadProviders.join(", ")}`,
@@ -727,6 +729,16 @@ const runLiveBriefingSmoke = async (params: {
   const topReadProviders = new Set(
     readerBrief.topReads.map((item) => item.providerKey),
   );
+  const firstTopReadTitle = readerBrief.topReads[0]?.title;
+
+  assert(
+    readerBrief.headline.startsWith("Workspace briefing:"),
+    `briefing reader headline must be reader-facing, got ${readerBrief.headline}`,
+  );
+  assert(
+    firstTopReadTitle === undefined || readerBrief.headline !== firstTopReadTitle,
+    "briefing reader headline must not repeat the first top read title",
+  );
 
   for (const target of params.targets) {
     assert(
@@ -756,6 +768,7 @@ const runLiveBriefingSmoke = async (params: {
 
   return {
     briefingId: briefing.readerSummaryId,
+    readerHeadline: readerBrief.headline,
     selectedProviders: [...selectedProviders].sort(),
     citedProviders: [...citedProviders].sort(),
     readerSourceMixProviders: [...readerSourceMixProviders].sort(),

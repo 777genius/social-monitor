@@ -10,6 +10,7 @@ import type {
   ProviderReaderSummaryAttempt,
 } from "../../ports";
 import { buildReaderSummary } from "../../domain";
+import { buildReaderHeadline } from "./deterministic-reader-summary-headline";
 
 const route: ReaderSummaryModelRoute = {
   provider: "deterministic-local",
@@ -191,7 +192,7 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
       : [];
 
     const draft = {
-      headline: firstItem.title,
+      headline: buildReaderHeadline(input, selectedEvidence),
       executiveSummary: buildExecutiveSummary(input),
       topStories,
       topicHighlights,

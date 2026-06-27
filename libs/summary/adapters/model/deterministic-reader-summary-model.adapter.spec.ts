@@ -33,6 +33,11 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
       ),
     ).toBe(true);
     expect(attempt.draft.content).toBeDefined();
+    expect(attempt.draft.headline).toBe(
+      "Workspace briefing: 10 stories across 5 sources (RSS, GitHub Trending, Hacker News + 2 more)",
+    );
+    expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
+    expect(attempt.draft.headline).not.toBe("rss story 1");
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
     ).toContain("github-issues");
