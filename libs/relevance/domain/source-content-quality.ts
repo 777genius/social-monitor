@@ -15,7 +15,9 @@ export type SourceContentQualityFlag =
   | "media_only_without_context"
   | "needs_link_context"
   | "official_account"
+  | "personal_medical_anecdote"
   | "prediction_market_rumor"
+  | "rumor_only"
   | "trusted_author"
   | "tco_only"
   | "url_only"
@@ -111,6 +113,14 @@ export class SourceContentQualityPolicy {
       flags.add("prediction_market_rumor");
     }
 
+    if (normalized.rumorOnly) {
+      flags.add("rumor_only");
+    }
+
+    if (normalized.personalMedicalAnecdote) {
+      flags.add("personal_medical_anecdote");
+    }
+
     if (normalized.weakTopicMatch) {
       flags.add("weak_topic_match");
     }
@@ -128,7 +138,9 @@ export class SourceContentQualityPolicy {
         (normalized.cryptoPromo ? 0.5 : 0) -
         (normalized.engagementBait ? 0.2 : 0) -
         (normalized.genericQuestion ? 0.12 : 0) -
-        (normalized.predictionMarketRumor ? 0.18 : 0),
+        (normalized.predictionMarketRumor ? 0.18 : 0) -
+        (normalized.rumorOnly ? 0.24 : 0) -
+        (normalized.personalMedicalAnecdote ? 0.34 : 0),
     );
     const topicRelevanceScore = clampScore(
       normalized.topicTerms.length === 0
@@ -144,6 +156,8 @@ export class SourceContentQualityPolicy {
         (normalized.cryptoPromo ? 0.5 : 0) -
         (normalized.engagementBait ? 0.26 : 0) -
         (normalized.predictionMarketRumor ? 0.34 : 0) -
+        (normalized.rumorOnly ? 0.32 : 0) -
+        (normalized.personalMedicalAnecdote ? 0.42 : 0) -
         (normalized.weakTopicMatch ? 0.24 : 0),
     );
     const decision = decide({
@@ -239,11 +253,23 @@ const evaluateNonXSource = (
   if (normalized.weakTopicMatch) {
     flags.add("weak_topic_match");
   }
+  if (normalized.predictionMarketRumor) {
+    flags.add("prediction_market_rumor");
+  }
+  if (normalized.rumorOnly) {
+    flags.add("rumor_only");
+  }
+  if (normalized.personalMedicalAnecdote) {
+    flags.add("personal_medical_anecdote");
+  }
 
   const qualityScore = clampScore(
     0.95 -
       (normalized.lowInformationDensity ? 0.12 : 0) -
-      (normalized.weakTopicMatch ? 0.16 : 0),
+      (normalized.weakTopicMatch ? 0.16 : 0) -
+      (normalized.predictionMarketRumor ? 0.22 : 0) -
+      (normalized.rumorOnly ? 0.28 : 0) -
+      (normalized.personalMedicalAnecdote ? 0.42 : 0),
   );
   const topicRelevanceScore = clampScore(
     normalized.topicTerms.length === 0
@@ -252,8 +278,19 @@ const evaluateNonXSource = (
         ? 0.38
         : 0.9,
   );
-  const engagementIntegrityScore = 0.92;
-  const decision = normalized.weakTopicMatch ? "downrank" : "promote";
+  const engagementIntegrityScore = clampScore(
+    0.92 -
+      (normalized.predictionMarketRumor ? 0.28 : 0) -
+      (normalized.rumorOnly ? 0.34 : 0) -
+      (normalized.personalMedicalAnecdote ? 0.46 : 0),
+  );
+  const decision =
+    normalized.weakTopicMatch ||
+    normalized.predictionMarketRumor ||
+    normalized.rumorOnly ||
+    normalized.personalMedicalAnecdote
+      ? "downrank"
+      : "promote";
 
   return finalizeVerdict({
     qualityScore,
@@ -261,7 +298,11 @@ const evaluateNonXSource = (
     engagementIntegrityScore,
     decision,
     flags: [...flags],
-    needsLlmReview: normalized.weakTopicMatch,
+    needsLlmReview:
+      normalized.weakTopicMatch ||
+      normalized.predictionMarketRumor ||
+      normalized.rumorOnly ||
+      normalized.personalMedicalAnecdote,
     reason:
       flags.size === 0
         ? "Provider-native quality signal with topic match"
@@ -302,7 +343,9 @@ const decide = (params: {
     params.engagementIntegrityScore < 0.58 ||
     params.normalized.engagementBait ||
     params.normalized.genericQuestion ||
-    params.normalized.predictionMarketRumor
+    params.normalized.predictionMarketRumor ||
+    params.normalized.rumorOnly ||
+    params.normalized.personalMedicalAnecdote
   ) {
     return "downrank";
   }
@@ -337,7 +380,9 @@ const finalizeVerdict = (params: {
     params.engagementIntegrityScore >= 0.56 &&
     !flags.includes("engagement_bait") &&
     !flags.includes("generic_question") &&
-    !flags.includes("prediction_market_rumor");
+    !flags.includes("prediction_market_rumor") &&
+    !flags.includes("rumor_only") &&
+    !flags.includes("personal_medical_anecdote");
 
   return {
     qualityScore: roundScore(params.qualityScore),
@@ -367,6 +412,8 @@ const needsLlmReview = (params: {
     params.decision === "needs_context" ||
     params.normalized.weakTopicMatch ||
     params.normalized.predictionMarketRumor ||
+    params.normalized.rumorOnly ||
+    params.normalized.personalMedicalAnecdote ||
     (params.qualityScore >= 0.35 && params.qualityScore < 0.76) ||
     (params.topicRelevanceScore >= 0.25 && params.topicRelevanceScore < 0.62) ||
     params.engagementIntegrityScore < 0.68
@@ -378,7 +425,8 @@ const hasHardBlocker = (flags: readonly SourceContentQualityFlag[]): boolean =>
   flags.includes("url_only") ||
   flags.includes("tco_only") ||
   flags.includes("needs_link_context") ||
-  flags.includes("media_only_without_context");
+  flags.includes("media_only_without_context") ||
+  flags.includes("personal_medical_anecdote");
 
 const buildReason = (
   decision: SourceContentQualityDecision,

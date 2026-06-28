@@ -121,7 +121,7 @@ class _FilteredEvidenceList extends StatelessWidget {
           )
         else
           Text(
-            'No highlighted posts for this source in the current brief.',
+            'No highlighted posts for this source in the current summary.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
       ],

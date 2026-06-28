@@ -26,7 +26,7 @@ import '../../support/mixed_source_summaries_test_fixtures.dart';
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
-  testWidgets('renders expanded summaries with AI brief and source links', (
+  testWidgets('renders expanded summaries with AI summary and source links', (
     tester,
   ) async {
     final store = _store([
@@ -47,7 +47,7 @@ void main() {
     expect(find.text('High confidence'), findsNothing);
     expect(find.textContaining('Сегодня главный сигнал'), findsNothing);
     expect(find.text('Что проверить первым'), findsNothing);
-    expect(find.text('AI brief · 3 cited items · 1 sources'), findsOneWidget);
+    expect(find.text('AI summary · 3 cited items · 1 sources'), findsOneWidget);
     expect(find.text('3 top reads'), findsOneWidget);
     expect(find.text('3 citations'), findsWidgets);
     expect(find.text('Top reads'), findsOneWidget);
@@ -155,7 +155,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('AI summary'), findsOneWidget);
-    expect(find.text('AI brief · 3 cited items · 3 sources'), findsOneWidget);
+    expect(find.text('AI summary · 3 cited items · 3 sources'), findsOneWidget);
     expect(find.text('Reddit 2'), findsOneWidget);
     expect(find.text('GitHub Trending 2'), findsOneWidget);
     expect(find.text('Hacker News 2'), findsOneWidget);
@@ -165,7 +165,7 @@ void main() {
     expect(find.text('HN discussion on model routing'), findsWidgets);
   });
 
-  testWidgets('provider chips filter the evidence list below the brief', (
+  testWidgets('provider chips filter the evidence list below the summary', (
     tester,
   ) async {
     final store = _store([

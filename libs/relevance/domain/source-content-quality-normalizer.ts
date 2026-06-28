@@ -19,6 +19,8 @@ export type NormalizedSourceContentQualityInput = {
   readonly engagementBait: boolean;
   readonly genericQuestion: boolean;
   readonly predictionMarketRumor: boolean;
+  readonly rumorOnly: boolean;
+  readonly personalMedicalAnecdote: boolean;
   readonly weakTopicMatch: boolean;
   readonly needsLinkContext: boolean;
 };
@@ -52,6 +54,12 @@ export const normalizeSourceContentQualityInput = (
   const engagementBait = engagementBaitPattern.test(text);
   const predictionMarketRumor =
     predictionMarketPattern.test(text) && rumorOrPoliticalClaimPattern.test(text);
+  const rumorOnly =
+    rumorOnlyPattern.test(text) && unreleasedAiModelPattern.test(text);
+  const personalMedicalAnecdote =
+    personalExperiencePattern.test(text) &&
+    aiCodingToolPattern.test(text) &&
+    medicalContextPattern.test(text);
   const genericQuestion =
     /\?\s*$/u.test(textWithoutUrls) &&
     /\b(?:what|which|who|why|how|кто|что|как|какой|какие)\b/iu.test(
@@ -73,6 +81,8 @@ export const normalizeSourceContentQualityInput = (
     engagementBait,
     genericQuestion,
     predictionMarketRumor,
+    rumorOnly,
+    personalMedicalAnecdote,
     weakTopicMatch,
     needsLinkContext,
   };
@@ -171,6 +181,16 @@ const predictionMarketPattern =
   /\b(?:polymarket|kalshi|prediction\s+market|market\s+odds|betting\s+odds)\b/iu;
 const rumorOrPoliticalClaimPattern =
   /\b(?:rumou?r|claim(?:s|ed)?|may|might|could|expected|odds?|administration|government|trump|biden|white\s+house|approval|restore|ban|allow)\b/iu;
+const rumorOnlyPattern =
+  /\b(?:rumou?r|claim(?:s|ed)?|alleged|leak(?:ed)?|early\s+tester|unreleased|expected|may|might|could)\b/iu;
+const unreleasedAiModelPattern =
+  /\b(?:gpt[-\s]?\d+(?:\.\d+)?|claude\s*\d+(?:\.\d+)?|gemini\s*\d+(?:\.\d+)?|early\s+tester|early\s+access|unreleased\s+model)\b/iu;
+const personalExperiencePattern =
+  /\b(?:i|me|my|mine|we|our|used|using|tried|story|experience)\b/iu;
+const aiCodingToolPattern =
+  /\b(?:claude\s+code|codex|cursor|copilot|ai\s+agent|coding\s+agent)\b/iu;
+const medicalContextPattern =
+  /\b(?:mri|ct\s+scan|scan|diagnos(?:is|e|ed)|doctor|medical|medicine|clinical|hospital|patient|cancer|tumou?r|symptom|therapy|treatment|prescription)\b/iu;
 const trustedXAuthors = new Set([
   "anthropicai",
   "gdb",

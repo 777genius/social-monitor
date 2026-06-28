@@ -173,7 +173,7 @@ class _BriefToolbar extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final title = Text(
-              'AI brief · $citationCount cited items · $sourceCount sources',
+              'AI summary · $citationCount cited items · $sourceCount sources',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0,

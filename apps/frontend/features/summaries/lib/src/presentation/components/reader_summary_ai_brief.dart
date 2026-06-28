@@ -41,7 +41,7 @@ class _AiBriefCopy extends StatelessWidget {
         const SizedBox(height: AppSpacing.sm),
         _LinkedBriefText(
           spans: [
-            const _BriefText('Brief: '),
+            const _BriefText('Summary: '),
             _BriefText('$firstTopicInsight.'),
             if (topLinks.isNotEmpty) const _BriefText(' Key links: '),
             ..._joinedReadLinks(topLinks),
@@ -54,10 +54,10 @@ class _AiBriefCopy extends StatelessWidget {
         _LinkedBriefText(
           spans: [
             if (xRead != null) ...[
-              const _BriefText('Check the X/Twitter signal '),
+              const _BriefText('Source note: '),
               _BriefText.link(_shortTitle(xRead.title), xRead.canonicalUrl),
               const _BriefText(
-                ': engagement helps discovery, but treat the claim as unconfirmed until GitHub, HN, RSS, or Reddit confirms it.',
+                ' has enough engagement to be useful for discovery, but keep the claim unconfirmed until GitHub, HN, RSS, or Reddit confirms it.',
               ),
             ] else ...[
               const _BriefText(
@@ -65,7 +65,7 @@ class _AiBriefCopy extends StatelessWidget {
               ),
             ],
             if (redditRead != null) ...[
-              const _BriefText(' Reddit adds practical context: '),
+              const _BriefText(' Reddit adds practical context through '),
               _BriefText.link(
                 _shortTitle(redditRead.title),
                 redditRead.canonicalUrl,

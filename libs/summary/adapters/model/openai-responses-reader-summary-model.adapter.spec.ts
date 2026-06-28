@@ -477,7 +477,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
     );
   });
 
-  it("routes full reader briefings without exceeding the application output budget", () => {
+  it("routes full reader summaries without exceeding the application output budget", () => {
     const adapter = new OpenAiResponsesReaderSummaryModelAdapter({
       apiKey: "test-openai-key",
       maxOutputTokens: 8_000,

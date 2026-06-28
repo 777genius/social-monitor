@@ -115,6 +115,52 @@ describe("SourceContentQualityPolicy", () => {
     );
   });
 
+  it("keeps unreleased-model rumor posts out of non-X top reads", () => {
+    const verdict = policy.evaluate({
+      providerKey: "reddit",
+      title: "Look at that scientist early tester on GPT-5.6 solved it",
+      bodyPreview:
+        "A Reddit rumor claims an early tester got access to an unreleased GPT-5.6 model.",
+      canonicalUrl: "https://www.reddit.com/r/OpenAI/comments/example/",
+      providerMetadata: {
+        kind: "reddit_post",
+        searchQuery: "OpenAI Claude Code agents",
+        score: 467,
+        numComments: 101,
+      },
+    });
+
+    expect(verdict.decision).toBe("downrank");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(false);
+    expect(verdict.needsLlmReview).toBe(true);
+    expect(verdict.flags).toEqual(expect.arrayContaining(["rumor_only"]));
+  });
+
+  it("keeps personal medical anecdotes out of non-X summaries", () => {
+    const verdict = policy.evaluate({
+      providerKey: "hacker-news",
+      title: "I used Claude Code to get a second opinion on my MRI",
+      bodyPreview:
+        "A personal story about using Claude Code to review an MRI before talking to a doctor.",
+      canonicalUrl: "https://news.ycombinator.com/item?id=48678825",
+      providerMetadata: {
+        kind: "hacker_news_story",
+        searchQuery: "claude code codex cursor",
+        points: 278,
+        comments: 381,
+      },
+    });
+
+    expect(verdict.decision).toBe("downrank");
+    expect(verdict.eligibleForSummary).toBe(false);
+    expect(verdict.eligibleForTopRead).toBe(false);
+    expect(verdict.needsLlmReview).toBe(true);
+    expect(verdict.flags).toEqual(
+      expect.arrayContaining(["personal_medical_anecdote"]),
+    );
+  });
+
   it("does not let an LLM review override deterministic hard blockers", () => {
     const deterministic = policy.evaluate({
       providerKey: "x-twitter",

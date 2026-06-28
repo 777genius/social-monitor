@@ -352,7 +352,7 @@ generated.SummaryArtifactResponseDto _summaryArtifact() {
       rationale: 'Enough evidence for MVP summary',
       score: 0.7,
     ),
-    executiveSummary: 'Current executive brief uses 20 selected item(s).',
+    executiveSummary: 'Current executive summary uses 20 selected item(s).',
     freshness: generated.SummaryFreshnessDto(
       checkedAt: now,
       status: generated.SummaryFreshnessDtoStatusStatus.fresh,

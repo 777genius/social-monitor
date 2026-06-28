@@ -757,8 +757,11 @@ const runLiveReaderSummarySmoke = async (params: {
       includeTopicHighlights: true,
       includeRepeatedSignals: true,
       dedupeStrategy: "canonical_url_then_title",
-      customInstructions:
-        `${summaryPreference.customInstructions} Build the reader-facing brief around social/news signals first; treat GitHub repository signals as supporting evidence unless they are cross-confirmed by social/news sources.`,
+      customInstructions: [
+        summaryPreference.customInstructions,
+        "Build the reader-facing summary around social/news signals first; treat GitHub repository signals as supporting evidence unless they are cross-confirmed by social/news sources.",
+        "Prioritize concrete developer, product, security, release and operator-workflow signals over personal anecdotes; keep health, medical or personal-use stories as follow-up adoption examples unless the topic explicitly asks for healthcare.",
+      ].join(" "),
       createdAt: sampledAt,
       updatedAt: sampledAt,
     }),
@@ -865,7 +868,7 @@ const runLiveReaderSummarySmoke = async (params: {
   const readerBrief = artifactSnapshot.content;
   assert(
     readerBrief !== undefined,
-    "live multi-provider readerSummary must include reader brief",
+    "live multi-provider readerSummary must include reader summary content",
   );
   const readerSourceMixProviders = new Set(
     readerBrief.sourceMix.map((entry) => entry.providerKey),

@@ -14,6 +14,7 @@ export const buildOpenAiReaderSummaryInstructions = (
     "Only put a product/version/benchmark/launch claim in the headline when it is supported by citations from at least two distinct providerKeys.",
     "If a claim is supported by one provider only, keep the headline neutral and phrase the item as source-reported or source-discussed.",
     "content is the primary user-facing workspace summary. Make it concrete, skimmable and source-aware.",
+    "Write headline, executiveSummary and content.oneLineTakeaway like a short useful article summary of the best source items, not a telemetry report, checklist or process note.",
     "Lead with what happened and why it matters. Do not make headline, executiveSummary or content.oneLineTakeaway start with process instructions like Start with, inspect, review, verify, treat, use, check or read.",
     "Use caveats after the concrete signal, not instead of it. Example: 'X/Twitter shows rollout chatter; treat the claim as unconfirmed until Reddit, HN, RSS or GitHub confirms it.'",
     "Use Summary language in reader-facing text. Do not introduce another separate user concept.",
@@ -28,7 +29,7 @@ export const buildOpenAiReaderSummaryInstructions = (
     "Respect contentQuality metadata: do not promote items with eligibleForTopRead=false into top reads.",
     "Do not infer facts from url_only, tco_only, media_only_without_context or needs_link_context flags.",
     "If contentQuality flags show weak_topic_match, promo, engagement_bait or generic_question, mention the item only when it provides concrete self-contained evidence.",
-    `Language policy: ${input.policy.language}. Format: ${input.policy.format}. Tone: ${input.policy.tone}.`,
+    `Language policy: ${input.policy.language}. Format: ${readerSummaryFormatLabel(input.policy.format)}. Tone: ${input.policy.tone}.`,
     `Include risks: ${input.policy.includeRisks ? "yes" : "no"}. Include topic highlights: ${
       input.policy.includeTopicHighlights ? "yes" : "no"
     }. Include repeated signals: ${input.policy.includeRepeatedSignals ? "yes" : "no"}.`,
@@ -92,3 +93,16 @@ export const buildOpenAiReaderSummaryPromptPayload = (
       contentQuality: item.contentQuality,
     })),
   });
+
+const readerSummaryFormatLabel = (format: string): string => {
+  switch (format) {
+    case "executive_brief":
+      return "executive summary";
+    case "risk_brief":
+      return "risk summary";
+    case "bullet_digest":
+      return "bullet digest";
+    default:
+      return format;
+  }
+};
