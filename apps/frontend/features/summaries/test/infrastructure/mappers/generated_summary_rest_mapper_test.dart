@@ -68,6 +68,15 @@ void main() {
       expect(readerSummary.content.sourceMix.single.storyClusterCount, 1);
       expect(readerSummary.content.nextActions.single.kind, 'watch_repository');
       expect(readerSummary.period.cadence, 'daily');
+      expect(readerSummary.sourceWindow.label, 'Evidence window');
+      expect(
+        readerSummary.sourceWindow.startedAt,
+        DateTime.utc(2026, 6, 23, 10),
+      );
+      expect(
+        readerSummary.sourceWindow.endedAt,
+        DateTime.utc(2026, 6, 23, 10, 30),
+      );
     },
   );
 
@@ -170,7 +179,7 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
         flags: [
           generated.ReaderSummaryReaderQualityStateDtoFlagsFlags.limitedSources,
         ],
-        warnings: ['Source coverage is limited or single-source.'],
+        warnings: ['Source coverage is limited and needs confirmation.'],
         isSingleSource: true,
       ),
       topicSections: [

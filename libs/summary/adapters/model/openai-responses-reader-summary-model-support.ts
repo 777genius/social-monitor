@@ -10,6 +10,7 @@ export {
 export { asRecord } from "./openai-responses-reader-summary-json";
 export {
   extractOpenAiOutputText,
+  OpenAiReaderSummaryOutputParseError,
   parseOpenAiReaderSummaryJsonObject,
   resolveOpenAiReaderSummaryUsage,
 } from "./openai-responses-reader-summary-response-parser";

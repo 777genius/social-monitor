@@ -1,6 +1,7 @@
 import type {
   RelevanceFeedbackReason,
   RelevanceFeedbackSignal,
+  SourceContentQualityVerdict,
   SourceContentSafetyVerdict,
   UserRelevanceProfile,
 } from '../../domain';
@@ -36,6 +37,18 @@ export type SourceContentSafetyView = {
   readonly categories: readonly string[];
   readonly rawPayloadRetained: false;
   readonly retentionPolicy: SourceContentSafetyVerdict['retentionPolicy'];
+};
+
+export type SourceContentQualityView = {
+  readonly qualityScore: number;
+  readonly topicRelevanceScore: number;
+  readonly engagementIntegrityScore: number;
+  readonly eligibleForSummary: boolean;
+  readonly eligibleForTopRead: boolean;
+  readonly needsLlmReview: boolean;
+  readonly decision: SourceContentQualityVerdict['decision'];
+  readonly flags: readonly string[];
+  readonly reason: string;
 };
 
 export const presentUserRelevanceProfile = (profile: UserRelevanceProfile): UserRelevanceProfileView => {
@@ -81,4 +94,18 @@ export const presentSourceContentSafety = (
   categories: safety.categories,
   rawPayloadRetained: safety.rawPayloadRetained,
   retentionPolicy: safety.retentionPolicy,
+});
+
+export const presentSourceContentQuality = (
+  quality: SourceContentQualityVerdict,
+): SourceContentQualityView => ({
+  qualityScore: quality.qualityScore,
+  topicRelevanceScore: quality.topicRelevanceScore,
+  engagementIntegrityScore: quality.engagementIntegrityScore,
+  eligibleForSummary: quality.eligibleForSummary,
+  eligibleForTopRead: quality.eligibleForTopRead,
+  needsLlmReview: quality.needsLlmReview,
+  decision: quality.decision,
+  flags: quality.flags,
+  reason: quality.reason,
 });

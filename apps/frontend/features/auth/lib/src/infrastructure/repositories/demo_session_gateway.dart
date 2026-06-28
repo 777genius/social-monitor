@@ -48,11 +48,13 @@ final class DemoSessionGateway implements SessionGateway {
   );
 
   static const _demoSession = AuthSession(
+    userId: 'user-demo',
     userLabel: 'MVP Operator',
     selectedWorkspace: WorkspaceAccess(
       scope: _demoScope,
       tenantName: 'Acme',
       workspaceName: 'Acme alerts',
+      workspaceRole: 'owner',
       statusLabel: 'Active',
     ),
     workspaces: [
@@ -60,12 +62,14 @@ final class DemoSessionGateway implements SessionGateway {
         scope: _demoScope,
         tenantName: 'Acme',
         workspaceName: 'Acme alerts',
+        workspaceRole: 'owner',
         statusLabel: 'Active',
       ),
       WorkspaceAccess(
         scope: WorkspaceScope(tenantId: 'tenant-demo', workspaceId: 'ws-lab'),
         tenantName: 'Acme',
         workspaceName: 'Launch lab',
+        workspaceRole: 'admin',
         statusLabel: 'Ready',
       ),
     ],

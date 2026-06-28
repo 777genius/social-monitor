@@ -148,9 +148,27 @@ void registerFrontendGrowthArchitectureTests() {
     if (!appMain.contains('AppCompositionRoot.production()')) {
       violations.add('app main must use the production composition path');
     }
+    if (!appMain.contains('usePathUrlStrategy();')) {
+      violations.add('app main must support direct web deep links');
+    }
     if (appMain.contains('AppCompositionRoot.demo') ||
         appMain.contains('AppCompositionRoot.bootstrap')) {
       violations.add('app main must not use demo or bootstrap composition');
+    }
+
+    final appDemoMain = File(
+      '$frontendRoot/app/lib/main_demo.dart',
+    ).readAsStringSync();
+    if (!appDemoMain.contains('usePathUrlStrategy();')) {
+      violations.add('app demo main must support direct web deep links');
+    }
+
+    final webIndex = File(
+      '$frontendRoot/app/web/index.html',
+    ).readAsStringSync();
+    if (!webIndex.contains("hash.indexOf('#/') === 0") ||
+        !webIndex.contains('window.history.replaceState')) {
+      violations.add('web shell must migrate old hash deep links to paths');
     }
 
     expect(violations, isEmpty);

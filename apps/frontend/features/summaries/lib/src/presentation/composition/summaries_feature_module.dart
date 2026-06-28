@@ -12,7 +12,6 @@ import '../../application/use_cases/regenerate_summary_use_case.dart';
 import '../../application/use_cases/request_workspace_summary_use_case.dart';
 import '../../application/use_cases/submit_reader_action_use_case.dart';
 import '../../application/use_cases/submit_summary_feedback_use_case.dart';
-import '../../infrastructure/api/summaries_demo_api_fixtures.dart';
 import '../../infrastructure/api_clients/generated_summaries_api_client.dart';
 import '../../infrastructure/api_clients/in_memory_summaries_api_client.dart';
 import '../../infrastructure/api_clients/summaries_api_client.dart';
@@ -117,9 +116,6 @@ final class SummariesFeatureModule extends Module {
     if (runtime != null) {
       return GeneratedSummariesApiClient.fromRuntime(runtime: runtime);
     }
-    return InMemorySummariesApiClient(
-      items: summariesFeatureDemoItems(),
-      workspaceSummary: summariesFeatureDemoWorkspaceSummary(),
-    );
+    return InMemorySummariesApiClient(items: const []);
   }
 }

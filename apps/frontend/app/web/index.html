@@ -31,6 +31,15 @@
 
   <title>social_monitor_app</title>
   <link rel="manifest" href="manifest.json">
+  <script>
+    (function () {
+      var hash = window.location.hash;
+      if (hash && hash.indexOf('#/') === 0) {
+        var path = hash.substring(1);
+        window.history.replaceState(null, '', path);
+      }
+    })();
+  </script>
 </head>
 <body>
   <!--

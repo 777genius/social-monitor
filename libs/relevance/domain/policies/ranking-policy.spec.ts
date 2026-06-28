@@ -163,6 +163,58 @@ describe("RankingPolicy", () => {
     ]);
     expect(result[1]?.whyImportant).toContain("Down-ranked by memory preference");
   });
+
+  it("filters weak X posts before high engagement can lift them into summaries", () => {
+    const generatedAt = new Date("2026-06-22T10:00:00.000Z");
+    const policy = new RankingPolicy();
+
+    const result = policy.rank({
+      candidates: [
+        candidate({
+          id: "candidate-x-promo",
+          providerKey: "x-twitter",
+          title:
+            "I have been watching the AI space on BingX. Drop your top 3 projects.",
+          bodyPreview:
+            "I have been watching the AI space on BingX. Drop your top 3 projects. #AI #Crypto #Tech",
+          authorHandle: "Def_Rambo",
+          providerMetadata: {
+            kind: "x_post",
+            searchQuery: "OpenAI",
+            likes: 1000,
+            reposts: 400,
+            replies: 90,
+          },
+          sourceSignalScore: 0.85,
+        }),
+        candidate({
+          id: "candidate-x-good",
+          providerKey: "x-twitter",
+          title:
+            "OpenAI published new agent reliability evals for production teams.",
+          bodyPreview:
+            "The update covers trace scoring, regression checks and deployment failure analysis.",
+          authorHandle: "OpenAI",
+          providerMetadata: {
+            kind: "x_post",
+            searchQuery: "OpenAI agents",
+            likes: 42,
+            reposts: 8,
+            replies: 3,
+          },
+          sourceSignalScore: 0.25,
+        }),
+      ],
+      profile: null,
+      generatedAt,
+      limit: 10,
+    });
+
+    expect(result.map((item) => item.candidate.id)).toEqual([
+      "candidate-x-good",
+    ]);
+    expect(result[0]?.contentQuality.eligibleForTopRead).toBe(true);
+  });
 });
 
 const candidate = (

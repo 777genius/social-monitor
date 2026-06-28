@@ -1,4 +1,4 @@
-import type { SourceTargetKind } from './entities/source-target';
+import type { SourceTargetKind } from "./entities/source-target";
 
 export type SourceTargetPresetEntry = {
   readonly providerKey: string;
@@ -8,9 +8,9 @@ export type SourceTargetPresetEntry = {
 };
 
 export type SourceTargetPresetSummaryPreference = {
-  readonly language: 'auto' | 'en' | 'ru';
-  readonly format: 'executive_brief' | 'bullet_digest' | 'risk_brief';
-  readonly tone: 'neutral' | 'concise' | 'analytical';
+  readonly language: "auto" | "en" | "ru";
+  readonly format: "executive_brief" | "bullet_digest" | "risk_brief";
+  readonly tone: "neutral" | "concise" | "analytical";
   readonly maxKeyPoints: number;
   readonly includeRisks: boolean;
   readonly includeSourceHighlights: boolean;
@@ -26,11 +26,40 @@ export type SourceTargetPreset = {
   readonly entries: readonly SourceTargetPresetEntry[];
 };
 
-const redditTopWeekConfig = {
-  listing: 'top',
-  topTime: 'week',
-  maxItems: 10,
-  minScore: 10,
+const redditDailyMultiPassConfig = {
+  maxItems: 30,
+  scanPasses: [
+    {
+      mode: "listing",
+      subreddit: "OpenAI",
+      listing: "top",
+      topTime: "day",
+      maxItems: 10,
+      minScore: 10,
+    },
+    {
+      mode: "listing",
+      subreddit: "LocalLLaMA",
+      listing: "top",
+      topTime: "day",
+      maxItems: 10,
+      minScore: 10,
+    },
+    {
+      mode: "listing",
+      subreddit: "MachineLearning",
+      listing: "top",
+      topTime: "day",
+      maxItems: 10,
+      minScore: 10,
+    },
+    {
+      mode: "search",
+      query: 'OpenAI OR LocalLLaMA OR "machine learning" OR "AI agents" OR LLM',
+      maxItems: 12,
+      minScore: 5,
+    },
+  ],
 } as const;
 
 const hnSearchConfig = {
@@ -42,9 +71,9 @@ const rssConfig = {
 } as const;
 
 const xTwitterDailyConfig = {
-  language: 'en',
+  language: "en",
   windowHours: 24,
-  searchProducts: ['top', 'latest'],
+  searchProducts: ["top", "latest"],
   maxItems: 30,
   limitPerProduct: 50,
   minLikes: 10,
@@ -53,78 +82,66 @@ const xTwitterDailyConfig = {
 } as const;
 
 export const aiDeveloperSignalSourcePreset = {
-  presetId: 'ai-developer-signal-v1',
-  displayName: 'AI developer signal',
-  description: 'High-signal AI, agent tooling, Flutter/Dart, JS/Node, Python, webdev and security sources.',
+  presetId: "ai-developer-signal-v1",
+  displayName: "AI developer signal",
+  description:
+    "High-signal AI, agent tooling, Flutter/Dart, JS/Node, Python, webdev and security sources.",
   defaultIntervalSeconds: 28_800,
   summaryPreference: {
-    language: 'auto',
-    format: 'bullet_digest',
-    tone: 'analytical',
+    language: "auto",
+    format: "bullet_digest",
+    tone: "analytical",
     maxKeyPoints: 8,
     includeRisks: true,
     includeSourceHighlights: true,
     customInstructions:
-      'Prioritize concrete product, library, release, security and developer-workflow signals. Prefer highly engaged source items and explain why each source matters.',
+      "Prioritize concrete product, library, release, security and developer-workflow signals. Prefer highly engaged source items and explain why each source matters.",
   },
   entries: [
+    {
+      providerKey: "reddit",
+      targetKind: "search_query",
+      targetValue: "OpenAI LocalLLaMA MachineLearning AI agents",
+      targetConfig: redditDailyMultiPassConfig,
+    },
     ...[
-      'ArtificialInteligence',
-      'ClaudeAI',
-      'ClaudeCode',
-      'codex',
-      'cybersecurity',
-      'dartlang',
-      'FlutterDev',
-      'javascript',
-      'node',
-      'OpenAI',
-      'Python',
-      'webdev',
-    ].map((subreddit): SourceTargetPresetEntry => ({
-      providerKey: 'reddit',
-      targetKind: 'subreddit',
-      targetValue: subreddit,
-      targetConfig: redditTopWeekConfig,
-    })),
-    ...[
-      'openai',
-      'claude',
-      'ai coding agents',
-      'flutter dart',
-      'javascript node',
-      'python developer tools',
-      'cybersecurity',
+      "openai",
+      "claude",
+      "ai coding agents",
+      "flutter dart",
+      "javascript node",
+      "python developer tools",
+      "cybersecurity",
     ].map((query): SourceTargetPresetEntry => ({
-      providerKey: 'hacker-news',
-      targetKind: 'search_query',
+      providerKey: "hacker-news",
+      targetKind: "search_query",
       targetValue: query,
       targetConfig: hnSearchConfig,
     })),
     ...[
-      'openai',
-      'claude ai',
-      'ai coding agents',
-      'claude code codex cursor',
-      'flutter dart',
-      'javascript node',
-      'python developer tools',
-      'cybersecurity',
+      "openai",
+      "claude ai",
+      "ai coding agents",
+      "claude code codex cursor",
+      "flutter dart",
+      "javascript node",
+      "python developer tools",
+      "cybersecurity",
     ].map((query): SourceTargetPresetEntry => ({
-      providerKey: 'x-twitter',
-      targetKind: 'search_query',
+      providerKey: "x-twitter",
+      targetKind: "search_query",
       targetValue: query,
       targetConfig: xTwitterDailyConfig,
     })),
     ...[
-      'https://hnrss.org/best',
-      'https://hnrss.org/frontpage',
-      'https://hnrss.org/newest?q=AI',
-      'https://hnrss.org/newest?q=Flutter',
-      'https://hnrss.org/newest?q=cybersecurity',
+      "https://hnrss.org/best",
+      "https://hnrss.org/frontpage",
+      "https://hnrss.org/newest?q=AI",
+      "https://hnrss.org/newest?q=Flutter",
+      "https://hnrss.org/newest?q=cybersecurity",
     ].map((url): SourceTargetPresetEntry => ({
-      providerKey: 'rss',
-      targetKind: 'url',
+      providerKey: "rss",
+      targetKind: "url",
       targetValue: url,
       targetConfig: rssConfig,
     })),

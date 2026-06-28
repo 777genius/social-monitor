@@ -7,11 +7,10 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../domain/value_objects/source_topic_id.dart';
 import '../composition/sources_feature_module.dart';
 import '../composition/sources_feature_module_host.dart';
-import '../stores/sources_catalog_store.dart';
+import '../stores/source_bindings_store.dart';
+import '../stores/source_profiles_store.dart';
 
 class SourcesFeatureRoute extends StatelessWidget {
-  SourcesFeatureRoute({super.key}) : _module = SourcesFeatureModule();
-
   SourcesFeatureRoute.sourceProfilesDemo({super.key})
     : _module = SourcesFeatureModule.sourceProfilesDemo();
 
@@ -92,8 +91,11 @@ class _LoadedModuleFallbackState extends State<_LoadedModuleFallback> {
   @override
   Widget build(BuildContext context) {
     final provider = context.getInheritedWidgetOfExactType<ModuleProvider>();
-    final store = provider?.controller.binder.tryGet<SourcesCatalogStore>();
-    if (store != null) {
+    final binder = provider?.controller.binder;
+    final isLoaded =
+        binder?.tryGet<SourceProfilesStore>() != null ||
+        binder?.tryGet<SourceBindingsStore>() != null;
+    if (isLoaded) {
       _statusCheckTimer?.cancel();
       return widget.child;
     }

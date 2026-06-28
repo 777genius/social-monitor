@@ -52,4 +52,22 @@ describe('SourceContentSafetyPolicy', () => {
     expect(JSON.stringify(verdict)).not.toContain('client_secret');
     expect(JSON.stringify(verdict)).not.toContain('user:pass');
   });
+
+  it('preserves Hacker News item ids while stripping unsafe URL data', () => {
+    const verdict = new SourceContentSafetyPolicy().evaluate({
+      providerKey: 'hacker-news',
+      title: 'HN story',
+      bodyPreview: 'Safe preview',
+      canonicalUrl:
+        'https://news.ycombinator.com/item?id=48670103&access_token=url-leak#comments',
+    });
+
+    expect(verdict.status).toBe('sanitized');
+    expect(verdict.categories).toEqual(expect.arrayContaining(['sensitive_data']));
+    expect(verdict.sanitizedCanonicalUrl).toBe(
+      'https://news.ycombinator.com/item?id=48670103',
+    );
+    expect(JSON.stringify(verdict)).not.toContain('access_token');
+    expect(JSON.stringify(verdict)).not.toContain('url-leak');
+  });
 });

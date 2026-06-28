@@ -80,11 +80,37 @@
       }
     },
     {
+      "signalId": "reader-summary-frontend-rest-view",
+      "status": "passed",
+      "evidence": {
+        "readerSummaryJobId": "autonomous-loop-57",
+        "readerSummaryId": "autonomous-loop-58",
+        "citedProviders": [
+          "github-issues",
+          "github-trending-page",
+          "hacker-news",
+          "reddit",
+          "rss"
+        ],
+        "selectedFeedItemCount": 10,
+        "topReadCount": 10,
+        "citationCount": 10,
+        "sourceWindowStartedAt": "2026-06-22T12:00:00.000Z",
+        "sourceWindowEndedAt": "2026-06-22T12:00:00.001Z",
+        "frontendReadyFields": [
+          "readerBrief",
+          "sourceWindow",
+          "coverage",
+          "citations"
+        ]
+      }
+    },
+    {
       "signalId": "auto-summary-with-provider-citations",
       "status": "passed",
       "evidence": {
-        "summaryJobId": "autonomous-loop-57",
-        "summaryId": "autonomous-loop-58",
+        "summaryJobId": "autonomous-loop-61",
+        "summaryId": "autonomous-loop-62",
         "citedProviders": [
           "github-issues",
           "github-trending-page",
@@ -100,14 +126,15 @@
       "signalId": "digest-webhook-realtime-audit",
       "status": "passed",
       "evidence": {
-        "digestScheduleId": "autonomous-loop-62",
-        "digestId": "autonomous-loop-63",
-        "deliveryAttemptId": "autonomous-loop-64",
+        "digestScheduleId": "autonomous-loop-66",
+        "digestId": "autonomous-loop-67",
+        "deliveryAttemptId": "autonomous-loop-68",
         "deliveryState": "delivered",
-        "realtimeEventId": "autonomous-loop-61",
+        "realtimeEventId": "autonomous-loop-65",
         "auditActions": [
           "autonomous.digest.delivered",
           "autonomous.findings.ranked",
+          "autonomous.reader_summary.completed",
           "autonomous.scan.executed",
           "autonomous.scan.scheduled",
           "autonomous.summary.completed"
@@ -192,11 +219,13 @@
     ],
     "feedItems": 10,
     "rankedItems": 8,
+    "readerSummaryTopReads": 10,
+    "readerSummaryCitations": 10,
     "citationCount": 8,
     "digestProvenanceItems": 11,
     "webhookDeliveries": 1,
     "realtimeEvents": 1,
-    "auditEvents": 5
+    "auditEvents": 6
   },
   "redaction": {
     "rawProviderPayloadsIncluded": false,

@@ -36,6 +36,7 @@ class ReaderSummaryQualitySummary extends StatelessWidget {
                   tone: AppStatusTone.warning,
                 ),
               ...qualityState.flags
+                  .where((flag) => flag != qualityState.status)
                   .take(3)
                   .map(
                     (flag) => AppStatusBadge(
@@ -66,7 +67,7 @@ class ReaderSummaryQualitySummary extends StatelessWidget {
   String _statusLabel(String value) {
     return switch (value) {
       'partial' => 'Partial',
-      'limited_sources' => 'Limited sources',
+      'limited_sources' => 'Needs confirmation',
       'low_confidence' => 'Low confidence',
       'no_signal' => 'No signal',
       'failed_provider' => 'Provider failed',
@@ -75,6 +76,9 @@ class ReaderSummaryQualitySummary extends StatelessWidget {
   }
 
   String _flagLabel(String value) {
+    if (value == 'limited_sources') {
+      return 'Needs confirmation';
+    }
     return value
         .split('_')
         .where((part) => part.isNotEmpty)

@@ -196,6 +196,23 @@ def test_rate_limit_errors_are_mapped() -> None:
         collector.collect_daily_search(request())
 
 
+def test_collect_daily_search_returns_partial_results_when_later_pass_is_rate_limited() -> None:
+    fake = RateLimitedAfterFirstPassScweet()
+    collector = ScweetDailySearchCollector(
+        lambda: fake,
+        FixedClock(datetime(2026, 6, 27, 12, tzinfo=UTC)),
+    )
+
+    result = collector.collect_daily_search(request(max_items=5))
+
+    assert [post.tweet_id for post in result.posts] == ["200", "100"]
+    assert result.run.fetched_count == 2
+    assert result.run.returned_count == 2
+    assert result.run.partial is True
+    assert result.warnings[-1].code == "x_collector.partial_rate_limit"
+    assert len(fake.calls) == 2
+
+
 def test_rate_limit_errors_include_scweet_account_cooldown(
     tmp_path: Path,
 ) -> None:
@@ -233,6 +250,21 @@ class BrokenScweet:
 
     def search(self, *_: object, **__: object) -> list[dict[str, object]]:
         raise RuntimeError(self._message)
+
+
+class RateLimitedAfterFirstPassScweet:
+    def __init__(self) -> None:
+        self.calls: list[object] = []
+
+    def search(self, *_: object, **__: object) -> list[dict[str, object]]:
+        self.calls.append(object())
+        if len(self.calls) > 1:
+            raise RuntimeError("rate limit reset=1782652096")
+
+        return [
+            tweet("100", likes=10, retweets=1, comments=1),
+            tweet("200", likes=20, retweets=2, comments=0),
+        ]
 
 
 def request(

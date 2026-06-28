@@ -7,6 +7,7 @@ import '../../domain/value_objects/summary_feedback_kind.dart';
 import '../../domain/value_objects/summary_period.dart';
 import '../api/summary_api_dto.dart';
 import '../mappers/generated_summary_rest_mapper.dart';
+import 'generated_workspace_summary_reader.dart';
 import 'summaries_api_client.dart';
 
 final class GeneratedSummariesApiClient implements SummariesApiClient {
@@ -66,32 +67,10 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
   @override
   Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummary(
     LoadWorkspaceSummaryApiRequest request,
-  ) async {
-    final result = await _runtime.client
-        .send<generated.ListReaderSummariesResponseDto>(
-          generated.WorkspaceRequest(scope: request.scope),
-          () => _runtime.rest.readerSummaries.readerSummaryControllerList(
-            xWorkspaceId: request.scope.workspaceId,
-            xTenantId: request.scope.tenantId,
-            scopeType: generated.ScopeType.workspace,
-            timezone: request.period.timezone,
-            periodEndedAt: _queryDate(request.period.endedAt),
-            periodStartedAt: _queryDate(request.period.startedAt),
-            cadence: _listCadence(request.period.cadence),
-            limit: 1,
-          ),
-        );
-    return result.fold(
-      onSuccess: (dto) => Result.success(
-        WorkspaceSummaryApiDto(
-          current: dto.items.isEmpty
-              ? null
-              : _mapper.readerSummary(dto.items.first),
-        ),
-      ),
-      onFailure: Result<WorkspaceSummaryApiDto>.failure,
-    );
-  }
+  ) => GeneratedWorkspaceSummaryReader(
+    runtime: _runtime,
+    mapper: _mapper,
+  ).load(request);
 
   @override
   Future<Result<ReaderSummaryJobApiDto>> requestWorkspaceSummary(
@@ -123,16 +102,6 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
     );
   }
 
-  generated.Cadence _listCadence(SummaryPeriodCadence cadence) {
-    return switch (cadence) {
-      SummaryPeriodCadence.daily => generated.Cadence.daily,
-      SummaryPeriodCadence.weekly => generated.Cadence.weekly,
-      SummaryPeriodCadence.monthly => generated.Cadence.monthly,
-      SummaryPeriodCadence.custom => generated.Cadence.custom,
-      SummaryPeriodCadence.unknown => generated.Cadence.$unknown,
-    };
-  }
-
   generated.RequestReaderSummaryRequestDtoCadenceCadence _requestCadence(
     SummaryPeriodCadence cadence,
   ) {
@@ -156,10 +125,6 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
       endedAt: period.endedAt.toUtc(),
       timezone: period.timezone,
     );
-  }
-
-  String _queryDate(DateTime value) {
-    return value.toUtc().toIso8601String();
   }
 
   @override

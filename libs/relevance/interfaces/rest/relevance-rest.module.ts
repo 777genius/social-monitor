@@ -12,6 +12,7 @@ import {
   MemoStackRelevanceMemoryProjector,
   resolveMemoStackRelevanceMemoryProjectorOptions,
 } from '../../adapters/memory/memo-stack-relevance-memory.projector';
+import { OpenAiSourceContentQualityReviewerAdapter } from '../../adapters/model/openai-source-content-quality-reviewer.adapter';
 import { InMemoryRelevanceFeedbackLearningStore } from '../../adapters/persistence/in-memory-relevance-feedback-learning.store';
 import { InMemoryRelevanceFeedbackRepository } from '../../adapters/persistence/in-memory-relevance-feedback.repository';
 import { InMemoryRelevanceMemoryProjectionRepository } from '../../adapters/persistence/in-memory-relevance-memory-projection.repository';
@@ -33,25 +34,33 @@ import type {
   RelevanceMemoryGuidanceReaderPort,
   RelevanceMemoryProjectionRepositoryPort,
   RelevanceMemoryProjectorPort,
+  SourceContentQualityReviewerPort,
   UserRelevanceProfileRepositoryPort,
 } from '../../ports';
 import {
   NOOP_RELEVANCE_MEMORY_GUIDANCE_READER,
   NOOP_RELEVANCE_MEMORY_PROJECTOR,
+  NOOP_SOURCE_CONTENT_QUALITY_REVIEWER,
   RELEVANCE_FEEDBACK_LEARNING_STORE,
   RELEVANCE_FEEDBACK_REPOSITORY,
   RELEVANCE_MEMORY_GUIDANCE_READER,
   RELEVANCE_MEMORY_PROJECTION_REPOSITORY,
   RELEVANCE_MEMORY_PROJECTOR,
+  SOURCE_CONTENT_QUALITY_REVIEWER,
   USER_RELEVANCE_PROFILE_REPOSITORY,
 } from '../../ports';
 import { RelevanceController } from './relevance.controller';
 import {
   RELEVANCE_PERSISTENCE_MODE,
   RELEVANCE_MEMORY_PROJECTION_MODE,
+  RELEVANCE_CONTENT_QUALITY_OPENAI_OPTIONS,
+  RELEVANCE_CONTENT_QUALITY_REVIEWER_MODE,
   RELEVANCE_PRISMA_CLIENT,
+  relevanceContentQualityOpenAiOptionsProvider,
+  relevanceContentQualityReviewerModeProvider,
   relevanceMemoryProjectionModeProvider,
   relevancePersistenceModeProvider,
+  type RelevanceContentQualityReviewerMode,
   type RelevanceMemoryProjectionMode,
   type RelevancePersistenceMode,
 } from './relevance-provider-tokens';
@@ -62,6 +71,8 @@ import {
   providers: [
     relevancePersistenceModeProvider,
     relevanceMemoryProjectionModeProvider,
+    relevanceContentQualityReviewerModeProvider,
+    relevanceContentQualityOpenAiOptionsProvider,
     {
       provide: RELEVANCE_PRISMA_CLIENT,
       useFactory: (mode: RelevancePersistenceMode): PrismaRelevanceClient | null =>
@@ -122,6 +133,17 @@ import {
       inject: [RELEVANCE_MEMORY_PROJECTION_MODE],
     },
     {
+      provide: SOURCE_CONTENT_QUALITY_REVIEWER,
+      useFactory: (
+        mode: RelevanceContentQualityReviewerMode,
+        options: ConstructorParameters<typeof OpenAiSourceContentQualityReviewerAdapter>[0],
+      ): SourceContentQualityReviewerPort =>
+        mode === 'openai-responses'
+          ? new OpenAiSourceContentQualityReviewerAdapter(options)
+          : NOOP_SOURCE_CONTENT_QUALITY_REVIEWER,
+      inject: [RELEVANCE_CONTENT_QUALITY_REVIEWER_MODE, RELEVANCE_CONTENT_QUALITY_OPENAI_OPTIONS],
+    },
+    {
       provide: USER_RELEVANCE_PROFILE_REPOSITORY,
       useFactory: (
         mode: RelevancePersistenceMode,
@@ -157,8 +179,23 @@ import {
         feedItems: FeedItemReadRepositoryPort,
         profiles: UserRelevanceProfileRepositoryPort,
         memoryGuidance: RelevanceMemoryGuidanceReaderPort,
-      ) => new RankFeedItemsUseCase(feedItems, profiles, new SystemClock(), undefined, memoryGuidance),
-      inject: [FEED_ITEM_READ_REPOSITORY, USER_RELEVANCE_PROFILE_REPOSITORY, RELEVANCE_MEMORY_GUIDANCE_READER],
+        qualityReviewer: SourceContentQualityReviewerPort,
+      ) =>
+        new RankFeedItemsUseCase(
+          feedItems,
+          profiles,
+          new SystemClock(),
+          undefined,
+          memoryGuidance,
+          undefined,
+          qualityReviewer,
+        ),
+      inject: [
+        FEED_ITEM_READ_REPOSITORY,
+        USER_RELEVANCE_PROFILE_REPOSITORY,
+        RELEVANCE_MEMORY_GUIDANCE_READER,
+        SOURCE_CONTENT_QUALITY_REVIEWER,
+      ],
     },
     {
       provide: RecordRelevanceFeedbackUseCase,
@@ -192,6 +229,7 @@ import {
     RELEVANCE_MEMORY_PROJECTION_REPOSITORY,
     RELEVANCE_MEMORY_PROJECTOR,
     RELEVANCE_MEMORY_GUIDANCE_READER,
+    SOURCE_CONTENT_QUALITY_REVIEWER,
     InMemoryUserRelevanceProfileRepository,
     InMemoryRelevanceFeedbackRepository,
     InMemoryRelevanceMemoryProjectionRepository,

@@ -65,6 +65,13 @@ export const parseOpenAiReaderSummaryJsonObject = (
   } catch (error) {
     const detail =
       error instanceof Error ? error.message : "unknown parse failure";
-    throw new Error(`OpenAI reader summary output must be JSON: ${detail}`);
+    throw new OpenAiReaderSummaryOutputParseError(detail);
   }
 };
+
+export class OpenAiReaderSummaryOutputParseError extends Error {
+  constructor(readonly detail: string) {
+    super(`OpenAI reader summary output must be JSON: ${detail}`);
+    this.name = "OpenAiReaderSummaryOutputParseError";
+  }
+}

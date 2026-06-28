@@ -41,9 +41,9 @@ final class SummaryMapper {
       citations: dto.citations.map(_citationToDomain).toList(growable: false),
       period: period,
       summaryWindow: SummaryWindow(
-        label: period.rangeLabel,
-        startsAt: period.startedAt,
-        endsAt: period.endedAt,
+        label: _nonEmpty(dto.sourceWindow.label, fallback: 'Evidence window'),
+        startsAt: dto.sourceWindow.startedAt.toUtc(),
+        endsAt: dto.sourceWindow.endedAt.toUtc(),
       ),
       freshnessLabel: _nonEmpty(dto.freshnessLabel, fallback: 'Unknown'),
       isDegraded: dto.isDegraded,

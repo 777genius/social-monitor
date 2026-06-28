@@ -7,8 +7,8 @@ The app is no longer the default Flutter template. Product workflows live in fea
 ## Runtime Modes
 
 - Demo mode uses demo composition and fixture-backed feature routes. It is useful for UI review and local frontend development without a backend.
-- Connected mode uses `lib/main.dart` and `--dart-define` runtime config to connect feature routes to `social_monitor_generated_api`.
-- If connected mode is missing API or workspace config, routes render a runtime-unavailable state instead of falling through to fake production data.
+- Connected mode uses `lib/main.dart` and `--dart-define` runtime config to create `social_monitor_generated_api`, then restores the user/workspace session from the backend.
+- If connected mode is missing API or auth config, routes render a runtime-unavailable state instead of falling through to fake production data.
 
 ## Feature Routes
 
@@ -36,22 +36,15 @@ Start the backend API first, then run:
 cd apps/frontend/app
 fvm flutter run -d chrome --web-port=53217 \
   --dart-define=SOCIAL_MONITOR_API_BASE_URL=http://localhost:3000 \
-  --dart-define=SOCIAL_MONITOR_TENANT_ID=tenant-demo \
-  --dart-define=SOCIAL_MONITOR_WORKSPACE_ID=workspace-demo \
-  --dart-define=SOCIAL_MONITOR_USER_ID=user-demo
+  --dart-define=SOCIAL_MONITOR_API_BEARER_TOKEN=your-user-jwt
 ```
 
-Replace the demo ids with ids from the workspace you are running against.
+The app restores the user id, selected workspace, workspace role and workspace list from `GET /auth/session`.
 
 Optional defines:
 
 ```sh
---dart-define=SOCIAL_MONITOR_TENANT_NAME="Current tenant"
---dart-define=SOCIAL_MONITOR_WORKSPACE_NAME="Current workspace"
---dart-define=SOCIAL_MONITOR_WORKSPACE_ROLE=admin
---dart-define=SOCIAL_MONITOR_USER_LABEL="MVP Operator"
 --dart-define=SOCIAL_MONITOR_CORRELATION_ID=frontend-generated-api-session
---dart-define=SOCIAL_MONITOR_API_BEARER_TOKEN=your-token
 ```
 
 The backend `.env.example` allows `http://localhost:53217` by default, so keep `--web-port=53217` unless CORS config changes.

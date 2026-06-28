@@ -4,22 +4,15 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../application/contracts/scan_policy_catalog.dart';
 import '../../application/contracts/scan_run_catalog.dart';
 import '../../application/contracts/source_binding_catalog.dart';
-import '../../application/contracts/source_catalog.dart';
 import '../../application/contracts/source_profile_catalog.dart';
 import '../../application/use_cases/bind_source_to_topic_use_case.dart';
 import '../../application/use_cases/change_source_binding_status_use_case.dart';
-import '../../application/use_cases/connect_source_use_case.dart';
 import '../../application/use_cases/list_source_bindings_use_case.dart';
 import '../../application/use_cases/list_source_profiles_use_case.dart';
-import '../../application/use_cases/list_sources_use_case.dart';
 import '../../application/use_cases/load_scan_policy_use_case.dart';
 import '../../application/use_cases/load_scan_status_use_case.dart';
 import '../../application/use_cases/load_source_binding_health_use_case.dart';
-import '../../application/use_cases/load_source_health_use_case.dart';
-import '../../application/use_cases/pause_source_use_case.dart';
-import '../../application/use_cases/reconnect_source_use_case.dart';
 import '../../application/use_cases/request_scan_use_case.dart';
-import '../../application/use_cases/resume_source_use_case.dart';
 import '../../application/use_cases/set_scan_policy_use_case.dart';
 import '../../domain/value_objects/source_topic_id.dart';
 import '../../infrastructure/api_clients/generated_scan_policies_api_client.dart';
@@ -30,7 +23,6 @@ import '../../infrastructure/api_clients/in_memory_scan_policies_api_client.dart
 import '../../infrastructure/api_clients/in_memory_scan_runs_api_client.dart';
 import '../../infrastructure/api_clients/in_memory_source_bindings_api_client.dart';
 import '../../infrastructure/api_clients/in_memory_source_profiles_api_client.dart';
-import '../../infrastructure/api_clients/in_memory_sources_api_client.dart';
 import '../../infrastructure/api_clients/scan_policies_api_client.dart';
 import '../../infrastructure/api_clients/scan_runs_api_client.dart';
 import '../../infrastructure/api_clients/source_bindings_api_client.dart';
@@ -38,28 +30,16 @@ import '../../infrastructure/api_clients/source_profiles_api_client.dart';
 import '../../infrastructure/repositories/generated_scan_policy_catalog.dart';
 import '../../infrastructure/repositories/generated_scan_run_catalog.dart';
 import '../../infrastructure/repositories/generated_source_binding_catalog.dart';
-import '../../infrastructure/repositories/generated_source_catalog.dart';
 import '../../infrastructure/repositories/generated_source_profile_catalog.dart';
 import '../stores/scan_policy_store.dart';
 import '../stores/scan_run_store.dart';
 import '../stores/source_bindings_store.dart';
 import '../stores/source_profiles_store.dart';
-import '../stores/sources_catalog_store.dart';
 import 'sources_feature_demo_fixtures.dart';
 
-enum SourcesFeatureWorkflow { catalogDemo, sourceProfiles, sourceBindings }
+enum SourcesFeatureWorkflow { sourceProfiles, sourceBindings }
 
 final class SourcesFeatureModule extends Module {
-  SourcesFeatureModule()
-    : generatedApiRuntime = null,
-      scope = const WorkspaceScope(
-        tenantId: 'tenant-demo',
-        workspaceId: 'ws-demo',
-      ),
-      workflow = SourcesFeatureWorkflow.catalogDemo,
-      sourceBindingTopicId = const SourceTopicId('topic-demo'),
-      sourceBindingTopicTitle = 'Demo topic';
-
   SourcesFeatureModule.generatedApi({
     required this.generatedApiRuntime,
     required this.scope,
@@ -108,7 +88,6 @@ final class SourcesFeatureModule extends Module {
 
   Object get retentionKey {
     return switch (workflow) {
-      SourcesFeatureWorkflow.catalogDemo => 'sources-demo',
       SourcesFeatureWorkflow.sourceProfiles =>
         'source-profiles-${scope.tenantId}-${scope.workspaceId}',
       SourcesFeatureWorkflow.sourceBindings =>
@@ -127,7 +106,6 @@ final class SourcesFeatureModule extends Module {
       _bindSourceProfiles(i);
       return;
     }
-    _bindSourceCatalog(i);
   }
 
   void _bindSourceProfiles(Binder i) {
@@ -195,26 +173,6 @@ final class SourcesFeatureModule extends Module {
       () => ScanRunStore(
         requestScan: RequestScanUseCase(i.get<ScanRunCatalog>()),
         loadScanStatus: LoadScanStatusUseCase(i.get<ScanRunCatalog>()),
-        scope: scope,
-      ),
-    );
-  }
-
-  void _bindSourceCatalog(Binder i) {
-    i.registerLazySingleton<SourcesApiClient>(
-      () => InMemorySourcesApiClient(items: sourceDemoSources),
-    );
-    i.registerLazySingleton<SourceCatalog>(
-      () => GeneratedSourceCatalog(apiClient: i.get<SourcesApiClient>()),
-    );
-    i.registerLazySingleton(
-      () => SourcesCatalogStore(
-        listSources: ListSourcesUseCase(i.get<SourceCatalog>()),
-        connectSource: ConnectSourceUseCase(i.get<SourceCatalog>()),
-        reconnectSource: ReconnectSourceUseCase(i.get<SourceCatalog>()),
-        pauseSource: PauseSourceUseCase(i.get<SourceCatalog>()),
-        resumeSource: ResumeSourceUseCase(i.get<SourceCatalog>()),
-        loadSourceHealth: LoadSourceHealthUseCase(i.get<SourceCatalog>()),
         scope: scope,
       ),
     );

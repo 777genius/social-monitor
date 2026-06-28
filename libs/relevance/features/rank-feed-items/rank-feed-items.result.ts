@@ -1,6 +1,10 @@
 import type { JsonObject } from '@social-monitor/shared-kernel';
 
-import type { SourceContentSafetyView, UserRelevanceProfileView } from '../shared/relevance-presenter';
+import type {
+  SourceContentQualityView,
+  SourceContentSafetyView,
+  UserRelevanceProfileView,
+} from '../shared/relevance-presenter';
 import type { RelevanceMemoryGuidanceStatus } from '../../ports';
 
 export type RelevanceMemoryGuidanceView = {
@@ -33,6 +37,7 @@ export type RankedFeedItemView = {
   readonly duplicateFeedItemIds: readonly string[];
   readonly whyImportant: readonly string[];
   readonly safety: SourceContentSafetyView;
+  readonly contentQuality: SourceContentQualityView;
 };
 
 export type RankFeedItemsResult = {

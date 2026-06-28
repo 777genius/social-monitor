@@ -68,6 +68,30 @@ const socialMonitorApiErrorModel = <String, Object?>{
 
 const socialMonitorApiOperations = <Map<String, Object?>>[
   {
+    'operationId': 'AuthSessionController_get',
+    'clientName': 'AuthSessionController_get',
+    'method': 'GET',
+    'path': '/auth/session',
+    'tags': [
+      'auth',
+    ],
+    'summary': 'Restore the current user session and verified workspace from a Bearer JWT.',
+    'pathParameters': [],
+    'queryParameters': [],
+    'requiredHeaders': [],
+    'optionalHeaders': [
+      'authorization',
+    ],
+    'requiresTenantWorkspace': false,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': false,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': null,
+    'successResponseSchemaRefs': [
+      '#/components/schemas/AuthSessionResponseDto',
+    ],
+  },
+  {
     'operationId': 'BetaLaunchSupportController_getSnapshot',
     'clientName': 'BetaLaunchSupportController_getSnapshot',
     'method': 'GET',
@@ -2157,6 +2181,93 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'devOnlyWorkspaceRoleRequired': false,
     'requestBodySchemaRef': '#/components/schemas/ActivateTopicSourceRequestDto',
     'successResponseSchemaRefs': [],
+  },
+  {
+    'operationId': 'WorkspaceSettingsController_get',
+    'clientName': 'WorkspaceSettingsController_get',
+    'method': 'GET',
+    'path': '/workspace-settings',
+    'tags': [
+      'workspace-settings',
+    ],
+    'summary': 'Get workspace settings for the current tenant/workspace.',
+    'pathParameters': [],
+    'queryParameters': [],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-correlation-id',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': null,
+    'successResponseSchemaRefs': [
+      '#/components/schemas/WorkspaceSettingsResponseDto',
+    ],
+  },
+  {
+    'operationId': 'WorkspaceSettingsController_updateDigest',
+    'clientName': 'WorkspaceSettingsController_updateDigest',
+    'method': 'PATCH',
+    'path': '/workspace-settings/digest',
+    'tags': [
+      'workspace-settings',
+    ],
+    'summary': 'Update workspace digest preference.',
+    'pathParameters': [],
+    'queryParameters': [],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-correlation-id',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': '#/components/schemas/UpdateWorkspaceDigestPreferenceRequestDto',
+    'successResponseSchemaRefs': [
+      '#/components/schemas/WorkspaceSettingsResponseDto',
+    ],
+  },
+  {
+    'operationId': 'WorkspaceSettingsController_updateTelemetry',
+    'clientName': 'WorkspaceSettingsController_updateTelemetry',
+    'method': 'PATCH',
+    'path': '/workspace-settings/telemetry',
+    'tags': [
+      'workspace-settings',
+    ],
+    'summary': 'Update workspace telemetry consent preference.',
+    'pathParameters': [],
+    'queryParameters': [],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-correlation-id',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': '#/components/schemas/UpdateWorkspaceTelemetryConsentRequestDto',
+    'successResponseSchemaRefs': [
+      '#/components/schemas/WorkspaceSettingsResponseDto',
+    ],
   },
 ];
 

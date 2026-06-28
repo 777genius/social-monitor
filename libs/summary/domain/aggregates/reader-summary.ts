@@ -24,19 +24,25 @@ import { normalizeSignalScore } from "../value-objects/signal-score";
 import type { ReaderSummaryQualityFlag } from "../value-objects/summary-quality";
 import {
   compactUnique,
-  firstSentence,
   nonEmpty,
   plural,
   topicTitle,
   uniqueNonEmpty,
 } from "../value-objects/summary-text";
 import {
+  buildBestFirstReadBullet,
+  buildGroundedOneLineTakeaway,
   buildMatchedRules,
   buildWhyNow,
   confirmedProviderKeys,
+  groundedReaderHeadline,
   readerItemConfidence,
   storyProviderMetricLabels,
 } from "../services/reader-summary-support";
+import {
+  buildOpenQuestions,
+  providerNameForKey,
+} from "./reader-summary-open-questions";
 
 export type ReaderSummaryFactoryInput = {
   readonly headline: string;
@@ -92,6 +98,17 @@ export class ReaderSummary {
       evidenceByFeedItemId,
       clusterById,
     ).slice(0, maxReaderTopReads);
+
+    if (readerTopStories.length === 0) {
+      return ReaderSummary.create(
+        buildNoSignalReaderSummary({
+          ...input,
+          noSignalReason:
+            "No cited source evidence passed the top-read quality gate.",
+        }),
+      );
+    }
+
     const readerInput = {
       ...input,
       topStories: readerTopStories,
@@ -112,11 +129,16 @@ export class ReaderSummary {
     );
 
     return ReaderSummary.create({
-      headline: nonEmpty(input.headline, "Workspace summary"),
-      oneLineTakeaway:
-        firstSentence(input.executiveSummary) ??
-        topReads[0]?.reason ??
-        "Review the latest monitored signals.",
+      headline: groundedReaderHeadline({
+        headline: input.headline,
+        sourceMix,
+        topReads,
+      }),
+      oneLineTakeaway: buildGroundedOneLineTakeaway({
+        executiveSummary: input.executiveSummary,
+        topReads,
+        sourceMix,
+      }),
       bullets: buildReaderSummaryBullets(readerInput, topReads),
       qualityState,
       topicSections: buildTopicSections(readerInput),
@@ -255,11 +277,11 @@ const storyToTopRead = (
     ...(cluster?.topicIds ?? []),
     ...citedEvidence.map((item) => item.topicId),
   ]);
-  const whyImportant = compactUnique([
-    ...(cluster?.whyImportant ?? []),
-    ...clusterEvidence.flatMap((item) => item.whyImportant),
-    story.summary,
-  ]);
+  const whyImportant = buildTopReadUserFacingReasons({
+    story,
+    cluster,
+    evidence: clusterEvidence,
+  });
   const signalScore = normalizeSignalScore(
     cluster?.score ?? evidence?.score ?? 0,
   );
@@ -297,12 +319,46 @@ const storyToTopRead = (
       evidence: clusterEvidence,
       representativeMetricLabels: evidence?.providerMetricLabels,
     }),
-    whyImportant:
-      whyImportant.length > 0 ? whyImportant.slice(0, 4) : [story.summary],
+    whyImportant,
     whyNow: buildWhyNow(cluster, story.providerKeys, clusterEvidence),
     canonicalUrl: citation?.canonicalUrl ?? evidence?.canonicalUrl,
     citationIds,
   };
+};
+
+const buildTopReadUserFacingReasons = (params: {
+  readonly story: TopReadCandidate;
+  readonly cluster: StoryCluster | undefined;
+  readonly evidence: readonly SummaryEvidenceItem[];
+}): readonly string[] => {
+  const candidates = compactUnique([
+    ...(params.cluster?.whyImportant ?? []),
+    ...params.evidence.flatMap((item) => item.whyImportant),
+    params.story.summary,
+  ]).filter(isUserFacingTopReadReason);
+
+  if (candidates.length > 0) {
+    return candidates.slice(0, 4);
+  }
+
+  return [`Source-reported: ${params.story.title}`];
+};
+
+const isUserFacingTopReadReason = (value: string): boolean => {
+  const lower = value.trim().toLowerCase();
+
+  return (
+    lower.length > 0 &&
+    !lower.startsWith("story signal score") &&
+    !lower.startsWith("current summary window has") &&
+    lower !== "strong source engagement signal" &&
+    lower !== "passes source quality and topic relevance gate" &&
+    lower !== "fresh item in the current monitoring window" &&
+    !/^clustered \d+ (?:similar|related) items?$/u.test(lower) &&
+    !lower.includes("citation references bodypreview evidence") &&
+    !lower.includes("source item source-binding") &&
+    !lower.includes("bodypreview evidence from source item")
+  );
 };
 
 const evidenceClusterMap = (
@@ -333,7 +389,7 @@ const buildReaderSummaryBullets = (
   const bullets = [
     topReads[0] === undefined
       ? undefined
-      : `Best first read: ${topReads[0].title} - ${topReads[0].reason}`,
+      : buildBestFirstReadBullet(topReads[0]),
     followUpCount === 0
       ? undefined
       : `${followUpCount} follow-up link${plural(followUpCount)} available in Top reads.`,
@@ -379,58 +435,6 @@ const sourceMixSignalLabel = (sourceMix: readonly SourceMixEntry[]): string =>
   sourceMix.some((source) => source.crossSourceClusterCount > 0)
     ? "cross-source"
     : "multi-source";
-
-const buildOpenQuestions = (
-  qualityFlags: readonly ReaderSummaryQualityFlag[],
-  sourceMix: readonly SourceMixEntry[],
-  topReads: readonly TopRead[],
-): readonly string[] => {
-  const questions: string[] = [];
-  if (qualityFlags.includes("limited_sources")) {
-    questions.push(
-      "Is this signal confirmed outside the currently monitored sources?",
-    );
-  }
-  if (sourceMix.length === 1) {
-    questions.push(
-      `Is this signal confirmed outside ${providerNameForKey(sourceMix[0]?.providerKey, topReads)}?`,
-    );
-  }
-  if (
-    sourceMix.length > 1 &&
-    sourceMix.every((source) => source.singleSourceOnly)
-  ) {
-    questions.push(
-      "Which single-source top reads need confirmation from another monitored source?",
-    );
-  }
-  if (qualityFlags.includes("conflicting_evidence")) {
-    questions.push(
-      "Which source is the most reliable when evidence conflicts?",
-    );
-  }
-  if (qualityFlags.includes("context_unavailable")) {
-    questions.push(
-      "Did missing context change the interpretation of this summary?",
-    );
-  }
-
-  return questions;
-};
-
-const providerNameForKey = (
-  providerKey: string | undefined,
-  topReads: readonly TopRead[],
-): string => {
-  if (providerKey === undefined) {
-    return "the current source";
-  }
-
-  return (
-    topReads.find((item) => item.providerKey === providerKey)?.providerName ??
-    providerKey
-  );
-};
 
 const assertReaderSummaryValid = (snapshot: ReaderSummarySnapshot): void => {
   if (snapshot.headline.trim().length === 0) {

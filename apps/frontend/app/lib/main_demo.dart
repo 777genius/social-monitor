@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show ListTile;
 import 'package:flutter/widgets.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
@@ -21,6 +22,7 @@ Future<void> main() async {
   } else {
     WidgetsFlutterBinding.ensureInitialized();
   }
+  usePathUrlStrategy();
 
   const initialLocation = String.fromEnvironment(
     'SOCIAL_MONITOR_INITIAL_ROUTE',

@@ -1,4 +1,4 @@
-import { redactSensitiveText } from '@social-monitor/shared-kernel';
+import { redactSensitiveText } from "@social-monitor/shared-kernel";
 
 import type {
   ProviderFailure,
@@ -9,25 +9,36 @@ import type {
   SourceProviderScanResult,
   SourceProviderValidationResult,
   SourceQuery,
-} from '../../../ports';
-import type { HackerNewsClientPort, HackerNewsListing, HackerNewsStory } from './hacker-news-client.port';
+} from "../../../ports";
+import type {
+  HackerNewsClientPort,
+  HackerNewsListing,
+  HackerNewsStory,
+} from "./hacker-news-client.port";
 
 const capabilityProfile: SourceCapabilityProfile = {
-  providerKey: 'hacker-news',
-  displayName: 'Hacker News',
+  providerKey: "hacker-news",
+  displayName: "Hacker News",
   version: 1,
   productionSafe: true,
-  supportedContentUnits: ['post', 'comment', 'link'],
-  supportedQueryModes: ['search', 'listing'],
-  cursorModel: 'time',
-  stableIdentity: ['providerId', 'canonicalUrl'],
-  quotaModel: 'per_app',
+  supportedContentUnits: ["post", "comment", "link"],
+  supportedQueryModes: ["search", "listing"],
+  cursorModel: "time",
+  stableIdentity: ["providerId", "canonicalUrl"],
+  quotaModel: "per_app",
   limitations: [
-    'Uses public HN Firebase listings and HN Algolia search; no credentials required. Rate-limit and retry budget still apply.',
+    "Uses public HN Firebase listings and HN Algolia search; no credentials required. Rate-limit and retry budget still apply.",
   ],
 };
 
-const supportedListings: readonly HackerNewsListing[] = ['top', 'new', 'best', 'ask', 'show', 'job'];
+const supportedListings: readonly HackerNewsListing[] = [
+  "top",
+  "new",
+  "best",
+  "ask",
+  "show",
+  "job",
+];
 
 export class HackerNewsSourceProvider implements SourceProviderPort {
   constructor(private readonly client: HackerNewsClientPort) {}
@@ -46,17 +57,26 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
     }
 
     if (query.query.trim().length === 0) {
-      return { ok: false, reason: 'Query must be non-empty' };
+      return { ok: false, reason: "Query must be non-empty" };
     }
 
-    if (query.mode === 'listing' && !supportedListings.includes(query.query as HackerNewsListing)) {
-      return { ok: false, reason: `Unsupported Hacker News listing: ${query.query}` };
+    if (
+      query.mode === "listing" &&
+      !supportedListings.includes(query.query as HackerNewsListing)
+    ) {
+      return {
+        ok: false,
+        reason: `Unsupported Hacker News listing: ${query.query}`,
+      };
     }
 
     return { ok: true };
   }
 
-  planScan(query: SourceQuery, context: SourceProviderScanContext): SourceProviderScanPlan {
+  planScan(
+    query: SourceQuery,
+    context: SourceProviderScanContext,
+  ): SourceProviderScanPlan {
     return {
       query,
       maxItems: readPositiveInteger(context.config?.maxItems, 30, 1, 100),
@@ -69,14 +89,24 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
   ): Promise<SourceProviderScanResult> {
     void context;
 
-    const stories = plan.query.mode === 'listing'
-      ? await this.client.listStories(plan.query.query as HackerNewsListing, plan.maxItems)
-      : await this.client.searchStories(plan.query.query, plan.maxItems);
+    const stories =
+      plan.query.mode === "listing"
+        ? await this.client.listStories(
+            plan.query.query as HackerNewsListing,
+            plan.maxItems,
+          )
+        : await this.client.searchStories(plan.query.query, plan.maxItems);
     const cursorTime = decodeTimeCursor(plan.cursor);
-    const sourceKey = plan.query.mode === 'listing' ? plan.query.query : 'search';
+    const sourceKey =
+      plan.query.mode === "listing" ? plan.query.query : "search";
+    const searchQuery =
+      plan.query.mode === "search" ? plan.query.query : undefined;
     const items = stories
-      .flatMap((story) => normalizeStory(story, sourceKey))
-      .filter((item) => cursorTime === undefined || item.publishedAt.getTime() > cursorTime);
+      .flatMap((story) => normalizeStory(story, sourceKey, searchQuery))
+      .filter(
+        (item) =>
+          cursorTime === undefined || item.publishedAt.getTime() > cursorTime,
+      );
 
     return {
       items,
@@ -86,18 +116,24 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
   }
 
   classifyError(error: unknown): ProviderFailure {
-    const rawMessage = error instanceof Error ? error.message : 'Unknown Hacker News provider error';
+    const rawMessage =
+      error instanceof Error
+        ? error.message
+        : "Unknown Hacker News provider error";
     const message = redactSensitiveText(rawMessage);
-    if (rawMessage.includes('429') || rawMessage.toLowerCase().includes('rate limit')) {
+    if (
+      rawMessage.includes("429") ||
+      rawMessage.toLowerCase().includes("rate limit")
+    ) {
       return {
-        kind: 'rate_limited',
+        kind: "rate_limited",
         retryable: true,
         message,
       };
     }
 
     return {
-      kind: 'unavailable',
+      kind: "unavailable",
       retryable: true,
       message,
     };
@@ -124,14 +160,21 @@ const encodeTimeCursor = (
     previousTime ?? Number.NEGATIVE_INFINITY,
   );
 
-  if (maxPublishedAt === Number.NEGATIVE_INFINITY || maxPublishedAt === previousTime) {
+  if (
+    maxPublishedAt === Number.NEGATIVE_INFINITY ||
+    maxPublishedAt === previousTime
+  ) {
     return previousCursor;
   }
 
   return new Date(maxPublishedAt).toISOString();
 };
 
-const normalizeStory = (story: HackerNewsStory, sourceKey: string) => {
+const normalizeStory = (
+  story: HackerNewsStory,
+  sourceKey: string,
+  searchQuery: string | undefined,
+) => {
   if (story.deleted || story.dead || story.title === undefined) {
     return [];
   }
@@ -142,32 +185,32 @@ const normalizeStory = (story: HackerNewsStory, sourceKey: string) => {
     return [];
   }
 
-  const canonicalUrl = story.url ?? `https://news.ycombinator.com/item?id=${story.id}`;
+  const discussionUrl = `https://news.ycombinator.com/item?id=${story.id}`;
 
   return [
     {
       externalId: `hn:${story.id}`,
-      canonicalUrl,
+      canonicalUrl: discussionUrl,
       title: story.title,
-      body: story.text ?? '',
+      body: story.text ?? "",
       authorHandle: story.by,
       publishedAt,
-      metadata: hackerNewsStoryMetadata(story, sourceKey),
+      metadata: hackerNewsStoryMetadata(story, sourceKey, searchQuery),
     },
   ];
 };
 
-const hackerNewsWarnings = (stories: readonly HackerNewsStory[]): readonly string[] => [
-  ...(
-    stories.some((story) => story.deleted || story.dead)
-      ? ['Some Hacker News stories were deleted/dead and skipped.']
-      : []
-  ),
-  ...(
-    stories.some(isTimestampMissingCandidate)
-      ? ['Some Hacker News stories had no valid time timestamp; they were skipped.']
-      : []
-  ),
+const hackerNewsWarnings = (
+  stories: readonly HackerNewsStory[],
+): readonly string[] => [
+  ...(stories.some((story) => story.deleted || story.dead)
+    ? ["Some Hacker News stories were deleted/dead and skipped."]
+    : []),
+  ...(stories.some(isTimestampMissingCandidate)
+    ? [
+        "Some Hacker News stories had no valid time timestamp; they were skipped.",
+      ]
+    : []),
 ];
 
 const isTimestampMissingCandidate = (story: HackerNewsStory): boolean =>
@@ -177,7 +220,11 @@ const isTimestampMissingCandidate = (story: HackerNewsStory): boolean =>
   publishedAtForStory(story) === undefined;
 
 const publishedAtForStory = (story: HackerNewsStory): Date | undefined => {
-  if (story.time === undefined || !Number.isFinite(story.time) || story.time <= 0) {
+  if (
+    story.time === undefined ||
+    !Number.isFinite(story.time) ||
+    story.time <= 0
+  ) {
     return undefined;
   }
 
@@ -186,9 +233,15 @@ const publishedAtForStory = (story: HackerNewsStory): Date | undefined => {
   return Number.isNaN(publishedAt.getTime()) ? undefined : publishedAt;
 };
 
-const hackerNewsStoryMetadata = (story: HackerNewsStory, sourceKey: string) => ({
-  kind: 'hacker_news_story',
+const hackerNewsStoryMetadata = (
+  story: HackerNewsStory,
+  sourceKey: string,
+  searchQuery: string | undefined,
+) => ({
+  kind: "hacker_news_story",
   source: sourceKey,
+  ...(searchQuery === undefined ? {} : { searchQuery }),
+  ...(story.url === undefined ? {} : { externalUrl: story.url }),
   ...(story.score === undefined ? {} : { points: story.score }),
   ...(story.comments === undefined ? {} : { comments: story.comments }),
 });
@@ -203,8 +256,15 @@ const readPositiveInteger = (
     return fallback;
   }
 
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
-    throw new Error(`Hacker News source config integer must be between ${min} and ${max}`);
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < min ||
+    value > max
+  ) {
+    throw new Error(
+      `Hacker News source config integer must be between ${min} and ${max}`,
+    );
   }
 
   return value;

@@ -2,16 +2,126 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_app/src/app/social_monitor_app.dart';
 import 'package:social_monitor_app/src/composition/app_composition_root.dart';
+import 'package:social_monitor_app/src/composition/app_frontend_runtime_config.dart';
 import 'package:social_monitor_app/src/composition/app_runtime.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
+import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 void main() {
+  test(
+    'production config starts auth session discovery without workspace env',
+    () {
+      final runtime = const AppFrontendRuntimeConfig(
+        apiBaseUrl: 'http://localhost:3000',
+        bearerToken: 'jwt.header.signature',
+        correlationId: 'test-correlation',
+      ).createRuntimeOrNull();
+
+      expect(runtime, isNotNull);
+      expect(runtime?.session.isRestoring, isTrue);
+      expect(runtime?.workspace.isAvailable, isFalse);
+      expect(runtime?.generatedApiRuntime, isNotNull);
+    },
+  );
+
+  test(
+    'production config can start connected workspace runtime without bearer',
+    () {
+      final runtime = const AppFrontendRuntimeConfig(
+        apiBaseUrl: 'http://localhost:3000',
+        correlationId: 'test-correlation',
+        tenantId: 'tenant-1',
+        workspaceId: 'workspace-1',
+        tenantName: 'Acme',
+        workspaceName: 'Acme alerts',
+        workspaceRole: 'Owner',
+        userId: 'user-1',
+        userLabel: 'Operator',
+      ).createRuntimeOrNull();
+
+      expect(runtime, isNotNull);
+      expect(runtime?.session.isRestoring, isFalse);
+      expect(runtime?.session.userId, 'user-1');
+      expect(runtime?.workspace.scope?.tenantId, 'tenant-1');
+      expect(runtime?.workspace.scope?.workspaceId, 'workspace-1');
+      expect(runtime?.capabilities.capability('summaries').isEnabled, isTrue);
+      expect(runtime?.generatedApiRuntime, isNotNull);
+    },
+  );
+
+  test('runtime controller applies restored auth session and capabilities', () {
+    final controller = AppRuntimeController(
+      AppShellRuntime.restoring(generatedApiRuntime: Object()),
+    );
+    const workspace = AppWorkspaceSnapshot(
+      tenantName: 'Acme',
+      workspaceName: 'Acme alerts',
+      workspaceRole: 'admin',
+      statusLabel: 'Active',
+      scope: WorkspaceScope(tenantId: 'tenant-1', workspaceId: 'workspace-1'),
+    );
+
+    controller.restoreAuthSession(
+      userId: 'user-1',
+      userLabel: 'Operator',
+      selectedWorkspace: workspace,
+      availableWorkspaces: const [workspace],
+    );
+
+    expect(controller.runtime.session.userId, 'user-1');
+    expect(controller.runtime.session.isRestoring, isFalse);
+    expect(controller.runtime.workspace.scope, workspace.scope);
+    expect(
+      controller.runtime.capabilities.capability('topics').isEnabled,
+      isTrue,
+    );
+  });
+
+  test('feature descriptors reflect restored runtime status', () {
+    final composition = AppCompositionRoot.production(
+      runtime: AppShellRuntime.restoring(generatedApiRuntime: Object()),
+    );
+    final auth = composition.features.firstWhere(
+      (feature) => feature.id == 'auth',
+    );
+    final topics = composition.features.firstWhere(
+      (feature) => feature.id == 'topics',
+    );
+    final settings = composition.features.firstWhere(
+      (feature) => feature.id == 'settings',
+    );
+
+    expect(auth.status, 'Runtime not configured');
+    expect(topics.status, 'Workspace required');
+    expect(settings.status, 'Workspace required');
+
+    const workspace = AppWorkspaceSnapshot(
+      tenantName: 'Acme',
+      workspaceName: 'Acme alerts',
+      workspaceRole: 'admin',
+      statusLabel: 'Active',
+      scope: WorkspaceScope(tenantId: 'tenant-1', workspaceId: 'workspace-1'),
+    );
+
+    composition.runtimeController.restoreAuthSession(
+      userId: 'user-1',
+      userLabel: 'Operator',
+      selectedWorkspace: workspace,
+      availableWorkspaces: const [workspace],
+    );
+
+    expect(auth.status, 'Runtime');
+    expect(topics.status, 'API');
+    expect(settings.status, 'Runtime');
+  });
+
   testWidgets('renders web-first frontend shell', (tester) async {
     await tester.pumpWidget(
       SocialMonitorApp(composition: AppCompositionRoot.bootstrap()),
     );
 
     expect(find.text('Social Monitor'), findsWidgets);
+    expect(find.byType(SelectionArea), findsOneWidget);
     expect(find.text('Monitoring command center'), findsOneWidget);
     expect(find.text('Workspace required'), findsWidgets);
     expect(find.text('Topics'), findsWidgets);
@@ -65,7 +175,7 @@ void main() {
     await tester.pumpWidget(SocialMonitorApp(composition: composition));
     await tester.pumpAndSettle();
 
-    expect(find.text('GitHub Trending daily summary'), findsWidgets);
+    expect(find.text('No workspace summary'), findsWidgets);
     expect(find.text('Monitoring command center'), findsNothing);
   });
 
@@ -89,7 +199,7 @@ void main() {
 
     composition.router.go('/summaries');
     await tester.pumpAndSettle();
-    expect(find.text('GitHub Trending daily summary'), findsWidgets);
+    expect(find.text('No workspace summary'), findsWidgets);
 
     composition.router.go('/settings');
     await tester.pumpAndSettle();
@@ -236,8 +346,11 @@ void main() {
 
     composition.router.go('/summaries');
     await tester.pumpAndSettle();
-    expect(find.text('Citation safety'), findsOneWidget);
-    await _tapText(tester, 'Helpful');
+    expect(find.text('No workspace summary'), findsWidgets);
+    expect(
+      find.text('Run a workspace summary after feed items are collected.'),
+      findsWidgets,
+    );
 
     composition.router.go('/settings');
     await tester.pumpAndSettle();

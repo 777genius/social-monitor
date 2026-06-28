@@ -6,6 +6,7 @@ String readerSummaryProviderLabel(String providerKey) {
     'hacker-news' || 'hn' => 'Hacker News',
     'reddit' => 'Reddit',
     'rss' => 'RSS',
+    'x-twitter' || 'twitter' => 'X/Twitter',
     _ => providerKey,
   };
 }

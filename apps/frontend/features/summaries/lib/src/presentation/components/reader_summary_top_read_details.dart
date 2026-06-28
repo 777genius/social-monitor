@@ -3,7 +3,10 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
+import 'reader_summary_citation_text.dart';
+import 'reader_summary_external_link.dart';
 import 'reader_summary_provider_label.dart';
+import 'reader_summary_reason_text.dart';
 
 class ReaderSummaryTopReadDetails extends StatelessWidget {
   const ReaderSummaryTopReadDetails({
@@ -11,11 +14,15 @@ class ReaderSummaryTopReadDetails extends StatelessWidget {
     required this.index,
     required this.item,
     required this.citations,
+    required this.onOpenUrl,
+    this.citationsInitiallyExpanded = false,
   });
 
   final int index;
   final TopRead item;
   final List<SummaryCitation> citations;
+  final ValueChanged<String> onOpenUrl;
+  final bool citationsInitiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +31,7 @@ class ReaderSummaryTopReadDetails extends StatelessWidget {
       children: [
         _InlineLabelList(
           label: 'Why ranked high',
-          values: [item.reason, item.whyNow],
+          values: [readerSummaryDisplayReason(item), item.whyNow],
         ),
         const SizedBox(height: AppSpacing.xs),
         Wrap(
@@ -51,11 +58,11 @@ class ReaderSummaryTopReadDetails extends StatelessWidget {
                 ),
           ],
         ),
-        if (item.whyImportant.isNotEmpty) ...[
+        if (readerSummaryDisplayWhyImportant(item).isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xs),
           _InlineLabelList(
             label: 'Why this matters',
-            values: item.whyImportant.take(3).toList(),
+            values: readerSummaryDisplayWhyImportant(item),
           ),
         ],
         if (item.providerMetrics.isNotEmpty) ...[
@@ -67,20 +74,19 @@ class ReaderSummaryTopReadDetails extends StatelessWidget {
         ],
         if (item.canonicalUrl != null) ...[
           const SizedBox(height: AppSpacing.xs),
-          Text(
-            item.canonicalUrl!,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0,
-            ),
+          ReaderSummaryExternalLink(
+            url: item.canonicalUrl!,
+            onOpenUrl: onOpenUrl,
           ),
         ],
         if (citations.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xs),
-          _CitationDisclosure(index: index, citations: citations),
+          _CitationDisclosure(
+            index: index,
+            citations: citations,
+            initiallyExpanded: citationsInitiallyExpanded,
+            onOpenUrl: onOpenUrl,
+          ),
         ],
       ],
     );
@@ -180,10 +186,17 @@ class _InlineLabelList extends StatelessWidget {
 }
 
 class _CitationDisclosure extends StatelessWidget {
-  const _CitationDisclosure({required this.index, required this.citations});
+  const _CitationDisclosure({
+    required this.index,
+    required this.citations,
+    required this.initiallyExpanded,
+    required this.onOpenUrl,
+  });
 
   final int index;
   final List<SummaryCitation> citations;
+  final bool initiallyExpanded;
+  final ValueChanged<String> onOpenUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -191,6 +204,7 @@ class _CitationDisclosure extends StatelessWidget {
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
         key: ValueKey('reader-summary-top-read-$index-citations'),
+        initiallyExpanded: initiallyExpanded,
         tilePadding: EdgeInsets.zero,
         childrenPadding: EdgeInsets.zero,
         title: Text(
@@ -201,8 +215,9 @@ class _CitationDisclosure extends StatelessWidget {
           ),
         ),
         children: citations
-            .map(
-              (citation) => Padding(
+            .map((citation) {
+              final snippet = readerSummaryDisplayCitationSnippet(citation);
+              return Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.xs),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -216,27 +231,22 @@ class _CitationDisclosure extends StatelessWidget {
                         letterSpacing: 0,
                       ),
                     ),
-                    Text(
-                      citation.safeSnippet,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    if (citation.canonicalUrl != null)
+                    if (snippet != null)
                       Text(
-                        citation.canonicalUrl!,
-                        maxLines: 1,
+                        snippet,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    if (citation.canonicalUrl != null)
+                      ReaderSummaryExternalLink(
+                        url: citation.canonicalUrl!,
+                        onOpenUrl: onOpenUrl,
                       ),
                   ],
                 ),
-              ),
-            )
+              );
+            })
             .toList(growable: false),
       ),
     );

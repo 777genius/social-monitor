@@ -62,6 +62,17 @@ const rankedItem = (
       rawPayloadRetained: false,
       retentionPolicy: "normalized_preview_only",
     },
+    contentQuality: {
+      qualityScore: 1,
+      topicRelevanceScore: 1,
+      engagementIntegrityScore: 1,
+      eligibleForSummary: true,
+      eligibleForTopRead: true,
+      needsLlmReview: false,
+      decision: "promote",
+      flags: [],
+      reason: "Test evidence is eligible.",
+    },
     ...rest,
   };
 };
@@ -154,13 +165,22 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(
       selection.selectedEvidence.map((item) => item.providerKey).sort(),
     ).toEqual([
-      "github-issues",
+      "github-trending-page",
       "github-trending-page",
       "hacker-news",
       "reddit",
       "rss",
     ]);
-    expect(selection.sourceWindow.selectedFeedItemIds).toContain("feed-issues");
+    expect(selection.selectedEvidence.map((item) => item.providerKey)).toEqual([
+      "reddit",
+      "hacker-news",
+      "rss",
+      "github-trending-page",
+      "github-trending-page",
+    ]);
+    expect(selection.sourceWindow.selectedFeedItemIds).toContain(
+      "feed-trending-2",
+    );
     expect(storyRankingMetrics.recorded[0]?.rankingPolicyVersion).toBe(
       "story_ranking_v1",
     );
@@ -178,7 +198,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     );
   });
 
-  it("treats GitHub provider variants as one source family before adding lower-ranked sources", async () => {
+  it("treats GitHub provider variants as secondary after social news families", async () => {
     const rankedItems = [
       rankedItem({
         feedItemId: "feed-github-trending",
@@ -246,8 +266,70 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     });
 
     expect(
-      selection.selectedEvidence.map((item) => item.providerKey).sort(),
-    ).toEqual(["github-trending-page", "hacker-news", "reddit", "rss"]);
+      selection.selectedEvidence.map((item) => item.providerKey),
+    ).toEqual(["reddit", "hacker-news", "rss", "github-trending-page"]);
+  });
+
+  it("preserves X engagement metrics from ranked feed metadata", async () => {
+    const rankedItems = [
+      rankedItem({
+        feedItemId: "feed-x-rollout",
+        providerKey: "x-twitter",
+        rank: 1,
+        score: 3.2,
+        providerMetadata: {
+          kind: "x_post",
+          authorHandle: "OpenAIDevs",
+          searchQuery: "AI developer tools",
+          public_metrics: {
+            like_count: 1280,
+            retweet_count: 240,
+            reply_count: 91,
+            quote_count: 34,
+            impression_count: 95000,
+          },
+        },
+      }),
+    ];
+    const rankFeedItems = {
+      execute: jest.fn(async (command: RankFeedItemsCommand) =>
+        ok({
+          generatedAt: clock.now().toISOString(),
+          profileApplied: false,
+          items: rankedItems.slice(0, command.limit),
+        }),
+      ),
+    } as unknown as RankFeedItemsUseCase;
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      {
+        list: jest.fn(),
+        findById: jest.fn(async () => null),
+      },
+      clock,
+      new FakeStoryRankingMetrics(),
+    );
+
+    const selection = await selector.select({
+      tenantId: tenantId("tenant-x-metrics"),
+      workspaceId: workspaceId("workspace-x-metrics"),
+      scope: { type: "workspace" },
+      period: readerSummaryPeriod,
+      maxItems: 3,
+    });
+
+    expect(selection.selectedEvidence[0]).toEqual(
+      expect.objectContaining({
+        providerKey: "x-twitter",
+        providerMetricSummary: "1,280 likes, 240 reposts, 91 replies",
+        providerMetricLabels: expect.arrayContaining([
+          { label: "Likes", value: "1,280" },
+          { label: "Reposts", value: "240" },
+          { label: "Replies", value: "91" },
+          { label: "Impressions", value: "95,000" },
+        ]),
+      }),
+    );
   });
 
   it("expands duplicate feed items into reader evidence so cross-source story clusters stay visible", async () => {
@@ -314,8 +396,8 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       feedItemId: "feed-reddit-codex",
     });
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
-      "feed-github-codex",
       "feed-reddit-codex",
+      "feed-github-codex",
     ]);
     expect(selection.clusters).toHaveLength(1);
     expect(selection.clusters[0]).toEqual(
@@ -387,6 +469,73 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
       "feed-at-start",
       "feed-inside",
+    ]);
+  });
+
+  it("does not select low-quality X evidence just to satisfy provider diversity", async () => {
+    const rankedItems = [
+      rankedItem({
+        feedItemId: "feed-github",
+        providerKey: "github-trending-page",
+        rank: 1,
+        score: 3,
+      }),
+      rankedItem({
+        feedItemId: "feed-x-url-only",
+        providerKey: "x-twitter",
+        rank: 2,
+        score: 2.9,
+        title: "https://t.co/yQHkkbmVeR",
+        bodyPreview: "https://t.co/yQHkkbmVeR",
+        contentQuality: {
+          qualityScore: 0.2,
+          topicRelevanceScore: 0.2,
+          engagementIntegrityScore: 0.4,
+          eligibleForSummary: false,
+          eligibleForTopRead: false,
+          needsLlmReview: true,
+          decision: "needs_context",
+          flags: ["url_only", "tco_only", "needs_link_context"],
+          reason: "needs_context because url_only",
+        },
+      }),
+      rankedItem({
+        feedItemId: "feed-reddit",
+        providerKey: "reddit",
+        rank: 3,
+        score: 2.5,
+      }),
+    ];
+    const rankFeedItems = {
+      execute: jest.fn(async (command: RankFeedItemsCommand) =>
+        ok({
+          generatedAt: clock.now().toISOString(),
+          profileApplied: false,
+          items: rankedItems.slice(0, command.limit),
+        }),
+      ),
+    } as unknown as RankFeedItemsUseCase;
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      {
+        list: jest.fn(),
+        findById: jest.fn(async () => null),
+      },
+      clock,
+      new FakeStoryRankingMetrics(),
+    );
+
+    const selection = await selector.select({
+      tenantId: tenantId("tenant-low-quality-x"),
+      workspaceId: workspaceId("workspace-low-quality-x"),
+      scope: { type: "workspace" },
+      period: readerSummaryPeriod,
+      maxItems: 3,
+    });
+
+    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
+      "feed-reddit",
+      "feed-github",
     ]);
   });
 });

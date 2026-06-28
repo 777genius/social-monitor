@@ -15,6 +15,7 @@ import { DigestsController } from "@social-monitor/delivery/interfaces/rest/dige
 import { NotificationPreferencesController } from "@social-monitor/delivery/interfaces/rest/notification-preferences.controller";
 import { RealtimeEventsController } from "@social-monitor/delivery/interfaces/rest/realtime-events.controller";
 import { WebhookEndpointsController } from "@social-monitor/delivery/interfaces/rest/webhook-endpoints.controller";
+import { WorkspaceSettingsController } from "@social-monitor/delivery/interfaces/rest/workspace-settings.controller";
 import { CreateDigestScheduleUseCase } from "@social-monitor/delivery/features/create-digest-schedule/create-digest-schedule.use-case";
 import { CreateWebhookEndpointUseCase } from "@social-monitor/delivery/features/create-webhook-endpoint/create-webhook-endpoint.use-case";
 import { DisableWebhookEndpointUseCase } from "@social-monitor/delivery/features/disable-webhook-endpoint/disable-webhook-endpoint.use-case";
@@ -22,6 +23,7 @@ import { GetDeliveryAttemptUseCase } from "@social-monitor/delivery/features/get
 import { GetDigestScheduleUseCase } from "@social-monitor/delivery/features/get-digest-schedule/get-digest-schedule.use-case";
 import { GetDigestUseCase } from "@social-monitor/delivery/features/get-digest/get-digest.use-case";
 import { GetNotificationPreferenceUseCase } from "@social-monitor/delivery/features/get-notification-preference/get-notification-preference.use-case";
+import { GetWorkspaceSettingsUseCase } from "@social-monitor/delivery/features/get-workspace-settings/get-workspace-settings.use-case";
 import { GetWebhookEndpointUseCase } from "@social-monitor/delivery/features/get-webhook-endpoint/get-webhook-endpoint.use-case";
 import { ListDeliveryAttemptsUseCase } from "@social-monitor/delivery/features/list-delivery-attempts/list-delivery-attempts.use-case";
 import { ListDigestSchedulesUseCase } from "@social-monitor/delivery/features/list-digest-schedules/list-digest-schedules.use-case";
@@ -29,6 +31,8 @@ import { ListRealtimeEventsUseCase } from "@social-monitor/delivery/features/lis
 import { ListWebhookEndpointsUseCase } from "@social-monitor/delivery/features/list-webhook-endpoints/list-webhook-endpoints.use-case";
 import { RetryDeliveryAttemptUseCase } from "@social-monitor/delivery/features/retry-delivery-attempt/retry-delivery-attempt.use-case";
 import { SetNotificationPreferenceUseCase } from "@social-monitor/delivery/features/set-notification-preference/set-notification-preference.use-case";
+import { UpdateWorkspaceDigestPreferenceUseCase } from "@social-monitor/delivery/features/update-workspace-digest-preference/update-workspace-digest-preference.use-case";
+import { UpdateWorkspaceTelemetryConsentUseCase } from "@social-monitor/delivery/features/update-workspace-telemetry-consent/update-workspace-telemetry-consent.use-case";
 import { FeedController } from "@social-monitor/feed/interfaces/rest/feed.controller";
 import { GetFeedItemUseCase } from "@social-monitor/feed/features/get-feed-item/get-feed-item.use-case";
 import { ListFeedItemsUseCase } from "@social-monitor/feed/features/list-feed-items/list-feed-items.use-case";
@@ -36,7 +40,9 @@ import { ApiKeyRequestAuthorizer } from "@social-monitor/identity/interfaces/res
 import { UserWorkspaceRequestAuthorizer } from "@social-monitor/identity/interfaces/authorization/user-workspace-request.authorizer";
 import { WorkspaceRoleHeaderParser } from "@social-monitor/identity/interfaces/authorization/workspace-role-header.parser";
 import { ApiKeysController } from "@social-monitor/identity/interfaces/rest/api-keys.controller";
+import { AuthSessionController } from "@social-monitor/identity/interfaces/rest/auth-session.controller";
 import { CreateApiKeyUseCase } from "@social-monitor/identity/features/create-api-key/create-api-key.use-case";
+import { GetAuthSessionUseCase } from "@social-monitor/identity/features/get-auth-session/get-auth-session.use-case";
 import { ListApiKeysUseCase } from "@social-monitor/identity/features/list-api-keys/list-api-keys.use-case";
 import { RevokeApiKeyUseCase } from "@social-monitor/identity/features/revoke-api-key/revoke-api-key.use-case";
 import { WORKSPACE_AUTHORIZATION_POLICY } from "@social-monitor/identity/ports";
@@ -193,10 +199,12 @@ const useCaseProviders = [
   CreateWebhookEndpointUseCase,
   DisableWebhookEndpointUseCase,
   GetDeliveryAttemptUseCase,
+  GetAuthSessionUseCase,
   GetDigestScheduleUseCase,
   GetDigestUseCase,
   GetFeedItemUseCase,
   GetNotificationPreferenceUseCase,
+  GetWorkspaceSettingsUseCase,
   GetScanPolicyUseCase,
   GetScanStatusUseCase,
   GetSourceBindingHealthUseCase,
@@ -245,6 +253,8 @@ const useCaseProviders = [
   RotateSourceCredentialUseCase,
   SetNotificationPreferenceUseCase,
   SetScanPolicyUseCase,
+  UpdateWorkspaceDigestPreferenceUseCase,
+  UpdateWorkspaceTelemetryConsentUseCase,
   ListUserSubscriptionsUseCase,
   UpsertUserRelevanceProfileUseCase,
   UpsertSummaryPolicyUseCase,
@@ -283,7 +293,9 @@ const useCaseProviders = [
     NotificationPreferencesController,
     RealtimeEventsController,
     WebhookEndpointsController,
+    WorkspaceSettingsController,
     ApiKeysController,
+    AuthSessionController,
     UserSubscriptionsController,
     UserSummaryPreferencesController,
     PublicApiAuditEventsController,

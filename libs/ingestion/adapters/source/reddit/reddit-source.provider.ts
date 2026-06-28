@@ -1,6 +1,7 @@
 import { redactSensitiveText } from '@social-monitor/shared-kernel';
 
 import type {
+  FetchedSourceItem,
   ProviderFailure,
   SourceCapabilityProfile,
   SourceProviderPort,
@@ -10,9 +11,24 @@ import type {
   SourceProviderValidationResult,
   SourceQuery,
 } from '../../../ports';
-import { redditListings, redditTopTimes } from './http-reddit-client';
-import type { RedditClientPort, RedditPost, RedditPostListing, RedditTopTime } from './reddit-client.port';
+import type { RedditClientPort } from './reddit-client.port';
 import type { RedditRefreshTokenProviderPort } from './refresh-token-reddit-token-provider';
+import {
+  compactUnique,
+  firstNonEmptyString,
+  normalizePost,
+  parseListingQuery,
+  readListing,
+  readOptionalNonNegativeInteger,
+  readOptionalString,
+  readPositiveInteger,
+  readRequiredString,
+  readScanPasses,
+  readTopTime,
+  redditWarnings,
+  sortRedditItemsByEngagement,
+  type RedditScanPass,
+} from './reddit-source-support';
 import type { RedditTokenProviderPort } from './reddit-token-provider.port';
 
 const capabilityProfile: SourceCapabilityProfile = {
@@ -86,6 +102,18 @@ export class RedditSourceProvider implements SourceProviderPort {
     const accessToken = await this.resolveAccessToken(context);
     const userAgent = readOptionalString(context.config?.userAgent);
     const minScore = readOptionalNonNegativeInteger(context.config?.minScore, 1_000_000);
+    const scanPasses = readScanPasses(context.config);
+
+    if (scanPasses.length > 0) {
+      return this.scanPasses({
+        accessToken,
+        userAgent,
+        plan,
+        passes: scanPasses,
+        fallbackMinScore: minScore,
+      });
+    }
+
     const listingQuery = plan.query.mode === 'listing'
       ? parseListingQuery(plan.query.query)
       : undefined;
@@ -185,185 +213,55 @@ export class RedditSourceProvider implements SourceProviderPort {
 
     return this.tokenProvider.getAccessToken();
   }
+
+  private async scanPasses(params: {
+    readonly accessToken: string;
+    readonly userAgent: string | undefined;
+    readonly plan: SourceProviderScanPlan;
+    readonly passes: readonly RedditScanPass[];
+    readonly fallbackMinScore: number | undefined;
+  }): Promise<SourceProviderScanResult> {
+    const perPassFallbackLimit = Math.max(
+      1,
+      Math.ceil(params.plan.maxItems / params.passes.length),
+    );
+    const itemsByExternalId = new Map<string, FetchedSourceItem>();
+    const warnings: string[] = [];
+
+    for (const pass of params.passes) {
+      const limit = pass.maxItems ?? perPassFallbackLimit;
+      const page = pass.mode === 'listing'
+        ? await this.client.listSubredditPosts({
+            accessToken: params.accessToken,
+            userAgent: params.userAgent,
+            subreddit: pass.subreddit,
+            listing: pass.listing,
+            ...(pass.listing === 'top' ? { topTime: pass.topTime ?? 'day' } : {}),
+            limit,
+          })
+        : await this.client.searchPosts({
+            accessToken: params.accessToken,
+            userAgent: params.userAgent,
+            query: pass.query,
+            limit,
+          });
+      const minScore = pass.minScore ?? params.fallbackMinScore;
+
+      for (const item of page.posts.flatMap((post) => normalizePost(post, minScore))) {
+        if (!itemsByExternalId.has(item.externalId)) {
+          itemsByExternalId.set(item.externalId, item);
+        }
+      }
+
+      warnings.push(...redditWarnings(page.posts, minScore));
+    }
+
+    return {
+      items: sortRedditItemsByEngagement([...itemsByExternalId.values()]).slice(
+        0,
+        params.plan.maxItems,
+      ),
+      warnings: compactUnique(warnings),
+    };
+  }
 }
-
-const normalizePost = (post: RedditPost, minScore: number | undefined) => {
-  if (post.over18 || post.removedByCategory !== undefined) {
-    return [];
-  }
-
-  if (minScore !== undefined && post.score !== undefined && post.score < minScore) {
-    return [];
-  }
-
-  const title = post.title?.trim() ?? '';
-  const body = post.selftext?.trim() ?? '';
-
-  if (title.length + body.length === 0) {
-    return [];
-  }
-
-  const publishedAt = publishedAtForPost(post);
-
-  if (publishedAt === undefined) {
-    return [];
-  }
-
-  return [
-    {
-      externalId: `reddit:${post.name ?? post.id}`,
-      canonicalUrl: canonicalUrl(post),
-      title,
-      body,
-      authorHandle: post.author,
-      publishedAt,
-      metadata: redditPostMetadata(post),
-    },
-  ];
-};
-
-const redditWarnings = (
-  posts: readonly RedditPost[],
-  minScore: number | undefined,
-): readonly string[] => [
-  ...(
-    posts.some((post) => post.over18 || post.removedByCategory !== undefined)
-      ? ['Some Reddit posts were skipped because they were adult or removed.']
-      : []
-  ),
-  ...(
-    posts.some((post) => isTimestampMissingCandidate(post, minScore))
-      ? ['Some Reddit posts had no valid created_utc timestamp; they were skipped.']
-      : []
-  ),
-];
-
-const isTimestampMissingCandidate = (
-  post: RedditPost,
-  minScore: number | undefined,
-): boolean => {
-  if (post.over18 || post.removedByCategory !== undefined) {
-    return false;
-  }
-
-  if (minScore !== undefined && post.score !== undefined && post.score < minScore) {
-    return false;
-  }
-
-  const title = post.title?.trim() ?? '';
-  const body = post.selftext?.trim() ?? '';
-
-  return title.length + body.length > 0 && publishedAtForPost(post) === undefined;
-};
-
-const publishedAtForPost = (post: RedditPost): Date | undefined => {
-  if (post.createdUtc === undefined || !Number.isFinite(post.createdUtc) || post.createdUtc <= 0) {
-    return undefined;
-  }
-
-  const publishedAt = new Date(post.createdUtc * 1000);
-
-  return Number.isNaN(publishedAt.getTime()) ? undefined : publishedAt;
-};
-
-const canonicalUrl = (post: RedditPost): string => {
-  if (post.permalink !== undefined) {
-    return new URL(post.permalink, 'https://www.reddit.com').toString();
-  }
-
-  return post.url ?? `https://www.reddit.com/comments/${post.id}`;
-};
-
-const parseListingQuery = (
-  value: string,
-): { readonly subreddit: string; readonly listing: RedditPostListing } => {
-  const [subreddit, listing] = value.split(':');
-
-  return {
-    subreddit: readRequiredString(subreddit, 'subreddit'),
-    listing: readListing(listing),
-  };
-};
-
-const readListing = (value: unknown): RedditPostListing => {
-  const listing = readOptionalString(value) ?? 'hot';
-
-  if (!redditListings.includes(listing as RedditPostListing)) {
-    throw new Error(`Unsupported Reddit listing: ${listing}`);
-  }
-
-  return listing as RedditPostListing;
-};
-
-const readTopTime = (value: unknown): RedditTopTime => {
-  const topTime = readOptionalString(value) ?? 'week';
-
-  if (!redditTopTimes.includes(topTime as RedditTopTime)) {
-    throw new Error(`Unsupported Reddit topTime: ${topTime}`);
-  }
-
-  return topTime as RedditTopTime;
-};
-
-const redditPostMetadata = (post: RedditPost) => ({
-  ...(post.subreddit === undefined ? {} : { subreddit: post.subreddit }),
-  ...(linkedUrl(post) === undefined ? {} : { linkedUrl: linkedUrl(post) }),
-  ...(post.score === undefined ? {} : { score: post.score }),
-  ...(post.numComments === undefined ? {} : { numComments: post.numComments }),
-  ...(post.upvoteRatio === undefined ? {} : { upvoteRatio: post.upvoteRatio }),
-});
-
-const linkedUrl = (post: RedditPost): string | undefined => {
-  if (post.url === undefined) {
-    return undefined;
-  }
-
-  const discussionUrl = canonicalUrl(post);
-
-  return post.url === discussionUrl ? undefined : post.url;
-};
-
-const readRequiredString = (value: unknown, field: string, fallback?: string): string => {
-  const resolved = readOptionalString(value) ?? fallback?.trim();
-
-  if (resolved === undefined || resolved.length === 0) {
-    throw new Error(`Reddit source config field is required: ${field}`);
-  }
-
-  return resolved;
-};
-
-const readOptionalString = (value: unknown): string | undefined =>
-  typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-
-const firstNonEmptyString = (...values: readonly unknown[]): string | undefined =>
-  values.map(readOptionalString).find((value) => value !== undefined);
-
-const readPositiveInteger = (
-  value: unknown,
-  fallback: number,
-  min: number,
-  max: number,
-): number => {
-  if (value === undefined) {
-    return fallback;
-  }
-
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
-    throw new Error(`Reddit source config integer must be between ${min} and ${max}`);
-  }
-
-  return value;
-};
-
-const readOptionalNonNegativeInteger = (value: unknown, max: number): number | undefined => {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > max) {
-    throw new Error(`Reddit source config integer must be between 0 and ${max}`);
-  }
-
-  return value;
-};

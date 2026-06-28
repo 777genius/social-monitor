@@ -6,8 +6,17 @@ import { join } from "node:path";
 import { InMemoryFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { InMemoryQueuePublisher } from "@social-monitor/platform-queue/adapters/in-memory";
+import { OpenAiSourceContentQualityReviewerAdapter } from "@social-monitor/relevance/adapters/model/openai-source-content-quality-reviewer.adapter";
 import { InMemoryUserRelevanceProfileRepository } from "@social-monitor/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
+import {
+  resolveRelevanceContentQualityOpenAiOptions,
+  resolveRelevanceContentQualityReviewerMode,
+} from "@social-monitor/relevance/interfaces/rest/relevance-provider-tokens";
+import {
+  NOOP_SOURCE_CONTENT_QUALITY_REVIEWER,
+  type SourceContentQualityReviewerPort,
+} from "@social-monitor/relevance/ports";
 import {
   FixedClock,
   SystemClock,
@@ -45,6 +54,11 @@ import {
   ReaderSummaryPolicy,
   SummaryPolicy,
 } from "@social-monitor/summary/domain";
+import {
+  aiDeveloperSignalSourcePreset,
+  type SourceTargetPresetEntry,
+  type SourceTargetPresetSummaryPreference,
+} from "@social-monitor/subscriptions/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { ExecuteSummaryJobUseCase } from "@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
@@ -119,10 +133,13 @@ type ScanTarget = {
 
 type ScanMetrics = {
   readonly providerKey: LiveProviderKey;
+  readonly sourceBindingId: string;
+  readonly status: "succeeded" | "failed";
   readonly fetched: number;
   readonly inserted: number;
   readonly projected: number;
   readonly skippedDuplicates: number;
+  readonly failureReason?: string;
 };
 
 type LiveReaderSummarySmokeResult = {
@@ -137,21 +154,22 @@ type LiveReaderSummarySmokeResult = {
   readonly frontendArtifact: unknown;
 };
 
+const sourcePresetMode = readSourcePresetMode();
 const timeoutMs = readPositiveIntegerEnv(
   "LIVE_MULTI_PROVIDER_TIMEOUT_MS",
-  12_000,
+  sourcePresetMode === aiDeveloperSignalSourcePreset.presetId ? 30_000 : 12_000,
   1_000,
   60_000,
 );
 const maxItemsPerProvider = readPositiveIntegerEnv(
   "LIVE_MULTI_PROVIDER_MAX_ITEMS_PER_PROVIDER",
-  2,
+  sourcePresetMode === aiDeveloperSignalSourcePreset.presetId ? 30 : 10,
   1,
-  5,
+  50,
 );
 const maxEvidenceItems = readPositiveIntegerEnv(
   "LIVE_MULTI_PROVIDER_SUMMARY_MAX_EVIDENCE_ITEMS",
-  12,
+  30,
   4,
   50,
 );
@@ -161,9 +179,27 @@ const maxSummaryKeyPoints = readPositiveIntegerEnv(
   1,
   10,
 );
+const liveReaderSummaryMaxInputTokens = readPositiveIntegerEnv(
+  "LIVE_MULTI_PROVIDER_READER_SUMMARY_MAX_INPUT_TOKENS",
+  48_000,
+  24_000,
+  100_000,
+);
+const liveReaderSummaryMaxOutputTokens = readPositiveIntegerEnv(
+  "LIVE_MULTI_PROVIDER_READER_SUMMARY_MAX_OUTPUT_TOKENS",
+  8_000,
+  4_000,
+  16_000,
+);
+const liveReaderSummaryBudgetTokens = readPositiveIntegerEnv(
+  "LIVE_MULTI_PROVIDER_READER_SUMMARY_BUDGET_TOKENS",
+  80_000,
+  32_000,
+  160_000,
+);
 const xTwitterMaxItems = readPositiveIntegerEnv(
   "LIVE_MULTI_PROVIDER_X_MAX_ITEMS",
-  30,
+  60,
   1,
   100,
 );
@@ -175,7 +211,7 @@ const xTwitterLimitPerProduct = readPositiveIntegerEnv(
 );
 const allowEmptyTargets = readBooleanEnv(
   "LIVE_MULTI_PROVIDER_ALLOW_EMPTY_TARGETS",
-  false,
+  sourcePresetMode === aiDeveloperSignalSourcePreset.presetId,
 );
 const sampledAtEnv = "LIVE_MULTI_PROVIDER_SAMPLED_AT";
 const sampledAt =
@@ -360,8 +396,24 @@ const main = async (): Promise<void> => {
         `execute live ${target.providerKey} scan`,
       );
     } catch (error) {
+      const failureReason = describeError(error);
+      scanMetrics.push({
+        providerKey: target.providerKey,
+        sourceBindingId: target.sourceBindingId,
+        status: "failed",
+        fetched: 0,
+        inserted: 0,
+        projected: 0,
+        skippedDuplicates: 0,
+        failureReason,
+      });
+
+      if (allowEmptyTargets) {
+        continue;
+      }
+
       throw new Error(
-        `live multi-provider scan failed: provider=${target.providerKey} sourceBindingId=${target.sourceBindingId} queryMode=${target.sourceQuery.mode} reason=${describeError(error)}`,
+        `live multi-provider scan failed: provider=${target.providerKey} sourceBindingId=${target.sourceBindingId} queryMode=${target.sourceQuery.mode} reason=${failureReason}`,
         { cause: error },
       );
     }
@@ -382,6 +434,8 @@ const main = async (): Promise<void> => {
     }
     scanMetrics.push({
       providerKey: target.providerKey,
+      sourceBindingId: target.sourceBindingId,
+      status: "succeeded",
       fetched: result.fetched,
       inserted: result.inserted,
       projected: result.projected,
@@ -389,14 +443,27 @@ const main = async (): Promise<void> => {
     });
   }
 
-  assert(
-    scanReporter.failed.length === 0,
-    "live multi-provider scans must not report failures",
+  const succeededSourceBindingIds = new Set(
+    scanMetrics
+      .filter((scan) => scan.status === "succeeded")
+      .map((scan) => scan.sourceBindingId),
   );
-  assert(
-    scanReporter.succeeded.length === targets.length,
-    "live multi-provider scans must report every success",
+  const successfulTargets = targets.filter((target) =>
+    succeededSourceBindingIds.has(target.sourceBindingId),
   );
+
+  if (!allowEmptyTargets) {
+    assert(
+      scanReporter.failed.length === 0,
+      "live multi-provider scans must not report failures",
+    );
+    assert(
+      scanReporter.succeeded.length === targets.length,
+      "live multi-provider scans must report every success",
+    );
+  } else {
+    assert(successfulTargets.length > 0, "at least one live scan must succeed");
+  }
 
   const feedReadLimit = Math.max(
     100,
@@ -412,8 +479,9 @@ const main = async (): Promise<void> => {
     limit: feedReadLimit,
   });
   const feedSnapshots = feed.items.map((item) => item.toSnapshot());
+  const requiredFeedTargets = allowEmptyTargets ? successfulTargets : targets;
   assert(
-    feedSnapshots.length >= targets.length,
+    feedSnapshots.length >= requiredFeedTargets.length,
     "live multi-provider scans must produce aggregated feed items",
   );
   const feedProviderKeys = new Set(
@@ -421,7 +489,7 @@ const main = async (): Promise<void> => {
       (item) => targetBySourceBinding.get(item.sourceBindingId)?.providerKey,
     ),
   );
-  for (const target of targets) {
+  for (const target of requiredFeedTargets) {
     assert(
       feedProviderKeys.has(target.providerKey),
       `aggregated feed must include ${target.providerKey}`,
@@ -438,20 +506,20 @@ const main = async (): Promise<void> => {
   const summaryPolicies = new InMemorySummaryPolicyRepository();
   const summaryIds = new SequenceIdGenerator("live-multi-provider-summary");
   const summaryModel = buildSummaryModel();
+  const summaryPreference = summaryPreferenceForRun();
   await summaryPolicies.save(
     SummaryPolicy.create({
       id: "summary-policy-live-multi-provider-smoke",
       tenantId: tenant,
       workspaceId: workspace,
       topicId,
-      language: "auto",
-      format: "bullet_digest",
-      tone: "analytical",
+      language: summaryPreference.language,
+      format: summaryPreference.format,
+      tone: summaryPreference.tone,
       maxKeyPoints: maxSummaryKeyPoints,
-      includeRisks: true,
-      includeSourceHighlights: true,
-      customInstructions:
-        "Compare signals across Reddit, GitHub, Hacker News, RSS and X/Twitter for the selected monitoring topic.",
+      includeRisks: summaryPreference.includeRisks,
+      includeSourceHighlights: summaryPreference.includeSourceHighlights,
+      customInstructions: summaryPreference.customInstructions,
       createdAt: sampledAt,
       updatedAt: sampledAt,
     }),
@@ -556,7 +624,16 @@ const main = async (): Promise<void> => {
       ),
   );
 
-  for (const target of targets) {
+  const requiredSummaryTargets = allowEmptyTargets
+    ? targets.filter((target) => selectedProviders.has(target.providerKey))
+    : targets;
+
+  assert(
+    requiredSummaryTargets.length > 0,
+    "summary evidence window must include at least one provider",
+  );
+
+  for (const target of requiredSummaryTargets) {
     assert(
       selectedProviders.has(target.providerKey),
       `summary evidence window must include ${target.providerKey}`,
@@ -567,9 +644,9 @@ const main = async (): Promise<void> => {
     artifactSnapshot.citationMap.map((citation) => citation.providerKey),
   );
   const requiredProviderKeys = new Set(
-    targets.map((target) => target.providerKey),
+    requiredSummaryTargets.map((target) => target.providerKey),
   );
-  for (const target of targets) {
+  for (const target of requiredSummaryTargets) {
     assert(
       citedProviders.has(target.providerKey),
       `summary citation map must include ${target.providerKey}`,
@@ -664,6 +741,7 @@ const runLiveReaderSummarySmoke = async (params: {
   const readerSummaryQueue = new InMemoryReaderSummaryJobQueueAdapter();
   const readerSummaryIds = new SequenceIdGenerator("live-multi-provider-readerSummary");
   const scope = { type: "workspace" } as const;
+  const summaryPreference = summaryPreferenceForRun();
 
   await readerSummaryPolicies.save(
     ReaderSummaryPolicy.create({
@@ -680,7 +758,7 @@ const runLiveReaderSummarySmoke = async (params: {
       includeRepeatedSignals: true,
       dedupeStrategy: "canonical_url_then_title",
       customInstructions:
-        "Build a reader-friendly workspace readerSummary across Reddit, GitHub, Hacker News, RSS and X/Twitter.",
+        `${summaryPreference.customInstructions} Build the reader-facing brief around social/news signals first; treat GitHub repository signals as supporting evidence unless they are cross-confirmed by social/news sources.`,
       createdAt: sampledAt,
       updatedAt: sampledAt,
     }),
@@ -717,6 +795,10 @@ const runLiveReaderSummarySmoke = async (params: {
     params.feedItems,
     new InMemoryUserRelevanceProfileRepository(),
     params.clock,
+    undefined,
+    undefined,
+    undefined,
+    buildSourceContentQualityReviewer(),
   );
   const evidenceSelector = new RelevanceReaderSummaryEvidenceSelector(
     rankFeedItems,
@@ -799,7 +881,8 @@ const runLiveReaderSummarySmoke = async (params: {
   );
   if (readerSummaryModelMode === "deterministic") {
     assert(
-      readerBrief.headline.startsWith("Workspace readerSummary:"),
+      readerBrief.headline.startsWith("Workspace readerSummary:") ||
+        readerBrief.headline.startsWith("Source watch across "),
       `readerSummary reader headline must be reader-facing, got ${readerBrief.headline}`,
     );
   }
@@ -808,10 +891,21 @@ const runLiveReaderSummarySmoke = async (params: {
     "readerSummary reader headline must not repeat the first top read title",
   );
 
+  const requiredReaderTargets = allowEmptyTargets
+    ? params.targets.filter((target) =>
+        selectedProviders.has(target.providerKey),
+      )
+    : params.targets;
   const requiredProviderCount = new Set(
-    params.targets.map((target) => target.providerKey),
+    requiredReaderTargets.map((target) => target.providerKey),
   ).size;
-  for (const target of params.targets) {
+
+  assert(
+    requiredProviderCount > 0,
+    "readerSummary evidence window must include at least one provider",
+  );
+
+  for (const target of requiredReaderTargets) {
     assert(
       selectedProviders.has(target.providerKey),
       `readerSummary evidence window must include ${target.providerKey}`,
@@ -886,8 +980,84 @@ const buildReaderSummaryModel = (): ReaderSummaryModelPort => {
     return new DeterministicReaderSummaryModelAdapter();
   }
 
-  return new OpenAiResponsesReaderSummaryModelAdapter(
-    resolveOpenAiResponsesReaderSummaryModelOptions(process.env, {
+  return new LiveBudgetReaderSummaryModel(
+    new OpenAiResponsesReaderSummaryModelAdapter(
+      resolveOpenAiResponsesReaderSummaryModelOptions(process.env, {
+        requireApiKey: true,
+      }),
+    ),
+  );
+};
+
+class LiveBudgetReaderSummaryModel implements ReaderSummaryModelPort {
+  constructor(private readonly delegate: ReaderSummaryModelPort) {}
+
+  route(
+    input: Parameters<ReaderSummaryModelPort["route"]>[0],
+    policy: Parameters<ReaderSummaryModelPort["route"]>[1],
+    budget: Parameters<ReaderSummaryModelPort["route"]>[2],
+  ): ReturnType<ReaderSummaryModelPort["route"]> {
+    return this.delegate.route(
+      input,
+      {
+        ...policy,
+        maxInputTokens: Math.max(
+          policy.maxInputTokens,
+          liveReaderSummaryMaxInputTokens,
+        ),
+        maxOutputTokens: Math.max(
+          policy.maxOutputTokens,
+          liveReaderSummaryMaxOutputTokens,
+        ),
+      },
+      {
+        ...budget,
+        remainingTokens: Math.max(
+          budget.remainingTokens,
+          liveReaderSummaryBudgetTokens,
+        ),
+      },
+    );
+  }
+
+  estimate(
+    input: Parameters<ReaderSummaryModelPort["estimate"]>[0],
+    route: Parameters<ReaderSummaryModelPort["estimate"]>[1],
+  ): ReturnType<ReaderSummaryModelPort["estimate"]> {
+    return this.delegate.estimate(input, route);
+  }
+
+  generate(
+    input: Parameters<ReaderSummaryModelPort["generate"]>[0],
+    route: Parameters<ReaderSummaryModelPort["generate"]>[1],
+  ): ReturnType<ReaderSummaryModelPort["generate"]> {
+    return this.delegate.generate(input, route);
+  }
+
+  validateRawProviderResponse(
+    attempt: Parameters<
+      ReaderSummaryModelPort["validateRawProviderResponse"]
+    >[0],
+  ): ReturnType<ReaderSummaryModelPort["validateRawProviderResponse"]> {
+    return this.delegate.validateRawProviderResponse(attempt);
+  }
+
+  classifyError(
+    error: Parameters<ReaderSummaryModelPort["classifyError"]>[0],
+  ): ReturnType<ReaderSummaryModelPort["classifyError"]> {
+    return this.delegate.classifyError(error);
+  }
+}
+
+const buildSourceContentQualityReviewer = (): SourceContentQualityReviewerPort => {
+  const mode = resolveRelevanceContentQualityReviewerMode(process.env);
+
+  if (mode === "disabled") {
+    return NOOP_SOURCE_CONTENT_QUALITY_REVIEWER;
+  }
+
+  return new OpenAiSourceContentQualityReviewerAdapter(
+    resolveRelevanceContentQualityOpenAiOptions(process.env, {
       requireApiKey: true,
     }),
   );
@@ -897,6 +1067,17 @@ const buildScanTargets = (): readonly ScanTarget[] => {
   const userAgent =
     readOptionalEnv("LIVE_MULTI_PROVIDER_USER_AGENT") ??
     "social-monitor-mvp-live-multi-provider-summary/0.1";
+  const includeXTwitter = shouldIncludeXTwitterTargets();
+  if (sourcePresetMode === aiDeveloperSignalSourcePreset.presetId) {
+    return [
+      ...presetScanTargets({
+        userAgent,
+        includeXTwitter,
+      }),
+      ...supplementalGithubScanTargets(userAgent),
+    ];
+  }
+
   const subreddits = readCsvEnv("LIVE_MULTI_PROVIDER_REDDIT_SUBREDDITS") ?? [
     readOptionalEnv("LIVE_MULTI_PROVIDER_REDDIT_SUBREDDIT") ?? "programming",
   ];
@@ -916,8 +1097,6 @@ const buildScanTargets = (): readonly ScanTarget[] => {
   const rssFeedUrl =
     readOptionalEnv("LIVE_MULTI_PROVIDER_RSS_URL") ??
     "https://hnrss.org/frontpage";
-  const githubAccessToken = readOptionalEnv("GITHUB_ACCESS_TOKEN");
-  const includeXTwitter = shouldIncludeXTwitterTargets();
   const xTwitterQueries = readCsvEnv("LIVE_MULTI_PROVIDER_X_QUERIES") ?? [
     "openai",
     "claude ai",
@@ -946,32 +1125,9 @@ const buildScanTargets = (): readonly ScanTarget[] => {
     ),
     {
       providerKey: GITHUB_ISSUES_PROVIDER_KEY,
-      sourceBindingId: "source-binding-live-multi-provider-github",
-      scanPolicyId: "scan-policy-live-multi-provider-github",
-      sourceQuery: { mode: "search", query: githubQuery },
-      config: {
-        maxItems: maxItemsPerProvider,
-        userAgent,
-        ...(githubAccessToken === undefined
-          ? {}
-          : { accessToken: githubAccessToken }),
-      },
+      ...githubIssuesTarget({ userAgent, query: githubQuery }),
     },
-    {
-      providerKey: "github-trending-page",
-      sourceBindingId:
-        "source-binding-live-multi-provider-github-trending-page",
-      scanPolicyId: "scan-policy-live-multi-provider-github-trending-page",
-      sourceQuery: { mode: "listing", query: "daily" },
-      config: {
-        window: "daily",
-        language:
-          readOptionalEnv("LIVE_MULTI_PROVIDER_GITHUB_TRENDING_LANGUAGE") ??
-          "python",
-        maxItems: maxItemsPerProvider,
-        userAgent,
-      },
-    },
+    githubTrendingPageTarget(userAgent),
     {
       providerKey: "hacker-news",
       sourceBindingId: "source-binding-live-multi-provider-hacker-news",
@@ -1007,6 +1163,166 @@ const buildScanTargets = (): readonly ScanTarget[] => {
         : []
     ),
   ];
+};
+
+const summaryPreferenceForRun = (): SourceTargetPresetSummaryPreference => {
+  if (sourcePresetMode === aiDeveloperSignalSourcePreset.presetId) {
+    return {
+      ...aiDeveloperSignalSourcePreset.summaryPreference,
+      customInstructions:
+        `${aiDeveloperSignalSourcePreset.summaryPreference.customInstructions} Use Reddit, X/Twitter, Hacker News and RSS as the primary signal layer. Treat GitHub issues and GitHub Trending as supporting developer evidence unless social/news sources confirm the same story.`,
+    };
+  }
+
+  return {
+    language: "auto",
+    format: "bullet_digest",
+    tone: "analytical",
+    maxKeyPoints: maxSummaryKeyPoints,
+    includeRisks: true,
+    includeSourceHighlights: true,
+    customInstructions:
+      "Compare signals across Reddit, GitHub, Hacker News, RSS and X/Twitter for the selected monitoring topic.",
+  };
+};
+
+const presetScanTargets = (params: {
+  readonly userAgent: string;
+  readonly includeXTwitter: boolean;
+}): readonly ScanTarget[] => {
+  const xTwitterQueryOverride = readCsvEnv("LIVE_MULTI_PROVIDER_X_QUERIES");
+  const xTwitterTargetConfig =
+    aiDeveloperSignalSourcePreset.entries.find(
+      (entry) => entry.providerKey === "x-twitter",
+    )?.targetConfig ?? {};
+  const presetTargets = aiDeveloperSignalSourcePreset.entries.flatMap(
+    (entry, index): readonly ScanTarget[] => {
+      const providerKey = liveProviderKeyForPresetEntry(entry);
+      if (providerKey === "x-twitter" && !params.includeXTwitter) {
+        return [];
+      }
+
+      if (providerKey === "x-twitter" && xTwitterQueryOverride !== undefined) {
+        return [];
+      }
+
+      return [
+        {
+          providerKey,
+          sourceBindingId: `source-binding-live-multi-provider-${providerKey}-${index + 1}-${safeIdPart(entry.targetValue)}`,
+          scanPolicyId: `scan-policy-live-multi-provider-${providerKey}-${index + 1}-${safeIdPart(entry.targetValue)}`,
+          sourceQuery: sourceQueryForPresetEntry(entry),
+          config: {
+            ...entry.targetConfig,
+            userAgent: params.userAgent,
+          },
+        },
+      ];
+    },
+  );
+
+  if (!params.includeXTwitter || xTwitterQueryOverride === undefined) {
+    return presetTargets;
+  }
+
+  return [
+    ...presetTargets,
+    ...xTwitterQueryOverride.map(
+      (query, index): ScanTarget => ({
+        providerKey: "x-twitter",
+        sourceBindingId: `source-binding-live-multi-provider-x-twitter-override-${index + 1}-${safeIdPart(query)}`,
+        scanPolicyId: `scan-policy-live-multi-provider-x-twitter-override-${index + 1}-${safeIdPart(query)}`,
+        sourceQuery: { mode: "search", query },
+        config: {
+          ...xTwitterTargetConfig,
+          maxItems: xTwitterMaxItems,
+          limitPerProduct: xTwitterLimitPerProduct,
+          userAgent: params.userAgent,
+        },
+      }),
+    ),
+  ];
+};
+
+const supplementalGithubScanTargets = (
+  userAgent: string,
+): readonly ScanTarget[] => [
+  {
+    providerKey: GITHUB_ISSUES_PROVIDER_KEY,
+    ...githubIssuesTarget({
+      userAgent,
+      query:
+        readOptionalEnv("LIVE_MULTI_PROVIDER_GITHUB_QUERY") ??
+        "repo:microsoft/TypeScript is:issue",
+    }),
+  },
+  githubTrendingPageTarget(userAgent),
+];
+
+const githubIssuesTarget = (params: {
+  readonly userAgent: string;
+  readonly query: string;
+}): Omit<ScanTarget, "providerKey"> => {
+  const githubAccessToken = readOptionalEnv("GITHUB_ACCESS_TOKEN");
+
+  return {
+    sourceBindingId: "source-binding-live-multi-provider-github",
+    scanPolicyId: "scan-policy-live-multi-provider-github",
+    sourceQuery: { mode: "search", query: params.query },
+    config: {
+      maxItems: maxItemsPerProvider,
+      userAgent: params.userAgent,
+      ...(githubAccessToken === undefined
+        ? {}
+        : { accessToken: githubAccessToken }),
+    },
+  };
+};
+
+const githubTrendingPageTarget = (userAgent: string): ScanTarget => ({
+  providerKey: "github-trending-page",
+  sourceBindingId:
+    "source-binding-live-multi-provider-github-trending-page",
+  scanPolicyId: "scan-policy-live-multi-provider-github-trending-page",
+  sourceQuery: { mode: "listing", query: "daily" },
+  config: {
+    window: "daily",
+    language:
+      readOptionalEnv("LIVE_MULTI_PROVIDER_GITHUB_TRENDING_LANGUAGE") ??
+      "python",
+    maxItems: maxItemsPerProvider,
+    userAgent,
+  },
+});
+
+const sourceQueryForPresetEntry = (
+  entry: SourceTargetPresetEntry,
+): SourceQuery => {
+  if (entry.targetKind === "url") {
+    return { mode: "url", query: entry.targetValue };
+  }
+
+  if (entry.targetKind === "subreddit") {
+    return { mode: "listing", query: `${entry.targetValue}:hot` };
+  }
+
+  return { mode: "search", query: entry.targetValue };
+};
+
+const liveProviderKeyForPresetEntry = (
+  entry: SourceTargetPresetEntry,
+): LiveProviderKey => {
+  switch (entry.providerKey) {
+    case "reddit":
+    case "hacker-news":
+    case "rss":
+    case "x-twitter":
+      return entry.providerKey;
+    default:
+      throw new Error(
+        `Unsupported ${aiDeveloperSignalSourcePreset.presetId} provider in live multi-provider run: ${entry.providerKey}`,
+      );
+  }
 };
 
 const buildXTwitterProvider = (): XTwitterSourceProvider | undefined => {
@@ -1258,6 +1574,21 @@ function readReaderSummaryModelMode(): "deterministic" | "openai-responses" {
 
   throw new Error(
     'LIVE_MULTI_PROVIDER_READER_SUMMARY_MODEL must be "deterministic" or "openai-responses"',
+  );
+}
+
+function readSourcePresetMode(): "manual" | "ai-developer-signal-v1" {
+  const value = readOptionalEnv("LIVE_MULTI_PROVIDER_SOURCE_PRESET") ?? "manual";
+  if (value === "manual") {
+    return "manual";
+  }
+
+  if (value === aiDeveloperSignalSourcePreset.presetId) {
+    return "ai-developer-signal-v1";
+  }
+
+  throw new Error(
+    `LIVE_MULTI_PROVIDER_SOURCE_PRESET must be "manual" or "${aiDeveloperSignalSourcePreset.presetId}"`,
   );
 }
 

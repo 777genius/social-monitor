@@ -55,6 +55,10 @@ describe('RssSourceProvider', () => {
         body: 'First RSS item',
         authorHandle: 'rss-author',
         publishedAt: new Date('2026-06-05T10:00:00.000Z'),
+        metadata: {
+          kind: 'rss_item',
+          feedUrl: 'https://example.test/feed.xml',
+        },
       },
       {
         externalId: 'https://example.test/rss/item-2#1',
@@ -63,6 +67,10 @@ describe('RssSourceProvider', () => {
         body: 'Second RSS item',
         authorHandle: undefined,
         publishedAt: new Date('2026-06-05T10:01:00.000Z'),
+        metadata: {
+          kind: 'rss_item',
+          feedUrl: 'https://example.test/feed.xml',
+        },
       },
     ]);
     expect(result.nextCursor).toBe(JSON.stringify({
@@ -159,6 +167,10 @@ describe('RssSourceProvider', () => {
 
     expect(result.items.map((item) => item.externalId)).toEqual(['valid-timestamp']);
     expect(result.items[0]?.publishedAt).toEqual(new Date('2026-06-05T10:03:00.000Z'));
+    expect(result.items[0]?.metadata).toEqual({
+      kind: 'rss_item',
+      feedUrl: 'https://example.test/feed.xml',
+    });
     expect(result.warnings).toEqual(['Some RSS items had no published timestamp; they were skipped.']);
   });
 
@@ -199,5 +211,25 @@ describe('RssSourceProvider', () => {
     expect(result.items.map((item) => item.externalId)).toEqual(['valid-link']);
     expect(result.items[0]?.canonicalUrl).toBe('https://example.test/rss/valid-link');
     expect(result.warnings).toEqual(['Some RSS items had no canonical link; they were skipped.']);
+  });
+
+  it('extracts search query metadata from query-backed RSS feeds', async () => {
+    const provider = new RssSourceProvider(new FixtureRssClient());
+    const context = {
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'rss-binding-1',
+      scanJobId: 'scan-job-1',
+      correlationId: 'correlation-1',
+    };
+    const query = { mode: 'url' as const, query: 'https://hnrss.org/newest?q=Flutter' };
+
+    const result = await provider.scan(provider.planScan(query, context), context);
+
+    expect(result.items[0]?.metadata).toEqual({
+      kind: 'rss_item',
+      feedUrl: 'https://hnrss.org/newest?q=Flutter',
+      searchQuery: 'Flutter',
+    });
   });
 });

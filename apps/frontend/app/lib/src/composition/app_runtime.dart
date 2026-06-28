@@ -29,10 +29,7 @@ final class AppShellRuntime {
       userId: 'frontend-runtime-user',
       userLabel: 'MVP Operator',
     ),
-    FeatureFlagSet capabilities = const FeatureFlagSet({
-      'topics': FeatureCapability(key: 'topics', isEnabled: true),
-      'sources': FeatureCapability(key: 'sources', isEnabled: true),
-    }),
+    FeatureFlagSet capabilities = _enabledRuntimeCapabilities,
     FrontendObservability observability = const NoopFrontendObservability(),
     String correlationId = 'frontend-generated-api-session',
   }) {
@@ -44,6 +41,26 @@ final class AppShellRuntime {
           : const [],
       capabilities: capabilities,
       observability: observability,
+      correlationId: correlationId,
+      generatedApiRuntime: generatedApiRuntime,
+    );
+  }
+
+  factory AppShellRuntime.restoring({
+    required Object generatedApiRuntime,
+    String correlationId = 'frontend-generated-api-session',
+  }) {
+    return AppShellRuntime(
+      session: const AppSessionSnapshot(
+        isSignedIn: true,
+        isRestoring: true,
+        userId: '',
+        userLabel: 'Restoring session',
+      ),
+      workspace: const AppWorkspaceSnapshot.missing(),
+      availableWorkspaces: const [],
+      capabilities: _disabledRuntimeCapabilities('session_restoring'),
+      observability: const NoopFrontendObservability(),
       correlationId: correlationId,
       generatedApiRuntime: generatedApiRuntime,
     );
@@ -181,6 +198,28 @@ final class AppRuntimeController extends ChangeNotifier {
 
   AppShellRuntime get runtime => _runtime;
 
+  void restoreAuthSession({
+    required String userId,
+    required String userLabel,
+    required AppWorkspaceSnapshot selectedWorkspace,
+    required List<AppWorkspaceSnapshot> availableWorkspaces,
+  }) {
+    _runtime = _runtime.copyWith(
+      session: AppSessionSnapshot(
+        isSignedIn: true,
+        isRestoring: false,
+        userId: userId,
+        userLabel: userLabel,
+      ),
+      workspace: selectedWorkspace,
+      availableWorkspaces: List<AppWorkspaceSnapshot>.unmodifiable(
+        availableWorkspaces,
+      ),
+      capabilities: _enabledRuntimeCapabilities,
+    );
+    notifyListeners();
+  }
+
   void selectWorkspace(WorkspaceScope scope) {
     for (final workspace in _runtime.availableWorkspaces) {
       if (workspace.scope == scope) {
@@ -229,4 +268,42 @@ final class AppWorkspaceSnapshot {
   final WorkspaceScope? scope;
 
   bool get isAvailable => scope != null;
+}
+
+const _enabledRuntimeCapabilities = FeatureFlagSet({
+  'topics': FeatureCapability(key: 'topics', isEnabled: true),
+  'sources': FeatureCapability(key: 'sources', isEnabled: true),
+  'feed': FeatureCapability(key: 'feed', isEnabled: true),
+  'summaries': FeatureCapability(key: 'summaries', isEnabled: true),
+  'settings': FeatureCapability(key: 'settings', isEnabled: true),
+});
+
+FeatureFlagSet _disabledRuntimeCapabilities(String reasonCode) {
+  return FeatureFlagSet({
+    'topics': FeatureCapability(
+      key: 'topics',
+      isEnabled: false,
+      disabledReasonCode: reasonCode,
+    ),
+    'sources': FeatureCapability(
+      key: 'sources',
+      isEnabled: false,
+      disabledReasonCode: reasonCode,
+    ),
+    'feed': FeatureCapability(
+      key: 'feed',
+      isEnabled: false,
+      disabledReasonCode: reasonCode,
+    ),
+    'summaries': FeatureCapability(
+      key: 'summaries',
+      isEnabled: false,
+      disabledReasonCode: reasonCode,
+    ),
+    'settings': FeatureCapability(
+      key: 'settings',
+      isEnabled: false,
+      disabledReasonCode: reasonCode,
+    ),
+  });
 }

@@ -64,6 +64,7 @@ ReaderSummaryApiDto readerSummaryApiDto({
   List<RepeatedSignalApiDto> repeatedSignals = const [],
   List<SummaryCitationApiDto>? citations,
   SummaryPeriodApiDto? period,
+  SummaryWindowApiDto? sourceWindow,
   String freshnessLabel = 'Fresh',
   bool isDegraded = false,
 }) {
@@ -77,6 +78,7 @@ ReaderSummaryApiDto readerSummaryApiDto({
     repeatedSignals: repeatedSignals,
     citations: citations ?? [summaryCitationApiDto(id: 'bc-1')],
     period: period ?? summaryPeriodApiDto(),
+    sourceWindow: sourceWindow ?? summaryWindowApiDto(),
     freshnessLabel: freshnessLabel,
     isDegraded: isDegraded,
   );
@@ -96,6 +98,18 @@ SummaryPeriodApiDto summaryPeriodApiDto({
     endedAt: endedAt ?? DateTime.utc(2026, 6, 27),
     timezone: timezone,
     periodKey: periodKey,
+  );
+}
+
+SummaryWindowApiDto summaryWindowApiDto({
+  String label = 'Evidence window',
+  DateTime? startedAt,
+  DateTime? endedAt,
+}) {
+  return SummaryWindowApiDto(
+    label: label,
+    startedAt: startedAt ?? DateTime.utc(2026, 6, 26, 8, 30),
+    endedAt: endedAt ?? DateTime.utc(2026, 6, 26, 18, 58),
   );
 }
 
@@ -137,14 +151,14 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
     headline: headline,
     oneLineTakeaway: oneLineTakeaway,
     bullets: const [
-      'Best first read: AI coding tools because it is the strongest selected signal.',
+      'Best first cited read from Repo Radar (1 citation): AI coding tools - needs confirmation; verify citations in Top reads.',
     ],
     qualityState:
         qualityState ??
         const ReaderSummaryQualityStateApiDto(
           status: 'limited_sources',
           flags: ['limited_sources'],
-          warnings: ['Source coverage is limited or single-source.'],
+          warnings: ['Source coverage is limited and needs confirmation.'],
           isSingleSource: true,
         ),
     topicSections: [

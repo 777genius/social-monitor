@@ -118,9 +118,13 @@ const sanitizeSourceUrl = (value: string | undefined): {
 
   try {
     const parsed = new URL(redacted);
+    const preservedSearch = safeDiscussionSearchParams(parsed);
     parsed.username = '';
     parsed.password = '';
     parsed.search = '';
+    if (preservedSearch !== undefined) {
+      parsed.search = preservedSearch;
+    }
     parsed.hash = '';
 
     const sanitized = parsed.toString();
@@ -137,6 +141,22 @@ const sanitizeSourceUrl = (value: string | undefined): {
       hadSensitiveData: sanitized !== normalized,
     };
   }
+};
+
+const safeDiscussionSearchParams = (url: URL): string | undefined => {
+  const hostname = url.hostname.toLocaleLowerCase('en-US').replace(/^www\./u, '');
+  const pathname = url.pathname.replace(/\/+$/u, '');
+
+  if (hostname !== 'news.ycombinator.com' || pathname !== '/item') {
+    return undefined;
+  }
+
+  const itemId = url.searchParams.get('id')?.trim();
+  if (itemId === undefined || !/^\d+$/u.test(itemId)) {
+    return undefined;
+  }
+
+  return `?id=${itemId}`;
 };
 
 const normalizeOptional = (value: string | undefined): string | undefined => {

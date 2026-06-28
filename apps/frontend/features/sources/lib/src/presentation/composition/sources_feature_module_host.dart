@@ -3,12 +3,10 @@ import 'package:modularity_flutter/modularity_flutter.dart';
 
 import '../pages/source_bindings_page.dart';
 import '../pages/source_profiles_page.dart';
-import '../pages/sources_feature_page.dart';
 import '../stores/scan_policy_store.dart';
 import '../stores/scan_run_store.dart';
 import '../stores/source_bindings_store.dart';
 import '../stores/source_profiles_store.dart';
-import '../stores/sources_catalog_store.dart';
 import 'sources_feature_module.dart';
 
 class SourcesFeatureModuleHost extends StatefulWidget {
@@ -20,7 +18,6 @@ class SourcesFeatureModuleHost extends StatefulWidget {
 }
 
 class _SourcesFeatureModuleHostState extends State<SourcesFeatureModuleHost> {
-  SourcesCatalogStore? _catalogStore;
   SourceProfilesStore? _profilesStore;
   SourceBindingsStore? _bindingsStore;
   ScanPolicyStore? _scanPolicyStore;
@@ -49,12 +46,10 @@ class _SourcesFeatureModuleHostState extends State<SourcesFeatureModuleHost> {
       _profilesStore = binder.get<SourceProfilesStore>();
       return;
     }
-    _catalogStore = binder.get<SourcesCatalogStore>();
   }
 
   @override
   void dispose() {
-    _catalogStore?.dispose();
     _profilesStore?.dispose();
     _bindingsStore?.dispose();
     _scanPolicyStore?.dispose();
@@ -88,10 +83,6 @@ class _SourcesFeatureModuleHostState extends State<SourcesFeatureModuleHost> {
         scanRunStore: scanRunStore,
       );
     }
-    final store = _catalogStore;
-    if (store == null) {
-      return const SizedBox.shrink();
-    }
-    return SourcesFeaturePage(store: store);
+    return const SizedBox.shrink();
   }
 }

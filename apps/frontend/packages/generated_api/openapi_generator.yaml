@@ -9,6 +9,7 @@ openapi_generator:
   export_file: true
   unknown_enum_value: true
   include_tags:
+    - auth
     - topics
     - sources
     - source-bindings
@@ -19,3 +20,4 @@ openapi_generator:
     - relevance
     - summaries
     - reader-summaries
+    - workspace-settings

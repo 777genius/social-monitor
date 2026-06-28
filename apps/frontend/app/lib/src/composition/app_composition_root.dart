@@ -74,7 +74,6 @@ final class AppCompositionRoot {
     required String initialLocation,
   }) {
     final runtimeController = AppRuntimeController(runtime);
-    final resolvedRuntime = runtimeController.runtime;
     final resolvedThemeModeController =
         themeModeController ?? AppThemeModeController();
     final routeObserver = RouteObserver<ModalRoute<dynamic>>();
@@ -92,6 +91,9 @@ final class AppCompositionRoot {
         status: useDemoRoutes
             ? 'Shell'
             : _authFeatureStatus(runtimeController.runtime),
+        statusBuilder: useDemoRoutes
+            ? null
+            : () => _authFeatureStatus(runtimeController.runtime),
         builder: authFeatureBuilder(
           useDemoRoutes: useDemoRoutes,
           runtimeController: runtimeController,
@@ -105,7 +107,10 @@ final class AppCompositionRoot {
         icon: Icons.track_changes_outlined,
         status: useDemoRoutes
             ? 'Shell'
-            : _runtimeFeatureStatus(resolvedRuntime, 'topics'),
+            : _runtimeFeatureStatus(runtimeController.runtime, 'topics'),
+        statusBuilder: useDemoRoutes
+            ? null
+            : () => _runtimeFeatureStatus(runtimeController.runtime, 'topics'),
         builder: topicsFeatureBuilder(
           useDemoRoutes: useDemoRoutes,
           runtimeController: runtimeController,
@@ -122,7 +127,10 @@ final class AppCompositionRoot {
         icon: Icons.hub_outlined,
         status: useDemoRoutes
             ? 'Shell'
-            : _runtimeFeatureStatus(resolvedRuntime, 'sources'),
+            : _runtimeFeatureStatus(runtimeController.runtime, 'sources'),
+        statusBuilder: useDemoRoutes
+            ? null
+            : () => _runtimeFeatureStatus(runtimeController.runtime, 'sources'),
         builder: sourcesFeatureBuilder(
           useDemoRoutes: useDemoRoutes,
           runtimeController: runtimeController,
@@ -136,7 +144,10 @@ final class AppCompositionRoot {
         icon: Icons.dynamic_feed_outlined,
         status: useDemoRoutes
             ? 'Shell'
-            : _runtimeFeatureStatus(resolvedRuntime, 'feed'),
+            : _runtimeFeatureStatus(runtimeController.runtime, 'feed'),
+        statusBuilder: useDemoRoutes
+            ? null
+            : () => _runtimeFeatureStatus(runtimeController.runtime, 'feed'),
         builder: feedFeatureBuilder(
           useDemoRoutes: useDemoRoutes,
           runtimeController: runtimeController,
@@ -153,7 +164,11 @@ final class AppCompositionRoot {
         icon: Icons.summarize_outlined,
         status: useDemoRoutes
             ? 'Shell'
-            : _runtimeFeatureStatus(resolvedRuntime, 'summaries'),
+            : _runtimeFeatureStatus(runtimeController.runtime, 'summaries'),
+        statusBuilder: useDemoRoutes
+            ? null
+            : () =>
+                  _runtimeFeatureStatus(runtimeController.runtime, 'summaries'),
         builder: summariesFeatureBuilder(
           useDemoRoutes: useDemoRoutes,
           runtimeController: runtimeController,
@@ -170,7 +185,10 @@ final class AppCompositionRoot {
         icon: Icons.tune_outlined,
         status: useDemoRoutes
             ? 'Shell'
-            : _runtimeSettingsStatus(resolvedRuntime),
+            : _runtimeSettingsStatus(runtimeController.runtime),
+        statusBuilder: useDemoRoutes
+            ? null
+            : () => _runtimeSettingsStatus(runtimeController.runtime),
         builder: settingsFeatureBuilder(
           useDemoRoutes: useDemoRoutes,
           runtimeController: runtimeController,
@@ -237,9 +255,12 @@ final class _RouteFeatureDescriptor implements AppFeatureDescriptor {
     required this.description,
     required this.route,
     required this.icon,
-    required this.status,
+    required String status,
+    String Function()? statusBuilder,
     required AppRouteWidgetBuilder builder,
-  }) : _builder = builder;
+  }) : _status = status,
+       _statusBuilder = statusBuilder,
+       _builder = builder;
 
   @override
   final String id;
@@ -257,8 +278,10 @@ final class _RouteFeatureDescriptor implements AppFeatureDescriptor {
   final IconData icon;
 
   @override
-  final String status;
+  String get status => _statusBuilder?.call() ?? _status;
 
+  final String _status;
+  final String Function()? _statusBuilder;
   final AppRouteWidgetBuilder _builder;
 
   @override

@@ -1,4 +1,5 @@
 import type { ReaderAction } from "../entities/reader-action";
+import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type { TopRead, TopReadConfidence } from "../entities/top-read";
 import type { ProviderMetric } from "../value-objects/provider-metric-label";
 import type {
@@ -100,13 +101,17 @@ export const readerItemConfidence = (params: {
     params.confirmedProviderCount > 1
       ? Math.min(crossProviderSupport + providerDiversityBoost, 0.38)
       : Math.min(sameProviderSupport, 0.12);
-  const score = clampConfidenceScore(
+  const rawScore = clampConfidenceScore(
     0.18 + normalizedSignal + confirmationSupport + evidenceSupport,
   );
+  const score =
+    params.confirmedProviderCount > 1
+      ? rawScore
+      : Math.min(rawScore, params.evidenceCount > 1 ? 0.55 : 0.42);
   const level =
     score >= 0.72 && params.confirmedProviderCount > 1
       ? "high"
-      : score >= 0.46
+      : score >= 0.5
         ? "medium"
         : "low";
   const rationale =
@@ -121,6 +126,251 @@ export const readerItemConfidence = (params: {
     score: Number(score.toFixed(2)),
     rationale,
   };
+};
+
+export const groundedReaderHeadline = (params: {
+  readonly headline: string;
+  readonly sourceMix: readonly SourceMixEntry[];
+  readonly topReads: readonly TopRead[];
+}): string => {
+  const fallback = nonEmpty(params.headline, "Workspace summary");
+
+  if (params.topReads.length === 0) {
+    return fallback;
+  }
+
+  const hasCrossProviderEvidence =
+    params.sourceMix.some((source) => source.crossSourceClusterCount > 0) ||
+    params.topReads.some((item) => item.confirmedProviderKeys.length > 1);
+
+  const providerNames = uniqueNonEmpty(
+    params.sourceMix.length === 0
+      ? params.topReads.map((item) => item.providerName)
+      : params.sourceMix.map((source) =>
+          providerNameForSource(source.providerKey, params.topReads),
+        ),
+  );
+  const providerLabel =
+    providerNames.length === 0
+      ? "monitored sources"
+      : providerNames.length === 1
+        ? (providerNames[0] ?? "monitored sources")
+        : `${providerNames.slice(0, 3).join(", ")}${
+            providerNames.length > 3 ? ` +${providerNames.length - 3}` : ""
+          }`;
+  const topReadCount = params.topReads.length;
+  const itemLabel = `${topReadCount} cited top read${plural(topReadCount)}`;
+
+  if (hasCrossProviderEvidence && !isTechnicalReaderHeadline(fallback)) {
+    return fallback;
+  }
+
+  return providerNames.length === 1
+    ? `${providerLabel} source watch: ${itemLabel}`
+    : buildHumanReaderHeadline(providerLabel, params.topReads) ??
+        `Key signals across ${providerLabel}: ${itemLabel}`;
+};
+
+export const buildGroundedOneLineTakeaway = (params: {
+  readonly executiveSummary: string;
+  readonly topReads: readonly TopRead[];
+  readonly sourceMix: readonly SourceMixEntry[];
+}): string => {
+  const fallback =
+    firstSentence(params.executiveSummary) ??
+    params.topReads[0]?.reason ??
+    "Review the latest monitored signals.";
+
+  if (
+    params.topReads.length === 0 ||
+    hasCrossProviderReaderEvidence(params.sourceMix, params.topReads)
+  ) {
+    return fallback;
+  }
+
+  const providerLabel = sourceMixProviderLabel(
+    params.sourceMix,
+    params.topReads,
+  );
+  const topReadCount = params.topReads.length;
+  const sourcePhrase =
+    params.sourceMix.length > 1
+      ? `across ${providerLabel}`
+      : `from ${providerLabel}`;
+  const leadReads = params.topReads
+    .slice(0, 3)
+    .map(sourceLocalReadLabel)
+    .filter((label) => label.length > 0);
+  const lead =
+    leadReads.length === 0
+      ? `Strongest read${plural(topReadCount)} ${sourcePhrase} need${topReadCount === 1 ? "s" : ""} confirmation.`
+      : `Strongest read${plural(topReadCount)} ${sourcePhrase}: ${leadReads.join("; ")}.`;
+
+  return [
+    lead,
+    "Confirm important claims with another monitored source before acting.",
+  ].join(" ");
+};
+
+export const buildBestFirstReadBullet = (topRead: TopRead): string => {
+  const citationCount = topRead.citationIds.length;
+  const citationLabel =
+    citationCount === 1 ? "1 citation" : `${citationCount} citations`;
+  const isSingleProvider = topRead.confirmedProviderKeys.length <= 1;
+
+  if (isSingleProvider) {
+    return [
+      `Best first cited read from ${topRead.providerName} (${citationLabel}):`,
+      `${topRead.title} - needs confirmation; verify citations in Top reads.`,
+    ].join(" ");
+  }
+
+  return [
+    `Best first read (${citationLabel}, ${topRead.confirmedProviderKeys.length} providers):`,
+    `${topRead.title} - ${topRead.reason}`,
+  ].join(" ");
+};
+
+const hasCrossProviderReaderEvidence = (
+  sourceMix: readonly SourceMixEntry[],
+  topReads: readonly TopRead[],
+): boolean =>
+  sourceMix.some((source) => source.crossSourceClusterCount > 0) ||
+  topReads.some((item) => item.confirmedProviderKeys.length > 1);
+
+const sourceMixProviderLabel = (
+  sourceMix: readonly SourceMixEntry[],
+  topReads: readonly TopRead[],
+): string => {
+  const providerNames = uniqueNonEmpty(
+    sourceMix.length === 0
+      ? topReads.map((item) => item.providerName)
+      : [
+          ...topReads.map((item) => item.providerName),
+          ...sourceMix.map((source) =>
+            providerNameForSource(source.providerKey, topReads),
+          ),
+        ],
+  );
+
+  if (providerNames.length === 0) {
+    return "monitored sources";
+  }
+
+  return providerNames.length === 1
+    ? (providerNames[0] ?? "monitored sources")
+    : `${providerNames.slice(0, 3).join(", ")}${
+        providerNames.length > 3 ? ` +${providerNames.length - 3}` : ""
+      }`;
+};
+
+const providerNameForSource = (
+  providerKey: string,
+  topReads: readonly TopRead[],
+): string =>
+  topReads.find((item) => item.providerKey === providerKey)?.providerName ??
+  providerLabelForKey(providerKey);
+
+const providerLabelForKey = (providerKey: string): string => {
+  switch (providerKey.toLowerCase()) {
+    case "github-trending-page":
+      return "GitHub Trending";
+    case "github-repo-radar":
+      return "Repo Radar";
+    case "github-issues":
+    case "github":
+      return "GitHub";
+    case "hacker-news":
+    case "hn":
+      return "Hacker News";
+    case "reddit":
+      return "Reddit";
+    case "rss":
+      return "RSS";
+    case "x-twitter":
+    case "twitter":
+      return "X/Twitter";
+    default:
+      return providerKey;
+  }
+};
+
+const sourceLocalReadLabel = (read: TopRead): string => {
+  const reason = [read.reason, ...read.whyImportant].find(
+    (value) => !isWeakReaderReason(value),
+  );
+  const value = reason ?? `source-reported ${read.title}`;
+
+  return stripTrailingPeriod(value);
+};
+
+const isWeakReaderReason = (value: string): boolean => {
+  const lower = value.trim().toLowerCase();
+
+  return (
+    lower.length === 0 ||
+    lower.startsWith("story signal score") ||
+    lower.startsWith("current summary window has") ||
+    lower.includes("citation references bodypreview evidence") ||
+    lower.includes("source item source-binding") ||
+    lower.includes("bodypreview evidence from source item")
+  );
+};
+
+const stripTrailingPeriod = (value: string): string => {
+  const trimmed = value.trim();
+
+  return trimmed.endsWith(".") ? trimmed.slice(0, -1) : trimmed;
+};
+
+const isTechnicalReaderHeadline = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase();
+
+  return (
+    normalized.length === 0 ||
+    normalized.startsWith("source watch") ||
+    normalized.includes("source watch across") ||
+    normalized.includes("cited top read") ||
+    [
+      "review ",
+      "check ",
+      "read ",
+      "use ",
+      "treat ",
+      "inspect ",
+      "start with ",
+    ].some((prefix) => normalized.startsWith(prefix))
+  );
+};
+
+const buildHumanReaderHeadline = (
+  providerLabel: string,
+  topReads: readonly TopRead[],
+): string | undefined => {
+  const leadReads = topReads
+    .slice(0, 3)
+    .map((read) => compactHeadlinePart(read.title))
+    .filter((value) => value.length > 0);
+
+  if (leadReads.length === 0) {
+    return undefined;
+  }
+
+  return `Key signals across ${providerLabel}: ${leadReads.join("; ")}`;
+};
+
+const compactHeadlinePart = (value: string): string => {
+  const sentence = firstSentence(value) ?? value;
+  const compact = stripTrailingPeriod(sentence.replace(/\s+/gu, " "));
+  const maxLength = 82;
+
+  if (compact.length <= maxLength) {
+    return compact;
+  }
+
+  const shortened = compact.slice(0, maxLength).replace(/\s+\S*$/u, "").trim();
+
+  return shortened.length === 0 ? compact.slice(0, maxLength).trim() : shortened;
 };
 
 export const storyProviderMetricLabels = (params: {

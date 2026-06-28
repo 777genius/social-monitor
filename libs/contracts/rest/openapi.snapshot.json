@@ -68,6 +68,69 @@
         },
         "type": "object"
       },
+      "AuthSessionResponseDto": {
+        "properties": {
+          "selectedWorkspace": {
+            "$ref": "#/components/schemas/AuthSessionWorkspaceDto"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "userLabel": {
+            "type": "string"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/AuthSessionWorkspaceDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "userId",
+          "userLabel",
+          "selectedWorkspace",
+          "workspaces"
+        ],
+        "type": "object"
+      },
+      "AuthSessionWorkspaceDto": {
+        "properties": {
+          "statusLabel": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "tenantName": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "workspaceName": {
+            "type": "string"
+          },
+          "workspaceRole": {
+            "enum": [
+              "owner",
+              "admin",
+              "member",
+              "viewer"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "workspaceId",
+          "tenantName",
+          "workspaceName",
+          "workspaceRole",
+          "statusLabel"
+        ],
+        "type": "object"
+      },
       "BindSourceRequestDto": {
         "properties": {
           "config": {
@@ -6016,6 +6079,38 @@
         ],
         "type": "object"
       },
+      "UpdateWorkspaceDigestPreferenceRequestDto": {
+        "properties": {
+          "frequency": {
+            "enum": [
+              "off",
+              "daily",
+              "weekly"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "frequency"
+        ],
+        "type": "object"
+      },
+      "UpdateWorkspaceTelemetryConsentRequestDto": {
+        "properties": {
+          "consent": {
+            "enum": [
+              "enabled",
+              "disabled",
+              "not_configured"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "consent"
+        ],
+        "type": "object"
+      },
       "UpsertSummaryPolicyRequestDto": {
         "properties": {
           "customInstructions": {
@@ -6357,6 +6452,62 @@
         },
         "type": "object"
       },
+      "WorkspaceSettingsDiagnosticsDto": {
+        "properties": {
+          "featureSnapshot": {
+            "type": "string"
+          },
+          "releaseVersion": {
+            "type": "string"
+          },
+          "routeId": {
+            "type": "string"
+          },
+          "traceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "traceId",
+          "routeId",
+          "releaseVersion",
+          "featureSnapshot"
+        ],
+        "type": "object"
+      },
+      "WorkspaceSettingsResponseDto": {
+        "properties": {
+          "diagnostics": {
+            "$ref": "#/components/schemas/WorkspaceSettingsDiagnosticsDto"
+          },
+          "digestFrequency": {
+            "enum": [
+              "off",
+              "daily",
+              "weekly"
+            ],
+            "type": "string"
+          },
+          "telemetryConsent": {
+            "enum": [
+              "enabled",
+              "disabled",
+              "not_configured"
+            ],
+            "type": "string"
+          },
+          "workspaceRole": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceRole",
+          "digestFrequency",
+          "telemetryConsent",
+          "diagnostics"
+        ],
+        "type": "object"
+      },
       "XPostProviderMetricsDto": {
         "properties": {
           "bookmarks": {
@@ -6423,6 +6574,38 @@
   },
   "openapi": "3.0.0",
   "paths": {
+    "/auth/session": {
+      "get": {
+        "operationId": "AuthSessionController_get",
+        "parameters": [
+          {
+            "description": "Bearer OIDC JWT user session token.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Restore the current user session and verified workspace from a Bearer JWT.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/beta/launch-support": {
       "get": {
         "operationId": "BetaLaunchSupportController_getSnapshot",
@@ -11285,6 +11468,221 @@
         "summary": "Create a user subscription and activate its monitoring source pipeline.",
         "tags": [
           "user-subscriptions"
+        ]
+      }
+    },
+    "/workspace-settings": {
+      "get": {
+        "operationId": "WorkspaceSettingsController_get",
+        "parameters": [
+          {
+            "description": "Optional Bearer API key. Requires read:delivery_status. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Settings reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSettingsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Get workspace settings for the current tenant/workspace.",
+        "tags": [
+          "workspace-settings"
+        ]
+      }
+    },
+    "/workspace-settings/digest": {
+      "patch": {
+        "operationId": "WorkspaceSettingsController_updateDigest",
+        "parameters": [
+          {
+            "description": "Optional Bearer API key. Requires write:delivery_status. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Settings writes allow owner, admin or member. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkspaceDigestPreferenceRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSettingsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Update workspace digest preference.",
+        "tags": [
+          "workspace-settings"
+        ]
+      }
+    },
+    "/workspace-settings/telemetry": {
+      "patch": {
+        "operationId": "WorkspaceSettingsController_updateTelemetry",
+        "parameters": [
+          {
+            "description": "Optional Bearer API key. Requires write:delivery_status. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Settings writes allow owner, admin or member. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkspaceTelemetryConsentRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSettingsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Update workspace telemetry consent preference.",
+        "tags": [
+          "workspace-settings"
         ]
       }
     }

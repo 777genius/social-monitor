@@ -148,6 +148,39 @@ describe("feedProviderMetricsFromMetadata", () => {
     );
   });
 
+  it("weights GitHub Repo Radar recent star deltas before historical totals", () => {
+    const recentBreakout = feedProviderMetricsFromMetadata({
+      providerKey: "github-repo-radar",
+      providerMetadata: {
+        kind: "github_repository_trend",
+        repository: { language: "TypeScript", forksCount: 10 },
+        trend: {
+          totalStars: 2000,
+          stars24h: 300,
+          stars48h: 420,
+          primaryWindow: "24h",
+        },
+      },
+    });
+    const oldLargeRepo = feedProviderMetricsFromMetadata({
+      providerKey: "github-repo-radar",
+      providerMetadata: {
+        kind: "github_repository_trend",
+        repository: { language: "TypeScript", forksCount: 10 },
+        trend: {
+          totalStars: 100000,
+          stars24h: 5,
+          stars48h: 12,
+          primaryWindow: "24h",
+        },
+      },
+    });
+
+    expect(feedProviderMetricStrength(recentBreakout!)).toBeGreaterThan(
+      feedProviderMetricStrength(oldLargeRepo!),
+    );
+  });
+
   it("keeps GitHub repository cohorts separate by normalized topic bucket", () => {
     const aiMetrics = feedProviderMetricsFromMetadata({
       providerKey: "github-repo-radar",
@@ -386,6 +419,35 @@ describe("feedProviderMetricsFromMetadata", () => {
       bookmarks: 88,
       impressions: 90000,
     });
+  });
+
+  it("weights X reposts and replies as engagement instead of raw likes only", () => {
+    const reposted = feedProviderMetricsFromMetadata({
+      providerKey: "x-twitter",
+      providerMetadata: {
+        kind: "x_post",
+        public_metrics: {
+          like_count: 50,
+          retweet_count: 80,
+          reply_count: 40,
+        },
+      },
+    });
+    const likedOnly = feedProviderMetricsFromMetadata({
+      providerKey: "x-twitter",
+      providerMetadata: {
+        kind: "x_post",
+        public_metrics: {
+          like_count: 120,
+          retweet_count: 0,
+          reply_count: 0,
+        },
+      },
+    });
+
+    expect(feedProviderMetricStrength(reposted!)).toBeGreaterThan(
+      feedProviderMetricStrength(likedOnly!),
+    );
   });
 
   it("fingerprints X search source queries without exposing raw query text", () => {

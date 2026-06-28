@@ -17,6 +17,7 @@ import {
   classifyOpenAiReaderSummaryHttpFailure,
   extractOpenAiOutputText,
   normalizeOpenAiReaderSummaryDraft,
+  OpenAiReaderSummaryOutputParseError,
   openAiReaderSummaryJsonSchema,
   parseOpenAiReaderSummaryJsonObject,
   readOpenAiResponseBody,
@@ -53,7 +54,7 @@ const defaultPromptVersion = "reader_summary.prompt.openai.responses.v1";
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
 const defaultEndpointUrl = "https://api.openai.com/v1/responses";
 const defaultTimeoutMs = 90_000;
-const defaultMaxOutputTokens = 2_500;
+const defaultMaxOutputTokens = 8_000;
 const defaultInputTokenDivisor = 4;
 
 export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryModelPort {
@@ -253,6 +254,14 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
   classifyError(error: unknown): ReaderSummaryModelFailure {
     if (error instanceof ReaderSummaryModelProviderError) {
       return error.failure;
+    }
+
+    if (error instanceof OpenAiReaderSummaryOutputParseError) {
+      return {
+        kind: "invalid_schema",
+        retryable: true,
+        message: error.message,
+      };
     }
 
     if (error instanceof Error && error.name === "AbortError") {

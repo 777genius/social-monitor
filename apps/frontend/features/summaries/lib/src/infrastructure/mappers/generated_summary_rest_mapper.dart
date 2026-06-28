@@ -52,6 +52,11 @@ final class GeneratedSummaryRestMapper {
           .map(_readerSummaryCitation)
           .toList(growable: false),
       period: _readerSummaryPeriod(dto.period),
+      sourceWindow: SummaryWindowApiDto(
+        label: 'Evidence window',
+        startedAt: dto.sourceWindow.startedAt,
+        endedAt: dto.sourceWindow.endedAt,
+      ),
       freshnessLabel: _readerSummaryFreshnessLabel(dto.freshness),
       isDegraded: dto.qualityFlags.any(_isDegradedReaderSummaryFlag),
     );
@@ -185,6 +190,7 @@ final class GeneratedSummaryRestMapper {
       'hacker-news' || 'hn' => 'Hacker News',
       'reddit' => 'Reddit',
       'rss' => 'RSS',
+      'x-twitter' || 'twitter' => 'X/Twitter',
       _ => providerKey,
     };
   }

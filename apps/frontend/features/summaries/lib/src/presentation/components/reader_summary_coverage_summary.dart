@@ -50,7 +50,7 @@ class ReaderSummaryCoverageSummary extends StatelessWidget {
         )
       else if (entry.singleSourceOnly)
         const AppStatusBadge(
-          label: 'single-source',
+          label: 'needs confirmation',
           tone: AppStatusTone.warning,
         ),
     ];

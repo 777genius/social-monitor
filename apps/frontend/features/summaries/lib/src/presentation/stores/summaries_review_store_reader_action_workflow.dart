@@ -112,14 +112,50 @@ extension SummariesReviewStoreReaderActionWorkflow on SummariesReviewStore {
     _notifyStateChanged();
   }
 
+  Future<void> openReaderSourceUrl({
+    required String summaryId,
+    required String canonicalUrl,
+    String? label,
+  }) async {
+    final normalizedUrl = canonicalUrl.trim();
+    if (normalizedUrl.isEmpty) {
+      return;
+    }
+    final normalizedSummaryId = summaryId.trim().isEmpty
+        ? _scope.workspaceId
+        : summaryId.trim();
+    await _openReaderSourceCommand(
+      OpenReaderSourceCommand(
+        summaryId: normalizedSummaryId,
+        kind: 'read_source',
+        label: label?.trim().isNotEmpty == true ? label!.trim() : normalizedUrl,
+        canonicalUrl: normalizedUrl,
+        idempotencyKey:
+            '${_scope.workspaceId}:$normalizedSummaryId:read_source:$normalizedUrl',
+      ),
+    );
+  }
+
   Future<void> _openReaderSource(
     ReaderSummary summary,
     ReaderAction action,
     String idempotencyKey,
   ) async {
+    await _openReaderSourceCommand(
+      OpenReaderSourceCommand(
+        summaryId: summary.id,
+        kind: action.kind,
+        label: action.label,
+        canonicalUrl: action.canonicalUrl,
+        idempotencyKey: idempotencyKey,
+      ),
+    );
+  }
+
+  Future<void> _openReaderSourceCommand(OpenReaderSourceCommand command) async {
     final generation = _readerActionGenerationGuard.markOperationStarted();
-    _activeReaderActionIdempotencyKey = idempotencyKey;
-    _lastReaderActionIdempotencyKey = idempotencyKey;
+    _activeReaderActionIdempotencyKey = command.idempotencyKey;
+    _lastReaderActionIdempotencyKey = command.idempotencyKey;
     final previous = switch (readerActionState) {
       ReadyViewState<ReaderActionResult>(:final value) => value,
       LoadingViewState<ReaderActionResult>(:final previousValue) =>
@@ -131,17 +167,9 @@ extension SummariesReviewStoreReaderActionWorkflow on SummariesReviewStore {
     );
     _notifyStateChanged();
 
-    final result = await _dependencies.openReaderSource(
-      OpenReaderSourceCommand(
-        summaryId: summary.id,
-        kind: action.kind,
-        label: action.label,
-        canonicalUrl: action.canonicalUrl,
-        idempotencyKey: idempotencyKey,
-      ),
-    );
+    final result = await _dependencies.openReaderSource(command);
     if (!_readerActionGenerationGuard.isCurrent(generation)) {
-      if (_activeReaderActionIdempotencyKey == idempotencyKey) {
+      if (_activeReaderActionIdempotencyKey == command.idempotencyKey) {
         _activeReaderActionIdempotencyKey = null;
       }
       return;

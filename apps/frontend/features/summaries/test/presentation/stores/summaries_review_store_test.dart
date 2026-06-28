@@ -258,6 +258,28 @@ void main() {
     },
   );
 
+  test('opens displayed reader source URL directly through launcher', () async {
+    final launcher = _FakeReaderSourceLauncher();
+    final store = _store(
+      [summaryApiDto()],
+      workspaceSummary: readerSummaryApiDto(),
+      sourceLauncher: launcher,
+    );
+
+    await store.openReaderSourceUrl(
+      summaryId: 'reader-summary-test',
+      canonicalUrl: 'https://x.com/NVIDIAAI/status/2070654232139833720',
+    );
+
+    expect(
+      launcher.opened.single.toString(),
+      'https://x.com/NVIDIAAI/status/2070654232139833720',
+    );
+    final state = store.readerActionState as ReadyViewState<ReaderActionResult>;
+    expect(state.value.kind, 'read_source');
+    expect(state.value.learningDirection, 'external_source_opened');
+  });
+
   test('summary request tolerates reentrant workspace switch', () async {
     final store = _store([
       summaryApiDto(),

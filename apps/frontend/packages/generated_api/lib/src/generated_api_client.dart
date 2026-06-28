@@ -5,6 +5,10 @@ abstract interface class GeneratedApiClient {
     WorkspaceRequest request,
     Future<T> Function() operation,
   );
+
+  Future<Result<T>> sendUnscoped<T extends Object>(
+    Future<T> Function() operation,
+  );
 }
 
 final class WorkspaceRequest {

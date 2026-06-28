@@ -5,7 +5,6 @@ import type {
   ReaderSummaryQualityFlag,
   ReaderSummaryRepeatedSignal,
   ReaderSummaryRisk,
-  ReaderSummaryTopStory,
   ReaderSummaryTopicHighlight,
 } from "../../domain";
 import { buildReaderSummary } from "../../domain";
@@ -17,7 +16,6 @@ import {
   openAiReaderSummaryRiskReasons,
 } from "./openai-responses-reader-summary-contract";
 import {
-  firstNonEmptyString,
   knownStringSubset,
   normalizeSetValue,
   optionalString,
@@ -29,6 +27,10 @@ import {
   requiredStringArray,
   uniqueNonEmptyStrings,
 } from "./openai-responses-reader-summary-json";
+import {
+  clusterIdFromCitations,
+  normalizeTopStories,
+} from "./openai-responses-reader-summary-story-normalizer";
 
 const qualityFlags = new Set<ReaderSummaryQualityFlag>(
   openAiReaderSummaryQualityFlags,
@@ -50,11 +52,11 @@ export const normalizeOpenAiReaderSummaryDraft = (
   usage: GeneratedReaderSummaryDraft["usage"],
   evalDatasetVersion: string,
 ): GeneratedReaderSummaryDraft => {
-  const citationMap = withEvidenceCanonicalUrls(
-    requiredArray<Record<string, unknown>>(
-      raw.citationMap,
-      "reader summary citation map",
-    ).map(normalizeCitation),
+  requiredArray<Record<string, unknown>>(
+    raw.citationMap,
+    "reader summary citation map",
+  ).map(normalizeCitation);
+  const citationMap = canonicalCitationMapFromEvidence(
     input.evidence.selectedEvidence,
   );
   const headline = requiredString(raw.headline, "reader summary headline");
@@ -192,69 +194,6 @@ export const assertOpenAiReaderSummaryDraftShape = (
   }
 };
 
-const normalizeTopStory = (value: Record<string, unknown>): ReaderSummaryTopStory => ({
-  storyClusterId: requiredString(value.storyClusterId, "top story cluster id"),
-  title: requiredString(value.title, "top story title"),
-  summary: requiredString(value.summary, "top story summary"),
-  topicIds: requiredStringArray(value.topicIds, "top story topics"),
-  providerKeys: requiredStringArray(value.providerKeys, "top story providers"),
-  citationIds: requiredStringArray(value.citationIds, "top story citations"),
-});
-
-const normalizeTopStories = (
-  values: readonly Record<string, unknown>[],
-  input: ReaderSummaryModelInput,
-  citationMap: readonly ReaderSummaryCitation[],
-): readonly ReaderSummaryTopStory[] => {
-  const knownClusterIds = new Set(
-    input.evidence.clusters.map((cluster) => cluster.id),
-  );
-  const clusterById = new Map(
-    input.evidence.clusters.map((cluster) => [cluster.id, cluster] as const),
-  );
-  const citationById = new Map(
-    citationMap.map((citation) => [citation.citationId, citation] as const),
-  );
-  const knownCitationIds = new Set(citationById.keys());
-  const repaired = values
-    .map(normalizeTopStory)
-    .flatMap((story): readonly ReaderSummaryTopStory[] => {
-      const storyClusterId = knownClusterIds.has(story.storyClusterId)
-        ? story.storyClusterId
-        : clusterIdFromCitations(story.citationIds, citationById, input);
-      if (storyClusterId === undefined) {
-        return [];
-      }
-
-      const citationIds = knownStringSubset(story.citationIds, knownCitationIds);
-      if (citationIds.length === 0) {
-        return [];
-      }
-
-      const cluster = clusterById.get(storyClusterId);
-
-      return [
-        {
-          ...story,
-          storyClusterId,
-          topicIds: uniqueNonEmptyStrings([
-            ...story.topicIds,
-            ...(cluster?.topicIds ?? []),
-          ]),
-          providerKeys: uniqueNonEmptyStrings([
-            ...story.providerKeys,
-            ...(cluster?.providerKeys ?? []),
-          ]),
-          citationIds,
-        },
-      ];
-    });
-
-  return repaired.length === 0
-    ? fallbackTopStories(input, citationMap)
-    : repaired.slice(0, input.policy.maxStories);
-};
-
 const normalizeTopicHighlight = (value: Record<string, unknown>): ReaderSummaryTopicHighlight => ({
   topicId: requiredString(value.topicId, "topic highlight topic id"),
   title: requiredString(value.title, "topic highlight title"),
@@ -372,104 +311,17 @@ const normalizeCitation = (
     normalizeSetValue(value.field, citationFields, "citation field") ?? "title",
 });
 
-const withEvidenceCanonicalUrls = (
-  citations: readonly ReaderSummaryCitation[],
+const canonicalCitationMapFromEvidence = (
   evidenceItems: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
 ): readonly ReaderSummaryCitation[] => {
-  const canonicalUrlByFeedItemId = new Map(
-    evidenceItems.map((item) => [item.feedItemId, item.canonicalUrl] as const),
-  );
-
-  return citations.map((citation) => ({
-    ...citation,
-    canonicalUrl: canonicalUrlByFeedItemId.get(citation.feedItemId),
+  return evidenceItems.map((item, index) => ({
+    citationId: `c${index + 1}`,
+    feedItemId: item.feedItemId,
+    sourceItemId: item.sourceItemId,
+    providerKey: item.providerKey,
+    field: item.canonicalUrl === undefined ? "title" : "canonicalUrl",
+    canonicalUrl: item.canonicalUrl,
   }));
-};
-
-const clusterIdFromCitations = (
-  citationIds: readonly string[],
-  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
-  input: ReaderSummaryModelInput,
-): string | undefined => {
-  const clusterByFeedItemId = new Map(
-    input.evidence.clusters.flatMap((cluster) =>
-      [cluster.representativeFeedItemId, ...cluster.duplicateFeedItemIds].map(
-        (feedItemId) => [feedItemId, cluster.id] as const,
-      ),
-    ),
-  );
-
-  for (const citationId of citationIds) {
-    const citation = citationById.get(citationId);
-    const clusterId =
-      citation === undefined
-        ? undefined
-        : clusterByFeedItemId.get(citation.feedItemId);
-    if (clusterId !== undefined) {
-      return clusterId;
-    }
-  }
-
-  return undefined;
-};
-
-const fallbackTopStories = (
-  input: ReaderSummaryModelInput,
-  citationMap: readonly ReaderSummaryCitation[],
-): readonly ReaderSummaryTopStory[] => {
-  const citationByFeedItemId = new Map(
-    citationMap.map((citation) => [citation.feedItemId, citation] as const),
-  );
-  const evidenceByFeedItemId = new Map(
-    input.evidence.selectedEvidence.map(
-      (item) => [item.feedItemId, item] as const,
-    ),
-  );
-
-  return input.evidence.clusters
-    .flatMap((cluster): readonly ReaderSummaryTopStory[] => {
-      const feedItemIds = [
-        cluster.representativeFeedItemId,
-        ...cluster.duplicateFeedItemIds,
-      ];
-      const citationIds = feedItemIds
-        .map((feedItemId) => citationByFeedItemId.get(feedItemId)?.citationId)
-        .filter((citationId): citationId is string => citationId !== undefined);
-      const evidence = feedItemIds
-        .map((feedItemId) => evidenceByFeedItemId.get(feedItemId))
-        .filter(
-          (
-            item,
-          ): item is ReaderSummaryModelInput["evidence"]["selectedEvidence"][number] =>
-            item !== undefined,
-        );
-      const leadEvidence = evidence[0];
-      if (citationIds.length === 0 || leadEvidence === undefined) {
-        return [];
-      }
-
-      return [
-        {
-          storyClusterId: cluster.id,
-          title: leadEvidence.title,
-          summary: firstNonEmptyString(
-            leadEvidence.bodyPreview,
-            cluster.whyImportant[0],
-            leadEvidence.title,
-          ),
-          topicIds: uniqueNonEmptyStrings([
-            ...cluster.topicIds,
-            leadEvidence.topicId,
-          ]),
-          providerKeys: uniqueNonEmptyStrings([
-            ...cluster.providerKeys,
-            leadEvidence.providerKey,
-          ]),
-          citationIds: uniqueNonEmptyStrings(citationIds).slice(0, 4),
-        },
-      ];
-    })
-    .slice(0, input.policy.maxStories);
 };
 
 const normalizeConfidence = (

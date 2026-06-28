@@ -19,13 +19,20 @@ import {
   type RankedRelevanceCandidate,
   type RankingMemoryGuidance,
   type RankingCandidate,
+  SourceContentQualityPolicy,
+  type SourceContentQualityVerdict,
 } from "../../domain";
 import type {
   RelevanceMemoryGuidanceReaderPort,
+  SourceContentQualityReviewerPort,
   UserRelevanceProfileRepositoryPort,
 } from "../../ports";
-import { NOOP_RELEVANCE_MEMORY_GUIDANCE_READER } from "../../ports";
 import {
+  NOOP_RELEVANCE_MEMORY_GUIDANCE_READER,
+  NOOP_SOURCE_CONTENT_QUALITY_REVIEWER,
+} from "../../ports";
+import {
+  presentSourceContentQuality,
   presentSourceContentSafety,
   presentUserRelevanceProfile,
 } from "../shared/relevance-presenter";
@@ -40,6 +47,7 @@ type RankFeedItemsFailure = DomainError | Error;
 
 const maxLimit = 50;
 const maxCandidateScan = 200;
+const maxQualityReviewBatch = 25;
 
 export class RankFeedItemsUseCase {
   constructor(
@@ -48,6 +56,8 @@ export class RankFeedItemsUseCase {
     private readonly clock: Clock,
     private readonly rankingPolicy = new RankingPolicy(),
     private readonly memoryGuidance: RelevanceMemoryGuidanceReaderPort = NOOP_RELEVANCE_MEMORY_GUIDANCE_READER,
+    private readonly qualityPolicy = new SourceContentQualityPolicy(),
+    private readonly qualityReviewer: SourceContentQualityReviewerPort = NOOP_SOURCE_CONTENT_QUALITY_REVIEWER,
   ) {}
 
   async execute(
@@ -89,7 +99,16 @@ export class RankFeedItemsUseCase {
         return [snapshot.id, snapshot] as const;
       }),
     );
-    const rankingCandidates = candidates.items.map(toRankingCandidate);
+    const baseRankingCandidates = candidates.items.map(toRankingCandidate);
+    const contentQualityByCandidateId = await this.buildContentQuality(
+      baseRankingCandidates,
+    );
+    const rankingCandidates = baseRankingCandidates.map((candidate) => ({
+      ...candidate,
+      contentQuality:
+        contentQualityByCandidateId.get(candidate.id) ??
+        this.qualityPolicy.evaluate(candidate),
+    }));
     const memoryGuidance = await this.buildMemoryGuidance({
       userId,
       candidates: rankingCandidates,
@@ -191,6 +210,60 @@ export class RankFeedItemsUseCase {
       };
     }
   }
+
+  private async buildContentQuality(
+    candidates: readonly RankingCandidate[],
+  ): Promise<ReadonlyMap<string, SourceContentQualityVerdict>> {
+    const deterministicById = new Map(
+      candidates.map(
+        (candidate) =>
+          [candidate.id, this.qualityPolicy.evaluate(candidate)] as const,
+      ),
+    );
+    const reviewRequests = candidates
+      .map((candidate) => ({
+        ...candidate,
+        candidateId: candidate.id,
+        deterministic:
+          deterministicById.get(candidate.id) ??
+          this.qualityPolicy.evaluate(candidate),
+      }))
+      .filter(
+        (request) =>
+          request.deterministic.needsLlmReview &&
+          isXProvider(request.providerKey),
+      )
+      .slice(0, maxQualityReviewBatch);
+
+    if (reviewRequests.length === 0) {
+      return deterministicById;
+    }
+
+    try {
+      const reviews = await this.qualityReviewer.reviewBatch(reviewRequests);
+      const reviewsByCandidateId = new Map(
+        reviews.map((review) => [review.candidateId, review] as const),
+      );
+
+      return new Map(
+        candidates.map((candidate) => {
+          const deterministic =
+            deterministicById.get(candidate.id) ??
+            this.qualityPolicy.evaluate(candidate);
+
+          return [
+            candidate.id,
+            this.qualityPolicy.mergeWithReview(
+              deterministic,
+              reviewsByCandidateId.get(candidate.id),
+            ),
+          ] as const;
+        }),
+      );
+    } catch {
+      return deterministicById;
+    }
+  }
 }
 
 type FeedItemSnapshot = ReturnType<FeedItem["toSnapshot"]>;
@@ -205,6 +278,8 @@ const toRankingCandidate = (item: FeedItem): RankingCandidate => {
     canonicalUrl: snapshot.canonicalUrl,
     title: snapshot.title,
     bodyPreview: snapshot.bodyPreview,
+    authorHandle: snapshot.authorHandle,
+    providerMetadata: snapshot.providerMetadata,
     publishedAt: snapshot.publishedAt,
     sourceSignalScore: providerSignalScore(
       snapshot.providerKey,
@@ -237,6 +312,7 @@ const presentRankedFeedItem = (
   duplicateFeedItemIds: item.duplicateCandidateIds,
   whyImportant: item.whyImportant,
   safety: presentSourceContentSafety(item.safety),
+  contentQuality: presentSourceContentQuality(item.contentQuality),
 });
 
 const providerSignalScore = (
@@ -253,6 +329,16 @@ const providerSignalScore = (
   }
 
   return Math.min(0.85, feedProviderMetricStrength(metrics) / 10);
+};
+
+const isXProvider = (providerKey: string): boolean => {
+  const normalized = providerKey.trim().toLocaleLowerCase("en-US");
+
+  return (
+    normalized === "x-twitter" ||
+    normalized === "twitter" ||
+    normalized === "x"
+  );
 };
 
 const normalizeLimit = (value: number): number | null =>

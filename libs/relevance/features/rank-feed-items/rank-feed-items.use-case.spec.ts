@@ -20,6 +20,9 @@ import type {
   BuildRelevanceMemoryGuidanceQuery,
   RelevanceMemoryGuidanceReaderPort,
   RelevanceMemoryGuidanceResult,
+  SourceContentQualityReviewerPort,
+  SourceContentQualityReviewRequest,
+  SourceContentQualityReviewResult,
   UserRelevanceProfileRepositoryPort,
 } from "../../ports";
 import { RankFeedItemsUseCase } from "./rank-feed-items.use-case";
@@ -402,6 +405,96 @@ describe("RankFeedItemsUseCase", () => {
       "Matches memory preference",
     );
   });
+
+  it("uses the source content quality reviewer for borderline X posts before ranking", async () => {
+    const tenant = tenantId("tenant-rank-x-quality");
+    const workspace = workspaceId("workspace-rank-x-quality");
+    const topicId = "topic-ai-news";
+    const feedItems = new FakeFeedItemReadRepository();
+    const reviewer = new CapturingSourceContentQualityReviewer([
+      {
+        candidateId: "feed-x-bait",
+        decision: "reject",
+        confidence: 0.91,
+        qualityScore: 0.18,
+        topicRelevanceScore: 0.42,
+        engagementIntegrityScore: 0.2,
+        flags: ["llm_rejected", "engagement_bait"],
+        reason: "Engagement bait without concrete source evidence.",
+      },
+    ]);
+    const now = new Date("2026-06-22T10:00:00.000Z");
+
+    addFeedItem(feedItems, {
+      id: "feed-x-bait",
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      providerKey: "x-twitter",
+      title: "What are your top 3 OpenAI agent tools right now?",
+      bodyPreview: "Drop your top 3 OpenAI agent tools in the replies.",
+      canonicalUrl: "https://x.com/example/status/2071",
+      publishedAt: new Date("2026-06-22T09:59:00.000Z"),
+      authorHandle: "example",
+      providerMetadata: {
+        kind: "x_post",
+        searchQuery: "OpenAI agents",
+        likes: 600,
+        reposts: 120,
+        replies: 80,
+      },
+    });
+    addFeedItem(feedItems, {
+      id: "feed-x-good",
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      providerKey: "x-twitter",
+      title: "OpenAI published agent reliability evals for production teams.",
+      bodyPreview:
+        "The release covers trace scoring, failure clustering and regression checks.",
+      canonicalUrl: "https://x.com/OpenAI/status/2072",
+      publishedAt: new Date("2026-06-22T09:50:00.000Z"),
+      authorHandle: "OpenAI",
+      providerMetadata: {
+        kind: "x_post",
+        searchQuery: "OpenAI agents",
+        likes: 80,
+        reposts: 20,
+        replies: 5,
+      },
+    });
+
+    const result = await new RankFeedItemsUseCase(
+      feedItems,
+      new FakeUserRelevanceProfileRepository(),
+      new FixedClock(now),
+      new RankingPolicy(),
+      undefined,
+      undefined,
+      reviewer,
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      limit: 10,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(reviewer.requests.map((request) => request.candidateId)).toContain(
+      "feed-x-bait",
+    );
+    expect(result.value.items.map((item) => item.feedItemId)).toEqual([
+      "feed-x-good",
+    ]);
+    expect(result.value.items[0]?.contentQuality.eligibleForTopRead).toBe(
+      true,
+    );
+  });
 });
 
 const addFeedItem = (
@@ -416,6 +509,7 @@ const addFeedItem = (
     readonly bodyPreview: string;
     readonly canonicalUrl: string;
     readonly publishedAt: Date;
+    readonly authorHandle?: string;
     readonly observedAt?: Date;
     readonly providerMetadata?: JsonObject;
   },
@@ -427,6 +521,7 @@ const addFeedItem = (
       sourceBindingId: `${props.providerKey}:binding`,
       observedAt:
         props.observedAt ?? new Date(props.publishedAt.getTime() + 60_000),
+      authorHandle: props.authorHandle,
       providerMetadata: props.providerMetadata,
     }),
   );
@@ -506,5 +601,21 @@ class CapturingMemoryGuidanceReader implements RelevanceMemoryGuidanceReaderPort
     this.queries.push(query);
 
     return this.result;
+  }
+}
+
+class CapturingSourceContentQualityReviewer implements SourceContentQualityReviewerPort {
+  readonly requests: SourceContentQualityReviewRequest[] = [];
+
+  constructor(
+    private readonly reviews: readonly SourceContentQualityReviewResult[],
+  ) {}
+
+  async reviewBatch(
+    requests: readonly SourceContentQualityReviewRequest[],
+  ): Promise<readonly SourceContentQualityReviewResult[]> {
+    this.requests.push(...requests);
+
+    return this.reviews;
   }
 }

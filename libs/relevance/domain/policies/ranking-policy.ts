@@ -1,4 +1,10 @@
+import type { JsonObject } from "@social-monitor/shared-kernel";
+
 import type { UserRelevanceProfile } from "../entities/user-relevance-profile";
+import {
+  SourceContentQualityPolicy,
+  type SourceContentQualityVerdict,
+} from "../source-content-quality";
 import {
   extractSignalKeywords,
   SourceContentSafetyPolicy,
@@ -12,13 +18,17 @@ export type RankingCandidate = {
   readonly canonicalUrl: string;
   readonly title: string;
   readonly bodyPreview?: string;
+  readonly authorHandle?: string;
+  readonly providerMetadata?: JsonObject;
   readonly publishedAt: Date;
   readonly sourceSignalScore: number;
+  readonly contentQuality?: SourceContentQualityVerdict;
 };
 
 export type RankedRelevanceCandidate = {
   readonly candidate: RankingCandidate;
   readonly safety: SourceContentSafetyVerdict;
+  readonly contentQuality: SourceContentQualityVerdict;
   readonly score: number;
   readonly whyImportant: readonly string[];
   readonly clusterId: string;
@@ -45,6 +55,7 @@ type ScoredRelevanceCandidate = RankedRelevanceCandidate & {
 export class RankingPolicy {
   constructor(
     private readonly safetyPolicy = new SourceContentSafetyPolicy(),
+    private readonly qualityPolicy = new SourceContentQualityPolicy(),
   ) {}
 
   rank(params: {
@@ -79,12 +90,15 @@ export class RankingPolicy {
     now: Date,
   ): ScoredRelevanceCandidate | null {
     const safety = this.safetyPolicy.evaluate(candidate);
+    const contentQuality =
+      candidate.contentQuality ?? this.qualityPolicy.evaluate(candidate);
     const title = safety.sanitizedTitle;
     const bodyPreview = safety.sanitizedBodyPreview ?? "";
     const searchText = `${title} ${bodyPreview}`;
 
     if (
       safety.status === "blocked" ||
+      !contentQuality.eligibleForSummary ||
       profile?.isProviderBlocked(candidate.providerKey) === true ||
       profile?.hasMutedKeyword(searchText) === true ||
       memoryGuidanceBlocksProvider(memoryGuidance, candidate.providerKey) ||
@@ -105,9 +119,10 @@ export class RankingPolicy {
       (now.getTime() - candidate.publishedAt.getTime()) / 3_600_000,
     );
     const recencyScore = Math.max(0, 0.5 - ageHours / 336);
-    const sourceSignalScore = normalizeSourceSignalScore(
-      candidate.sourceSignalScore,
-    );
+    const sourceSignalScore = qualityAdjustedSourceSignalScore({
+      sourceSignalScore: candidate.sourceSignalScore,
+      contentQuality,
+    });
     const memoryScore = memoryGuidanceScore({
       guidance: memoryGuidance,
       providerKey: candidate.providerKey,
@@ -128,6 +143,7 @@ export class RankingPolicy {
     return {
       candidate,
       safety,
+      contentQuality,
       score,
       whyImportant: buildWhyImportant({
         topicWeight,
@@ -139,6 +155,7 @@ export class RankingPolicy {
         memoryScore,
         recencyScore,
         safety,
+        contentQuality,
       }),
       clusterId: canonicalClusterKey(
         safety.sanitizedCanonicalUrl ?? candidate.canonicalUrl,
@@ -215,6 +232,7 @@ const buildWhyImportant = (params: {
   readonly memoryScore: number;
   readonly recencyScore: number;
   readonly safety: SourceContentSafetyVerdict;
+  readonly contentQuality: SourceContentQualityVerdict;
 }): readonly string[] => {
   const reasons = [];
 
@@ -234,6 +252,14 @@ const buildWhyImportant = (params: {
 
   if (params.sourceSignalScore >= 0.35) {
     reasons.push("Strong source engagement signal");
+  }
+
+  if (params.contentQuality.eligibleForTopRead) {
+    reasons.push("Passes source quality and topic relevance gate");
+  }
+
+  if (params.contentQuality.decision === "downrank") {
+    reasons.push(`Down-ranked by source quality gate: ${params.contentQuality.reason}`);
   }
 
   if (params.memoryScore > 0) {
@@ -307,6 +333,15 @@ const titleTokens = (value: string): readonly string[] =>
 
 const normalizeSourceSignalScore = (value: number): number =>
   Number.isFinite(value) ? value : 0;
+
+const qualityAdjustedSourceSignalScore = (params: {
+  readonly sourceSignalScore: number;
+  readonly contentQuality: SourceContentQualityVerdict;
+}): number =>
+  normalizeSourceSignalScore(params.sourceSignalScore) *
+  params.contentQuality.qualityScore *
+  params.contentQuality.topicRelevanceScore *
+  params.contentQuality.engagementIntegrityScore;
 
 const memoryGuidanceBlocksProvider = (
   guidance: RankingMemoryGuidance | undefined,

@@ -255,6 +255,18 @@ final class SummaryPeriodApiDto {
   final String? periodKey;
 }
 
+final class SummaryWindowApiDto {
+  const SummaryWindowApiDto({
+    required this.label,
+    required this.startedAt,
+    required this.endedAt,
+  });
+
+  final String label;
+  final DateTime startedAt;
+  final DateTime endedAt;
+}
+
 final class ReaderSummaryApiDto {
   const ReaderSummaryApiDto({
     required this.id,
@@ -266,6 +278,7 @@ final class ReaderSummaryApiDto {
     required this.repeatedSignals,
     required this.citations,
     required this.period,
+    required this.sourceWindow,
     required this.freshnessLabel,
     required this.isDegraded,
   });
@@ -279,6 +292,7 @@ final class ReaderSummaryApiDto {
   final List<RepeatedSignalApiDto> repeatedSignals;
   final List<SummaryCitationApiDto> citations;
   final SummaryPeriodApiDto period;
+  final SummaryWindowApiDto sourceWindow;
   final String freshnessLabel;
   final bool isDegraded;
 }

@@ -4,7 +4,9 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
 import 'github_mark.dart';
+import 'reader_summary_external_link.dart';
 import 'reader_summary_provider_label.dart';
+import 'reader_summary_reason_text.dart';
 import 'reader_summary_sections.dart';
 import 'reader_summary_top_read_details.dart';
 
@@ -15,10 +17,12 @@ class ReaderSummaryTopReads extends StatefulWidget {
     super.key,
     required this.items,
     required this.citationsById,
+    required this.onOpenUrl,
   });
 
   final List<TopRead> items;
   final Map<String, SummaryCitation> citationsById;
+  final ValueChanged<String> onOpenUrl;
 
   @override
   State<ReaderSummaryTopReads> createState() => _ReaderSummaryTopReadsState();
@@ -61,6 +65,7 @@ class _ReaderSummaryTopReadsState extends State<ReaderSummaryTopReads> {
                   .map((citationId) => widget.citationsById[citationId])
                   .whereType<SummaryCitation>()
                   .toList(growable: false),
+              onOpenUrl: widget.onOpenUrl,
             ),
           ),
           if (widget.items.length > _initialVisibleTopReads) ...[
@@ -94,11 +99,13 @@ class _TopReadRow extends StatelessWidget {
     required this.index,
     required this.item,
     required this.citations,
+    required this.onOpenUrl,
   });
 
   final int index;
   final TopRead item;
   final List<SummaryCitation> citations;
+  final ValueChanged<String> onOpenUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -186,7 +193,7 @@ class _TopReadRow extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
-                item.reason,
+                readerSummaryDisplayReason(item),
                 maxLines: compact ? 3 : 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall,
@@ -196,18 +203,15 @@ class _TopReadRow extends StatelessWidget {
                   index: index,
                   item: item,
                   citations: citations,
+                  initiallyExpanded: index == 0,
+                  onOpenUrl: onOpenUrl,
                 ),
               if (compact && item.canonicalUrl != null) ...[
                 const SizedBox(height: AppSpacing.xs),
-                Text(
-                  item.canonicalUrl!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0,
-                  ),
+                ReaderSummaryExternalLink(
+                  url: item.canonicalUrl!,
+                  onOpenUrl: onOpenUrl,
+                  maxLines: 2,
                 ),
               ],
             ],
@@ -234,6 +238,7 @@ class _TopReadRow extends StatelessWidget {
               index: index,
               item: item,
               citations: citations,
+              onOpenUrl: onOpenUrl,
             ),
           ),
         ),
@@ -247,11 +252,15 @@ class _InlineDetailsDisclosure extends StatelessWidget {
     required this.index,
     required this.item,
     required this.citations,
+    required this.initiallyExpanded,
+    required this.onOpenUrl,
   });
 
   final int index;
   final TopRead item;
   final List<SummaryCitation> citations;
+  final bool initiallyExpanded;
+  final ValueChanged<String> onOpenUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -259,6 +268,7 @@ class _InlineDetailsDisclosure extends StatelessWidget {
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
         key: ValueKey('reader-summary-top-read-$index-inline-details'),
+        initiallyExpanded: initiallyExpanded,
         tilePadding: EdgeInsets.zero,
         childrenPadding: EdgeInsets.zero,
         title: Text(
@@ -273,6 +283,8 @@ class _InlineDetailsDisclosure extends StatelessWidget {
             index: index,
             item: item,
             citations: citations,
+            citationsInitiallyExpanded: initiallyExpanded,
+            onOpenUrl: onOpenUrl,
           ),
         ],
       ),

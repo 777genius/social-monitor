@@ -3,6 +3,7 @@
 // ignore_for_file: type=lint, unused_import, invalid_annotation_target, unnecessary_import
 
 // Clients
+export 'clients/auth_client.dart';
 export 'clients/feed_client.dart';
 export 'clients/reader_summaries_client.dart';
 export 'clients/relevance_client.dart';
@@ -13,7 +14,10 @@ export 'clients/sources_client.dart';
 export 'clients/summaries_client.dart';
 export 'clients/topics_client.dart';
 export 'clients/source_bindings_client.dart';
+export 'clients/workspace_settings_client.dart';
 // Data classes
+export 'models/auth_session_response_dto.dart';
+export 'models/auth_session_workspace_dto.dart';
 export 'models/bind_source_request_dto.dart';
 export 'models/bind_source_response_dto.dart';
 export 'models/build_personalized_digest_response_dto.dart';
@@ -141,9 +145,13 @@ export 'models/topic_source_daily_history_provider_response_dto.dart';
 export 'models/topic_source_daily_history_scheduler_skip_breakdown_response_dto.dart';
 export 'models/topic_source_daily_history_summary_response_dto.dart';
 export 'models/update_topic_request_dto.dart';
+export 'models/update_workspace_digest_preference_request_dto.dart';
+export 'models/update_workspace_telemetry_consent_request_dto.dart';
 export 'models/upsert_user_relevance_profile_request_dto.dart';
 export 'models/upsert_user_relevance_profile_response_dto.dart';
 export 'models/user_relevance_profile_dto.dart';
+export 'models/workspace_settings_diagnostics_dto.dart';
+export 'models/workspace_settings_response_dto.dart';
 export 'models/x_post_provider_metrics_dto.dart';
 export 'models/feed_item_dto_provider_metrics_provider_metrics.dart';
 export 'models/get_feed_item_response_dto_provider_metrics_provider_metrics.dart';
@@ -153,6 +161,7 @@ export 'models/cadence.dart';
 export 'models/scope_type.dart';
 export 'models/status.dart';
 export 'models/status2.dart';
+export 'models/auth_session_workspace_dto_workspace_role_workspace_role.dart';
 export 'models/build_personalized_digest_response_dto_status_status.dart';
 export 'models/change_source_binding_status_request_dto_status_status.dart';
 export 'models/change_source_binding_status_response_dto_status_status.dart';
@@ -254,6 +263,10 @@ export 'models/topic_source_daily_history_provider_response_dto_provider_health_
 export 'models/topic_source_daily_history_provider_response_dto_scan_coverage_state_scan_coverage_state.dart';
 export 'models/topic_source_daily_history_summary_response_dto_provider_health_state_provider_health_state.dart';
 export 'models/topic_source_daily_history_summary_response_dto_scan_coverage_state_scan_coverage_state.dart';
+export 'models/update_workspace_digest_preference_request_dto_frequency_frequency.dart';
+export 'models/update_workspace_telemetry_consent_request_dto_consent_consent.dart';
+export 'models/workspace_settings_response_dto_digest_frequency_digest_frequency.dart';
+export 'models/workspace_settings_response_dto_telemetry_consent_telemetry_consent.dart';
 export 'models/x_post_provider_metrics_dto_content_type_content_type.dart';
 export 'models/x_post_provider_metrics_dto_kind_kind.dart';
 export 'models/x_post_provider_metrics_dto_provider_key_provider_key.dart';

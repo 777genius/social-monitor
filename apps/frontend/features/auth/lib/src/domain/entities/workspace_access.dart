@@ -5,11 +5,13 @@ final class WorkspaceAccess {
     required this.scope,
     required this.tenantName,
     required this.workspaceName,
+    required this.workspaceRole,
     required this.statusLabel,
   });
 
   final WorkspaceScope scope;
   final String tenantName;
   final String workspaceName;
+  final String workspaceRole;
   final String statusLabel;
 }

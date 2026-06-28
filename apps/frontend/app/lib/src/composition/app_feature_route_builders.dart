@@ -25,6 +25,8 @@ AppRouteWidgetBuilder authFeatureBuilder({
   return (context, uri) {
     final runtime = runtimeController.runtime;
     return AuthFeatureRoute.runtime(
+      generatedApiRuntime: runtime.generatedApiRuntime,
+      userId: runtime.session.userId,
       userLabel: runtime.session.userLabel,
       selectedScope: runtime.workspace.scope,
       workspaces: [
@@ -34,11 +36,22 @@ AppRouteWidgetBuilder authFeatureBuilder({
               scope: scope,
               tenantName: workspace.tenantName,
               workspaceName: workspace.workspaceName,
+              workspaceRole: workspace.workspaceRole,
               statusLabel: workspace.statusLabel,
             ),
       ],
-      onWorkspaceSelected: (scope) {
-        runtimeController.selectWorkspace(scope);
+      onSessionRestored: (session) {
+        runtimeController.restoreAuthSession(
+          userId: session.userId,
+          userLabel: session.userLabel,
+          selectedWorkspace: _appWorkspace(session.selectedWorkspace),
+          availableWorkspaces: session.workspaces
+              .map(_appWorkspace)
+              .toList(growable: false),
+        );
+      },
+      onWorkspaceSelected: (workspace) {
+        runtimeController.selectWorkspace(workspace.scope);
         GoRouter.of(context).go('/');
       },
     );
@@ -64,16 +77,15 @@ AppRouteWidgetBuilder settingsFeatureBuilder({
     final runtime = runtimeController.runtime;
     final scope = runtime.workspace.scope;
     final capability = runtime.capabilities.capability('settings');
-    if (scope == null || capability.isDisabled) {
+    final generatedApiRuntime = runtime.generatedApiRuntime;
+    if (scope == null || capability.isDisabled || generatedApiRuntime == null) {
       return const RuntimeUnavailableFeaturePage(title: 'Settings');
     }
     return AnimatedBuilder(
       animation: themeModeController,
       builder: (context, _) => SettingsFeatureRoute.runtime(
         scope: scope,
-        workspaceRole: runtime.workspace.workspaceRole,
-        traceId: runtime.correlationId,
-        featureSnapshot: _featureSnapshot(runtime),
+        generatedApiRuntime: generatedApiRuntime,
         themeMode: themeModeController.themeMode,
         onThemeModeChanged: themeModeController.setThemeMode,
       ),
@@ -208,10 +220,12 @@ String _topicSourcesPath(String topicId, String topicTitle) {
   ).toString();
 }
 
-String _featureSnapshot(AppShellRuntime runtime) {
-  return runtime.capabilities.capabilities.entries
-      .where((entry) => entry.value.isEnabled)
-      .map((entry) => entry.key)
-      .toList(growable: false)
-      .join(',');
+AppWorkspaceSnapshot _appWorkspace(AuthWorkspaceRouteSnapshot workspace) {
+  return AppWorkspaceSnapshot(
+    tenantName: workspace.tenantName,
+    workspaceName: workspace.workspaceName,
+    statusLabel: workspace.statusLabel,
+    workspaceRole: workspace.workspaceRole,
+    scope: workspace.scope,
+  );
 }

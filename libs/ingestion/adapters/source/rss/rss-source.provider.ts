@@ -71,7 +71,9 @@ export class RssSourceProvider implements SourceProviderPort {
     const feed = await this.client.readFeed(plan.query.query, plan.maxItems, decodeCursor(plan.cursor));
 
     return {
-      items: feed.items.flatMap((item, index) => normalizeItem(item, index)),
+      items: feed.items.flatMap((item, index) =>
+        normalizeItem(item, index, plan.query.query),
+      ),
       nextCursor: encodeCursor(feed, plan.cursor),
       warnings: rssWarnings(feed.items),
     };
@@ -98,7 +100,7 @@ export class RssSourceProvider implements SourceProviderPort {
   }
 }
 
-const normalizeItem = (item: RssFeedItem, index: number) => {
+const normalizeItem = (item: RssFeedItem, index: number, feedUrl: string) => {
   const title = item.title ?? '';
   const body = item.content ?? '';
 
@@ -124,8 +126,30 @@ const normalizeItem = (item: RssFeedItem, index: number) => {
       body,
       authorHandle: item.author,
       publishedAt: item.publishedAt,
+      metadata: rssItemMetadata(feedUrl),
     },
   ];
+};
+
+const rssItemMetadata = (feedUrl: string) => {
+  const searchQuery = searchQueryFromFeedUrl(feedUrl);
+
+  return {
+    kind: 'rss_item',
+    feedUrl,
+    ...(searchQuery === undefined ? {} : { searchQuery }),
+  };
+};
+
+const searchQueryFromFeedUrl = (feedUrl: string): string | undefined => {
+  try {
+    const parsed = new URL(feedUrl);
+    const query = parsed.searchParams.get('q')?.trim();
+
+    return query === undefined || query.length === 0 ? undefined : query;
+  } catch {
+    return undefined;
+  }
 };
 
 const rssWarnings = (items: readonly RssFeedItem[]): readonly string[] => [

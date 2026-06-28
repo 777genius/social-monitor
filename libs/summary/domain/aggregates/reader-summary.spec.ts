@@ -7,6 +7,383 @@ import type {
 } from "../value-objects/summary-evidence-item";
 
 describe("buildReaderSummary", () => {
+  it("neutralizes single-source model headlines so one title is not amplified as a confirmed claim", () => {
+    const readerSummary = buildReaderSummary({
+      headline:
+        "OpenAI confirms GPT-5.6 benchmark leadership after preview launch",
+      executiveSummary:
+        "One Reddit source discussed a claimed GPT-5.6 preview benchmark.",
+      topStories: [
+        {
+          storyClusterId: "cluster-1",
+          title:
+            "OpenAI ties Anthropic after alleged GPT-5.6 preview benchmark",
+          summary:
+            "A single Reddit post discussed an unverified GPT-5.6 benchmark claim.",
+          topicIds: ["ai-models"],
+          providerKeys: ["reddit"],
+          citationIds: ["citation-1"],
+        },
+      ],
+      topicHighlights: [],
+      repeatedSignals: [],
+      risksAndUnknowns: [],
+      citationMap: [
+        {
+          citationId: "citation-1",
+          feedItemId: "feed-1",
+          sourceItemId: "source-1",
+          providerKey: "reddit",
+          field: "title",
+          canonicalUrl: "https://reddit.example/r/OpenAI/comments/1",
+        },
+      ],
+      storyClusters: [
+        {
+          id: "cluster-1",
+          storyKey: "reddit:openai-gpt-5-6",
+          representativeFeedItemId: "feed-1",
+          duplicateFeedItemIds: [],
+          topicIds: ["ai-models"],
+          providerKeys: ["reddit"],
+          score: 2.4,
+          observedAtRange: {
+            startedAt: new Date("2026-06-23T08:00:00.000Z"),
+            endedAt: new Date("2026-06-23T09:00:00.000Z"),
+          },
+          whyImportant: ["Single-source discussion needs confirmation."],
+        },
+      ],
+      selectedEvidence: [
+        {
+          feedItemId: "feed-1",
+          sourceItemId: "source-1",
+          sourceBindingId: "binding-reddit",
+          topicId: "ai-models",
+          providerKey: "reddit",
+          providerName: "Reddit",
+          canonicalUrl: "https://reddit.example/r/OpenAI/comments/1",
+          title:
+            "OpenAI ties Anthropic after alleged GPT-5.6 preview benchmark",
+          publishedAt: new Date("2026-06-23T08:00:00.000Z"),
+          observedAt: new Date("2026-06-23T09:00:00.000Z"),
+          score: 2.4,
+          whyImportant: ["Single-source discussion needs confirmation."],
+        },
+      ],
+      qualityFlags: [],
+    });
+
+    expect(readerSummary.headline).toBe(
+      "Reddit source watch: 1 cited top read",
+    );
+    expect(readerSummary.headline).not.toContain("GPT-5.6");
+    expect(readerSummary.oneLineTakeaway).toBe(
+      "Strongest read from Reddit: Single-source discussion needs confirmation. Confirm important claims with another monitored source before acting.",
+    );
+    expect(readerSummary.oneLineTakeaway).not.toContain("GPT-5.6");
+    expect(readerSummary.bullets[0]).toBe(
+      "Best first cited read from Reddit (1 citation): OpenAI ties Anthropic after alleged GPT-5.6 preview benchmark - needs confirmation; verify citations in Top reads.",
+    );
+    expect(readerSummary.topReads[0]?.confidence).toEqual({
+      level: "low",
+      score: 0.42,
+      rationale:
+        "Single-source story signal; treat provider metrics as local evidence.",
+    });
+  });
+
+  it("keeps social one-line takeaways content-first while requiring confirmation", () => {
+    const readerSummary = buildReaderSummary({
+      headline: "AI social pulse",
+      executiveSummary:
+        "Social sources point to AI infrastructure, rollout chatter and biomedical AI research.",
+      topStories: [
+        {
+          storyClusterId: "cluster-reddit",
+          title: "Why are AI labs building their own chips?",
+          summary:
+            "AI infrastructure discussion around custom chips is getting practical.",
+          topicIds: ["ai-infrastructure"],
+          providerKeys: ["reddit"],
+          citationIds: ["citation-reddit"],
+        },
+        {
+          storyClusterId: "cluster-x",
+          title: "OpenAI Devs rollout chatter",
+          summary: "Developer rollout chatter is drawing X/Twitter engagement.",
+          topicIds: ["ai-developer-tools"],
+          providerKeys: ["x-twitter"],
+          citationIds: ["citation-x"],
+        },
+        {
+          storyClusterId: "cluster-hn",
+          title: "AI-assisted Alzheimer drug story",
+          summary: "Biomedical AI research is drawing Hacker News discussion.",
+          topicIds: ["ai-healthcare"],
+          providerKeys: ["hacker-news"],
+          citationIds: ["citation-hn"],
+        },
+      ],
+      topicHighlights: [],
+      repeatedSignals: [],
+      risksAndUnknowns: [],
+      citationMap: [
+        {
+          citationId: "citation-reddit",
+          feedItemId: "feed-reddit",
+          sourceItemId: "source-reddit",
+          providerKey: "reddit",
+          field: "title",
+          canonicalUrl: "https://reddit.example/r/localllama/comments/1",
+        },
+        {
+          citationId: "citation-x",
+          feedItemId: "feed-x",
+          sourceItemId: "source-x",
+          providerKey: "x-twitter",
+          field: "title",
+          canonicalUrl: "https://x.com/openai/status/1",
+        },
+        {
+          citationId: "citation-hn",
+          feedItemId: "feed-hn",
+          sourceItemId: "source-hn",
+          providerKey: "hacker-news",
+          field: "title",
+          canonicalUrl: "https://news.ycombinator.com/item?id=1",
+        },
+      ],
+      storyClusters: [
+        socialStoryCluster("cluster-reddit", "feed-reddit", "reddit", [
+          "Story signal score 2.275",
+          "Strong source engagement signal",
+          "Passes source quality and topic relevance gate",
+          "Fresh item in the current monitoring window",
+        ]),
+        socialStoryCluster("cluster-x", "feed-x", "x-twitter", [
+          "Story signal score 2.211",
+          "Strong source engagement signal",
+          "Passes source quality and topic relevance gate",
+          "Fresh item in the current monitoring window",
+        ]),
+        socialStoryCluster("cluster-hn", "feed-hn", "hacker-news", [
+          "Story signal score 2.163",
+          "Strong source engagement signal",
+          "Passes source quality and topic relevance gate",
+          "Fresh item in the current monitoring window",
+        ]),
+      ],
+      selectedEvidence: [
+        socialEvidenceItem({
+          feedItemId: "feed-reddit",
+          sourceItemId: "source-reddit",
+          sourceBindingId: "binding-reddit",
+          topicId: "ai-infrastructure",
+          providerKey: "reddit",
+          providerName: "Reddit",
+          title: "Why are AI labs building their own chips?",
+          canonicalUrl: "https://reddit.example/r/localllama/comments/1",
+          whyImportant: [
+            "Story signal score 2.275",
+            "Strong source engagement signal",
+          ],
+        }),
+        socialEvidenceItem({
+          feedItemId: "feed-x",
+          sourceItemId: "source-x",
+          sourceBindingId: "binding-x",
+          topicId: "ai-developer-tools",
+          providerKey: "x-twitter",
+          providerName: "X/Twitter",
+          title: "OpenAI Devs rollout chatter",
+          canonicalUrl: "https://x.com/openai/status/1",
+          whyImportant: [
+            "Story signal score 2.211",
+            "Strong source engagement signal",
+          ],
+        }),
+        socialEvidenceItem({
+          feedItemId: "feed-hn",
+          sourceItemId: "source-hn",
+          sourceBindingId: "binding-hn",
+          topicId: "ai-healthcare",
+          providerKey: "hacker-news",
+          providerName: "Hacker News",
+          title: "AI-assisted Alzheimer drug story",
+          canonicalUrl: "https://news.ycombinator.com/item?id=1",
+          whyImportant: [
+            "Story signal score 2.163",
+            "Strong source engagement signal",
+          ],
+        }),
+      ],
+      qualityFlags: [],
+    });
+
+    expect(readerSummary.oneLineTakeaway).toBe(
+      "Strongest reads across X/Twitter, Reddit, Hacker News: Developer rollout chatter is drawing X/Twitter engagement; AI infrastructure discussion around custom chips is getting practical; Biomedical AI research is drawing Hacker News discussion. Confirm important claims with another monitored source before acting.",
+    );
+    expect(readerSummary.oneLineTakeaway).not.toContain("Review 3 cited");
+    expect(readerSummary.topReads.map((read) => read.reason)).toEqual([
+      "Developer rollout chatter is drawing X/Twitter engagement.",
+      "AI infrastructure discussion around custom chips is getting practical.",
+      "Biomedical AI research is drawing Hacker News discussion.",
+    ]);
+    expect(
+      readerSummary.topReads.flatMap((read) => read.whyImportant),
+    ).not.toContain("Story signal score 2.211");
+    expect(readerSummary.topReads.map((read) => read.providerKey)).toEqual([
+      "x-twitter",
+      "reddit",
+      "hacker-news",
+    ]);
+  });
+
+  it("keeps X and Reddit ahead of HN/RSS cross-source support in AI developer digests", () => {
+    const readerSummary = buildReaderSummary({
+      headline: "Source watch across X/Twitter, Reddit, Hacker News +2",
+      executiveSummary:
+        "X/Twitter and Reddit carry the clearest AI developer workflow signals.",
+      topStories: [
+        {
+          storyClusterId: "cluster-hn-rss",
+          title:
+            "HN and RSS amplify cybersecurity discussion around a post-mythos framing",
+          summary:
+            "A cybersecurity article is drawing HN and RSS discussion.",
+          topicIds: ["cybersecurity"],
+          providerKeys: ["hacker-news", "rss"],
+          citationIds: ["citation-hn", "citation-rss"],
+        },
+        {
+          storyClusterId: "cluster-x",
+          title: "X chatter about Claude Code skills routing across coding tools",
+          summary:
+            "Claude Code skills routing is the strongest concrete X signal.",
+          topicIds: ["ai-developer-tools"],
+          providerKeys: ["x-twitter"],
+          citationIds: ["citation-x"],
+        },
+        {
+          storyClusterId: "cluster-reddit",
+          title: "Reddit reports DFlash support merged into llama.cpp",
+          summary: "Local model users are tracking a concrete runtime win.",
+          topicIds: ["local-models"],
+          providerKeys: ["reddit"],
+          citationIds: ["citation-reddit"],
+        },
+      ],
+      topicHighlights: [],
+      repeatedSignals: [],
+      risksAndUnknowns: [],
+      citationMap: [
+        {
+          citationId: "citation-hn",
+          feedItemId: "feed-hn",
+          sourceItemId: "source-hn",
+          providerKey: "hacker-news",
+          field: "title",
+          canonicalUrl: "https://news.ycombinator.com/item?id=1",
+        },
+        {
+          citationId: "citation-rss",
+          feedItemId: "feed-rss",
+          sourceItemId: "source-rss",
+          providerKey: "rss",
+          field: "title",
+          canonicalUrl: "https://example.test/security-story",
+        },
+        {
+          citationId: "citation-x",
+          feedItemId: "feed-x",
+          sourceItemId: "source-x",
+          providerKey: "x-twitter",
+          field: "title",
+          canonicalUrl: "https://x.com/rohanpaul_ai/status/1",
+        },
+        {
+          citationId: "citation-reddit",
+          feedItemId: "feed-reddit",
+          sourceItemId: "source-reddit",
+          providerKey: "reddit",
+          field: "title",
+          canonicalUrl: "https://reddit.example/r/LocalLLaMA/comments/1",
+        },
+      ],
+      storyClusters: [
+        {
+          ...socialStoryCluster("cluster-hn-rss", "feed-hn", "hacker-news", [
+            "Strong source engagement signal",
+          ]),
+          duplicateFeedItemIds: ["feed-rss"],
+          providerKeys: ["hacker-news", "rss"],
+        },
+        socialStoryCluster("cluster-x", "feed-x", "x-twitter", [
+          "Strong source engagement signal",
+        ]),
+        socialStoryCluster("cluster-reddit", "feed-reddit", "reddit", [
+          "Strong source engagement signal",
+        ]),
+      ],
+      selectedEvidence: [
+        socialEvidenceItem({
+          feedItemId: "feed-hn",
+          sourceItemId: "source-hn",
+          sourceBindingId: "binding-hn",
+          topicId: "cybersecurity",
+          providerKey: "hacker-news",
+          providerName: "Hacker News",
+          title:
+            "HN and RSS amplify cybersecurity discussion around a post-mythos framing",
+          canonicalUrl: "https://news.ycombinator.com/item?id=1",
+          whyImportant: ["Strong source engagement signal"],
+        }),
+        socialEvidenceItem({
+          feedItemId: "feed-rss",
+          sourceItemId: "source-rss",
+          sourceBindingId: "binding-rss",
+          topicId: "cybersecurity",
+          providerKey: "rss",
+          providerName: "RSS",
+          title: "RSS repeats cybersecurity discussion",
+          canonicalUrl: "https://example.test/security-story",
+          whyImportant: ["Strong source engagement signal"],
+        }),
+        socialEvidenceItem({
+          feedItemId: "feed-x",
+          sourceItemId: "source-x",
+          sourceBindingId: "binding-x",
+          topicId: "ai-developer-tools",
+          providerKey: "x-twitter",
+          providerName: "X/Twitter",
+          title: "X chatter about Claude Code skills routing across coding tools",
+          canonicalUrl: "https://x.com/rohanpaul_ai/status/1",
+          whyImportant: ["Strong source engagement signal"],
+        }),
+        socialEvidenceItem({
+          feedItemId: "feed-reddit",
+          sourceItemId: "source-reddit",
+          sourceBindingId: "binding-reddit",
+          topicId: "local-models",
+          providerKey: "reddit",
+          providerName: "Reddit",
+          title: "Reddit reports DFlash support merged into llama.cpp",
+          canonicalUrl: "https://reddit.example/r/LocalLLaMA/comments/1",
+          whyImportant: ["Strong source engagement signal"],
+        }),
+      ],
+      qualityFlags: [],
+    });
+
+    expect(
+      readerSummary.topReads.slice(0, 3).map((read) => read.providerKey),
+    ).toEqual(["x-twitter", "reddit", "hacker-news"]);
+    expect(readerSummary.headline).toContain("Key signals across");
+    expect(readerSummary.headline).toContain("Claude Code skills");
+    expect(readerSummary.headline).not.toContain("Source watch");
+  });
+
   it("keeps single-provider repo radar summaries source-aware without repeating repo names as trend signals", () => {
     const readerSummary = buildReaderSummary({
       headline: "AI repo radar",
@@ -137,7 +514,7 @@ describe("buildReaderSummary", () => {
     expect(readerSummary.qualityState).toMatchObject({
       status: "limited_sources",
       isSingleSource: true,
-      warnings: ["Source coverage is limited or single-source."],
+      warnings: ["Source coverage is limited and needs confirmation."],
     });
     expect(readerSummary.bullets).toContain(
       "1 follow-up link available in Top reads.",
@@ -328,10 +705,6 @@ describe("buildReaderSummary", () => {
       })),
     ).toEqual([
       {
-        title: "repo-radar/project-1",
-        providerKey: "github-repo-radar",
-      },
-      {
         title: "Reddit discusses agent debugging friction",
         providerKey: "reddit",
       },
@@ -343,6 +716,10 @@ describe("buildReaderSummary", () => {
         title: "RSS explains agent workflow releases",
         providerKey: "rss",
       },
+      {
+        title: "repo-radar/project-1",
+        providerKey: "github-repo-radar",
+      },
     ]);
     expect(readerSummary.topReads.map((item) => item.title)).toContain(
       "repo-radar/project-2",
@@ -351,7 +728,7 @@ describe("buildReaderSummary", () => {
       "10 multi-source items selected",
     ]);
     expect(readerSummary.openQuestions).toContain(
-      "Which single-source top reads need confirmation from another monitored source?",
+      "Which top reads need confirmation from another monitored source?",
     );
   });
 
@@ -689,7 +1066,7 @@ describe("buildReaderSummary", () => {
     expect(readerSummary.qualityState.status).toBe("ready");
     expect(readerSummary.sourceMix).toEqual([
       {
-        providerKey: "github-repo-radar",
+        providerKey: "reddit",
         itemCount: 1,
         citationCount: 1,
         storyClusterCount: 1,
@@ -698,7 +1075,7 @@ describe("buildReaderSummary", () => {
         topicIds: ["ai-agents"],
       },
       {
-        providerKey: "reddit",
+        providerKey: "github-repo-radar",
         itemCount: 1,
         citationCount: 1,
         storyClusterCount: 1,
@@ -791,3 +1168,34 @@ const readerTopReadFixture = (count: number) => {
     qualityFlags: [],
   };
 };
+
+const socialStoryCluster = (
+  id: string,
+  representativeFeedItemId: string,
+  providerKey: string,
+  whyImportant: readonly string[],
+): StoryCluster =>
+  ({
+    id,
+    storyKey: `${providerKey}:${representativeFeedItemId}`,
+    representativeFeedItemId,
+    duplicateFeedItemIds: [],
+    topicIds: ["ai"],
+    providerKeys: [providerKey],
+    score: 2.1,
+    observedAtRange: {
+      startedAt: new Date("2026-06-28T08:00:00.000Z"),
+      endedAt: new Date("2026-06-28T09:00:00.000Z"),
+    },
+    whyImportant,
+  }) satisfies StoryCluster;
+
+const socialEvidenceItem = (
+  input: Omit<SummaryEvidenceItem, "publishedAt" | "observedAt" | "score">,
+): SummaryEvidenceItem =>
+  ({
+    ...input,
+    publishedAt: new Date("2026-06-28T08:00:00.000Z"),
+    observedAt: new Date("2026-06-28T09:00:00.000Z"),
+    score: 2.1,
+  }) satisfies SummaryEvidenceItem;

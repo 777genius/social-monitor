@@ -12,6 +12,8 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
   go_router: ^17.3.0
   marionette_flutter: ^0.6.0
   modularity_flutter: ^0.3.1

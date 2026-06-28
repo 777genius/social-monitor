@@ -36,6 +36,7 @@ import { NOOP_USER_SUMMARY_PREFERENCE_READER } from '@social-monitor/summary/por
 import { InMemoryFeedProjectionAdapter } from '../../apps/ingestion-worker/src/adapters/feed/in-memory-feed-projection.adapter';
 import type {
   XDailyCollectorClientPort,
+  XDailyCollectedPost,
   XDailyCollectorRequest,
   XDailyCollectorResult,
 } from '../../libs/ingestion/adapters/source/x-twitter-experimental-daily/x-daily-collector-client.port';
@@ -200,6 +201,192 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
     }));
     expect(snapshot?.sourceWindow.selectedFeedItemIds).toHaveLength(2);
   });
+
+  it('filters low-quality high-engagement X posts before summary evidence selection', async () => {
+    const tenant = tenantId('tenant-x-quality-e2e');
+    const workspace = workspaceId('workspace-x-quality-e2e');
+    const topicId = 'topic-x-quality-e2e';
+    const sourceBindingId = 'binding-x-quality-e2e';
+    const scanJobId = 'scan-x-quality-e2e';
+    const clock = new FixedClock(new Date('2026-06-27T12:00:00.000Z'));
+    const ids = new SequenceIdGenerator();
+    const collector = new FakeXCollector([
+      {
+        tweetId: 'quality-good',
+        canonicalUrl: 'https://x.com/OpenAI/status/quality-good',
+        text: 'OpenAI agents published trace scoring and regression checks for production AI teams today.',
+        authorHandle: 'OpenAI',
+        authorName: 'OpenAI',
+        publishedAt: new Date('2026-06-27T10:30:00.000Z'),
+        metrics: {
+          likes: 80,
+          retweets: 20,
+          replies: 6,
+          quotes: 2,
+          views: 9_000,
+        },
+        mediaUrls: [],
+        sourceProduct: 'top',
+        trendScore: 70,
+      },
+      {
+        tweetId: 'quality-crypto',
+        canonicalUrl: 'https://x.com/Def_Rambo/status/quality-crypto',
+        text: 'I have been watching the AI space on BingX. Drop your top 3 projects. #AI #Crypto #Tech',
+        authorHandle: 'Def_Rambo',
+        authorName: 'Def Rambo',
+        publishedAt: new Date('2026-06-27T11:00:00.000Z'),
+        metrics: {
+          likes: 1200,
+          retweets: 500,
+          replies: 140,
+          quotes: 30,
+          views: 80_000,
+        },
+        mediaUrls: [],
+        sourceProduct: 'top',
+        trendScore: 99,
+      },
+      {
+        tweetId: 'quality-tco',
+        canonicalUrl: 'https://x.com/NVIDIAAI/status/quality-tco',
+        text: 'https://t.co/yQHkkbmVeR',
+        authorHandle: 'NVIDIAAI',
+        authorName: 'NVIDIA AI',
+        publishedAt: new Date('2026-06-27T11:10:00.000Z'),
+        metrics: {
+          likes: 900,
+          retweets: 160,
+          replies: 40,
+          quotes: 12,
+          views: 120_000,
+        },
+        mediaUrls: [],
+        sourceProduct: 'top',
+        trendScore: 98,
+      },
+    ]);
+    const feedItems = new InMemoryFeedItemReadRepository();
+    const sourceItems = new InMemorySourceItemRepository();
+    const provider = new XTwitterSourceProvider(collector, clock);
+    const registry = new InMemorySourceProviderRegistry([provider], sourceReadinessProfiles);
+    const sourceFetcher = new RegistrySourceFetcherAdapter(
+      registry,
+      new StaticSourceConfigReader({
+        windowHours: 24,
+        searchProducts: ['top', 'latest'],
+        maxItems: 3,
+        limitPerProduct: 3,
+        minLikes: 1,
+      }),
+    );
+    const executeScan = new ExecuteScanUseCase(
+      sourceFetcher,
+      sourceItems,
+      new InMemoryFeedProjectionAdapter(feedItems),
+      new InMemoryScanAttemptRepository(),
+      new InMemoryScanCursorRepository(),
+      new NoopScanExecutionReporterAdapter(),
+      new InMemoryScanFailureQueueAdapter(new InMemoryMetricsRecorder()),
+      new InMemoryScanLeaseAdapter(),
+      ids,
+      clock,
+    );
+
+    const scan = await executeScan.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scanJobId,
+      topicId,
+      sourceBindingId,
+      scanPolicyId: 'policy-x-quality-e2e',
+      providerKey: 'x-twitter',
+      sourceQuery: { mode: 'search', query: 'openai agents' },
+      correlationId: 'corr-x-quality-e2e',
+      causationId: 'scan-request-x-quality-e2e',
+      attemptNumber: 1,
+      retryBudget: 3,
+    });
+
+    expect(scan).toEqual({
+      ok: true,
+      value: {
+        scanJobId,
+        fetched: 3,
+        inserted: 3,
+        skippedDuplicates: 0,
+        projected: 3,
+      },
+    });
+
+    const rankFeedItems = new RankFeedItemsUseCase(
+      feedItems,
+      new InMemoryUserRelevanceProfileRepository(),
+      clock,
+    );
+    const ranked = await rankFeedItems.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      limit: 10,
+    });
+
+    expect(ranked.ok).toBe(true);
+    if (!ranked.ok) {
+      return;
+    }
+
+    expect(ranked.value.items.map((item) => item.canonicalUrl)).toEqual([
+      'https://x.com/OpenAI/status/quality-good',
+    ]);
+    expect(ranked.value.items[0]?.contentQuality).toEqual(expect.objectContaining({
+      eligibleForSummary: true,
+      eligibleForTopRead: true,
+    }));
+
+    const summaryJobs = new InMemorySummaryJobRepository();
+    const summaryArtifacts = new InMemorySummaryArtifactRepository();
+    await summaryJobs.save(SummaryJob.request({
+      id: 'summary-job-x-quality-e2e',
+      tenantId: tenant,
+      workspaceId: workspace,
+      topicId,
+      idempotencyKey: 'summary-x-quality-e2e',
+      requestedAt: clock.now(),
+    }));
+    const executeSummary = new ExecuteSummaryJobUseCase(
+      summaryJobs,
+      summaryArtifacts,
+      new InMemorySummaryPolicyRepository(),
+      NOOP_USER_SUMMARY_PREFERENCE_READER,
+      new RelevanceSummaryEvidenceSelector(rankFeedItems, clock),
+      new DeterministicSummaryModelAdapter(),
+      new InMemorySummaryEventPublisher(),
+      ids,
+      clock,
+    );
+    const summary = await executeSummary.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: 'summary-job-x-quality-e2e',
+      maxEvidenceItems: 10,
+    });
+
+    expect(summary.ok).toBe(true);
+    const artifact = summary.ok && summary.value.summaryId
+      ? await summaryArtifacts.findById({
+          tenantId: tenant,
+          workspaceId: workspace,
+          summaryId: summary.value.summaryId,
+        })
+      : null;
+    const snapshot = artifact?.toSnapshot();
+    const citationUrls = snapshot?.citationMap.map((citation) => citation.canonicalUrl) ?? [];
+
+    expect(citationUrls).toEqual(['https://x.com/OpenAI/status/quality-good']);
+    expect(citationUrls).not.toContain('https://x.com/Def_Rambo/status/quality-crypto');
+    expect(citationUrls).not.toContain('https://x.com/NVIDIAAI/status/quality-tco');
+  });
 });
 
 class SequenceIdGenerator implements IdGenerator {
@@ -224,56 +411,60 @@ class StaticSourceConfigReader implements SourceConfigReaderPort {
 class FakeXCollector implements XDailyCollectorClientPort {
   readonly requests: XDailyCollectorRequest[] = [];
 
+  constructor(private readonly posts: readonly XDailyCollectedPost[] = defaultFakeXPosts) {}
+
   async collectDailySearch(request: XDailyCollectorRequest): Promise<XDailyCollectorResult> {
     this.requests.push(request);
 
     return {
       nextCursor: 'x-fake-cursor',
       warnings: [],
-      posts: [
-        {
-          tweetId: '100',
-          canonicalUrl: 'https://x.com/highsignal/status/100',
-          text: 'OpenAI agents shipped a new orchestration pattern that teams are discussing today.',
-          authorHandle: 'highsignal',
-          authorName: 'High Signal',
-          publishedAt: new Date('2026-06-27T10:30:00.000Z'),
-          metrics: {
-            likes: 120,
-            retweets: 30,
-            replies: 8,
-            quotes: 4,
-            views: 12_000,
-          },
-          mediaUrls: [],
-          sourceProduct: 'top',
-          trendScore: 88,
-        },
-        {
-          tweetId: '200',
-          canonicalUrl: 'https://x.com/freshsignal/status/200',
-          text: 'A fresh OpenAI agents example is starting to trend among builders.',
-          authorHandle: 'freshsignal',
-          authorName: 'Fresh Signal',
-          publishedAt: new Date('2026-06-27T11:15:00.000Z'),
-          metrics: {
-            likes: 22,
-            retweets: 5,
-            replies: 2,
-          },
-          mediaUrls: [],
-          sourceProduct: 'latest',
-          trendScore: 31,
-        },
-      ],
+      posts: this.posts,
       run: {
         collectorEngine: 'fake-x-collector',
         collectorVersion: 'test',
         requestedLimit: request.maxItems,
-        fetchedCount: 2,
-        returnedCount: 2,
+        fetchedCount: this.posts.length,
+        returnedCount: this.posts.length,
         partial: false,
       },
     };
   }
 }
+
+const defaultFakeXPosts: readonly XDailyCollectedPost[] = [
+  {
+    tweetId: '100',
+    canonicalUrl: 'https://x.com/highsignal/status/100',
+    text: 'OpenAI agents shipped a new orchestration pattern that teams are discussing today.',
+    authorHandle: 'highsignal',
+    authorName: 'High Signal',
+    publishedAt: new Date('2026-06-27T10:30:00.000Z'),
+    metrics: {
+      likes: 120,
+      retweets: 30,
+      replies: 8,
+      quotes: 4,
+      views: 12_000,
+    },
+    mediaUrls: [],
+    sourceProduct: 'top',
+    trendScore: 88,
+  },
+  {
+    tweetId: '200',
+    canonicalUrl: 'https://x.com/freshsignal/status/200',
+    text: 'A fresh OpenAI agents example is starting to trend among builders.',
+    authorHandle: 'freshsignal',
+    authorName: 'Fresh Signal',
+    publishedAt: new Date('2026-06-27T11:15:00.000Z'),
+    metrics: {
+      likes: 22,
+      retweets: 5,
+      replies: 2,
+    },
+    mediaUrls: [],
+    sourceProduct: 'latest',
+    trendScore: 31,
+  },
+];

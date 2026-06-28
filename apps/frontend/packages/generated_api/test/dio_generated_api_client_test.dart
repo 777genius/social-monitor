@@ -20,6 +20,13 @@ void main() {
     expect((result as ResultSuccess<String>).value, 'loaded');
   });
 
+  test('allows unscoped operations for session discovery endpoints', () async {
+    final result = await client.sendUnscoped<String>(() async => 'restored');
+
+    expect(result, isA<ResultSuccess<String>>());
+    expect((result as ResultSuccess<String>).value, 'restored');
+  });
+
   test(
     'exposes source credential operations from the generated root client',
     () {

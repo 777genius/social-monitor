@@ -111,11 +111,28 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                     until=until,
                 )
             except Exception as exc:
-                raise classify_scweet_error(
+                classified = classify_scweet_error(
                     exc,
                     clock=self._clock,
                     scweet_db_path=self._scweet_db_path,
-                ) from exc
+                )
+                if (
+                    isinstance(classified, XCollectorRateLimitError)
+                    and len(fetched_posts) > 0
+                ):
+                    warnings.append(
+                        XCollectorWarning(
+                            code="x_collector.partial_rate_limit",
+                            message=(
+                                f"{search_pass.label} hit a rate limit after "
+                                "earlier passes returned posts; returning "
+                                "partial daily search results"
+                            ),
+                        ),
+                    )
+                    break
+
+                raise classified from exc
 
             accepted_count = 0
             for rank, record in enumerate(records, start=1):

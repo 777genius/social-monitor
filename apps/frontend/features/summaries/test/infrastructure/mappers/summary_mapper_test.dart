@@ -99,7 +99,9 @@ void main() {
     );
     expect(summary.content.topReads.single.signalScore.value, 1.23);
     expect(summary.period.cadence.name, 'daily');
-    expect(summary.summaryWindow.label, '2026-06-26 - 2026-06-27');
+    expect(summary.summaryWindow.label, 'Evidence window');
+    expect(summary.summaryWindow.startsAt, DateTime.utc(2026, 6, 26, 8, 30));
+    expect(summary.summaryWindow.endsAt, DateTime.utc(2026, 6, 26, 18, 58));
     expect(
       summary.content.topReads.single.providerMetrics.single.value,
       '54,000',

@@ -41,6 +41,7 @@ import { GetDeliveryAttemptUseCase } from '../../features/get-delivery-attempt/g
 import { GetDigestUseCase } from '../../features/get-digest/get-digest.use-case';
 import { GetDigestScheduleUseCase } from '../../features/get-digest-schedule/get-digest-schedule.use-case';
 import { GetNotificationPreferenceUseCase } from '../../features/get-notification-preference/get-notification-preference.use-case';
+import { GetWorkspaceSettingsUseCase } from '../../features/get-workspace-settings/get-workspace-settings.use-case';
 import { GetWebhookEndpointUseCase } from '../../features/get-webhook-endpoint/get-webhook-endpoint.use-case';
 import { ListDeliveryAttemptsUseCase } from '../../features/list-delivery-attempts/list-delivery-attempts.use-case';
 import { ListDigestSchedulesUseCase } from '../../features/list-digest-schedules/list-digest-schedules.use-case';
@@ -56,6 +57,8 @@ import { ScheduleDueDigestsUseCase } from '../../features/schedule-due-digests/s
 import { SendDeliveryAttemptUseCase } from '../../features/send-delivery-attempt/send-delivery-attempt.use-case';
 import { SetNotificationPreferenceUseCase } from '../../features/set-notification-preference/set-notification-preference.use-case';
 import { SignWebhookPayloadUseCase } from '../../features/sign-webhook-payload/sign-webhook-payload.use-case';
+import { UpdateWorkspaceDigestPreferenceUseCase } from '../../features/update-workspace-digest-preference/update-workspace-digest-preference.use-case';
+import { UpdateWorkspaceTelemetryConsentUseCase } from '../../features/update-workspace-telemetry-consent/update-workspace-telemetry-consent.use-case';
 import { VerifyWebhookSignatureUseCase } from '../../features/verify-webhook-signature/verify-webhook-signature.use-case';
 import type { DeliveryChannel } from '../../domain';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
@@ -85,6 +88,7 @@ import {
 import { DigestsController } from './digests.controller';
 import { NotificationPreferencesController } from './notification-preferences.controller';
 import { RealtimeEventsController } from './realtime-events.controller';
+import { WorkspaceSettingsController } from './workspace-settings.controller';
 import { WebhookEndpointsController } from './webhook-endpoints.controller';
 import { RealtimeEventsGateway } from '../ws/realtime-events.gateway';
 import type {
@@ -116,6 +120,7 @@ const DELIVERY_WEBHOOK_PROVIDER_MODE = Symbol('DELIVERY_WEBHOOK_PROVIDER_MODE');
     DigestsController,
     NotificationPreferencesController,
     RealtimeEventsController,
+    WorkspaceSettingsController,
     WebhookEndpointsController,
   ],
   providers: [
@@ -381,6 +386,24 @@ const DELIVERY_WEBHOOK_PROVIDER_MODE = Symbol('DELIVERY_WEBHOOK_PROVIDER_MODE');
       inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER],
     },
     {
+      provide: GetWorkspaceSettingsUseCase,
+      useFactory: (preferences: NotificationPreferenceManagementPort) =>
+        new GetWorkspaceSettingsUseCase(preferences),
+      inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER],
+    },
+    {
+      provide: UpdateWorkspaceDigestPreferenceUseCase,
+      useFactory: (preferences: NotificationPreferenceManagementPort) =>
+        new UpdateWorkspaceDigestPreferenceUseCase(preferences),
+      inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER],
+    },
+    {
+      provide: UpdateWorkspaceTelemetryConsentUseCase,
+      useFactory: (preferences: NotificationPreferenceManagementPort) =>
+        new UpdateWorkspaceTelemetryConsentUseCase(preferences),
+      inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER],
+    },
+    {
       provide: CreateWebhookEndpointUseCase,
       useFactory: (
         endpoints: WebhookEndpointRepositoryPort,
@@ -502,6 +525,7 @@ const DELIVERY_WEBHOOK_PROVIDER_MODE = Symbol('DELIVERY_WEBHOOK_PROVIDER_MODE');
     GetWebhookEndpointUseCase,
     GetDigestScheduleUseCase,
     GetNotificationPreferenceUseCase,
+    GetWorkspaceSettingsUseCase,
     ListDigestSchedulesUseCase,
     ListWebhookEndpointsUseCase,
     InMemoryDeliveryAttemptRepository,
@@ -525,6 +549,8 @@ const DELIVERY_WEBHOOK_PROVIDER_MODE = Symbol('DELIVERY_WEBHOOK_PROVIDER_MODE');
     SendDeliveryAttemptUseCase,
     SetNotificationPreferenceUseCase,
     SignWebhookPayloadUseCase,
+    UpdateWorkspaceDigestPreferenceUseCase,
+    UpdateWorkspaceTelemetryConsentUseCase,
     VerifyWebhookSignatureUseCase,
     DELIVERY_ATTEMPT_REPOSITORY,
     DELIVERY_DIGEST_REPOSITORY,

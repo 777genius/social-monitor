@@ -7,11 +7,16 @@ import { InMemoryApiKeyRepository } from '../../adapters/persistence/in-memory-a
 import { PrismaApiKeyRepository } from '../../adapters/persistence/prisma/prisma-api-key.repository';
 import type { PrismaIdentityClient } from '../../adapters/persistence/prisma/prisma-identity-client';
 import { CreateApiKeyUseCase } from '../../features/create-api-key/create-api-key.use-case';
+import { GetAuthSessionUseCase } from '../../features/get-auth-session/get-auth-session.use-case';
 import { ListApiKeysUseCase } from '../../features/list-api-keys/list-api-keys.use-case';
 import { RevokeApiKeyUseCase } from '../../features/revoke-api-key/revoke-api-key.use-case';
 import { VerifyApiKeyUseCase } from '../../features/verify-api-key/verify-api-key.use-case';
 import {
   type ApiKeyRepositoryPort,
+  USER_ACCESS_TOKEN_VERIFIER,
+  USER_WORKSPACE_MEMBERSHIP_VERIFIER,
+  type UserAccessTokenVerifierPort,
+  type UserWorkspaceMembershipVerifierPort,
 } from '../../ports';
 import {
   IdentityUserAuthModule,
@@ -19,6 +24,7 @@ import {
 } from '../authorization/identity-user-auth.module';
 import { ApiKeyRequestAuthorizer } from './api-key-request-authorizer';
 import { ApiKeysController } from './api-keys.controller';
+import { AuthSessionController } from './auth-session.controller';
 import {
   IDENTITY_API_KEY_REPOSITORY,
   IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE,
@@ -30,7 +36,7 @@ import {
 
 @Module({
   imports: [UsageRestModule, IdentityUserAuthModule],
-  controllers: [ApiKeysController],
+  controllers: [ApiKeysController, AuthSessionController],
   providers: [
     {
       provide: IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE,
@@ -73,6 +79,14 @@ import {
         new RevokeApiKeyUseCase(apiKeys, new SystemClock()),
       inject: [IDENTITY_API_KEY_REPOSITORY],
     },
+    {
+      provide: GetAuthSessionUseCase,
+      useFactory: (
+        userAccessTokens: UserAccessTokenVerifierPort,
+        workspaceMemberships: UserWorkspaceMembershipVerifierPort,
+      ) => new GetAuthSessionUseCase(userAccessTokens, workspaceMemberships),
+      inject: [USER_ACCESS_TOKEN_VERIFIER, USER_WORKSPACE_MEMBERSHIP_VERIFIER],
+    },
     ApiKeyRequestAuthorizer,
   ],
   exports: [
@@ -80,6 +94,7 @@ import {
     CreateApiKeyUseCase,
     IDENTITY_API_KEY_REPOSITORY,
     InMemoryApiKeyRepository,
+    GetAuthSessionUseCase,
     ListApiKeysUseCase,
     RevokeApiKeyUseCase,
     Sha256ApiKeyHasher,

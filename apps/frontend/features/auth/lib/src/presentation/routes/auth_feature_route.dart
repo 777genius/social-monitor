@@ -4,28 +4,30 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../composition/auth_feature_module.dart';
 import '../composition/auth_feature_module_host.dart';
+import 'auth_route_snapshot.dart';
+
+export 'auth_route_snapshot.dart';
 
 class AuthFeatureRoute extends StatelessWidget {
   const AuthFeatureRoute({super.key}) : module = null;
 
   AuthFeatureRoute.runtime({
     super.key,
+    required Object? generatedApiRuntime,
+    required String userId,
     required String userLabel,
-    required List<
-      ({
-        WorkspaceScope scope,
-        String tenantName,
-        String workspaceName,
-        String statusLabel,
-      })
-    >
-    workspaces,
+    required List<AuthWorkspaceRouteSnapshot> workspaces,
     required WorkspaceScope? selectedScope,
-    required void Function(WorkspaceScope scope) onWorkspaceSelected,
+    required void Function(AuthSessionRouteSnapshot session) onSessionRestored,
+    required void Function(AuthWorkspaceRouteSnapshot workspace)
+    onWorkspaceSelected,
   }) : module = AuthFeatureModule.runtime(
+         generatedApiRuntime: generatedApiRuntime,
+         userId: userId,
          userLabel: userLabel,
          workspaces: workspaces,
          selectedScope: selectedScope,
+         onSessionRestored: onSessionRestored,
          onWorkspaceSelected: onWorkspaceSelected,
        );
 

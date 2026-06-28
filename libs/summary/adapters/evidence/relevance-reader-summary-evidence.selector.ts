@@ -9,6 +9,7 @@ import type { RankedFeedItemView } from "@social-monitor/relevance/features/rank
 import { type Clock, type JsonObject } from "@social-monitor/shared-kernel";
 
 import { StoryClusteringService, type SummaryEvidenceItem } from "../../domain";
+import type { SummaryEvidenceSelection } from "../../domain";
 import {
   NOOP_STORY_RANKING_METRICS,
   type ReaderSummaryEvidenceSelectorPort,
@@ -52,15 +53,17 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       params.maxItems,
     );
 
-    const selection = this.clusterer.cluster({
-      identity: {
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-        scope: params.scope,
-      },
-      items,
-      limit: params.maxItems,
-    });
+    const selection = prioritizeSocialNewsSelection(
+      this.clusterer.cluster({
+        identity: {
+          tenantId: params.tenantId,
+          workspaceId: params.workspaceId,
+          scope: params.scope,
+        },
+        items,
+        limit: params.maxItems,
+      }),
+    );
     const personalizedSelection = {
       ...selection,
       personalization:
@@ -124,6 +127,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
           observedAt: snapshot.observedAt,
           score: Math.max(0, rankedItem.score - 0.001),
           whyImportant: rankedItem.whyImportant,
+          contentQuality: rankedItem.contentQuality,
           readerActionKind: readerActionKindForProvider(snapshot.providerKey),
           ...providerMetricFacts({
             providerKey: snapshot.providerKey,
@@ -153,6 +157,7 @@ const mapRankedItem = (item: RankedFeedItemView): SummaryEvidenceItem => ({
   observedAt: new Date(item.observedAt),
   score: item.score,
   whyImportant: item.whyImportant,
+  contentQuality: item.contentQuality,
   readerActionKind: readerActionKindForProvider(item.providerKey),
   ...providerMetricFacts({
     providerKey: item.providerKey,
@@ -197,6 +202,9 @@ const providerNameForProvider = (providerKey: string): string => {
       return "Hacker News";
     case "reddit":
       return "Reddit";
+    case "x-twitter":
+    case "twitter":
+      return "X/Twitter";
     case "rss":
       return "RSS";
     default:
@@ -217,62 +225,33 @@ const selectProviderDiverseEvidence = (
   limit: number,
 ): readonly SummaryEvidenceItem[] => {
   const normalizedLimit = normalizeSelectionLimit(limit);
+  const eligibleItems = items.filter(isEligibleForEvidence);
 
-  if (items.length <= normalizedLimit) {
-    return items;
+  if (eligibleItems.length <= normalizedLimit) {
+    return eligibleItems;
   }
 
   const selected: SummaryEvidenceItem[] = [];
   const selectedIds = new Set<string>();
-  const selectedProviderKeys = new Set<string>();
-  const providerFamilies = uniqueStable(
-    items.map((item) => providerFamilyKey(item.providerKey)),
-  );
+  const providerFamilies = orderedProviderFamilies(eligibleItems);
 
   for (const providerFamily of providerFamilies) {
     if (selected.length >= normalizedLimit) {
       break;
     }
 
-    const providerItem = items.find(
+    const providerItem = eligibleItems.find(
       (item) => providerFamilyKey(item.providerKey) === providerFamily,
     );
     if (providerItem !== undefined) {
       selected.push(providerItem);
       selectedIds.add(providerItem.feedItemId);
-      selectedProviderKeys.add(providerItem.providerKey);
     }
   }
 
-  const providerKeys = uniqueStable(items.map((item) => item.providerKey));
-
-  for (const providerKey of providerKeys) {
+  for (const item of roundRobinByProviderFamily(eligibleItems, selectedIds)) {
     if (selected.length >= normalizedLimit) {
       break;
-    }
-
-    if (selectedProviderKeys.has(providerKey)) {
-      continue;
-    }
-
-    const providerItem = items.find(
-      (item) =>
-        item.providerKey === providerKey && !selectedIds.has(item.feedItemId),
-    );
-    if (providerItem !== undefined) {
-      selected.push(providerItem);
-      selectedIds.add(providerItem.feedItemId);
-      selectedProviderKeys.add(providerItem.providerKey);
-    }
-  }
-
-  for (const item of items) {
-    if (selected.length >= normalizedLimit) {
-      break;
-    }
-
-    if (selectedIds.has(item.feedItemId)) {
-      continue;
     }
 
     selected.push(item);
@@ -281,6 +260,26 @@ const selectProviderDiverseEvidence = (
 
   return selected;
 };
+
+const prioritizeSocialNewsSelection = (
+  selection: SummaryEvidenceSelection,
+): SummaryEvidenceSelection => {
+  const selectedEvidence = [...selection.selectedEvidence].sort(
+    compareSocialNewsEvidence,
+  );
+
+  return {
+    ...selection,
+    sourceWindow: {
+      ...selection.sourceWindow,
+      selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
+    },
+    selectedEvidence,
+  };
+};
+
+const isEligibleForEvidence = (item: SummaryEvidenceItem): boolean =>
+  item.contentQuality?.eligibleForSummary !== false;
 
 const filterItemsByReaderSummaryPeriod = (
   items: readonly SummaryEvidenceItem[],
@@ -319,6 +318,101 @@ const providerFamilyKey = (providerKey: string): string => {
   }
 
   return normalized;
+};
+
+const socialNewsProviderFamilyOrder = [
+  "x-twitter",
+  "reddit",
+  "hacker-news",
+  "rss",
+  "github",
+] as const;
+
+const orderedProviderFamilies = (
+  items: readonly SummaryEvidenceItem[],
+): readonly string[] => {
+  const families = uniqueStable(
+    items.map((item) => providerFamilyKey(item.providerKey)),
+  );
+  const familySet = new Set(families);
+  const ordered = socialNewsProviderFamilyOrder.filter((family) =>
+    familySet.has(family),
+  );
+  const orderedSet = new Set<string>(ordered);
+  const remaining = families.filter((family) => !orderedSet.has(family));
+
+  return [...ordered, ...remaining];
+};
+
+const roundRobinByProviderFamily = (
+  items: readonly SummaryEvidenceItem[],
+  selectedIds: ReadonlySet<string>,
+): readonly SummaryEvidenceItem[] => {
+  const families = orderedProviderFamilies(items);
+  const itemsByFamily = new Map(
+    families.map(
+      (family) =>
+        [
+          family,
+          items.filter(
+            (item) =>
+              providerFamilyKey(item.providerKey) === family &&
+              !selectedIds.has(item.feedItemId),
+          ),
+        ] as const,
+    ),
+  );
+  const result: SummaryEvidenceItem[] = [];
+  let added = true;
+
+  while (added) {
+    added = false;
+
+    for (const family of families) {
+      const item = itemsByFamily.get(family)?.shift();
+      if (item === undefined) {
+        continue;
+      }
+
+      result.push(item);
+      added = true;
+    }
+  }
+
+  return result;
+};
+
+const compareSocialNewsEvidence = (
+  left: SummaryEvidenceItem,
+  right: SummaryEvidenceItem,
+): number => {
+  const familyPriorityDiff =
+    providerFamilyPriority(left.providerKey) -
+    providerFamilyPriority(right.providerKey);
+  if (familyPriorityDiff !== 0) {
+    return familyPriorityDiff;
+  }
+
+  const scoreDiff = right.score - left.score;
+  if (scoreDiff !== 0) {
+    return scoreDiff;
+  }
+
+  const observedAtDiff = right.observedAt.getTime() - left.observedAt.getTime();
+  if (observedAtDiff !== 0) {
+    return observedAtDiff;
+  }
+
+  return left.feedItemId.localeCompare(right.feedItemId);
+};
+
+const providerFamilyPriority = (providerKey: string): number => {
+  const family = providerFamilyKey(providerKey);
+  const index = socialNewsProviderFamilyOrder.findIndex(
+    (candidate) => candidate === family,
+  );
+
+  return index === -1 ? socialNewsProviderFamilyOrder.length : index;
 };
 
 const normalizeSelectionLimit = (limit: number): number => {

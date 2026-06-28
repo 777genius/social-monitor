@@ -22,6 +22,13 @@ final class DioGeneratedApiClient implements GeneratedApiClient {
       );
     }
 
+    return sendUnscoped(operation);
+  }
+
+  @override
+  Future<Result<T>> sendUnscoped<T extends Object>(
+    Future<T> Function() operation,
+  ) async {
     try {
       return Result.success(await operation());
     } on GeneratedApiException catch (error) {

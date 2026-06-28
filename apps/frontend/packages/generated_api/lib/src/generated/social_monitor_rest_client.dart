@@ -4,6 +4,7 @@
 
 import 'package:dio/dio.dart' hide Headers;
 
+import 'clients/auth_client.dart';
 import 'clients/feed_client.dart';
 import 'clients/reader_summaries_client.dart';
 import 'clients/relevance_client.dart';
@@ -14,6 +15,7 @@ import 'clients/sources_client.dart';
 import 'clients/summaries_client.dart';
 import 'clients/topics_client.dart';
 import 'clients/source_bindings_client.dart';
+import 'clients/workspace_settings_client.dart';
 
 /// Social Monitor API `v0.1.0`.
 ///
@@ -28,6 +30,7 @@ class SocialMonitorRestClient {
 
   static String get version => '0.1.0';
 
+  AuthClient? _auth;
   FeedClient? _feed;
   ReaderSummariesClient? _readerSummaries;
   RelevanceClient? _relevance;
@@ -38,6 +41,9 @@ class SocialMonitorRestClient {
   SummariesClient? _summaries;
   TopicsClient? _topics;
   SourceBindingsClient? _sourceBindings;
+  WorkspaceSettingsClient? _workspaceSettings;
+
+  AuthClient get auth => _auth ??= AuthClient(_dio, baseUrl: _baseUrl);
 
   FeedClient get feed => _feed ??= FeedClient(_dio, baseUrl: _baseUrl);
 
@@ -66,4 +72,7 @@ class SocialMonitorRestClient {
 
   SourceBindingsClient get sourceBindings =>
       _sourceBindings ??= SourceBindingsClient(_dio, baseUrl: _baseUrl);
+
+  WorkspaceSettingsClient get workspaceSettings =>
+      _workspaceSettings ??= WorkspaceSettingsClient(_dio, baseUrl: _baseUrl);
 }

@@ -55,10 +55,8 @@ The app may create `GeneratedApiRuntime` from compile-time Dart defines such as:
 
 ```text
 SOCIAL_MONITOR_API_BASE_URL
-SOCIAL_MONITOR_TENANT_ID
-SOCIAL_MONITOR_WORKSPACE_ID
-SOCIAL_MONITOR_WORKSPACE_ROLE
 SOCIAL_MONITOR_API_BEARER_TOKEN
+SOCIAL_MONITOR_CORRELATION_ID
 ```
 
 Features must not read these values directly.

@@ -16,6 +16,12 @@ export const selectUniqueTopReadCandidates = (
   const result: TopReadCandidate[] = [];
 
   for (const story of stories) {
+    if (
+      !hasTopReadEligibleCitation(story, citationById, evidenceByFeedItemId)
+    ) {
+      continue;
+    }
+
     const keys = storyDeduplicationKeys(
       story,
       citationById,
@@ -32,10 +38,37 @@ export const selectUniqueTopReadCandidates = (
   }
 
   return diversifyByProviderCoverage(
-    result,
+    prioritizeSocialNewsStories(
+      result,
+      citationById,
+      evidenceByFeedItemId,
+      clusterById,
+    ),
     citationById,
     evidenceByFeedItemId,
     clusterById,
+  );
+};
+
+const hasTopReadEligibleCitation = (
+  story: TopReadCandidate,
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
+): boolean => {
+  const citations = story.citationIds
+    .map((citationId) => citationById.get(citationId))
+    .filter(
+      (citation): citation is ReaderSummaryCitation => citation !== undefined,
+    );
+
+  if (citations.length === 0) {
+    return true;
+  }
+
+  return citations.some(
+    (citation) =>
+      evidenceByFeedItemId.get(citation.feedItemId)?.contentQuality
+        ?.eligibleForTopRead !== false,
   );
 };
 
@@ -186,6 +219,110 @@ const diversifyByProviderCoverage = (
   }
 
   return diversified;
+};
+
+const prioritizeSocialNewsStories = (
+  stories: readonly TopReadCandidate[],
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
+  clusterById: ReadonlyMap<string, StoryCluster>,
+): readonly TopReadCandidate[] =>
+  stories
+    .map((story, index) => ({ story, index }))
+    .sort((left, right) => {
+      const leftPriority = storyProviderPriority(
+        left.story,
+        citationById,
+        evidenceByFeedItemId,
+        clusterById,
+      );
+      const rightPriority = storyProviderPriority(
+        right.story,
+        citationById,
+        evidenceByFeedItemId,
+        clusterById,
+      );
+      const priorityDiff = leftPriority.category - rightPriority.category;
+
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+
+      const providerCoverageDiff =
+        rightPriority.providerFamilyCount - leftPriority.providerFamilyCount;
+
+      if (providerCoverageDiff !== 0) {
+        return providerCoverageDiff;
+      }
+
+      return left.index - right.index;
+    })
+    .map(({ story }) => story);
+
+const storyProviderPriority = (
+  story: TopReadCandidate,
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
+  clusterById: ReadonlyMap<string, StoryCluster>,
+): { readonly category: number; readonly providerFamilyCount: number } => {
+  const providerKeys = storyProviderKeys(
+    story,
+    citationById,
+    evidenceByFeedItemId,
+    clusterById,
+  );
+  const providerFamilies = compactUnique(providerKeys.map(providerFamilyKey));
+  const priorities = providerFamilies.map(providerFamilyPriority);
+  const priority = Math.min(...priorities, socialNewsProviderFamilyOrder.length);
+  const hasPrimarySocialFamily =
+    providerFamilies.includes("x-twitter") || providerFamilies.includes("reddit");
+  const hasStrongCrossProviderSupport =
+    providerFamilies.length > 1 &&
+    (hasPrimarySocialFamily || providerFamilies.length >= 3);
+
+  return {
+    category: hasStrongCrossProviderSupport ? 0 : priority + 1,
+    providerFamilyCount: providerFamilies.length,
+  };
+};
+
+const socialNewsProviderFamilyOrder = [
+  "x-twitter",
+  "reddit",
+  "hacker-news",
+  "rss",
+  "github",
+] as const;
+
+const providerFamilyPriority = (providerKey: string): number => {
+  const family = providerFamilyKey(providerKey);
+  const index = socialNewsProviderFamilyOrder.findIndex(
+    (candidate) => candidate === family,
+  );
+
+  return index === -1 ? socialNewsProviderFamilyOrder.length : index;
+};
+
+const providerFamilyKey = (providerKey: string): string => {
+  const normalized = providerKey.toLowerCase();
+
+  if (normalized === "github" || normalized.startsWith("github-")) {
+    return "github";
+  }
+
+  if (
+    normalized === "x-twitter" ||
+    normalized === "twitter" ||
+    normalized === "x"
+  ) {
+    return "x-twitter";
+  }
+
+  if (normalized === "hacker-news" || normalized === "hn") {
+    return "hacker-news";
+  }
+
+  return normalized;
 };
 
 const storyProviderKeys = (

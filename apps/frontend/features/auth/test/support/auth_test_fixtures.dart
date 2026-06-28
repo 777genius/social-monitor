@@ -16,6 +16,7 @@ const primaryWorkspace = WorkspaceAccess(
   scope: primaryWorkspaceScope,
   tenantName: 'Acme',
   workspaceName: 'Acme alerts',
+  workspaceRole: 'owner',
   statusLabel: 'Active',
 );
 
@@ -23,11 +24,13 @@ const secondaryWorkspace = WorkspaceAccess(
   scope: secondaryWorkspaceScope,
   tenantName: 'Acme',
   workspaceName: 'Launch lab',
+  workspaceRole: 'admin',
   statusLabel: 'Ready',
 );
 
 AuthSession authSession({WorkspaceAccess? selectedWorkspace}) {
   return AuthSession(
+    userId: 'user-demo',
     userLabel: 'MVP Operator',
     selectedWorkspace: selectedWorkspace ?? primaryWorkspace,
     workspaces: const [primaryWorkspace, secondaryWorkspace],
@@ -36,6 +39,7 @@ AuthSession authSession({WorkspaceAccess? selectedWorkspace}) {
 
 AuthSession authSessionWithoutWorkspace() {
   return const AuthSession(
+    userId: 'user-demo',
     userLabel: 'MVP Operator',
     workspaces: [primaryWorkspace, secondaryWorkspace],
   );

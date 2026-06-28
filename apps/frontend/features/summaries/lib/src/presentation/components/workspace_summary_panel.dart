@@ -29,6 +29,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     required this.onGenerate,
     required this.intentForAction,
     required this.onAction,
+    required this.onOpenUrl,
   });
 
   final AsyncViewState<WorkspaceSummarySnapshot> state;
@@ -55,6 +56,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     ReaderFeedbackReason? feedbackReason,
   ])
   onAction;
+  final void Function(ReaderSummary summary, String url) onOpenUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -71,6 +73,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
             onGenerate: onGenerate,
             intentForAction: intentForAction,
             onAction: onAction,
+            onOpenUrl: onOpenUrl,
           ),
         );
       }
@@ -102,6 +105,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
             onGenerate: onGenerate,
             intentForAction: intentForAction,
             onAction: onAction,
+            onOpenUrl: onOpenUrl,
           ),
         );
       }
@@ -134,6 +138,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
                 onGenerate: onGenerate,
                 intentForAction: intentForAction,
                 onAction: onAction,
+                onOpenUrl: onOpenUrl,
               ),
       LoadingViewState<WorkspaceSummarySnapshot>(:final previousValue) =>
         previousValue?.current == null
@@ -148,6 +153,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
                 onGenerate: onGenerate,
                 intentForAction: intentForAction,
                 onAction: onAction,
+                onOpenUrl: onOpenUrl,
               ),
       FailureViewState<WorkspaceSummarySnapshot>(:final failure) =>
         AppInlineProblem(
@@ -273,6 +279,7 @@ class _ReadySummary extends StatelessWidget {
     required this.onGenerate,
     required this.intentForAction,
     required this.onAction,
+    required this.onOpenUrl,
     this.isRefreshing = false,
   });
 
@@ -289,6 +296,7 @@ class _ReadySummary extends StatelessWidget {
     ReaderFeedbackReason? feedbackReason,
   ])
   onAction;
+  final void Function(ReaderSummary summary, String url) onOpenUrl;
   final bool isRefreshing;
 
   @override
@@ -313,6 +321,7 @@ class _ReadySummary extends StatelessWidget {
           intentForAction: (action) => intentForAction(summary, action),
           onAction: (action, [feedbackReason]) =>
               onAction(summary, action, feedbackReason),
+          onOpenUrl: (url) => onOpenUrl(summary, url),
         ),
       ),
     );

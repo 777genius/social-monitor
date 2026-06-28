@@ -69,7 +69,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
       {
         preferredProvider: "openai-responses",
         maxInputTokens: 24_000,
-        maxOutputTokens: 2_500,
+        maxOutputTokens: 4_000,
         maxEstimatedCostUsd: 1,
       },
       {
@@ -83,6 +83,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
     expect(capturedCalls[0]?.url).toBe("https://api.openai.com/v1/responses");
     expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
       model: "gpt-5.4-mini",
+      max_output_tokens: 8_000,
       text: {
         format: {
           type: "json_schema",
@@ -90,6 +91,11 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
           strict: true,
         },
       },
+    });
+    expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
+      instructions: expect.stringContaining(
+        "Lead with what happened and why it matters",
+      ),
     });
     expect(attempt.draft).toMatchObject({
       headline: "Workspace AI tooling signal",
@@ -103,6 +109,76 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
         }),
       ],
     });
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it("canonicalizes model citation maps from selected backend evidence", async () => {
+    const adapter = new OpenAiResponsesReaderSummaryModelAdapter({
+      apiKey: "test-openai-key",
+      fetchFn: async () =>
+        jsonResponse({
+          output_text: JSON.stringify({
+            headline: "Workspace AI tooling signal",
+            executiveSummary:
+              "AI tooling is repeating across monitored sources.",
+            topStories: [
+              {
+                storyClusterId: "story:ai-tooling",
+                title: "AI tooling library is trending",
+                summary: "Developers are discussing a new AI tooling library.",
+                topicIds: ["topic-ai"],
+                providerKeys: ["reddit"],
+                citationIds: ["c1"],
+              },
+            ],
+            topicHighlights: [],
+            repeatedSignals: [],
+            risksAndUnknowns: [],
+            citationMap: [
+              {
+                citationId: "c1",
+                feedItemId: "feed-outside",
+                sourceItemId: "source-outside",
+                providerKey: "github-trending-page",
+                field: "title",
+              },
+            ],
+            qualityFlags: [],
+            confidence: {
+              level: "medium",
+              score: 0.7,
+              rationale: "Primary evidence is cited.",
+            },
+            noSignalReason: null,
+          }),
+        }),
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "openai-responses",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 4_000,
+        maxEstimatedCostUsd: 1,
+      },
+      {
+        remainingTokens: 32_000,
+        remainingCostUsd: 2,
+      },
+    );
+
+    const attempt = await adapter.generate(input, route);
+
+    expect(attempt.draft.citationMap).toEqual([
+      expect.objectContaining({
+        citationId: "c1",
+        feedItemId: "feed-reddit",
+        sourceItemId: "source-reddit",
+        providerKey: "reddit",
+        canonicalUrl: "https://example.com/ai-tooling",
+      }),
+    ]);
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
   });
 
@@ -153,7 +229,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
       {
         preferredProvider: "openai-responses",
         maxInputTokens: 24_000,
-        maxOutputTokens: 2_500,
+        maxOutputTokens: 4_000,
         maxEstimatedCostUsd: 1,
       },
       {
@@ -218,7 +294,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
       {
         preferredProvider: "openai-responses",
         maxInputTokens: 24_000,
-        maxOutputTokens: 2_500,
+        maxOutputTokens: 4_000,
         maxEstimatedCostUsd: 1,
       },
       {
@@ -236,6 +312,126 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
   });
 
+  it("tops up too-short model top stories from cited evidence", async () => {
+    const citationMap = Array.from({ length: 10 }, (_, index) => {
+      const itemNumber = index + 1;
+
+      return {
+        citationId: `c${itemNumber}`,
+        feedItemId: `feed-reddit-${itemNumber}`,
+        sourceItemId: `source-reddit-${itemNumber}`,
+        providerKey: "reddit",
+        field: "title",
+      };
+    });
+    const adapter = new OpenAiResponsesReaderSummaryModelAdapter({
+      apiKey: "test-openai-key",
+      fetchFn: async () =>
+        jsonResponse({
+          output_text: JSON.stringify({
+            headline: "Workspace AI tooling signal",
+            executiveSummary:
+              "AI tooling has more cited evidence than the model initially selected.",
+            topStories: [
+              {
+                storyClusterId: "story:ai-tooling-1",
+                title: "Model selected one AI tooling story",
+                summary:
+                  "The model selected only one story despite more citations.",
+                topicIds: ["topic-ai"],
+                providerKeys: ["reddit"],
+                citationIds: ["c1"],
+              },
+            ],
+            topicHighlights: [],
+            repeatedSignals: [],
+            risksAndUnknowns: [],
+            citationMap,
+            qualityFlags: [],
+            confidence: {
+              level: "medium",
+              score: 0.7,
+              rationale: "Primary evidence is cited.",
+            },
+            noSignalReason: null,
+          }),
+        }),
+    });
+    const input = multiStoryReaderSummaryInput(10);
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "openai-responses",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 4_000,
+        maxEstimatedCostUsd: 1,
+      },
+      {
+        remainingTokens: 32_000,
+        remainingCostUsd: 2,
+      },
+    );
+
+    const attempt = await adapter.generate(input, route);
+
+    expect(attempt.draft.topStories).toHaveLength(8);
+    expect(attempt.draft.content?.topReads).toHaveLength(8);
+    expect(attempt.draft.topStories[0]?.title).toBe(
+      "Model selected one AI tooling story",
+    );
+    expect(
+      attempt.draft.topStories.map((story) => story.storyClusterId),
+    ).toEqual([
+      "story:ai-tooling-1",
+      "story:ai-tooling-2",
+      "story:ai-tooling-3",
+      "story:ai-tooling-4",
+      "story:ai-tooling-5",
+      "story:ai-tooling-6",
+      "story:ai-tooling-7",
+      "story:ai-tooling-8",
+    ]);
+  });
+
+  it("classifies truncated OpenAI JSON output as retryable", async () => {
+    const adapter = new OpenAiResponsesReaderSummaryModelAdapter({
+      apiKey: "test-openai-key",
+      fetchFn: async () =>
+        jsonResponse({
+          output_text: '{"headline":"Workspace AI tooling signal"',
+        }),
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "openai-responses",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 4_000,
+        maxEstimatedCostUsd: 1,
+      },
+      {
+        remainingTokens: 32_000,
+        remainingCostUsd: 2,
+      },
+    );
+
+    let thrown: unknown;
+    try {
+      await adapter.generate(input, route);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(adapter.classifyError(thrown)).toMatchObject({
+      kind: "invalid_schema",
+      retryable: true,
+      message: expect.stringContaining(
+        "OpenAI reader summary output must be JSON",
+      ),
+    });
+  });
+
   it("does not call OpenAI when selected evidence is empty", async () => {
     let called = false;
     const adapter = new OpenAiResponsesReaderSummaryModelAdapter({
@@ -250,7 +446,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
       {
         preferredProvider: "openai-responses",
         maxInputTokens: 24_000,
-        maxOutputTokens: 2_500,
+        maxOutputTokens: 4_000,
         maxEstimatedCostUsd: 1,
       },
       {
@@ -344,8 +540,7 @@ const readerSummaryInput = (
     startedAt: new Date("2026-06-23T00:00:00.000Z"),
     endedAt: new Date("2026-06-24T00:00:00.000Z"),
     timezone: "UTC",
-    periodKey:
-      "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
+    periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
   },
   evidence: {
     rankingPolicyVersion: "story_ranking_v1",
@@ -407,6 +602,59 @@ const readerSummaryInput = (
   },
   requestedAt: new Date("2026-06-23T08:31:00.000Z"),
 });
+
+const multiStoryReaderSummaryInput = (
+  storyCount: number,
+): ReaderSummaryModelInput => {
+  const selectedFeedItemIds = Array.from(
+    { length: storyCount },
+    (_, index) => `feed-reddit-${index + 1}`,
+  );
+
+  return {
+    ...readerSummaryInput({ empty: true }),
+    evidence: {
+      rankingPolicyVersion: "story_ranking_v1",
+      sourceWindow: {
+        windowId: "workspace:openai-reader-summary",
+        startedAt: new Date("2026-06-23T08:00:00.000Z"),
+        endedAt: new Date("2026-06-23T08:30:00.000Z"),
+        selectedFeedItemIds,
+        storyClusterIds: selectedFeedItemIds.map(
+          (_, index) => `story:ai-tooling-${index + 1}`,
+        ),
+      },
+      clusters: selectedFeedItemIds.map((feedItemId, index) => ({
+        id: `story:ai-tooling-${index + 1}`,
+        storyKey: `url:example.com/ai-tooling-${index + 1}`,
+        representativeFeedItemId: feedItemId,
+        duplicateFeedItemIds: [],
+        topicIds: ["topic-ai"],
+        providerKeys: ["reddit"],
+        score: 2.4 - index * 0.01,
+        observedAtRange: {
+          startedAt: new Date("2026-06-23T08:00:00.000Z"),
+          endedAt: new Date("2026-06-23T08:30:00.000Z"),
+        },
+        whyImportant: [`Fresh item ${index + 1}`],
+      })),
+      selectedEvidence: selectedFeedItemIds.map((feedItemId, index) => ({
+        feedItemId,
+        sourceItemId: `source-reddit-${index + 1}`,
+        sourceBindingId: "binding-reddit",
+        topicId: "topic-ai",
+        providerKey: "reddit",
+        canonicalUrl: `https://example.com/ai-tooling-${index + 1}`,
+        title: `AI tooling signal ${index + 1}`,
+        bodyPreview: `Developers are discussing AI tooling signal ${index + 1}.`,
+        publishedAt: new Date("2026-06-23T08:00:00.000Z"),
+        observedAt: new Date("2026-06-23T08:01:00.000Z"),
+        score: 2.4 - index * 0.01,
+        whyImportant: [`Fresh item ${index + 1}`],
+      })),
+    },
+  };
+};
 
 const jsonResponse = (body: unknown): Response =>
   new Response(JSON.stringify(body), {

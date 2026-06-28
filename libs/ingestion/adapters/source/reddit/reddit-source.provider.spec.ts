@@ -131,6 +131,116 @@ describe('RedditSourceProvider', () => {
     expect(result.items).toHaveLength(1);
   });
 
+  it('runs configured multi-pass top/day listings with search fallback and engagement sorting', async () => {
+    const client = new CapturingRedditClient({
+      listingResponses: new Map([
+        [
+          'OpenAI:top:day',
+          {
+            posts: [
+              redditPost({
+                id: 'openai-low',
+                subreddit: 'OpenAI',
+                title: 'OpenAI low score discussion',
+                score: 12,
+                numComments: 4,
+              }),
+              redditPost({
+                id: 'shared',
+                subreddit: 'OpenAI',
+                title: 'Shared OpenAI agent reliability thread',
+                score: 180,
+                numComments: 60,
+              }),
+            ],
+          },
+        ],
+        [
+          'LocalLLaMA:top:day',
+          {
+            posts: [
+              redditPost({
+                id: 'local-llama',
+                subreddit: 'LocalLLaMA',
+                title: 'LocalLLaMA compares new open model serving',
+                score: 220,
+                numComments: 90,
+              }),
+            ],
+          },
+        ],
+        [
+          'MachineLearning:top:day',
+          {
+            posts: [
+              redditPost({
+                id: 'machine-learning',
+                subreddit: 'MachineLearning',
+                title: 'MachineLearning paper discussion',
+                score: 160,
+                numComments: 75,
+              }),
+            ],
+          },
+        ],
+      ]),
+      searchResponse: {
+        posts: [
+          redditPost({
+            id: 'shared',
+            subreddit: 'OpenAI',
+            title: 'Shared OpenAI agent reliability thread',
+            score: 180,
+            numComments: 60,
+          }),
+          redditPost({
+            id: 'search-fallback',
+            subreddit: 'ArtificialInteligence',
+            title: 'AI agents search fallback thread',
+            score: 80,
+            numComments: 40,
+          }),
+        ],
+      },
+    });
+    const provider = new RedditSourceProvider(client, new StaticTokenProvider('reddit-app-only-token'));
+    const context = scanContext({
+      maxItems: 3,
+      scanPasses: [
+        { mode: 'listing', subreddit: 'OpenAI', listing: 'top', topTime: 'day' },
+        { mode: 'listing', subreddit: 'LocalLLaMA', listing: 'top', topTime: 'day' },
+        { mode: 'listing', subreddit: 'MachineLearning', listing: 'top', topTime: 'day' },
+        { mode: 'search', query: 'OpenAI OR LLM OR AI agents', maxItems: 2 },
+      ],
+    });
+    const plan = provider.planScan({ mode: 'search', query: 'OpenAI OR LLM OR AI agents' }, context);
+
+    const result = await provider.scan(plan, context);
+
+    expect(client.listingRequests.map((request) => ({
+      subreddit: request.subreddit,
+      listing: request.listing,
+      topTime: request.topTime,
+      limit: request.limit,
+    }))).toEqual([
+      { subreddit: 'OpenAI', listing: 'top', topTime: 'day', limit: 1 },
+      { subreddit: 'LocalLLaMA', listing: 'top', topTime: 'day', limit: 1 },
+      { subreddit: 'MachineLearning', listing: 'top', topTime: 'day', limit: 1 },
+    ]);
+    expect(client.searchRequests).toEqual([
+      expect.objectContaining({
+        query: 'OpenAI OR LLM OR AI agents',
+        limit: 2,
+      }),
+    ]);
+    expect(result.nextCursor).toBeUndefined();
+    expect(result.items.map((item) => item.externalId)).toEqual([
+      'reddit:t3_local-llama',
+      'reddit:t3_machine-learning',
+      'reddit:t3_shared',
+    ]);
+  });
+
   it('skips readable Reddit posts without a valid created timestamp', async () => {
     const client = new CapturingRedditClient({
       posts: [
@@ -231,18 +341,36 @@ class CapturingRedditClient implements RedditClientPort {
   readonly listingRequests: RedditListSubredditPostsRequest[] = [];
   readonly searchRequests: RedditSearchPostsRequest[] = [];
 
-  constructor(private readonly response: RedditListingPage = { posts: [] }) {}
+  constructor(
+    private readonly response:
+      | RedditListingPage
+      | {
+          readonly listingResponses?: ReadonlyMap<string, RedditListingPage>;
+          readonly searchResponse?: RedditListingPage;
+        } = { posts: [] },
+  ) {}
 
   async listSubredditPosts(request: RedditListSubredditPostsRequest): Promise<RedditListingPage> {
     this.listingRequests.push(request);
-    return this.response;
+    if ('posts' in this.response) {
+      return this.response;
+    }
+
+    return this.response.listingResponses?.get(listingKey(request)) ?? { posts: [] };
   }
 
   async searchPosts(request: RedditSearchPostsRequest): Promise<RedditListingPage> {
     this.searchRequests.push(request);
-    return { posts: [] };
+    if ('posts' in this.response) {
+      return { posts: [] };
+    }
+
+    return this.response.searchResponse ?? { posts: [] };
   }
 }
+
+const listingKey = (request: RedditListSubredditPostsRequest): string =>
+  `${request.subreddit}:${request.listing}:${request.topTime ?? ''}`;
 
 function scanContext(config: SourceRuntimeConfig): SourceProviderScanContext {
   return {
@@ -252,5 +380,24 @@ function scanContext(config: SourceRuntimeConfig): SourceProviderScanContext {
     scanJobId: 'scan-job-reddit-provider-test',
     correlationId: 'correlation-reddit-provider-test',
     config,
+  };
+}
+
+function redditPost(overrides: Partial<RedditListingPage['posts'][number]>) {
+  const id = overrides.id ?? 'post-1';
+
+  return {
+    id,
+    name: `t3_${id}`,
+    subreddit: 'OpenAI',
+    title: 'Reddit post',
+    selftext: 'Useful discussion.',
+    permalink: `/r/OpenAI/comments/${id}/reddit_post/`,
+    author: 'example-user',
+    createdUtc: 1_782_230_000,
+    score: 1,
+    numComments: 0,
+    upvoteRatio: 0.8,
+    ...overrides,
   };
 }

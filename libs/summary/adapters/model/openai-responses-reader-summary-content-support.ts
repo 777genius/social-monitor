@@ -312,19 +312,36 @@ const normalizeQualityState = (
       ? record.isSingleSource
       : sourceMix.length === 1 ||
         sourceMix.every((source) => source.singleSourceOnly);
+  const rawStatus = normalizeSetValue(
+    record?.status,
+    qualityStatuses,
+    "reader quality status",
+  );
+  const status =
+    rawStatus === "ready" && isSingleSource
+      ? "limited_sources"
+      : (rawStatus ?? (isSingleSource ? "limited_sources" : "ready"));
+  const normalizedFlags = isSingleSource
+    ? uniqueStrings([...flags, "limited_sources"])
+    : flags;
+  const warnings = optionalStringArray(record?.warnings);
 
   return {
-    status:
-      normalizeSetValue(
-        record?.status,
-        qualityStatuses,
-        "reader quality status",
-      ) ?? (isSingleSource ? "limited_sources" : "ready"),
-    flags,
-    warnings: optionalStringArray(record?.warnings),
+    status,
+    flags: normalizedFlags,
+    warnings:
+      isSingleSource && warnings.length === 0
+        ? [
+            "Source coverage needs confirmation from another monitored provider.",
+          ]
+        : warnings,
     isSingleSource,
   };
 };
+
+const uniqueStrings = <T extends string>(
+  values: readonly T[],
+): readonly T[] => [...new Set(values)];
 
 const normalizeProviderMetric = (
   value: Record<string, unknown>,

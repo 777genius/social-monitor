@@ -8,6 +8,10 @@ const publicRestControllers = new Set([
   "libs/ingestion/interfaces/rest/source-profile.controller.ts",
 ]);
 
+const sessionDiscoveryRestControllers = new Set([
+  "libs/identity/interfaces/rest/auth-session.controller.ts",
+]);
+
 const productionLineBudgets = new Map([
   ["libs/delivery/interfaces/rest/delivery-rest.module.ts", 600],
   ["libs/monitoring/interfaces/rest/monitoring-rest.module.ts", 700],
@@ -149,12 +153,23 @@ for (const useCaseFile of globSync("libs/**/features/**/*.use-case.ts")) {
 for (const controllerFile of globSync(
   "libs/**/interfaces/rest/*.controller.ts",
 )) {
-  if (publicRestControllers.has(normalizedPath(controllerFile))) {
+  const controllerPath = normalizedPath(controllerFile);
+  if (publicRestControllers.has(controllerPath)) {
     continue;
   }
 
   const source = readFileSync(controllerFile, "utf8");
-  if (!source.includes("requireTenantScope(")) {
+  if (sessionDiscoveryRestControllers.has(controllerPath)) {
+    if (
+      !source.includes("GetAuthSessionUseCase") ||
+      !source.includes("parseBearerToken(")
+    ) {
+      addViolation(
+        controllerFile,
+        "session discovery controller must restore scope from a verified bearer JWT",
+      );
+    }
+  } else if (!source.includes("requireTenantScope(")) {
     addViolation(
       controllerFile,
       "REST controller must enforce tenant/workspace scope with requireTenantScope",

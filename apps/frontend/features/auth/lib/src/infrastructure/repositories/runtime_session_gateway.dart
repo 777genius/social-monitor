@@ -6,16 +6,19 @@ import '../../domain/entities/workspace_access.dart';
 
 final class RuntimeSessionGateway implements SessionGateway {
   RuntimeSessionGateway({
+    required String userId,
     required String userLabel,
     required List<WorkspaceAccess> workspaces,
     WorkspaceScope? selectedScope,
     void Function(WorkspaceScope scope)? onWorkspaceSelected,
   }) : _workspaces = List<WorkspaceAccess>.unmodifiable(workspaces),
+       _userId = userId,
        _userLabel = userLabel,
        _onWorkspaceSelected = onWorkspaceSelected {
     _selectedWorkspace = _workspaceFor(selectedScope);
   }
 
+  final String _userId;
   final String _userLabel;
   final List<WorkspaceAccess> _workspaces;
   final void Function(WorkspaceScope scope)? _onWorkspaceSelected;
@@ -53,6 +56,7 @@ final class RuntimeSessionGateway implements SessionGateway {
 
   AuthSession _session() {
     return AuthSession(
+      userId: _userId,
       userLabel: _userLabel,
       workspaces: _workspaces,
       selectedWorkspace: _selectedWorkspace,

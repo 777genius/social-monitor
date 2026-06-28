@@ -6,20 +6,24 @@ import 'app_runtime.dart';
 final class AppFrontendRuntimeConfig {
   const AppFrontendRuntimeConfig({
     required this.apiBaseUrl,
-    required this.tenantId,
-    required this.workspaceId,
-    required this.tenantName,
-    required this.workspaceName,
-    required this.workspaceRole,
-    required this.userId,
-    required this.userLabel,
     required this.correlationId,
+    this.tenantId,
+    this.workspaceId,
+    this.tenantName,
+    this.workspaceName,
+    this.workspaceRole,
+    this.userId,
+    this.userLabel,
     this.bearerToken,
   });
 
   factory AppFrontendRuntimeConfig.fromEnvironment() {
     return const AppFrontendRuntimeConfig(
       apiBaseUrl: String.fromEnvironment('SOCIAL_MONITOR_API_BASE_URL'),
+      correlationId: String.fromEnvironment(
+        'SOCIAL_MONITOR_CORRELATION_ID',
+        defaultValue: 'frontend-generated-api-session',
+      ),
       tenantId: String.fromEnvironment('SOCIAL_MONITOR_TENANT_ID'),
       workspaceId: String.fromEnvironment('SOCIAL_MONITOR_WORKSPACE_ID'),
       tenantName: String.fromEnvironment(
@@ -32,38 +36,35 @@ final class AppFrontendRuntimeConfig {
       ),
       workspaceRole: String.fromEnvironment(
         'SOCIAL_MONITOR_WORKSPACE_ROLE',
-        defaultValue: 'admin',
+        defaultValue: 'owner',
       ),
-      userId: String.fromEnvironment('SOCIAL_MONITOR_USER_ID'),
+      userId: String.fromEnvironment(
+        'SOCIAL_MONITOR_USER_ID',
+        defaultValue: 'frontend-runtime-user',
+      ),
       userLabel: String.fromEnvironment(
         'SOCIAL_MONITOR_USER_LABEL',
         defaultValue: 'MVP Operator',
-      ),
-      correlationId: String.fromEnvironment(
-        'SOCIAL_MONITOR_CORRELATION_ID',
-        defaultValue: 'frontend-generated-api-session',
       ),
       bearerToken: String.fromEnvironment('SOCIAL_MONITOR_API_BEARER_TOKEN'),
     );
   }
 
   final String apiBaseUrl;
-  final String tenantId;
-  final String workspaceId;
-  final String tenantName;
-  final String workspaceName;
-  final String workspaceRole;
-  final String userId;
-  final String userLabel;
   final String correlationId;
+  final String? tenantId;
+  final String? workspaceId;
+  final String? tenantName;
+  final String? workspaceName;
+  final String? workspaceRole;
+  final String? userId;
+  final String? userLabel;
   final String? bearerToken;
 
   bool get isConfigured {
     return apiBaseUrl.trim().isNotEmpty &&
-        tenantId.trim().isNotEmpty &&
-        workspaceId.trim().isNotEmpty &&
-        workspaceRole.trim().isNotEmpty &&
-        userId.trim().isNotEmpty;
+        ((bearerToken?.trim().isNotEmpty ?? false) ||
+            _workspaceScopeOrNull() != null);
   }
 
   AppShellRuntime? createRuntimeOrNull() {
@@ -75,36 +76,34 @@ final class AppFrontendRuntimeConfig {
       GeneratedApiConfiguration(
         baseUrl: apiBaseUrl.trim(),
         authorizationProvider: _authorizationHeader,
-        workspaceRoleProvider: () => workspaceRole.trim(),
+        workspaceRoleProvider: _workspaceRoleHeader,
         correlationIdProvider: () => correlationId.trim(),
       ),
     );
 
-    return AppShellRuntime.connected(
-      workspace: AppWorkspaceSnapshot(
-        tenantName: tenantName.trim(),
-        workspaceName: workspaceName.trim(),
-        statusLabel: 'Active',
-        workspaceRole: workspaceRole.trim(),
-        scope: WorkspaceScope(
-          tenantId: tenantId.trim(),
-          workspaceId: workspaceId.trim(),
+    final scope = _workspaceScopeOrNull();
+    if (scope != null) {
+      return AppShellRuntime.connected(
+        generatedApiRuntime: runtime,
+        workspace: AppWorkspaceSnapshot(
+          tenantName: _labelOrDefault(tenantName, 'Current tenant'),
+          workspaceName: _labelOrDefault(workspaceName, 'Current workspace'),
+          workspaceRole: _labelOrDefault(workspaceRole, 'owner'),
+          statusLabel: 'Active',
+          scope: scope,
         ),
-      ),
+        session: AppSessionSnapshot(
+          isSignedIn: true,
+          isRestoring: false,
+          userId: _labelOrDefault(userId, 'frontend-runtime-user'),
+          userLabel: _labelOrDefault(userLabel, 'MVP Operator'),
+        ),
+        correlationId: correlationId.trim(),
+      );
+    }
+
+    return AppShellRuntime.restoring(
       generatedApiRuntime: runtime,
-      session: AppSessionSnapshot(
-        isSignedIn: true,
-        isRestoring: false,
-        userId: userId.trim(),
-        userLabel: userLabel.trim(),
-      ),
-      capabilities: const FeatureFlagSet({
-        'topics': FeatureCapability(key: 'topics', isEnabled: true),
-        'sources': FeatureCapability(key: 'sources', isEnabled: true),
-        'feed': FeatureCapability(key: 'feed', isEnabled: true),
-        'summaries': FeatureCapability(key: 'summaries', isEnabled: true),
-        'settings': FeatureCapability(key: 'settings', isEnabled: true),
-      }),
       correlationId: correlationId.trim(),
     );
   }
@@ -118,5 +117,33 @@ final class AppFrontendRuntimeConfig {
       return token;
     }
     return 'Bearer $token';
+  }
+
+  String? _workspaceRoleHeader() {
+    final value = workspaceRole?.trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value.toLowerCase();
+  }
+
+  WorkspaceScope? _workspaceScopeOrNull() {
+    final normalizedTenantId = tenantId?.trim();
+    final normalizedWorkspaceId = workspaceId?.trim();
+    if (normalizedTenantId == null ||
+        normalizedTenantId.isEmpty ||
+        normalizedWorkspaceId == null ||
+        normalizedWorkspaceId.isEmpty) {
+      return null;
+    }
+    return WorkspaceScope(
+      tenantId: normalizedTenantId,
+      workspaceId: normalizedWorkspaceId,
+    );
+  }
+
+  String _labelOrDefault(String? value, String fallback) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? fallback : normalized;
   }
 }

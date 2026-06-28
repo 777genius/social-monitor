@@ -111,17 +111,22 @@ export const feedProviderMetricStrength = (
 
       return Math.max(
         0,
-        Math.log1p(Math.max(0, metrics.score)) +
-          Math.log1p(metrics.comments) * 0.55 +
+        Math.log1p(Math.max(0, metrics.score)) * 0.65 +
+          Math.log1p(metrics.comments) * 0.35 +
           ratioBoost,
       );
     }
-    case 'github_repository':
+    case 'github_repository': {
+      const stars24h = metricDelta(metrics, '24h');
+      const stars48h = metricDelta(metrics, '48h');
       return (
-        Math.log1p(metrics.trendingDelta.value) +
-        Math.log1p(metrics.stars) * 0.15 +
+        Math.log1p(stars24h) * 0.45 +
+        Math.log1p(stars48h) * 0.25 +
+        Math.log1p(metrics.trendingDelta.value) * 0.2 +
+        Math.log1p(metrics.stars) * 0.1 +
         Math.log1p(metrics.forks) * 0.1
       );
+    }
     case 'github_trending_repository':
       return (
         Math.log1p(metrics.starsGained) +
@@ -132,14 +137,21 @@ export const feedProviderMetricStrength = (
     case 'hacker_news_story':
       return Math.log1p(metrics.points) + Math.log1p(metrics.comments) * 0.6;
     case 'x_post':
-      return (
-        Math.log1p(metrics.likes) +
-        Math.log1p(metrics.reposts) * 0.8 +
-        Math.log1p(metrics.replies + metrics.quotes) * 0.45 +
-        Math.log1p(metrics.bookmarks) * 0.35
+      return Math.log1p(
+        metrics.likes +
+          metrics.reposts * 2 +
+          metrics.replies * 0.5 +
+          metrics.quotes * 1.5 +
+          metrics.bookmarks * 0.4,
       );
   }
 };
+
+const metricDelta = (
+  metrics: GitHubRepositoryMetrics,
+  window: string,
+): number =>
+  metrics.trendDeltas.find((delta) => delta.window === window)?.value ?? 0;
 
 const redditPostMetrics = (
   metadata: JsonObject | undefined,

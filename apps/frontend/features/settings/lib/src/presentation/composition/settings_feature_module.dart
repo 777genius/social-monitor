@@ -5,8 +5,8 @@ import '../../application/use_cases/load_workspace_settings_use_case.dart';
 import '../../application/use_cases/update_digest_preference_use_case.dart';
 import '../../application/use_cases/update_telemetry_consent_use_case.dart';
 import '../../infrastructure/api/workspace_settings_api_dto.dart';
+import '../../infrastructure/api_clients/generated_workspace_settings_api_client.dart';
 import '../../infrastructure/api_clients/in_memory_workspace_settings_api_client.dart';
-import '../../infrastructure/api_clients/runtime_workspace_settings_api_client.dart';
 import '../../infrastructure/repositories/generated_workspace_settings_catalog.dart';
 import '../stores/workspace_settings_store.dart';
 
@@ -17,29 +17,18 @@ final class SettingsFeatureModule extends Module {
         workspaceId: 'ws-demo',
       ),
       settings = _demoSettings,
-      useRuntimeSettings = false;
+      generatedApiRuntime = null;
 
   SettingsFeatureModule.runtime({
     required this.scope,
-    required String workspaceRole,
-    required String traceId,
-    required String featureSnapshot,
-  }) : settings = WorkspaceSettingsApiDto(
-         workspaceRole: workspaceRole,
-         digestFrequency: 'weekly',
-         telemetryConsent: 'not_configured',
-         diagnostics: DiagnosticSnapshotApiDto(
-           traceId: traceId,
-           routeId: 'settings',
-           releaseVersion: 'frontend-mvp',
-           featureSnapshot: featureSnapshot,
-         ),
-       ),
-       useRuntimeSettings = true;
+    required this.generatedApiRuntime,
+  }) : settings = _demoSettings;
 
   final WorkspaceScope scope;
   final WorkspaceSettingsApiDto settings;
-  final bool useRuntimeSettings;
+  final Object? generatedApiRuntime;
+
+  bool get useRuntimeSettings => generatedApiRuntime != null;
 
   Object get retentionKey {
     return useRuntimeSettings
@@ -72,8 +61,9 @@ final class SettingsFeatureModule extends Module {
   }
 
   WorkspaceSettingsApiClient _createApiClient() {
-    if (useRuntimeSettings) {
-      return RuntimeWorkspaceSettingsApiClient(settings: settings);
+    final runtime = generatedApiRuntime;
+    if (runtime != null) {
+      return GeneratedWorkspaceSettingsApiClient.fromRuntime(runtime: runtime);
     }
     return InMemoryWorkspaceSettingsApiClient(initialSettings: settings);
   }

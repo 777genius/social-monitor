@@ -4,6 +4,18 @@ export type SummaryEvidenceReaderActionKind =
   | "read_source"
   | "watch_repository";
 
+export type SummaryEvidenceContentQuality = {
+  readonly qualityScore: number;
+  readonly topicRelevanceScore: number;
+  readonly engagementIntegrityScore: number;
+  readonly eligibleForSummary: boolean;
+  readonly eligibleForTopRead: boolean;
+  readonly needsLlmReview: boolean;
+  readonly decision: string;
+  readonly flags: readonly string[];
+  readonly reason: string;
+};
+
 export type SummaryEvidenceItem = {
   readonly feedItemId: string;
   readonly sourceItemId: string;
@@ -21,6 +33,7 @@ export type SummaryEvidenceItem = {
   readonly whyImportant: readonly string[];
   readonly providerMetricLabels?: readonly ProviderMetric[];
   readonly providerMetricSummary?: string;
+  readonly contentQuality?: SummaryEvidenceContentQuality;
   readonly readerActionKind?: SummaryEvidenceReaderActionKind;
   readonly matchedRules?: readonly string[];
   readonly storyKeyHint?: string;
