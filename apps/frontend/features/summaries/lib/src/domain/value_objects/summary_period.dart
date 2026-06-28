@@ -93,7 +93,7 @@ enum SummaryPeriodPreset {
   DateTime currentPeriodEndedAt({DateTime? now}) {
     final todayStart = _utcDayStart(now ?? DateTime.now());
     return switch (this) {
-      SummaryPeriodPreset.daily ||
+      SummaryPeriodPreset.daily => todayStart.add(const Duration(days: 1)),
       SummaryPeriodPreset.twoWeeks ||
       SummaryPeriodPreset.threeWeeks => todayStart,
       SummaryPeriodPreset.weekly => todayStart.subtract(
