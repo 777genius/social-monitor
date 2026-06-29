@@ -27,37 +27,54 @@ export type SourceTargetPreset = {
 };
 
 const redditDailyMultiPassConfig = {
-  maxItems: 30,
+  maxItems: 50,
   scanPasses: [
     {
       mode: "listing",
       subreddit: "OpenAI",
       listing: "top",
       topTime: "day",
-      maxItems: 10,
-      minScore: 10,
+      maxItems: 15,
+      minScore: 1,
     },
     {
       mode: "listing",
       subreddit: "LocalLLaMA",
       listing: "top",
       topTime: "day",
-      maxItems: 10,
-      minScore: 10,
+      maxItems: 15,
+      minScore: 1,
     },
     {
       mode: "listing",
       subreddit: "MachineLearning",
       listing: "top",
       topTime: "day",
-      maxItems: 10,
-      minScore: 10,
+      maxItems: 15,
+      minScore: 1,
+    },
+    {
+      mode: "listing",
+      subreddit: "ClaudeAI",
+      listing: "top",
+      topTime: "day",
+      maxItems: 15,
+      minScore: 1,
+    },
+    {
+      mode: "listing",
+      subreddit: "artificial",
+      listing: "top",
+      topTime: "day",
+      maxItems: 15,
+      minScore: 1,
     },
     {
       mode: "search",
-      query: 'OpenAI OR LocalLLaMA OR "machine learning" OR "AI agents" OR LLM',
-      maxItems: 12,
-      minScore: 5,
+      query:
+        'OpenAI OR ClaudeAI OR LocalLLaMA OR "machine learning" OR "AI agents" OR LLM',
+      maxItems: 20,
+      minScore: 1,
     },
   ],
 } as const;

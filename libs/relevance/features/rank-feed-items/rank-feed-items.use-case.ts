@@ -45,7 +45,7 @@ import type {
 
 type RankFeedItemsFailure = DomainError | Error;
 
-const maxLimit = 50;
+const maxLimit = 200;
 const maxCandidateScan = 200;
 const maxQualityReviewBatch = 25;
 
@@ -69,7 +69,7 @@ export class RankFeedItemsUseCase {
       return err(
         new DomainError(
           "validation.failed",
-          "Relevance ranking limit must be between 1 and 50",
+          "Relevance ranking limit must be between 1 and 200",
         ),
       );
     }

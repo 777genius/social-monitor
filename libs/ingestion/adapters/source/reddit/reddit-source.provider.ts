@@ -11,7 +11,7 @@ import type {
   SourceProviderValidationResult,
   SourceQuery,
 } from '../../../ports';
-import type { RedditClientPort } from './reddit-client.port';
+import type { RedditClientPort, RedditListingPage } from './reddit-client.port';
 import type { RedditRefreshTokenProviderPort } from './refresh-token-reddit-token-provider';
 import {
   compactUnique,
@@ -227,24 +227,36 @@ export class RedditSourceProvider implements SourceProviderPort {
     );
     const itemsByExternalId = new Map<string, FetchedSourceItem>();
     const warnings: string[] = [];
+    let failedPasses = 0;
+    let firstFailure: unknown;
 
     for (const pass of params.passes) {
       const limit = pass.maxItems ?? perPassFallbackLimit;
-      const page = pass.mode === 'listing'
-        ? await this.client.listSubredditPosts({
-            accessToken: params.accessToken,
-            userAgent: params.userAgent,
-            subreddit: pass.subreddit,
-            listing: pass.listing,
-            ...(pass.listing === 'top' ? { topTime: pass.topTime ?? 'day' } : {}),
-            limit,
-          })
-        : await this.client.searchPosts({
-            accessToken: params.accessToken,
-            userAgent: params.userAgent,
-            query: pass.query,
-            limit,
-          });
+      let page: RedditListingPage;
+
+      try {
+        page = pass.mode === 'listing'
+          ? await this.client.listSubredditPosts({
+              accessToken: params.accessToken,
+              userAgent: params.userAgent,
+              subreddit: pass.subreddit,
+              listing: pass.listing,
+              ...(pass.listing === 'top' ? { topTime: pass.topTime ?? 'day' } : {}),
+              limit,
+            })
+          : await this.client.searchPosts({
+              accessToken: params.accessToken,
+              userAgent: params.userAgent,
+              query: pass.query,
+              limit,
+            });
+      } catch (error) {
+        firstFailure ??= error;
+        failedPasses += 1;
+        warnings.push(formatScanPassWarning(pass, error));
+        continue;
+      }
+
       const minScore = pass.minScore ?? params.fallbackMinScore;
 
       for (const item of page.posts.flatMap((post) => normalizePost(post, minScore))) {
@@ -256,6 +268,10 @@ export class RedditSourceProvider implements SourceProviderPort {
       warnings.push(...redditWarnings(page.posts, minScore));
     }
 
+    if (failedPasses === params.passes.length && firstFailure !== undefined) {
+      throw firstFailure;
+    }
+
     return {
       items: sortRedditItemsByEngagement([...itemsByExternalId.values()]).slice(
         0,
@@ -265,3 +281,12 @@ export class RedditSourceProvider implements SourceProviderPort {
     };
   }
 }
+
+const formatScanPassWarning = (pass: RedditScanPass, error: unknown): string => {
+  const passLabel = pass.mode === 'listing'
+    ? `${pass.subreddit}:${pass.listing}${pass.listing === 'top' ? `:${pass.topTime ?? 'day'}` : ''}`
+    : `search:${pass.query}`;
+  const message = error instanceof Error ? error.message : 'Unknown Reddit scan pass error';
+
+  return `Reddit scan pass degraded (${passLabel}): ${redactSensitiveText(message)}`;
+};

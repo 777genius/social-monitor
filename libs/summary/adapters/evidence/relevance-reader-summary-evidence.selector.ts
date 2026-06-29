@@ -16,6 +16,8 @@ import {
   type StoryRankingMetricsPort,
 } from "../../ports";
 
+const maxReaderSummaryEvidenceItems = 200;
+
 export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSelectorPort {
   private readonly clusterer: StoryClusteringService;
 
@@ -213,11 +215,14 @@ const providerNameForProvider = (providerKey: string): string => {
 };
 
 const expandedCandidateLimit = (limit: number): number => {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
-    return limit;
+  if (!Number.isInteger(limit) || limit < 1) {
+    return 1;
   }
 
-  return Math.min(50, Math.max(limit, limit * 3));
+  return Math.min(
+    maxReaderSummaryEvidenceItems,
+    Math.max(limit, limit * 3),
+  );
 };
 
 const selectProviderDiverseEvidence = (
@@ -420,7 +425,7 @@ const normalizeSelectionLimit = (limit: number): number => {
     return 1;
   }
 
-  return Math.min(limit, 50);
+  return Math.min(limit, maxReaderSummaryEvidenceItems);
 };
 
 const uniqueStable = <T>(values: readonly T[]): readonly T[] => {

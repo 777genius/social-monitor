@@ -35,11 +35,11 @@ import { InMemoryUserRelevanceProfileRepository } from "@social-monitor/relevanc
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import {
   CryptoIdGenerator,
-  DomainError,
   ok,
   SystemClock,
   tenantId,
   workspaceId,
+  type DomainError,
   type Result,
 } from "@social-monitor/shared-kernel";
 
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     endedAt: periodEndedAt,
     timezone,
   });
-  const maxEvidenceItems = readIntegerEnv("DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS", 30, 1, 50);
+  const maxEvidenceItems = readIntegerEnv("DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS", 200, 1, 200);
   const maxStories = readIntegerEnv("DURABLE_READER_SUMMARY_MAX_STORIES", 15, 1, 20);
   const modelMode = readModelMode();
 
@@ -279,6 +279,8 @@ class AllowingSummaryQuota implements SummaryQuotaPort {
   async reserveSummaryJob(
     _command: ReserveSummaryJobQuotaCommand,
   ): Promise<Result<ReserveSummaryJobQuotaResult, DomainError>> {
+    void _command;
+
     return ok({
       remaining: 999,
       resetAt: new Date(this.clock.now().getTime() + 24 * 60 * 60 * 1000).toISOString(),

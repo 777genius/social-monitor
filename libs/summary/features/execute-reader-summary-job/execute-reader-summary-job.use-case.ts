@@ -51,15 +51,17 @@ type ReaderSummaryContextBuildResult = {
 
 const defaultModelPolicy: ReaderSummaryModelPolicy = {
   preferredProvider: "deterministic-local",
-  maxInputTokens: 24_000,
-  maxOutputTokens: 4_000,
+  maxInputTokens: 96_000,
+  maxOutputTokens: 16_000,
   maxEstimatedCostUsd: 1,
 };
 
 const defaultModelBudget: ReaderSummaryModelBudget = {
-  remainingTokens: 32_000,
+  remainingTokens: 160_000,
   remainingCostUsd: 2,
 };
+
+const defaultReaderSummaryMaxEvidenceItems = 200;
 
 export class ExecuteReaderSummaryJobUseCase {
   constructor(
@@ -143,7 +145,7 @@ export class ExecuteReaderSummaryJobUseCase {
     try {
       const result = await this.runModelPipeline(
         runningJob,
-        command.maxEvidenceItems ?? 20,
+        command.maxEvidenceItems ?? defaultReaderSummaryMaxEvidenceItems,
       );
 
       if (!result.ok) {

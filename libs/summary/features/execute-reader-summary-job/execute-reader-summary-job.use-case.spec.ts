@@ -83,6 +83,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     const events = new CapturingSummaryEventPublisher();
     const model = new CapturingReaderSummaryModel();
     const requestedAt = new Date("2026-06-26T08:00:00.000Z");
+    let observedMaxEvidenceItems: number | undefined;
 
     await jobs.save(
       ReaderSummaryJob.request({
@@ -103,7 +104,8 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       artifacts,
       new EmptyReaderSummaryPolicyRepository(),
       {
-        async select() {
+        async select(params) {
+          observedMaxEvidenceItems = params.maxItems;
           return makeReaderEvidenceSelection();
         },
       },
@@ -183,9 +185,10 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       },
     });
     expect(snapshot?.topStories).toHaveLength(1);
+    expect(observedMaxEvidenceItems).toBe(200);
     expect(model.observedPolicies()).toContainEqual(
       expect.objectContaining({
-        maxOutputTokens: 4_000,
+        maxOutputTokens: 16_000,
       }),
     );
     expect(events.all()).toContainEqual(

@@ -229,6 +229,20 @@ describe("RankFeedItemsUseCase", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("accepts wide reader-summary ranking limits", async () => {
+    const result = await new RankFeedItemsUseCase(
+      new FakeFeedItemReadRepository(),
+      new FakeUserRelevanceProfileRepository(),
+      new FixedClock(new Date("2026-06-22T10:00:00.000Z")),
+    ).execute({
+      tenantId: tenantId("tenant-rank-wide"),
+      workspaceId: workspaceId("workspace-rank-wide"),
+      limit: 200,
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it("uses provider engagement metrics so high-signal Reddit posts reach workspace summaries", async () => {
     const tenant = tenantId("tenant-rank-metrics");
     const workspace = workspaceId("workspace-rank-metrics");

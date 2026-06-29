@@ -49,7 +49,9 @@ const rankedItem = (
     title: `${providerKey} story ${rank}`,
     bodyPreview: "Useful source evidence for an AI developer summary.",
     publishedAt: "2026-06-23T10:00:00.000Z",
-    observedAt: `2026-06-23T10:${String(rank).padStart(2, "0")}:00.000Z`,
+    observedAt: new Date(
+      Date.UTC(2026, 5, 23, 10, 0, 0) + rank * 60_000,
+    ).toISOString(),
     score,
     rank,
     clusterId: `cluster-${feedItemId}`,
@@ -268,6 +270,69 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(
       selection.selectedEvidence.map((item) => item.providerKey),
     ).toEqual(["reddit", "hacker-news", "rss", "github-trending-page"]);
+  });
+
+  it("keeps roughly thirty selected evidence items per source family when the summary asks for one hundred fifty", async () => {
+    const providerKeys = [
+      "x-twitter",
+      "reddit",
+      "hacker-news",
+      "rss",
+      "github-trending-page",
+    ] as const;
+    const rankedItems = providerKeys.flatMap((providerKey, providerIndex) =>
+      Array.from({ length: 35 }, (_, index) =>
+        rankedItem({
+          feedItemId: `feed-${providerKey}-${index + 1}`,
+          providerKey,
+          rank: providerIndex * 35 + index + 1,
+          score: 3 - index / 100 - providerIndex / 1000,
+        }),
+      ),
+    );
+    const rankFeedItems = {
+      execute: jest.fn(async (command: RankFeedItemsCommand) =>
+        ok({
+          generatedAt: clock.now().toISOString(),
+          profileApplied: false,
+          items: rankedItems.slice(0, command.limit),
+        }),
+      ),
+    } as unknown as RankFeedItemsUseCase;
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      {
+        list: jest.fn(),
+        findById: jest.fn(async () => null),
+      },
+      clock,
+      new FakeStoryRankingMetrics(),
+    );
+
+    const selection = await selector.select({
+      tenantId: tenantId("tenant-wide-evidence"),
+      workspaceId: workspaceId("workspace-wide-evidence"),
+      scope: { type: "workspace" },
+      period: readerSummaryPeriod,
+      maxItems: 150,
+    });
+    const counts = selection.selectedEvidence.reduce(
+      (result, item) =>
+        result.set(item.providerKey, (result.get(item.providerKey) ?? 0) + 1),
+      new Map<string, number>(),
+    );
+
+    expect(rankFeedItems.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 200 }),
+    );
+    expect(selection.selectedEvidence).toHaveLength(150);
+    expect(Object.fromEntries(counts)).toEqual({
+      "x-twitter": 30,
+      reddit: 30,
+      "hacker-news": 30,
+      rss: 30,
+      "github-trending-page": 30,
+    });
   });
 
   it("preserves X engagement metrics from ranked feed metadata", async () => {

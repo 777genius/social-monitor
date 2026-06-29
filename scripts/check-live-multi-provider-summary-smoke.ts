@@ -148,6 +148,7 @@ type LiveReaderSummarySmokeResult = {
   readonly selectedProviders: readonly LiveProviderKey[];
   readonly citedProviders: readonly string[];
   readonly readerSourceMixProviders: readonly string[];
+  readonly readerSourceMixCounts: Readonly<Record<string, number>>;
   readonly topReadProviders: readonly string[];
   readonly topReadCount: number;
   readonly qualityFlags: readonly string[];
@@ -169,9 +170,9 @@ const maxItemsPerProvider = readPositiveIntegerEnv(
 );
 const maxEvidenceItems = readPositiveIntegerEnv(
   "LIVE_MULTI_PROVIDER_SUMMARY_MAX_EVIDENCE_ITEMS",
-  30,
+  sourcePresetMode === aiDeveloperSignalSourcePreset.presetId ? 200 : 30,
   4,
-  50,
+  200,
 );
 const maxSummaryKeyPoints = readPositiveIntegerEnv(
   "LIVE_MULTI_PROVIDER_SUMMARY_MAX_KEY_POINTS",
@@ -716,6 +717,7 @@ const main = async (): Promise<void> => {
       `ReaderSummary headline: ${readerSummary.readerHeadline}`,
       `ReaderSummary selected providers: ${readerSummary.selectedProviders.join(", ")}`,
       `ReaderSummary reader source mix: ${readerSummary.readerSourceMixProviders.join(", ")}`,
+      `ReaderSummary reader source mix counts: ${JSON.stringify(readerSummary.readerSourceMixCounts)}`,
       `ReaderSummary top read providers: ${readerSummary.topReadProviders.join(", ")}`,
     ].join("\n"),
   );
@@ -882,6 +884,14 @@ const runLiveReaderSummarySmoke = async (params: {
     readerBrief.headline.trim().length >= 12,
     `readerSummary reader headline must be non-empty, got ${readerBrief.headline}`,
   );
+  assert(
+    !isSourceInventoryText(readerBrief.headline),
+    `readerSummary reader headline must express the situation instead of listing sources, got ${readerBrief.headline}`,
+  );
+  assert(
+    !isSourceInventoryText(readerBrief.oneLineTakeaway),
+    `readerSummary reader takeaway must express the situation instead of listing sources, got ${readerBrief.oneLineTakeaway}`,
+  );
   if (readerSummaryModelMode === "deterministic") {
     assert(
       readerBrief.headline.startsWith("Workspace readerSummary:") ||
@@ -956,6 +966,9 @@ const runLiveReaderSummarySmoke = async (params: {
     selectedProviders: [...selectedProviders].sort(),
     citedProviders: [...citedProviders].sort(),
     readerSourceMixProviders: [...readerSourceMixProviders].sort(),
+    readerSourceMixCounts: Object.fromEntries(
+      readerBrief.sourceMix.map((entry) => [entry.providerKey, entry.itemCount]),
+    ),
     topReadProviders: [...topReadProviders].sort(),
     topReadCount: readerBrief.topReads.length,
     qualityFlags: artifactSnapshot.qualityFlags,
@@ -1483,6 +1496,8 @@ const writeOptionalEvidenceArtifact = (input: {
           readerSummaryCitedProviders: input.readerSummary.citedProviders,
           readerSummaryReaderSourceMixProviders:
             input.readerSummary.readerSourceMixProviders,
+          readerSummaryReaderSourceMixCounts:
+            input.readerSummary.readerSourceMixCounts,
           readerSummaryTopReadProviders: input.readerSummary.topReadProviders,
           readerSummaryTopReadCount: input.readerSummary.topReadCount,
           readerSummaryQualityFlags: input.readerSummary.qualityFlags,
@@ -1502,6 +1517,7 @@ const writeOptionalEvidenceArtifact = (input: {
       readerSummarySelectedProviders: input.readerSummary.selectedProviders,
       readerSummaryCitedProviders: input.readerSummary.citedProviders,
       readerSummaryReaderSourceMixProviders: input.readerSummary.readerSourceMixProviders,
+      readerSummaryReaderSourceMixCounts: input.readerSummary.readerSourceMixCounts,
       readerSummaryTopReadProviders: input.readerSummary.topReadProviders,
       readerSummaryTopReadCount: input.readerSummary.topReadCount,
       readerSummaryQualityFlags: input.readerSummary.qualityFlags,
@@ -1614,6 +1630,18 @@ function describeError(error: unknown): string {
   }
 
   return String(error);
+}
+
+function isSourceInventoryText(value: string): boolean {
+  const normalized = value.trim().toLocaleLowerCase("en-US");
+
+  return (
+    normalized.startsWith("key signals across") ||
+    normalized.startsWith("strongest reads across") ||
+    normalized.startsWith("strongest read across") ||
+    normalized.startsWith("source watch") ||
+    normalized.includes("cited top read")
+  );
 }
 
 function readOptionalEnv(name: string): string | undefined {

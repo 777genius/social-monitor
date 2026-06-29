@@ -75,11 +75,11 @@ describe("buildReaderSummary", () => {
     });
 
     expect(readerSummary.headline).toBe(
-      "Reddit source watch: 1 cited top read",
+      "Single-source discussion needs confirmation",
     );
     expect(readerSummary.headline).not.toContain("GPT-5.6");
     expect(readerSummary.oneLineTakeaway).toBe(
-      "Strongest read from Reddit: Single-source discussion needs confirmation. Confirm important claims with another monitored source before acting.",
+      "Single-source discussion needs confirmation. Confirm important claims with another monitored source before acting.",
     );
     expect(readerSummary.oneLineTakeaway).not.toContain("GPT-5.6");
     expect(readerSummary.bullets[0]).toBe(
@@ -222,7 +222,7 @@ describe("buildReaderSummary", () => {
     });
 
     expect(readerSummary.oneLineTakeaway).toBe(
-      "Strongest reads across X/Twitter, Reddit, Hacker News: Developer rollout chatter is drawing X/Twitter engagement; AI infrastructure discussion around custom chips is getting practical; Biomedical AI research is drawing Hacker News discussion. Confirm important claims with another monitored source before acting.",
+      "Social sources point to AI infrastructure, rollout chatter and biomedical AI research.",
     );
     expect(readerSummary.oneLineTakeaway).not.toContain("Review 3 cited");
     expect(readerSummary.topReads.map((read) => read.reason)).toEqual([
@@ -379,7 +379,7 @@ describe("buildReaderSummary", () => {
     expect(
       readerSummary.topReads.slice(0, 3).map((read) => read.providerKey),
     ).toEqual(["x-twitter", "reddit", "hacker-news"]);
-    expect(readerSummary.headline).toContain("Key signals across");
+    expect(readerSummary.headline).not.toContain("Key signals across");
     expect(readerSummary.headline).toContain("Claude Code skills");
     expect(readerSummary.headline).not.toContain("Source watch");
   });

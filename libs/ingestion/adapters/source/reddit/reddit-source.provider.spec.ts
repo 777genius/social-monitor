@@ -133,7 +133,7 @@ describe('RedditSourceProvider', () => {
 
   it('runs configured multi-pass top/day listings with search fallback and engagement sorting', async () => {
     const client = new CapturingRedditClient({
-      listingResponses: new Map([
+      listingResponses: new Map<string, RedditListingPage | Error>([
         [
           'OpenAI:top:day',
           {
@@ -241,6 +241,81 @@ describe('RedditSourceProvider', () => {
     ]);
   });
 
+  it('keeps successful scan-pass posts when another Reddit pass is temporarily unavailable', async () => {
+    const client = new CapturingRedditClient({
+      listingResponses: new Map<string, RedditListingPage | Error>([
+        [
+          'OpenAI:top:day',
+          {
+            posts: [
+              redditPost({
+                id: 'openai-live',
+                subreddit: 'OpenAI',
+                title: 'OpenAI live discussion survives partial outage',
+                score: 320,
+                numComments: 88,
+              }),
+            ],
+          },
+        ],
+        ['ClaudeAI:top:day', new Error('fetch failed')],
+      ]),
+      searchResponse: {
+        posts: [
+          redditPost({
+            id: 'search-live',
+            subreddit: 'ArtificialInteligence',
+            title: 'AI agents search fallback survives partial outage',
+            score: 120,
+            numComments: 42,
+          }),
+        ],
+      },
+    });
+    const provider = new RedditSourceProvider(client, new StaticTokenProvider('reddit-app-only-token'));
+    const context = scanContext({
+      maxItems: 5,
+      scanPasses: [
+        { mode: 'listing', subreddit: 'OpenAI', listing: 'top', topTime: 'day' },
+        { mode: 'listing', subreddit: 'ClaudeAI', listing: 'top', topTime: 'day' },
+        { mode: 'search', query: 'OpenAI OR AI agents', maxItems: 2 },
+      ],
+    });
+    const plan = provider.planScan({ mode: 'search', query: 'OpenAI OR AI agents' }, context);
+
+    const result = await provider.scan(plan, context);
+
+    expect(result.items.map((item) => item.externalId)).toEqual([
+      'reddit:t3_openai-live',
+      'reddit:t3_search-live',
+    ]);
+    expect(result.warnings).toContain(
+      'Reddit scan pass degraded (ClaudeAI:top:day): fetch failed',
+    );
+  });
+
+  it('fails configured scan-passes when every Reddit pass is unavailable', async () => {
+    const provider = new RedditSourceProvider(
+      new CapturingRedditClient({
+        listingResponses: new Map<string, RedditListingPage | Error>([
+          ['OpenAI:top:day', new Error('fetch failed')],
+          ['ClaudeAI:top:day', new Error('upstream timeout')],
+        ]),
+      }),
+      new StaticTokenProvider('reddit-app-only-token'),
+    );
+    const context = scanContext({
+      maxItems: 5,
+      scanPasses: [
+        { mode: 'listing', subreddit: 'OpenAI', listing: 'top', topTime: 'day' },
+        { mode: 'listing', subreddit: 'ClaudeAI', listing: 'top', topTime: 'day' },
+      ],
+    });
+    const plan = provider.planScan({ mode: 'search', query: 'OpenAI OR AI agents' }, context);
+
+    await expect(provider.scan(plan, context)).rejects.toThrow('fetch failed');
+  });
+
   it('skips readable Reddit posts without a valid created timestamp', async () => {
     const client = new CapturingRedditClient({
       posts: [
@@ -345,8 +420,8 @@ class CapturingRedditClient implements RedditClientPort {
     private readonly response:
       | RedditListingPage
       | {
-          readonly listingResponses?: ReadonlyMap<string, RedditListingPage>;
-          readonly searchResponse?: RedditListingPage;
+          readonly listingResponses?: ReadonlyMap<string, RedditListingPage | Error>;
+          readonly searchResponse?: RedditListingPage | Error;
         } = { posts: [] },
   ) {}
 
@@ -356,7 +431,13 @@ class CapturingRedditClient implements RedditClientPort {
       return this.response;
     }
 
-    return this.response.listingResponses?.get(listingKey(request)) ?? { posts: [] };
+    const response = this.response.listingResponses?.get(listingKey(request)) ?? { posts: [] };
+
+    if (response instanceof Error) {
+      throw response;
+    }
+
+    return response;
   }
 
   async searchPosts(request: RedditSearchPostsRequest): Promise<RedditListingPage> {
@@ -365,7 +446,13 @@ class CapturingRedditClient implements RedditClientPort {
       return { posts: [] };
     }
 
-    return this.response.searchResponse ?? { posts: [] };
+    const response = this.response.searchResponse ?? { posts: [] };
+
+    if (response instanceof Error) {
+      throw response;
+    }
+
+    return response;
   }
 }
 

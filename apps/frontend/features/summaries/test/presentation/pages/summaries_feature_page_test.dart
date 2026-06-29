@@ -40,7 +40,8 @@ void main() {
     expect(find.textContaining('00:00 -'), findsOneWidget);
     expect(find.text('GitHub Trending daily summary'), findsWidgets);
     expect(find.text('AI summary'), findsOneWidget);
-    expect(find.textContaining('Key signal:'), findsOneWidget);
+    expect(find.textContaining('GitHub daily radar'), findsOneWidget);
+    expect(find.textContaining('Key signal:'), findsNothing);
     expect(find.text('Read first'), findsOneWidget);
     expect(find.text('Source-local'), findsNothing);
     expect(find.text('Needs confirmation'), findsWidgets);
@@ -97,7 +98,7 @@ void main() {
     );
   });
 
-  testWidgets('does not duplicate backend key signals headline prefix', (
+  testWidgets('does not show source-list summary headlines as the lead', (
     tester,
   ) async {
     final store = _store(
@@ -113,11 +114,12 @@ void main() {
     await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Key signal: Key signals across'), findsNothing);
+    expect(find.textContaining('Key signal:'), findsNothing);
     expect(
       find.textContaining('Key signals across X/Twitter, Reddit'),
-      findsOneWidget,
+      findsNothing,
     );
+    expect(find.textContaining('AI coding tools'), findsWidgets);
   });
 
   testWidgets('quality warnings override high confidence badge', (

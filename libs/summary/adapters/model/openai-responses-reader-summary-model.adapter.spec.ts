@@ -83,7 +83,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
     expect(capturedCalls[0]?.url).toBe("https://api.openai.com/v1/responses");
     expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
       model: "gpt-5.4-mini",
-      max_output_tokens: 8_000,
+      max_output_tokens: 16_000,
       text: {
         format: {
           type: "json_schema",

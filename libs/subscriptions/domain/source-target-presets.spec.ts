@@ -27,7 +27,7 @@ describe("aiDeveloperSignalSourcePreset", () => {
       targetKind: "search_query",
       targetValue: "OpenAI LocalLLaMA MachineLearning AI agents",
       targetConfig: {
-        maxItems: 30,
+        maxItems: 50,
         scanPasses: [
           {
             mode: "listing",
@@ -48,9 +48,21 @@ describe("aiDeveloperSignalSourcePreset", () => {
             topTime: "day",
           },
           {
+            mode: "listing",
+            subreddit: "ClaudeAI",
+            listing: "top",
+            topTime: "day",
+          },
+          {
+            mode: "listing",
+            subreddit: "artificial",
+            listing: "top",
+            topTime: "day",
+          },
+          {
             mode: "search",
             query:
-              'OpenAI OR LocalLLaMA OR "machine learning" OR "AI agents" OR LLM',
+              'OpenAI OR ClaudeAI OR LocalLLaMA OR "machine learning" OR "AI agents" OR LLM',
           },
         ],
       },

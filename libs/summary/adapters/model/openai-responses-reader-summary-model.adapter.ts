@@ -53,8 +53,8 @@ const defaultModel = "gpt-5.4-mini";
 const defaultPromptVersion = "reader_summary.prompt.openai.responses.v1";
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
 const defaultEndpointUrl = "https://api.openai.com/v1/responses";
-const defaultTimeoutMs = 90_000;
-const defaultMaxOutputTokens = 8_000;
+const defaultTimeoutMs = 180_000;
+const defaultMaxOutputTokens = 16_000;
 const defaultInputTokenDivisor = 4;
 
 export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryModelPort {

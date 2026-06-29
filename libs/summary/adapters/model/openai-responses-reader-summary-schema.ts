@@ -23,20 +23,22 @@ export const openAiReaderSummaryJsonSchema = {
     "noSignalReason",
   ],
   properties: {
-    headline: { type: "string" },
-    executiveSummary: { type: "string" },
+    headline: stringSchema(160),
+    executiveSummary: stringSchema(1_200),
     content: { $ref: "#/$defs/content" },
-    topStories: { type: "array", items: { $ref: "#/$defs/topStory" } },
+    topStories: arraySchema({ $ref: "#/$defs/topStory" }, 10),
     topicHighlights: {
       type: "array",
       items: { $ref: "#/$defs/topicHighlight" },
+      maxItems: 5,
     },
     repeatedSignals: {
       type: "array",
       items: { $ref: "#/$defs/repeatedSignal" },
+      maxItems: 5,
     },
-    risksAndUnknowns: { type: "array", items: { $ref: "#/$defs/risk" } },
-    citationMap: { type: "array", items: { $ref: "#/$defs/citation" } },
+    risksAndUnknowns: arraySchema({ $ref: "#/$defs/risk" }, 4),
+    citationMap: arraySchema({ $ref: "#/$defs/citation" }, 10),
     qualityFlags: {
       type: "array",
       items: { enum: [...openAiReaderSummaryQualityFlags] },
@@ -48,10 +50,10 @@ export const openAiReaderSummaryJsonSchema = {
       properties: {
         level: { enum: [...openAiReaderSummaryConfidenceLevels] },
         score: { type: "number", minimum: 0, maximum: 1 },
-        rationale: { type: "string" },
+        rationale: stringSchema(300),
       },
     },
-    noSignalReason: { type: ["string", "null"] },
+    noSignalReason: { ...stringSchema(300), type: ["string", "null"] },
   },
   $defs: {
     ...openAiReaderSummaryContentJsonSchemaDefs,
@@ -65,44 +67,44 @@ export const openAiReaderSummaryJsonSchema = {
         "citationIds",
       ],
       {
-        storyClusterId: { type: "string" },
-        title: { type: "string" },
-        summary: { type: "string" },
-        topicIds: stringArraySchema(),
-        providerKeys: stringArraySchema(),
-        citationIds: stringArraySchema(),
+        storyClusterId: stringSchema(120),
+        title: stringSchema(180),
+        summary: stringSchema(420),
+        topicIds: stringArraySchema(5),
+        providerKeys: stringArraySchema(5),
+        citationIds: stringArraySchema(2),
       },
     ),
     topicHighlight: objectSchema(
       ["topicId", "title", "summary", "citationIds"],
       {
-        topicId: { type: "string" },
-        title: { type: "string" },
-        summary: { type: "string" },
-        citationIds: stringArraySchema(),
+        topicId: stringSchema(120),
+        title: stringSchema(140),
+        summary: stringSchema(320),
+        citationIds: stringArraySchema(3),
       },
     ),
     repeatedSignal: objectSchema(
       ["storyClusterId", "title", "topicIds", "citationIds"],
       {
-        storyClusterId: { type: "string" },
-        title: { type: "string" },
-        topicIds: stringArraySchema(),
-        citationIds: stringArraySchema(),
+        storyClusterId: stringSchema(120),
+        title: stringSchema(180),
+        topicIds: stringArraySchema(5),
+        citationIds: stringArraySchema(3),
       },
     ),
     risk: objectSchema(["description", "citationIds", "reason"], {
-      description: { type: "string" },
-      citationIds: { type: ["array", "null"], items: { type: "string" } },
+      description: stringSchema(260),
+      citationIds: { type: ["array", "null"], items: stringSchema(40), maxItems: 3 },
       reason: { enum: [...openAiReaderSummaryRiskReasons, null] },
     }),
     citation: objectSchema(
       ["citationId", "feedItemId", "sourceItemId", "providerKey", "field"],
       {
-        citationId: { type: "string" },
-        feedItemId: { type: "string" },
-        sourceItemId: { type: "string" },
-        providerKey: { type: "string" },
+        citationId: stringSchema(40),
+        feedItemId: stringSchema(120),
+        sourceItemId: stringSchema(160),
+        providerKey: stringSchema(80),
         field: { enum: [...openAiReaderSummaryCitationFields] },
       },
     ),
@@ -121,6 +123,14 @@ function objectSchema(
   };
 }
 
-function stringArraySchema() {
-  return { type: "array", items: { type: "string" } };
+function stringSchema(maxLength: number) {
+  return { type: "string", maxLength };
+}
+
+function arraySchema(items: unknown, maxItems: number) {
+  return { type: "array", items, maxItems };
+}
+
+function stringArraySchema(maxItems = 10, maxLength = 120) {
+  return { type: "array", items: stringSchema(maxLength), maxItems };
 }

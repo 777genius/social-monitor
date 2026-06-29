@@ -31,7 +31,7 @@ TopRead? _firstReadForProvider(List<TopRead> reads, String providerKey) {
 
 String _primaryTheme(ReaderSummaryContent content) {
   final headline = content.headline.trim();
-  if (headline.isNotEmpty) {
+  if (headline.isNotEmpty && !_isSourceInventoryHeadline(headline)) {
     return _cleanSentence(headline);
   }
   if (content.topReads.isNotEmpty) {
@@ -49,16 +49,18 @@ String _primaryTheme(ReaderSummaryContent content) {
   return _cleanSentence(content.oneLineTakeaway);
 }
 
+bool _isSourceInventoryHeadline(String value) {
+  final lower = value.trim().toLowerCase();
+  return lower.startsWith('key signals across') ||
+      lower.startsWith('strongest reads across') ||
+      lower.startsWith('strongest read across') ||
+      lower.startsWith('source watch') ||
+      lower.contains('cited top read');
+}
+
 String _headlineCopy(String primaryTheme) {
   final value = _cleanSentence(primaryTheme);
-  final lower = value.toLowerCase();
-  if (lower.startsWith('key signal:') ||
-      lower.startsWith('key signals:') ||
-      lower.startsWith('key signal ') ||
-      lower.startsWith('key signals ')) {
-    return value;
-  }
-  return 'Key signal: $value.';
+  return value.endsWith('.') ? value : '$value.';
 }
 
 String _bestReason(TopRead read) {

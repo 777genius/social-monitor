@@ -33,7 +33,7 @@ export type StoryRankingPolicy = {
 
 export const STORY_RANKING_POLICY_V1 = {
   version: 'story_ranking_v1',
-  maxClusters: 50,
+  maxClusters: 200,
   maxSelectedEvidencePerCluster: 4,
   maxCrossProviderEvidence: 3,
   crossProviderScoreWeight: 0.18,

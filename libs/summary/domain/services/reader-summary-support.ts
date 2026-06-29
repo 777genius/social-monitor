@@ -142,6 +142,13 @@ export const groundedReaderHeadline = (params: {
   const hasCrossProviderEvidence =
     params.sourceMix.some((source) => source.crossSourceClusterCount > 0) ||
     params.topReads.some((item) => item.confirmedProviderKeys.length > 1);
+  const safeSemanticHeadline =
+    !isTechnicalReaderHeadline(fallback) &&
+    (hasCrossProviderEvidence || !isUnconfirmedModelClaimText(fallback));
+
+  if (safeSemanticHeadline) {
+    return fallback;
+  }
 
   const providerNames = uniqueNonEmpty(
     params.sourceMix.length === 0
@@ -158,17 +165,7 @@ export const groundedReaderHeadline = (params: {
         : `${providerNames.slice(0, 3).join(", ")}${
             providerNames.length > 3 ? ` +${providerNames.length - 3}` : ""
           }`;
-  const topReadCount = params.topReads.length;
-  const itemLabel = `${topReadCount} cited top read${plural(topReadCount)}`;
-
-  if (hasCrossProviderEvidence && !isTechnicalReaderHeadline(fallback)) {
-    return fallback;
-  }
-
-  return providerNames.length === 1
-    ? `${providerLabel} source watch: ${itemLabel}`
-    : buildHumanReaderHeadline(providerLabel, params.topReads) ??
-        `Key signals across ${providerLabel}: ${itemLabel}`;
+  return buildHumanReaderHeadline(params.topReads) ?? `${providerLabel} summary`;
 };
 
 export const buildGroundedOneLineTakeaway = (params: {
@@ -183,28 +180,21 @@ export const buildGroundedOneLineTakeaway = (params: {
 
   if (
     params.topReads.length === 0 ||
-    hasCrossProviderReaderEvidence(params.sourceMix, params.topReads)
+    (!isTechnicalReaderHeadline(fallback) &&
+      !isUnconfirmedModelClaimText(fallback))
   ) {
     return fallback;
   }
 
-  const providerLabel = sourceMixProviderLabel(
-    params.sourceMix,
-    params.topReads,
-  );
   const topReadCount = params.topReads.length;
-  const sourcePhrase =
-    params.sourceMix.length > 1
-      ? `across ${providerLabel}`
-      : `from ${providerLabel}`;
   const leadReads = params.topReads
     .slice(0, 3)
     .map(sourceLocalReadLabel)
     .filter((label) => label.length > 0);
   const lead =
     leadReads.length === 0
-      ? `Strongest read${plural(topReadCount)} ${sourcePhrase} need${topReadCount === 1 ? "s" : ""} confirmation.`
-      : `Strongest read${plural(topReadCount)} ${sourcePhrase}: ${leadReads.join("; ")}.`;
+      ? `${topReadCount} monitored read${plural(topReadCount)} need${topReadCount === 1 ? "s" : ""} confirmation.`
+      : `${leadReads.join("; ")}.`;
 
   return [
     lead,
@@ -229,39 +219,6 @@ export const buildBestFirstReadBullet = (topRead: TopRead): string => {
     `Best first read (${citationLabel}, ${topRead.confirmedProviderKeys.length} providers):`,
     `${topRead.title} - ${topRead.reason}`,
   ].join(" ");
-};
-
-const hasCrossProviderReaderEvidence = (
-  sourceMix: readonly SourceMixEntry[],
-  topReads: readonly TopRead[],
-): boolean =>
-  sourceMix.some((source) => source.crossSourceClusterCount > 0) ||
-  topReads.some((item) => item.confirmedProviderKeys.length > 1);
-
-const sourceMixProviderLabel = (
-  sourceMix: readonly SourceMixEntry[],
-  topReads: readonly TopRead[],
-): string => {
-  const providerNames = uniqueNonEmpty(
-    sourceMix.length === 0
-      ? topReads.map((item) => item.providerName)
-      : [
-          ...topReads.map((item) => item.providerName),
-          ...sourceMix.map((source) =>
-            providerNameForSource(source.providerKey, topReads),
-          ),
-        ],
-  );
-
-  if (providerNames.length === 0) {
-    return "monitored sources";
-  }
-
-  return providerNames.length === 1
-    ? (providerNames[0] ?? "monitored sources")
-    : `${providerNames.slice(0, 3).join(", ")}${
-        providerNames.length > 3 ? ` +${providerNames.length - 3}` : ""
-      }`;
 };
 
 const providerNameForSource = (
@@ -328,6 +285,10 @@ const isTechnicalReaderHeadline = (value: string): boolean => {
 
   return (
     normalized.length === 0 ||
+    normalized.startsWith("key signals across") ||
+    normalized.startsWith("strongest reads across") ||
+    normalized.startsWith("strongest read across") ||
+    normalized.startsWith("summary:") ||
     normalized.startsWith("source watch") ||
     normalized.includes("source watch across") ||
     normalized.includes("cited top read") ||
@@ -343,20 +304,34 @@ const isTechnicalReaderHeadline = (value: string): boolean => {
   );
 };
 
+const isUnconfirmedModelClaimText = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase();
+
+  return (
+    /\b(?:alleged|claim(?:s|ed)?|confirms?|confirmed|launch(?:es|ed)?|release(?:s|d)?|beats?|outperforms?|leadership|available|pricing|preview|rumou?r|ships?|announces?)\b/iu.test(
+      normalized,
+    ) &&
+    /\b(?:gpt[-\s]?\d+(?:\.\d+)?|claude\s*\d+(?:\.\d+)?|gemini\s*\d+(?:\.\d+)?|benchmark|preview|model|pricing|availability|launch|release)\b/iu.test(
+      normalized,
+    )
+  );
+};
+
 const buildHumanReaderHeadline = (
-  providerLabel: string,
   topReads: readonly TopRead[],
 ): string | undefined => {
   const leadReads = topReads
     .slice(0, 3)
-    .map((read) => compactHeadlinePart(read.title))
+    .map((read) =>
+      compactHeadlinePart(sourceLocalReadLabel(read) || read.title),
+    )
     .filter((value) => value.length > 0);
 
   if (leadReads.length === 0) {
     return undefined;
   }
 
-  return `Key signals across ${providerLabel}: ${leadReads.join("; ")}`;
+  return leadReads.join("; ");
 };
 
 const compactHeadlinePart = (value: string): string => {

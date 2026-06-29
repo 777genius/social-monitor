@@ -58,45 +58,62 @@ export const openAiReaderSummaryContentJsonSchemaDefs = {
       "nextActions",
     ],
     {
-      headline: { type: "string" },
-      oneLineTakeaway: { type: "string" },
-      bullets: readerStringArraySchema(),
+      headline: readerStringSchema(160),
+      oneLineTakeaway: readerStringSchema(260),
+      bullets: readerStringArraySchema(0),
       topicSections: {
         type: "array",
         items: { $ref: "#/$defs/readerTopicSection" },
+        maxItems: 0,
       },
-      sourceMix: { type: "array", items: { $ref: "#/$defs/sourceMixEntry" } },
-      topReads: { type: "array", items: { $ref: "#/$defs/readerItem" } },
+      sourceMix: {
+        type: "array",
+        items: { $ref: "#/$defs/sourceMixEntry" },
+        maxItems: 0,
+      },
+      topReads: {
+        type: "array",
+        items: { $ref: "#/$defs/readerItem" },
+        maxItems: 0,
+      },
       trendDelta: { $ref: "#/$defs/trendDelta" },
-      openQuestions: readerStringArraySchema(),
-      risks: readerStringArraySchema(),
-      nextActions: { type: "array", items: { $ref: "#/$defs/nextAction" } },
+      openQuestions: readerStringArraySchema(0),
+      risks: readerStringArraySchema(0),
+      nextActions: {
+        type: "array",
+        items: { $ref: "#/$defs/nextAction" },
+        maxItems: 0,
+      },
     },
   ),
   readerTopicSection: readerObjectSchema(
     ["title", "insight", "items", "citationIds", "topicId"],
     {
       topicId: { type: ["string", "null"] },
-      title: { type: "string" },
-      insight: { type: "string" },
-      items: { type: "array", items: { $ref: "#/$defs/readerItem" } },
-      citationIds: readerStringArraySchema(),
+      title: readerStringSchema(140),
+      insight: readerStringSchema(280),
+      items: {
+        type: "array",
+        items: { $ref: "#/$defs/readerItem" },
+        maxItems: 3,
+      },
+      citationIds: readerStringArraySchema(3),
     },
   ),
   readerItem: readerObjectSchema(
     ["title", "providerKey", "reason", "canonicalUrl", "citationIds"],
     {
-      title: { type: "string" },
-      providerKey: { type: "string" },
-      reason: { type: "string" },
+      title: readerStringSchema(180),
+      providerKey: readerStringSchema(80),
+      reason: readerStringSchema(280),
       canonicalUrl: { type: ["string", "null"] },
-      citationIds: readerStringArraySchema(),
+      citationIds: readerStringArraySchema(2),
     },
   ),
   sourceMixEntry: readerObjectSchema(
     ["providerKey", "itemCount", "citationCount"],
     {
-      providerKey: { type: "string" },
+      providerKey: readerStringSchema(80),
       itemCount: { type: "number", minimum: 0 },
       citationCount: { type: "number", minimum: 0 },
     },
@@ -104,19 +121,19 @@ export const openAiReaderSummaryContentJsonSchemaDefs = {
   trendDelta: readerObjectSchema(
     ["newSignals", "growingSignals", "repeatedSignals", "fadingSignals"],
     {
-      newSignals: readerStringArraySchema(),
-      growingSignals: readerStringArraySchema(),
-      repeatedSignals: readerStringArraySchema(),
-      fadingSignals: readerStringArraySchema(),
+      newSignals: readerStringArraySchema(0),
+      growingSignals: readerStringArraySchema(0),
+      repeatedSignals: readerStringArraySchema(0),
+      fadingSignals: readerStringArraySchema(0),
     },
   ),
   nextAction: readerObjectSchema(
     ["kind", "label", "reason", "citationIds", "canonicalUrl"],
     {
       kind: { enum: [...nextActionKinds] },
-      label: { type: "string" },
-      reason: { type: "string" },
-      citationIds: readerStringArraySchema(),
+      label: readerStringSchema(120),
+      reason: readerStringSchema(240),
+      citationIds: readerStringArraySchema(2),
       canonicalUrl: { type: ["string", "null"] },
     },
   ),
@@ -362,8 +379,12 @@ function readerObjectSchema(
   };
 }
 
-function readerStringArraySchema() {
-  return { type: "array", items: { type: "string" } };
+function readerStringSchema(maxLength: number) {
+  return { type: "string", maxLength };
+}
+
+function readerStringArraySchema(maxItems = 10, maxLength = 160) {
+  return { type: "array", items: readerStringSchema(maxLength), maxItems };
 }
 
 const requiredString = (value: unknown, label: string): string => {
