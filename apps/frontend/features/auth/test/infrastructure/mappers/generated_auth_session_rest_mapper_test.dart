@@ -11,6 +11,7 @@ void main() {
       const generated.AuthSessionResponseDto(
         userId: 'user-1',
         userLabel: 'Operator',
+        userRole: generated.AuthSessionResponseDtoUserRoleUserRole.admin,
         selectedWorkspace: generated.AuthSessionWorkspaceDto(
           tenantId: 'tenant-1',
           workspaceId: 'workspace-1',
@@ -37,6 +38,7 @@ void main() {
 
     expect(session.userId, 'user-1');
     expect(session.userLabel, 'Operator');
+    expect(session.userRole, 'admin');
     expect(session.selectedWorkspace?.scope.tenantId, 'tenant-1');
     expect(session.selectedWorkspace?.workspaceRole, 'admin');
     expect(session.workspaces, hasLength(1));
@@ -57,5 +59,27 @@ void main() {
     );
 
     expect(workspace.workspaceRole, 'viewer');
+  });
+
+  test('maps unknown user role to the lowest privilege fallback', () {
+    final session = mapper.authSession(
+      const generated.AuthSessionResponseDto(
+        userId: 'user-1',
+        userLabel: 'Operator',
+        userRole: generated.AuthSessionResponseDtoUserRoleUserRole.$unknown,
+        selectedWorkspace: generated.AuthSessionWorkspaceDto(
+          tenantId: 'tenant-1',
+          workspaceId: 'workspace-1',
+          tenantName: 'Acme',
+          workspaceName: 'Acme alerts',
+          workspaceRole:
+              generated.AuthSessionWorkspaceDtoWorkspaceRoleWorkspaceRole.admin,
+          statusLabel: 'Active',
+        ),
+        workspaces: [],
+      ),
+    );
+
+    expect(session.userRole, 'user');
   });
 }

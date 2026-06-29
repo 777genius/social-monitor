@@ -28,6 +28,7 @@ final class AppShellRuntime {
       isRestoring: false,
       userId: 'frontend-runtime-user',
       userLabel: 'MVP Operator',
+      userRole: 'user',
     ),
     FeatureFlagSet capabilities = _enabledRuntimeCapabilities,
     FrontendObservability observability = const NoopFrontendObservability(),
@@ -56,6 +57,7 @@ final class AppShellRuntime {
         isRestoring: true,
         userId: '',
         userLabel: 'Restoring session',
+        userRole: 'user',
       ),
       workspace: const AppWorkspaceSnapshot.missing(),
       availableWorkspaces: const [],
@@ -73,6 +75,7 @@ final class AppShellRuntime {
         isRestoring: false,
         userId: '',
         userLabel: 'Runtime not configured',
+        userRole: 'user',
       ),
       workspace: AppWorkspaceSnapshot.missing(),
       availableWorkspaces: [],
@@ -115,6 +118,7 @@ final class AppShellRuntime {
         isRestoring: false,
         userId: 'user-demo',
         userLabel: 'MVP Operator',
+        userRole: 'admin',
       ),
       workspace: AppWorkspaceSnapshot(
         tenantName: 'Acme',
@@ -154,6 +158,7 @@ final class AppShellRuntime {
         isRestoring: false,
         userId: '',
         userLabel: 'Signed out',
+        userRole: 'user',
       ),
       workspace: AppWorkspaceSnapshot.missing(),
       availableWorkspaces: [],
@@ -201,6 +206,7 @@ final class AppRuntimeController extends ChangeNotifier {
   void restoreAuthSession({
     required String userId,
     required String userLabel,
+    required String userRole,
     required AppWorkspaceSnapshot selectedWorkspace,
     required List<AppWorkspaceSnapshot> availableWorkspaces,
   }) {
@@ -210,6 +216,7 @@ final class AppRuntimeController extends ChangeNotifier {
         isRestoring: false,
         userId: userId,
         userLabel: userLabel,
+        userRole: userRole,
       ),
       workspace: selectedWorkspace,
       availableWorkspaces: List<AppWorkspaceSnapshot>.unmodifiable(
@@ -237,12 +244,14 @@ final class AppSessionSnapshot {
     required this.isRestoring,
     required this.userId,
     required this.userLabel,
+    required this.userRole,
   });
 
   final bool isSignedIn;
   final bool isRestoring;
   final String userId;
   final String userLabel;
+  final String userRole;
 }
 
 final class AppWorkspaceSnapshot {

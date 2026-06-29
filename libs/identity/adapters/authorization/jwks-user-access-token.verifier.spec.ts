@@ -66,6 +66,25 @@ describe('JwksUserAccessTokenVerifier', () => {
     });
   });
 
+  it('allows JWTs without workspace roles so durable membership can decide authorization', async () => {
+    const verifier = new JwksUserAccessTokenVerifier({ issuer, audience, jwks }, clock);
+    const token = createJwt(keyPair.privateKey, {
+      sub: 'user-1',
+      iss: issuer,
+      aud: audience,
+      exp: futureSeconds(60),
+      tenant_id: 'tenant-1',
+      workspace_id: 'workspace-1',
+    });
+
+    await expect(verifier.verify(token)).resolves.toMatchObject({
+      subject: 'user-1',
+      tenantId: 'tenant-1',
+      workspaceId: 'workspace-1',
+      roles: [],
+    });
+  });
+
   it('rejects expired JWTs', async () => {
     const verifier = new JwksUserAccessTokenVerifier({
       issuer,

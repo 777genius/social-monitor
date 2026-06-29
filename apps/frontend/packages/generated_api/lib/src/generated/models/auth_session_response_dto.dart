@@ -4,6 +4,7 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'auth_session_response_dto_user_role_user_role.dart';
 import 'auth_session_workspace_dto.dart';
 
 part 'auth_session_response_dto.g.dart';
@@ -14,6 +15,7 @@ class AuthSessionResponseDto {
     required this.selectedWorkspace,
     required this.userId,
     required this.userLabel,
+    required this.userRole,
     required this.workspaces,
   });
 
@@ -23,6 +25,7 @@ class AuthSessionResponseDto {
   final AuthSessionWorkspaceDto selectedWorkspace;
   final String userId;
   final String userLabel;
+  final AuthSessionResponseDtoUserRoleUserRole userRole;
   final List<AuthSessionWorkspaceDto> workspaces;
 
   Map<String, Object?> toJson() => _$AuthSessionResponseDtoToJson(this);

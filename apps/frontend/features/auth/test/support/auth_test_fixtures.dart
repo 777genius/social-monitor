@@ -32,6 +32,7 @@ AuthSession authSession({WorkspaceAccess? selectedWorkspace}) {
   return AuthSession(
     userId: 'user-demo',
     userLabel: 'MVP Operator',
+    userRole: 'admin',
     selectedWorkspace: selectedWorkspace ?? primaryWorkspace,
     workspaces: const [primaryWorkspace, secondaryWorkspace],
   );
@@ -41,6 +42,7 @@ AuthSession authSessionWithoutWorkspace() {
   return const AuthSession(
     userId: 'user-demo',
     userLabel: 'MVP Operator',
+    userRole: 'admin',
     workspaces: [primaryWorkspace, secondaryWorkspace],
   );
 }

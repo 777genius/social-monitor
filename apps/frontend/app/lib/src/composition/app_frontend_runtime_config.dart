@@ -97,6 +97,7 @@ final class AppFrontendRuntimeConfig {
           isRestoring: false,
           userId: _labelOrDefault(userId, 'frontend-runtime-user'),
           userLabel: _labelOrDefault(userLabel, 'MVP Operator'),
+          userRole: _userRoleForWorkspaceRole(workspaceRole),
         ),
         correlationId: correlationId.trim(),
       );
@@ -125,6 +126,11 @@ final class AppFrontendRuntimeConfig {
       return null;
     }
     return value.toLowerCase();
+  }
+
+  String _userRoleForWorkspaceRole(String? value) {
+    final normalized = value?.trim().toLowerCase();
+    return normalized == 'owner' || normalized == 'admin' ? 'admin' : 'user';
   }
 
   WorkspaceScope? _workspaceScopeOrNull() {

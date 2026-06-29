@@ -50,6 +50,7 @@ final class DemoSessionGateway implements SessionGateway {
   static const _demoSession = AuthSession(
     userId: 'user-demo',
     userLabel: 'MVP Operator',
+    userRole: 'admin',
     selectedWorkspace: WorkspaceAccess(
       scope: _demoScope,
       tenantName: 'Acme',

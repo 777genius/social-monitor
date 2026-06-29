@@ -106,10 +106,6 @@ export class JwksUserAccessTokenVerifier implements UserAccessTokenVerifierPort 
 
     const roles = normalizeWorkspaceRoles(claims[this.rolesClaim]);
 
-    if (roles.length === 0) {
-      throw new DomainError('authorization.denied', 'Bearer JWT workspace role is required');
-    }
-
     return {
       subject: userId(requireStringClaim(claims, this.subjectClaim)),
       tenantId: tenantId(requireStringClaim(claims, this.tenantIdClaim)),

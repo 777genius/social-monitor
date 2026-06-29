@@ -14,6 +14,9 @@ AuthSessionResponseDto _$AuthSessionResponseDtoFromJson(
   ),
   userId: json['userId'] as String,
   userLabel: json['userLabel'] as String,
+  userRole: AuthSessionResponseDtoUserRoleUserRole.fromJson(
+    json['userRole'] as String,
+  ),
   workspaces: (json['workspaces'] as List<dynamic>)
       .map((e) => AuthSessionWorkspaceDto.fromJson(e as Map<String, dynamic>))
       .toList(),
@@ -25,5 +28,6 @@ Map<String, dynamic> _$AuthSessionResponseDtoToJson(
   'selectedWorkspace': instance.selectedWorkspace,
   'userId': instance.userId,
   'userLabel': instance.userLabel,
+  'userRole': instance.userRole,
   'workspaces': instance.workspaces,
 };

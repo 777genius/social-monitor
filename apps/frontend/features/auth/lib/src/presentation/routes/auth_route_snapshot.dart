@@ -11,6 +11,7 @@ typedef AuthWorkspaceRouteSnapshot = ({
 typedef AuthSessionRouteSnapshot = ({
   String userId,
   String userLabel,
+  String userRole,
   AuthWorkspaceRouteSnapshot selectedWorkspace,
   List<AuthWorkspaceRouteSnapshot> workspaces,
 });

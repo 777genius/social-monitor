@@ -42,6 +42,7 @@ void main() {
       expect(runtime, isNotNull);
       expect(runtime?.session.isRestoring, isFalse);
       expect(runtime?.session.userId, 'user-1');
+      expect(runtime?.session.userRole, 'admin');
       expect(runtime?.workspace.scope?.tenantId, 'tenant-1');
       expect(runtime?.workspace.scope?.workspaceId, 'workspace-1');
       expect(runtime?.capabilities.capability('summaries').isEnabled, isTrue);
@@ -64,11 +65,13 @@ void main() {
     controller.restoreAuthSession(
       userId: 'user-1',
       userLabel: 'Operator',
+      userRole: 'admin',
       selectedWorkspace: workspace,
       availableWorkspaces: const [workspace],
     );
 
     expect(controller.runtime.session.userId, 'user-1');
+    expect(controller.runtime.session.userRole, 'admin');
     expect(controller.runtime.session.isRestoring, isFalse);
     expect(controller.runtime.workspace.scope, workspace.scope);
     expect(
@@ -106,6 +109,7 @@ void main() {
     composition.runtimeController.restoreAuthSession(
       userId: 'user-1',
       userLabel: 'Operator',
+      userRole: 'admin',
       selectedWorkspace: workspace,
       availableWorkspaces: const [workspace],
     );

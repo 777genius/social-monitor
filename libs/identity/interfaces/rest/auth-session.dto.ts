@@ -1,8 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 
+import type { AuthSessionUserRole } from '../../features/get-auth-session/get-auth-session.result';
 import type { WorkspaceRole } from '../../ports';
 
 const workspaceRoleValues = ['owner', 'admin', 'member', 'viewer'] as const satisfies readonly WorkspaceRole[];
+const authSessionUserRoleValues = ['admin', 'user'] as const satisfies readonly AuthSessionUserRole[];
 
 export class AuthSessionWorkspaceDto {
   @ApiProperty()
@@ -30,6 +32,9 @@ export class AuthSessionResponseDto {
 
   @ApiProperty()
   declare readonly userLabel: string;
+
+  @ApiProperty({ enum: authSessionUserRoleValues })
+  declare readonly userRole: AuthSessionUserRole;
 
   @ApiProperty({ type: AuthSessionWorkspaceDto })
   declare readonly selectedWorkspace: AuthSessionWorkspaceDto;

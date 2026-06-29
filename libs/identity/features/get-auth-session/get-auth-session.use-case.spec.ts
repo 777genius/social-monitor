@@ -26,6 +26,7 @@ describe('GetAuthSessionUseCase', () => {
       value: {
         userId: subject,
         userLabel: subject,
+        userRole: 'admin',
         selectedWorkspace: {
           tenantId: tenant,
           workspaceId: workspace,
@@ -52,6 +53,91 @@ describe('GetAuthSessionUseCase', () => {
       workspaceId: workspace,
       userId: subject,
       tokenRoles: ['admin'],
+    });
+  });
+
+  it('downgrades the session user role from durable membership even when JWT claims admin', async () => {
+    const dependencies = createDependencies({
+      membership: {
+        tenantId: tenant,
+        workspaceId: workspace,
+        userId: subject,
+        roles: ['viewer'],
+        source: 'durable',
+      },
+    });
+
+    const result = await createUseCase(dependencies).execute({
+      accessToken: 'jwt.header.signature',
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        userRole: 'user',
+        selectedWorkspace: {
+          workspaceRole: 'viewer',
+        },
+      },
+    });
+  });
+
+  it('maps owner workspace membership to the admin session user role', async () => {
+    const dependencies = createDependencies({
+      membership: {
+        tenantId: tenant,
+        workspaceId: workspace,
+        userId: subject,
+        roles: ['owner'],
+        source: 'durable',
+      },
+    });
+
+    const result = await createUseCase(dependencies).execute({
+      accessToken: 'jwt.header.signature',
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        userRole: 'admin',
+        selectedWorkspace: {
+          workspaceRole: 'owner',
+        },
+      },
+    });
+  });
+
+  it('restores admin role from durable membership when JWT has no role claims', async () => {
+    const dependencies = createDependencies({
+      principal: {
+        subject,
+        tenantId: tenant,
+        workspaceId: workspace,
+        roles: [],
+        issuer: 'https://auth.example.test',
+        audience: ['social-monitor-api'],
+      },
+    });
+
+    const result = await createUseCase(dependencies).execute({
+      accessToken: 'jwt.header.signature',
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        userRole: 'admin',
+        selectedWorkspace: {
+          workspaceRole: 'admin',
+        },
+      },
+    });
+    expect(dependencies.userWorkspaceMembershipVerifier.verify).toHaveBeenCalledWith({
+      tenantId: tenant,
+      workspaceId: workspace,
+      userId: subject,
+      tokenRoles: [],
     });
   });
 

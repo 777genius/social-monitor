@@ -14,6 +14,7 @@ final class AuthFeatureModule extends Module {
     : generatedApiRuntime = null,
       userId = null,
       userLabel = null,
+      userRole = null,
       workspaces = null,
       selectedScope = null,
       onSessionRestored = null,
@@ -23,6 +24,7 @@ final class AuthFeatureModule extends Module {
     required this.generatedApiRuntime,
     required this.userId,
     required this.userLabel,
+    required this.userRole,
     required List<AuthWorkspaceRouteSnapshot> workspaces,
     required this.selectedScope,
     required this.onSessionRestored,
@@ -42,6 +44,7 @@ final class AuthFeatureModule extends Module {
   final Object? generatedApiRuntime;
   final String? userId;
   final String? userLabel;
+  final String? userRole;
   final List<WorkspaceAccess>? workspaces;
   final WorkspaceScope? selectedScope;
   final void Function(AuthSessionRouteSnapshot session)? onSessionRestored;
@@ -91,12 +94,15 @@ final class AuthFeatureModule extends Module {
     final runtimeWorkspaces = workspaces;
     final runtimeUserId = userId;
     final runtimeUserLabel = userLabel;
+    final runtimeUserRole = userRole;
     if (runtimeWorkspaces != null &&
         runtimeUserId != null &&
-        runtimeUserLabel != null) {
+        runtimeUserLabel != null &&
+        runtimeUserRole != null) {
       return RuntimeSessionGateway(
         userId: runtimeUserId,
         userLabel: runtimeUserLabel,
+        userRole: runtimeUserRole,
         workspaces: runtimeWorkspaces,
         selectedScope: selectedScope,
         onWorkspaceSelected: (scope) {
@@ -119,6 +125,7 @@ final class AuthFeatureModule extends Module {
     return (
       userId: session.userId,
       userLabel: session.userLabel,
+      userRole: session.userRole,
       selectedWorkspace: _workspaceSnapshot(selectedWorkspace),
       workspaces: session.workspaces
           .map(_workspaceSnapshot)

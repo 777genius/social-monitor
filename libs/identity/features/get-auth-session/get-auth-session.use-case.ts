@@ -6,6 +6,7 @@ import type {
 } from '../../ports';
 import type { GetAuthSessionQuery } from './get-auth-session.query';
 import type { GetAuthSessionResult } from './get-auth-session.result';
+import { resolveAuthSessionUserRole } from './auth-session-user-role.policy';
 
 type GetAuthSessionFailure = DomainError;
 
@@ -47,6 +48,7 @@ export class GetAuthSessionUseCase {
       return ok({
         userId: principal.subject,
         userLabel: principal.subject,
+        userRole: resolveAuthSessionUserRole(membership.roles),
         selectedWorkspace,
         workspaces: [selectedWorkspace],
       });

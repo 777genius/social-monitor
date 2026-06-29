@@ -17,6 +17,7 @@ final class GeneratedAuthSessionRestMapper {
     return AuthSession(
       userId: dto.userId,
       userLabel: dto.userLabel,
+      userRole: _userRole(dto.userRole),
       selectedWorkspace: selectedWorkspace,
       workspaces: _ensureSelectedWorkspace(workspaces, selectedWorkspace),
     );
@@ -54,5 +55,11 @@ final class GeneratedAuthSessionRestMapper {
             generated.AuthSessionWorkspaceDtoWorkspaceRoleWorkspaceRole.$unknown
         ? 'viewer'
         : role.toJson();
+  }
+
+  String _userRole(generated.AuthSessionResponseDtoUserRoleUserRole role) {
+    return role == generated.AuthSessionResponseDtoUserRoleUserRole.admin
+        ? 'admin'
+        : 'user';
   }
 }

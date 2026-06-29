@@ -161,6 +161,7 @@ export 'models/cadence.dart';
 export 'models/scope_type.dart';
 export 'models/status.dart';
 export 'models/status2.dart';
+export 'models/auth_session_response_dto_user_role_user_role.dart';
 export 'models/auth_session_workspace_dto_workspace_role_workspace_role.dart';
 export 'models/build_personalized_digest_response_dto_status_status.dart';
 export 'models/change_source_binding_status_request_dto_status_status.dart';

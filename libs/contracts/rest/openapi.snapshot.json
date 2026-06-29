@@ -79,6 +79,13 @@
           "userLabel": {
             "type": "string"
           },
+          "userRole": {
+            "enum": [
+              "admin",
+              "user"
+            ],
+            "type": "string"
+          },
           "workspaces": {
             "items": {
               "$ref": "#/components/schemas/AuthSessionWorkspaceDto"
@@ -89,6 +96,7 @@
         "required": [
           "userId",
           "userLabel",
+          "userRole",
           "selectedWorkspace",
           "workspaces"
         ],

@@ -28,6 +28,7 @@ AppRouteWidgetBuilder authFeatureBuilder({
       generatedApiRuntime: runtime.generatedApiRuntime,
       userId: runtime.session.userId,
       userLabel: runtime.session.userLabel,
+      userRole: runtime.session.userRole,
       selectedScope: runtime.workspace.scope,
       workspaces: [
         for (final workspace in runtime.availableWorkspaces)
@@ -44,6 +45,7 @@ AppRouteWidgetBuilder authFeatureBuilder({
         runtimeController.restoreAuthSession(
           userId: session.userId,
           userLabel: session.userLabel,
+          userRole: session.userRole,
           selectedWorkspace: _appWorkspace(session.selectedWorkspace),
           availableWorkspaces: session.workspaces
               .map(_appWorkspace)
